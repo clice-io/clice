@@ -69,6 +69,6 @@ struct Hover {
 Hover hover(CompilationUnitRef unit, const clang::NamedDecl* decl);
 
 /// Generate the hover information for the symbol at the given offset.
-Hover hover(CompilationUnitRef unit, std::uint32_t offset);
+std::optional<Hover> hover(CompilationUnitRef unit, std::uint32_t offset, const config::HoverOptions &opt);
 
 }  // namespace clice::feature
