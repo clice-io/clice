@@ -57,15 +57,17 @@ auto Server::on_hover(proto::HoverParams params) -> Result {
 
     auto offset = to_offset(kind, opening_file->content, params.position);
 
-    co_return co_await async::submit([kind = this->kind, offset, &ast] {
-        auto hover = feature::hover(*ast, offset);
-        if(hover.kind == SymbolKind::Invalid) {
-            return json::Value(nullptr);
-        }
+    // NOTE: Should be initialized somewhere else
+    config::HoverOptions opt = {.enable_doxygen_parsing = true,
+                                .parse_comment_as_markdown = true,
+                                .show_aka = true};
 
+    co_return co_await async::submit([kind = this->kind, offset, &ast, &opt] {
+        auto hover = feature::hover(*ast, offset, opt);
+        // TODO: Join comment with ast info, build structed text
         proto::Hover result;
         result.contents.kind = "markdown";
-        result.contents.value = std::format("{}: {}", hover.kind.name(), hover.name);
+        result.contents.value = std::format("{}: {}", hover->kind.name(), hover->name);
         return json::serialize(result);
     });
 }
