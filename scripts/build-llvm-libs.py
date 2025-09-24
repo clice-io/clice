@@ -59,7 +59,7 @@ def build_llvm(config):
         "-DCMAKE_BUILD_TYPE=" + config["build_type"],
         # Only build native to speed up building llvm.
         "-DLLVM_TARGETS_TO_BUILD=Native",
-        "-DLLVM_ENABLE_PROJECTS=clang",
+        "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
         "-DCMAKE_INSTALL_PREFIX=" + config["install_dir"],
     ]
 
