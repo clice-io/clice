@@ -6,7 +6,7 @@
 #include "Support/Compare.h"
 #include "Support/Ranges.h"
 #include "Feature/Hover.h"
-#include "Support/Logger.h"
+#include "Support/Logging.h"
 
 namespace clice::feature {
 
@@ -99,7 +99,7 @@ static std::optional<Hover> hover(CompilationUnit& unit,
                                   const clang::TypeLoc* typeloc,
                                   const config::HoverOptions& opt) {
     // TODO: Hover for type
-    clice::log::warn("Hit a typeloc");
+    clice::logging::warn("Hit a typeloc");
     return std::nullopt;
 }
 
@@ -114,7 +114,7 @@ std::optional<Hover> hover(CompilationUnit& unit,
 
     auto tokens_under_cursor = unit.spelled_tokens_touch(*loc);
     for(auto& tk: tokens_under_cursor) {
-        clice::log::info("Hit token '{}'", tk.str());
+        clice::logging::info("Hit token '{}'", tk.str());
     }
 
     // Find the token under cursor
@@ -133,7 +133,7 @@ std::optional<Hover> hover(CompilationUnit& unit,
             return hover(unit, typeloc, opt);
         }
 
-        clice::log::warn("Not selected");
+        clice::logging::warn("Not selected");
 
         node->data.dump(llvm::errs(), unit.context());
 
@@ -147,7 +147,7 @@ std::optional<Hover> hover(CompilationUnit& unit,
         /// - NestedNameSpecifierLoc
         /// - Template specification
     } else {
-        clice::log::warn("Not an ast node");
+        clice::logging::warn("Not an ast node");
     }
 
     return std::nullopt;
