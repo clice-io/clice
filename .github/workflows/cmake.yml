@@ -68,20 +68,20 @@ jobs:
       - name: Build clice (release, windows)
         if: matrix.os == 'windows-2025'
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCLICE_ENABLE_TEST=ON
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCLICE_ENABLE_TEST=ON -DCLICE_CI_ENVIRONMENT=ON
           cmake --build build
 
       - name: Build clice (debug, linux)
         if: matrix.os == 'ubuntu-24.04'
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 -DCLICE_ENABLE_TEST=ON
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 -DCLICE_ENABLE_TEST=ON -DCLICE_CI_ENVIRONMENT=ON
           cmake --build build
 
       - name: Build clice (debug, macos)
         if: matrix.os == 'macos-15'
         run: |
           export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCLICE_ENABLE_TEST=ON
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCLICE_ENABLE_TEST=ON -DCLICE_CI_ENVIRONMENT=ON
           cmake --build build
 
       - name: Install uv for integration tests

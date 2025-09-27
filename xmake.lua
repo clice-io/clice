@@ -199,6 +199,9 @@ rule("clice_build_config")
             -- gnu ld need to fix link order
             target:add("ldflags", "-fuse-ld=lld")
         end
+        if has_config("ci") then
+            target:add("cxxflags", "-DCLICE_CI_ENVIRONMENT")
+        end
     end)
 
 package("clice-llvm")
