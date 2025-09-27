@@ -11,6 +11,15 @@
 namespace clice {
 
 struct CommandOptions {
+    /// Ignore unknown commands.
+    bool ignore_unknown = true;
+
+    /// The commands that you want to remove from original commands list.
+    llvm::ArrayRef<std::string> remove;
+
+    /// The commands that you want to add to original commands list.
+    llvm::ArrayRef<std::string> append;
+
     /// Attach resource directory to the command.
     bool resource_dir = false;
 
@@ -95,19 +104,25 @@ public:
 
     /// Update with arguments.
     auto update_command(this Self& self,
-                        llvm::StringRef dictionary,
+                        llvm::StringRef directory,
                         llvm::StringRef file,
                         llvm::ArrayRef<const char*> arguments) -> UpdateInfo;
 
     /// Update with full command.
     auto update_command(this Self& self,
-                        llvm::StringRef dictionary,
+                        llvm::StringRef directory,
                         llvm::StringRef file,
                         llvm::StringRef command) -> UpdateInfo;
 
     /// Update commands from json file and return all updated file.
     auto load_commands(this Self& self, llvm::StringRef json_content, llvm::StringRef workspace)
         -> std::expected<std::vector<UpdateInfo>, std::string>;
+
+    auto process_command(this Self& self,
+                         llvm::StringRef directory,
+                         llvm::StringRef file,
+                         llvm::ArrayRef<const char*> arguments,
+                         const CommandOptions& options = {}) -> std::vector<const char*>;
 
     /// Get compile command from database. `file` should has relative path of workspace.
     auto get_command(this Self& self, llvm::StringRef file, CommandOptions options = {})

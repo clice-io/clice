@@ -162,6 +162,12 @@ suite<"Command"> command = [] {
 
     test("Module") = [] {
         // Empty test
+        CompilationDatabase database;
+        database.update_command("/fake",
+                                "main.cpp",
+                                llvm::StringRef("clang++ @test.txt -std= main.cpp"));
+        auto info = database.get_command("main.cpp", {.query_driver = false});
+        std::println("{}", info.arguments);
     };
 
     test("QueryDriver") = [] {

@@ -1,9 +1,10 @@
 #include "Test/Test.h"
+#include "Support/Logging.h"
+#include "Support/GlobPattern.h"
+
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Signals.h"
-#include "Support/GlobPattern.h"
-#include <print>
 
 using namespace clice;
 using namespace clice::testing;
@@ -141,6 +142,13 @@ int Runner::run_tests() {
             continue;
         }
 
+        if(!test_filter.empty()) {
+            auto pos = test_filter.find_first_of('.');
+            if(pos != std::string::npos && test_filter.substr(0, pos) != suite_name) {
+                continue;
+            }
+        }
+
         curr_fatal = false;
         all_skipped = true;
         curr_suite_name = suite_name;
@@ -181,6 +189,8 @@ int main(int argc, const char* argv[]) {
     llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
     llvm::cl::HideUnrelatedOptions(unittest_category);
     llvm::cl::ParseCommandLineOptions(argc, argv, "clice test\n");
+
+    logging::create_stderr_logger("clice", logging::options);
 
     if(!test_filter.empty()) {
         if(auto result = GlobPattern::create(test_filter)) {

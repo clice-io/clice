@@ -268,111 +268,13 @@ auto CompilationDatabase::update_command(this Self& self,
     file = self.save_string(file);
     directory = self.save_string(directory);
 
-    llvm::SmallVector<const char*, 16> filtered_arguments;
-
-    /// Append
-    auto add_argument = [&](llvm::StringRef argument) {
-        auto saved = self.save_string(argument);
-        filtered_arguments.emplace_back(saved.data());
-    };
-
-    /// Append driver sperately.
-    add_argument(arguments.front());
-
-    unsigned missing_arg_index = 0;
-    unsigned missing_arg_count = 0;
-    auto& table = clang::driver::getDriverOptTable();
-
-    /// The driver should be discarded.
-    auto list = table.ParseArgs(arguments.drop_front(), missing_arg_index, missing_arg_count);
-
-    bool remove_pch = false;
-
-    /// Append and filter useless arguments.
-    for(auto arg: list.getArgs()) {
-        auto& opt = arg->getOption();
-        auto id = opt.getID();
-
-        /// Filter options we don't need.
-        if(self.filtered_options.contains(id)) {
-            continue;
-        }
-
-        /// For arguments -I<dir>, convert directory to absolute path.
-        /// i.e xmake will generate commands in this style.
-        if(id == clang::driver::options::OPT_I) {
-            if(arg->getNumValues() == 1) {
-                add_argument("-I");
-                llvm::StringRef value = arg->getValue(0);
-                if(!value.empty() && !path::is_absolute(value)) {
-                    add_argument(path::join(directory, value));
-                } else {
-                    add_argument(value);
-                }
-            }
-            continue;
-        }
-
-        /// A workaround to remove extra PCH when cmake
-        /// generate PCH flags for clang.
-        if(id == clang::driver::options::OPT_Xclang) {
-            if(arg->getNumValues() == 1) {
-                if(remove_pch) {
-                    remove_pch = false;
-                    continue;
-                }
-
-                llvm::StringRef value = arg->getValue(0);
-                if(value == "-include-pch") {
-                    remove_pch = true;
-                    continue;
-                }
-            }
-        }
-
-        /// Rewrite the argument to filter arguments, we basically reimplement
-        /// the logic of `Arg::render` to use our allocator to allocate memory.
-        switch(opt.getRenderStyle()) {
-            case llvm::opt::Option::RenderValuesStyle: {
-                for(auto value: arg->getValues()) {
-                    add_argument(value);
-                }
-                break;
-            }
-
-            case llvm::opt::Option::RenderSeparateStyle: {
-                add_argument(arg->getSpelling());
-                for(auto value: arg->getValues()) {
-                    add_argument(value);
-                }
-                break;
-            }
-
-            case llvm::opt::Option::RenderJoinedStyle: {
-                llvm::SmallString<256> first = {arg->getSpelling(), arg->getValue(0)};
-                add_argument(first);
-                for(auto value: llvm::ArrayRef(arg->getValues()).drop_front()) {
-                    add_argument(value);
-                }
-                break;
-            }
-
-            case llvm::opt::Option::RenderCommaJoinedStyle: {
-                llvm::SmallString<256> buffer = arg->getSpelling();
-                for(auto i = 0; i < arg->getNumValues(); i++) {
-                    if(i) {
-                        buffer += ',';
-                    }
-                    buffer += arg->getValue(i);
-                }
-                add_argument(buffer);
-                break;
-            }
-        }
+    llvm::SmallVector<const char*> saved_arguments;
+    for(auto argument: arguments) {
+        saved_arguments.push_back(self.save_string(argument).data());
     }
 
     /// Save arguments.
-    arguments = self.save_cstring_list(filtered_arguments);
+    arguments = self.save_cstring_list(saved_arguments);
 
     UpdateKind kind = UpdateKind::Unchange;
     CommandInfo info = {directory, arguments};
@@ -476,6 +378,133 @@ auto CompilationDatabase::load_commands(this Self& self,
     return infos;
 }
 
+auto CompilationDatabase::process_command(this Self& self,
+                                          llvm::StringRef directory,
+                                          llvm::StringRef file,
+                                          llvm::ArrayRef<const char*> arguments,
+                                          const CommandOptions& options)
+    -> std::vector<const char*> {
+    llvm::SmallVector<const char*, 16> filtered_arguments;
+
+    auto add_argument = [&](llvm::StringRef argument) {
+        auto saved = self.save_string(argument);
+        filtered_arguments.emplace_back(saved.data());
+    };
+
+    /// Append driver sperately
+    add_argument(arguments.front());
+
+    llvm::SmallVector<const char*> remove_args;
+    for(auto& arg: options.remove) {
+        remove_args.push_back(self.save_string(arg).data());
+    }
+
+    llvm::SmallVector<const char*> append_args;
+    for(auto& arg: options.remove) {
+        append_args.push_back(self.save_string(arg).data());
+    }
+
+    /// Parse the arguments first
+    unsigned missing_arg_index = 0;
+    unsigned missing_arg_count = 0;
+    auto& table = clang::driver::getDriverOptTable();
+
+    /// FIXME: Handle @xxx in CDB
+    auto origin_arg_list =
+        table.ParseArgs(arguments.drop_front(), missing_arg_index, missing_arg_count);
+
+    /// Remove first ...
+    auto remove_arg_list = table.ParseArgs(remove_args, missing_arg_index, missing_arg_count);
+    auto append_arg_list = table.ParseArgs(remove_args, missing_arg_index, missing_arg_count);
+
+    bool remove_pch = false;
+
+    /// Append and filter useless arguments.
+    for(auto arg: origin_arg_list.getArgs()) {
+        auto& opt = arg->getOption();
+        auto id = opt.getID();
+
+        /// Filter options we don't need.
+        if(self.filtered_options.contains(id)) {
+            continue;
+        }
+
+        /// For arguments -I<dir>, convert directory to absolute path.
+        /// i.e xmake will generate commands in this style.
+        if(id == clang::driver::options::OPT_I) {
+            if(arg->getNumValues() == 1) {
+                add_argument("-I");
+                llvm::StringRef value = arg->getValue(0);
+                if(!value.empty() && !path::is_absolute(value)) {
+                    add_argument(path::join(directory, value));
+                } else {
+                    add_argument(value);
+                }
+            }
+            continue;
+        }
+
+        /// A workaround to remove extra PCH when cmake
+        /// generate PCH flags for clang.
+        if(id == clang::driver::options::OPT_Xclang) {
+            if(arg->getNumValues() == 1) {
+                if(remove_pch) {
+                    remove_pch = false;
+                    continue;
+                }
+
+                llvm::StringRef value = arg->getValue(0);
+                if(value == "-include-pch") {
+                    remove_pch = true;
+                    continue;
+                }
+            }
+        }
+
+        /// Rewrite the argument to filter arguments, we basically reimplement
+        /// the logic of `Arg::render` to use our allocator to allocate memory.
+        switch(opt.getRenderStyle()) {
+            case llvm::opt::Option::RenderValuesStyle: {
+                for(auto value: arg->getValues()) {
+                    add_argument(value);
+                }
+                break;
+            }
+
+            case llvm::opt::Option::RenderSeparateStyle: {
+                add_argument(arg->getSpelling());
+                for(auto value: arg->getValues()) {
+                    add_argument(value);
+                }
+                break;
+            }
+
+            case llvm::opt::Option::RenderJoinedStyle: {
+                llvm::SmallString<256> first = {arg->getSpelling(), arg->getValue(0)};
+                add_argument(first);
+                for(auto value: llvm::ArrayRef(arg->getValues()).drop_front()) {
+                    add_argument(value);
+                }
+                break;
+            }
+
+            case llvm::opt::Option::RenderCommaJoinedStyle: {
+                llvm::SmallString<256> buffer = arg->getSpelling();
+                for(auto i = 0; i < arg->getNumValues(); i++) {
+                    if(i) {
+                        buffer += ',';
+                    }
+                    buffer += arg->getValue(i);
+                }
+                add_argument(buffer);
+                break;
+            }
+        }
+    }
+
+    return llvm::ArrayRef(filtered_arguments).vec();
+}
+
 auto CompilationDatabase::get_command(this Self& self, llvm::StringRef file, CommandOptions options)
     -> LookupInfo {
     LookupInfo info;
@@ -484,7 +513,7 @@ auto CompilationDatabase::get_command(this Self& self, llvm::StringRef file, Com
     auto it = self.command_infos.find(file.data());
     if(it != self.command_infos.end()) {
         info.directory = it->second.directory;
-        info.arguments = it->second.arguments;
+        info.arguments = self.process_command(info.directory, file, it->second.arguments);
     } else {
         info = self.guess_or_fallback(file);
     }
