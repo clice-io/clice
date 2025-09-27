@@ -112,6 +112,16 @@ llvm::SmallVector<llvm::StringRef, 4> driver_invocation_argv(llvm::StringRef dri
     return {driver, "-E", "-v", "-xc++", null_device};
 }
 
+llvm::SmallVector<llvm::StringRef, 1> driver_invocation_env() {
+#if defined(_WIN32)
+    /// TODO: windows support
+    return {};
+#else
+    /// Ensure driver print infomation in English
+    return {"LANG=C"};
+#endif
+}
+
 using QueryDriverError = CompilationDatabase::QueryDriverError;
 using ErrorKind = CompilationDatabase::QueryDriverError::ErrorKind;
 
@@ -167,10 +177,11 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
     redirects[is_std_err ? 2 : 1] = output_path.str();
 
     llvm::SmallVector argv = driver_invocation_argv(driver);
+    llvm::SmallVector env = driver_invocation_env();
     std::string message;
     if(int RC = llvm::sys::ExecuteAndWait(driver,
                                           argv,
-                                          /*Env=*/std::nullopt,
+                                          env,
                                           redirects,
                                           /*SecondsToWait=*/0,
                                           /*MemoryLimit=*/0,

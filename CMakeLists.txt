@@ -16,7 +16,6 @@ if(NOT EXISTS "${LLVM_INSTALL_PATH}")
     message(FATAL_ERROR "Error: The specified LLVM_INSTALL_PATH does not exist: ${LLVM_INSTALL_PATH}")
 endif()
 message(STATUS "Found llvm-libs ${LLVM_INSTALL_PATH}")
-
 if (EXISTS "${LLVM_CMAKE_DIR}")
     list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 else()
@@ -105,6 +104,11 @@ else()
     message(STATUS "Release/Default build: Enabling -O3")
     list(APPEND CLICE_CXX_FLAGS "-O3")
 endif()
+
+if(CLICE_CI_ENVIRONMENT)
+    list(APPEND CLICE_CXX_FLAGS "-DCLICE_CI_ENVIRONMENT")
+endif()
+
 
 # Linker flags for LLD
 if(WIN32)

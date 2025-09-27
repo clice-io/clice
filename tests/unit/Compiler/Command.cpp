@@ -188,6 +188,7 @@ suite<"Command"> command = [] {
 
         expect(that % info);
 
+#if defined CLICE_CI_ENVIRONMENT
         expect(that % info->target == llvm::StringRef("x86_64-linux-gnu"));
         expect(that % info->system_includes.size() == 6);
 
@@ -207,6 +208,8 @@ suite<"Command"> command = [] {
 
         info = database.query_driver("clang++");
         expect(that % info);
+#endif
+
 #endif
     };
 
