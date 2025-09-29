@@ -10,6 +10,13 @@ clice has two types of tests: unit tests and integration tests.
 $ ./build/bin/unit_tests --test-dir="./tests/data"
 ```
 
+Or, run unit tests through ctest:
+
+```bash
+$ cd build
+$ ctest -V
+```
+
 - Run integration tests
 
 We use pytest to run integration tests. Please refer to `pyproject.toml` to install the required Python libraries.

@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
+enable_testing()
+
 include(cmake/llvm_setup.cmake)
 
 setup_llvm()
@@ -225,6 +227,7 @@ file(COPY
 )
 
 # clice tests
+option(CLICE_ENABLE_TEST "Enable building unit tests" OFF)
 if(CLICE_ENABLE_TEST)
     file(GLOB_RECURSE CLICE_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/tests/unit/*/*.cpp")
     add_executable(unit_tests "${CLICE_TEST_SOURCES}" "${CMAKE_SOURCE_DIR}/src/Driver/unit_tests.cc")
@@ -233,4 +236,6 @@ if(CLICE_ENABLE_TEST)
     target_link_libraries(unit_tests PRIVATE clice-core)
     target_compile_options(unit_tests PUBLIC ${CLICE_CXX_FLAGS})
     target_link_options(unit_tests PUBLIC ${CLICE_LINKER_FLAGS})
+
+    add_test(NAME clice_unit_tests COMMAND unit_tests --test-dir="${CMAKE_SOURCE_DIR}/tests/data" --resource-dir="${PROJECT_BINARY_DIR}/lib/clang/20")
 endif()

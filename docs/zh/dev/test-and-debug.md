@@ -10,6 +10,13 @@ clice 有两种形式的测试，单元测试和集成测试。
 $ ./build/bin/unit_tests --test-dir="./tests/data"
 ```
 
+或者使用 ctest 来运行单元测试：
+
+```bash
+$ cd build
+$ ctest -V
+```
+
 - 运行集成测试
 
 我们使用 pytest 来运行集成测试，请参考 `pyproject.toml` 安装依赖的 python 库
