@@ -97,30 +97,16 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
 
 namespace {
 
-llvm::SmallVector<llvm::StringRef, 4> driver_invocation_argv(llvm::StringRef driver) {
-    /// FIXME: MSVC command:` cl /Bv`, should we support it?
-    /// if (driver.starts_with("gcc") || driver.starts_with("g++") || driver.starts_with("clang")) {
-    ///      return {"-E", "-v", "-xc++", "/dev/null"};
-    /// } else if (driver.starts_with("cl") || driver.starts_with("clang-cl")) {
-    ///      return {"/Bv"};
-    /// }
-#if defined(_WIN32)
-    const llvm::StringRef null_device = "NUL";
-#else
-    const llvm::StringRef null_device = "/dev/null";
-#endif
-    return {driver, "-E", "-v", "-xc++", null_device};
-}
+consteval auto grouped_short_options();
 
-llvm::SmallVector<llvm::StringRef, 1> driver_invocation_env() {
-#if defined(_WIN32)
-    /// TODO: windows support
-    return {};
-#else
-    /// Ensure driver print infomation in English
-    return {"LANG=C"};
-#endif
-}
+template <auto MP>
+struct Thief {
+    friend consteval auto grouped_short_options() {
+        return MP;
+    }
+};
+
+template struct Thief<&llvm::opt::OptTable::GroupedShortOptions>;
 
 using QueryDriverError = CompilationDatabase::QueryDriverError;
 using ErrorKind = CompilationDatabase::QueryDriverError::ErrorKind;
@@ -176,8 +162,20 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
     std::optional<llvm::StringRef> redirects[] = {{""}, {""}, {""}};
     redirects[is_std_err ? 2 : 1] = output_path.str();
 
-    llvm::SmallVector argv = driver_invocation_argv(driver);
-    llvm::SmallVector env = driver_invocation_env();
+#if defined(_WIN32)
+    llvm::SmallVector<llvm::StringRef> argv = {driver, "-E", "-v", "-xc++", "NUL"};
+    /// FIXME: MSVC command:` cl /Bv`, should we support it?
+    /// if (driver.starts_with("gcc") || driver.starts_with("g++") || driver.starts_with("clang")) {
+    ///      {"-E", "-v", "-xc++", "/dev/null"};
+    /// } else if (driver.starts_with("cl") || driver.starts_with("clang-cl")) {
+    ///      {"/Bv"};
+    /// }
+    llvm::SmallVector<llvm::StringRef> env = {""};
+#else
+    llvm::SmallVector<llvm::StringRef> argv = {driver, "-E", "-v", "-xc++", "/dev/null"};
+    llvm::SmallVector<llvm::StringRef> env = {"LANG=C"};
+#endif
+
     std::string message;
     if(int RC = llvm::sys::ExecuteAndWait(driver,
                                           argv,
@@ -280,8 +278,33 @@ auto CompilationDatabase::update_command(this Self& self,
     directory = self.save_string(directory);
 
     llvm::SmallVector<const char*> saved_arguments;
-    for(auto argument: arguments) {
-        saved_arguments.push_back(self.save_string(argument).data());
+
+    auto& table = clang::driver::getDriverOptTable();
+
+    for(auto it = arguments.begin(); it != arguments.end(); it++) {
+        llvm::StringRef argument = *it;
+
+        /// We don't want to parse all arguments here, it is time-consuming. But we
+        /// want to remove output and input file from arguments. They are main reasons
+        /// causing different file have different commands.
+        if(argument == file) {
+            continue;
+        }
+
+        if(argument.starts_with("-o") || argument.starts_with("/Fo") ||
+           argument.starts_with("/Fe")) {
+
+            llvm::opt::InputArgList list(it, arguments.end());
+
+            /// `-o` option may be separate or joined, if separate, skip next argument also.
+            if(argument == "-o") {
+                it++;
+            }
+
+            continue;
+        }
+
+        saved_arguments.push_back(self.save_string(*it).data());
     }
 
     /// Save arguments.
