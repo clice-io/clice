@@ -7,6 +7,8 @@
 
 namespace clice::testing {
 
+inline static auto& option_table = clang::driver::getDriverOptTable();
+
 namespace {
 
 std::string printArgv(llvm::ArrayRef<const char*> args) {
@@ -61,8 +63,12 @@ suite<"Command"> command = [] {
         database.update_command("fake/", file, argv);
 
         CommandOptions options;
-        options.suppress_log = true;
+        options.suppress_logging = true;
         expect(that % printArgv(database.get_command(file, options).arguments) == result);
+    };
+
+    test("Test") = [] {
+        llvm::SmallVector args = {"-std=c++26", "--output=main.o", "-I", "/usr/include"};
     };
 
     test("GetOptionID") = [] {
@@ -145,7 +151,7 @@ suite<"Command"> command = [] {
         database.update_command("fake", "test2.cpp", "clang++ -std=c++23 test2.cpp"sv);
 
         CommandOptions options;
-        options.suppress_log = true;
+        options.suppress_logging = true;
         auto command1 = database.get_command("test.cpp", options).arguments;
         auto command2 = database.get_command("test2.cpp", options).arguments;
         expect(that % command1.size() == 3);
@@ -167,7 +173,6 @@ suite<"Command"> command = [] {
                                 "main.cpp",
                                 llvm::StringRef("clang++ @test.txt -std= main.cpp"));
         auto info = database.get_command("main.cpp", {.query_driver = false});
-        std::println("{}", info.arguments);
     };
 
     test("QueryDriver") = [] {
@@ -236,7 +241,7 @@ suite<"Command"> command = [] {
         expect(that % loaded.has_value());
 
         CommandOptions options;
-        options.suppress_log = true;
+        options.suppress_logging = true;
         auto info = database.get_command(file, options);
 
         expect(that % info.directory == directory);

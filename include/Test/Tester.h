@@ -40,7 +40,7 @@ struct Tester {
         CommandOptions options;
         options.resource_dir = true;
         options.query_driver = true;
-        options.suppress_log = true;
+        options.suppress_logging = true;
         params.arguments = database.get_command(src_path, options).arguments;
 
         for(auto& [file, source]: sources.all_files) {
@@ -76,7 +76,7 @@ struct Tester {
         CommandOptions options;
         options.resource_dir = true;
         options.query_driver = true;
-        options.suppress_log = true;
+        options.suppress_logging = true;
         params.arguments = database.get_command(src_path, options).arguments;
 
         auto path = fs::createTemporaryFile("clice", "pch");

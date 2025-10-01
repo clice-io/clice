@@ -28,7 +28,7 @@ struct CommandOptions {
 
     /// Suppress the warning log if failed to query driver info.
     /// Set true in unittests to avoid cluttering test output.
-    bool suppress_log = false;
+    bool suppress_logging = false;
 };
 
 class CompilationDatabase {
@@ -48,6 +48,12 @@ public:
 
         /// The canonical command list.
         llvm::ArrayRef<const char*> arguments;
+
+        /// The extra command @...
+        llvm::StringRef response_file;
+
+        /// The original index of file arguments in
+        std::uint32_t response_file_index = 0;
     };
 
     struct DriverInfo {
@@ -89,6 +95,12 @@ public:
     };
 
     CompilationDatabase();
+
+    CompilationDatabase(CompilationDatabase&& other);
+
+    CompilationDatabase& operator= (CompilationDatabase&& other);
+
+    ~CompilationDatabase();
 
     auto save_string(this Self& self, llvm::StringRef string) -> llvm::StringRef;
 
@@ -139,6 +151,9 @@ private:
     auto guess_or_fallback(this Self& self, llvm::StringRef file) -> LookupInfo;
 
 private:
+    /// The opaque handle of `ArgumentParser`.
+    void* parser;
+
     /// The memory pool to hold all cstring and command list.
     llvm::BumpPtrAllocator allocator;
 
