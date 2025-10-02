@@ -46,50 +46,50 @@ suite<"Command"> command = [] {
         llvm::SmallVector args = {
             "clang++",
             "--output=main.o",
-            "-I",
-            "/usr/include",
-            "-I",
-            "/usr/local/include",
+            "-D",
+            "A",
+            "-D",
+            "B=0",
             "main.cpp",
         };
 
         CompilationDatabase database;
-        database.update_command("fake/", "main.cpp", args);
+        database.update_command("/fake", "main.cpp", args);
 
         CommandOptions options;
 
         llvm::SmallVector<std::string> remove;
         llvm::SmallVector<std::string> append;
 
-        remove = {"-I/usr/include"};
+        remove = {"-DA"};
         options.remove = remove;
         auto result = database.get_command("main.cpp", options).arguments;
-        expect(eq(print_argv(result), "clang++ -I /usr/local/include main.cpp"));
+        expect(eq(print_argv(result), "clang++ -D B=0 main.cpp"));
 
-        remove = {"-I", "/usr/include"};
+        remove = {"-D", "A"};
         options.remove = remove;
         result = database.get_command("main.cpp", options).arguments;
-        expect(eq(print_argv(result), "clang++ -I /usr/local/include main.cpp"));
+        expect(eq(print_argv(result), "clang++ -D B=0 main.cpp"));
 
-        remove = {"-I/usr/include", "-I", "/usr/local/include"};
-        options.remove = remove;
-        result = database.get_command("main.cpp", options).arguments;
-        expect(eq(print_argv(result), "clang++ main.cpp"));
-
-        remove = {"-I*"};
+        remove = {"-DA", "-D", "B=0"};
         options.remove = remove;
         result = database.get_command("main.cpp", options).arguments;
         expect(eq(print_argv(result), "clang++ main.cpp"));
 
-        remove = {"-I", "*"};
+        remove = {"-D*"};
         options.remove = remove;
         result = database.get_command("main.cpp", options).arguments;
         expect(eq(print_argv(result), "clang++ main.cpp"));
 
-        append = {"-I", "/fake"};
+        remove = {"-D", "*"};
+        options.remove = remove;
+        result = database.get_command("main.cpp", options).arguments;
+        expect(eq(print_argv(result), "clang++ main.cpp"));
+
+        append = {"-D", "C"};
         options.append = append;
         result = database.get_command("main.cpp", options).arguments;
-        expect(eq(print_argv(result), "clang++ -I /fake main.cpp"));
+        expect(eq(print_argv(result), "clang++ -D C main.cpp"));
     };
 
     test("GetOptionID") = [] {
