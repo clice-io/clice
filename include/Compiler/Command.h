@@ -1,12 +1,14 @@
 #pragma once
 
+#include <expected>
+
 #include "Support/Enum.h"
 #include "Support/Format.h"
-#include <expected>
+
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
-#include "llvm/ADT/ArrayRef.h"
 
 namespace clice {
 

@@ -269,23 +269,30 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
         }
     });
 
-    bool is_std_err = true;
-    std::optional<llvm::StringRef> redirects[] = {{""}, {""}, {""}};
-    redirects[is_std_err ? 2 : 1] = output_path.str();
+    /// FIXME: Is it possible that the output is not in stderr?
+    std::optional<llvm::StringRef> redirects[3] = {
+        {""},
+        {""},
+        {output_path.str()},
+    };
 
 #ifdef _WIN32
-    /// FIXME: MSVC command:` cl /Bv`, should we support it?
-    /// if (driver.starts_with("gcc") || driver.starts_with("g++") || driver.starts_with("clang")) {
-    ///      {"-E", "-v", "-xc++", "/dev/null"};
-    /// } else if (driver.starts_with("cl") || driver.starts_with("clang-cl")) {
-    ///      {"/Bv"};
-    /// }
-    llvm::SmallVector<llvm::StringRef> argv = {driver, "-E", "-v", "-xc++", "NUL"};
-    llvm::SmallVector<llvm::StringRef> env;
+    llvm::SmallVector<llvm::StringRef> argv;
+    if(driver_name.starts_with("cl") || driver_name.starts_with("clang-cl")) {
+        /// FIXME: MSVC command:` cl /Bv`, should we support it?
+        return unexpected(ErrorKind::InvokeDriverFail,
+                          std::format("Unsupported driver: {}", driver));
+    } else {
+        argv = {driver, "-E", "-v", "-xc++", "NUL"};
+    }
 #else
-    llvm::SmallVector<llvm::StringRef> argv = {driver, "-E", "-v", "-xc++", "/dev/null"};
-    llvm::SmallVector<llvm::StringRef> env = {"LANG=C"};
+    llvm::SmallVector<llvm::StringRef> argv = {"LANG=C", driver, "-E", "-v", "-xc++", "/dev/null"};
 #endif
+
+    /// If the env is `std::nullopt`, `ExecuteAndWait` will inherit env from parent process,
+    /// which is very important for msvc and clang on windows. Thay depend on the environment
+    /// variables to find correct standard library path.
+    constexpr auto env = std::nullopt;
 
     std::string message;
     if(int RC = llvm::sys::ExecuteAndWait(driver,
@@ -367,7 +374,11 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
         include = buffer;
 
         /// Remove resource dir of the driver.
-        if(err || include.contains("lib/gcc")) {
+        if(err ||
+           include.contains("lib/gcc")
+           /// FIXME: Only for windows, for Mac removing default resource dir
+           /// may result in unexpected error. Figure out it.
+           || include.contains("lib\\clang")) {
             continue;
         }
 

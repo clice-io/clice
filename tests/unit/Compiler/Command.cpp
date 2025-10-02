@@ -1,13 +1,14 @@
+
 #include "Test/Test.h"
 #include "Compiler/Command.h"
+#include "Compiler/Compilation.h"
+
 #include "clang/Driver/Driver.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Program.h"
 #include "llvm/ADT/ScopeExit.h"
 
 namespace clice::testing {
-
-inline static auto& option_table = clang::driver::getDriverOptTable();
 
 namespace {
 
@@ -32,14 +33,116 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
 }
 
 suite<"Command"> command = [] {
-    auto expect_strip = [](llvm::StringRef argv, llvm::StringRef result) {
+    test("GetOptionID") = [] {
+        using option = clang::driver::options::ID;
+        auto expect_id = [](llvm::StringRef command,
+                            option opt,
+                            std::source_location location = std::source_location::current()) {
+            auto id = CompilationDatabase::get_option_id(command);
+            fatal / expect(id, location);
+            expect(eq(*id, int(opt)), location);
+        };
+
+        /// GroupClass
+        expect_id("-g", option::OPT_g_Flag);
+
+        /// InputClass
+        expect_id("main.cpp", option::OPT_INPUT);
+
+        /// UnknownClass
+        expect_id("--clice", option::OPT_UNKNOWN);
+
+        /// FlagClass
+        expect_id("-v", option::OPT_v);
+        expect_id("-c", option::OPT_c);
+        expect_id("-pedantic", option::OPT_pedantic);
+        expect_id("--pedantic", option::OPT_pedantic);
+
+        /// JoinedClass
+        expect_id("-Wno-unused-variable", option::OPT_W_Joined);
+        expect_id("-W*", option::OPT_W_Joined);
+        expect_id("-W", option::OPT_W_Joined);
+
+        /// ValuesClass
+
+        /// SeparateClass
+        expect_id("-Xclang", option::OPT_Xclang);
+        /// expect_id(GET_ID("-Xclang -ast-dump") , option::OPT_Xclang);
+
+        /// RemainingArgsClass
+
+        /// RemainingArgsJoinedClass
+
+        /// CommaJoinedClass
+        expect_id("-Wl,", option::OPT_Wl_COMMA);
+
+        /// MultiArgClass
+
+        /// JoinedOrSeparateClass
+        expect_id("-o", option::OPT_o);
+        expect_id("-omain.o", option::OPT_o);
+        expect_id("-I", option::OPT_I);
+        expect_id("--include-directory=", option::OPT_I);
+        expect_id("-x", option::OPT_x);
+        expect_id("--language=", option::OPT_x);
+
+        /// JoinedAndSeparateClass
+    };
+
+    test("DefaultFilters") = [&] {
+        auto expect_strip = [](llvm::StringRef argv, llvm::StringRef result) {
+            CompilationDatabase database;
+            llvm::StringRef file = "main.cpp";
+            database.update_command("fake/", file, argv);
+
+            CommandOptions options;
+            options.suppress_logging = true;
+            expect(eq(result, print_argv(database.get_command(file, options).arguments)));
+        };
+
+        /// Filter -c, -o and input file.
+        expect_strip("g++ main.cc", "g++ main.cpp");
+        expect_strip("clang++ -c main.cpp", "clang++ main.cpp");
+        expect_strip("clang++ -o main.o main.cpp", "clang++ main.cpp");
+        expect_strip("clang++ -c -o main.o main.cc", "clang++ main.cpp");
+        expect_strip("cl.exe /c /Fomain.cpp.o main.cpp", "cl.exe main.cpp");
+
+        /// Filter PCH related.
+
+        /// CMake
+        expect_strip(
+            "g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx -o main.cpp.o -c main.cpp",
+            "g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx main.cpp");
+        expect_strip(
+            "clang++ -Winvalid-pch -Xclang -include-pch -Xclang cmake_pch.hxx.pch -Xclang -include -Xclang cmake_pch.hxx -o main.cpp.o -c main.cpp",
+            "clang++ -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx main.cpp");
+        expect_strip("cl.exe /Yufoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp",
+                     "cl.exe -include foo.h main.cpp");
+
+        /// TODO: Test more commands from other build system.
+    };
+
+    test("Reuse") = [] {
+        using namespace std::literals;
+
         CompilationDatabase database;
-        llvm::StringRef file = "main.cpp";
-        database.update_command("fake/", file, argv);
+        database.update_command("fake", "test.cpp", "clang++ -std=c++23 test.cpp"sv);
+        database.update_command("fake", "test2.cpp", "clang++ -std=c++23 test2.cpp"sv);
 
         CommandOptions options;
         options.suppress_logging = true;
-        expect(eq(result, print_argv(database.get_command(file, options).arguments)));
+        auto command1 = database.get_command("test.cpp", options).arguments;
+        auto command2 = database.get_command("test2.cpp", options).arguments;
+        expect(eq(command1.size(), 3));
+        expect(eq(command2.size(), 3));
+
+        expect(eq(command1[0], "clang++"sv));
+        expect(eq(command1[1], "-std=c++23"sv));
+        expect(eq(command1[2], "test.cpp"sv));
+
+        expect(eq(command1[0], command2[0]));
+        expect(eq(command1[1], command2[1]));
+        expect(eq(command2[2], "test2.cpp"sv));
     };
 
     test("RemoveAppend") = [] {
@@ -92,104 +195,8 @@ suite<"Command"> command = [] {
         expect(eq(print_argv(result), "clang++ -D C main.cpp"));
     };
 
-    test("GetOptionID") = [] {
-        auto GET_OPTION_ID = CompilationDatabase::get_option_id;
-        namespace option = clang::driver::options;
-
-        /// GroupClass
-        expect(that % GET_OPTION_ID("-g") == option::OPT_g_Flag);
-
-        /// InputClass
-        expect(that % GET_OPTION_ID("main.cpp") == option::OPT_INPUT);
-
-        /// UnknownClass
-        expect(that % GET_OPTION_ID("--clice") == option::OPT_UNKNOWN);
-
-        /// FlagClass
-        expect(that % GET_OPTION_ID("-v") == option::OPT_v);
-        expect(that % GET_OPTION_ID("-c") == option::OPT_c);
-        expect(that % GET_OPTION_ID("-pedantic") == option::OPT_pedantic);
-        expect(that % GET_OPTION_ID("--pedantic") == option::OPT_pedantic);
-
-        /// JoinedClass
-        expect(that % GET_OPTION_ID("-Wno-unused-variable") == option::OPT_W_Joined);
-        expect(that % GET_OPTION_ID("-W*") == option::OPT_W_Joined);
-        expect(that % GET_OPTION_ID("-W") == option::OPT_W_Joined);
-
-        /// ValuesClass
-
-        /// SeparateClass
-        expect(that % GET_OPTION_ID("-Xclang") == option::OPT_Xclang);
-        /// expect(that % GET_ID("-Xclang -ast-dump") == option::OPT_Xclang);
-
-        /// RemainingArgsClass
-
-        /// RemainingArgsJoinedClass
-
-        /// CommaJoinedClass
-        expect(that % GET_OPTION_ID("-Wl,") == option::OPT_Wl_COMMA);
-
-        /// MultiArgClass
-
-        /// JoinedOrSeparateClass
-        expect(that % GET_OPTION_ID("-o") == option::OPT_o);
-        expect(that % GET_OPTION_ID("-omain.o") == option::OPT_o);
-        expect(that % GET_OPTION_ID("-I") == option::OPT_I);
-        expect(that % GET_OPTION_ID("--include-directory=") == option::OPT_I);
-        expect(that % GET_OPTION_ID("-x") == option::OPT_x);
-        expect(that % GET_OPTION_ID("--language=") == option::OPT_x);
-
-        /// JoinedAndSeparateClass
-    };
-
-    test("DefaultFilters") = [&] {
-        /// Filter -c, -o and input file.
-        expect_strip("g++ main.cc", "g++ main.cpp");
-        expect_strip("clang++ -c main.cpp", "clang++ main.cpp");
-        expect_strip("clang++ -o main.o main.cpp", "clang++ main.cpp");
-        expect_strip("clang++ -c -o main.o main.cc", "clang++ main.cpp");
-        expect_strip("cl.exe /c /Fomain.cpp.o main.cpp", "cl.exe main.cpp");
-
-        /// Filter PCH related.
-
-        /// CMake
-        expect_strip(
-            "g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx -o main.cpp.o -c main.cpp",
-            "g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx main.cpp");
-        expect_strip(
-            "clang++ -Winvalid-pch -Xclang -include-pch -Xclang cmake_pch.hxx.pch -Xclang -include -Xclang cmake_pch.hxx -o main.cpp.o -c main.cpp",
-            "clang++ -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx main.cpp");
-        expect_strip("cl.exe /Yufoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp",
-                     "cl.exe -include foo.h main.cpp");
-
-        /// TODO: Test more commands from other build system.
-    };
-
-    test("Reuse") = [] {
-        using namespace std::literals;
-
-        CompilationDatabase database;
-        database.update_command("fake", "test.cpp", "clang++ -std=c++23 test.cpp"sv);
-        database.update_command("fake", "test2.cpp", "clang++ -std=c++23 test2.cpp"sv);
-
-        CommandOptions options;
-        options.suppress_logging = true;
-        auto command1 = database.get_command("test.cpp", options).arguments;
-        auto command2 = database.get_command("test2.cpp", options).arguments;
-        expect(that % command1.size() == 3);
-        expect(that % command2.size() == 3);
-
-        expect(that % command1[0] == "clang++"sv);
-        expect(that % command1[1] == "-std=c++23"sv);
-        expect(that % command1[2] == "test.cpp"sv);
-
-        expect(that % command1[0] == command2[0]);
-        expect(that % command1[1] == command2[1]);
-        expect(that % command2[2] == "test2.cpp"sv);
-    };
-
     skip / test("Module") = [] {
-        // Empty test
+        /// TODO:
         CompilationDatabase database;
         database.update_command("/fake",
                                 "main.cpp",
@@ -197,60 +204,50 @@ suite<"Command"> command = [] {
         auto info = database.get_command("main.cpp", {.query_driver = false});
     };
 
-    test("QueryDriver") = [] {
-#ifdef _GLIBCXX_RELEASE
-        using namespace std::literals;
-        using ErrorKind = CompilationDatabase::QueryDriverError::ErrorKind;
-
+    skip_unless(ci_environment) / test("QueryDriver") = [] {
         CompilationDatabase database;
-        auto info = database.query_driver("g++");
-        if(!info) {
-            auto& err = info.error();
-            /// If driver not installed or not found in PATH, skip the following test to avoid
-            /// failures on developer's machine, but never skip the test in CI.
-            if(err.kind == ErrorKind::NotFoundInPATH && !std::getenv("CI")) {
-                return;
+        auto info = database.query_driver("clang++");
+
+        fatal / expect(info);
+        expect(!info->target.empty());
+        expect(!info->system_includes.empty());
+
+        CompilationParams params;
+        params.kind = CompilationUnit::Indexing;
+        params.arguments = {
+            "clang++",
+            "-nostdlibinc",
+            "--target",
+            info->target.data(),
+        };
+        for(auto& include: info->system_includes) {
+            params.arguments.push_back("-I");
+            params.arguments.push_back(include);
+        }
+        params.arguments.push_back("main.cpp");
+
+        llvm::StringRef hello_world = R"(
+            #include <iostream>
+            int main() {
+                std::cout << "Hello world!" << std::endl;
+                return 0;
             }
-        }
-
-        expect(that % info);
-
-#if defined CLICE_CI_ENVIRONMENT
-        expect(that % info->target == llvm::StringRef("x86_64-linux-gnu"));
-        expect(that % info->system_includes.size() == 6);
-
-        if(_GLIBCXX_RELEASE == 13) {
-            expect(that % info->system_includes[0] == "/usr/include/c++/13"sv);
-            expect(that % info->system_includes[1] == "/usr/include/x86_64-linux-gnu/c++/13"sv);
-            expect(that % info->system_includes[2] == "/usr/include/c++/13/backward"sv);
-        } else if(_GLIBCXX_RELEASE == 14) {
-            expect(that % info->system_includes[0] == "/usr/include/c++/14"sv);
-            expect(that % info->system_includes[1] == "/usr/include/x86_64-linux-gnu/c++/14"sv);
-            expect(that % info->system_includes[2] == "/usr/include/c++/14/backward"sv);
-        }
-
-        expect(that % info->system_includes[3] == "/usr/local/include"sv);
-        expect(that % info->system_includes[4] == "/usr/include/x86_64-linux-gnu"sv);
-        expect(that % info->system_includes[5] == "/usr/include"sv);
-
-        info = database.query_driver("clang++");
-        expect(that % info);
-#endif
-
-#endif
+        )";
+        params.add_remapped_file("main.cpp", hello_world);
+        expect(compile(params));
     };
 
     test("ResourceDir") = [] {
-        /// CompilationDatabase database;
-        /// database.update_command("test.cpp", "clang++ -std=c++23 test.cpp");
-        /// auto command = database.get_command("test.cpp", false, true);
-        /// expect(that % command.size() == 4);
-        ///
-        /// using namespace std::literals;
-        /// expect(that % command[0] == "clang++"sv);
-        /// expect(that % command[1] == "-std=c++23"sv);
-        /// expect(that % command[2] == "test.cpp"sv);
-        /// expect(that % command[3] == std::format("-resource-dir={}", fs::resource_dir));
+        CompilationDatabase database;
+        using namespace std::literals;
+        database.update_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
+        auto arguments = database.get_command("main.cpp", {.resource_dir = true}).arguments;
+
+        fatal / expect(eq(arguments.size(), 4));
+        expect(eq(arguments[0], "clang++"sv));
+        expect(eq(arguments[1], "-std=c++23"sv));
+        expect(eq(arguments[2], std::format("-resource-dir={}", fs::resource_dir)));
+        expect(eq(arguments[3], "main.cpp"sv));
     };
 
     auto expect_load = [](llvm::StringRef content,
@@ -260,25 +257,23 @@ suite<"Command"> command = [] {
                           llvm::ArrayRef<const char*> arguments) {
         CompilationDatabase database;
         auto loaded = database.load_commands(content, workspace);
-        expect(that % loaded.has_value());
+        expect(loaded.has_value());
 
         CommandOptions options;
         options.suppress_logging = true;
         auto info = database.get_command(file, options);
 
-        expect(that % info.directory == directory);
-        expect(that % info.arguments.size() == arguments.size());
+        expect(info.directory == directory);
+        expect(info.arguments.size() == arguments.size());
         for(size_t i = 0; i < arguments.size(); i++) {
             llvm::StringRef arg = info.arguments[i];
             llvm::StringRef expect_arg = arguments[i];
-            // llvm::outs() << "arg: " << arg << ", expect: " << expect_arg << "\n";
-            expect(that % arg == expect_arg);
+            expect(eq(arg, expect_arg));
         }
     };
 
-#if defined(__unix__) || defined(__APPLE__)
     /// TODO: add windows path testcase
-    test("LoadAbsoluteUnixStyle") = [expect_load] {
+    skip_unless(linux || macos) / test("LoadAbsoluteUnixStyle") = [expect_load] {
         constexpr const char* cmake = R"([
         {
             "directory": "/home/developer/clice/build",
@@ -310,7 +305,7 @@ suite<"Command"> command = [] {
                     });
     };
 
-    test("LoadRelativeUnixStyle") = [expect_load] {
+    skip_unless(linux || macos) / test("LoadRelativeUnixStyle") = [expect_load] {
         constexpr const char* xmake = R"([
         {
             "directory": "/home/developer/clice",
@@ -347,7 +342,6 @@ suite<"Command"> command = [] {
                 "/home/developer/clice/src/Driver/clice.cc",
             });
     };
-#endif
 };
 
 }  // namespace

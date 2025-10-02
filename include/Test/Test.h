@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TExpr.h"
+#include "Platform.h"
 #include "LocationChain.h"
 #include "Support/JSON.h"
 #include "Support/Format.h"
@@ -127,6 +128,24 @@ constexpr inline struct {
         return std::move(test);
     }
 } skip;
+
+struct skip_if {
+    bool condition;
+
+    test&& operator/ (test&& test) const {
+        test.skipped = condition;
+        return std::move(test);
+    }
+};
+
+struct skip_unless {
+    bool condition;
+
+    test&& operator/ (test&& test) const {
+        test.skipped = !condition;
+        return std::move(test);
+    }
+};
 
 constexpr inline struct {
     may_failure&& operator/ (may_failure&& failure) const {
