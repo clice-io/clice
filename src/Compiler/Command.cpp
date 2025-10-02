@@ -276,6 +276,11 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
         {output_path.str()},
     };
 
+    /// If the env is `std::nullopt`, `ExecuteAndWait` will inherit env from parent process,
+    /// which is very important for msvc and clang on windows. Thay depend on the environment
+    /// variables to find correct standard library path.
+    constexpr auto env = std::nullopt;
+
 #ifdef _WIN32
     llvm::SmallVector<llvm::StringRef> argv;
     if(driver_name.starts_with("cl") || driver_name.starts_with("clang-cl")) {
@@ -286,13 +291,10 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
         argv = {driver, "-E", "-v", "-xc++", "NUL"};
     }
 #else
+    /// FIXME: We should find a better way to convert "LANG=C", this is important
+    /// for gcc with locality. Otherwise, it will output non-ASCII char.
     llvm::SmallVector<llvm::StringRef> argv = {"LANG=C", driver, "-E", "-v", "-xc++", "/dev/null"};
 #endif
-
-    /// If the env is `std::nullopt`, `ExecuteAndWait` will inherit env from parent process,
-    /// which is very important for msvc and clang on windows. Thay depend on the environment
-    /// variables to find correct standard library path.
-    constexpr auto env = std::nullopt;
 
     std::string message;
     if(int RC = llvm::sys::ExecuteAndWait(driver,

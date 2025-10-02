@@ -204,7 +204,7 @@ suite<"Command"> command = [] {
         auto info = database.get_command("main.cpp", {.query_driver = false});
     };
 
-    skip_unless(ci_environment) / test("QueryDriver") = [] {
+    skip_unless(CIEnvironment) / test("QueryDriver") = [] {
         CompilationDatabase database;
         auto info = database.query_driver("clang++");
 
@@ -273,7 +273,7 @@ suite<"Command"> command = [] {
     };
 
     /// TODO: add windows path testcase
-    skip_unless(linux || macos) / test("LoadAbsoluteUnixStyle") = [expect_load] {
+    skip_unless(Linux || MacOS) / test("LoadAbsoluteUnixStyle") = [expect_load] {
         constexpr const char* cmake = R"([
         {
             "directory": "/home/developer/clice/build",
@@ -305,7 +305,7 @@ suite<"Command"> command = [] {
                     });
     };
 
-    skip_unless(linux || macos) / test("LoadRelativeUnixStyle") = [expect_load] {
+    skip_unless(Linux || MacOS) / test("LoadRelativeUnixStyle") = [expect_load] {
         constexpr const char* xmake = R"([
         {
             "directory": "/home/developer/clice",
