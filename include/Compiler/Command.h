@@ -52,7 +52,7 @@ public:
         /// The extra command @...
         llvm::StringRef response_file;
 
-        /// The original index of file arguments in
+        /// The original index of the response file argument in the command list.
         std::uint32_t response_file_index = 0;
     };
 
@@ -131,10 +131,9 @@ public:
         -> std::expected<std::vector<UpdateInfo>, std::string>;
 
     auto process_command(this Self& self,
-                         llvm::StringRef directory,
                          llvm::StringRef file,
-                         llvm::ArrayRef<const char*> arguments,
-                         const CommandOptions& options = {}) -> std::vector<const char*>;
+                         const CommandInfo& info,
+                         const CommandOptions& options) -> std::vector<const char*>;
 
     /// Get compile command from database. `file` should has relative path of workspace.
     auto get_command(this Self& self, llvm::StringRef file, CommandOptions options = {})

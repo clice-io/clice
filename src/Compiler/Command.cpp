@@ -49,7 +49,6 @@ public:
     }
 
     const char* MakeArgStringRef(llvm::StringRef s) const override {
-        /// This function is not implemented.
         auto p = allocator.Allocate<char>(s.size() + 1);
         std::ranges::copy(s, p);
         p[s.size()] = '\0';
@@ -275,14 +274,14 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
     redirects[is_std_err ? 2 : 1] = output_path.str();
 
 #ifdef _WIN32
-    llvm::SmallVector<llvm::StringRef> argv = {driver, "-E", "-v", "-xc++", "NUL"};
     /// FIXME: MSVC command:` cl /Bv`, should we support it?
     /// if (driver.starts_with("gcc") || driver.starts_with("g++") || driver.starts_with("clang")) {
     ///      {"-E", "-v", "-xc++", "/dev/null"};
     /// } else if (driver.starts_with("cl") || driver.starts_with("clang-cl")) {
     ///      {"/Bv"};
     /// }
-    llvm::SmallVector<llvm::StringRef> env = {""};
+    llvm::SmallVector<llvm::StringRef> argv = {driver, "-E", "-v", "-xc++", "NUL"};
+    llvm::SmallVector<llvm::StringRef> env;
 #else
     llvm::SmallVector<llvm::StringRef> argv = {driver, "-E", "-v", "-xc++", "/dev/null"};
     llvm::SmallVector<llvm::StringRef> env = {"LANG=C"};
@@ -457,6 +456,7 @@ auto CompilationDatabase::update_command(this Self& self,
                     file);
             }
             response_file = self.save_string(argument);
+            response_file_index = it;
             continue;
         }
 
@@ -580,9 +580,8 @@ auto CompilationDatabase::load_commands(this Self& self,
 }
 
 auto CompilationDatabase::process_command(this Self& self,
-                                          llvm::StringRef directory,
                                           llvm::StringRef file,
-                                          llvm::ArrayRef<const char*> arguments,
+                                          const CommandInfo& info,
                                           const CommandOptions& options)
     -> std::vector<const char*> {
 
@@ -637,7 +636,7 @@ auto CompilationDatabase::process_command(this Self& self,
     };
 
     /// Append driver sperately
-    add_string(arguments.front());
+    add_string(info.arguments.front());
 
     using Arg = std::unique_ptr<llvm::opt::Arg>;
     auto parser = static_cast<ArgumentParser*>(self.parser);
@@ -650,9 +649,9 @@ auto CompilationDatabase::process_command(this Self& self,
     for(auto& arg: options.remove) {
         remove.push_back(self.save_string(arg).data());
     }
-    llvm::SmallVector<Arg> known_remove_args;
+
     /// FIXME: Handle unknow remove arguments.
-    llvm::SmallVector<Arg> unknown_remove_args;
+    llvm::SmallVector<Arg> known_remove_args;
     parser->parse(
         remove,
         [&known_remove_args](Arg arg) { known_remove_args.emplace_back(std::move(arg)); },
@@ -663,8 +662,10 @@ auto CompilationDatabase::process_command(this Self& self,
     ranges::sort(known_remove_args, {}, get_id);
 
     bool remove_pch = false;
+
+    /// FIXME: Append the commands from response file.
     parser->parse(
-        arguments.drop_front(),
+        info.arguments.drop_front(),
         [&](Arg arg) {
             auto& opt = arg->getOption();
             auto id = opt.getID();
@@ -697,7 +698,7 @@ auto CompilationDatabase::process_command(this Self& self,
                 add_string("-I");
                 llvm::StringRef value = arg->getValue(0);
                 if(!value.empty() && !path::is_absolute(value)) {
-                    add_string(path::join(directory, value));
+                    add_string(path::join(info.directory, value));
                 } else {
                     add_string(value);
                 }
@@ -723,7 +724,6 @@ auto CompilationDatabase::process_command(this Self& self,
         on_error);
 
     /// FIXME: Do we want to parse append arguments also?
-    llvm::SmallVector<const char*> append;
     for(auto& arg: options.append) {
         add_string(arg);
     }
@@ -739,7 +739,7 @@ auto CompilationDatabase::get_command(this Self& self, llvm::StringRef file, Com
     auto it = self.command_infos.find(file.data());
     if(it != self.command_infos.end()) {
         info.directory = it->second.directory;
-        info.arguments = self.process_command(info.directory, file, it->second.arguments, options);
+        info.arguments = self.process_command(file, it->second, options);
     } else {
         info = self.guess_or_fallback(file);
     }
