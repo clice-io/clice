@@ -95,7 +95,7 @@ public:
                 break;
             }
 
-            on_parse(*arg);
+            on_parse(std::move(arg));
         }
     }
 
@@ -107,6 +107,7 @@ private:
 
 using QueryDriverError = CompilationDatabase::QueryDriverError;
 using ErrorKind = CompilationDatabase::QueryDriverError::ErrorKind;
+using options = clang::driver::options::ID;
 
 auto unexpected(ErrorKind kind, std::string message) {
     return std::unexpected<QueryDriverError>({kind, std::move(message)});
@@ -115,7 +116,6 @@ auto unexpected(ErrorKind kind, std::string message) {
 }  // namespace
 
 CompilationDatabase::CompilationDatabase() {
-    using options = clang::driver::options::ID;
 
     /// Remove the input file, we will add input file ourselves.
     filtered_options.insert(options::OPT_INPUT);
@@ -436,10 +436,12 @@ auto CompilationDatabase::update_command(this Self& self,
                 continue;
             }
 
-            using options = clang::driver::options::ID;
             auto id = arg->getOption().getID();
             if(id == options::OPT_o || id == options::OPT_dxc_Fo || id == options::OPT__SLASH_o ||
                id == options::OPT__SLASH_Fo || id == options::OPT__SLASH_Fe) {
+                /// It will point to the next argument start but it also increases
+                /// in the next loop. So decrease it for not skipping next argument.
+                it -= 1;
                 continue;
             }
 
@@ -584,17 +586,6 @@ auto CompilationDatabase::process_command(this Self& self,
                                           const CommandOptions& options)
     -> std::vector<const char*> {
 
-    /// Prepare arguments for remove and append.
-    llvm::SmallVector<const char*> remove;
-    llvm::SmallVector<const char*> append;
-
-    for(auto& arg: options.remove) {
-        remove.push_back(self.save_string(arg).data());
-    }
-    for(auto& arg: options.remove) {
-        append.push_back(self.save_string(arg).data());
-    }
-
     /// Store the final result arguments.
     llvm::SmallVector<const char*, 16> final_arguments;
 
@@ -648,13 +639,34 @@ auto CompilationDatabase::process_command(this Self& self,
     /// Append driver sperately
     add_string(arguments.front());
 
-    bool remove_pch = false;
-
+    using Arg = std::unique_ptr<llvm::opt::Arg>;
     auto parser = static_cast<ArgumentParser*>(self.parser);
+    auto on_error = [&](int index, int count) {
+        logging::warn("missing argument index: {}, count: {} when parse: {}", index, count, file);
+    };
+
+    /// Prepare for removing arguments.
+    llvm::SmallVector<const char*> remove;
+    for(auto& arg: options.remove) {
+        remove.push_back(self.save_string(arg).data());
+    }
+    llvm::SmallVector<Arg> known_remove_args;
+    /// FIXME: Handle unknow remove arguments.
+    llvm::SmallVector<Arg> unknown_remove_args;
     parser->parse(
-        arguments,
-        [&](llvm::opt::Arg& arg) {
-            auto& opt = arg.getOption();
+        remove,
+        [&known_remove_args](Arg arg) { known_remove_args.emplace_back(std::move(arg)); },
+        on_error);
+    auto get_id = [](const Arg& arg) {
+        return arg->getOption().getID();
+    };
+    ranges::sort(known_remove_args, {}, get_id);
+
+    bool remove_pch = false;
+    parser->parse(
+        arguments.drop_front(),
+        [&](Arg arg) {
+            auto& opt = arg->getOption();
             auto id = opt.getID();
 
             /// Filter options we don't need.
@@ -662,11 +674,28 @@ auto CompilationDatabase::process_command(this Self& self,
                 return;
             }
 
+            /// Remove arguments in the remove list.
+            auto range = ranges::equal_range(known_remove_args, id, {}, get_id);
+            for(auto& remove: range) {
+                /// Match the -I*.
+                if(remove->getNumValues() == 1 && remove->getValue(0) == llvm::StringRef("*")) {
+                    return;
+                }
+
+                /// Compare each value, convert `const char*` to `llvm::StringRef` for comparing.
+                if(ranges::equal(
+                       arg->getValues(),
+                       remove->getValues(),
+                       [](llvm::StringRef lhs, llvm::StringRef rhs) { return lhs == rhs; })) {
+                    return;
+                }
+            }
+
             /// For arguments -I<dir>, convert directory to absolute path.
             /// i.e xmake will generate commands in this style.
-            if(id == clang::driver::options::OPT_I && arg.getNumValues() == 1) {
+            if(id == options::OPT_I && arg->getNumValues() == 1) {
                 add_string("-I");
-                llvm::StringRef value = arg.getValue(0);
+                llvm::StringRef value = arg->getValue(0);
                 if(!value.empty() && !path::is_absolute(value)) {
                     add_string(path::join(directory, value));
                 } else {
@@ -676,27 +705,28 @@ auto CompilationDatabase::process_command(this Self& self,
             }
 
             /// A workaround to remove extra PCH when cmake generate PCH flags for clang.
-            if(id == clang::driver::options::OPT_Xclang && arg.getNumValues() == 1) {
+            if(id == options::OPT_Xclang && arg->getNumValues() == 1) {
                 if(remove_pch) {
                     remove_pch = false;
                     return;
                 }
 
-                llvm::StringRef value = arg.getValue(0);
+                llvm::StringRef value = arg->getValue(0);
                 if(value == "-include-pch") {
                     remove_pch = true;
                     return;
                 }
             }
 
-            add_argument(arg);
+            add_argument(*arg);
         },
-        [&](int index, int count) {
-            logging::warn("missing argument index: {}, count: {} when parse: {}",
-                          index,
-                          count,
-                          file);
-        });
+        on_error);
+
+    /// FIXME: Do we want to parse append arguments also?
+    llvm::SmallVector<const char*> append;
+    for(auto& arg: options.append) {
+        add_string(arg);
+    }
 
     return llvm::ArrayRef(final_arguments).vec();
 }
@@ -709,7 +739,7 @@ auto CompilationDatabase::get_command(this Self& self, llvm::StringRef file, Com
     auto it = self.command_infos.find(file.data());
     if(it != self.command_infos.end()) {
         info.directory = it->second.directory;
-        info.arguments = self.process_command(info.directory, file, it->second.arguments);
+        info.arguments = self.process_command(info.directory, file, it->second.arguments, options);
     } else {
         info = self.guess_or_fallback(file);
     }

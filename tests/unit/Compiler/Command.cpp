@@ -11,7 +11,7 @@ inline static auto& option_table = clang::driver::getDriverOptTable();
 
 namespace {
 
-std::string printArgv(llvm::ArrayRef<const char*> args) {
+std::string print_argv(llvm::ArrayRef<const char*> args) {
     std::string buf;
     llvm::raw_string_ostream os(buf);
     bool Sep = false;
@@ -31,31 +31,6 @@ std::string printArgv(llvm::ArrayRef<const char*> args) {
     return std::move(os.str());
 }
 
-void parse_and_dump(llvm::StringRef command) {
-    llvm::BumpPtrAllocator local;
-    llvm::StringSaver saver(local);
-
-    llvm::SmallVector<const char*, 32> arguments;
-    auto [driver, _] = command.split(' ');
-    driver = path::filename(driver);
-
-    /// FIXME: Use a better to handle this.
-    if(driver.starts_with("cl") || driver.starts_with("clang-cl")) {
-        llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
-    } else {
-        llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
-    }
-
-    auto& table = clang::driver::getDriverOptTable();
-    std::uint32_t count = 0;
-    std::uint32_t index = 0;
-    auto list = table.ParseArgs(arguments, count, index);
-
-    for(auto arg: list.getArgs()) {
-        arg->dump();
-    }
-}
-
 suite<"Command"> command = [] {
     auto expect_strip = [](llvm::StringRef argv, llvm::StringRef result) {
         CompilationDatabase database;
@@ -64,11 +39,57 @@ suite<"Command"> command = [] {
 
         CommandOptions options;
         options.suppress_logging = true;
-        expect(that % printArgv(database.get_command(file, options).arguments) == result);
+        expect(eq(result, print_argv(database.get_command(file, options).arguments)));
     };
 
-    test("Test") = [] {
-        llvm::SmallVector args = {"-std=c++26", "--output=main.o", "-I", "/usr/include"};
+    test("RemoveAppend") = [] {
+        llvm::SmallVector args = {
+            "clang++",
+            "--output=main.o",
+            "-I",
+            "/usr/include",
+            "-I",
+            "/usr/local/include",
+            "main.cpp",
+        };
+
+        CompilationDatabase database;
+        database.update_command("fake/", "main.cpp", args);
+
+        CommandOptions options;
+
+        llvm::SmallVector<std::string> remove;
+        llvm::SmallVector<std::string> append;
+
+        remove = {"-I/usr/include"};
+        options.remove = remove;
+        auto result = database.get_command("main.cpp", options).arguments;
+        expect(eq(print_argv(result), "clang++ -I /usr/local/include main.cpp"));
+
+        remove = {"-I", "/usr/include"};
+        options.remove = remove;
+        result = database.get_command("main.cpp", options).arguments;
+        expect(eq(print_argv(result), "clang++ -I /usr/local/include main.cpp"));
+
+        remove = {"-I/usr/include", "-I", "/usr/local/include"};
+        options.remove = remove;
+        result = database.get_command("main.cpp", options).arguments;
+        expect(eq(print_argv(result), "clang++ main.cpp"));
+
+        remove = {"-I*"};
+        options.remove = remove;
+        result = database.get_command("main.cpp", options).arguments;
+        expect(eq(print_argv(result), "clang++ main.cpp"));
+
+        remove = {"-I", "*"};
+        options.remove = remove;
+        result = database.get_command("main.cpp", options).arguments;
+        expect(eq(print_argv(result), "clang++ main.cpp"));
+
+        append = {"-I/fake"};
+        options.append = append;
+        result = database.get_command("main.cpp", options).arguments;
+        expect(eq(print_argv(result), "clang++ -I /fake main.cpp"));
     };
 
     test("GetOptionID") = [] {
@@ -112,6 +133,7 @@ suite<"Command"> command = [] {
 
         /// JoinedOrSeparateClass
         expect(that % GET_OPTION_ID("-o") == option::OPT_o);
+        expect(that % GET_OPTION_ID("-omain.o") == option::OPT_o);
         expect(that % GET_OPTION_ID("-I") == option::OPT_I);
         expect(that % GET_OPTION_ID("--include-directory=") == option::OPT_I);
         expect(that % GET_OPTION_ID("-x") == option::OPT_x);
