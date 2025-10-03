@@ -205,10 +205,10 @@ struct DenseMapInfo<llvm::ArrayRef<const char*>> {
 
 template <>
 struct std::formatter<clice::CompilationDatabase::QueryDriverError> :
-    std::formatter<llvm::StringRef> {
+    std::formatter<std::string_view> {
 
     template <typename FormatContext>
-    auto format(clice::CompilationDatabase::QueryDriverError& e, FormatContext& ctx) const {
+    auto format(const clice::CompilationDatabase::QueryDriverError& e, FormatContext& ctx) const {
         return std::format_to(ctx.out(), "{} {}", e.kind.name(), e.detail);
     }
 };

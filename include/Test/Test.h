@@ -103,6 +103,7 @@ constexpr inline struct {
                             std::source_location location = std::source_location::current()) const {
         bool failed = false;
         std::string expression = "false";
+        std::string message;
 
         if constexpr(is_expr_v<TExpr>) {
             auto result = expr();
@@ -115,10 +116,20 @@ constexpr inline struct {
         } else {
             if(!static_cast<bool>(expr)) {
                 failed = true;
+
+                if constexpr(requires { expr.error(); }) {
+                    message = std::format("{}", expr.error());
+                }
             }
         }
 
-        return may_failure{failed, false, expression, location};
+        return may_failure{
+            failed,
+            false,
+            std::move(expression),
+            location,
+            std::move(message),
+        };
     }
 } expect;
 

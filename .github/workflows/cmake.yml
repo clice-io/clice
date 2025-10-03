@@ -90,12 +90,12 @@ jobs:
       - name: Run tests
         if: matrix.os == 'windows-2025'
         run: |
-          ./build/bin/unit_tests.exe --test-dir="./tests/data" --resource-dir="./.llvm/lib/clang/20"
+          ./build/bin/unit_tests.exe --test-dir="./tests/data"
           uv run pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice.exe
         shell: bash
 
       - name: Run tests
         if: matrix.os == 'ubuntu-24.04' ||  matrix.os == 'macos-15'
         run: |
-          ./build/bin/unit_tests --test-dir="./tests/data" --resource-dir="./.llvm/lib/clang/20"
+          ./build/bin/unit_tests --test-dir="./tests/data"
           uv run pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice

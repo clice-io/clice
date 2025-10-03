@@ -250,6 +250,7 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
     }
 
     auto driver_name = path::filename(driver);
+    driver.consume_back(".exe");
 
     llvm::SmallString<128> output_path;
     if(auto error = llvm::sys::fs::createTemporaryFile("system-includes", "clice", output_path)) {
@@ -282,8 +283,8 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
     constexpr auto env = std::nullopt;
 
 #ifdef _WIN32
-    llvm::SmallVector<llvm::StringRef> argv;
-    if(driver_name.starts_with("cl") || driver_name.starts_with("clang-cl")) {
+    llvm::SmallVector<llvm::StringRef, 6> argv;
+    if(driver_name.ends_with("cl") || driver_name.starts_with("clang-cl")) {
         /// FIXME: MSVC command:` cl /Bv`, should we support it?
         return unexpected(ErrorKind::InvokeDriverFail,
                           std::format("Unsupported driver: {}", driver));
@@ -517,9 +518,10 @@ auto CompilationDatabase::update_command(this Self& self,
     llvm::SmallVector<const char*, 32> arguments;
     auto [driver, _] = command.split(' ');
     driver = path::filename(driver);
+    driver.consume_back(".exe");
 
     /// FIXME: Use a better to handle this.
-    if(driver.starts_with("cl") || driver.starts_with("clang-cl")) {
+    if(driver.ends_with("cl") || driver.starts_with("clang-cl")) {
         llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
     } else {
         llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
