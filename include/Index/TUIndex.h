@@ -1,19 +1,54 @@
 #pragma once
 
-#include "RawIndex.h"
 #include "IncludeGraph.h"
+#include "AST/SourceCode.h"
+#include "AST/RelationKind.h"
 
-namespace clice::index::memory {
+namespace clice::index {
 
-class TUIndex : public RawIndex {
-public:
+using Range = LocalSourceRange;
+using SymbolID2 = std::uint64_t;
 
-public:
-    /// The time of building this index.
-    std::int64_t time;
+struct Relation {
+    RelationKind kind;
 
-    /// The include graph of this index.
-    IncludeGraph graph;
+    LocalSourceRange range;
+
+    union {
+        LocalSourceRange definition_range;
+
+        SymbolID2 target_symbol;
+    };
 };
 
-}  // namespace clice::index::memory
+struct Occurrence {
+    /// range of this occurrence.
+    Range range;
+
+    ///
+    SymbolID2 target;
+};
+
+struct FileIndex {
+    llvm::DenseMap<SymbolID2, std::vector<Relation>> relations;
+
+    std::vector<Occurrence> occurrences;
+};
+
+struct Symbol {
+    std::string name;
+
+    /// ...
+};
+
+struct TUIndex {
+    IncludeGraph graph;
+
+    llvm::DenseMap<SymbolID2, Symbol> symbols;
+
+    llvm::DenseMap<clang::FileID, FileIndex> file_indices;
+
+    static TUIndex build(CompilationUnit& unit);
+};
+
+}  // namespace clice::index
