@@ -6,24 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
-include(cmake/llvm_setup.cmake)
-
-setup_llvm()
-
-get_filename_component(LLVM_INSTALL_PATH "${LLVM_INSTALL_PATH}" ABSOLUTE)
-
-if(NOT EXISTS "${LLVM_INSTALL_PATH}")
-    message(FATAL_ERROR "Error: The specified LLVM_INSTALL_PATH does not exist: ${LLVM_INSTALL_PATH}")
-endif()
-message(STATUS "Found llvm-libs ${LLVM_INSTALL_PATH}")
-if (EXISTS "${LLVM_CMAKE_DIR}")
-    list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
-else()
-    list(APPEND CMAKE_PREFIX_PATH "${LLVM_INSTALL_PATH}")
-endif()
-message(STATUS "CMake module path: ${CMAKE_MODULE_PATH}")
-message(STATUS "CMake prefix path: ${CMAKE_PREFIX_PATH}")
-
 if(CLICE_USE_LIBCXX)
     string(APPEND CMAKE_CXX_FLAGS "-stdlib=libc++")
     string(APPEND CMAKE_EXE_LINKER_FLAGS "-stdlib=libc++")
@@ -31,62 +13,11 @@ if(CLICE_USE_LIBCXX)
     string(APPEND CMAKE_MODULE_LINKER_FLAGS "-stdlib=libc++")
 endif()
 
-message(STATUS "Installing other dependencies, please wait...")
-# install dependencies
-include(FetchContent)
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-    # libuv option
-    set(ASAN ON CACHE BOOL "" FORCE)
-endif()
-
-message(STATUS "Fetching libuv...")
-FetchContent_Declare(
-    libuv
-    GIT_REPOSITORY https://github.com/libuv/libuv.git
-    GIT_TAG v1.x
-)
-
-set(BUILD_SHARED_LIBS OFF)
-message(STATUS "Fetching spdlog...")
-FetchContent_Declare(
-    spdlog
-    GIT_REPOSITORY https://github.com/gabime/spdlog.git
-    GIT_TAG v1.15.3
-)
-
-message(STATUS "Fetching tomlplusplus...")
-FetchContent_Declare(
-    tomlplusplus
-    GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
-)
-
-message(STATUS "Fetching CRoaring...")
-FetchContent_Declare(
-    croaring
-    GIT_REPOSITORY https://github.com/RoaringBitmap/CRoaring.git
-    GIT_TAG        v4.3.9
-)
-set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "")
-
-FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring)
-
-# A workaround for https://github.com/RoaringBitmap/CRoaring/pull/750.
-if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_C_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
-    get_property(ROARING_OPTS TARGET roaring PROPERTY COMPILE_OPTIONS)
-    string(REPLACE "/permissive-" "" ROARING_OPTS_FIXED "${ROARING_OPTS}")
-    set_property(TARGET roaring PROPERTY COMPILE_OPTIONS "${ROARING_OPTS_FIXED}")
-endif()
-
-message(STATUS "Found tomlplusplus: ${tomlplusplus_SOURCE_DIR}")
-message(STATUS "Found libuv: ${libuv_SOURCE_DIR}")
-message(STATUS "Found spdlog: ${spdlog_SOURCE_DIR}")
+include(cmake/package.cmake)
 
 if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
-    target_compile_definitions(uv_a PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
-
-target_compile_definitions(spdlog PUBLIC SPDLOG_USE_STD_FORMAT=1 SPDLOG_NO_EXCEPTIONS=1)
 
 if (MSVC)
     # Remove any RTTI or exception enabling flags from CMAKE_CXX_FLAGS
@@ -145,13 +76,6 @@ file(GLOB_RECURSE CLICE_SOURCES CONFIGURE_DEPENDS
 )
 add_library(clice-core STATIC "${CLICE_SOURCES}")
 
-# set llvm include and lib path
-add_library(llvm-libs INTERFACE IMPORTED)
-
-message(STATUS "LLVM include path: ${LLVM_INSTALL_PATH}/include")
-# add to include directories
-target_include_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/include")
-
 if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/include")
     # private files are downloaded here
     message(STATUS "Fetched private headers to include: ${CMAKE_CURRENT_BINARY_DIR}/include")
@@ -163,65 +87,11 @@ if(WIN32)
     target_link_libraries(llvm-libs INTERFACE version ntdll)
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_link_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/lib")
-    target_link_libraries(llvm-libs INTERFACE
-        LLVMSupport
-        LLVMFrontendOpenMP
-        LLVMOption
-        clangAST
-        clangASTMatchers
-        clangBasic
-        clangDependencyScanning
-        clangDriver
-        clangFormat
-        clangFrontend
-        clangIndex
-        clangLex
-        clangSema
-        clangSerialization
-        clangTidy
-        clangTidyUtils
-        # ALL_CLANG_TIDY_CHECKS
-        clangTidyAndroidModule
-        clangTidyAbseilModule
-        clangTidyAlteraModule
-        clangTidyBoostModule
-        clangTidyBugproneModule
-        clangTidyCERTModule
-        clangTidyConcurrencyModule
-        clangTidyCppCoreGuidelinesModule
-        clangTidyDarwinModule
-        clangTidyFuchsiaModule
-        clangTidyGoogleModule
-        clangTidyHICPPModule
-        clangTidyLinuxKernelModule
-        clangTidyLLVMModule
-        clangTidyLLVMLibcModule
-        clangTidyMiscModule
-        clangTidyModernizeModule
-        clangTidyObjCModule
-        clangTidyOpenMPModule
-        clangTidyPerformanceModule
-        clangTidyPortabilityModule
-        clangTidyReadabilityModule
-        clangTidyZirconModule
-        clangTooling
-        clangToolingCore
-        clangToolingInclusions
-        clangToolingInclusionsStdlib
-        clangToolingSyntax
-    )
-else()
-    file(GLOB LLVM_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/*${CMAKE_STATIC_LIBRARY_SUFFIX}")
-    target_link_libraries(llvm-libs INTERFACE ${LLVM_LIBRARIES})
-endif()
-
 target_compile_options(clice-core PUBLIC ${CLICE_CXX_FLAGS})
 target_link_options(clice-core PUBLIC ${CLICE_LINKER_FLAGS})
 
 target_include_directories(clice-core PUBLIC "${CMAKE_SOURCE_DIR}/include")
-target_link_libraries(clice-core PUBLIC uv_a spdlog::spdlog tomlplusplus::tomlplusplus roaring llvm-libs)
+target_link_libraries(clice-core PUBLIC uv_a spdlog::spdlog tomlplusplus::tomlplusplus roaring::roaring llvm-libs)
 target_compile_definitions(clice-core PUBLIC TOML_EXCEPTIONS=0)
 
 # clice executable
