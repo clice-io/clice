@@ -117,8 +117,8 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/RoaringBitmap/CRoaring.git
     GIT_TAG        v4.4.0
     # Workaround for https://github.com/RoaringBitmap/CRoaring/pull/750
-    PATCH_COMMAND  git apply --reverse --check ${CMAKE_CURRENT_SOURCE_DIR}/cmake/croaring-fix.patch 2> ${NULL_DEVICE}
-                    || git apply ${CMAKE_CURRENT_SOURCE_DIR}/cmake/croaring-fix.patch
+    PATCH_COMMAND  git apply --reverse --check ${PROJECT_SOURCE_DIR}/cmake/croaring-fix.patch 2> ${NULL_DEVICE}
+                    || git apply ${PROJECT_SOURCE_DIR}/cmake/croaring-fix.patch
 )
 set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "")
 

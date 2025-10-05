@@ -85,11 +85,11 @@ struct DenseMapInfo<clice::index::Occurrence> {
     using V = clice::index::Occurrence;
 
     inline static V getEmptyKey() {
-        return V(R(0, -1), 0);
+        return V(R(-1, 0), 0);
     }
 
     inline static V getTombstoneKey() {
-        return V(R(-1, 0), 0);
+        return V(R(-2, 0), 0);
     }
 
     static auto getHashValue(const V& v) {
@@ -108,7 +108,7 @@ struct DenseMapInfo<clice::index::Relation> {
     inline static R getEmptyKey() {
         return R{
             .kind = clice::RelationKind(),
-            .range = clice::LocalSourceRange(0, 0),
+            .range = clice::LocalSourceRange(-1, 0),
             .target_symbol = 0,
         };
     }
@@ -116,7 +116,7 @@ struct DenseMapInfo<clice::index::Relation> {
     inline static R getTombstoneKey() {
         return R{
             .kind = clice::RelationKind(),
-            .range = clice::LocalSourceRange(-1, -1),
+            .range = clice::LocalSourceRange(-2, -1),
             .target_symbol = 0,
         };
     }

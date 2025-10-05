@@ -18,8 +18,8 @@ auto sha256_hash(FileIndex& index) {
         hasher.update(llvm::ArrayRef(data, size));
     }
 
-    for(auto& [symbold_id, relations]: index.relations) {
-        hasher.update(std::bit_cast<std::array<u8, sizeof(symbold_id)>>(symbold_id));
+    for(auto& [symbol_id, relations]: index.relations) {
+        hasher.update(std::bit_cast<std::array<u8, sizeof(symbol_id)>>(symbol_id));
         static_assert(sizeof(Relation) ==
                       sizeof(RelationKind) + 4 + sizeof(Range) + sizeof(SymbolHash));
         static_assert(sizeof(Relation) % 8 == 0);
