@@ -75,6 +75,12 @@ endif()
 # install dependencies
 include(FetchContent)
 
+if(WIN32)
+    set(NULL_DEVICE NUL)
+else()
+    set(NULL_DEVICE /dev/null)
+endif()
+
 # libuv
 FetchContent_Declare(
     libuv
@@ -106,14 +112,15 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/RoaringBitmap/CRoaring.git
     GIT_TAG        v4.4.0
     # Workaround for https://github.com/RoaringBitmap/CRoaring/pull/750
-    PATCH_COMMAND  git apply --reverse --check ${CMAKE_CURRENT_SOURCE_DIR}/cmake/croaring-fix.patch
+    PATCH_COMMAND  git apply --reverse --check ${CMAKE_CURRENT_SOURCE_DIR}/cmake/croaring-fix.patch 2> ${NULL_DEVICE}
+                    || git apply ${CMAKE_CURRENT_SOURCE_DIR}/cmake/croaring-fix.patch
 )
 set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "")
 
 set(CMAKE_MODULE_PATH "")
 FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring)
 
-if (WIN32) 
+if (WIN32)
     target_compile_definitions(uv_a PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
