@@ -3,7 +3,7 @@
 #include "TUIndex.h"
 
 #define ROARING_EXCEPTIONS 0
-#define ROARING_TERMINATE(mesage) std::abort()
+#define ROARING_TERMINATE(message) std::abort()
 #include "roaring/roaring.hh"
 
 #include "llvm/Support/Allocator.h"
@@ -116,7 +116,7 @@ struct DenseMapInfo<clice::index::Relation> {
     inline static R getTombstoneKey() {
         return R{
             .kind = clice::RelationKind(),
-            .range = clice::LocalSourceRange(-2, -1),
+            .range = clice::LocalSourceRange(-2, 0),
             .target_symbol = 0,
         };
     }
