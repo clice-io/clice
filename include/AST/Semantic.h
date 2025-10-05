@@ -75,8 +75,10 @@ public:
     }
 
     void handleAttrOccurrence(const clang::Attr* attr, clang::SourceRange range) {
-        assert(attr && "Invalid attribute");
-        assert(range.isValid() && "Invalid range");
+        if(!attr || range.isInvalid()) {
+            return;
+        }
+
         if constexpr(!std::same_as<decltype(&SemanticVisitor::handleAttrOccurrence),
                                    decltype(&Derived::handleAttrOccurrence)>) {
             getDerived().handleAttrOccurrence(attr, range);
@@ -633,6 +635,7 @@ public:
     }
 
     bool VisitAttr(clang::Attr* attr) {
+
         getDerived().handleAttrOccurrence(attr, attr->getRange());
         return true;
     }

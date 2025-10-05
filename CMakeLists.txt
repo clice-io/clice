@@ -60,7 +60,15 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
 )
 
-FetchContent_MakeAvailable(libuv spdlog tomlplusplus)
+message(STATUS "Fetching CRoaring...")
+FetchContent_Declare(
+    croaring
+    GIT_REPOSITORY https://github.com/RoaringBitmap/CRoaring.git
+    GIT_TAG        v4.3.9
+)
+set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "")
+
+FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring)
 
 message(STATUS "Found tomlplusplus: ${tomlplusplus_SOURCE_DIR}")
 message(STATUS "Found libuv: ${libuv_SOURCE_DIR}")
@@ -206,7 +214,7 @@ target_compile_options(clice-core PUBLIC ${CLICE_CXX_FLAGS})
 target_link_options(clice-core PUBLIC ${CLICE_LINKER_FLAGS})
 
 target_include_directories(clice-core PUBLIC "${CMAKE_SOURCE_DIR}/include")
-target_link_libraries(clice-core PUBLIC uv_a spdlog::spdlog tomlplusplus::tomlplusplus llvm-libs)
+target_link_libraries(clice-core PUBLIC uv_a spdlog::spdlog tomlplusplus::tomlplusplus roaring llvm-libs)
 target_compile_definitions(clice-core PUBLIC TOML_EXCEPTIONS=0)
 
 # clice executable

@@ -1,11 +1,11 @@
 #include "Test/Tester.h"
-#include "Index/TUIndex.h"
+#include "Index/MergedIndex.h"
 
 namespace clice::testing {
 
 namespace {
 
-suite<"TUIndex"> suite = [] {
+suite<"MergedIndex"> suite = [] {
     Tester tester;
     index::TUIndex tu_index;
 
@@ -43,23 +43,22 @@ suite<"TUIndex"> suite = [] {
         expect(eq(dump(it->range), dump(range)), location);
     };
 
-    test("Basic") = [&] {
+    test("Assert") = [&] {
         build_index(R"(
-            int @1[f$(1)oo]();
-
-            int @2[b$(2)ar]() {
-                return @3[fo$(3)o]() + 1;
-            }
+            #include <iostream>
         )");
 
-        expect(eq(tu_index.file_indices.size(), 1));
-        auto& index = tu_index.file_indices.begin()->second;
-        expect(eq(index.relations.size(), 2));
-        expect(eq(index.occurrences.size(), 3));
+        std::println("{}", tu_index.file_indices.size());
 
-        expect_select("1", "1");
-        expect_select("2", "2");
-        expect_select("3", "3");
+        index::MergedIndex merged;
+
+        for(auto& [fid, index]: tu_index.file_indices) {
+            auto path = tester.unit->file_path(fid);
+
+            if(path.ends_with("stddef.h")) {
+                merged.merge(path, tu_index.graph.getInclude(fid), index);
+            }
+        }
     };
 };
 

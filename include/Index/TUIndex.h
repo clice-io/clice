@@ -7,17 +7,19 @@
 namespace clice::index {
 
 using Range = LocalSourceRange;
-using SymbolID2 = std::uint64_t;
+using SymbolHash = std::uint64_t;
 
 struct Relation {
     RelationKind kind;
+
+    char padding[4] = {0, 0, 0, 0};
 
     LocalSourceRange range;
 
     union {
         LocalSourceRange definition_range;
 
-        SymbolID2 target_symbol;
+        SymbolHash target_symbol;
     };
 };
 
@@ -26,11 +28,11 @@ struct Occurrence {
     Range range;
 
     ///
-    SymbolID2 target;
+    SymbolHash target;
 };
 
 struct FileIndex {
-    llvm::DenseMap<SymbolID2, std::vector<Relation>> relations;
+    llvm::DenseMap<SymbolHash, std::vector<Relation>> relations;
 
     std::vector<Occurrence> occurrences;
 };
@@ -44,7 +46,7 @@ struct Symbol {
 struct TUIndex {
     IncludeGraph graph;
 
-    llvm::DenseMap<SymbolID2, Symbol> symbols;
+    llvm::DenseMap<SymbolHash, Symbol> symbols;
 
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
 
