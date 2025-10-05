@@ -70,6 +70,13 @@ set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "")
 
 FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring)
 
+# A workaround for https://github.com/RoaringBitmap/CRoaring/pull/750.
+if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_C_COMPILER_FRONTEND_VARIANT MATCHES "MSVC")
+    get_property(ROARING_OPTS TARGET roaring PROPERTY COMPILE_OPTIONS)
+    string(REPLACE "/permissive-" "" ROARING_OPTS_FIXED "${ROARING_OPTS}")
+    set_property(TARGET roaring PROPERTY COMPILE_OPTIONS "${ROARING_OPTS_FIXED}")
+endif()
+
 message(STATUS "Found tomlplusplus: ${tomlplusplus_SOURCE_DIR}")
 message(STATUS "Found libuv: ${libuv_SOURCE_DIR}")
 message(STATUS "Found spdlog: ${spdlog_SOURCE_DIR}")
@@ -91,7 +98,6 @@ if (MSVC)
     # Output: D:\Desktop\code\clice\build\.packages\l\llvm\20.1.5\cc2aa9f1d09a4b71b6fa3bf0011f6387\include\clang/Driver/Options.inc(3590): error C2365: “clang::driver::options::OPT_”: redefinition; previous definition was 'enumerator'
     set(CLICE_CXX_FLAGS "/GR-;/EHsc-;/Zc:preprocessor;")
 else()
-    string(REPLACE "/permissive-" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
     set(CLICE_CXX_FLAGS "-fno-rtti;-fno-exceptions;-Wno-deprecated-declarations;-Wno-undefined-inline;")
 endif()
 
