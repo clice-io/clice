@@ -116,7 +116,7 @@ target("clice-core")
 
 target("clice")
     set_kind("binary")
-    add_files("src/Driver/clice.cc")
+    add_files("bin/clice.cc")
 
     add_deps("clice-core")
 
@@ -136,7 +136,7 @@ target("clice")
 target("unit_tests")
     set_default(false)
     set_kind("binary")
-    add_files("src/Driver/unit_tests.cc", "tests/unit/**.cpp")
+    add_files("bin/unit_tests.cc", "tests/unit/**.cpp")
     add_includedirs(".", {public = true})
 
     add_deps("clice-core")

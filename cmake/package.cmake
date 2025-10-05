@@ -72,6 +72,11 @@ else()
 endif()
 
 
+if(WIN32)
+    target_compile_definitions(llvm-libs INTERFACE "CLANG_BUILD_STATIC")
+    target_link_libraries(llvm-libs INTERFACE version ntdll)
+endif()
+
 # install dependencies
 include(FetchContent)
 
@@ -120,7 +125,7 @@ set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "")
 set(CMAKE_MODULE_PATH "")
 FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring)
 
-if (WIN32)
+if(WIN32)
     target_compile_definitions(uv_a PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
