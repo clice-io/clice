@@ -68,6 +68,13 @@ struct MergedIndex {
     void remove(llvm::StringRef path);
 
     void merge(llvm::StringRef path, std::uint32_t include, FileIndex& index);
+
+    void serialize(this MergedIndex& self, llvm::raw_ostream& out);
+};
+
+struct MergedIndexView {
+    const std::uint8_t* data;
+    std::size_t size;
 };
 
 }  // namespace clice::index

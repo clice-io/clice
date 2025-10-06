@@ -12,15 +12,19 @@ using SymbolHash = std::uint64_t;
 struct Relation {
     RelationKind kind;
 
-    char padding[4] = {0, 0, 0, 0};
+    std::array<char, 4> paddings = {0, 0, 0, 0};
 
     LocalSourceRange range;
 
-    union {
-        LocalSourceRange definition_range;
+    SymbolHash target_symbol;
 
-        SymbolHash target_symbol;
-    };
+    void set_definition_range(LocalSourceRange range) {
+        target_symbol = std::bit_cast<SymbolHash>(range);
+    }
+
+    auto definition_range() {
+        return std::bit_cast<LocalSourceRange>(target_symbol);
+    }
 };
 
 struct Occurrence {

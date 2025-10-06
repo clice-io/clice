@@ -147,6 +147,18 @@ public:
                                llvm::ArrayRef<std::string> compile_commands_dirs,
                                llvm::StringRef workspace) -> void;
 
+    auto commands_size() {
+        return command_infos.size();
+    }
+
+    auto begin() {
+        return command_infos.begin();
+    }
+
+    auto end() {
+        return command_infos.end();
+    }
+
 private:
     /// If file not found in CDB file, try to guess commands or use the default case.
     auto guess_or_fallback(this Self& self, llvm::StringRef file) -> LookupInfo;

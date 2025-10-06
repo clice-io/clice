@@ -72,10 +72,10 @@ public:
         Relation relation{.kind = kind};
 
         if(kind.isDeclOrDef()) {
-            auto [fid2, definitionRange] = unit.decompose_expansion_range(decl->getSourceRange());
+            auto [fid2, definition_range] = unit.decompose_expansion_range(decl->getSourceRange());
             assert(fid == fid2 && "Invalid definition location");
             relation.range = relationRange;
-            relation.definition_range = definitionRange;
+            relation.set_definition_range(definition_range);
         } else if(kind.isReference()) {
             relation.range = relationRange;
             relation.target_symbol = 0;
@@ -99,7 +99,14 @@ public:
         run();
 
         for(auto& [fid, index]: result.file_indices) {
+            for(auto& [_, relations]: index.relations) {
+                std::ranges::sort(relations, refl::less);
+                auto range = std::ranges::unique(relations, refl::equal);
+                relations.erase(range.begin(), range.end());
+            }
             std::ranges::sort(index.occurrences, refl::less);
+            auto range = std::ranges::unique(index.occurrences, refl::equal);
+            index.occurrences.erase(range.begin(), range.end());
         }
     }
 
