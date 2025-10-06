@@ -88,7 +88,7 @@ target_include_directories(clice-core PUBLIC
 )
 target_link_libraries(clice-core PUBLIC
     clice_options
-    uv_a
+    libuv::libuv
     spdlog::spdlog
     tomlplusplus::tomlplusplus
     roaring::roaring

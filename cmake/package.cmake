@@ -96,7 +96,9 @@ FetchContent_Declare(
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(ASAN ON CACHE BOOL "Enable AddressSanitizer for libuv" FORCE)
 endif()
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libs")
+set(LIBUV_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(LIBUV_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 # spdlog
 FetchContent_Declare(
@@ -120,7 +122,7 @@ FetchContent_Declare(
     PATCH_COMMAND  git apply --reverse --check ${PROJECT_SOURCE_DIR}/cmake/croaring-fix.patch 2> ${NULL_DEVICE}
                     || git apply ${PROJECT_SOURCE_DIR}/cmake/croaring-fix.patch
 )
-set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "")
+set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "" FORCE)
 
 FetchContent_Declare(
     flatbuffers
@@ -147,4 +149,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND TARGET uv_a)
     )
 endif()
 
-target_compile_definitions(spdlog PUBLIC SPDLOG_USE_STD_FORMAT=1 SPDLOG_NO_EXCEPTIONS=1)
+target_compile_definitions(spdlog PUBLIC
+    SPDLOG_USE_STD_FORMAT=1
+    SPDLOG_NO_EXCEPTIONS=1
+)
