@@ -122,8 +122,16 @@ FetchContent_Declare(
 )
 set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "")
 
-set(CMAKE_MODULE_PATH "")
-FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring)
+FetchContent_Declare(
+    flatbuffers
+    GIT_REPOSITORY https://github.com/google/flatbuffers.git
+    GIT_TAG        v25.9.23
+)
+set(FLATBUFFERS_BUILD_GRPC OFF CACHE BOOL "" FORCE)
+set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring flatbuffers)
 
 if(WIN32)
     target_compile_definitions(uv_a PRIVATE _CRT_SECURE_NO_WARNINGS)

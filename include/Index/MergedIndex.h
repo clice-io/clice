@@ -59,11 +59,11 @@ struct MergedIndex {
     /// A map between source file path and its header contexts.
     llvm::StringMap<HeaderContexts> contexts;
 
-    /// All merged symbol relations.
-    llvm::DenseMap<SymbolHash, llvm::DenseMap<Relation, roaring::Roaring>> relations;
-
     /// All merged symbol occurrences.
     llvm::DenseMap<Occurrence, roaring::Roaring> occurrences;
+
+    /// All merged symbol relations.
+    llvm::DenseMap<SymbolHash, llvm::DenseMap<Relation, roaring::Roaring>> relations;
 
     void remove(llvm::StringRef path);
 

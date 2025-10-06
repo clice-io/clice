@@ -1,0 +1,65 @@
+namespace clice.index.binary;
+
+struct Range {
+    begin: uint;
+    end: uint;
+}
+
+struct Occurrence {
+    range: Range;
+    target: ulong;
+}
+
+struct Relation {
+    kind: int;
+    padding: int;
+    range: Range;
+    target_symbol: ulong;
+}
+
+table CacheEntry {
+    sha256: string;
+    canonical_id: uint;
+}
+
+struct Context {
+    include_: uint;
+    canonical_id: uint;
+}
+
+table HeaderContexts {
+    version: uint;
+    includes: [Context];
+}
+
+table HeaderContextsEntry {
+    path: string;
+    contexts: HeaderContexts;
+}
+
+table OccurrenceEntry {
+    occurrence: Occurrence;
+    context: [ubyte];
+}
+
+table RelationEntry {
+    relation: Relation;
+    context: [ubyte];
+}
+
+table SymbolRelationsEntry {
+    symbol: ulong;
+    relations: [RelationEntry];
+}
+
+table MergedIndex {
+    max_canonical_id: uint;
+
+    canonical_cache: [CacheEntry];
+
+    contexts: [HeaderContextsEntry];
+
+    occurrences: [OccurrenceEntry];
+
+    relations: [SymbolRelationsEntry];
+}

@@ -54,6 +54,21 @@ else()
     )
 endif()
 
+set(FBS_SCHEMA_FILE "${CMAKE_CURRENT_SOURCE_DIR}/include/Index/schema.fbs")
+set(GENERATED_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/schema_generated.h")
+
+add_custom_command(
+    OUTPUT ${GENERATED_HEADER}
+    COMMAND $<TARGET_FILE:flatc> --cpp -o ${CMAKE_CURRENT_BINARY_DIR}/generated ${FBS_SCHEMA_FILE}
+    DEPENDS ${FBS_SCHEMA_FILE}
+    COMMENT "Generating C++ header from ${FBS_SCHEMA_FILE}"
+)
+
+add_custom_target(
+    generate_flatbuffers_schema
+    DEPENDS ${GENERATED_HEADER}
+)
+
 file(GLOB_RECURSE CLICE_SOURCES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/src/AST/*.cpp"
     "${PROJECT_SOURCE_DIR}/src/Async/*.cpp"
@@ -65,14 +80,19 @@ file(GLOB_RECURSE CLICE_SOURCES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/src/Support/*.cpp"
 )
 add_library(clice-core STATIC "${CLICE_SOURCES}")
+add_dependencies(clice-core generate_flatbuffers_schema)
 
-target_include_directories(clice-core PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(clice-core PUBLIC
+    "${PROJECT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated"
+)
 target_link_libraries(clice-core PUBLIC
     clice_options
     uv_a
     spdlog::spdlog
     tomlplusplus::tomlplusplus
     roaring::roaring
+    flatbuffers
     llvm-libs
 )
 

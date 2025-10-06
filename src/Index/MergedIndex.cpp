@@ -1,5 +1,6 @@
 #include "Index/MergedIndex.h"
 #include "llvm/Support/SHA256.h"
+#include "schema_generated.h"
 
 namespace clice::index {
 
