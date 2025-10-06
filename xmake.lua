@@ -1,4 +1,4 @@
-set_xmakever("2.9.7")
+set_xmakever("3.0.3")
 set_project("clice")
 
 set_allowedplats("windows", "linux", "macosx")
@@ -12,7 +12,6 @@ option("ci", {default = false})
 
 if has_config("dev") then
     set_policy("build.ccache", true)
-    set_policy("compatibility.version", "3.0")
     if is_plat("windows") then
         set_runtimes("MD")
         if is_mode("debug") then
@@ -41,7 +40,7 @@ if has_config("release") then
 end
 
 add_defines("TOML_EXCEPTIONS=0")
-add_requires(libuv_require, "spdlog[header_only=n,std_format,noexcept]" ,"toml++", "croaring")
+add_requires(libuv_require, "spdlog[header_only=n,std_format,noexcept]" ,"toml++", "croaring", "flatbuffers")
 add_requires("clice-llvm", {alias = "llvm"})
 
 add_rules("mode.release", "mode.debug", "mode.releasedbg")
@@ -50,9 +49,11 @@ add_rules("clice_build_config")
 
 target("clice-core")
     set_kind("$(kind)")
-    add_files("src/**.cpp|Driver/*.cpp")
+    add_files("src/**.cpp|Driver/*.cpp", "include/Index/schema.fbs")
     add_includedirs("include", {public = true})
 
+    add_rules("flatbuffers.schema.gen")
+    add_packages("flatbuffers")
     add_packages("libuv", "spdlog", "toml++", "croaring", {public = true})
 
     if is_mode("debug") then
@@ -203,6 +204,46 @@ rule("clice_build_config")
             target:add("cxxflags", "-DCLICE_CI_ENVIRONMENT")
         end
     end)
+
+rule("flatbuffers.schema.gen")
+    set_extensions(".fbs")
+
+    on_prepare_files(function (target, jobgraph, sourcebatch, opt)
+        import("lib.detect.find_tool")
+        import("core.project.depend")
+        import("utils.progress")
+
+        assert(target:pkg("flatbuffers"), "Please configure add_packages(\"flatbuffers\") for target(" .. target:name() .. ")")
+        local envs = target:pkgenvs()
+        local flatc = assert(find_tool("flatc", {envs = envs}), "flatc not found!")
+
+        local group_name = path.join(target:fullname(), "generate/fbs")
+        local autogendir = path.join(target:autogendir(), "rules/flatbuffers")
+        jobgraph:group(group_name, function()
+            for _, sourcefile in ipairs(sourcebatch.sourcefiles) do
+                local job = path.join(group_name, sourcefile)
+                local generate_dir = path.normalize(path.join(autogendir, path.directory(sourcefile)))
+                target:add("includedirs", generate_dir, {public = true})
+                os.mkdir(generate_dir)
+                jobgraph:add(job, function (index, total, opt)
+                    local argv = {
+                        "--cpp",
+                        "-o", generate_dir,
+                        sourcefile
+                    }
+
+                    depend.on_changed(function()
+                        progress.show(flatc.progress or 0, "${color.build.object}generating.fbs %s", sourcefile)
+                        os.vrunv(flatc.program, argv)
+                    end, {
+                        files = sourcefile,
+                        dependfile = target:dependfile(sourcefile),
+                        changed = target:is_rebuilt()
+                    })
+                end)
+            end
+        end)
+    end, {jobgraph = true})
 
 package("clice-llvm")
     if has_config("llvm") then
