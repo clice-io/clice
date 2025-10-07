@@ -93,7 +93,7 @@ FetchContent_Declare(
     GIT_TAG v1.x
 )
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(NOT WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(ASAN ON CACHE BOOL "Enable AddressSanitizer for libuv" FORCE)
 endif()
 set(LIBUV_BUILD_SHARED OFF CACHE BOOL "" FORCE)
@@ -117,13 +117,11 @@ FetchContent_Declare(
 FetchContent_Declare(
     croaring
     GIT_REPOSITORY https://github.com/RoaringBitmap/CRoaring.git
-    GIT_TAG        v4.4.0
-    # Workaround for https://github.com/RoaringBitmap/CRoaring/pull/750
-    PATCH_COMMAND  git apply --reverse --check ${PROJECT_SOURCE_DIR}/cmake/croaring-fix.patch 2> ${NULL_DEVICE}
-                    || git apply ${PROJECT_SOURCE_DIR}/cmake/croaring-fix.patch
+    GIT_TAG        v4.4.2
 )
 set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "" FORCE)
 
+# flatbuffers
 FetchContent_Declare(
     flatbuffers
     GIT_REPOSITORY https://github.com/google/flatbuffers.git
@@ -139,7 +137,7 @@ if(WIN32)
     target_compile_definitions(uv_a PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
-if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND TARGET uv_a)
+if(NOT MSVC AND TARGET uv_a)
     target_compile_options(uv_a PRIVATE
         "-Wno-unused-function"
         "-Wno-unused-variable"
