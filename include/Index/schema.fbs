@@ -11,8 +11,8 @@ struct Occurrence {
 }
 
 struct Relation {
-    kind: int;
-    padding: int;
+    kind: uint;
+    padding: uint;
     range: Range;
     target_symbol: ulong;
 }
