@@ -20,11 +20,11 @@ struct Relation {
 
     SymbolHash target_symbol;
 
-    void set_definition_range(LocalSourceRange range) {
+    constexpr void set_definition_range(LocalSourceRange range) {
         target_symbol = std::bit_cast<SymbolHash>(range);
     }
 
-    auto definition_range() {
+    constexpr auto definition_range() {
         return std::bit_cast<LocalSourceRange>(target_symbol);
     }
 };
@@ -50,12 +50,16 @@ struct Symbol {
 
     /// All files that referenced this symbol.
     Bitmap reference_files;
+
+    friend bool operator== (const Symbol&, const Symbol&) = default;
 };
+
+using SymbolTable = llvm::DenseMap<SymbolHash, Symbol>;
 
 struct TUIndex {
     IncludeGraph graph;
 
-    llvm::DenseMap<SymbolHash, Symbol> symbols;
+    SymbolTable symbols;
 
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
 

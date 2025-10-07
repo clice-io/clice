@@ -52,6 +52,16 @@ table SymbolRelationsEntry {
     relations: [RelationEntry];
 }
 
+table Symbol {
+    kind: ubyte;
+    refs: [ubyte];
+}
+
+table SymbolEntry {
+    symbol_id: ulong;
+    symbol: Symbol;
+}
+
 table MergedIndex {
     max_canonical_id: uint;
 
@@ -62,4 +72,20 @@ table MergedIndex {
     occurrences: [OccurrenceEntry];
 
     relations: [SymbolRelationsEntry];
+}
+
+table PathEntry {
+    path: string;
+    id: uint;
+}
+
+struct PathMapEntry {
+    source: uint;
+    index: uint;
+}
+
+table ProjectIndex {
+    paths: [PathEntry];
+    indices: [PathMapEntry];
+    symbols: [SymbolEntry];
 }

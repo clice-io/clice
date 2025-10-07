@@ -93,12 +93,17 @@ namespace clice::index {
 struct HeaderContexts {
     std::uint32_t version = 0;
 
-    using Context = std::pair<std::uint32_t, std::uint32_t>;
+    struct Context {
+        std::uint32_t include;
+        std::uint32_t canonical_id;
+
+        friend bool operator== (const Context&, const Context&) = default;
+    };
 
     /// A array of include location and its context id.
     llvm::SmallVector<Context> includes;
 
-    friend bool operator== (const HeaderContexts& lhs, const HeaderContexts& rhs) = default;
+    friend bool operator== (const HeaderContexts&, const HeaderContexts&) = default;
 };
 
 struct MergedIndex {
@@ -131,7 +136,7 @@ struct MergedIndex {
 
     void serialize(this MergedIndex& self, llvm::raw_ostream& out);
 
-    friend bool operator== (const MergedIndex& lhs, const MergedIndex& rhs) = default;
+    friend bool operator== (const MergedIndex&, const MergedIndex&) = default;
 };
 
 struct MergedIndexView {
