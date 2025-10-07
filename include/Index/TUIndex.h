@@ -2,7 +2,9 @@
 
 #include "IncludeGraph.h"
 #include "AST/SourceCode.h"
+#include "AST/SymbolKind.h"
 #include "AST/RelationKind.h"
+#include "Support/Bitmap.h"
 
 namespace clice::index {
 
@@ -44,7 +46,10 @@ struct FileIndex {
 struct Symbol {
     std::string name;
 
-    /// ...
+    SymbolKind kind;
+
+    /// All files that referenced this symbol.
+    Bitmap reference_files;
 };
 
 struct TUIndex {

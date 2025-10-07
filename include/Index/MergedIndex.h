@@ -1,11 +1,7 @@
 #pragma once
 
 #include "TUIndex.h"
-
-#define ROARING_EXCEPTIONS 0
-#define ROARING_TERMINATE(message) std::abort()
-#include "roaring/roaring.hh"
-
+#include "Support/Bitmap.h"
 #include "llvm/Support/Allocator.h"
 
 namespace clice::index {

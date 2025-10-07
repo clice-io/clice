@@ -16,7 +16,6 @@ public:
     void handleDeclOccurrence(const clang::NamedDecl* decl,
                               RelationKind kind,
                               clang::SourceLocation location) {
-        assert(decl && "Invalid decl");
         decl = ast::normalize(decl);
 
         if(location.isMacroID()) {
@@ -37,6 +36,12 @@ public:
         auto& index = result.file_indices[fid];
 
         auto symbol_id = unit.getSymbolID(decl);
+        auto [it, success] = result.symbols.try_emplace(symbol_id.hash);
+        if(success) {
+            auto& symbol = it->second;
+            symbol.name = ast::display_name_of(decl);
+            symbol.kind = SymbolKind::from(decl);
+        }
         index.occurrences.emplace_back(range, symbol_id.hash);
     }
 
@@ -99,11 +104,13 @@ public:
         run();
 
         for(auto& [fid, index]: result.file_indices) {
-            for(auto& [_, relations]: index.relations) {
+            for(auto& [symbol_id, relations]: index.relations) {
                 std::ranges::sort(relations, refl::less);
                 auto range = std::ranges::unique(relations, refl::equal);
                 relations.erase(range.begin(), range.end());
+                result.symbols[symbol_id].reference_files.add(result.graph.path_id(fid));
             }
+
             std::ranges::sort(index.occurrences, refl::less);
             auto range = std::ranges::unique(index.occurrences, refl::equal);
             index.occurrences.erase(range.begin(), range.end());
