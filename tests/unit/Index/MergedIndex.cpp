@@ -1,5 +1,6 @@
 #include "Test/Tester.h"
 #include "Index/MergedIndex.h"
+#include "Async/Async.h"
 
 namespace clice::testing {
 
@@ -43,21 +44,33 @@ suite<"MergedIndex"> suite = [] {
         expect(eq(dump(it->range), dump(range)), location);
     };
 
-    test("Assert") = [&] {
+    test("Serialization") = [&] {
         build_index(R"(
             #include <iostream>
+
+            int main () {
+                std::cout << "Hello world!" << std::endl;
+                return 0;
+            }
         )");
 
-        std::println("{}", tu_index.file_indices.size());
-
-        index::MergedIndex merged;
-
+        llvm::StringMap<index::MergedIndex> merged_indices;
+        auto& graph = tu_index.graph;
         for(auto& [fid, index]: tu_index.file_indices) {
-            auto path = tester.unit->file_path(fid);
+            llvm::StringRef path = graph.paths[graph.path_id(fid)];
+            merged_indices[path].merge("main.cpp", graph.include_location_id(fid), index);
+        }
 
-            if(path.ends_with("stddef.h")) {
-                merged.merge(path, tu_index.graph.getInclude(fid), index);
-            }
+        for(auto& [path, merged]: merged_indices) {
+            llvm::SmallString<1024> s;
+            llvm::raw_svector_ostream os(s);
+
+            merged.serialize(os);
+
+            index::MergedIndexView view(s.data());
+            auto merged2 = view.deserialize();
+
+            expect(merged == merged2);
         }
     };
 };

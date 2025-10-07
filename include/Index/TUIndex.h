@@ -14,7 +14,7 @@ using SymbolHash = std::uint64_t;
 struct Relation {
     RelationKind kind;
 
-    std::array<char, 4> paddings = {0, 0, 0, 0};
+    std::uint32_t padding = 0;
 
     LocalSourceRange range;
 

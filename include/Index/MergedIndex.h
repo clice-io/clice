@@ -4,77 +4,6 @@
 #include "Support/Bitmap.h"
 #include "llvm/Support/Allocator.h"
 
-namespace clice::index {
-
-/// struct CompilationContext {
-///     /// The target of this compilation.
-///     llvm::StringRef target;
-///
-///     /// The canonical compilation command.
-///     llvm::StringRef command;
-///
-///     /// A version field for verification.
-///     std::uint32_t version;
-/// };
-///
-/// struct HeaderContext : CompilationContext {
-///     /// The include location in the include graph.
-///     std::uint32_t include;
-///
-///     /// The path of the file includes this header.
-///     llvm::StringRef path;
-/// };
-
-struct HeaderContexts {
-    std::uint32_t version = 0;
-
-    using Context = std::pair<std::uint32_t, std::uint32_t>;
-
-    /// A array of include location and its context id.
-    llvm::SmallVector<Context> includes;
-};
-
-struct MergedIndex {
-    /// For each merged index, we will give it a canonical id.
-    /// The max canonical id.
-    std::uint32_t max_canonical_id = 0;
-
-    /// We use the value of SHA256 to judge whether two indices are same.
-    /// Index with same content will be given same canonical id.
-    llvm::DenseMap<llvm::StringRef, std::uint32_t> canonical_cache;
-
-    /// The allocator for storing sha256 hash.
-    llvm::BumpPtrAllocator allocator;
-
-    /// The reference count of each canonical id.
-    std::vector<std::uint32_t> canonical_ref_counts;
-
-    /// The canonical id set of removed index.
-    roaring::Roaring removed;
-
-    /// A map between source file path and its header contexts.
-    llvm::StringMap<HeaderContexts> contexts;
-
-    /// All merged symbol occurrences.
-    llvm::DenseMap<Occurrence, roaring::Roaring> occurrences;
-
-    /// All merged symbol relations.
-    llvm::DenseMap<SymbolHash, llvm::DenseMap<Relation, roaring::Roaring>> relations;
-
-    void remove(llvm::StringRef path);
-
-    void merge(llvm::StringRef path, std::uint32_t include, FileIndex& index);
-
-    void serialize(this MergedIndex& self, llvm::raw_ostream& out);
-};
-
-struct MergedIndexView {
-    const std::uint8_t* data;
-    std::size_t size;
-};
-
-}  // namespace clice::index
-
 namespace llvm {
 
 template <typename... Ts>
@@ -139,3 +68,76 @@ struct DenseMapInfo<clice::index::Relation> {
 };
 
 }  // namespace llvm
+
+namespace clice::index {
+
+/// struct CompilationContext {
+///     /// The target of this compilation.
+///     llvm::StringRef target;
+///
+///     /// The canonical compilation command.
+///     llvm::StringRef command;
+///
+///     /// A version field for verification.
+///     std::uint32_t version;
+/// };
+///
+/// struct HeaderContext : CompilationContext {
+///     /// The include location in the include graph.
+///     std::uint32_t include;
+///
+///     /// The path of the file includes this header.
+///     llvm::StringRef path;
+/// };
+
+struct HeaderContexts {
+    std::uint32_t version = 0;
+
+    using Context = std::pair<std::uint32_t, std::uint32_t>;
+
+    /// A array of include location and its context id.
+    llvm::SmallVector<Context> includes;
+
+    friend bool operator== (const HeaderContexts& lhs, const HeaderContexts& rhs) = default;
+};
+
+struct MergedIndex {
+    /// For each merged index, we will give it a canonical id.
+    /// The max canonical id.
+    std::uint32_t max_canonical_id = 0;
+
+    /// We use the value of SHA256 to judge whether two indices are same.
+    /// Index with same content will be given same canonical id.
+    llvm::StringMap<std::uint32_t> canonical_cache;
+
+    /// The reference count of each canonical id.
+    std::vector<std::uint32_t> canonical_ref_counts;
+
+    /// The canonical id set of removed index.
+    roaring::Roaring removed;
+
+    /// A map between source file path and its header contexts.
+    llvm::StringMap<HeaderContexts> contexts;
+
+    /// All merged symbol occurrences.
+    llvm::DenseMap<Occurrence, roaring::Roaring> occurrences;
+
+    /// All merged symbol relations.
+    llvm::DenseMap<SymbolHash, llvm::DenseMap<Relation, roaring::Roaring>> relations;
+
+    void remove(llvm::StringRef path);
+
+    void merge(llvm::StringRef path, std::uint32_t include, FileIndex& index);
+
+    void serialize(this MergedIndex& self, llvm::raw_ostream& out);
+
+    friend bool operator== (const MergedIndex& lhs, const MergedIndex& rhs) = default;
+};
+
+struct MergedIndexView {
+    const void* data;
+
+    MergedIndex deserialize();
+};
+
+}  // namespace clice::index

@@ -69,10 +69,6 @@ void MergedIndex::merge(llvm::StringRef path, std::uint32_t include, FileIndex& 
         return;
     }
 
-    auto data = allocator.Allocate<char>(32);
-    std::ranges::copy(hash, data);
-    it->first = llvm::StringRef(data, hash.size());
-
     for(auto& occurrence: index.occurrences) {
         this->occurrences[occurrence].add(canonical_id);
     }
@@ -90,7 +86,6 @@ void MergedIndex::merge(llvm::StringRef path, std::uint32_t include, FileIndex& 
 
 void MergedIndex::serialize(this MergedIndex& self, llvm::raw_ostream& out) {
     namespace fbs = flatbuffers;
-
     fbs::FlatBufferBuilder builder(1024);
 
     std::vector<fbs::Offset<binary::CacheEntry>> canonical_cache;
@@ -161,16 +156,47 @@ void MergedIndex::serialize(this MergedIndex& self, llvm::raw_ostream& out) {
     out.write(reinterpret_cast<char*>(builder.GetBufferPointer()), builder.GetSize());
 }
 
-void test() {
-    // MergedIndexView index;
-    // flatbuffers::Verifier verifier(index.data, index.size);
-    //
-    // auto root = flatbuffers::GetRoot<binary::MergedIndex>(index.data);
-    // auto o = root->occurrences();
-    //
-    // auto res = std::ranges::lower_bound(*o, 1, {}, [](const binary::OccurrenceEntry* entry) {
-    //    return entry->occurrence()->range().begin();
-    //});
+MergedIndex MergedIndexView::deserialize() {
+    namespace fbs = flatbuffers;
+    auto root = fbs::GetRoot<binary::MergedIndex>(data);
+
+    MergedIndex index;
+    index.max_canonical_id = root->max_canonical_id();
+
+    for(auto entry: *root->canonical_cache()) {
+        index.canonical_cache.try_emplace(entry->sha256()->string_view(), entry->canonical_id());
+    }
+
+    index.canonical_ref_counts.resize(index.max_canonical_id, 0);
+
+    HeaderContexts contexts;
+    for(auto entry: *root->contexts()) {
+        auto path = entry->path()->string_view();
+        contexts.version = entry->contexts()->version();
+        for(auto include: *entry->contexts()->includes()) {
+            index.canonical_ref_counts[include->canonical_id()] += 1;
+            contexts.includes.emplace_back(include->include_(), include->canonical_id());
+        }
+        index.contexts.try_emplace(path, std::move(contexts));
+    }
+
+    for(auto entry: *root->occurrences()) {
+        index.occurrences.try_emplace(
+            *reinterpret_cast<const Occurrence*>(entry->occurrence()),
+            Bitmap::read(reinterpret_cast<const char*>(entry->context()->data()), false));
+    }
+
+    for(auto entry: *root->relations()) {
+        auto& relations = index.relations[entry->symbol()];
+        for(auto relation_entry: *entry->relations()) {
+            relations.try_emplace(
+                *reinterpret_cast<const Relation*>(relation_entry->relation()),
+                Bitmap::read(reinterpret_cast<const char*>(relation_entry->context()->data()),
+                             false));
+        }
+    }
+
+    return index;
 }
 
 }  // namespace clice::index
