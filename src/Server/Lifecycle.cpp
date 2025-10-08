@@ -91,6 +91,7 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
 }
 
 async::Task<> Server::on_initialized(proto::InitializedParams) {
+    co_await indexer.index_all();
     co_return;
 }
 

@@ -237,6 +237,8 @@ private:
     PathMapping mapping;
 
     config::Config config;
+
+    Indexer indexer;
 };
 
 }  // namespace clice
