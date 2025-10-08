@@ -49,20 +49,9 @@ auto transform(const Range& range, const Functor& functor) {
     auto i = 0;
     for(auto&& v: range) {
         result[i] = functor(v);
+        i += 1;
     }
     return result;
-}
-
-template <typename Range, typename Functor>
-auto transform(const auto& result, const Range& range, const Functor& functor) {
-    using V = ranges::range_value_t<Range>;
-    using R = std::invoke_result_t<Functor, V>;
-
-    /// result.reserve(range.size());
-
-    for(auto&& v: range) {
-        result.try_emplace(functor(v));
-    }
 }
 
 Bitmap read_bitmap(const fbs::Vector<uint8_t>* buffer) {
