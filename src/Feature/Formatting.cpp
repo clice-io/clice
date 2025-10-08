@@ -1,5 +1,5 @@
 #include "Feature/Formatting.h"
-#include "Support/Logger.h"
+#include "Support/Logging.h"
 #include "Server/Convert.h"
 #include "clang/Format/Format.h"
 
@@ -41,7 +41,7 @@ std::vector<proto::TextEdit> document_format(llvm::StringRef file,
         range ? tooling::Range(range->begin, range->length()) : tooling::Range(0, content.size());
     auto replacements = format(file, content, selection);
     if(!replacements) {
-        log::info("Fail to format for {}\n{}", file, replacements.error());
+        logging::info("Fail to format for {}\n{}", file, replacements.error());
         return edits;
     }
 

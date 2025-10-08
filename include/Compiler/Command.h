@@ -1,16 +1,27 @@
 #pragma once
 
+#include <expected>
+
 #include "Support/Enum.h"
 #include "Support/Format.h"
-#include <expected>
+
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
-#include "llvm/ADT/ArrayRef.h"
 
 namespace clice {
 
 struct CommandOptions {
+    /// Ignore unknown commands.
+    bool ignore_unknown = true;
+
+    /// The commands that you want to remove from original commands list.
+    llvm::ArrayRef<std::string> remove;
+
+    /// The commands that you want to add to original commands list.
+    llvm::ArrayRef<std::string> append;
+
     /// Attach resource directory to the command.
     bool resource_dir = false;
 
@@ -19,7 +30,7 @@ struct CommandOptions {
 
     /// Suppress the warning log if failed to query driver info.
     /// Set true in unittests to avoid cluttering test output.
-    bool suppress_log = false;
+    bool suppress_logging = false;
 };
 
 class CompilationDatabase {
@@ -39,6 +50,12 @@ public:
 
         /// The canonical command list.
         llvm::ArrayRef<const char*> arguments;
+
+        /// The extra command @...
+        llvm::StringRef response_file;
+
+        /// The original index of the response file argument in the command list.
+        std::uint32_t response_file_index = 0;
     };
 
     struct DriverInfo {
@@ -81,6 +98,12 @@ public:
 
     CompilationDatabase();
 
+    CompilationDatabase(CompilationDatabase&& other);
+
+    CompilationDatabase& operator= (CompilationDatabase&& other);
+
+    ~CompilationDatabase();
+
     auto save_string(this Self& self, llvm::StringRef string) -> llvm::StringRef;
 
     auto save_cstring_list(this Self& self, llvm::ArrayRef<const char*> arguments)
@@ -95,19 +118,24 @@ public:
 
     /// Update with arguments.
     auto update_command(this Self& self,
-                        llvm::StringRef dictionary,
+                        llvm::StringRef directory,
                         llvm::StringRef file,
                         llvm::ArrayRef<const char*> arguments) -> UpdateInfo;
 
     /// Update with full command.
     auto update_command(this Self& self,
-                        llvm::StringRef dictionary,
+                        llvm::StringRef directory,
                         llvm::StringRef file,
                         llvm::StringRef command) -> UpdateInfo;
 
     /// Update commands from json file and return all updated file.
     auto load_commands(this Self& self, llvm::StringRef json_content, llvm::StringRef workspace)
         -> std::expected<std::vector<UpdateInfo>, std::string>;
+
+    auto process_command(this Self& self,
+                         llvm::StringRef file,
+                         const CommandInfo& info,
+                         const CommandOptions& options) -> std::vector<const char*>;
 
     /// Get compile command from database. `file` should has relative path of workspace.
     auto get_command(this Self& self, llvm::StringRef file, CommandOptions options = {})
@@ -119,11 +147,26 @@ public:
                                llvm::ArrayRef<std::string> compile_commands_dirs,
                                llvm::StringRef workspace) -> void;
 
+    auto commands_size() {
+        return command_infos.size();
+    }
+
+    auto begin() {
+        return command_infos.begin();
+    }
+
+    auto end() {
+        return command_infos.end();
+    }
+
 private:
     /// If file not found in CDB file, try to guess commands or use the default case.
     auto guess_or_fallback(this Self& self, llvm::StringRef file) -> LookupInfo;
 
 private:
+    /// The opaque handle of `ArgumentParser`.
+    void* parser;
+
     /// The memory pool to hold all cstring and command list.
     llvm::BumpPtrAllocator allocator;
 
@@ -174,10 +217,10 @@ struct DenseMapInfo<llvm::ArrayRef<const char*>> {
 
 template <>
 struct std::formatter<clice::CompilationDatabase::QueryDriverError> :
-    std::formatter<llvm::StringRef> {
+    std::formatter<std::string_view> {
 
     template <typename FormatContext>
-    auto format(clice::CompilationDatabase::QueryDriverError& e, FormatContext& ctx) const {
+    auto format(const clice::CompilationDatabase::QueryDriverError& e, FormatContext& ctx) const {
         return std::format_to(ctx.out(), "{} {}", e.kind.name(), e.detail);
     }
 };

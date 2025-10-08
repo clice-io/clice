@@ -27,6 +27,17 @@ suite<"GlobPattern"> glob_pattern_tests = [] {
         expect(that % Pat3.has_value() == false);
     };
 
+    test("MaxSubGlob") = [&] {
+        auto Pat1 = clice::GlobPattern::create("{AAA,BBB,AB*}");
+        expect(that % Pat1.has_value() == true);
+        expect(that % Pat1->match("AAA") == true);
+        expect(that % Pat1->match("BBB") == true);
+        expect(that % Pat1->match("AB") == true);
+        expect(that % Pat1->match("ABCD") == true);
+        expect(that % Pat1->match("CCC") == false);
+        expect(that % Pat1->match("ABCDE") == true);
+    };
+
     test("Simple") = [&] {
         PATDEF(Pat1, "node_modules")
         expect(that % Pat1.match("node_modules") == true);

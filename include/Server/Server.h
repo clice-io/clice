@@ -202,6 +202,12 @@ private:
 
     auto on_signature_help(proto::SignatureHelpParams params) -> Result;
 
+    auto on_go_to_declaration(proto::DeclarationParams params) -> Result;
+
+    auto on_go_to_definition(proto::DefinitionParams params) -> Result;
+
+    auto on_find_references(proto::ReferenceParams params) -> Result;
+
     auto on_document_symbol(proto::DocumentSymbolParams params) -> Result;
 
     auto on_document_link(proto::DocumentLinkParams params) -> Result;
@@ -235,6 +241,10 @@ private:
     ActiveFileManager opening_files;
 
     PathMapping mapping;
+
+    config::Config config;
+
+    Indexer indexer;
 };
 
 }  // namespace clice

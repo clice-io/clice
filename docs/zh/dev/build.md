@@ -114,6 +114,23 @@ $ xmake build --all
 
 > --llvm 是可选的，如果不指定的话，xmake 会自动下载我们编译好的预编译二进制
 
+## Dev Container
+
+我们提供了 docker 镜像作为预装环境解决方案，可以有效地解决环境配置问题，可通过下列命令使用（不限脚本调用路径，可以直接运行 ./build.sh）：
+
+```bash
+# construct container
+docker/linux/build.sh
+# run clang container
+docker/linux/run.sh --compiler clang
+# run gcc container
+docker/linux/run.sh --compiler gcc
+# reset container(delete exist container and reset)
+docker/linux/run.sh --reset
+```
+
+> [!NOTE]
+> 当前该功能仍处于 Preview 阶段，仅支持 Linux，后续会提供 Windows 平台版本，并可能存在功能改动
 
 ## Building Docker Image
 

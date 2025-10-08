@@ -1,4 +1,4 @@
-#include "Support/Logger.h"
+#include "Support/Logging.h"
 #include "Server/Server.h"
 
 namespace clice {
@@ -95,7 +95,7 @@ async::Task<> Server::registerCapacity(llvm::StringRef id,
     });
 }
 
-Server::Server() {
+Server::Server() : indexer(database) {
     register_callback<&Server::on_initialize>("initialize");
     register_callback<&Server::on_initialized>("initialized");
     register_callback<&Server::on_shutdown>("shutdown");
@@ -109,6 +109,9 @@ Server::Server() {
     register_callback<&Server::on_completion>("textDocument/completion");
     register_callback<&Server::on_hover>("textDocument/hover");
     register_callback<&Server::on_signature_help>("textDocument/signatureHelp");
+    register_callback<&Server::on_go_to_declaration>("textDocument/declaration");
+    register_callback<&Server::on_go_to_definition>("textDocument/definition");
+    register_callback<&Server::on_find_references>("textDocument/references");
     register_callback<&Server::on_document_symbol>("textDocument/documentSymbol");
     register_callback<&Server::on_document_link>("textDocument/documentLink");
     register_callback<&Server::on_document_format>("textDocument/formatting");
@@ -121,7 +124,7 @@ Server::Server() {
 async::Task<> Server::on_receive(json::Value value) {
     auto object = value.getAsObject();
     if(!object) [[unlikely]] {
-        log::fatal("Invalid LSP message, not an object: {}", value);
+        logging::fatal("Invalid LSP message, not an object: {}", value);
     }
 
     /// If the json object has an `id`, it's a request,
@@ -132,7 +135,7 @@ async::Task<> Server::on_receive(json::Value value) {
     if(auto result = object->getString("method")) {
         method = *result;
     } else [[unlikely]] {
-        log::warn("Invalid LSP message, method not found: {}", value);
+        logging::warn("Invalid LSP message, method not found: {}", value);
         if(id) {
             co_await response(std::move(*id),
                               proto::ErrorCodes::InvalidRequest,
@@ -149,7 +152,7 @@ async::Task<> Server::on_receive(json::Value value) {
     /// Handle request and notification separately.
     auto it = callbacks.find(method);
     if(it == callbacks.end()) {
-        log::info("Ignore unhandled method: {}", method);
+        logging::info("Ignore unhandled method: {}", method);
         co_return;
     }
 
@@ -157,24 +160,24 @@ async::Task<> Server::on_receive(json::Value value) {
         auto current_id = client_request_id++;
         auto start_time = std::chrono::steady_clock::now();
 
-        log::info("<-- Handling request: {}({})", method, current_id);
+        logging::info("<-- Handling request: {}({})", method, current_id);
         auto result = co_await it->second(*this, std::move(params));
         co_await response(std::move(*id), std::move(result));
 
         auto end_time = std::chrono::steady_clock::now();
         auto duration =
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        log::info("--> Handled request: {}({}) {}ms", method, current_id, duration.count());
+        logging::info("--> Handled request: {}({}) {}ms", method, current_id, duration.count());
     } else {
         auto start_time = std::chrono::steady_clock::now();
-        log::info("<-- Handling notification: {}", method);
+        logging::info("<-- Handling notification: {}", method);
 
         auto result = co_await it->second(*this, std::move(params));
 
         auto end_time = std::chrono::steady_clock::now();
         auto duration =
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        log::info("--> Handled notification: {} {}ms", method, duration.count());
+        logging::info("--> Handled notification: {} {}ms", method, duration.count());
     }
 
     co_return;

@@ -53,7 +53,8 @@ void run() {
         init();
     }
 
-    uv_check_result(uv_os_setenv("UV_THREADPOOL_SIZE", "20"));
+    auto pool_size = std::max(std::thread::hardware_concurrency(), 4u);
+    uv_check_result(uv_os_setenv("UV_THREADPOOL_SIZE", std::to_string(pool_size).c_str()));
 
     uv_check_result(uv_run(loop, UV_RUN_DEFAULT));
 

@@ -29,13 +29,15 @@ public:
     void handleDeclOccurrence(const clang::NamedDecl* decl,
                               RelationKind kind,
                               clang::SourceLocation location) {
-        assert(decl && "Invalid decl");
+        if(!decl || location.isInvalid()) {
+            return;
+        }
+
         assert(kind.is_one_of(RelationKind::Declaration,
                               RelationKind::Definition,
                               RelationKind::Reference,
                               RelationKind::WeakReference) &&
                "Invalid kind");
-        assert(location.isValid() && "Invalid location");
 
         /// Forwards to the derived class. Check whether the derived class has
         /// its own implementation to avoid infinite recursion.
@@ -75,8 +77,10 @@ public:
     }
 
     void handleAttrOccurrence(const clang::Attr* attr, clang::SourceRange range) {
-        assert(attr && "Invalid attribute");
-        assert(range.isValid() && "Invalid range");
+        if(!attr || range.isInvalid()) {
+            return;
+        }
+
         if constexpr(!std::same_as<decltype(&SemanticVisitor::handleAttrOccurrence),
                                    decltype(&Derived::handleAttrOccurrence)>) {
             getDerived().handleAttrOccurrence(attr, range);
@@ -92,8 +96,9 @@ public:
                         RelationKind kind,
                         const clang::NamedDecl* target,
                         clang::SourceRange range) {
-        assert(decl && "Invalid decl");
-        assert(target && "Invalid target");
+        if(!decl || !target || range.isInvalid()) {
+            return;
+        }
 
         if constexpr(!std::same_as<decltype(&SemanticVisitor::handleRelation),
                                    decltype(&Derived::handleRelation)>) {
@@ -633,6 +638,7 @@ public:
     }
 
     bool VisitAttr(clang::Attr* attr) {
+
         getDerived().handleAttrOccurrence(attr, attr->getRange());
         return true;
     }

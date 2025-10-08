@@ -146,3 +146,25 @@ Hint: launch clice in the docker container by running the following command:
 
 ```bash
 $ docker run --rm -it --entrypoint bash clice
+```
+
+## Development Container
+
+We provide Docker images as a pre-configured environment to streamline the setup process. You can use the following scripts to manage the development container. These scripts can be run from the project root directory.
+
+```bash
+# Build the development image
+./docker/linux/build.sh
+
+# Run the container with the clang toolchain
+./docker/linux/run.sh --compiler clang
+
+# Run the container with the gcc toolchain
+./docker/linux/run.sh --compiler gcc
+
+# Reset the container (stops and removes the existing one)
+./docker/linux/run.sh --reset
+```
+
+> [!NOTE]
+> This feature is currently in a preview stage and only supports Linux. Windows support will be provided in the future, and the functionality may be subject to change.

@@ -1,0 +1,6 @@
+xmake,3.0.2
+cmake,3.31.8
+python,3.13
+gcc,14
+clang,20
+msvc

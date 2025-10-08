@@ -1,13 +1,17 @@
 #pragma once
 
+#include <deque>
 #include <vector>
+
 #include "Async/Async.h"
-#include "AST/SymbolID.h"
+#include "Compiler/Command.h"
+#include "Index/MergedIndex.h"
+#include "Index/ProjectIndex.h"
+#include "Protocol/Protocol.h"
+
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
-#include "Compiler/Command.h"
-#include "Index/Index.h"
 
 namespace clice {
 
@@ -15,63 +19,44 @@ class CompilationUnit;
 
 class Indexer {
 public:
-    /// Index an opened file, its AST is already builtin
-    /// and PCH is used for it.
-    async::Task<> index(CompilationUnit& unit);
-
-    /// Index an static file.
-    async::Task<> index(llvm::StringRef file);
-
-    using Path = std::string;
-    using PathID = std::uint32_t;
-    using SymbolID = std::uint64_t;
-
-public:
     Indexer(CompilationDatabase& database) : database(database) {}
 
-    PathID getPath(llvm::StringRef path) {
-        auto it = paths.find(path);
-        if(it != paths.end()) {
-            return it->second;
-        }
+    async::Task<> index(llvm::StringRef path);
 
-        auto id = path_storage.size();
-        path_storage.emplace_back(path);
-        paths.try_emplace(path, id);
-        return id;
-    }
+    async::Task<> index(llvm::StringRef path, llvm::StringRef content);
+
+    async::Task<> schedule_next();
+
+    async::Task<> index_all();
+
+    using Result = async::Task<std::vector<proto::Location>>;
+
+    auto lookup(llvm::StringRef path, std::uint32_t offset, RelationKind kind) -> Result;
+
+    auto declaration(llvm::StringRef path, std::uint32_t offset) -> Result;
+
+    auto definition(llvm::StringRef path, std::uint32_t offset) -> Result;
+
+    auto references(llvm::StringRef path, std::uint32_t offset) -> Result;
+
+    /// TODO: Calls ...
+
+    /// TODO: Types ...
 
 private:
-    struct HeaderIndices {
-        using RawIndex = std::pair<std::uint32_t, std::unique_ptr<index::memory::RawIndex>>;
-
-        /// The merged index.
-        std::unique_ptr<index::memory::HeaderIndex> merged;
-
-        llvm::DenseMap<PathID, std::vector<RawIndex>> unmergeds;
-    };
-
     CompilationDatabase& database;
 
-    /// All paths of indices.
-    std::vector<Path> path_storage;
+    index::ProjectIndex project_index;
 
-    /// A map between path and its id.
-    llvm::StringMap<PathID> paths;
+    llvm::DenseMap<std::uint32_t, index::MergedIndex> in_memory_indices;
 
-    /// A map between symbol id and files that contains it.
-    llvm::DenseMap<SymbolID, llvm::DenseSet<PathID>> symbol_indices;
+    /// Currently indexes tasks ...
+    std::vector<async::Task<>> workings;
 
-    /// A map between source file path and its static indices.
-    llvm::DenseMap<PathID, Path> static_indices;
+    /// FIXME: Use a LRU to make sure we won't index a file twice ...
+    std::deque<std::uint32_t> waitings;
 
-    std::uint32_t unmerged_count = 0;
-
-    /// In-memory header indices.
-    llvm::DenseMap<PathID, std::unique_ptr<HeaderIndices>> dynamic_header_indices;
-
-    /// In-memory translation unit indices.
-    llvm::DenseMap<PathID, std::unique_ptr<index::memory::TUIndex>> dynamic_tu_indices;
+    async::Event update_event;
 };
 
 }  // namespace clice

@@ -88,12 +88,6 @@ async def client(
     if resource_dir:
         cmd.append(f"--resource-dir={resource_dir}")
 
-    if hasattr(request, "param") and request.param:
-        if "config_project" in request.param:
-            project_name = request.param["config_project"]
-            config_path = test_data_dir / project_name / "clice.toml"
-            cmd.append(f"--config={config_path}")
-
     client = LSPClient(
         cmd,
         mode,

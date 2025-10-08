@@ -1,16 +1,17 @@
 import pytest
 import asyncio
+from tests.fixtures.client import LSPClient
 
 
 @pytest.mark.asyncio
-async def test_did_open(client, test_data_dir):
+async def test_did_open(client: LSPClient, test_data_dir):
     await client.initialize(test_data_dir / "hello_world")
     await client.did_open("main.cpp")
     await asyncio.sleep(5)
 
 
 @pytest.mark.asyncio
-async def test_did_change(client, test_data_dir):
+async def test_did_change(client: LSPClient, test_data_dir):
     await client.initialize(test_data_dir / "hello_world")
     await client.did_open("main.cpp")
 
@@ -25,9 +26,8 @@ async def test_did_change(client, test_data_dir):
     await asyncio.sleep(5)
 
 
-@pytest.mark.parametrize("client", [{"config_project": "clang_tidy"}], indirect=True)
 @pytest.mark.asyncio
-async def test_clang_tidy(client, test_data_dir):
+async def test_clang_tidy(client: LSPClient, test_data_dir):
     await client.initialize(test_data_dir / "clang_tidy")
     await client.did_open("main.cpp")
     await asyncio.sleep(5)

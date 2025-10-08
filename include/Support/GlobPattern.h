@@ -34,8 +34,8 @@ public:
     /// \param MaxSubPatterns if provided limit the number of allowed subpatterns
     ///                       created from expanding braces otherwise disable
     ///                       brace expansion
-    static std::expected<GlobPattern, std::string>
-        create(llvm::StringRef s, std::optional<size_t> max_subpattern_num = {});
+    static std::expected<GlobPattern, std::string> create(llvm::StringRef s,
+                                                          size_t max_subpattern_num = 100);
 
     // Returns true for glob pattern "*" or "**". Can be used to avoid expensive
     // preparation/acquisition of the input for match().

@@ -1,5 +1,5 @@
 #include "Async/Network.h"
-#include "Support/Logger.h"
+#include "Support/Logging.h"
 
 namespace clice::async::net {
 
@@ -30,7 +30,7 @@ void on_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
 
     /// If an error occurred while reading, we can't continue.
     if(nread < 0) [[unlikely]] {
-        log::fatal("An error occurred while reading: {0}", uv_strerror(nread));
+        logging::fatal("An error occurred while reading: {0}", uv_strerror(nread));
     }
 
     /// We have at most one connection and use default event loop. So there is no data race
@@ -57,7 +57,7 @@ void on_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
             task.dispose();
         } else {
             /// If the message is invalid, we can't continue.
-            log::fatal("Unexpected JSON input: {0}", result);
+            logging::fatal("Unexpected JSON input: {0}", result);
         }
 
         /// Remove the processed message from the buffer.
@@ -107,77 +107,6 @@ void listen(const char* host, unsigned int port, Callback callback) {
     uv_check_result(uv_listen(uv_cast<uv_stream_t>(server), 1, on_connection));
 }
 
-void spawn(llvm::StringRef path, llvm::ArrayRef<std::string> args, Callback callback) {
-    static uv_pipe_t in;
-    static uv_pipe_t out;
-    static uv_pipe_t err;
-
-    net::callback = std::move(callback);
-    writer = reinterpret_cast<uv_stream_t*>(&in);
-
-    uv_check_result(uv_pipe_init(async::loop, &in, 0));
-    uv_check_result(uv_pipe_init(async::loop, &out, 0));
-    uv_check_result(uv_pipe_init(async::loop, &err, 0));
-
-    static uv_process_t process;
-    static uv_process_options_t options;
-
-    static uv_stdio_container_t stdio[3];
-    stdio[0].flags = static_cast<uv_stdio_flags>(UV_CREATE_PIPE | UV_READABLE_PIPE);
-    stdio[0].data.stream = (uv_stream_t*)&in;
-
-    stdio[1].flags = static_cast<uv_stdio_flags>(UV_CREATE_PIPE | UV_WRITABLE_PIPE);
-    stdio[1].data.stream = (uv_stream_t*)&out;
-
-    stdio[2].flags = static_cast<uv_stdio_flags>(UV_CREATE_PIPE | UV_WRITABLE_PIPE);
-    stdio[2].data.stream = (uv_stream_t*)&err;
-
-    options = {[](uv_process_t* req, int64_t exit_status, int term_signal) {
-        printf("Child process exited with status %ld, signal %d\n", exit_status, term_signal);
-        uv_close((uv_handle_t*)req, NULL);
-    }};
-    options.stdio = stdio;
-    options.stdio_count = 3;
-
-    static llvm::SmallString<128> file = path;
-    options.file = file.c_str();
-
-    static llvm::SmallString<1024> buffer;
-    static llvm::SmallVector<char*> argv;
-    std::size_t size = 0;
-    size += path.size() + 1;
-    for(auto& arg: args) {
-        size += arg.size() + 1;
-    }
-    buffer.resize_for_overwrite(size);
-    argv.push_back(buffer.end());
-    buffer.append(path);
-    buffer.push_back('\0');
-    for(auto& arg: args) {
-        argv.push_back(buffer.end());
-        buffer.append(arg);
-        buffer.push_back('\0');
-    }
-    options.args = argv.data();
-
-    uv_check_result(uv_spawn(async::loop, &process, &options));
-    uv_check_result(uv_read_start((uv_stream_t*)&out, net::on_alloc, net::on_read));
-
-    /// FIXME: This implementation is not correct.
-    auto on_read = [](uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
-        if(nread > 0) {
-            log::warn("{0}", llvm::StringRef{buf->base, static_cast<std::size_t>(nread)});
-        } else if(nread < 0) {
-            if(nread != UV_EOF) {
-                log::fatal("An error occurred while reading: {0}", uv_strerror(nread));
-            }
-            uv_close((uv_handle_t*)stream, NULL);
-        }
-    };
-
-    uv_check_result(uv_read_start((uv_stream_t*)&err, net::on_alloc, on_read));
-}
-
 namespace awaiter {
 
 struct write {
@@ -201,7 +130,7 @@ struct write {
 
         uv_write(&req, writer, buf, 2, [](uv_write_t* req, int status) {
             if(status < 0) {
-                log::fatal("An error occurred while writing: {0}", uv_strerror(status));
+                logging::fatal("An error occurred while writing: {0}", uv_strerror(status));
             }
 
             auto& awaiter = uv_cast<struct write>(req);
