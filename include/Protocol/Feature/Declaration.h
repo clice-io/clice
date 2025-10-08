@@ -8,4 +8,6 @@ struct DeclarationClientCapabilities {};
 
 using DeclarationOptions = WorkDoneProgressOptions;
 
+using DeclarationParams = TextDocumentPositionParams;
+
 }  // namespace clice::proto

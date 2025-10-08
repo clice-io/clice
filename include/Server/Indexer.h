@@ -5,7 +5,9 @@
 
 #include "Async/Async.h"
 #include "Compiler/Command.h"
+#include "Index/MergedIndex.h"
 #include "Index/ProjectIndex.h"
+#include "Protocol/Protocol.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -27,12 +29,26 @@ public:
 
     async::Task<> index_all();
 
+    using Result = async::Task<std::vector<proto::Location>>;
+
+    auto lookup(llvm::StringRef path, std::uint32_t offset, RelationKind kind) -> Result;
+
+    auto declaration(llvm::StringRef path, std::uint32_t offset) -> Result;
+
+    auto definition(llvm::StringRef path, std::uint32_t offset) -> Result;
+
+    auto references(llvm::StringRef path, std::uint32_t offset) -> Result;
+
+    /// TODO: Calls ...
+
+    /// TODO: Types ...
+
 private:
     CompilationDatabase& database;
 
     index::ProjectIndex project_index;
 
-    llvm::DenseMap<std::uint32_t, index::TUIndex> in_memory_indices;
+    llvm::DenseMap<std::uint32_t, index::MergedIndex> in_memory_indices;
 
     /// Currently indexes tasks ...
     std::vector<async::Task<>> workings;

@@ -155,8 +155,8 @@ public:
         return position;
     }
 
-    template <typename Range, typename Proj>
-    void to_positions(Range&& range, Proj&& proj) {
+    template <typename Range, typename Proj = std::identity>
+    void to_positions(Range&& range, const Proj&& proj = {}) {
         std::vector<uint32_t> offsets;
         for(auto&& item: range) {
             auto [begin, end] = proj(item);

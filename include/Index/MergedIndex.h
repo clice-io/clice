@@ -130,9 +130,17 @@ struct MergedIndex {
     /// All merged symbol relations.
     llvm::DenseMap<SymbolHash, llvm::DenseMap<Relation, roaring::Roaring>> relations;
 
+    /// FIXME: The content of this file.
+    /// std::string content;
+
+    /// Sorted occurrences cache for fast lookup.
+    std::vector<Occurrence> cache_occurrences;
+
     void remove(llvm::StringRef path);
 
     void merge(llvm::StringRef path, std::uint32_t include, FileIndex& index);
+
+    std::vector<Occurrence> lookup(std::uint32_t offset);
 
     void serialize(this MergedIndex& self, llvm::raw_ostream& out);
 

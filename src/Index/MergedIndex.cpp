@@ -1,3 +1,4 @@
+#include "Support/Compare.h"
 #include "schema_generated.h"
 #include "Index/MergedIndex.h"
 #include "llvm/Support/SHA256.h"
@@ -82,6 +83,34 @@ void MergedIndex::merge(llvm::StringRef path, std::uint32_t include, FileIndex& 
 
     canonical_ref_counts.emplace_back(1);
     max_canonical_id += 1;
+}
+
+std::vector<Occurrence> MergedIndex::lookup(std::uint32_t offset) {
+    if(cache_occurrences.size() != occurrences.size()) {
+        cache_occurrences.clear();
+        for(auto& [occurrence, _]: occurrences) {
+            cache_occurrences.emplace_back(occurrence);
+        }
+        std::ranges::sort(cache_occurrences, refl::less);
+    }
+
+    auto it =
+        std::ranges::lower_bound(cache_occurrences, offset, {}, [](index::Occurrence& occurrence) {
+            return occurrence.range.end;
+        });
+
+    std::vector<index::Occurrence> occurrences;
+    while(it != cache_occurrences.end()) {
+        if(it->range.contains(offset)) {
+            occurrences.emplace_back(*it);
+            it++;
+            continue;
+        }
+
+        break;
+    }
+
+    return occurrences;
 }
 
 }  // namespace clice::index

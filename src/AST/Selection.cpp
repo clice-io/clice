@@ -24,6 +24,12 @@
 
 namespace clice {
 
+#ifdef NDEBUG
+#define LOGGING_DEBUG(...)
+#else
+#define LOGGING_DEBUG(...) logging::debug(__VA_ARGS__)
+#endif
+
 namespace {
 
 using Node = SelectionTree::Node;
@@ -948,10 +954,10 @@ private:
         }
 
         if(!checker.may_hit(S)) {
-            logging::debug("{2}skip: {0} {1}",
-                           print_node_to_string(N, print_policy),
-                           S.printToString(SM),
-                           indent());
+            LOGGING_DEBUG("{2}skip: {0} {1}",
+                          print_node_to_string(N, print_policy),
+                          S.printToString(SM),
+                          indent());
             return true;
         }
 
@@ -971,10 +977,10 @@ private:
     // Performs early hit detection for some nodes (on the earlySourceRange).
     void push(clang::DynTypedNode node) {
         clang::SourceRange Early = early_source_range(node);
-        logging::debug("{2}push: {0} {1}",
-                       print_node_to_string(node, print_policy),
-                       node.getSourceRange().printToString(SM),
-                       indent());
+        LOGGING_DEBUG("{2}push: {0} {1}",
+                      print_node_to_string(node, print_policy),
+                      node.getSourceRange().printToString(SM),
+                      indent());
         nodes.emplace_back();
         nodes.back().data = std::move(node);
         nodes.back().parent = stack.top();
@@ -987,7 +993,7 @@ private:
     // Performs primary hit detection.
     void pop() {
         Node& N = *stack.top();
-        logging::debug("{1}pop: {0}", print_node_to_string(N.data, print_policy), indent(-1));
+        LOGGING_DEBUG("{1}pop: {0}", print_node_to_string(N.data, print_policy), indent(-1));
         claim_tokens_for(N.data, N.selected);
         if(N.selected == no_tokens) {
             N.selected = SelectionTree::Unselected;
@@ -1118,7 +1124,7 @@ private:
         }
 
         if(result && result != no_tokens) {
-            logging::debug("{1}hit selection: {0}", S.printToString(SM), indent());
+            LOGGING_DEBUG("{1}hit selection: {0}", S.printToString(SM), indent());
         }
     }
 
@@ -1243,9 +1249,9 @@ SelectionTree::SelectionTree(CompilationUnit& unit, LocalSourceRange range) :
     print_policy.IncludeNewlines = false;
     auto [begin, end] = range;
 
-    logging::debug("Computing selection for {0}",
-                   clang::SourceRange(SM.getComposedLoc(fid, begin), SM.getComposedLoc(fid, end))
-                       .printToString(SM));
+    LOGGING_DEBUG("Computing selection for {0}",
+                  clang::SourceRange(SM.getComposedLoc(fid, begin), SM.getComposedLoc(fid, end))
+                      .printToString(SM));
 
     nodes = SelectionVisitor::collect(unit, print_policy, range, fid);
     m_root = nodes.empty() ? nullptr : &nodes.front();

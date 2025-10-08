@@ -37,7 +37,7 @@ struct IncludeGraph {
 
     static IncludeGraph from(CompilationUnit& unit);
 
-    std::string getPath(std::uint32_t path_ref) const {
+    llvm::StringRef path(std::uint32_t path_ref) const {
         assert(path_ref < paths.size());
         return paths[path_ref];
     }

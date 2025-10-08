@@ -35,6 +35,8 @@ struct Occurrence {
 
     ///
     SymbolHash target;
+
+    friend bool operator== (const Occurrence&, const Occurrence&) = default;
 };
 
 struct FileIndex {

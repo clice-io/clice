@@ -61,6 +61,11 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
     /// SignatureHelp
     capabilities.signatureHelpProvider.triggerCharacters = {"(", ")", "{", "}", "<", ">", ","};
 
+    /// FIXME: In the future, we would support work done progress.
+    capabilities.declarationProvider.workDoneProgress = false;
+    capabilities.definitionProvider.workDoneProgress = false;
+    capabilities.referencesProvider.workDoneProgress = false;
+
     /// DocumentSymbol
     capabilities.documentSymbolProvider = {};
 

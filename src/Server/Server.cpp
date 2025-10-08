@@ -109,6 +109,9 @@ Server::Server() : indexer(database) {
     register_callback<&Server::on_completion>("textDocument/completion");
     register_callback<&Server::on_hover>("textDocument/hover");
     register_callback<&Server::on_signature_help>("textDocument/signatureHelp");
+    register_callback<&Server::on_go_to_declaration>("textDocument/declaration");
+    register_callback<&Server::on_go_to_definition>("textDocument/definition");
+    register_callback<&Server::on_find_references>("textDocument/references");
     register_callback<&Server::on_document_symbol>("textDocument/documentSymbol");
     register_callback<&Server::on_document_link>("textDocument/documentLink");
     register_callback<&Server::on_document_format>("textDocument/formatting");
