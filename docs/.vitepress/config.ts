@@ -5,6 +5,7 @@ import { genSidebar } from './theme/sidebar'
 export default defineConfig({
   title: "clice",
   description: "a powerful and modern C++ language server",
+  cleanUrls: true,
   base: '/',
   rewrites: {
     'en/:rest*': ':rest*',
@@ -34,7 +35,6 @@ export default defineConfig({
       { icon: 'discord', link: 'https://discord.gg/PA3UxW2VA3' },
       { icon: 'github', link: 'https://github.com/clice-io/clice' },
     ],
-
     outline: 'deep',
-  }
+  },
 })

@@ -1,19 +1,71 @@
 #pragma once
 
-#include "RawIndex.h"
 #include "IncludeGraph.h"
+#include "AST/SourceCode.h"
+#include "AST/SymbolKind.h"
+#include "AST/RelationKind.h"
+#include "Support/Bitmap.h"
 
-namespace clice::index::memory {
+namespace clice::index {
 
-class TUIndex : public RawIndex {
-public:
+using Range = LocalSourceRange;
+using SymbolHash = std::uint64_t;
 
-public:
-    /// The time of building this index.
-    std::int64_t time;
+struct Relation {
+    RelationKind kind;
 
-    /// The include graph of this index.
-    IncludeGraph graph;
+    std::uint32_t padding = 0;
+
+    LocalSourceRange range;
+
+    SymbolHash target_symbol;
+
+    constexpr void set_definition_range(LocalSourceRange range) {
+        target_symbol = std::bit_cast<SymbolHash>(range);
+    }
+
+    constexpr auto definition_range() {
+        return std::bit_cast<LocalSourceRange>(target_symbol);
+    }
 };
 
-}  // namespace clice::index::memory
+struct Occurrence {
+    /// range of this occurrence.
+    Range range;
+
+    ///
+    SymbolHash target;
+
+    friend bool operator== (const Occurrence&, const Occurrence&) = default;
+};
+
+struct FileIndex {
+    llvm::DenseMap<SymbolHash, std::vector<Relation>> relations;
+
+    std::vector<Occurrence> occurrences;
+};
+
+struct Symbol {
+    std::string name;
+
+    SymbolKind kind;
+
+    /// All files that referenced this symbol.
+    Bitmap reference_files;
+
+    friend bool operator== (const Symbol&, const Symbol&) = default;
+};
+
+using SymbolTable = llvm::DenseMap<SymbolHash, Symbol>;
+
+struct TUIndex {
+    IncludeGraph graph;
+
+    SymbolTable symbols;
+
+    llvm::DenseMap<clang::FileID, FileIndex> file_indices;
+
+    static TUIndex build(CompilationUnit& unit);
+};
+
+}  // namespace clice::index

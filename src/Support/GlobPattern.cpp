@@ -63,9 +63,9 @@ static std::expected<GlobCharSet, std::string> expand(llvm::StringRef s, llvm::S
 // Identify brace expansions in S and return the list of patterns they expand
 // into.
 static std::expected<llvm::SmallVector<std::string, 1>, std::string>
-    parseBraceExpansions(llvm::StringRef s, std::optional<size_t> max_subpattern_num) {
+    parseBraceExpansions(llvm::StringRef s, size_t max_subpattern_num) {
     llvm::SmallVector<std::string> subpatterns = {s.str()};
-    if(!max_subpattern_num || !s.contains('{')) {
+    if(max_subpattern_num == 0 || !s.contains('{')) {
         return subpatterns;
     }
 
@@ -142,7 +142,7 @@ static std::expected<llvm::SmallVector<std::string, 1>, std::string>
         subpattern_num *= be.terms.size();
     }
 
-    if(subpattern_num > *max_subpattern_num) {
+    if(subpattern_num > max_subpattern_num) {
         return std::unexpected{"Too many brace expansions"};
     }
 
@@ -159,8 +159,8 @@ static std::expected<llvm::SmallVector<std::string, 1>, std::string>
     return subpatterns;
 }
 
-std::expected<GlobPattern, std::string>
-    GlobPattern::create(llvm::StringRef s, std::optional<size_t> max_subpattern_num) {
+std::expected<GlobPattern, std::string> GlobPattern::create(llvm::StringRef s,
+                                                            size_t max_subpattern_num) {
     // Store the prefix that does not contain any metacharacter.
     GlobPattern pat;
     size_t prefix_size = s.find_first_of("?*[{\\");

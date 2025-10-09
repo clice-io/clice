@@ -1,37 +1,170 @@
 #include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
 #include "Support/FileSystem.h"
+#include "Support/Logging.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Program.h"
 #include "clang/Driver/Driver.h"
-#include "Support/Logger.h"
 
 namespace clice {
 
+namespace {
+
+bool enable_dash_dash_parsing(const llvm::opt::OptTable& table);
+
+bool enable_grouped_short_options(const llvm::opt::OptTable& table);
+
+template <auto MP1, auto MP2>
+struct Thief {
+    friend bool enable_dash_dash_parsing(const llvm::opt::OptTable& table) {
+        return table.*MP1;
+    }
+
+    friend bool enable_grouped_short_options(const llvm::opt::OptTable& table) {
+        return table.*MP2;
+    }
+};
+
+template struct Thief<&llvm::opt::OptTable::DashDashParsing,
+                      &llvm::opt::OptTable::GroupedShortOptions>;
+
+class ArgumentParser final : public llvm::opt::ArgList {
+public:
+    ArgumentParser(llvm::BumpPtrAllocator& allocator) : allocator(allocator) {}
+
+    ~ArgumentParser() {
+        /// We never use the private `Args` field, so make sure it's empty.
+        if(getArgs().size() != 0) {
+            std::abort();
+        }
+    }
+
+    const char* getArgString(unsigned index) const override {
+        return arguments[index];
+    }
+
+    unsigned getNumInputArgStrings() const override {
+        return arguments.size();
+    }
+
+    const char* MakeArgStringRef(llvm::StringRef s) const override {
+        auto p = allocator.Allocate<char>(s.size() + 1);
+        std::ranges::copy(s, p);
+        p[s.size()] = '\0';
+        return p;
+    }
+
+    inline static auto& option_table = clang::driver::getDriverOptTable();
+
+    void set_arguments(llvm::ArrayRef<const char*> arguments) {
+        if(getArgs().size() != 0) {
+            std::abort();
+        }
+
+        this->arguments = arguments;
+    }
+
+    std::unique_ptr<llvm::opt::Arg> parse_one(unsigned& index) {
+        assert(!enable_dash_dash_parsing(option_table));
+        assert(!enable_grouped_short_options(option_table));
+        return option_table.ParseOneArg(*this, index);
+    }
+
+    void parse(llvm::ArrayRef<const char*> arguments, const auto& on_parse, const auto& on_error) {
+        this->arguments = arguments;
+
+        unsigned it = 0;
+        while(it != arguments.size()) {
+            llvm::StringRef s = arguments[it];
+
+            if(s.empty()) [[unlikely]] {
+                it += 1;
+                continue;
+            }
+
+            auto prev = it;
+            auto arg = parse_one(it);
+            assert(it > prev && "parser failed to consume argument");
+
+            if(!arg) [[unlikely]] {
+                assert(it >= arguments.size() && "unexpected parser error!");
+                assert(it - prev - 1 && "no missing arguments!");
+                on_error(prev, it - prev - 1);
+                break;
+            }
+
+            on_parse(std::move(arg));
+        }
+    }
+
+private:
+    llvm::ArrayRef<const char*> arguments;
+
+    llvm::BumpPtrAllocator& allocator;
+};
+
+using QueryDriverError = CompilationDatabase::QueryDriverError;
+using ErrorKind = CompilationDatabase::QueryDriverError::ErrorKind;
+using options = clang::driver::options::ID;
+
+auto unexpected(ErrorKind kind, std::string message) {
+    return std::unexpected<QueryDriverError>({kind, std::move(message)});
+};
+
+}  // namespace
+
 CompilationDatabase::CompilationDatabase() {
-    using opions = clang::driver::options::ID;
 
     /// Remove the input file, we will add input file ourselves.
-    filtered_options.insert(opions::OPT_INPUT);
+    filtered_options.insert(options::OPT_INPUT);
 
     /// -c and -o are meaningless for frontend.
-    filtered_options.insert(opions::OPT_c);
-    filtered_options.insert(opions::OPT_o);
-    filtered_options.insert(opions::OPT_dxc_Fc);
-    filtered_options.insert(opions::OPT_dxc_Fo);
+    filtered_options.insert(options::OPT_c);
+    filtered_options.insert(options::OPT_o);
+    filtered_options.insert(options::OPT_dxc_Fc);
+    filtered_options.insert(options::OPT_dxc_Fo);
 
     /// Remove all options related to PCH building.
-    filtered_options.insert(opions::OPT_emit_pch);
-    filtered_options.insert(opions::OPT_include_pch);
-    filtered_options.insert(opions::OPT__SLASH_Yu);
-    filtered_options.insert(opions::OPT__SLASH_Fp);
+    filtered_options.insert(options::OPT_emit_pch);
+    filtered_options.insert(options::OPT_include_pch);
+    filtered_options.insert(options::OPT__SLASH_Yu);
+    filtered_options.insert(options::OPT__SLASH_Fp);
 
     /// Remove all options related to C++ module, we will
     /// build module and set deps ourselves.
-    filtered_options.insert(opions::OPT_fmodule_file);
-    filtered_options.insert(opions::OPT_fmodule_output);
-    filtered_options.insert(opions::OPT_fprebuilt_module_path);
+    filtered_options.insert(options::OPT_fmodule_file);
+    filtered_options.insert(options::OPT_fmodule_output);
+    filtered_options.insert(options::OPT_fprebuilt_module_path);
+
+    parser = new ArgumentParser(allocator);
+}
+
+CompilationDatabase::CompilationDatabase(CompilationDatabase&& other) :
+    parser(other.parser), allocator(std::move(other.allocator)),
+    string_cache(std::move(other.string_cache)), arguments_cache(std::move(other.arguments_cache)),
+    filtered_options(std::move(other.filtered_options)),
+    command_infos(std::move(other.command_infos)), driver_infos(std::move(other.driver_infos)) {
+    other.parser = nullptr;
+}
+
+CompilationDatabase& CompilationDatabase::operator= (CompilationDatabase&& other) {
+    delete static_cast<ArgumentParser*>(parser);
+    parser = other.parser;
+    other.parser = nullptr;
+
+    allocator = std::move(other.allocator);
+    string_cache = std::move(other.string_cache);
+    arguments_cache = std::move(other.arguments_cache);
+    filtered_options = std::move(other.filtered_options);
+    command_infos = std::move(other.command_infos);
+    driver_infos = std::move(other.driver_infos);
+
+    return *this;
+}
+
+CompilationDatabase::~CompilationDatabase() {
+    delete static_cast<ArgumentParser*>(parser);
 }
 
 auto CompilationDatabase::save_string(this Self& self, llvm::StringRef string) -> llvm::StringRef {
@@ -95,27 +228,6 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
     }
 }
 
-namespace {
-
-llvm::SmallVector<llvm::StringRef, 4> driver_invocation_argv(llvm::StringRef driver) {
-    /// FIXME: MSVC command:` cl /Bv`, should we support it?
-    /// if (driver.starts_with("gcc") || driver.starts_with("g++") || driver.starts_with("clang")) {
-    ///      return {"-E", "-v", "-xc++", "/dev/null"};
-    /// } else if (driver.starts_with("cl") || driver.starts_with("clang-cl")) {
-    ///      return {"/Bv"};
-    /// }
-    return {driver, "-E", "-v", "-xc++", "/dev/null"};
-}
-
-using QueryDriverError = CompilationDatabase::QueryDriverError;
-using ErrorKind = CompilationDatabase::QueryDriverError::ErrorKind;
-
-auto unexpected(ErrorKind kind, std::string message) {
-    return std::unexpected<QueryDriverError>({kind, std::move(message)});
-};
-
-}  // namespace
-
 auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
     -> std::expected<DriverInfo, QueryDriverError> {
     {
@@ -138,6 +250,7 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
     }
 
     auto driver_name = path::filename(driver);
+    driver.consume_back(".exe");
 
     llvm::SmallString<128> output_path;
     if(auto error = llvm::sys::fs::createTemporaryFile("system-includes", "clice", output_path)) {
@@ -148,24 +261,48 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
     bool keep_output_file = true;
     auto clean_up = llvm::make_scope_exit([&output_path, &keep_output_file]() {
         if(keep_output_file) {
-            log::warn("Query driver failed, output file:{}", output_path);
+            logging::warn("Query driver failed, output file:{}", output_path);
             return;
         }
 
         if(auto errc = llvm::sys::fs::remove(output_path)) {
-            log::warn("Fail to remove temporary file: {}", errc.message());
+            logging::warn("Fail to remove temporary file: {}", errc.message());
         }
     });
 
-    bool is_std_err = true;
-    std::optional<llvm::StringRef> redirects[] = {{""}, {""}, {""}};
-    redirects[is_std_err ? 2 : 1] = output_path.str();
+    /// FIXME: Is it possible that the output is not in stderr?
+    std::optional<llvm::StringRef> redirects[3] = {
+        {""},
+        {""},
+        {output_path.str()},
+    };
 
-    llvm::SmallVector argv = driver_invocation_argv(driver);
+#ifdef _WIN32
+    /// If the env is `std::nullopt`, `ExecuteAndWait` will inherit env from parent process,
+    /// which is very important for msvc and clang on windows. Thay depend on the environment
+    /// variables to find correct standard library path.
+    constexpr auto env = std::nullopt;
+
+    llvm::SmallVector<llvm::StringRef, 6> argv;
+    if(driver_name.ends_with("cl") || driver_name.starts_with("clang-cl")) {
+        /// FIXME: MSVC command:` cl /Bv`, should we support it?
+        return unexpected(ErrorKind::InvokeDriverFail,
+                          std::format("Unsupported driver: {}", driver));
+    } else {
+        argv = {driver, "-E", "-v", "-xc++", "NUL"};
+    }
+#else
+    /// FIXME: We should find a better way to convert "LANG=C", this is important
+    /// for gcc with locality. Otherwise, it will output non-ASCII char. We also
+    /// want to inherit the environment variables like windows.
+    llvm::SmallVector<llvm::StringRef> env = {"LANG=C"};
+    llvm::SmallVector<llvm::StringRef> argv = {driver, "-E", "-v", "-xc++", "/dev/null"};
+#endif
+
     std::string message;
     if(int RC = llvm::sys::ExecuteAndWait(driver,
                                           argv,
-                                          /*Env=*/std::nullopt,
+                                          env,
                                           redirects,
                                           /*SecondsToWait=*/0,
                                           /*MemoryLimit=*/0,
@@ -242,7 +379,11 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
         include = buffer;
 
         /// Remove resource dir of the driver.
-        if(err || include.contains("lib/gcc")) {
+        if(err ||
+           include.contains("lib/gcc")
+           /// FIXME: Only for windows, for Mac removing default resource dir
+           /// may result in unexpected error. Figure out it.
+           || include.contains("lib\\clang")) {
             continue;
         }
 
@@ -260,126 +401,109 @@ auto CompilationDatabase::update_command(this Self& self,
                                          llvm::StringRef directory,
                                          llvm::StringRef file,
                                          llvm::ArrayRef<const char*> arguments) -> UpdateInfo {
+    auto parser = static_cast<ArgumentParser*>(self.parser);
+    parser->set_arguments(arguments);
+
     file = self.save_string(file);
     directory = self.save_string(directory);
 
-    llvm::SmallVector<const char*, 16> filtered_arguments;
+    llvm::StringRef response_file;
+    std::uint32_t response_file_index = 0;
 
-    /// Append
-    auto add_argument = [&](llvm::StringRef argument) {
-        auto saved = self.save_string(argument);
-        filtered_arguments.emplace_back(saved.data());
-    };
+    llvm::SmallVector<const char*> canonical_arguments;
 
-    /// Append driver sperately.
-    add_argument(arguments.front());
+    /// We don't want to parse all arguments here, it is time-consuming. But we
+    /// want to remove output and input file from arguments. They are main reasons
+    /// causing different file have different commands.
+    for(unsigned it = 0; it != arguments.size(); it++) {
+        llvm::StringRef argument = arguments[it];
 
-    unsigned missing_arg_index = 0;
-    unsigned missing_arg_count = 0;
-    auto& table = clang::driver::getDriverOptTable();
-
-    /// The driver should be discarded.
-    auto list = table.ParseArgs(arguments.drop_front(), missing_arg_index, missing_arg_count);
-
-    bool remove_pch = false;
-
-    /// Append and filter useless arguments.
-    for(auto arg: list.getArgs()) {
-        auto& opt = arg->getOption();
-        auto id = opt.getID();
-
-        /// Filter options we don't need.
-        if(self.filtered_options.contains(id)) {
+        /// FIXME: Is it possible that file in command and field are different?
+        if(argument == file) {
             continue;
         }
 
-        /// For arguments -I<dir>, convert directory to absolute path.
-        /// i.e xmake will generate commands in this style.
-        if(id == clang::driver::options::OPT_I) {
-            if(arg->getNumValues() == 1) {
-                add_argument("-I");
-                llvm::StringRef value = arg->getValue(0);
-                if(!value.empty() && !path::is_absolute(value)) {
-                    add_argument(path::join(directory, value));
-                } else {
-                    add_argument(value);
-                }
+        /// All possible output options prefix.
+        constexpr static std::string_view output_options[] = {
+            "-o",
+            "--output",
+#ifdef _WIN32
+            "/o",
+            "/Fo",
+            "/Fe",
+#endif
+        };
+
+        /// FIXME: This is a heuristic approach that covers the vast majority of cases, but
+        /// theoretical corner cases exist. For example, `-oxx` might be an argument for another
+        /// command, and processing it this way would lead to its incorrect removal. To fix these
+        /// corner cases, it's necessary to parse the command line fully. Additionally, detailed
+        /// benchmarks should be conducted to determine the time required for parsing command-line
+        /// arguments in order to decide if it's worth doing so.
+        if(ranges::any_of(output_options,
+                          [&](llvm::StringRef option) { return argument.starts_with(option); })) {
+            auto prev = it;
+            auto arg = parser->parse_one(it);
+
+            /// FIXME: How to handle parse error here?
+            if(!arg) {
+                it = prev;
+                continue;
             }
+
+            auto id = arg->getOption().getID();
+            if(id == options::OPT_o || id == options::OPT_dxc_Fo || id == options::OPT__SLASH_o ||
+               id == options::OPT__SLASH_Fo || id == options::OPT__SLASH_Fe) {
+                /// It will point to the next argument start but it also increases
+                /// in the next loop. So decrease it for not skipping next argument.
+                it -= 1;
+                continue;
+            }
+
+            /// This argument doesn't represent output file, just recovery it.
+            it = prev;
+        }
+
+        /// Handle response file.
+        if(argument.starts_with("@")) {
+            if(!response_file.empty()) {
+                logging::warn(
+                    "clice currently supports only one response file in the command, when loads {}",
+                    file);
+            }
+            response_file = self.save_string(argument);
+            response_file_index = it;
             continue;
         }
 
-        /// A workaround to remove extra PCH when cmake
-        /// generate PCH flags for clang.
-        if(id == clang::driver::options::OPT_Xclang) {
-            if(arg->getNumValues() == 1) {
-                if(remove_pch) {
-                    remove_pch = false;
-                    continue;
-                }
-
-                llvm::StringRef value = arg->getValue(0);
-                if(value == "-include-pch") {
-                    remove_pch = true;
-                    continue;
-                }
-            }
-        }
-
-        /// Rewrite the argument to filter arguments, we basically reimplement
-        /// the logic of `Arg::render` to use our allocator to allocate memory.
-        switch(opt.getRenderStyle()) {
-            case llvm::opt::Option::RenderValuesStyle: {
-                for(auto value: arg->getValues()) {
-                    add_argument(value);
-                }
-                break;
-            }
-
-            case llvm::opt::Option::RenderSeparateStyle: {
-                add_argument(arg->getSpelling());
-                for(auto value: arg->getValues()) {
-                    add_argument(value);
-                }
-                break;
-            }
-
-            case llvm::opt::Option::RenderJoinedStyle: {
-                llvm::SmallString<256> first = {arg->getSpelling(), arg->getValue(0)};
-                add_argument(first);
-                for(auto value: llvm::ArrayRef(arg->getValues()).drop_front()) {
-                    add_argument(value);
-                }
-                break;
-            }
-
-            case llvm::opt::Option::RenderCommaJoinedStyle: {
-                llvm::SmallString<256> buffer = arg->getSpelling();
-                for(auto i = 0; i < arg->getNumValues(); i++) {
-                    if(i) {
-                        buffer += ',';
-                    }
-                    buffer += arg->getValue(i);
-                }
-                add_argument(buffer);
-                break;
-            }
-        }
+        canonical_arguments.push_back(self.save_string(argument).data());
     }
 
-    /// Save arguments.
-    arguments = self.save_cstring_list(filtered_arguments);
+    /// Cache the canonical arguments
+    arguments = self.save_cstring_list(canonical_arguments);
 
     UpdateKind kind = UpdateKind::Unchange;
-    CommandInfo info = {directory, arguments};
+    CommandInfo info = {
+        directory,
+        arguments,
+        response_file,
+        response_file_index,
+    };
+
     auto [it, success] = self.command_infos.try_emplace(file.data(), info);
     if(success) {
+        /// If successfully inserted, we are loading new file.
         kind = UpdateKind::Create;
     } else {
-        auto& info = it->second;
-        if(info.directory.data() != directory.data() || info.arguments.data() != arguments.data()) {
+        /// If failed to insert, compare whether need to update. Because we cache
+        /// all the ref structure here, so just comparing the pointer is fine.
+        auto& old_info = it->second;
+        if(old_info.directory.data() != info.directory.data() ||
+           old_info.arguments.data() != info.arguments.data() ||
+           old_info.response_file.data() != info.response_file.data() ||
+           old_info.response_file_index != info.response_file_index) {
             kind = UpdateKind::Update;
-            info.directory = directory;
-            info.arguments = arguments;
+            old_info = info;
         }
     }
 
@@ -396,9 +520,10 @@ auto CompilationDatabase::update_command(this Self& self,
     llvm::SmallVector<const char*, 32> arguments;
     auto [driver, _] = command.split(' ');
     driver = path::filename(driver);
+    driver.consume_back(".exe");
 
     /// FIXME: Use a better to handle this.
-    if(driver.starts_with("cl") || driver.starts_with("clang-cl")) {
+    if(driver.ends_with("cl") || driver.starts_with("clang-cl")) {
         llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
     } else {
         llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
@@ -471,6 +596,158 @@ auto CompilationDatabase::load_commands(this Self& self,
     return infos;
 }
 
+auto CompilationDatabase::process_command(this Self& self,
+                                          llvm::StringRef file,
+                                          const CommandInfo& info,
+                                          const CommandOptions& options)
+    -> std::vector<const char*> {
+
+    /// Store the final result arguments.
+    llvm::SmallVector<const char*, 16> final_arguments;
+
+    auto add_string = [&](llvm::StringRef argument) {
+        auto saved = self.save_string(argument);
+        final_arguments.emplace_back(saved.data());
+    };
+
+    /// Rewrite the argument to filter arguments, we basically reimplement
+    /// the logic of `Arg::render` to use our allocator to allocate memory.
+    auto add_argument = [&](llvm::opt::Arg& arg) {
+        switch(arg.getOption().getRenderStyle()) {
+            case llvm::opt::Option::RenderValuesStyle: {
+                for(auto value: arg.getValues()) {
+                    add_string(value);
+                }
+                break;
+            }
+
+            case llvm::opt::Option::RenderSeparateStyle: {
+                add_string(arg.getSpelling());
+                for(auto value: arg.getValues()) {
+                    add_string(value);
+                }
+                break;
+            }
+
+            case llvm::opt::Option::RenderJoinedStyle: {
+                llvm::SmallString<256> first = {arg.getSpelling(), arg.getValue(0)};
+                add_string(first);
+                for(auto value: llvm::ArrayRef(arg.getValues()).drop_front()) {
+                    add_string(value);
+                }
+                break;
+            }
+
+            case llvm::opt::Option::RenderCommaJoinedStyle: {
+                llvm::SmallString<256> buffer = arg.getSpelling();
+                for(auto i = 0; i < arg.getNumValues(); i++) {
+                    if(i) {
+                        buffer += ',';
+                    }
+                    buffer += arg.getValue(i);
+                }
+                add_string(buffer);
+                break;
+            }
+        }
+    };
+
+    /// Append driver sperately
+    add_string(info.arguments.front());
+
+    using Arg = std::unique_ptr<llvm::opt::Arg>;
+    auto parser = static_cast<ArgumentParser*>(self.parser);
+    auto on_error = [&](int index, int count) {
+        logging::warn("missing argument index: {}, count: {} when parse: {}", index, count, file);
+    };
+
+    /// Prepare for removing arguments.
+    llvm::SmallVector<const char*> remove;
+    for(auto& arg: options.remove) {
+        remove.push_back(self.save_string(arg).data());
+    }
+
+    /// FIXME: Handle unknow remove arguments.
+    llvm::SmallVector<Arg> known_remove_args;
+    parser->parse(
+        remove,
+        [&known_remove_args](Arg arg) { known_remove_args.emplace_back(std::move(arg)); },
+        on_error);
+    auto get_id = [](const Arg& arg) {
+        return arg->getOption().getID();
+    };
+    ranges::sort(known_remove_args, {}, get_id);
+
+    bool remove_pch = false;
+
+    /// FIXME: Append the commands from response file.
+    parser->parse(
+        info.arguments.drop_front(),
+        [&](Arg arg) {
+            auto& opt = arg->getOption();
+            auto id = opt.getID();
+
+            /// Filter options we don't need.
+            if(self.filtered_options.contains(id)) {
+                return;
+            }
+
+            /// Remove arguments in the remove list.
+            auto range = ranges::equal_range(known_remove_args, id, {}, get_id);
+            for(auto& remove: range) {
+                /// Match the -I*.
+                if(remove->getNumValues() == 1 && remove->getValue(0) == llvm::StringRef("*")) {
+                    return;
+                }
+
+                /// Compare each value, convert `const char*` to `llvm::StringRef` for comparing.
+                if(ranges::equal(
+                       arg->getValues(),
+                       remove->getValues(),
+                       [](llvm::StringRef lhs, llvm::StringRef rhs) { return lhs == rhs; })) {
+                    return;
+                }
+            }
+
+            /// For arguments -I<dir>, convert directory to absolute path.
+            /// i.e xmake will generate commands in this style.
+            if(id == options::OPT_I && arg->getNumValues() == 1) {
+                add_string("-I");
+                llvm::StringRef value = arg->getValue(0);
+                if(!value.empty() && !path::is_absolute(value)) {
+                    add_string(path::join(info.directory, value));
+                } else {
+                    add_string(value);
+                }
+                return;
+            }
+
+            /// A workaround to remove extra PCH when cmake generate PCH flags for clang.
+            if(id == options::OPT_Xclang && arg->getNumValues() == 1) {
+                if(remove_pch) {
+                    remove_pch = false;
+                    return;
+                }
+
+                llvm::StringRef value = arg->getValue(0);
+                if(value == "-include-pch") {
+                    remove_pch = true;
+                    return;
+                }
+            }
+
+            add_argument(*arg);
+        },
+        on_error);
+
+    /// FIXME: Do we want to parse append arguments also?
+    for(auto& arg: options.append) {
+        add_string(arg);
+    }
+
+    return llvm::ArrayRef(final_arguments).vec();
+}
+
 auto CompilationDatabase::get_command(this Self& self, llvm::StringRef file, CommandOptions options)
     -> LookupInfo {
     LookupInfo info;
@@ -479,7 +756,7 @@ auto CompilationDatabase::get_command(this Self& self, llvm::StringRef file, Com
     auto it = self.command_infos.find(file.data());
     if(it != self.command_infos.end()) {
         info.directory = it->second.directory;
-        info.arguments = it->second.arguments;
+        info.arguments = self.process_command(file, it->second, options);
     } else {
         info = self.guess_or_fallback(file);
     }
@@ -500,8 +777,8 @@ auto CompilationDatabase::get_command(this Self& self, llvm::StringRef file, Com
                 record("-I");
                 record(system_header);
             }
-        } else if(!options.suppress_log) {
-            log::warn("Failed to query driver:{}, error:{}", driver, driver_info.error());
+        } else if(!options.suppress_logging) {
+            logging::warn("Failed to query driver:{}, error:{}", driver, driver_info.error());
         }
     }
 
@@ -527,7 +804,7 @@ auto CompilationDatabase::guess_or_fallback(this Self& self, llvm::StringRef fil
             // Filter case that dir is /path/to/foo and there's another directory /path/to/foobar
             if(other.starts_with(dir) &&
                (other.size() == dir.size() || path::is_separator(other[dir.size()]))) {
-                log::info("Guess command for:{}, from existed file: {}", file, other_file);
+                logging::info("Guess command for:{}, from existed file: {}", file, other_file);
                 return LookupInfo{info.directory, info.arguments};
             }
         }
@@ -552,17 +829,17 @@ auto CompilationDatabase::load_compile_database(this Self& self,
         std::string filepath = path::join(dir, "compile_commands.json");
         auto content = fs::read(filepath);
         if(!content) {
-            log::warn("Failed to read CDB file: {}, {}", filepath, content.error());
+            logging::warn("Failed to read CDB file: {}, {}", filepath, content.error());
             return false;
         }
 
         auto load = self.load_commands(*content, workspace);
         if(!load) {
-            log::warn("Failed to load CDB file: {}. {}", filepath, load.error());
+            logging::warn("Failed to load CDB file: {}. {}", filepath, load.error());
             return false;
         }
 
-        log::info("Load CDB file: {} successfully, {} items loaded", filepath, load->size());
+        logging::info("Load CDB file: {} successfully, {} items loaded", filepath, load->size());
         return true;
     };
 
@@ -570,7 +847,7 @@ auto CompilationDatabase::load_compile_database(this Self& self,
         return;
     }
 
-    log::warn(
+    logging::warn(
         "Can not found any valid CDB file from given directories, search recursively from workspace: {} ...",
         workspace);
 
@@ -597,7 +874,8 @@ auto CompilationDatabase::load_compile_database(this Self& self,
     }
 
     /// TODO: Add a default command in clice.toml. Or load commands from .clangd ?
-    log::warn("Can not found any valid CDB file in current workspace, fallback to default mode.");
+    logging::warn(
+        "Can not found any valid CDB file in current workspace, fallback to default mode.");
 }
 
 }  // namespace clice

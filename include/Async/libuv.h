@@ -16,7 +16,7 @@
 #include <system_error>
 
 #include "Support/TypeTraits.h"
-#include "Support/Logger.h"
+#include "Support/Logging.h"
 
 namespace clice::async {
 

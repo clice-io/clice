@@ -95,10 +95,10 @@ struct ServerCapabilities {
     SignatureHelpOptions signatureHelpProvider;
 
     /// The server provides go to declaration support.
-    /// FIXME: DeclarationOptions declarationProvider;
+    DeclarationOptions declarationProvider;
 
     /// The server provides goto definition support.
-    /// FIXME: DefinitionOptions definitionProvider;
+    DefinitionOptions definitionProvider;
 
     /// The server provides goto type definition support.
     /// FIXME: TypeDefinitionOptions typeDefinitionProvider;
@@ -107,7 +107,7 @@ struct ServerCapabilities {
     /// FIXME: ImplementationOptions implementationProvider;
 
     /// The server provides find references support.
-    /// FIXME: ReferenceOptions referencesProvider;
+    ReferenceOptions referencesProvider;
 
     /// The server provides document highlight support.
     /// FIXME: DocumentHighlightOptions documentHighlightProvider;

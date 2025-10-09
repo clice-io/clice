@@ -1,7 +1,7 @@
 #include "Feature/Diagnostic.h"
 #include "Compiler/CompilationUnit.h"
 #include "Server/Convert.h"
-#include "Support/Logger.h"
+#include "Support/Logging.h"
 
 namespace clice::feature {
 
@@ -32,9 +32,9 @@ json::Value diagnostics(PositionEncodingKind kind, PathMapping mapping, Compilat
         if(level == DiagnosticLevel::Note || level == DiagnosticLevel::Remark) {
             /// FIXME: figure out why it may be invalid.
             if(fid.isInvalid()) {
-                log::info("code: {}, message: {}",
-                          raw_diagnostic.id.diagnostic_code(),
-                          raw_diagnostic.message);
+                logging::info("code: {}, message: {}",
+                              raw_diagnostic.id.diagnostic_code(),
+                              raw_diagnostic.message);
                 continue;
             }
 

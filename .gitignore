@@ -37,6 +37,7 @@
 # LSP & IDE
 compile_commands.json
 .vscode/
+.vs/
 .idea/
 
 temp/

@@ -9,7 +9,7 @@ class OpeningFile:
 
 
 class LSPClient(LSPTransport):
-    def __init__(self, commands, mode="stdio", host="127.0.0.1", port=2087):
+    def __init__(self, commands, mode, host, port):
         super().__init__(commands, mode, host, port)
         self.workspace = ""
         self.opening_files: dict[Path, OpeningFile] = {}

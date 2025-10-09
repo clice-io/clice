@@ -47,7 +47,7 @@ char *longestPalindrome_solv2(const char *s) {
         st.add_code_block(cb, "c");
         auto& para = st.add_paragraph();
         para.append_text("para1").append_newline_char();
-        std::println("{}", st.as_markdown());
+        /// std::println("{}", st.as_markdown());
     };
 
     test("BulletList") = [&] {
@@ -60,7 +60,7 @@ char *longestPalindrome_solv2(const char *s) {
                                                                     Paragraph::Kind::Italic);
         st.add_bullet_list().add_item().add_paragraph().append_text("Item5",
                                                                     Paragraph::Kind::Strikethough);
-        std::println("{}", st.as_markdown());
+        /// std::println("{}", st.as_markdown());
     };
 
     test("FullText") = [&] {
@@ -112,7 +112,7 @@ This is *Italic* **Bold** ~~Striketough~~, `InlineCode`
         warnings.add_item().add_paragraph().append_text("warnings3: blah blah...");
         st.add_ruler();
         st.add_code_block("int test_bar(int foo, char **bar, char **baz);\n", "cpp");
-        std::println("{}", st.as_markdown());
+        /// std::println("{}", st.as_markdown());
     };
 };
 

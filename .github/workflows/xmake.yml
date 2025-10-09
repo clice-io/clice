@@ -20,6 +20,42 @@ on:
       - "xmake.lua"
 
 jobs:
+  windows:
+    strategy:
+      matrix:
+        os: [windows-2025]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: branch@master
+          actions-cache-folder: ".xmake-cache"
+          actions-cache-key: ${{ matrix.os }}
+          package-cache: true
+          package-cache-key: ${{ matrix.os }}
+          build-cache: true
+          build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
+
+      - name: Xmake configure
+        run: |
+          xmake config --yes --ci=y --toolchain=clang
+
+      - name: Build clice
+        run: |
+          xmake build --verbose --diagnosis --all
+
+      - name: Install uv for integration tests
+        uses: astral-sh/setup-uv@v6
+
+      - name: Run tests
+        run: xmake test --verbose
+
   linux:
     strategy:
       matrix:
@@ -60,43 +96,7 @@ jobs:
 
       - name: Xmake configure
         run: |
-          xmake config --yes --mode=${{ matrix.build_type }} --toolchain=clang-20
-
-      - name: Build clice
-        run: |
-          xmake build --verbose --diagnosis --all
-
-      - name: Install uv for integration tests
-        uses: astral-sh/setup-uv@v6
-
-      - name: Run tests
-        run: xmake test --verbose
-
-  windows:
-    strategy:
-      matrix:
-        os: [windows-2025]
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup xmake
-        uses: xmake-io/github-action-setup-xmake@v1
-        with:
-          xmake-version: branch@master
-          actions-cache-folder: ".xmake-cache"
-          actions-cache-key: ${{ matrix.os }}
-          package-cache: true
-          package-cache-key: ${{ matrix.os }}
-          build-cache: true
-          build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
-
-      - name: Xmake configure
-        run: |
-          xmake config --yes --toolchain=clang
+          xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang-20
 
       - name: Build clice
         run: |

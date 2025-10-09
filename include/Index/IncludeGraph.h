@@ -37,15 +37,24 @@ struct IncludeGraph {
 
     static IncludeGraph from(CompilationUnit& unit);
 
-    std::string getPath(std::uint32_t path_ref) const {
+    llvm::StringRef path(std::uint32_t path_ref) const {
         assert(path_ref < paths.size());
         return paths[path_ref];
     }
 
-    std::uint32_t getInclude(clang::FileID fid) const {
+    std::uint32_t include_location_id(clang::FileID fid) const {
         auto it = file_table.find(fid);
         assert(it != file_table.end());
         return it->second;
+    }
+
+    std::uint32_t path_id(clang::FileID fid) {
+        auto include = include_location_id(fid);
+        if(include != -1) {
+            return locations[include].path;
+        } else {
+            return paths.size() - 1;
+        }
     }
 };
 

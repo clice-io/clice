@@ -1,32 +1,38 @@
 import json
 import asyncio
 import logging
-from typing import Any, Callable
+from typing import Any, Callable, Coroutine
+
+
+class LSPError(Exception):
+    pass
 
 
 class LSPTransport:
-    def __init__(self, commands: list[str], mode="stdio", host="127.0.0.1", port=2087):
+    def __init__(self, commands: list[str], mode, host, port):
         self.commands = commands
         self.mode = mode
         self.host = host
         self.port = port
+        self.logger = logging.getLogger(__name__)
 
-        self.process: asyncio.subprocess.Process = None
-        self.reader: asyncio.StreamReader = None
-        self.writer: asyncio.StreamWriter = None
+        self.process: asyncio.subprocess.Process | None = None
+        self.reader: asyncio.StreamReader | None = None
+        self.writer: asyncio.StreamWriter | None = None
 
         self.request_id = 0
         self.pending_requests: dict[int, asyncio.Future] = {}
-        self.notification_handlers: dict[str, Callable[[dict[str, Any]], Any]] = {}
-        self.message_queue: asyncio.Queue = asyncio.Queue()
+        self.notification_handlers: dict[
+            str, Callable[[dict[str, Any] | None], Coroutine[Any, Any, None] | None]
+        ] = {}
+        self.message_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-        )
+        self._tasks: set[asyncio.Task] = set()
+        self._stopping = False
 
     async def start(self):
-        if self.mode == "stdio":
-            logging.info(f"Starting LSP server via stdio: {self.commands}")
+        if self.mode == "pipe":
+            self.logger.info(f"Starting LSP server via stdio: {self.commands}")
             self.process = await asyncio.create_subprocess_exec(
                 *self.commands,
                 stdin=asyncio.subprocess.PIPE,
@@ -35,193 +41,184 @@ class LSPTransport:
             )
             self.reader = self.process.stdout
             self.writer = self.process.stdin
-            logging.info("LSP server started via stdio.")
+            self.logger.info(f"LSP server started with PID {self.process.pid}")
         elif self.mode == "socket":
-            logging.info(
+            self.logger.info(
                 f"Connecting to LSP server via socket: {self.host}:{self.port}"
             )
-            # Note: For socket mode, you usually need to start the LSP server externally
-            # or have it run as a daemon process already. This client will just connect.
-            try:
-                self.reader, self.writer = await asyncio.open_connection(
-                    self.host, self.port
-                )
-                logging.info("Connected to LSP server via socket.")
-            except ConnectionRefusedError:
-                logging.error(
-                    f"Connection refused: No LSP server listening on {self.host}:{self.port}"
-                )
-                raise
-            except Exception as e:
-                logging.error(f"Error connecting via socket: {e}")
-                raise
+            self.reader, self.writer = await asyncio.open_connection(
+                self.host, self.port
+            )
+            self.logger.info("Connected to LSP server via socket")
         else:
-            raise ValueError("Invalid connection mode. Use 'stdio' or 'socket'.")
+            raise ValueError("Invalid connection mode. Use 'pipe' or 'socket'")
 
-        asyncio.create_task(self._read_messages())
-        asyncio.create_task(self._process_messages())
-        if self.process and self.process.stderr:
-            asyncio.create_task(self._read_stderr())
+        self._tasks.add(asyncio.create_task(self._read_messages()))
+        self._tasks.add(asyncio.create_task(self._process_messages()))
+        if self.process:
+            assert self.process.stderr
+            self._tasks.add(asyncio.create_task(self._read_stderr()))
+            self._tasks.add(asyncio.create_task(self._monitor_process()))
 
     async def stop(self):
-        if self.mode == "stdio" and self.process:
-            return_code = await self.process.wait()
-            if return_code != 0:
-                raise RuntimeError("Server exit with error!")
+        if self._stopping:
+            return
+        self._stopping = True
+        self.logger.info("Stopping LSPTransport")
 
-        elif self.mode == "socket" and self.writer:
-            logging.info("Closing socket connection to LSP server.")
-            self.writer.close()
-            await self.writer.wait_closed()
-            logging.info("Socket connection closed.")
+        for task in self._tasks:
+            task.cancel()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+
+        for future in self.pending_requests.values():
+            future.set_exception(asyncio.CancelledError("LSPTransport is stopping"))
+        self.pending_requests.clear()
+
+        if self.writer and not self.writer.is_closing():
+            try:
+                self.writer.close()
+                await self.writer.wait_closed()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        if self.process and self.process.returncode is None:
+            self.logger.info("Terminating LSP server process")
+            try:
+                self.process.terminate()
+                await asyncio.wait_for(self.process.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                self.logger.warning("Process did not terminate gracefully, killing")
+                self.process.kill()
+                await self.process.wait()
+
+        self.logger.info("LSPTransport stopped")
+
+    async def _monitor_process(self):
+        if not self.process:
+            return
+        return_code = await self.process.wait()
+        self.logger.info(f"LSP server process exited with code {return_code}")
+        if not self._stopping:
+            asyncio.create_task(self.stop())
 
     async def _read_stderr(self):
         if not self.process or not self.process.stderr:
             return
-        while True:
-            line = await self.process.stderr.readline()
-            if not line:
-                break
-            logging.error(f"LSP Server STDERR: {line.decode().strip()}")
-
-    async def _parse_header_line(self, header_line: bytes) -> int | None:
-        header_line = header_line.strip()
-        if not header_line:
-            return None
-
-        if header_line.startswith(b"Content-Length:"):
-            try:
-                return int(header_line.split(b":")[1].strip())
-            except ValueError:
-                logging.error(f"Invalid Content-Length header: {header_line.decode()}")
-                return 0
-        if header_line.startswith(b"Content-Type:"):
-            return 0
-
-        logging.warning(f"Unknown header: {header_line.decode()}")
-        return 0
+        try:
+            while not self.process.stderr.at_eof():
+                line = await self.process.stderr.readline()
+                if not line:
+                    break
+                self.logger.error(f"LSP Server STDERR: {line.decode().strip()}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.error(f"Error reading stderr: {e}")
 
     async def _read_messages(self):
-        content_length = 0
-        content_bytes = b""
-
         try:
-            while True:
-                if not self.reader:
-                    logging.info(
-                        "LSP client reader is not available. Exiting _read_messages."
-                    )
+            while self.reader and not self.reader.at_eof():
+                headers = {}
+                while True:
+                    header_line = await self.reader.readline()
+                    if not header_line or header_line == b"\r\n":
+                        break
+                    key, value = header_line.decode("ascii").strip().split(":", 1)
+                    headers[key.strip()] = value.strip()
+
+                if not headers or "Content-Length" not in headers:
                     break
 
-                header_line = await self.reader.readline()
-                if not header_line:
-                    logging.info(
-                        "LSP server output stream closed. Exiting _read_messages."
-                    )
-                    break
-
-                parsed_length = await self._parse_header_line(header_line)
-
-                # Empty line means headers end
-                if parsed_length is None:
-                    if content_length > 0:
-                        content_bytes = await self.reader.readexactly(content_length)
-                        message = json.loads(content_bytes.decode("utf-8"))
-                        await self.message_queue.put(message)
-                        content_length = 0
-                    continue
-
-                if parsed_length > 0:
-                    content_length = parsed_length
-
-        except asyncio.IncompleteReadError as e:
-            logging.error(f"Incomplete message read: {e}")
-        except json.JSONDecodeError as e:
-            decoded_content_attempt = (
-                content_bytes.decode("utf-8", errors="ignore")
-                if content_bytes
-                else "N/A"
-            )
-            logging.error(
-                f"JSON decode error: {e}, Content (attempted): {decoded_content_attempt}"
-            )
+                content_length = int(headers["Content-Length"])
+                body = await self.reader.readexactly(content_length)
+                message = json.loads(body.decode("utf-8"))
+                await self.message_queue.put(message)
+        except (
+            asyncio.IncompleteReadError,
+            ConnectionResetError,
+            BrokenPipeError,
+        ):
+            self.logger.info("Connection to LSP server lost")
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
-            logging.error(f"Error reading messages: {e}")
+            if not self._stopping:
+                self.logger.error(f"Unexpected error in message reader: {e}")
         finally:
-            logging.info("_read_messages task finished.")
+            if not self._stopping:
+                asyncio.create_task(self.stop())
 
     async def _handle_response(self, message: dict[str, Any]):
-        request_id = message["id"]
-        if request_id not in self.pending_requests:
-            logging.warning(
-                f"Received unknown request/response ID: {request_id}, message: {message}"
+        request_id = message.get("id")
+        if request_id is None:
+            return
+
+        future = self.pending_requests.pop(request_id, None)
+        if not future or future.done():
+            self.logger.warning(
+                f"Received response for unknown or cancelled ID: {request_id}"
             )
             return
 
-        future = self.pending_requests.pop(request_id)
         if "result" in message:
             future.set_result(message["result"])
         elif "error" in message:
-            future.set_exception(Exception(f"LSP Error: {message['error']}"))
+            future.set_exception(LSPError(message["error"]))
         else:
             future.set_exception(
-                Exception(f"LSP response missing 'result' or 'error': {message}")
+                LSPError(f"LSP response missing 'result' or 'error': {message}")
             )
 
     async def _handle_notification(self, message: dict[str, Any]):
         method = message["method"]
-        if method not in self.notification_handlers:
-            logging.warning(
-                f"Received unhandled notification: {method}, message: {message}"
-            )
+        handler = self.notification_handlers.get(method)
+        if not handler:
+            self.logger.debug(f"Received unhandled notification: {method}")
             return
-
         try:
-            await self.notification_handlers[method](message.get("params"))
+            params = message.get("params")
+            result = handler(params)
+            if asyncio.iscoroutine(result):
+                await result
         except Exception as e:
-            logging.error(f"Error in notification handler for {method}: {e}")
+            self.logger.error(f"Error in notification handler for {method}: {e}")
 
     async def _process_messages(self):
-        message: dict[str, Any] = None
-
         try:
             while True:
                 message = await self.message_queue.get()
-                logging.debug(f"Received message: {message}")
+                self.logger.debug(f"Received message: {message}")
 
                 if "id" in message:
                     await self._handle_response(message)
                 elif "method" in message:
                     await self._handle_notification(message)
                 else:
-                    logging.warning(f"Received malformed LSP message: {message}")
-
+                    self.logger.warning(f"Received malformed LSP message: {message}")
         except asyncio.CancelledError:
-            logging.info("_process_messages task cancelled.")
+            pass
         except Exception as e:
-            logging.error(f"Critical error processing message: {e}, Message: {message}")
-        finally:
-            logging.info("_process_messages task finished.")
+            if not self._stopping:
+                self.logger.error(f"Critical error processing message: {e}")
+                asyncio.create_task(self.stop())
 
     async def _send_message(self, message: dict[str, Any]):
-        if not self.writer:
-            logging.error("LSP client writer is not available.")
-            return
+        if not self.writer or self.writer.is_closing():
+            raise ConnectionError("LSP client writer is not available or closing")
 
-        encoded_message = json.dumps(message, ensure_ascii=False).encode("utf-8")
-        content_length = len(encoded_message)
-
-        header = (f"Content-Length: {content_length}\r\n\r\n").encode("utf-8")
+        body = json.dumps(message, ensure_ascii=False).encode("utf-8")
+        header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
 
         try:
             self.writer.write(header)
-            self.writer.write(encoded_message)
+            self.writer.write(body)
             await self.writer.drain()
-            logging.debug(
-                f"Sent message: {message.get('method', 'Unknown Method')} (ID: {message.get('id', 'N/A')})"
-            )
-        except Exception as e:
-            logging.error(f"Error sending message: {e}, message: {message}")
+            self.logger.debug(f"Sent message: {message}")
+        except (ConnectionResetError, BrokenPipeError) as e:
+            self.logger.error(f"Error sending message: connection lost. {e}")
+            if not self._stopping:
+                asyncio.create_task(self.stop())
+            raise
 
     async def send_request(
         self, method: str, params: dict[str, Any] | None = None
@@ -234,9 +231,9 @@ class LSPTransport:
             "method": method,
             "params": params if params is not None else {},
         }
-        await self._send_message(message)
-        future = asyncio.Future()
+        future = asyncio.get_running_loop().create_future()
         self.pending_requests[current_id] = future
+        await self._send_message(message)
         return await future
 
     async def send_notification(
@@ -250,6 +247,8 @@ class LSPTransport:
         await self._send_message(message)
 
     def register_notification_handler(
-        self, method: str, handler: Callable[[dict[str, Any]], Any]
+        self,
+        method: str,
+        handler: Callable[[dict[str, Any] | None], Coroutine[Any, Any, None] | None],
     ):
         self.notification_handlers[method] = handler

@@ -1,12 +1,19 @@
 {
+  "name": "docs",
+  "private": true,
   "type": "module",
   "devDependencies": {
     "@types/node": "^24.1.0",
-    "vitepress": "^1.6.3"
+    "vitepress": "^1.6.4"
   },
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
     "docs:preview": "vitepress preview"
+  },
+  "overrides": {
+    "vite": {
+      "esbuild": "0.25.9"
+    }
   }
 }

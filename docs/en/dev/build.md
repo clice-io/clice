@@ -77,12 +77,13 @@ You can also refer to llvm's official build tutorial [Building LLVM with CMake](
 
 ### GCC Toolchain
 
-clice requires `GCC libstdc++ >= 14`. You could use a different GCC toolchain and also link statically against its `libstdc++`:
+clice requires GCC libstdc++ >= 14. You could use a different GCC toolchain and also link statically against its libstdc++:
 
 ```bash
 cmake .. -DCMAKE_C_FLAGS="--gcc-toolchain=/usr/local/gcc-14.3.0/" \
          -DCMAKE_CXX_FLAGS="--gcc-toolchain=/usr/local/gcc-14.3.0/" \
          -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+```
 
 ## Building
 
@@ -112,50 +113,6 @@ $ xmake build --all
 ```
 
 > --llvm is optional. If not specified, xmake will automatically download our precompiled binary
-
-## Run Tests
-
-clice has two forms of tests: unit tests and integration tests.
-
-- Run unit tests:
-
-```bash
-$ ./build/bin/unit_tests --test-dir="./tests/data" --resource-dir="<LLVM_INSTALL_PATH>/lib/clang/20"
-```
-
-Or, run unit tests through xmake:
-
-```bash
-$ xmake run --verbose unit_tests
-```
-
-- Run integration tests:
-
-We recommend using [uv](https://github.com/astral-sh/uv) to manage Python dependencies and versions. If you don't want to download uv, please refer to `pyproject.toml` to download the required Python version and dependencies.
-
-```bash
-$ pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice --resource-dir="<LLVM_INSTALL_PATH>/lib/clang/20"
-```
-
-> resource-dir is clang's built-in header file folder
-
-Or, if you use xmake as the build system, you can directly run tests through xmake:
-
-```shell
-$ xmake test --verbose
-$ xmake test --verbose integration_tests/default
-```
-
-Or, if you use xmake build the project and do not have uv installed, you can use the following script:
-
-```bash
-$ pip install pytest pytest-asyncio
-$ xmake f -m debug && xmake build unit_tests
-
-$ pytest -s --log-cli-level=INFO tests/integration \
-    --executable=./build/linux/x86_64/debug/clice \
-    --resource-dir=./build/linux/x86_64/debug/lib/clang/20/
-```
 
 ## Building Docker Image
 
@@ -189,3 +146,25 @@ Hint: launch clice in the docker container by running the following command:
 
 ```bash
 $ docker run --rm -it --entrypoint bash clice
+```
+
+## Development Container
+
+We provide Docker images as a pre-configured environment to streamline the setup process. You can use the following scripts to manage the development container. These scripts can be run from the project root directory.
+
+```bash
+# Build the development image
+./docker/linux/build.sh
+
+# Run the container with the clang toolchain
+./docker/linux/run.sh --compiler clang
+
+# Run the container with the gcc toolchain
+./docker/linux/run.sh --compiler gcc
+
+# Reset the container (stops and removes the existing one)
+./docker/linux/run.sh --reset
+```
+
+> [!NOTE]
+> This feature is currently in a preview stage and only supports Linux. Windows support will be provided in the future, and the functionality may be subject to change.

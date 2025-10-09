@@ -3,9 +3,9 @@
 namespace clice {
 
 async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
-    log::info("Initialize from client: {}, version: {}",
-              params.clientInfo.name,
-              params.clientInfo.version);
+    logging::info("Initialize from client: {}, version: {}",
+                  params.clientInfo.name,
+                  params.clientInfo.version);
 
     /// FIXME: adjust position encoding.
     kind = PositionEncodingKind::UTF16;
@@ -17,17 +17,22 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
             return *params.rootUri;
         }
 
-        log::fatal("The client should provide one workspace folder or rootUri at least!");
+        logging::fatal("The client should provide one workspace folder or rootUri at least!");
     })());
 
     /// Initialize configuration.
-    config::init(workspace);
+    if(auto result = config.parse(workspace)) {
+        logging::info("Config initialized successfully: {0}", json::serialize(config));
+    } else {
+        logging::warn("Fail to load config, because: {0}", result.error());
+        logging::info("Use default config: {0}", json::serialize(config));
+    }
 
     /// Set server options.
-    opening_files.set_capability(config::server.max_active_file);
+    opening_files.set_capability(config.project.max_active_file);
 
     /// Load compile commands.json
-    database.load_compile_database(config::server.compile_commands_dirs, workspace);
+    database.load_compile_database(config.project.compile_commands_dirs, workspace);
 
     /// Load cache info.
     load_cache_info();
@@ -55,6 +60,11 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
 
     /// SignatureHelp
     capabilities.signatureHelpProvider.triggerCharacters = {"(", ")", "{", "}", "<", ">", ","};
+
+    /// FIXME: In the future, we would support work done progress.
+    capabilities.declarationProvider.workDoneProgress = false;
+    capabilities.definitionProvider.workDoneProgress = false;
+    capabilities.referencesProvider.workDoneProgress = false;
 
     /// DocumentSymbol
     capabilities.documentSymbolProvider = {};
@@ -86,6 +96,7 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
 }
 
 async::Task<> Server::on_initialized(proto::InitializedParams) {
+    co_await indexer.index_all();
     co_return;
 }
 

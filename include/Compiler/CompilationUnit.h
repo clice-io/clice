@@ -12,10 +12,10 @@ namespace clice {
 /// All AST related information needed for language server.
 class CompilationUnit {
 public:
-    /// The kind describes how we preprocess ths source file
+    /// The kind describes how we preprocess this source file
     /// to get this compilation unit.
     enum class Kind : std::uint8_t {
-        /// From preprocessing the source file. Therefore diretives
+        /// From preprocessing the source file. Therefore directives
         /// are available but AST nodes are not.
         Preprocess,
 

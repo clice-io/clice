@@ -1,4 +1,4 @@
-#include "Support/Logger.h"
+#include "Support/Logging.h"
 #include "Test/Tester.h"
 #include "Index/USR.h"
 #include "clang/AST/DeclBase.h"
@@ -36,7 +36,7 @@ struct GetUSRVisitor : public clang::RecursiveASTVisitor<GetUSRVisitor> {
 
         if(offset.has_value() && USR.has_value()) {
             USRs[*offset] = USRInfo{*USR, *offset, decl};
-            // log::info("USR: {} at {}:{}", USR->str(), pos->line, pos->character);
+            // logging::info("USR: {} at {}:{}", USR->str(), pos->line, pos->character);
         }
 
         return true;
@@ -61,7 +61,7 @@ struct USRTester : public Tester {
     llvm::StringRef lookup(llvm::StringRef key) {
         auto iter = USRs.find((*this)["main.cpp", key]);
         if(iter == USRs.end()) {
-            log::fatal("USR not found for key: {}", key);
+            logging::fatal("USR not found for key: {}", key);
         }
         return iter->second.USR;
     }

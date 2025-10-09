@@ -8,4 +8,6 @@ struct DefinitionClientCapabilities {};
 
 using DefinitionOptions = WorkDoneProgressOptions;
 
+using DefinitionParams = TextDocumentPositionParams;
+
 }  // namespace clice::proto

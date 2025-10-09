@@ -100,6 +100,27 @@ async::Task<json::Value> Server::on_signature_help(proto::SignatureHelpParams pa
     }
 }
 
+auto Server::on_go_to_declaration(proto::DeclarationParams params) -> Result {
+    auto path = mapping.to_path(params.textDocument.uri);
+    auto opening_file = opening_files.get_or_add(path);
+    auto offset = to_offset(kind, opening_file->content, params.position);
+    co_return json::serialize(co_await indexer.declaration(path, offset));
+}
+
+auto Server::on_go_to_definition(proto::DefinitionParams params) -> Result {
+    auto path = mapping.to_path(params.textDocument.uri);
+    auto opening_file = opening_files.get_or_add(path);
+    auto offset = to_offset(kind, opening_file->content, params.position);
+    co_return json::serialize(co_await indexer.definition(path, offset));
+}
+
+auto Server::on_find_references(proto::ReferenceParams params) -> Result {
+    auto path = mapping.to_path(params.textDocument.uri);
+    auto opening_file = opening_files.get_or_add(path);
+    auto offset = to_offset(kind, opening_file->content, params.position);
+    co_return json::serialize(co_await indexer.references(path, offset));
+}
+
 auto Server::on_document_symbol(proto::DocumentSymbolParams params) -> Result {
     auto path = mapping.to_path(params.textDocument.uri);
     auto opening_file = opening_files.get_or_add(path);

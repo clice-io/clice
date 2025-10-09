@@ -1,9 +1,10 @@
 #include "Test/Test.h"
+#include "Support/Logging.h"
+#include "Support/GlobPattern.h"
+
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Signals.h"
-#include "Support/GlobPattern.h"
-#include <print>
 
 using namespace clice;
 using namespace clice::testing;
@@ -19,21 +20,31 @@ namespace cl = llvm::cl;
 
 cl::OptionCategory unittest_category("Clice Unittest Options");
 
-cl::opt<std::string> test_dir("test-dir",
-                              cl::desc("Specify the test source directory path"),
-                              cl::value_desc("path"),
-                              cl::Required,
-                              cl::cat(unittest_category));
+cl::opt<std::string> test_dir{
+    "test-dir",
+    cl::desc("Specify the test source directory path"),
+    cl::value_desc("path"),
+    cl::Required,
+    cl::cat(unittest_category),
+};
 
-cl::opt<std::string> resource_dir("resource-dir",
-                                  cl::desc("Resource dir path"),
-                                  cl::cat(unittest_category));
+cl::opt<std::string> resource_dir{
+    "resource-dir",
+    cl::desc("Resource dir path"),
+    cl::cat(unittest_category),
+};
 
-cl::opt<std::string> test_filter("test_filter",
-                                 cl::desc("A glob pattern to run subset of tests"),
-                                 cl::cat(unittest_category));
+cl::opt<std::string> test_filter{
+    "test-filter",
+    cl::desc("A glob pattern to run subset of tests"),
+    cl::cat(unittest_category),
+};
 
-cl::opt<bool> enable_example("enable-example", cl::init(false), cl::cat(unittest_category));
+cl::opt<bool> enable_example{
+    "enable-example",
+    cl::init(false),
+    cl::cat(unittest_category),
+};
 
 std::optional<GlobPattern> pattern;
 
@@ -131,6 +142,13 @@ int Runner::run_tests() {
             continue;
         }
 
+        if(!test_filter.empty()) {
+            auto pos = test_filter.find_first_of('.');
+            if(pos != std::string::npos && test_filter.substr(0, pos) != suite_name) {
+                continue;
+            }
+        }
+
         curr_fatal = false;
         all_skipped = true;
         curr_suite_name = suite_name;
@@ -171,6 +189,8 @@ int main(int argc, const char* argv[]) {
     llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
     llvm::cl::HideUnrelatedOptions(unittest_category);
     llvm::cl::ParseCommandLineOptions(argc, argv, "clice test\n");
+
+    logging::create_stderr_logger("clice", logging::options);
 
     if(!test_filter.empty()) {
         if(auto result = GlobPattern::create(test_filter)) {

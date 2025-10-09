@@ -3,25 +3,10 @@ name: format
 on:
   push:
     branches: [main]
-    paths:
-      - ".clang-format"
-      - ".pre-commit-config.yaml"
-      - "**/*.py"
-      - "pyproject.toml"
-      - "include/**"
-      - "src/**"
-      - "tests/**"
 
   pull_request:
     branches: [main]
-    paths:
-      - ".clang-format"
-      - ".pre-commit-config.yaml"
-      - "**/*.py"
-      - "pyproject.toml"
-      - "include/**"
-      - "src/**"
-      - "tests/**"
+
 
 jobs:
   check:

@@ -8,4 +8,6 @@ struct ReferenceClientCapabilities {};
 
 using ReferenceOptions = WorkDoneProgressOptions;
 
+using ReferenceParams = TextDocumentPositionParams;
+
 }  // namespace clice::proto

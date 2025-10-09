@@ -77,13 +77,13 @@ $ python3 <clice>/scripts/build-llvm-libs.py debug
 
 ### GCC Toolchain
 
-clice 要求 `GCC libstdc++ >= 14` 。以下命令使用不同的 GCC 工具链并静态链接其 `libstdc++`：
+clice 要求 GCC libstdc++ >= 14。以下命令使用不同的 GCC 工具链并静态链接其 libstdc++：
 
 ```bash
 cmake .. -DCMAKE_C_FLAGS="--gcc-toolchain=/usr/local/gcc-14.3.0/" \
          -DCMAKE_CXX_FLAGS="--gcc-toolchain=/usr/local/gcc-14.3.0/" \
          -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
-
+```
 
 ## Building
 
@@ -114,48 +114,24 @@ $ xmake build --all
 
 > --llvm 是可选的，如果不指定的话，xmake 会自动下载我们编译好的预编译二进制
 
-## Run Tests
+## Dev Container
 
-clice 有两种形式的测试，单元测试和集成测试。
-
-- 运行单元测试
+我们提供了 docker 镜像作为预装环境解决方案，可以有效地解决环境配置问题，可通过下列命令使用（不限脚本调用路径，可以直接运行 ./build.sh）：
 
 ```bash
-$ ./build/bin/unit_tests --test-dir="./tests/data" --resource-dir="<LLVM_INSTALL_PATH>/lib/clang/20"
+# construct container
+docker/linux/build.sh
+# run clang container
+docker/linux/run.sh --compiler clang
+# run gcc container
+docker/linux/run.sh --compiler gcc
+# reset container(delete exist container and reset)
+docker/linux/run.sh --reset
 ```
 
-或者, 使用 xmake 启动单元测试:
-```bash
-$ xmake run --verbose unit_tests
-```
+> [!NOTE]
+> 当前该功能仍处于 Preview 阶段，仅支持 Linux，后续会提供 Windows 平台版本，并可能存在功能改动
 
-- 运行集成测试
-
-我们推荐使用 [uv](https://github.com/astral-sh/uv) 管理 python 依赖和版本。如果不想下载 uv，请参考 `pyproject.toml` 下载所需的 python 版本和依赖。
-
-```bash
-$ pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice --resource-dir="<LLVM_INSTALL_PATH>/lib/clang/20"
-```
-
-> resource-dir 是 clang 的内置头文件文件夹
-
-如果你使用 xmake 作为构建系统，可以直接通过 xmake 运行测试：
-
-```shell
-$ xmake test --verbose
-$ xmake test --verbose integration_tests/default
-```
-
-在使用 xmake 构建和不使用 uv 的情况下, 启动 debug 模式的测试:
-
-```shell
-$ pip install pytest pytest-asyncio
-$ xmake f -m debug && xmake build unit_tests
-
-$ pytest -s --log-cli-level=INFO tests/integration \
-    --executable=./build/linux/x86_64/debug/clice \
-    --resource-dir=./build/linux/x86_64/debug/lib/clang/20/
-```
 ## Building Docker Image
 
 使用以下命令构建 docker 镜像：
