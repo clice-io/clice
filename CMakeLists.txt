@@ -54,19 +54,7 @@ if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 endif()
 
-if (MSVC)
-    # Remove any RTTI or exception enabling flags from CMAKE_CXX_FLAGS
-    string(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    string(REPLACE "/GR" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-
-    # Fix MSVC Non-standard preprocessor caused error C1189
-    # While compiling Command.cpp, MSVC won't expand Options macro correctly
-    # Output: D:\Desktop\code\clice\build\.packages\l\llvm\20.1.5\cc2aa9f1d09a4b71b6fa3bf0011f6387\include\clang/Driver/Options.inc(3590): error C2365: “clang::driver::options::OPT_”: redefinition; previous definition was 'enumerator'
-    set(CLICE_CXX_FLAGS "/GR-;/EHsc-;/Zc:preprocessor;")
-else()
-    set(CLICE_CXX_FLAGS "-fno-rtti;-fno-exceptions;-Wno-deprecated-declarations;-Wno-undefined-inline;")
-endif()
-
+set(CLICE_CXX_FLAGS "-fno-rtti;-fno-exceptions;-Wno-deprecated-declarations;-Wno-undefined-inline;")
 set(CLICE_LINKER_FLAGS "")
 
 if(CLICE_USE_LIBCXX)
@@ -80,12 +68,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     list(APPEND CLICE_CXX_FLAGS "-g;-O0;-fsanitize=address")
     list(APPEND CLICE_LINKER_FLAGS "-fsanitize=address")
 elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-    if(NOT MSVC)
-        # MSVC only supports ASAN
-        message(STATUS "RelWithDebInfo build: Enabling -fsanitize=thread")
-        list(APPEND CLICE_CXX_FLAGS "-fsanitize=thread")
-        list(APPEND CLICE_LINKER_FLAGS "-fsanitize=thread")
-    endif()
+    message(STATUS "RelWithDebInfo build: Enabling -fsanitize=thread")
+    list(APPEND CLICE_CXX_FLAGS "-fsanitize=thread")
+    list(APPEND CLICE_LINKER_FLAGS "-fsanitize=thread")
 else()
     message(STATUS "Release/Default build: Enabling -O3")
     list(APPEND CLICE_CXX_FLAGS "-O3")
