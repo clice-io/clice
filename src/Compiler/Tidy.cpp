@@ -10,7 +10,7 @@
 /// https://github.com/llvm/llvm-project//blob/0865ecc5150b9a55ba1f9e30b6d463a66ac362a6/clang-tools-extra/clangd/ParsedAST.cpp#L547
 /// https://github.com/llvm/llvm-project//blob/0865ecc5150b9a55ba1f9e30b6d463a66ac362a6/clang-tools-extra/clangd/TidyProvider.cpp
 
-#include "Support/Logger.h"
+#include "Support/Logging.h"
 #include "clang-tidy/ClangTidyModuleRegistry.h"
 #include "clang-tidy/ClangTidyOptions.h"
 #include "clang-tidy/ClangTidyCheck.h"
@@ -327,11 +327,11 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         return nullptr;
     }
     auto file_name = input.getFile();
-    log::info("Tidy configure file: {}", file_name);
+    logging::info("Tidy configure file: {}", file_name);
 
     tidy::ClangTidyOptions opts = create_options();
     if(opts.Checks) {
-        log::info("Tidy configure checks: {}", *opts.Checks);
+        logging::info("Tidy configure checks: {}", *opts.Checks);
     }
 
     {
@@ -379,7 +379,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     checker->context.setCurrentFile(file_name);
     checker->context.setSelfContainedDiags(true);
     checker->checks = factories.createChecksForLanguage(&checker->context);
-    log::info("Tidy configure checks: {}", checker->checks.size());
+    logging::info("Tidy configure checks: {}", checker->checks.size());
     clang::Preprocessor* pp = &instance.getPreprocessor();
     for(const auto& check: checker->checks) {
         check->registerPPCallbacks(instance.getSourceManager(), pp, pp);
