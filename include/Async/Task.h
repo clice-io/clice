@@ -248,6 +248,9 @@ public:
     Task& operator= (const Task&) = delete;
 
     Task& operator= (Task&& other) noexcept {
+        if(this == &other) {
+            return *this;
+        }
         if(core) {
             core.destroy();
         }
