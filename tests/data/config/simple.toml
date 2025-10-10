@@ -1,0 +1,96 @@
+### clice configuration
+
+# This section outlines the supported built-in variables for clice.
+# These variables can be referenced in strings using the syntax `${var}`.
+
+# Supported variables:
+# - `${version}`:         The version of clice.
+# - `${binary}`:          The path of the clice binary.
+# - `${llvm_version}`:    The LLVM version used by clice.
+# - `${workspace}`:       The workspace directory provided by the client.
+
+[server]
+    # Compile commands directories to search for compile_commands.json files.
+    compile_commands_dirs = ["${workspace}/build"]
+
+    # Enable experimental clang-tidy diagnostics.
+    # This feature is tracked in https://github.com/clice-project/clice/issues/90.
+    clang_tidy = false
+
+    # Maximum number of active files to keep in memory. If the number of active files
+    # exceeds this limit, the least recently used files will be removed.
+    # The default value is 8. Whatever the number you set, the minimum is 1, the maximum is 512.
+    max_active_file = 8
+
+# Cache configuration for storing precompiled headers and modules.
+[cache]
+    # Directory for storing PCH and PCM files.
+    dir = "${workspace}/.clice/cache"
+
+    # Maximum number of cache files to keep. If the total exceeds this limit, clice
+    # deletes the oldest files automatically. Set to 0 to disable the limit.
+    limit = 0
+
+# Index configuration for symbol and feature indexing.
+[index]
+    # Directory for storing index files.
+    dir = "${workspace}/.clice/index"
+
+    # Whether to index entities in implicit template instantiations.
+    implicitInstantiation = true
+
+# Control the behavior for specific files. Note that Clice matches rules
+# in order. If you want to add your own rules, either delete this rule
+# or insert your rule before it.
+[[rules]]
+    # Files matching the specified pattern will have this rule applied.
+    #
+    # Patterns can use the following syntax:
+    # - `*`: Matches one or more characters in a path segment.
+    # - `?`: Matches a single character in a path segment.
+    # - `**`: Matches any number of path segments, including none.
+    # - `{}`: Groups conditions (e.g., `**/*.{ts,js}` matches all TypeScript
+    #   and JavaScript files).
+    # - `[]`: Declares a range of characters to match in a path segment
+    #   (e.g., `example.[0-9]` matches `example.0`, `example.1`, etc.).
+    # - `[!...]`: Negates a range of characters to match in a path segment
+    #   (e.g., `example.[!0-9]` matches `example.a`, `example.b`, but not `example.0`).
+    pattern = "**/*"
+
+    # Commands to append to the original command list (e.g., ["-std=c++17"]).
+    append = ["-std=c++114514"]
+
+    # Commands to remove from the original command list.
+    remove = ["-foo"]
+
+    # Controls whether the file is treated as readonly.
+    # Possible values: ["auto", "always", "never"]
+    #
+    # - "auto": Treats the file as readonly until you edit it.
+    # - "always": Always treats the file as readonly.
+    # - "never": Always treats the file as non-readonly.
+    #
+    # Readonly means the file is not editable, and LSP requests such as
+    # code actions or completions will not be sent to the server. This avoids
+    # dynamic computation and allows pre-indexed results to be loaded directly,
+    # improving performance.
+    readonly = "auto"
+
+    # Controls how header files are treated.
+    # Possible values: ["auto", "always", "never"]
+    #
+    # - "auto": Attempts to infer the header context first. If no header context
+    #   is found, the file will be treated as a normal source file.
+    # - "always": Always treats the file as a header file. If no header context
+    #   is found, errors will be reported.
+    # - "never": Always treats the file as a source file.
+    #
+    # Header context refers to the related source files or additional metadata
+    # linked to the header file.
+    header = "auto"
+
+    # Specifies extra header contexts (file paths) for the file.
+    # Normally, header contexts are inferred automatically once the file is indexed.
+    # However, if you need immediate context before indexing completes, you can
+    # provide it manually using this field.
+    contexts = []
