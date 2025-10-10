@@ -6,10 +6,11 @@
 namespace clice::logging {
 
 using Level = spdlog::level::level_enum;
+using ColorMode = spdlog::color_mode;
 
 struct Options {
     Level level = Level::info;
-    bool color = false;
+    ColorMode color = ColorMode::automatic;
 };
 
 extern Options options;

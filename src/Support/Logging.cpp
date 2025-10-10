@@ -11,11 +11,7 @@ Options options;
 
 void create_stderr_logger(std::string_view name, const Options& options) {
     std::shared_ptr<spdlog::logger> logger;
-    if(options.color) {
-        logger = spdlog::stderr_color_mt(std::string(name));
-    } else {
-        logger = spdlog::stderr_logger_mt(std::string(name));
-    }
+    logger = spdlog::stderr_color_mt(std::string(name), options.color);
     logger->set_level(options.level);
     logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [thread %t] [%s:%#] %v");
     spdlog::set_default_logger(std::move(logger));
