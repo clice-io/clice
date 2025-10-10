@@ -131,6 +131,10 @@ bool DiagnosticID::is_unused() const {
     return source == DiagnosticSource::Clang && unused_diags.contains(value);
 }
 
+bool is_note(clang::DiagnosticsEngine::Level level) {
+    return level == clang::DiagnosticsEngine::Note || level == clang::DiagnosticsEngine::Remark;
+}
+
 static DiagnosticLevel diagnostic_level(clang::DiagnosticsEngine::Level level) {
     switch(level) {
         case clang::DiagnosticsEngine::Ignored: return DiagnosticLevel::Ignored;
@@ -194,9 +198,9 @@ auto diagnostic_range(const clang::Diagnostic& diagnostic, const clang::LangOpti
     };
 }
 
-class DiagnosticCollector : public clang::DiagnosticConsumer {
+class DiagnosticCollectorImpl : public clang::DiagnosticConsumer, public DiagnosticCollector {
 public:
-    DiagnosticCollector(std::shared_ptr<std::vector<Diagnostic>> diagnostics) :
+    DiagnosticCollectorImpl(std::shared_ptr<std::vector<Diagnostic>> diagnostics) :
         diagnostics(diagnostics) {}
 
     void BeginSourceFile(const clang::LangOptions& Opts, const clang::Preprocessor* PP) override {
@@ -209,6 +213,11 @@ public:
 
         auto& diagnostic = diagnostics->emplace_back();
         diagnostic.id.value = raw_diagnostic.getID();
+
+        if(!is_note(level)) {
+            if(transform)
+                level = transform->adjust_level(level, raw_diagnostic);
+        }
         diagnostic.id.level = diagnostic_level(level);
 
         /// TODO:
@@ -229,21 +238,31 @@ public:
             diagnostic.range = range;
         }
 
+        if(transform) {
+            transform->adjust_diag(diagnostic);
+        }
+
         /// TODO: handle FixIts
         /// raw_diagnostic.getFixItHints();
     }
 
     void EndSourceFile() override {}
 
+    void set_transform(DiagnosticTransform* transform) override {
+        this->transform = transform;
+    }
+
 private:
     std::shared_ptr<std::vector<Diagnostic>> diagnostics;
     const clang::LangOptions* options;
     clang::SourceManager* src_mgr;
+    DiagnosticTransform* transform = nullptr;
 };
 
-clang::DiagnosticConsumer*
+std::pair<DiagnosticCollector*, clang::DiagnosticConsumer*>
     Diagnostic::create(std::shared_ptr<std::vector<Diagnostic>> diagnostics) {
-    return new DiagnosticCollector(diagnostics);
+    auto collector = new DiagnosticCollectorImpl(diagnostics);
+    return std::pair{collector, collector};
 }
 
 }  // namespace clice

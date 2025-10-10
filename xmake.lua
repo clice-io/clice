@@ -51,6 +51,7 @@ target("clice-core")
     set_kind("$(kind)")
     add_files("src/**.cpp|Driver/*.cpp", "include/Index/schema.fbs")
     add_includedirs("include", {public = true})
+    add_includedirs("src/Compiler/generated", {public = false})
 
     add_rules("flatbuffers.schema.gen")
     add_packages("flatbuffers")

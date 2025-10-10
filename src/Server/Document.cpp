@@ -320,6 +320,7 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
     params.pch = {pch->path, pch->preamble.size()};
     file->diagnostics->clear();
     params.diagnostics = file->diagnostics;
+    params.clang_tidy = config.project.clang_tidy;
 
     /// Check result
     auto ast = co_await async::submit([&] { return compile(params); });
@@ -330,12 +331,6 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
             logging::warn("{}", diagnostic.message);
         }
         co_return;
-    }
-
-    /// Run Clang-Tidy
-    if(config.project.clang_tidy) {
-        logging::warn(
-            "clang-tidy is not fully supported yet. Tracked in https://github.com/clice-project/clice/issues/90.");
     }
 
     /// Send diagnostics
