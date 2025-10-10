@@ -52,6 +52,8 @@ add_requires("clice-llvm", { alias = "llvm" })
 add_rules("mode.release", "mode.debug", "mode.releasedbg")
 set_languages("c++23")
 add_rules("clice_build_config")
+add_cxflags("--sysroot=/toolchain-build/sysroot/x86_64-linux-gnu/x86_64-linux-gnu/glibc2.39-libstdc++14.3.0-linux6.17 -v -Wl,--verbose", {force = true, tools = {"gcc", "gxx", "clang", "clangxx"}})
+add_ldflags("--verbose -static-libstdc++ -static-libgcc", {force = true})
 
 target("clice-core", function()
 	set_kind("$(kind)")

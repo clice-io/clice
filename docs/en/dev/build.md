@@ -79,4 +79,181 @@ cd llvm-project
 python3 <clice>/scripts/build-llvm-libs.py debug
 ```
 
-You can also refer to LLVM's official build tutorial: [Building LLVM with CMake](https://llvm.org/docs/CMake.html).
+You can also refer to llvm's official build tutorial: [Building LLVM with CMake](https://llvm.org/docs/CMake.html).
+
+### GCC Toolchain
+
+clice requires GCC libstdc++ >= 14. You could use a different GCC toolchain and also link statically against its libstdc++:
+
+```bash
+cmake .. -DCMAKE_C_FLAGS="--gcc-toolchain=/usr/local/gcc-14.3.0/" \
+         -DCMAKE_CXX_FLAGS="--gcc-toolchain=/usr/local/gcc-14.3.0/" \
+         -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+```
+
+## Building
+
+After handling the prerequisites, you can start building clice. We provide two build methods: cmake/xmake.
+
+### CMake
+
+Below are the cmake parameters supported by clice:
+
+- `LLVM_INSTALL_PATH` specifies the installation path of llvm libs
+- `CLICE_ENABLE_TEST` whether to build clice's unit tests
+
+For example:
+
+```bash
+$ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLVM_INSTALL_PATH="./.llvm" -DCLICE_ENABLE_TEST=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+$ cmake --build build
+```
+
+### Xmake
+
+Use the following command to build clice:
+
+```bash
+$ xmake f -c --dev=true --mode=debug --toolchain=clang --llvm="./.llvm" --enable_test=true
+$ xmake build --all
+```
+
+> --llvm is optional. If not specified, xmake will automatically download our precompiled binary
+
+## Dev Container
+
+We provide a complete Docker development container solution with pre-configured compilers, build tools, and all necessary dependencies to completely solve environment configuration issues.
+
+### 🚀 Quick Start
+
+#### Build Development Container
+```bash
+# Build default container (clang + latest version)
+./docker/linux/build.sh
+
+# Build container with specific compiler and version
+./docker/linux/build.sh --compiler gcc --version v1.2.3
+```
+
+#### Run Development Container
+```bash
+# Run default container
+./docker/linux/run.sh
+
+# Run container with specific compiler
+./docker/linux/run.sh --compiler clang
+./docker/linux/run.sh --compiler gcc
+
+# Run container with specific version
+./docker/linux/run.sh --compiler clang --version v1.2.3
+```
+
+#### Container Management
+```bash
+# Reset container (remove existing container)
+./docker/linux/run.sh --reset
+
+# Update container image (pull latest version)
+./docker/linux/run.sh --update
+
+# Rebuild container image
+./docker/linux/run.sh --rebuild
+```
+
+#### Multi-version Testing
+```bash
+# Test different compilers
+./docker/linux/run.sh --compiler gcc
+./docker/linux/run.sh --compiler clang
+
+# Test specific versions
+./docker/linux/run.sh --version v1.0.0
+./docker/linux/run.sh --version latest
+```
+
+### 📋 Container Configuration
+
+#### Supported Parameters
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--compiler` | Compiler type (gcc/clang) | `clang` |
+| `--version` | Version tag | `latest` |
+| `--reset` | Reset container | - |
+| `--rebuild` | Force rebuild image | - |
+| `--update` | Pull latest image | - |
+
+#### Generated Image Naming
+- Format: `clice-io/clice:linux-{compiler}-{version}`
+- Examples:
+  - `clice-io/clice:linux-clang-latest`
+  - `clice-io/clice:linux-gcc-v1.2.3`
+
+### 🔧 Advanced Usage
+
+#### Execute Custom Commands
+```bash
+# Execute specific command in container
+./docker/linux/run.sh "cmake --version && xmake --version"
+
+# Run tests
+./docker/linux/run.sh "cd /clice/build && ctest"
+
+# Interactive debugging
+./docker/linux/run.sh "gdb ./build/clice"
+```
+
+## Building Docker Image
+
+Use the following command to build docker image:
+
+```bash
+$ docker build -t clice .
+```
+
+Run docker image by running the following command:
+
+```bash
+$ docker run --rm -it clice --help
+OVERVIEW: clice is a new generation of language server for C/C++
+...
+```
+
+The directory structure of the docker image is as follows:
+
+```
+/opt/clice
+├── bin
+│   ├── clice -> /usr/local/bin/clice
+├── include
+├── lib
+├── LICENSE
+├── README.md
+```
+
+Hint: launch clice in the docker container by running the following command:
+
+```bash
+$ docker run --rm -it --entrypoint bash clice
+```
+
+## Development Container
+
+We provide Docker images as a pre-configured environment to streamline the setup process. You can use the following scripts to manage the development container. These scripts can be run from the project root directory.
+
+```bash
+# Build the development image
+./docker/linux/build.sh
+
+# Run the container with the clang toolchain
+./docker/linux/run.sh --compiler clang
+
+# Run the container with the gcc toolchain
+./docker/linux/run.sh --compiler gcc
+
+# Reset the container (stops and removes the existing one)
+./docker/linux/run.sh --reset
+```
+
+> [!NOTE]
+> This feature is currently in a preview stage and only supports Linux. Windows support will be provided in the future, and the functionality may be subject to change.
+>>>>>>> 58bcd0e (feat: implement advanced multi-stage dev container architecture)
