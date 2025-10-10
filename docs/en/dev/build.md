@@ -114,6 +114,88 @@ $ xmake build --all
 
 > --llvm is optional. If not specified, xmake will automatically download our precompiled binary
 
+## Dev Container
+
+We provide a complete Docker development container solution with pre-configured compilers, build tools, and all necessary dependencies to completely solve environment configuration issues.
+
+### 🚀 Quick Start
+
+#### Build Development Container
+```bash
+# Build default container (clang + latest version)
+./docker/linux/build.sh
+
+# Build container with specific compiler and version
+./docker/linux/build.sh --compiler gcc --version v1.2.3
+```
+
+#### Run Development Container
+```bash
+# Run default container
+./docker/linux/run.sh
+
+# Run container with specific compiler
+./docker/linux/run.sh --compiler clang
+./docker/linux/run.sh --compiler gcc
+
+# Run container with specific version
+./docker/linux/run.sh --compiler clang --version v1.2.3
+```
+
+#### Container Management
+```bash
+# Reset container (remove existing container)
+./docker/linux/run.sh --reset
+
+# Update container image (pull latest version)
+./docker/linux/run.sh --update
+
+# Rebuild container image
+./docker/linux/run.sh --rebuild
+```
+
+#### Multi-version Testing
+```bash
+# Test different compilers
+./docker/linux/run.sh --compiler gcc
+./docker/linux/run.sh --compiler clang
+
+# Test specific versions
+./docker/linux/run.sh --version v1.0.0
+./docker/linux/run.sh --version latest
+```
+
+### 📋 Container Configuration
+
+#### Supported Parameters
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--compiler` | Compiler type (gcc/clang) | `clang` |
+| `--version` | Version tag | `latest` |
+| `--reset` | Reset container | - |
+| `--rebuild` | Force rebuild image | - |
+| `--update` | Pull latest image | - |
+
+#### Generated Image Naming
+- Format: `clice-io/clice:linux-{compiler}-{version}`
+- Examples:
+  - `clice-io/clice:linux-clang-latest`
+  - `clice-io/clice:linux-gcc-v1.2.3`
+
+### 🔧 Advanced Usage
+
+#### Execute Custom Commands
+```bash
+# Execute specific command in container
+./docker/linux/run.sh "cmake --version && xmake --version"
+
+# Run tests
+./docker/linux/run.sh "cd /clice/build && ctest"
+
+# Interactive debugging
+./docker/linux/run.sh "gdb ./build/clice"
+```
+
 ## Building Docker Image
 
 Use the following command to build docker image:
