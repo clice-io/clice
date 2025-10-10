@@ -1,0 +1,8 @@
+[project]
+name = "clice-dev-utils"
+version = "0.1.0"
+description = "Python dependencies for clice's development container build scripts."
+requires-python = ">=3.13"
+dependencies = [
+    "python-gnupg"
+]
