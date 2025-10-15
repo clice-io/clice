@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include "IncludeGraph.h"
 #include "AST/SourceCode.h"
 #include "AST/SymbolKind.h"
