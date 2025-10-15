@@ -125,8 +125,11 @@ private:
 
 TUIndex TUIndex::build(CompilationUnit& unit) {
     TUIndex index;
+    index.built_at = unit.build_at();
+
     Builder builder(index, unit);
     builder.build();
+
     return index;
 }
 

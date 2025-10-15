@@ -152,6 +152,9 @@ template <typename Action,
 CompilationResult run_clang(CompilationParams& params,
                             const BeforeExecute& before_execute = no_hook,
                             const AfterExecute& after_execute = no_hook) {
+    namespace chrono = std::chrono;
+    auto build_at = chrono::system_clock::now().time_since_epoch();
+
     auto diagnostics =
         params.diagnostics ? params.diagnostics : std::make_shared<std::vector<Diagnostic>>();
     auto diagnostic_engine =
@@ -243,18 +246,22 @@ CompilationResult run_clang(CompilationParams& params,
         resolver.emplace(instance->getSema());
     }
 
+    auto build_end = chrono::system_clock::now().time_since_epoch();
+
     auto impl = new CompilationUnit::Impl{
         .interested = pp.getSourceManager().getMainFileID(),
         .src_mgr = instance->getSourceManager(),
         .action = std::move(action),
         .instance = std::move(instance),
-        .m_resolver = std::move(resolver),
+        .resolver = std::move(resolver),
         .buffer = std::move(token_buffer),
-        .m_directives = std::move(directives),
-        .pathCache = llvm::DenseMap<clang::FileID, llvm::StringRef>(),
-        .symbolHashCache = llvm::DenseMap<const void*, std::uint64_t>(),
+        .directives = std::move(directives),
+        .path_cache = llvm::DenseMap<clang::FileID, llvm::StringRef>(),
+        .symbol_hash_cache = llvm::DenseMap<const void*, std::uint64_t>(),
         .diagnostics = diagnostics,
         .top_level_decls = std::move(top_level_decls),
+        .build_at = chrono::duration_cast<chrono::milliseconds>(build_at),
+        .build_duration = chrono::duration_cast<chrono::milliseconds>(build_end - build_at),
     };
 
     CompilationUnit unit(params.kind, impl);

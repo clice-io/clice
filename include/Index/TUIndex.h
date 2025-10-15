@@ -59,6 +59,10 @@ struct Symbol {
 using SymbolTable = llvm::DenseMap<SymbolHash, Symbol>;
 
 struct TUIndex {
+    /// The building timestamp of this file.
+    std::chrono::milliseconds built_at;
+
+    /// The include information of this file.
     IncludeGraph graph;
 
     SymbolTable symbols;
