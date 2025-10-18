@@ -66,13 +66,13 @@ public:
     /// Lookup the occurrence in corresponding offset.
     void lookup(this const Self& self,
                 std::uint32_t offset,
-                llvm::function_ref<bool(Occurrence)> callback);
+                llvm::function_ref<bool(const Occurrence&)> callback);
 
     /// Lookup the relations of given symbol.
     void lookup(this const Self& self,
                 SymbolHash symbol,
                 RelationKind kind,
-                llvm::function_ref<bool(Relation)> callback);
+                llvm::function_ref<bool(const Relation&)> callback);
 
     /// Remove the index of specific path id.
     void remove(this Self& self, std::uint32_t path_id);

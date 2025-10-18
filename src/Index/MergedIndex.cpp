@@ -100,7 +100,7 @@ struct MergedIndex::Impl {
     llvm::DenseMap<SymbolHash, llvm::DenseMap<Relation, roaring::Roaring>> relations;
 
     /// Sorted occurrences cache for fast lookup.
-    std::vector<Occurrence> cache_occurrences;
+    std::vector<Occurrence> occurrences_cache;
 
     friend bool operator== (const Impl&, const Impl&) = default;
 };
@@ -165,7 +165,6 @@ MergedIndex::~MergedIndex() {
 }
 
 void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
-
     auto index = self.impl;
 
     fbs::FlatBufferBuilder builder(1024);
@@ -227,29 +226,27 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
 
 void MergedIndex::lookup(this const Self& self,
                          std::uint32_t offset,
-                         llvm::function_ref<bool(Occurrence)> callback) {
-
-    std::vector<index::Occurrence> occurrences;
-
+                         llvm::function_ref<bool(const Occurrence&)> callback) {
     if(self.impl) {
-        auto& impl = *self.impl;
-        if(impl.cache_occurrences.size() != occurrences.size()) {
-            impl.cache_occurrences.clear();
-            for(auto& [occurrence, _]: occurrences) {
-                impl.cache_occurrences.emplace_back(occurrence);
+        auto& index = *self.impl;
+        auto& occurrences = index.occurrences_cache;
+        if(occurrences.empty()) {
+            for(auto& [o, _]: index.occurrences) {
+                occurrences.emplace_back(o);
             }
-            std::ranges::sort(impl.cache_occurrences, refl::less);
+            ranges::sort(occurrences, refl::less);
         }
 
-        auto it = std::ranges::lower_bound(
-            impl.cache_occurrences,
-            offset,
-            {},
-            [](index::Occurrence& occurrence) { return occurrence.range.end; });
+        auto it = ranges::lower_bound(occurrences, offset, {}, [](index::Occurrence& o) {
+            return o.range.end;
+        });
 
-        while(it != impl.cache_occurrences.end()) {
+        while(it != occurrences.end()) {
             if(it->range.contains(offset)) {
-                occurrences.emplace_back(*it);
+                if(!callback(*it)) {
+                    break;
+                }
+
                 it++;
                 continue;
             }
@@ -257,13 +254,60 @@ void MergedIndex::lookup(this const Self& self,
             break;
         }
     } else if(self.buffer) {
+        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBuffer().data());
+        auto& occurrences = *index->occurrences();
+
+        auto it = ranges::lower_bound(occurrences, offset, {}, [](auto o) {
+            return o->occurrence()->range().end();
+        });
+
+        while(it != occurrences.end()) {
+            auto o = safe_cast<Occurrence>(it->occurrence());
+            if(o->range.contains(offset)) {
+                if(!callback(*o)) {
+                    break;
+                }
+
+                it++;
+                continue;
+            }
+
+            break;
+        }
     }
 }
 
 void MergedIndex::lookup(this const Self& self,
                          SymbolHash symbol,
                          RelationKind kind,
-                         llvm::function_ref<bool(Relation)> callback) {}
+                         llvm::function_ref<bool(const Relation&)> callback) {
+
+    if(self.impl) {
+        auto& relations = self.impl->relations[symbol];
+        for(auto& [relation, _]: relations) {
+            if(!callback(relation)) {
+                break;
+            }
+        }
+    } else if(self.buffer) {
+        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBuffer().data());
+        auto& entries = *index->relations();
+
+        auto it = ranges::lower_bound(entries, symbol, {}, [](auto e) { return e->symbol(); });
+        if(it == entries.end() || it->symbol() != symbol) {
+            return;
+        }
+
+        for(auto entry: *it->relations()) {
+            auto r = safe_cast<Relation>(entry->relation());
+            if(r->kind & kind) {
+                if(!callback(*r)) {
+                    break;
+                }
+            }
+        }
+    }
+}
 
 void MergedIndex::remove(this Self& self, std::uint32_t path_id) {
     self.load_in_memory();

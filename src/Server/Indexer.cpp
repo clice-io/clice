@@ -95,7 +95,7 @@ auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind ki
     auto& index = get_index(path_id);
 
     llvm::SmallVector<index::Occurrence> occurrences;
-    index.lookup(offset, [&occurrences](index::Occurrence o) {
+    index.lookup(offset, [&occurrences](const index::Occurrence& o) {
         occurrences.emplace_back(o);
         return true;
     });
@@ -110,7 +110,7 @@ auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind ki
     /// FIXME: We may want to parallelize this ...
     for(auto file: refs) {
         std::vector<LocalSourceRange> results;
-        get_index(file).lookup(symbol_id, kind, [&results](index::Relation r) {
+        get_index(file).lookup(symbol_id, kind, [&results](const index::Relation& r) {
             results.emplace_back(r.range);
             return true;
         });
