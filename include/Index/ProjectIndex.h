@@ -47,7 +47,7 @@ struct ProjectIndex {
 
     SymbolTable symbols;
 
-    void merge(this ProjectIndex& self, TUIndex& index);
+    llvm::SmallVector<std::uint32_t> merge(this ProjectIndex& self, TUIndex& index);
 
     void serialize(this ProjectIndex& self, llvm::raw_ostream& os);
 

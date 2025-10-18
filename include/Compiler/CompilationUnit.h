@@ -166,6 +166,10 @@ public:
 
     auto top_level_decls() -> llvm::ArrayRef<clang::Decl*>;
 
+    std::chrono::milliseconds build_at();
+
+    std::chrono::milliseconds build_duration();
+
     clang::LangOptions& lang_options();
 
     clang::ASTContext& context();

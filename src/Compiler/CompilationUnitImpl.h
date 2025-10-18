@@ -21,27 +21,31 @@ struct CompilationUnit::Impl {
     std::unique_ptr<clang::CompilerInstance> instance;
 
     /// The template resolver used to resolve dependent name.
-    std::optional<TemplateResolver> m_resolver;
+    std::optional<TemplateResolver> resolver;
 
     /// Token information collected during the preprocessing.
     std::optional<clang::syntax::TokenBuffer> buffer;
 
     /// All diretive information collected during the preprocessing.
-    llvm::DenseMap<clang::FileID, Directive> m_directives;
+    llvm::DenseMap<clang::FileID, Directive> directives;
 
-    llvm::DenseSet<clang::FileID> allFiles;
+    llvm::DenseSet<clang::FileID> all_files;
 
     /// Cache for file path. It is used to avoid multiple file path lookup.
-    llvm::DenseMap<clang::FileID, llvm::StringRef> pathCache;
+    llvm::DenseMap<clang::FileID, llvm::StringRef> path_cache;
 
     /// Cache for symbol id.
-    llvm::DenseMap<const void*, std::uint64_t> symbolHashCache;
+    llvm::DenseMap<const void*, std::uint64_t> symbol_hash_cache;
 
-    llvm::BumpPtrAllocator pathStorage;
+    llvm::BumpPtrAllocator path_storage;
 
     std::shared_ptr<std::vector<Diagnostic>> diagnostics;
 
     std::vector<clang::Decl*> top_level_decls;
+
+    std::chrono::milliseconds build_at;
+
+    std::chrono::milliseconds build_duration;
 };
 
 }  // namespace clice
