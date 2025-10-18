@@ -29,6 +29,21 @@ public:
 
     async::Task<> index_all();
 
+    index::MergedIndex& get_index(std::uint32_t path_id) {
+        auto [it, success] = in_memory_indices.try_emplace(path_id);
+        if(!success) {
+            return it->second;
+        }
+
+        auto it2 = project_index.indices.find(path_id);
+        if(it2 != project_index.indices.end()) {
+            auto path = project_index.path_pool.path(it2->second);
+            it->second = index::MergedIndex::load(path);
+        }
+
+        return it->second;
+    }
+
     using Result = async::Task<std::vector<proto::Location>>;
 
     auto lookup(llvm::StringRef path, std::uint32_t offset, RelationKind kind) -> Result;

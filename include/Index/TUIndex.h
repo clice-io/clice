@@ -44,6 +44,8 @@ struct FileIndex {
     llvm::DenseMap<SymbolHash, std::vector<Relation>> relations;
 
     std::vector<Occurrence> occurrences;
+
+    std::array<std::uint8_t, 32> hash();
 };
 
 struct Symbol {

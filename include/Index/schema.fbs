@@ -33,7 +33,7 @@ table HeaderContexts {
 }
 
 table HeaderContextsEntry {
-    path: string;
+    path: uint;
     contexts: HeaderContexts;
 }
 

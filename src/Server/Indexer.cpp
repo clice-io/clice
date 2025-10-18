@@ -31,15 +31,14 @@ async::Task<> Indexer::index(llvm::StringRef path) {
         co_return;
     }
 
-    project_index.merge(*tu_index);
+    auto path_map = project_index.merge(*tu_index);
 
     /// FIXME: Currently, we merge index eagerly, I would like to improve
     /// this in the future.
     for(auto& [fid, index]: tu_index->file_indices) {
-        auto path = tu_index->graph.path(tu_index->graph.path_id(fid));
-        auto& merged_index = in_memory_indices[project_index.path_pool.path_id(path)];
-
-        merged_index.merge(path, tu_index->graph.include_location_id(fid), index);
+        auto path_id = path_map[tu_index->graph.path_id(fid)];
+        auto& merged_index = get_index(path_id);
+        merged_index.merge(path_id, tu_index->graph.include_location_id(fid), index);
     }
 
     logging::info("Successfully index {}", path);
@@ -93,8 +92,13 @@ auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind ki
     std::vector<proto::Location> locations;
 
     auto path_id = project_index.path_pool.path_id(path);
-    auto index = in_memory_indices[path_id];
-    auto occurrences = index.lookup(offset);
+    auto& index = get_index(path_id);
+
+    llvm::SmallVector<index::Occurrence> occurrences;
+    index.lookup(offset, [&occurrences](index::Occurrence o) {
+        occurrences.emplace_back(o);
+        return true;
+    });
     if(occurrences.empty()) {
         co_return locations;
     }
@@ -105,14 +109,11 @@ auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind ki
 
     /// FIXME: We may want to parallelize this ...
     for(auto file: refs) {
-        auto& relations = in_memory_indices[file].relations[symbol_id];
-
         std::vector<LocalSourceRange> results;
-        for(auto& [relation, _]: relations) {
-            if(relation.kind & kind) {
-                results.emplace_back(relation.range);
-            }
-        }
+        get_index(file).lookup(symbol_id, kind, [&results](index::Relation r) {
+            results.emplace_back(r.range);
+            return true;
+        });
 
         llvm::StringRef path = project_index.path_pool.path(file);
         auto content = fs::read(path);
