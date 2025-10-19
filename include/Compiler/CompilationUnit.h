@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include "Directive.h"
 #include "Compiler/Diagnostic.h"
 #include "AST/SymbolID.h"

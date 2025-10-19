@@ -22,7 +22,8 @@ suite<"TUIndex"> suite = [] {
                       llvm::StringRef file = "") -> std::vector<index::Occurrence> {
         auto offset = tester.point(pos, file);
         auto fid = file.empty() ? tester.unit->interested_file() : tester.unit->file_id(file);
-        auto& index = tu_index.file_indices[fid];
+        auto& index = fid == tester.unit->interested_file() ? tu_index.main_file_index
+                                                            : tu_index.file_indices[fid];
 
         auto it = std::ranges::lower_bound(
             index.occurrences,
@@ -74,7 +75,8 @@ suite<"TUIndex"> suite = [] {
                            dump(range));
 
         auto fid = file.empty() ? tester.unit->interested_file() : tester.unit->file_id(file);
-        auto& index = tu_index.file_indices[fid];
+        auto& index = fid == tester.unit->interested_file() ? tu_index.main_file_index
+                                                            : tu_index.file_indices[fid];
 
         auto it = index.relations.find(occurrences.front().target);
         fatal / expect(it != index.relations.end(), location)
@@ -98,8 +100,7 @@ suite<"TUIndex"> suite = [] {
             }
         )");
 
-        expect(eq(tu_index.file_indices.size(), 1));
-        auto& index = tu_index.file_indices.begin()->second;
+        auto& index = tu_index.main_file_index;
         expect(eq(index.relations.size(), 2));
         expect(eq(index.occurrences.size(), 3));
 

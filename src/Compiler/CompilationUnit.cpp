@@ -119,8 +119,15 @@ auto CompilationUnit::interested_content() -> llvm::StringRef {
 }
 
 bool CompilationUnit::is_builtin_file(clang::FileID fid) {
-    auto path = file_path(fid);
-    return path == "<built-in>" || path == "<command line>" || path == "<scratch space>";
+    // No FileEntryRef => built-in/command line/scratch.
+    if(!impl->src_mgr.getFileEntryRefForID(fid)) {
+        if(auto buffer = impl->src_mgr.getBufferOrNone(fid)) {
+            auto name = buffer->getBufferIdentifier();
+            return name == "<built-in>" || name == "<command line>" || name == "<scratch space>";
+        }
+    }
+
+    return false;
 }
 
 auto CompilationUnit::start_location(clang::FileID fid) -> clang::SourceLocation {

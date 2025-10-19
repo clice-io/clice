@@ -67,7 +67,7 @@ suite<"MergedIndex"> suite = [] {
 
             merged.serialize(os);
 
-            auto view = index::MergedIndex(s.data());
+            auto view = index::MergedIndex(s);
             expect(merged == view);
         }
     };

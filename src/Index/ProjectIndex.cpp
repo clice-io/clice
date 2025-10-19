@@ -30,10 +30,10 @@ void ProjectIndex::serialize(this ProjectIndex& self, llvm::raw_ostream& os) {
 
     auto i = 0;
     auto paths = transform(self.path_pool.paths, [&](llvm::StringRef path) {
-        auto enrty =
+        auto entry =
             binary::CreatePathEntry(builder, CreateString(builder, self.path_pool.paths[i]), i);
         i += 1;
-        return enrty;
+        return entry;
     });
 
     auto indices = transform(self.indices, [&](auto&& value) {

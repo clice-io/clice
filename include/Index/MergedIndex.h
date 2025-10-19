@@ -12,37 +12,29 @@ private:
 
     using Self = MergedIndex;
 
-    MergedIndex(std::unique_ptr<llvm::MemoryBuffer> buffer, Impl* impl) :
-        buffer(std::move(buffer)), impl(impl) {}
+    MergedIndex(std::unique_ptr<llvm::MemoryBuffer> buffer, std::unique_ptr<Impl> impl);
 
     void load_in_memory(this Self& self);
 
 public:
-    MergedIndex() = default;
+    MergedIndex();
 
-    MergedIndex(llvm::StringRef data) :
-        MergedIndex(llvm::MemoryBuffer::getMemBuffer(data, "", false), nullptr) {}
+    MergedIndex(llvm::StringRef data);
 
     MergedIndex(const MergedIndex&) = delete;
 
-    MergedIndex(MergedIndex&& other) : buffer(std::move(other.buffer)), impl(other.impl) {
-        other.impl = nullptr;
-    }
+    MergedIndex(MergedIndex&& other);
 
     MergedIndex& operator= (const MergedIndex&) = delete;
 
-    MergedIndex& operator= (MergedIndex&& other) {
-        std::swap(buffer, other.buffer);
-        std::swap(impl, other.impl);
-        return *this;
-    }
+    MergedIndex& operator= (MergedIndex&& other);
 
     ~MergedIndex();
 
     /// Load merged index from disk
     static MergedIndex load(llvm::StringRef path);
 
-    /// Serialie it to binary format.
+    /// Serialize it to binary format.
     void serialize(this const Self& self, llvm::raw_ostream& out);
 
     /// Lookup the occurrence in corresponding offset.
@@ -85,7 +77,7 @@ private:
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
     /// The in memory data of the index.
-    Impl* impl = nullptr;
+    std::unique_ptr<Impl> impl;
 };
 
 }  // namespace clice::index

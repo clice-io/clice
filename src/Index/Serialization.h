@@ -15,8 +15,11 @@ using Offsets = llvm::SmallVector<fbs::Offset<T>, 0>;
 
 template <typename U, typename V>
 const U* safe_cast(const V* v) {
-    static_assert(sizeof(U) == sizeof(V));
-    assert((void(std::bit_cast<U>(V{})), true));
+    static_assert(sizeof(U) == sizeof(V), "size mismatch");
+    static_assert(alignof(U) == alignof(V), "alignment mismatch");
+    static_assert(std::is_trivially_copyable_v<U> && std::is_trivially_copyable_v<V>,
+                  "requires trivially copyable");
+    /// If aliasing issues arise, prefer copying into a temporary SmallVector<U>.
     return reinterpret_cast<const U*>(v);
 }
 

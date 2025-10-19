@@ -54,7 +54,7 @@ struct DenseMapInfo<clice::index::Relation> {
         };
     }
 
-    /// Contextual doen't take part in hashing and equality.
+    /// Contextual doesn’t take part in hashing and equality.
     static auto getHashValue(const R& relation) {
         return dense_hash(relation.kind.value(),
                           relation.range.begin,
@@ -167,18 +167,32 @@ struct MergedIndex::Impl {
     friend bool operator== (const Impl&, const Impl&) = default;
 };
 
+MergedIndex::MergedIndex(std::unique_ptr<llvm::MemoryBuffer> buffer, std::unique_ptr<Impl> impl) :
+    buffer(std::move(buffer)), impl(std::move(impl)) {}
+
+MergedIndex::MergedIndex() = default;
+
+MergedIndex::MergedIndex(llvm::StringRef data) :
+    MergedIndex(llvm::MemoryBuffer::getMemBuffer(data, "", false), nullptr) {}
+
+MergedIndex::MergedIndex(MergedIndex&& other) = default;
+
+MergedIndex& MergedIndex::operator= (MergedIndex&& other) = default;
+
+MergedIndex::~MergedIndex() = default;
+
 void MergedIndex::load_in_memory(this Self& self) {
     if(self.impl) {
         return;
     }
 
-    self.impl = new MergedIndex::Impl();
+    self.impl = std::make_unique<MergedIndex::Impl>();
     if(!self.buffer) {
         return;
     }
 
     auto& index = *self.impl;
-    auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBuffer().data());
+    auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
 
     index.max_canonical_id = root->max_canonical_id();
 
@@ -236,12 +250,17 @@ MergedIndex MergedIndex::load(llvm::StringRef path) {
     }
 }
 
-MergedIndex::~MergedIndex() {
-    delete impl;
-}
-
 void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
-    auto index = self.impl;
+    if(self.buffer) {
+        out.write(self.buffer->getBufferStart(), self.buffer->getBufferSize());
+        return;
+    }
+
+    if(!self.impl) {
+        return;
+    }
+
+    auto& index = self.impl;
 
     fbs::FlatBufferBuilder builder(1024);
 
@@ -291,7 +310,7 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
     llvm::SmallVector<std::uint64_t> relation_keys;
     relation_keys.reserve(index->relations.size());
     auto relations = transform(index->relations, [&](auto&& value) {
-        auto&& [symbold_id, symbol_relations] = value;
+        auto&& [symbol_id, symbol_relations] = value;
         auto relations = transform(symbol_relations, [&](auto&& value) {
             auto&& [relation, bitmap] = value;
             buffer.clear();
@@ -301,9 +320,9 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                                safe_cast<binary::Relation>(&relation),
                                                CreateVector(builder, buffer));
         });
-        relation_keys.emplace_back(symbold_id);
+        relation_keys.emplace_back(symbol_id);
         return binary::CreateSymbolRelationsEntry(builder,
-                                                  symbold_id,
+                                                  symbol_id,
                                                   CreateVector(builder, relations));
     });
     ranges::sort(views::zip(relation_keys, relations), refl::less, [](auto e) -> auto {
@@ -352,7 +371,7 @@ void MergedIndex::lookup(this const Self& self,
             break;
         }
     } else if(self.buffer) {
-        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBuffer().data());
+        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
         auto& occurrences = *index->occurrences();
 
         auto it = ranges::lower_bound(occurrences, offset, {}, [](auto o) {
@@ -381,7 +400,12 @@ void MergedIndex::lookup(this const Self& self,
                          llvm::function_ref<bool(const Relation&)> callback) {
 
     if(self.impl) {
-        auto& relations = self.impl->relations[symbol];
+        auto it = self.impl->relations.find(symbol);
+        if(it == self.impl->relations.end()) [[unlikely]] {
+            return;
+        }
+
+        auto& relations = it->second;
         for(auto& [relation, _]: relations) {
             if(relation.kind & kind) {
                 if(!callback(relation)) {
@@ -390,11 +414,11 @@ void MergedIndex::lookup(this const Self& self,
             }
         }
     } else if(self.buffer) {
-        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBuffer().data());
+        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
         auto& entries = *index->relations();
 
         auto it = ranges::lower_bound(entries, symbol, {}, [](auto e) { return e->symbol(); });
-        if(it == entries.end() || it->symbol() != symbol) {
+        if(it == entries.end() || it->symbol() != symbol) [[unlikely]] {
             return;
         }
 
@@ -436,7 +460,7 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
 
         return false;
     } else if(self.buffer) {
-        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBuffer().data());
+        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
         if(index->compilation_contexts()->empty()) {
             return true;
         }
