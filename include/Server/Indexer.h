@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "Config.h"
+#include "Convert.h"
 #include "Async/Async.h"
 #include "Compiler/Command.h"
 #include "Index/MergedIndex.h"
@@ -70,6 +71,8 @@ private:
     config::Config& config;
 
     index::ProjectIndex project_index;
+
+    PathMapping mapping;
 
     llvm::DenseMap<std::uint32_t, index::MergedIndex> in_memory_indices;
 

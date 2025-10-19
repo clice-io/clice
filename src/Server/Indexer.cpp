@@ -194,6 +194,8 @@ auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind ki
         });
 
         llvm::StringRef path = project_index.path_pool.path(file);
+
+        /// FIXME: Use the content stored in the merged index.
         auto content = fs::read(path);
         if(!content) {
             continue;
@@ -206,7 +208,7 @@ auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind ki
         for(auto result: results) {
             auto begin = converter.toPosition(result.begin);
             auto end = converter.toPosition(result.end);
-            locations.emplace_back(path.str(), proto::Range(begin, end));
+            locations.emplace_back(mapping.to_uri(path), proto::Range(begin, end));
         }
     }
 
