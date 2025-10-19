@@ -6,7 +6,12 @@ permissions:
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/release.yml"
 
 jobs:
   package:
@@ -18,7 +23,7 @@ jobs:
             asset_name: clice-x64-windows-msvc.7z
             toolchain: clang
 
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             artifact_name: clice.tar.xz
             asset_name: clice-x86_64-linux-gnu.tar.xz
             toolchain: clang-20
@@ -75,6 +80,7 @@ jobs:
           xmake pack
 
       - name: Upload binaries to release
+        if: github.event_name == 'push'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
