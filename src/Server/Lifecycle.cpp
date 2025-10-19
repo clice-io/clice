@@ -96,6 +96,7 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
 }
 
 async::Task<> Server::on_initialized(proto::InitializedParams) {
+    indexer.load_from_disk();
     co_await indexer.index_all();
     co_return;
 }
@@ -106,6 +107,7 @@ async::Task<json::Value> Server::on_shutdown(proto::ShutdownParams params) {
 
 async::Task<> Server::on_exit(proto::ExitParams params) {
     save_cache_info();
+    indexer.save_to_disk();
     async::stop();
     co_return;
 }

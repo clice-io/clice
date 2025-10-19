@@ -3,6 +3,7 @@
 #include <deque>
 #include <vector>
 
+#include "Config.h"
 #include "Async/Async.h"
 #include "Compiler/Command.h"
 #include "Index/MergedIndex.h"
@@ -19,7 +20,8 @@ class CompilationUnit;
 
 class Indexer {
 public:
-    Indexer(CompilationDatabase& database) : database(database) {}
+    Indexer(CompilationDatabase& database, config::Config& config) :
+        database(database), config(config) {}
 
     async::Task<> index(llvm::StringRef path);
 
@@ -46,6 +48,10 @@ public:
 
     using Result = async::Task<std::vector<proto::Location>>;
 
+    void load_from_disk();
+
+    void save_to_disk();
+
     auto lookup(llvm::StringRef path, std::uint32_t offset, RelationKind kind) -> Result;
 
     auto declaration(llvm::StringRef path, std::uint32_t offset) -> Result;
@@ -60,6 +66,8 @@ public:
 
 private:
     CompilationDatabase& database;
+
+    config::Config& config;
 
     index::ProjectIndex project_index;
 

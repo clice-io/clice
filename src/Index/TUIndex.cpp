@@ -115,7 +115,13 @@ public:
             std::ranges::sort(index.occurrences, refl::less);
             auto range = std::ranges::unique(index.occurrences, refl::equal);
             index.occurrences.erase(range.begin(), range.end());
+
+            if(fid == unit.interested_file()) {
+                result.main_file_index = std::move(index);
+            }
         }
+
+        result.file_indices.erase(unit.interested_file());
     }
 
 private:

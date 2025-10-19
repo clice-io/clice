@@ -272,16 +272,24 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
             CreateStructVector<binary::IncludeLocation>(builder, context.include_locations));
     });
 
+    llvm::SmallVector<const Occurrence*> occurrence_keys;
+    occurrence_keys.reserve(index->occurrences.size());
     auto occurrences = transform(index->occurrences, [&](auto&& value) {
         auto&& [occurrence, bitmap] = value;
         buffer.clear();
         buffer.resize_for_overwrite(bitmap.getSizeInBytes(false));
         bitmap.write(buffer.data(), false);
+        occurrence_keys.emplace_back(&occurrence);
         return binary::CreateOccurrenceEntry(builder,
                                              safe_cast<binary::Occurrence>(&occurrence),
                                              CreateVector(builder, buffer));
     });
+    ranges::sort(views::zip(occurrence_keys, occurrences), refl::less, [](auto e) -> auto& {
+        return *std::get<0>(e);
+    });
 
+    llvm::SmallVector<std::uint64_t> relation_keys;
+    relation_keys.reserve(index->relations.size());
     auto relations = transform(index->relations, [&](auto&& value) {
         auto&& [symbold_id, symbol_relations] = value;
         auto relations = transform(symbol_relations, [&](auto&& value) {
@@ -293,9 +301,13 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                                safe_cast<binary::Relation>(&relation),
                                                CreateVector(builder, buffer));
         });
+        relation_keys.emplace_back(symbold_id);
         return binary::CreateSymbolRelationsEntry(builder,
                                                   symbold_id,
                                                   CreateVector(builder, relations));
+    });
+    ranges::sort(views::zip(relation_keys, relations), refl::less, [](auto e) -> auto {
+        return std::get<0>(e);
     });
 
     auto merged_index = binary::CreateMergedIndex(builder,
@@ -371,8 +383,10 @@ void MergedIndex::lookup(this const Self& self,
     if(self.impl) {
         auto& relations = self.impl->relations[symbol];
         for(auto& [relation, _]: relations) {
-            if(!callback(relation)) {
-                break;
+            if(relation.kind & kind) {
+                if(!callback(relation)) {
+                    break;
+                }
             }
         }
     } else if(self.buffer) {
@@ -398,7 +412,7 @@ void MergedIndex::lookup(this const Self& self,
 bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::StringRef> path_mapping) {
     if(self.impl) {
         if(self.impl->compilation_contexts.empty()) {
-            return false;
+            return true;
         }
 
         auto& context = self.impl->compilation_contexts.begin()->getSecond();
@@ -419,10 +433,12 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
                 }
             }
         }
+
+        return false;
     } else if(self.buffer) {
         auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBuffer().data());
         if(index->compilation_contexts()->empty()) {
-            return false;
+            return true;
         }
 
         auto context = *index->compilation_contexts()->begin();
@@ -443,9 +459,11 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
                 }
             }
         }
+
+        return false;
     }
 
-    return false;
+    return true;
 }
 
 void MergedIndex::remove(this Self& self, std::uint32_t path_id) {

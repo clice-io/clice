@@ -59,6 +59,10 @@ public:
     /// Whether this index needs rebuilding.
     bool need_update(this const Self& self, llvm::ArrayRef<llvm::StringRef> path_mapping);
 
+    bool need_rewrite() {
+        return impl != nullptr;
+    }
+
     /// Remove the index of specific path id.
     void remove(this Self& self, std::uint32_t path_id);
 
