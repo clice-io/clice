@@ -6,24 +6,6 @@
 
 namespace clice::index {
 
-struct Context {
-    std::uint32_t include;
-    std::uint32_t canonical_id;
-
-    friend bool operator== (const Context&, const Context&) = default;
-};
-
-struct HeaderContext {
-    std::uint32_t version = 0;
-
-    /// A array of include location and its context id.
-    llvm::SmallVector<Context> includes;
-
-    friend bool operator== (const HeaderContext&, const HeaderContext&) = default;
-};
-
-struct CompilationContext {};
-
 class MergedIndex {
 private:
     struct Impl;
@@ -78,7 +60,10 @@ public:
     void remove(this Self& self, std::uint32_t path_id);
 
     /// Merge the index with given compilation context.
-    void merge(this Self& self, std::uint32_t path_id, std::vector<IncludeLocation> includes);
+    void merge(this Self& self,
+               std::uint32_t path_id,
+               std::vector<IncludeLocation> include_locations,
+               FileIndex& index);
 
     /// Merge the index with given header context.
     void merge(this Self& self, std::uint32_t path_id, std::uint32_t include_id, FileIndex& index);

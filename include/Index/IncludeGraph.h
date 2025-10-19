@@ -19,6 +19,8 @@ struct IncludeLocation {
 
     /// The include location that introduces this file.
     std::uint32_t include = -1;
+
+    friend bool operator== (const IncludeLocation&, const IncludeLocation&) = default;
 };
 
 struct IncludeGraph {

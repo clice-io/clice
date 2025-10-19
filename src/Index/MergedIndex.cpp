@@ -70,22 +70,52 @@ struct DenseMapInfo<clice::index::Relation> {
 
 namespace clice::index {
 
-using HeaderContexts = llvm::DenseMap<std::uint32_t, HeaderContext>;
+struct IncludeContext {
+    std::uint32_t include_id;
+
+    std::uint32_t canonical_id;
+
+    friend bool operator== (const IncludeContext&, const IncludeContext&) = default;
+};
+
+struct HeaderContext {
+    std::uint32_t version = 0;
+
+    llvm::SmallVector<IncludeContext> includes;
+
+    friend bool operator== (const HeaderContext&, const HeaderContext&) = default;
+};
+
+struct CompilationContext {
+    std::uint32_t version = 0;
+
+    std::uint32_t canonical_id = 0;
+
+    std::vector<IncludeLocation> include_locations;
+
+    friend bool operator== (const CompilationContext&, const CompilationContext&) = default;
+};
 
 struct MergedIndex::Impl {
-    /// FIXME: The content of this file.
+    /// The content of corresponding source file.
     std::string content;
 
-    /// A map between source file path and its header contexts.
-    HeaderContexts header_contexts;
+    /// If this file is included by other source file, then it has header contexts.
+    /// The key represents the source file id, value represents the context in the
+    /// source file.
+    llvm::SmallDenseMap<std::uint32_t, HeaderContext, 2> header_contexts;
 
-    /// For each merged index, we will give it a canonical id.
-    /// The max canonical id.
-    std::uint32_t max_canonical_id = 0;
+    /// If this file is compiled as source file, then it has compilation contexts.
+    /// The key represents the compilation command id. File with compilation content
+    /// could provide header contexts for other files.
+    llvm::SmallDenseMap<std::uint32_t, CompilationContext, 1> compilation_contexts;
 
     /// We use the value of SHA256 to judge whether two indices are same.
-    /// Index with same content will be given same canonical id.
+    /// The same indices will be given same canonical id.
     llvm::StringMap<std::uint32_t> canonical_cache;
+
+    /// The max canonical id we have allocated.
+    std::uint32_t max_canonical_id = 0;
 
     /// The reference count of each canonical id.
     std::vector<std::uint32_t> canonical_ref_counts;
@@ -101,6 +131,35 @@ struct MergedIndex::Impl {
 
     /// Sorted occurrences cache for fast lookup.
     std::vector<Occurrence> occurrences_cache;
+
+    void merge(this Impl& self, std::uint32_t path_id, FileIndex& index, auto&& add_context) {
+        auto hash = index.hash();
+        auto hash_key = llvm::StringRef(reinterpret_cast<char*>(hash.data()), hash.size());
+        auto [it, success] = self.canonical_cache.try_emplace(hash_key, self.max_canonical_id);
+
+        auto canonical_id = it->second;
+        add_context(self, canonical_id);
+
+        if(!success) {
+            self.canonical_ref_counts[canonical_id] += 1;
+            self.removed.remove(canonical_id);
+            return;
+        }
+
+        for(auto& occurrence: index.occurrences) {
+            self.occurrences[occurrence].add(canonical_id);
+        }
+
+        for(auto& [symbol_id, relations]: index.relations) {
+            auto& target = self.relations[symbol_id];
+            for(auto& relation: relations) {
+                target[relation].add(canonical_id);
+            }
+        }
+
+        self.canonical_ref_counts.emplace_back(1);
+        self.max_canonical_id += 1;
+    }
 
     friend bool operator== (const Impl&, const Impl&) = default;
 };
@@ -126,15 +185,26 @@ void MergedIndex::load_in_memory(this Self& self) {
 
     index.canonical_ref_counts.resize(index.max_canonical_id, 0);
 
-    HeaderContext contexts;
-    for(auto entry: *root->contexts()) {
-        auto path = entry->path();
-        contexts.version = entry->contexts()->version();
-        for(auto include: *entry->contexts()->includes()) {
+    for(auto entry: *root->header_contexts()) {
+        HeaderContext context;
+        auto path = entry->path_id();
+        context.version = entry->version();
+        for(auto include: *entry->includes()) {
             index.canonical_ref_counts[include->canonical_id()] += 1;
-            contexts.includes.emplace_back(include->include_(), include->canonical_id());
+            context.includes.emplace_back(*safe_cast<IncludeContext>(include));
         }
-        index.header_contexts.try_emplace(path, std::move(contexts));
+        index.header_contexts.try_emplace(path, std::move(context));
+    }
+
+    for(auto entry: *root->compilation_contexts()) {
+        CompilationContext context;
+        auto path = entry->path_id();
+        context.version = entry->version();
+        context.canonical_id = entry->canonical_id();
+        for(auto include: *entry->include_locations()) {
+            context.include_locations.emplace_back(*safe_cast<IncludeLocation>(include));
+        }
+        index.compilation_contexts.try_emplace(path, std::move(context));
     }
 
     for(auto entry: *root->occurrences()) {
@@ -149,6 +219,8 @@ void MergedIndex::load_in_memory(this Self& self) {
                                   read_bitmap(relation_entry->context()));
         }
     }
+
+    self.buffer.reset();
 }
 
 MergedIndex MergedIndex::load(llvm::StringRef path) {
@@ -177,14 +249,22 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
     });
 
     auto header_contexts = transform(index->header_contexts, [&](auto&& value) {
-        auto& [path_id, contexts] = value;
-        return binary::CreateHeaderContextsEntry(
+        auto& [path_id, context] = value;
+        return binary::CreateHeaderContextEntry(
             builder,
             path_id,
-            binary::CreateHeaderContexts(
-                builder,
-                contexts.version,
-                CreateStructVector<binary::Context>(builder, contexts.includes)));
+            context.version,
+            CreateStructVector<binary::IncludeContext>(builder, context.includes));
+    });
+
+    auto compilation_contexts = transform(index->compilation_contexts, [&](auto&& value) {
+        auto& [path_id, context] = value;
+        return binary::CreateCompilationContextEntry(
+            builder,
+            path_id,
+            context.version,
+            context.canonical_id,
+            CreateStructVector<binary::IncludeLocation>(builder, context.include_locations));
     });
 
     auto occurrences = transform(index->occurrences, [&](auto&& value) {
@@ -217,6 +297,7 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                                   index->max_canonical_id,
                                                   CreateVector(builder, canonical_cache),
                                                   CreateVector(builder, header_contexts),
+                                                  CreateVector(builder, compilation_contexts),
                                                   CreateVector(builder, occurrences),
                                                   CreateVector(builder, relations));
     builder.Finish(merged_index);
@@ -329,8 +410,14 @@ void MergedIndex::remove(this Self& self, std::uint32_t path_id) {
 
 void MergedIndex::merge(this Self& self,
                         std::uint32_t path_id,
-                        std::vector<IncludeLocation> includes) {
+                        std::vector<IncludeLocation> include_locations,
+                        FileIndex& index) {
     self.load_in_memory();
+    self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
+        auto& context = self.compilation_contexts[path_id];
+        context.canonical_id = canonical_id;
+        context.include_locations = std::move(include_locations);
+    });
 }
 
 void MergedIndex::merge(this Self& self,
@@ -338,36 +425,10 @@ void MergedIndex::merge(this Self& self,
                         std::uint32_t include_id,
                         FileIndex& index) {
     self.load_in_memory();
-    auto& impl = *self.impl;
-
-    auto& context = impl.header_contexts[path_id];
-
-    auto hash = index.hash();
-    auto hash_key = llvm::StringRef(reinterpret_cast<char*>(hash.data()), hash.size());
-    auto [it, success] = impl.canonical_cache.try_emplace(hash_key, impl.max_canonical_id);
-
-    auto canonical_id = it->second;
-    context.includes.emplace_back(include_id, canonical_id);
-
-    if(!success) {
-        impl.canonical_ref_counts[canonical_id] += 1;
-        impl.removed.remove(canonical_id);
-        return;
-    }
-
-    for(auto& occurrence: index.occurrences) {
-        impl.occurrences[occurrence].add(canonical_id);
-    }
-
-    for(auto& [symbol_id, relations]: index.relations) {
-        auto& target = impl.relations[symbol_id];
-        for(auto& relation: relations) {
-            target[relation].add(canonical_id);
-        }
-    }
-
-    impl.canonical_ref_counts.emplace_back(1);
-    impl.max_canonical_id += 1;
+    self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
+        auto& context = self.header_contexts[path_id];
+        context.includes.emplace_back(include_id, canonical_id);
+    });
 }
 
 bool operator== (MergedIndex& lhs, MergedIndex& rhs) {

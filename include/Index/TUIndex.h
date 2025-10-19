@@ -72,6 +72,10 @@ struct TUIndex {
 
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
 
+    FileIndex& source_index() {
+        return file_indices.begin()->getSecond();
+    }
+
     static TUIndex build(CompilationUnit& unit);
 };
 
