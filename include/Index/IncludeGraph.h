@@ -12,7 +12,7 @@ namespace clice::index {
 
 struct IncludeLocation {
     /// The file path of the include directive.
-    std::uint32_t path = -1;
+    std::uint32_t path_id = -1;
 
     /// The line number of the include directive, 1-based.
     std::uint32_t line = -1;
@@ -53,7 +53,7 @@ struct IncludeGraph {
     std::uint32_t path_id(clang::FileID fid) {
         auto include = include_location_id(fid);
         if(include != -1) {
-            return locations[include].path;
+            return locations[include].path_id;
         } else {
             return paths.size() - 1;
         }

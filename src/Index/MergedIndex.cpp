@@ -2,6 +2,7 @@
 #include "Support/Compare.h"
 #include "Support/FileSystem.h"
 #include "Index/MergedIndex.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_os_ostream.h"
 
 namespace llvm {
@@ -90,6 +91,8 @@ struct CompilationContext {
     std::uint32_t version = 0;
 
     std::uint32_t canonical_id = 0;
+
+    std::uint64_t build_at;
 
     std::vector<IncludeLocation> include_locations;
 
@@ -201,6 +204,7 @@ void MergedIndex::load_in_memory(this Self& self) {
         auto path = entry->path_id();
         context.version = entry->version();
         context.canonical_id = entry->canonical_id();
+        context.build_at = entry->build_at();
         for(auto include: *entry->include_locations()) {
             context.include_locations.emplace_back(*safe_cast<IncludeLocation>(include));
         }
@@ -264,6 +268,7 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
             path_id,
             context.version,
             context.canonical_id,
+            context.build_at,
             CreateStructVector<binary::IncludeLocation>(builder, context.include_locations));
     });
 
@@ -390,6 +395,59 @@ void MergedIndex::lookup(this const Self& self,
     }
 }
 
+bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::StringRef> path_mapping) {
+    if(self.impl) {
+        if(self.impl->compilation_contexts.empty()) {
+            return false;
+        }
+
+        auto& context = self.impl->compilation_contexts.begin()->getSecond();
+
+        llvm::DenseSet<std::uint32_t> deps;
+        for(auto& location: context.include_locations) {
+            auto [_, success] = deps.insert(location.path_id);
+            if(success) {
+                fs::file_status status;
+                if(auto err = fs::status(path_mapping[location.path_id], status)) {
+                    return true;
+                }
+
+                auto time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    status.getLastModificationTime().time_since_epoch());
+                if(time.count() > context.build_at) {
+                    return true;
+                }
+            }
+        }
+    } else if(self.buffer) {
+        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBuffer().data());
+        if(index->compilation_contexts()->empty()) {
+            return false;
+        }
+
+        auto context = *index->compilation_contexts()->begin();
+
+        llvm::DenseSet<std::uint32_t> deps;
+        for(auto location: *context->include_locations()) {
+            auto [_, success] = deps.insert(location->path_id());
+            if(success) {
+                fs::file_status status;
+                if(auto err = fs::status(path_mapping[location->path_id()], status)) {
+                    return true;
+                }
+
+                auto time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    status.getLastModificationTime().time_since_epoch());
+                if(time.count() > context->build_at()) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 void MergedIndex::remove(this Self& self, std::uint32_t path_id) {
     self.load_in_memory();
     auto& index = *self.impl;
@@ -410,12 +468,14 @@ void MergedIndex::remove(this Self& self, std::uint32_t path_id) {
 
 void MergedIndex::merge(this Self& self,
                         std::uint32_t path_id,
+                        std::chrono::milliseconds build_at,
                         std::vector<IncludeLocation> include_locations,
                         FileIndex& index) {
     self.load_in_memory();
     self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
         auto& context = self.compilation_contexts[path_id];
         context.canonical_id = canonical_id;
+        context.build_at = build_at.count();
         context.include_locations = std::move(include_locations);
     });
 }

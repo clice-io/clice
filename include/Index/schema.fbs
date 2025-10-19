@@ -43,6 +43,7 @@ table CompilationContextEntry {
     path_id: uint;
     version: uint;
     canonical_id: uint;
+    build_at: ulong;
     include_locations: [IncludeLocation];
 }
 

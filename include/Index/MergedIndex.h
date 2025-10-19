@@ -56,12 +56,16 @@ public:
                 RelationKind kind,
                 llvm::function_ref<bool(const Relation&)> callback);
 
+    /// Whether this index needs rebuilding.
+    bool need_update(this const Self& self, llvm::ArrayRef<llvm::StringRef> path_mapping);
+
     /// Remove the index of specific path id.
     void remove(this Self& self, std::uint32_t path_id);
 
     /// Merge the index with given compilation context.
     void merge(this Self& self,
                std::uint32_t path_id,
+               std::chrono::milliseconds build_at,
                std::vector<IncludeLocation> include_locations,
                FileIndex& index);
 
