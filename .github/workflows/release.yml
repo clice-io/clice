@@ -21,7 +21,7 @@ jobs:
           - os: windows-2025
             artifact_name: clice.7z
             asset_name: clice-x64-windows-msvc.7z
-            toolchain: clang
+            toolchain: clang-cl
 
           - os: ubuntu-24.04
             artifact_name: clice.tar.xz
