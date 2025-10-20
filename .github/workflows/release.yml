@@ -21,7 +21,7 @@ jobs:
           - os: windows-2025
             artifact_name: clice.7z
             asset_name: clice-x64-windows-msvc.7z
-            toolchain: clang-cl
+            toolchain: clang
 
           - os: ubuntu-24.04
             artifact_name: clice.tar.xz
@@ -78,6 +78,12 @@ jobs:
         run: |
           xmake config --yes --toolchain=${{ matrix.toolchain }} --sdk=/opt/homebrew/opt/llvm@20 --enable_test=n --dev=n --release=y
           xmake pack
+
+      - name: Install uv for integration tests
+        uses: astral-sh/setup-uv@v6
+
+      - name: Run tests
+        run: xmake test --verbose
 
       - name: Upload binaries to release
         if: github.event_name == 'push'
