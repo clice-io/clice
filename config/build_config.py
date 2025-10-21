@@ -54,7 +54,9 @@ TOOLCHAIN_BUILD_ENV_VARS: Dict[str, str] = {
 }
 
 # Core project structure definitions
-PROJECT_ROOT: str = "/clice"                                                   # Root directory of the Clice project
+# CLICE_WORKDIR can be customized via environment variable, defaults to /clice
+CLICE_WORKDIR: str = os.getenv("CLICE_WORKDIR", "")                                  # Working directory inside Docker container
+PROJECT_ROOT: str = CLICE_WORKDIR                                                     # Root directory of the Clice project
 PYPROJECT_PATH: str = os.path.join(PROJECT_ROOT, "pyproject.toml")             # Python project configuration file
 TOOLCHAIN_BUILD_ROOT: str = "/toolchain-build"                                 # Root directory for all toolchain builds
 TOOLCHAIN_CONFIG_PATH: str = os.path.join(PROJECT_ROOT, "config/default-toolchain-version.json")  # Version definitions
@@ -70,7 +72,7 @@ PACKED_RELEASE_PACKAGE_PATH: str = os.getenv("PACKED_RELEASE_PACKAGE_PATH", "")
 ENVIRONMENT_CONFIG_FILE: str = os.getenv("ENVIRONMENT_CONFIG_FILE", "")
 
 # Source code cache directory for toolchain build
-CACHE_DIR_ROOT: str = os.getenv("CACHE_DIR_ROOT", "")
+BUILD_CACHE_DIR: str = os.getenv("BUILD_CACHE_DIR", "")
 
 WORKDIR_ROOT: str = "/dev-container-build"  # Temporary work directory for builds (not persistent)
 
@@ -137,8 +139,10 @@ class Component:
         "xz-utils",                    # Required for extracting .xz archives (toolchain sources)
     ]
 
+    build_prerequisites: List[str] = []  # To be defined by subclasses if needed
+
     # Where the component will be deployed
-    host_system: str = "Linux"
+    host_system: str = "linux"
     host_machine: str = "x86_64"
 
     # Where the constructed output (like clice binary) runs on
@@ -151,7 +155,7 @@ class Component:
         
         # Directory structure generation based on name and version
         self.package_dir = os.path.join(RELEASE_PACKAGE_DIR, self.versioned_name)
-        self.cache_dir = os.path.join(CACHE_DIR_ROOT, self.versioned_name)  
+        self.cache_dir = os.path.join(BUILD_CACHE_DIR, self.versioned_name)  
         self.work_dir = os.path.join(WORKDIR_ROOT, self.versioned_name)
 
     @property
@@ -235,7 +239,7 @@ class ToolchainSubComponent(Component):
     @property
     def src_dir(self) -> str:
         """Version-specific source directory."""
-        return os.path.join(self.work_dir, self.versioned_name)
+        return os.path.join(self.work_dir, "src")
     
     @property
     def build_dir(self) -> str:
@@ -271,12 +275,65 @@ class APTComponent(Component):
 
 
 class UVComponent(Component):
-    """UV Python package manager component (versionless)."""
+    """
+    UV Python package manager component.
+    
+    Manages:
+    • UV standalone binary distribution
+    • Python interpreter installation (via UV's python management)
+    • Python packages from pyproject.toml (wheels, dependencies)
+    
+    Cache Strategy:
+    • cache_dir/ - UV tarball cache (Docker layer, for build efficiency)
+      - Only caches UV binary tarball downloads
+      - As uv do not provide download python packages separately, we have to give up caching python binary
+      - Not mounted as volume, ensures Docker layer caching
+    
+    • package_dir/ - Multi-purpose directory for cross-stage transfer
+      - UV binary for installation
+      - Python installation cache (UV_CACHE_DIR during python install, cached the same directory with python packages)
+      - Python packages cache (pip wheels, venv)
+      - Transferred to expand-stage for installation
+    
+    Why this design:
+    • UV tarball cached separately for Docker layer reuse
+    • Python install uses package_dir as UV_CACHE_DIR (no separate download cache)
+    • Python packages cache goes to standard location for later stages
+    • All needed files in package_dir for expand-stage
+    """
+    
+    base_url = "https://github.com/astral-sh/uv/releases/download/{version}"
+    tarball_name_pattern = "uv-{machine}-unknown-linux-gnu.tar.gz"
     
     def __init__(self):
-        super().__init__("uv")
+        version = TOOLCHAIN_VERSIONS["uv"]
+        super().__init__("uv", version)
+        # Python version managed by this UV instance
+        self.python_version = TOOLCHAIN_VERSIONS["python"]
+    
+    @property
+    def tarball_cache_dir(self) -> str:
+        """Directory where UV binary tarball is cached (Docker layer)."""
+        return os.path.join(self.cache_dir, "tarball")
 
-
+    @property
+    def tarball_package_dir(self) -> str:
+        """Directory where UV binary tarball is cached (Docker layer)."""
+        return os.path.join(self.package_dir, "tarball")
+    
+    @property
+    def install_dir(self) -> str:
+        """Directory where UV binary will be installed."""
+        return "/root/.local/bin"
+    
+    @property
+    def packages_package_dir(self) -> str:
+        """
+        UV_CACHE_DIR for Python installation phase.
+        Points to package_dir to avoid separate cache layer.
+        """
+        return os.path.join(self.package_dir, "uv-packages")
+    
 class XMakeComponent(Component):
     """XMake build system component."""
     
@@ -322,28 +379,6 @@ class ToolchainComponent(Component):
     def sysroot_dir(self) -> str:
         """Sysroot directory with version-specific naming."""
         return f"{self.package_dir}/sysroot/{self.host_triplet}/{self.target_triplet}/glibc{self.glibc.version}-libstdc++{self.gcc.version}-linux{self.linux.version}"
-    
-    @property
-    def build_prerequisites(self) -> List[str]:
-        """Comprehensive build environment for toolchain compilation."""
-        return [
-            # Core build tools
-            "make",                        # GNU Make build automation
-            "rsync",                       # File synchronization (Linux kernel headers)
-            "gawk",                        # GNU AWK text processing (glibc requirement)
-            "bison",                       # Parser generator (glibc requirement)
-            "binutils",                    # Binary utilities (assembler, linker, etc.)
-            "file",                        # File type identification (libcc1 requires this tool)
-            
-            # GCC toolchain for glibc (requires GCC < 10 to avoid linker conflicts)
-            "gcc-9",                       # GNU C compiler version 9
-            
-            # Modern GCC toolchain for libstdc++ building
-            "gcc-14",                      # Latest GNU C compiler
-            "g++-14",                      # Latest GNU C++ compiler  
-            "libstdc++-14-dev",            # Latest C++ standard library development files
-        ]
-
 
 # ========================================================================
 # 🧩 Toolchain Sub-Component Classes
@@ -355,6 +390,15 @@ class GlibcSubComponent(ToolchainSubComponent):
     base_url = "https://ftpmirror.gnu.org/gnu/glibc"
     tarball_name_pattern = "glibc-{version}.tar.xz"
     verification_name_pattern = "glibc-{version}.tar.xz.sig"
+    build_prerequisites: List[str] = [
+        "make",                        # GNU Make build automation
+        "binutils",                    # Binary utilities (assembler, linker, etc.)
+        "gawk",                        # Text processing (required by glibc build system)
+        "bison",                       # Parser generator (required by glibc build system)
+        "gcc-9",                       # GNU C compiler version 9 (for glibc < 2.36)
+
+        *ToolchainSubComponent.build_prerequisites
+    ]
     
     def __init__(self, parent_component: ToolchainComponent):
         super().__init__("glibc", parent_component)
@@ -366,6 +410,17 @@ class GccSubComponent(ToolchainSubComponent):
     base_url = "https://ftpmirror.gnu.org/gnu/gcc/gcc-{version}"
     tarball_name_pattern = "gcc-{version}.tar.xz"
     verification_name_pattern = "gcc-{version}.tar.xz.sig"
+    build_prerequisites: List[str] = [
+        "make",                        # GNU Make build automation
+        "binutils",                    # Binary utilities (assembler, linker, etc.)
+        "file",                        # File type identification (libcc1 requires this tool)
+        
+        "gcc-14",                      # Latest GNU C compiler (for bootstrapping)
+        "g++-14",                      # Latest GNU C++ compiler (for bootstrapping)
+        "libstdc++-14-dev",            # Multiple Precision Floating-Point Reliable Library
+
+        *ToolchainSubComponent.build_prerequisites
+    ]
     
     def __init__(self, parent_component: ToolchainComponent):
         super().__init__("gcc", parent_component)
@@ -401,9 +456,68 @@ class LinuxSubComponent(ToolchainSubComponent):
     base_url = "https://github.com/torvalds/linux/archive/refs/tags"
     tarball_name_pattern = "v{version}.tar.gz"
     verification_name_pattern = ""  # Linux kernel releases don't include separate signature files
-    
+    build_prerequisites: List[str] = [
+        "make",                        # GNU Make build automation
+        "binutils",                    # Binary utilities (assembler, linker, etc.)
+        "rsync",                       # File synchronization (Linux kernel headers)
+
+        "gcc-9",                       # Even though we don't build the kernel, configure requires gcc
+
+        *ToolchainSubComponent.build_prerequisites
+    ]
+
     def __init__(self, parent_component: ToolchainComponent):
-        super().__init__("linux", parent_component) 
+        super().__init__("linux", parent_component)
+
+class CliceSetupScriptsComponent(Component):
+    """
+    Clice setup scripts and configuration component.
+    
+    Contains Python scripts and configuration files needed for container setup,
+    packaged as a complete directory structure:
+    - config/build_config.py: Configuration definitions
+    - config/default-toolchain-version.json: Version information
+    - docker/linux/utility/local_setup.py: Final container setup script
+    - docker/linux/utility/build_utils.py: Utility functions
+    
+    These files are packaged preserving their directory structure and will be
+    executed in-place during container expansion (no extraction to CLICE_WORKDIR needed).
+    """
+    
+    def __init__(self):
+        super().__init__("clice-setup-scripts")
+    
+    @property
+    def files_to_copy(self) -> list[str]:
+        """List of files to copy with their relative paths (preserving directory structure)."""
+        return [
+            'config/build_config.py',
+            'config/default-toolchain-version.json',
+            'docker/linux/utility/local_setup.py',
+            'docker/linux/utility/build_utils.py',
+        ]
+
+class BashrcComponent(Component):
+    """
+    Bash configuration component.
+    
+    Contains the .bashrc file with:
+    - Environment variables (PATH, etc.)
+    - Container entrypoint script (auto Python env setup)
+    """
+    
+    def __init__(self):
+        super().__init__("bashrc")
+    
+    @property
+    def bashrc_path(self) -> str:
+        """Path to .bashrc file in package."""
+        return os.path.join(self.package_dir, ".bashrc")
+    
+    @property
+    def entrypoint_script_source(self) -> str:
+        """Path to container-entrypoint.sh source file."""
+        return os.path.join(CLICE_WORKDIR, "docker/linux/container-entrypoint.sh") 
 
 # ========================================================================
 # 🏗️ Component Instances and Build Stage Organization
@@ -415,6 +529,8 @@ UV = UVComponent()
 XMAKE = XMakeComponent()
 CMAKE = CMakeComponent()
 TOOLCHAIN = ToolchainComponent()
+CLICE_SETUP_SCRIPTS = CliceSetupScriptsComponent()
+BASHRC = BashrcComponent()
 
 # ========================================================================
 # 📋 Build Stage Component Groups
@@ -428,6 +544,12 @@ DEPENDENCIES_DOWNLOADER_STAGE: list[Component] =  [
     XMAKE,
 ]
 
+# Image packer stage components (scripts and configs that go into package)
+IMAGE_PACKER_STAGE: list[Component] = [
+    CLICE_SETUP_SCRIPTS,
+    BASHRC,
+]
+
 # Toolchain builder stage components
 TOOLCHAIN_BUILDER_STAGE: list[Component] = [
     TOOLCHAIN,
@@ -436,6 +558,7 @@ TOOLCHAIN_BUILDER_STAGE: list[Component] = [
 # Master component registry
 ALL_COMPONENTS = [
     *DEPENDENCIES_DOWNLOADER_STAGE,
+    *IMAGE_PACKER_STAGE,
     *TOOLCHAIN_BUILDER_STAGE,
 ]
 

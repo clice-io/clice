@@ -48,7 +48,6 @@ from build_utils import (
 from config.build_config import (
     RELEASE_PACKAGE_DIR,
     PYPROJECT_PATH,
-    # Component instances for structured access
     APT, UV, CMAKE, XMAKE
 )
 
@@ -61,11 +60,11 @@ def install_download_prerequisites() -> None:
     print("📦 Installing dependencies download prerequisites...")
     
     # Update package lists first  
-    run_command("apt update")
+    run_command("apt update -o DPkg::Lock::Timeout=-1")
     
     # Install all download prerequisites (universal + APT-specific)
     download_prerequisites = APT.download_prerequisites
-    run_command(f"apt install -y --no-install-recommends -o APT::Keep-Downloaded-Packages=true {' '.join(download_prerequisites)}")
+    run_command(f"apt install -y --no-install-recommends=true -o DPkg::Lock::Timeout=-1 {' '.join(download_prerequisites)}")
     
     print(f"✅ Installed {len(download_prerequisites)} download prerequisites")
 
@@ -296,39 +295,31 @@ def download_xmake() -> None:
     print(f"📦 XMake copied to package: {xmake_package_file}")
 
 def download_python_packages() -> None:
-    """Download Python packages using uv."""
-    print("🐍 Downloading Python packages...")
+    """
+    Download Python packages from pyproject.toml using uv sync.
     
-    # Create both cache and package directories
-    os.makedirs(UV.cache_dir, exist_ok=True)
-    os.makedirs(UV.package_dir, exist_ok=True)
+    Uses uv sync to download all dependencies to UV's packages cache directory.
+    """
+    print("🐍 Downloading Python packages from pyproject.toml...")
     
-    # Download packages specified in pyproject.toml to cache directory first
-    if os.path.exists(PYPROJECT_PATH):
-        print(f"📥 Downloading Python packages to cache: {UV.cache_dir}")
-        # Use uv to download packages to cache directory
-        run_command(f"uv sync --cache-dir {UV.cache_dir}")
-        
-        # Copy only wheel files from cache to package directory
-        print("📦 Copying wheel files from cache to package directory...")
-        copied_count = 0
-        
-        # Find all .whl files in cache directory recursively
-        for root, dirs, files in os.walk(UV.cache_dir):
-            for file in files:
-                if file.endswith('.whl'):
-                    src = os.path.join(root, file)
-                    dst = os.path.join(UV.package_dir, file)
-                    # Only copy if not already exists to avoid duplicates
-                    if not os.path.exists(dst):
-                        shutil.copy2(src, dst)
-                        copied_count += 1
-        
-        print(f"📊 Copied {copied_count} wheel files to package directory")
-        print(f"✅ Python packages cached to {UV.cache_dir}")
-        print(f"📦 Python packages ready in {UV.package_dir}")
-    else:
-        print(f"⚠️ pyproject.toml not found at {PYPROJECT_PATH}")
+    # Create cache directory for packages
+    os.makedirs(UV.packages_package_dir, exist_ok=True)
+    
+    # Set UV_CACHE_DIR to packages cache directory
+    print(f"📥 Downloading package wheels to UV packages package dir: {UV.packages_package_dir}")
+    print(f"📋 Using pyproject.toml from: {PYPROJECT_PATH}")
+    
+    # Run uv sync with project root as working directory
+    # UV will automatically find pyproject.toml in the project root
+    project_root = os.path.dirname(PYPROJECT_PATH)
+    
+    run_command(
+        f"UV_CACHE_DIR={UV.packages_package_dir} uv sync --no-install-project --no-editable",
+        cwd=project_root
+    )
+
+    print(f"✅ Package wheels cached to: {UV.packages_package_dir}")
+    print(f"📁 Packages cache will be available to later stages via cache mount")
 
 # LLVM downloading removed as per requirements
 
@@ -344,21 +335,24 @@ def main():
     os.makedirs(RELEASE_PACKAGE_DIR, exist_ok=True)
     
     # Define download jobs with proper dependency management
+    # Note: Python installation is now done in Dockerfile, not here
     jobs = {
         "install_download_prerequisites": Job("install_download_prerequisites", install_download_prerequisites, ()),
         "download_apt_packages": Job("download_apt_packages", download_apt_packages, ()),
+        "download_python_packages": Job("download_python_packages", download_python_packages, ()),
         "download_cmake": Job("download_cmake", download_cmake, ()),
         "download_xmake": Job("download_xmake", download_xmake, ()),
-        "download_python_packages": Job("download_python_packages", download_python_packages, ()),
     }
     
-    # Define dependencies - all downloads depend on prerequisites installation
+    # Define dependencies
+    # UV and packages downloads need install_download_prerequisites
+    # Python installation is handled in Dockerfile base-stage
     dependencies = {
         "install_download_prerequisites": set(),
         "download_apt_packages": {"install_download_prerequisites"},
+        "download_python_packages": {"install_download_prerequisites"},
         "download_cmake": {"install_download_prerequisites"},
         "download_xmake": {"install_download_prerequisites"},
-        "download_python_packages": {"install_download_prerequisites"},
     }
     
     # Execute downloads in parallel where possible

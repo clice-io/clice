@@ -56,8 +56,6 @@ if project_root not in sys.path:
 # ========================================================================
 # 📚 Standard Library Imports
 # ========================================================================
-import shutil        # High-level file operations
-import tarfile       # Archive extraction capabilities
 from typing import Dict, Set  # Type hints for better code clarity
 
 # ========================================================================
@@ -66,10 +64,7 @@ from typing import Dict, Set  # Type hints for better code clarity
 from build_utils import (
     Job,                    # Individual build task representation
     ParallelTaskScheduler,  # High-performance parallel execution engine
-    download_file,          # Accelerated file download with aria2c
     run_command,           # Shell command execution with environment control
-    verify_signature,      # GPG signature verification
-    # Generic component build utilities
     install_download_prerequisites,  # Download prerequisite installation
     install_extract_prerequisites,   # Extract prerequisite installation
     download_and_verify,            # Component source download and verification
@@ -80,11 +75,11 @@ from build_utils import (
 # ⚙️ Configuration Constants
 # ========================================================================
 from config.build_config import (
-    TOOLCHAIN_BUILD_ROOT,              # Build root directory
-    GPG_KEY_SERVER,                    # GPG keyserver list
     TOOLCHAIN_BUILD_ENV_VARS,          # Build environment variables
     # Import component instances for structured access
-    TOOLCHAIN
+    TOOLCHAIN,
+    Component,
+    ToolchainSubComponent
 )
 
 # ========================================================================
@@ -110,34 +105,49 @@ def update_apt():
     installation can proceed safely.
     """
     print("🔄 [SETUP] Refreshing APT package database...")
-    run_command("apt update")
+    run_command("apt update -o DPkg::Lock::Timeout=-1")
 
-
-
-def install_build_prerequisites():
+def install_build_prerequisites(component):
     """
     🔨 Install Build Stage Prerequisites
     
-    Installs the complete build environment including:
+    Installs the build prerequisites for all sub-components of the given component.
+    This collects and deduplicates all build_prerequisites from sub-components,
+    then installs them in a single batch operation.
+    
+    For toolchain component, this includes:
     • Core build tools (make, binutils, rsync)
     • Text processing tools (gawk, bison) for glibc
     • GCC 9 toolchain for glibc compilation
     • GCC 14 toolchain for libstdc++ compilation
     
+    Args:
+        component: The parent component (e.g., TOOLCHAIN) whose sub-components'
+                   build prerequisites should be installed
+    
     Note: We maintain multiple GCC versions because glibc requires
     GCC < 10 to avoid linker symbol conflicts, while modern libstdc++
     benefits from the latest compiler features.
     """
-    print("🔨 [SETUP] Installing comprehensive build environment...")
-    print("    📋 Components: make, binutils, gawk, bison, gcc-9, gcc-14")
-    build_prerequisites = TOOLCHAIN.build_prerequisites
-    pkg_list = " ".join(build_prerequisites)
-    run_command(f"apt install -y --no-install-recommends -o APT::Keep-Downloaded-Packages=true {pkg_list}")
-    # linux headers install requires gcc, even though we won't use it in linux header install
+    # Collect all build prerequisites from sub-components
+    all_prerequisites = set()
+    if hasattr(component, 'sub_components'):
+        for sub_component in component.sub_components:
+            all_prerequisites.update(sub_component.build_prerequisites)
+    
+    if not all_prerequisites:
+        print(f"ℹ️ [SETUP] No build prerequisites for {component.name}")
+        return
+    
+    print(f"🔨 [SETUP] Installing build prerequisites for {component.name}...")
+    print(f"    📋 Packages: {', '.join(sorted(all_prerequisites))}")
+    pkg_list = " ".join(sorted(all_prerequisites))
+    run_command(f"apt install -y --no-install-recommends=true -o DPkg::Lock::Timeout=-1 {pkg_list}")
+    
+    # Setup GCC alternatives after installation
+    # Linux headers install requires gcc, even though we won't use it in linux header install
     run_command("update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90")
-    print("✅ [SETUP] Build environment ready")
-
-
+    print(f"✅ [SETUP] Build prerequisites for {component.name} installed")
 
 # ========================================================================
 # 📚 GNU C Library (glibc) Tasks
@@ -201,7 +211,7 @@ def fix_glibc_paths():
     print(f"✅ [POST-PROCESS] Path fixing complete ({files_processed} files processed)")
 
 
-def build_and_install_glibc(component):
+def build_and_install_glibc(glibc_component: ToolchainSubComponent, linux_component: ToolchainSubComponent):
     """
     🏗️ Build and Install GNU C Library (glibc)
     
@@ -219,35 +229,34 @@ def build_and_install_glibc(component):
     Note: glibc is built out-of-tree in a separate build directory to
     maintain clean separation between source and build artifacts.
     """
-    print(f"🏗️ [BUILD] Starting {component.name} compilation...")
+    print(f"🏗️ [BUILD] Starting {glibc_component.name} compilation...")
     print(f"    📋 Using GCC 9 (required for glibc compatibility)")
     print(f"    🎯 Target: {TOOLCHAIN.host_triplet} ({TOOLCHAIN.host_machine})")
     print(f"    📁 Install: {TOOLCHAIN.sysroot_dir}/usr")
     
     # Prepare out-of-tree build directory
-    os.makedirs(component.build_dir, exist_ok=True)
+    os.makedirs(glibc_component.build_dir, exist_ok=True)
     
     # Configure build environment with GCC 9
     compiler_env = {
         'CC': 'gcc-9',       # GNU C compiler version 9 (full path)
-        'CXX': 'g++-9',      # GNU C++ compiler version 9 (full path)
         'CPP': 'cpp-9',      # C preprocessor (explicit)
     }
     compiler_env.update(TOOLCHAIN_BUILD_ENV_VARS)
 
     # Configure glibc build
     print(f"⚙️ [CONFIG] Configuring glibc build...")
-    configure_script = os.path.join(component.src_dir, "configure")
-    configure_command = f"{configure_script} --host={TOOLCHAIN.host_triplet} --prefix={TOOLCHAIN.sysroot_dir}/usr --disable-werror --disable-lib32 --enable-lib64"
-    run_command(configure_command, cwd=component.build_dir, env=compiler_env)
+    configure_script = os.path.join(glibc_component.src_dir, "configure")
+    configure_command = f"{configure_script} --host={glibc_component.host_triplet} --prefix={TOOLCHAIN.sysroot_dir}/usr --with-headers={TOOLCHAIN.sysroot_dir}/usr/include --enable-kernel={linux_component.version} --disable-werror --disable-lib32 --enable-lib64"
+    run_command(configure_command, cwd=glibc_component.build_dir, env=compiler_env)
     
     # Compile glibc
     print(f"🔨 [COMPILE] Building glibc (this may take several minutes)...")
-    run_command("make -j", cwd=component.build_dir, env=compiler_env)
+    run_command("make -j", cwd=glibc_component.build_dir, env=compiler_env)
     
     # Install glibc to sysroot
     print(f"📦 [INSTALL] Installing glibc to sysroot...")
-    run_command(f"make install -j", cwd=component.build_dir, env=compiler_env)
+    run_command(f"make install -j", cwd=glibc_component.build_dir, env=compiler_env)
 
     # Post-process to fix hardcoded paths
     fix_glibc_paths()
@@ -445,14 +454,14 @@ def main():
     all_jobs: Dict[str, Job] = {
         # 📦 System Setup Tasks
         "update_apt": Job("update_apt", update_apt),
-        "install_download_prerequisites": Job("install_download_prerequisites", install_download_prerequisites),
-        "install_extract_prerequisites": Job("install_extract_prerequisites", install_extract_prerequisites),
-        "install_build_prerequisites": Job("install_build_prerequisites", install_build_prerequisites),
+        "install_download_prerequisites": Job("install_download_prerequisites", install_download_prerequisites, (TOOLCHAIN,)),
+        "install_extract_prerequisites": Job("install_extract_prerequisites", install_extract_prerequisites, (TOOLCHAIN,)),
+        "install_build_prerequisites": Job("install_build_prerequisites", install_build_prerequisites, (TOOLCHAIN,)),
 
         # 📚 GNU C Library (glibc) Pipeline
         "download_glibc": Job("download_glibc", download_and_verify, (TOOLCHAIN.glibc,)),
         "extract_glibc": Job("extract_glibc", extract_source, (TOOLCHAIN.glibc,)),
-        "build_and_install_glibc": Job("build_and_install_glibc", build_and_install_glibc, (TOOLCHAIN.glibc,)),
+        "build_and_install_glibc": Job("build_and_install_glibc", build_and_install_glibc, (TOOLCHAIN.glibc, TOOLCHAIN.linux)),
         
         # 🐧 Linux Kernel Headers Pipeline  
         "download_linux": Job("download_linux", download_and_verify, (TOOLCHAIN.linux,)),
@@ -487,9 +496,13 @@ def main():
         # 📚 glibc Build Pipeline
         "download_glibc": {"install_download_prerequisites"},
         "extract_glibc": {"download_glibc", "install_extract_prerequisites"},
-        "build_and_install_glibc": {"extract_glibc", "install_build_prerequisites"},
+        "build_and_install_glibc": {
+            "extract_glibc",
+            "install_build_prerequisites",
+            "install_linux_headers"  # glibc requires Linux headers for compilation
+        },
         
-        # 🐧 Linux Headers Pipeline (can run parallel with glibc download/extract)
+        # 🐧 Linux Headers Pipeline (must complete before glibc build)
         "download_linux": {"install_download_prerequisites"},
         "extract_linux": {"download_linux", "install_extract_prerequisites"},
         "install_linux_headers": {"extract_linux", "install_build_prerequisites"},

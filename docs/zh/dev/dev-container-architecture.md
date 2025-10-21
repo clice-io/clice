@@ -579,7 +579,7 @@ DEV_CONTAINER_BASIC_TOOLS = [
 ### 添加新依赖
 1. 更新 `config/build_config.py` 中的包列表
 2. 使用 `./docker/linux/build.sh --rebuild` 重建容器
-3. 使用 `./docker/linux/run.sh --reset` 验证
+3. 使用 `./docker/linux/run.sh --update` 验证
 
 ### 容器健康检查
 ```bash

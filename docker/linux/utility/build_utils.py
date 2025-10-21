@@ -3,7 +3,7 @@ import sys
 import os
 import tarfile
 
-from config.build_config import TOOLCHAIN_VERSIONS, Component
+from config.build_config import Component
 
 # Add project root to the Python path to allow importing 'config' module
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -14,8 +14,6 @@ import subprocess
 import hashlib
 import concurrent.futures
 import time
-import traceback
-import json
 from typing import Dict, Set, Tuple, Optional, List, Callable
 from graphlib import TopologicalSorter
 from collections import defaultdict
@@ -55,6 +53,9 @@ def run_command(command: str, cwd: str = os.getcwd(), env: Dict[str, str] = {}) 
     """
     Executes a shell command, directing its output to the current shell.
     Sets DEBIAN_FRONTEND to noninteractive to prevent interactive prompts.
+    
+    Output is streamed in real-time to stdout/stderr for better visibility
+    in both direct execution and parallel task scenarios.
     """
     print(f"--- Running command: {{{command}}} in {cwd or os.getcwd()} ---")
     
@@ -64,14 +65,18 @@ def run_command(command: str, cwd: str = os.getcwd(), env: Dict[str, str] = {}) 
     if env:
         process_env.update(env)
 
-    # By not setting stdout/stderr, they are inherited from the parent process,
-    # which means the output will go directly to the user's terminal.
+    # Explicitly set stdout and stderr to sys.stdout/sys.stderr for real-time output
+    # This ensures output is visible even when running in ProcessPoolExecutor
     process = subprocess.Popen(
         command,
         shell=True,
         cwd=cwd,
         env=process_env,
-        executable="/bin/bash"
+        executable="/bin/bash",
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        bufsize=1,  # Line buffered for real-time output
+        universal_newlines=True
     )
 
     process.wait()
@@ -361,7 +366,7 @@ def install_download_prerequisites(component: Component):
     print("⬇️ [SETUP] Installing download prerequisites (aria2c, gnupg)...")
     download_prerequisites = component.download_prerequisites
     pkg_list = " ".join(download_prerequisites)
-    run_command(f"apt install -y --no-install-recommends -o APT::Keep-Downloaded-Packages=true {pkg_list}")
+    run_command(f"apt install -y --no-install-recommends=true -o DPkg::Lock::Timeout=-1 {pkg_list}")
     print("✅ [SETUP] Download tools ready")
 
 def install_extract_prerequisites(component: Component):
@@ -377,7 +382,7 @@ def install_extract_prerequisites(component: Component):
     print("📂 [SETUP] Installing archive extraction tools...")
     extract_prerequisites = component.extract_prerequisites
     pkg_list = " ".join(extract_prerequisites)
-    run_command(f"apt install -y --no-install-recommends -o APT::Keep-Downloaded-Packages=true {pkg_list}")
+    run_command(f"apt install -y --no-install-recommends=true -o DPkg::Lock::Timeout=-1 {pkg_list}")
     print("✅ [SETUP] Extraction tools ready")
 
 
@@ -437,11 +442,18 @@ def extract_source(component):
     📂 Extract Component Source Archive
     
     Extracts the downloaded source tarball to the appropriate directory
-    structure, automatically detecting compression format.
+    structure, automatically detecting compression format and stripping
+    the top-level directory.
     
     Supports multiple archive formats:
     • .tar.xz (LZMA compression) - Used by most GNU projects
     • .tar.gz (Gzip compression) - Used by Linux kernel
+    
+    The function automatically handles archives with a top-level directory:
+    1. Extracts directly to target directory
+    2. Detects if there's a single top-level directory wrapper
+    3. Moves all contents up one level
+    4. Removes the empty wrapper directory
     
     Args:
         component: Component instance (glibc, gcc, llvm, or linux)
@@ -459,8 +471,27 @@ def extract_source(component):
     print(f"    📁 Source: {tarball_path}")
     print(f"    📁 Target: {component.extracted_dir}")
     
-    # Auto-detect compression format and extract
+    # Auto-detect compression format and extract directly
     mode = "r:xz" if tarball_path.endswith(".tar.xz") else "r:gz"
     with tarfile.open(tarball_path, mode) as tar:
         tar.extractall(path=component.extracted_dir, filter='data')
+    
+    # Check if we need to strip a top-level directory
+    extracted_items = os.listdir(component.extracted_dir)
+    
+    if len(extracted_items) == 1 and os.path.isdir(os.path.join(component.extracted_dir, extracted_items[0])):
+        # Single top-level directory found - strip it
+        top_dir_name = extracted_items[0]
+        top_dir_path = os.path.join(component.extracted_dir, top_dir_name)
+        print(f"    🔄 Stripping top-level directory: {top_dir_name}")
+        
+        # Move all contents from top_dir to parent (extracted_dir)
+        for item in os.listdir(top_dir_path):
+            src = os.path.join(top_dir_path, item)
+            dst = os.path.join(component.extracted_dir, item)
+            shutil.move(src, dst)
+        
+        # Remove the now-empty top-level directory
+        os.rmdir(top_dir_path)
+    
     print(f"✅ [EXTRACT] {component.name} extraction complete")
