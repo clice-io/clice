@@ -126,131 +126,125 @@ We provide a complete Docker development container solution with pre-configured 
 
 ### 🚀 Quick Start
 
-#### Build Development Container
-```bash
-# Build default container (clang + latest version)
-./docker/linux/build.sh
-
-# Build container with specific compiler and version
-./docker/linux/build.sh --compiler gcc --version v1.2.3
-```
-
 #### Run Development Container
 ```bash
 # Run default container
 ./docker/linux/run.sh
 
 # Run container with specific compiler
-./docker/linux/run.sh --compiler clang
 ./docker/linux/run.sh --compiler gcc
 
 # Run container with specific version
-./docker/linux/run.sh --compiler clang --version v1.2.3
+./docker/linux/run.sh --version v1.2.3
 ```
 
 #### Container Management
 ```bash
-# Reset container (remove existing container)
+# Reset container (remove and recreate)
 ./docker/linux/run.sh --reset
 
 # Update container image (pull latest version)
 ./docker/linux/run.sh --update
-
-# Rebuild container image
-./docker/linux/run.sh --rebuild
 ```
 
-#### Multi-version Testing
+### 🏗️ Development Workflow
+
+#### Complete Development Flow Example
+```bash
+# 1. Start development session
+./docker/linux/run.sh --compiler clang
+
+# 2. Build project inside container (project directory auto-mounted to /clice)
+cd /clice
+mkdir build && cd build
+
+# Build with CMake
+cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLVM_INSTALL_PATH="/usr/local/llvm"
+ninja
+
+# Or build with XMake
+xmake f --mode=debug --toolchain=clang
+xmake build --all
+```
+
+### 📦 Container Features
+
+#### Pre-installed Tools and Environment
+- **Compilers**: GCC 14, Clang 20 (from official LLVM PPA)
+- **Build Systems**: CMake 3.28+, XMake 2.8+
+- **Development Tools**: Complete C++ development stack including debuggers, profilers, etc.
+- **LLVM Libraries**: Pre-configured LLVM 20.x development libraries and headers
+- **Python Environment**: Consistent Python environment managed by uv
+
+#### Automation Features
+- **Environment Isolation**: Independent containers per compiler and version
+- **Persistence**: Container state persists across sessions
+- **Auto-mount**: Project directory auto-mounted to `/clice`
+- **Version Awareness**: Support creating dev environment from existing release images
+
+### 🎯 Use Cases
+
+#### Daily Development
+```bash
+# Start development environment (auto-build if image doesn't exist)
+./docker/linux/run.sh
+
+# Container will automatically:
+# - Check and start existing container, or create new one
+# - Mount project directory to /clice
+# - Provide complete development environment
+```
+
+#### Multi-compiler Testing
 ```bash
 # Test different compilers
 ./docker/linux/run.sh --compiler gcc
 ./docker/linux/run.sh --compiler clang
 
-# Test specific versions
-./docker/linux/run.sh --version v1.0.0
-./docker/linux/run.sh --version latest
+# Each compiler has independent container and environment
 ```
 
-### 📋 Container Configuration
+#### Version Management
+```bash
+# Use specific version
+./docker/linux/run.sh --version v1.0.0
 
-#### Supported Parameters
+# Update to latest version (can be used with --version, but not effective for released versions as their images cannot be updated)
+./docker/linux/run.sh --update
+```
+
+### 📋 Detailed Parameters
+
+#### run.sh Parameters
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--compiler` | Compiler type (gcc/clang) | `clang` |
-| `--version` | Version tag | `latest` |
-| `--reset` | Reset container | - |
-| `--rebuild` | Force rebuild image | - |
-| `--update` | Pull latest image | - |
+| `--compiler <gcc\|clang>` | Compiler type | `clang` |
+| `--version <version>` | Version tag | `latest` |
+| `--reset` | Remove and recreate container | - |
+| `--update` | Pull latest image and update | - |
 
-#### Generated Image Naming
-- Format: `clice-io/clice:linux-{compiler}-{version}`
+#### Generated Image Naming Convention
+- **Release image**: `clice-io/clice:linux-{compiler}-{version}`
+- **Development image**: `clice-io/clice:linux-{compiler}-{version}-expanded`
 - Examples:
   - `clice-io/clice:linux-clang-latest`
+  - `clice-io/clice:linux-clang-latest-expanded`
   - `clice-io/clice:linux-gcc-v1.2.3`
 
 ### 🔧 Advanced Usage
 
 #### Execute Custom Commands
 ```bash
-# Execute specific command in container
-./docker/linux/run.sh "cmake --version && xmake --version"
+# Execute specific command in container (use -- separator)
+./docker/linux/run.sh -- cmake --version
 
-# Run tests
-./docker/linux/run.sh "cd /clice/build && ctest"
-
-# Interactive debugging
-./docker/linux/run.sh "gdb ./build/clice"
+# Execute multiple commands
+./docker/linux/run.sh -- "cd /clice/build && cmake .."
 ```
 
-## Building Docker Image
-
-Use the following command to build docker image:
-
+#### Container Lifecycle Management
 ```bash
-$ docker build -t clice .
-```
-
-Run docker image by running the following command:
-
-```bash
-$ docker run --rm -it clice --help
-OVERVIEW: clice is a new generation of language server for C/C++
-...
-```
-
-The directory structure of the docker image is as follows:
-
-```
-/opt/clice
-├── bin
-│   ├── clice -> /usr/local/bin/clice
-├── include
-├── lib
-├── LICENSE
-├── README.md
-```
-
-Hint: launch clice in the docker container by running the following command:
-
-```bash
-$ docker run --rm -it --entrypoint bash clice
-```
-
-## Development Container
-
-We provide Docker images as a pre-configured environment to streamline the setup process. You can use the following scripts to manage the development container. These scripts can be run from the project root directory.
-
-```bash
-# Build the development image
-./docker/linux/build.sh
-
-# Run the container with the clang toolchain
-./docker/linux/run.sh --compiler clang
-
-# Run the container with the gcc toolchain
-./docker/linux/run.sh --compiler gcc
-
-# Reset the container (stops and removes the existing one)
+# Complete cleanup and rebuild
 ./docker/linux/run.sh --reset
 ```
 

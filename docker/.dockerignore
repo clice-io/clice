@@ -1,6 +1,7 @@
 build/
 out/
 .cache
+__pycache__
 
 .clice/
 .llvm*/

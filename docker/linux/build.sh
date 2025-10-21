@@ -16,6 +16,9 @@ set -e
 # 🔧 Environment Setup
 # ========================================================================
 
+# Source common utilities
+source "$(dirname "${BASH_SOURCE[0]}")/utility/common.sh"
+
 # Save original working directory and switch to project root
 ORIG_PWD="$(pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,13 +31,13 @@ trap 'cd "${ORIG_PWD}"' EXIT
 # ⚙️ Default Configuration
 # ========================================================================
 
-COMPILER="clang"
-DOCKERFILE_PATH="docker/linux/Dockerfile"
-BUILD_STAGE="expanded-image"  # Always build development image (auto-expand from release if needed)
+COMPILER="${DEFAULT_COMPILER}"
+BUILD_STAGE="${DEFAULT_BUILD_STAGE}"
 CACHE_FROM=""
 CACHE_TO=""
-VERSION="latest"  # Will be replaced with actual clice version in releases
+VERSION="${DEFAULT_VERSION}"
 REBUILD="false"
+DEBUG="false"
 
 # ========================================================================
 # 📚 Usage Information
@@ -53,15 +56,17 @@ OPTIONS:
   --version <version>        Set version tag (default: ${VERSION})
   --stage <stage>            Build specific stage (packed-image or expanded-image)
   --rebuild                  Force rebuild even if image exists
+  --debug                    Enable interactive debug mode (requires Docker 23.0+)
   --help, -h                 Show this help message
 
 EXAMPLES:
   $0                           Build development container with clang
   $0 --compiler gcc            Build development container with gcc  
-  $0 --stage packed-image     Build only the release image
-  $0 --stage expanded-image Expand release image to development image
+  $0 --stage packed-image      Build only the release image
+  $0 --stage expanded-image    Expand release image to development image
   $0 --version v1.0.0          Build versioned container (v1.0.0)
   $0 --rebuild                 Force rebuild existing image
+  $0 --debug                   Build with interactive debug mode
   $0 --cache-from clice-io/clice-dev:cache  Use cache from existing image
   $0 --cache-to type=registry,ref=myregistry/myimage:cache   Push cache
 
@@ -76,6 +81,16 @@ BUILD MODES:
   • Multi-stage build: Builds both release and development images
   • Single-stage build: Builds only the specified stage
   • Auto-expansion: Development image can build from existing release image
+
+DEBUG MODE:
+  --debug enables interactive debugging with docker buildx debug build
+  • Requires Docker 23.0+ with BuildKit experimental features
+  • Automatically sets BUILDX_EXPERIMENTAL=1
+  • On build failure, you can use debug commands to inspect the build state
+  • Example debug commands:
+    - docker buildx debug ps          List debug sessions
+    - docker buildx debug exec <id>   Execute commands in failed build
+    - docker buildx debug shell <id>  Open interactive shell in failed build
 
 The container includes:
   • Custom toolchain (fully installed and ready)
@@ -103,6 +118,8 @@ while [ "$#" -gt 0 ]; do
             BUILD_STAGE="$2"; shift 2;;
         --rebuild)
             REBUILD="true"; shift 1;;
+        --debug)
+            DEBUG="true"; shift 1;;
         -h|--help)
             usage; exit 0;;
         *)
@@ -114,15 +131,18 @@ done
 # 🏷️ Image Naming
 # ========================================================================
 
-# Container image tag with version
-IMAGE_TAG="linux-${COMPILER}-${VERSION}"
-PACKED_IMAGE_NAME="clice-io/clice:${IMAGE_TAG}"
+IMAGE_TAG=$(get_image_tag "${COMPILER}" "${VERSION}")
+PACKED_IMAGE_NAME=$(get_packed_image_name "${COMPILER}" "${VERSION}")
+EXPANDED_IMAGE_NAME=$(get_expanded_image_name "${COMPILER}" "${VERSION}")
 
 # Set the target image name based on build stage
 if [ "$BUILD_STAGE" = "packed-image" ]; then
     TARGET_IMAGE_NAME="$PACKED_IMAGE_NAME"
+elif [ "$BUILD_STAGE" = "expanded-image" ]; then
+    TARGET_IMAGE_NAME="$EXPANDED_IMAGE_NAME"
 else
-    TARGET_IMAGE_NAME="clice-io/clice:${IMAGE_TAG}-expanded"
+    TARGET_IMAGE_NAME="clice-dev_container-debug_build-$BUILD_STAGE"
+    echo "🔧 Debug Building Intermediate Stage: $BUILD_STAGE" >&2; usage;
 fi
 
 # ========================================================================
@@ -147,98 +167,72 @@ fi
 echo "========================================================================="
 
 # ========================================================================
-# 🛠️ Docker Build Arguments
-# ========================================================================
-
-BUILD_ARGS=(
-    "--progress=plain"
-    "--target=${BUILD_STAGE}"
-    "--build-arg=COMPILER=${COMPILER}"
-    "--build-arg=PACKED_IMAGE_NAME=${PACKED_IMAGE_NAME}"
-    "--build-arg=BUILDKIT_INLINE_CACHE=1"  # Enable inline cache
-)
-
-# Add cache configuration with logging
-if [ -n "$CACHE_FROM" ]; then
-    echo "💾 Configuring cache source: ${CACHE_FROM}"
-    BUILD_ARGS+=("--cache-from=${CACHE_FROM}")
-fi
-
-if [ -n "$CACHE_TO" ]; then
-    echo "💾 Configuring cache destination: ${CACHE_TO}"
-    BUILD_ARGS+=("--cache-to=${CACHE_TO}")
-    # Log cache operations
-    echo "📝 Cache operations will be logged during build"
-fi
-
-# ========================================================================
-# 🏗️ Execute Build
-# ========================================================================
-
-echo "🏗️ Starting Docker build process with parallel optimization..."
-echo "🔨 Build command: docker buildx build ${BUILD_ARGS[*]} -t ${TARGET_IMAGE_NAME} -f ${DOCKERFILE_PATH} ."
-
-# ========================================================================
 # 🔄 Auto-Expansion Logic (Release → Development)
 # ========================================================================
 
 # Build the target image
 echo "🔍 Checking for target image: ${TARGET_IMAGE_NAME}"
 
-if [ "$REBUILD" = "true" ] || ! docker image inspect "${TARGET_IMAGE_NAME}" >/dev/null 2>&1; then
-    if [ "$REBUILD" = "true" ]; then
-        echo "🔄 Force rebuilding ${BUILD_STAGE}..."
-    else
-        echo "🔍 Target image not found, building ${BUILD_STAGE}..."
-    fi
+# Handle REBUILD flag - clean up existing images
+if [ "$REBUILD" = "true" ]; then
+    echo "🔄 Force rebuild requested - cleaning up existing images..."
     
-    # Set up build arguments based on the target stage
-    if [ "$BUILD_STAGE" = "expanded-image" ]; then
-        # For development image, check if we can build from existing release image
-        if docker image inspect "${PACKED_IMAGE_NAME}" >/dev/null 2>&1; then
-            echo "📦 Found existing release image: ${PACKED_IMAGE_NAME}"
-            echo "🏗️ Building development image from existing release image..."
-            ACTUAL_RELEASE_BASE="${PACKED_IMAGE_NAME}"
-        else
-            echo "🔍 Release image not found: ${PACKED_IMAGE_NAME}"
-            echo "🏗️ Building full multi-stage build (release + development)..."
-            ACTUAL_RELEASE_BASE="packed-image"
-        fi
-    else
-        # For release image or other stages, use default stage reference
-        ACTUAL_RELEASE_BASE="packed-image"
-    fi
-    
-    # Rebuild BUILD_ARGS with correct release base image
-    BUILD_ARGS=(
-        "--progress=plain"
-        "--target=${BUILD_STAGE}"
-        "--build-arg=COMPILER=${COMPILER}"
-        "--build-arg=VERSION=${VERSION}"
-        "--build-arg=RELEASE_BASE_IMAGE=${ACTUAL_RELEASE_BASE}"
-        "--build-arg=BUILDKIT_INLINE_CACHE=1"
-    )
-    
-    # Add cache configuration
-    if [ -n "$CACHE_FROM" ]; then
-        BUILD_ARGS+=("--cache-from=${CACHE_FROM}")
-    fi
-    
-    if [ -n "$CACHE_TO" ]; then
-        BUILD_ARGS+=("--cache-to=${CACHE_TO}")
-        echo "📝 Starting build with cache-to logging enabled..."
-    fi
+    # Clean up target image
+    if docker image inspect "${TARGET_IMAGE_NAME}" >/dev/null 2>&1; then
+        echo "🧹 Removing existing target image: ${TARGET_IMAGE_NAME}"
+        docker rmi "${TARGET_IMAGE_NAME}" || true
+    fi   
+fi
 
-    echo "🏗️ Building ${BUILD_STAGE} with auto-expansion support..."
-    docker buildx build "${BUILD_ARGS[@]}" -t "${TARGET_IMAGE_NAME}" -f "${DOCKERFILE_PATH}" .
-    
-    # Log cache operations if cache-to was used  
-    if [ -n "$CACHE_TO" ]; then
-        echo "💾 Cache operations completed. Cache pushed to: ${CACHE_TO}"
-    fi
+# Rebuild BUILD_ARGS with correct release base image
+BUILD_ARGS=(
+    "--progress=plain"
+    "--target"
+    "${BUILD_STAGE}"
+    "--build-arg"
+    "COMPILER=${COMPILER}"
+    "--build-arg"
+    "VERSION=${VERSION}"
+    "--build-arg"
+    "PACKED_IMAGE_NAME=${PACKED_IMAGE_NAME}"
+    "--build-arg"
+    "CLICE_DIR=${CLICE_DIR}"
+    "--build-arg"
+    "BUILDKIT_INLINE_CACHE=1"
+)
+
+# Add cache configuration
+if [ -n "$CACHE_FROM" ]; then
+    BUILD_ARGS+=("--cache-from=${CACHE_FROM}")
+fi
+
+if [ -n "$CACHE_TO" ]; then
+    BUILD_ARGS+=("--cache-to=${CACHE_TO}")
+    echo "📝 Starting build with cache-to logging enabled..."
+fi
+
+# Add final arguments to complete the build command
+BUILD_ARGS+=("-t" "${TARGET_IMAGE_NAME}" "-f" "${DOCKERFILE_PATH}" ".")
+
+# Execute build with or without debug mode
+if [ "$DEBUG" = "true" ]; then
+    # Enable BuildKit experimental features for debug mode
+    echo "🐛 Debug mode enabled (BUILDX_EXPERIMENTAL=1)"
+
+    export BUILDX_EXPERIMENTAL=1
+    BUILD_COMMAND="docker buildx debug --invoke /bin/bash build"
 else
-    echo "✅ Target image already exists: ${TARGET_IMAGE_NAME}"
-    echo "ℹ️ Use --rebuild to force rebuild"
+    BUILD_COMMAND="docker buildx build"
+fi
+
+echo "🔨 Build command: ${BUILD_COMMAND} ${BUILD_ARGS[*]}"
+${BUILD_COMMAND} "${BUILD_ARGS[@]}"
+
+BUILD_SUCCESS=$?
+
+# Log cache operations if cache-to was used  
+if [ -n "$CACHE_TO" ]; then
+    echo "💾 Cache operations completed. Cache pushed to: ${CACHE_TO}"
 fi
 
 # ========================================================================
@@ -265,7 +259,7 @@ if [ $BUILD_SUCCESS -eq 0 ]; then
         echo ""
         echo "🚀 NEXT STEPS:"
         echo "   • Run container: ./docker/linux/run.sh --compiler ${COMPILER}"
-        echo "   • Test container: docker run --rm -it ${TARGET_IMAGE_NAME} /bin/bash"
+        echo "   • Use container: docker run --rm -it ${TARGET_IMAGE_NAME} /bin/bash"
         echo "   • Development environment is ready to use immediately"
     fi
     

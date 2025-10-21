@@ -579,7 +579,7 @@ Update versions in `config/default-toolchain-version.json`:
 ### Adding New Dependencies
 1. Update package lists in `config/build_config.py`
 2. Rebuild container with `./docker/linux/build.sh --rebuild`
-3. Verify with `./docker/linux/run.sh --reset`
+3. Verify with `./docker/linux/run.sh --update`
 
 ### Container Health Checks
 ```bash

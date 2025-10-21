@@ -19,6 +19,9 @@ set -e
 # 🔧 Environment Setup
 # ========================================================================
 
+# Source common utilities
+source "$(dirname "${BASH_SOURCE[0]}")/utility/common.sh"
+
 # Save original working directory and switch to project root
 ORIG_PWD="$(pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,12 +34,12 @@ trap 'cd "${ORIG_PWD}"' EXIT
 # ⚙️ Default Configuration
 # ========================================================================
 
-COMPILER="clang"
+COMPILER="${DEFAULT_COMPILER}"
 RESET="false"
 UPDATE="false"
-VERSION="latest"
+VERSION="${DEFAULT_VERSION}"
 COMMAND=""
-CONTAINER_WORKDIR="/clice"
+CONTAINER_WORKDIR="${DEFAULT_CONTAINER_WORKDIR}"
 
 # ========================================================================
 # 📚 Usage Information
@@ -98,10 +101,9 @@ done
 # 🏷️ Container and Image Naming
 # ========================================================================
 
-IMAGE_TAG="linux-${COMPILER}-v${VERSION}"
-PACKED_IMAGE_NAME="clice-io/clice:${IMAGE_TAG}"
-EXPANDED_IMAGE_NAME="${PACKED_IMAGE_NAME}-expanded"
-CONTAINER_NAME="clice_dev-linux-${COMPILER}-v${VERSION}"
+PACKED_IMAGE_NAME=$(get_packed_image_name "${COMPILER}" "${VERSION}")
+EXPANDED_IMAGE_NAME=$(get_expanded_image_name "${COMPILER}" "${VERSION}")
+CONTAINER_NAME=$(get_container_name "${COMPILER}" "${VERSION}")
 
 # ========================================================================
 # 🚀 Main Execution
@@ -139,10 +141,19 @@ fi
 # 🏗️ Image Management
 # ========================================================================
 
-# Handle --update: pull latest images and exit
-if [ "$UPDATE" = "true" ] || ! docker image inspect "${PACKED_IMAGE_NAME}" >/dev/null 2>&1; then
-  echo "🔄 Force updating image..."
-  
+# Check if we need to update/pull the packed image
+UPDATE_REASON=""
+if [ "$UPDATE" = "true" ]; then
+  UPDATE_REASON="🔄 Force updating image..."
+elif ! docker image inspect "${PACKED_IMAGE_NAME}" >/dev/null 2>&1; then
+  UPDATE_REASON="🔄 Packed image ${PACKED_IMAGE_NAME} not found locally, pulling..."
+fi
+
+# Handle image update if needed
+if [ -n "$UPDATE_REASON" ]; then
+
+  echo "${UPDATE_REASON}"
+
   # Try to remove existing expanded image before pulling
   if docker image inspect "${EXPANDED_IMAGE_NAME}" >/dev/null 2>&1; then
     echo "🧹 Cleaning existing expanded image: ${EXPANDED_IMAGE_NAME}..."
@@ -164,17 +175,55 @@ if [ "$UPDATE" = "true" ] || ! docker image inspect "${PACKED_IMAGE_NAME}" >/dev
     echo "💡 Please check if the image exists in the registry"
     exit 1
   fi
-  
-  # Expand the packed image to development image using build.sh
-  echo "🏗️ Expanding packed image to development image..."
-  if "${SCRIPT_DIR}/build.sh" --compiler "${COMPILER}" --version "${VERSION}" --stage expanded-image; then
-    echo "✅ Successfully created development image: ${EXPANDED_IMAGE_NAME}"  
-  else
-    echo "❌ Failed to expand packed image to development image"
-    exit 1
-  fi
 
   echo "🏁 Update completed."
+fi
+
+# ========================================================================
+# 🏗️ Auto-Expand Packed Image to Development Image
+# ========================================================================
+
+# At this point, packed image is guaranteed to exist (either pulled or already present)
+# Check if expanded development image exists, if not, expand it from packed image
+if ! docker image inspect "${EXPANDED_IMAGE_NAME}" >/dev/null 2>&1; then
+  echo "========================================================================="
+  echo "🏗️ EXPANDING PACKED IMAGE TO DEVELOPMENT IMAGE"
+  echo "========================================================================="
+  echo "📦 Source (Packed): ${PACKED_IMAGE_NAME}"
+  echo "🎯 Target (Expanded): ${EXPANDED_IMAGE_NAME}"
+  echo "========================================================================="
+  
+  # Run packed image container and execute its internal build.sh for expansion
+  # Why use container's build.sh instead of local:
+  # 1. Container's build.sh is the same version as the packed image
+  # 2. Container has all the correct tools and environment
+  # 3. Local build.sh might be from a different branch/version
+  # 4. Ensures consistent expansion regardless of host environment
+  #
+  # Mounts:
+  # • /var/run/docker.sock - Allow container to build images on host Docker daemon
+  if docker run --rm \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      "${PACKED_IMAGE_NAME}" \
+      /bin/bash -c "cd ${CLICE_DIR} && ./docker/linux/build.sh --stage expanded-image --compiler ${COMPILER} --version ${VERSION}"; then
+    echo "========================================================================="
+    echo "✅ EXPANSION COMPLETED SUCCESSFULLY"
+    echo "========================================================================="
+    echo "🎉 Development image created: ${EXPANDED_IMAGE_NAME}"
+    echo "📦 Ready for container creation"
+    echo "========================================================================="
+  else
+    echo "========================================================================="
+    echo "❌ EXPANSION FAILED"
+    echo "========================================================================="
+    echo "💡 Troubleshooting tips:"
+    echo "   • Check packed image is valid: docker run --rm ${PACKED_IMAGE_NAME} ls -la"
+    echo "   • Review expansion logs above for specific error"
+    echo "========================================================================="
+    exit 1
+  fi
+else
+  echo "✅ Development image already exists: ${EXPANDED_IMAGE_NAME}"
 fi
 
 # Check if the container exists and is using the current development image
