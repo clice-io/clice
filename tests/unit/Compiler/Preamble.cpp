@@ -2,6 +2,7 @@
 #include "Compiler/Preamble.h"
 #include "Compiler/Compilation.h"
 #include "Test/Annotation.h"
+#include "Compiler/Scan.h"
 
 namespace clice::testing {
 
@@ -268,6 +269,23 @@ int y = foo();
         params.pch = {info.path, last_bound};
         auto unit = compile(params);
         expect(that % unit.has_value());
+    };
+
+    test("Scan") = [&] {
+        llvm::StringRef content = R"(
+            #include <iostream>
+            #include "test/file"
+            export module A:
+        )";
+
+        auto result = scan(content);
+        for(auto& tok: result.module_name) {
+            std::println("{}", tok.text(content));
+        }
+
+        for(auto& tok: result.includes) {
+            std::println("include: {}", tok.file);
+        }
     };
 };
 
