@@ -3,9 +3,11 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
-#include <optional>
 #include <coroutine>
+#include <optional>
 #include <source_location>
+#include <type_traits>
+#include <utility>
 
 #include "Support/Format.h"
 
@@ -186,24 +188,13 @@ struct task {
 
 template <typename T = void>
 class Task {
+    template <typename V, bool = std::is_void_v<V>>
+    struct promise_result_impl;
+
 public:
-    template <typename V>
-    struct promise_result {
-        std::optional<V> value;
+    using promise_result = promise_result_impl<T>;
 
-        template <typename U>
-        void return_value(U&& val) noexcept {
-            assert(!value.has_value() && "return_value: value already set");
-            value.emplace(std::forward<U>(val));
-        }
-    };
-
-    template <>
-    struct promise_result<void> {
-        void return_void() noexcept {}
-    };
-
-    struct promise_type : promise_base, promise_result<T> {
+    struct promise_type : promise_base, promise_result {
         promise_type(std::source_location location = std::source_location::current()) {
             set(handle());
             this->location = location;
@@ -327,6 +318,24 @@ public:
 
 private:
     coroutine_handle core;
+};
+
+template <typename T>
+template <typename V>
+struct Task<T>::promise_result_impl<V, false> {
+    std::optional<V> value;
+
+    template <typename U>
+    void return_value(U&& val) noexcept(std::is_nothrow_constructible_v<V, U&&>) {
+        assert(!value.has_value() && "return_value: value already set");
+        value.emplace(std::forward<U>(val));
+    }
+};
+
+template <typename T>
+template <typename V>
+struct Task<T>::promise_result_impl<V, true> {
+    void return_void() noexcept {}
 };
 
 }  // namespace clice::async
