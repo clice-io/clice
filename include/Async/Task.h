@@ -326,7 +326,7 @@ struct Task<T>::promise_result_impl<V, false> {
     std::optional<V> value;
 
     template <typename U>
-    void return_value(U&& val) noexcept {
+    void return_value(U&& val) noexcept(std::is_nothrow_constructible_v<V, U&&>) {
         assert(!value.has_value() && "return_value: value already set");
         value.emplace(std::forward<U>(val));
     }
