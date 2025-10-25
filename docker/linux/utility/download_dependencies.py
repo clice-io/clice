@@ -1,30 +1,7 @@
-# ========================================================================
-# 📦 Clice Dependencies Downloader
-# ========================================================================
-# File: docker/linux/utility/download_dependencies.py
-# Purpose: Download all dev-container dependencies without installing them
-# 
-# This module downloads all required packages, tools, and dependencies
-# without installing them, maximizing Docker build cache efficiency.
-# Downloaded packages are stored in cache directories for later installation.
-# ========================================================================
-
+#!/usr/bin/env python3
 """
-🚀 Clice Dependencies Downloader
-
-Downloads all required development dependencies for the Clice dev container
-without installing them. This approach maximizes Docker build cache efficiency
-by separating the download phase from the installation phase.
-
-Components Downloaded:
-    • APT packages for development tools
-    • CMake binary releases
-    • XMake installation packages
-    • Python packages and dependencies
-    • LLVM prebuilt binaries (if available)
-
-The downloaded packages are stored in structured cache directories that
-can be efficiently copied and cached by Docker's build system.
+Download all dev dependencies (APT packages, CMake, XMake, Python packages)
+without installing them for Docker build cache efficiency.
 """
 
 import os
@@ -56,7 +33,6 @@ from config.build_config import (
 # ========================================================================
 
 def install_download_prerequisites() -> None:
-    """Install prerequisites required for downloading dependencies."""
     print("📦 Installing dependencies download prerequisites...")
     
     # Update package lists first  
@@ -69,12 +45,7 @@ def install_download_prerequisites() -> None:
     print(f"✅ Installed {len(download_prerequisites)} download prerequisites")
 
 def get_apt_package_list(base_packages: List[str]) -> List[str]:
-    """
-    Get all required APT packages using the exact StackOverflow command pattern.
-    
-    Uses: apt-cache depends --recurse ... | awk '$1 ~ /^Depends:/{print $2}'
-    Returns: Deduplicated list of packages to download
-    """
+    """Get recursive APT dependencies using apt-cache depends + awk pattern."""
     print("🔍 Resolving recursive dependencies using StackOverflow command pattern...")
     
     all_packages = set()
@@ -111,7 +82,7 @@ def get_apt_package_list(base_packages: List[str]) -> List[str]:
     
     # Filter available packages (remove virtual/unavailable packages)
     print(f"🔍 Found {len(all_packages)} total dependency packages, filtering available ones...")
-    available_packages = []
+    available_packages = base_packages.copy()
     
     for package in sorted(all_packages):
         try:
@@ -130,13 +101,6 @@ def get_apt_package_list(base_packages: List[str]) -> List[str]:
     return available_packages
 
 def download_apt_packages() -> None:
-    """
-    Download all APT packages using the exact StackOverflow command pattern.
-    
-    Two-stage approach:
-    1. Get package list using apt-cache depends + awk pattern
-    2. Download packages using apt-get download
-    """
     print("📦 Downloading APT packages with StackOverflow command pattern...")
     
     # Create both download cache and package directories using component structure
@@ -216,7 +180,7 @@ def download_apt_packages() -> None:
     print(f"📁 Cache directory: {APT.cache_dir} (preserved for future builds)")
 
 def download_cmake() -> None:
-    """Download CMake binary release with verification files and verify integrity."""
+    """Download CMake installer and verify SHA256 integrity."""
     print("🔧 Downloading CMake with verification...")
     
     # Create both cache and package directories using component structure
@@ -267,7 +231,6 @@ def download_cmake() -> None:
     print(f"📦 CMake copied to package: {cmake_package_file}")
 
 def download_xmake() -> None:
-    """Download XMake bundle for direct installation."""
     print("🔨 Downloading XMake bundle...")
     
     # Create both cache and package directories using component structure
@@ -295,11 +258,6 @@ def download_xmake() -> None:
     print(f"📦 XMake copied to package: {xmake_package_file}")
 
 def download_python_packages() -> None:
-    """
-    Download Python packages from pyproject.toml using uv sync.
-    
-    Uses uv sync to download all dependencies to UV's packages cache directory.
-    """
     print("🐍 Downloading Python packages from pyproject.toml...")
     
     # Create cache directory for packages
@@ -327,8 +285,7 @@ def download_python_packages() -> None:
 # 🚀 Main Execution
 # ========================================================================
 
-def main():
-    """Main execution function with parallel task scheduling."""
+def main() -> None:
     print("🚀 Starting Clice Dependencies Download Process...")
     
     # Create main cache directory

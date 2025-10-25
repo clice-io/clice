@@ -1,12 +1,6 @@
 #!/bin/bash
 # ========================================================================
-# 🚀 Clice Development Container Common Variables
-# ========================================================================
-# File: docker/linux/utility/common.sh
-# Purpose: Defines shared variables and functions for build and run scripts.
-#
-# This script is sourced by other scripts to ensure consistency in image
-# and container naming conventions.
+# Clice Development Container Common Variables
 # ========================================================================
 
 set -e
@@ -24,7 +18,6 @@ CLICE_DIR="/clice"
 # pwd inside the container when you open a shell
 DEFAULT_CONTAINER_WORKDIR="${CLICE_DIR}"
 
-# Dockerfile and build configuration
 DOCKERFILE_PATH="docker/linux/Dockerfile"
 
 # ========================================================================

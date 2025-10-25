@@ -1,31 +1,11 @@
-# ========================================================================
-# 🚀 Clice Local Setup
-# ========================================================================
-# File: docker/linux/utility/local_setup.py  
-# Purpose: Final setup phase for the Clice development container
-#
-# This script handles the installation and configuration of all pre-downloaded
-# packages and tools to complete the development environment setup.
-# ========================================================================
-
+#!/usr/bin/env python3
 """
-🚀 Clice Local Setup Script
-
-Handles the final setup phase of the Clice development container by:
-1. Installing all pre-downloaded APT packages
-2. Extracting and installing the custom toolchain
-3. Setting up CMake and XMake build systems
-4. Installing Python packages via uv
-5. Configuring environment variables and PATH
-
-This script maximizes Docker build cache efficiency by separating the
-installation phase from the download phase, allowing for independent
-caching of each step.
+Final setup: Install pre-downloaded packages (APT, toolchain, CMake, XMake, Python)
+and deploy .bashrc configuration.
 """
 
 import os
 import sys
-import tarfile
 import shutil
 
 # Ensure utility directory is in Python path for imports
@@ -33,15 +13,13 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Import all configuration from build_config using new component structure
 from config.build_config import (
     RELEASE_PACKAGE_DIR,  
     CLICE_WORKDIR,
-    # Import component instances for structured access
-    APT, UV, CMAKE, XMAKE, TOOLCHAIN, BASHRC
+    APT, UV, CMAKE, XMAKE, TOOLCHAIN, BASHRC,
+    APTComponent, UVComponent, CMakeComponent, XMakeComponent, ToolchainComponent
 )
 
-# Import build_utils for run_command and other utilities
 from build_utils import (
     Job,
     ParallelTaskScheduler,
@@ -52,7 +30,7 @@ from build_utils import (
 # 🌍 Environment Setup Functions
 # ========================================================================
 
-def deploy_bashrc():
+def deploy_bashrc() -> None:
     """Deploy .bashrc from package to /root/.bashrc."""
     print("🌍 Deploying .bashrc configuration...")
     
@@ -72,8 +50,7 @@ def deploy_bashrc():
 # 📦 Package Installation Functions
 # ========================================================================
 
-def install_apt_packages(apt_component):
-    """Install APT development packages from downloaded .deb files."""
+def install_apt_packages(apt_component: APTComponent) -> None:
     print("📦 Installing APT development packages...")
     
     # Install all .deb files found in the package directory
@@ -86,13 +63,12 @@ def install_apt_packages(apt_component):
     else:
         print("⚠️ No .deb files found in APT package directory")
 
-def install_toolchain(toolchain_component):
-    """Install the custom toolchain."""
+def install_toolchain(toolchain_component: ToolchainComponent) -> None:
     print("🔧 Installing custom toolchain...")
     
     print(f"✅ Toolchain available at: {toolchain_component.package_dir}")
 
-def install_cmake(cmake_component):
+def install_cmake(cmake_component: CMakeComponent) -> None:
     """Install CMake from pre-downloaded installer."""
     print("🔧 Installing CMake...")
     
@@ -120,7 +96,7 @@ def install_cmake(cmake_component):
     
     print(f"✅ CMake installed to {cmake_install_dir}")
 
-def install_xmake(xmake_component):
+def install_xmake(xmake_component: XMakeComponent) -> None:
     """Install XMake from pre-downloaded package.""" 
     print("🔨 Installing XMake...")
     
@@ -135,8 +111,7 @@ def install_xmake(xmake_component):
     
     print("✅ XMake installed successfully")
 
-def install_python_packages(uv_component):
-    """Install Python packages from uv cache."""
+def install_python_packages(uv_component: UVComponent) -> None:
     print("🐍 Installing Python packages...")
     
     # Install wheel files found in the UV package directory
@@ -154,15 +129,14 @@ def install_python_packages(uv_component):
 # 📋 Setup Orchestration
 # ========================================================================
 
-def setup_git_safe_directory():
+def setup_git_safe_directory() -> None:
     """Configure git to treat the workspace as safe."""
     print("🔧 Configuring git safe directory...")
     
     run_command(f"git config --global --add safe.directory {CLICE_WORKDIR}")
     print("✅ Git safe directory configured")
 
-def main():
-    """Main setup orchestration function with parallel task scheduling."""
+def main() -> None:
     print("🚀 Setting up Clice Dev Container...")
     
     # Define setup jobs with proper dependency management

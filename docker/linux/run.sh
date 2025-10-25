@@ -1,16 +1,6 @@
 #!/bin/bash
 # ========================================================================
-# 🚀 Clice Development Container Runner
-# ========================================================================
-# File: docker/linux/run.sh
-# Purpose: Run and manage Clice development containers
-# 
-# This script handles the complete container lifecycle including:
-# • Automatic image building/pulling if needed
-# • Container creation and management
-# • Development environment initialization
-# 
-# Note: Auto-expansion logic (Release → Development) is handled in build.sh
+# Clice Development Container Runner
 # ========================================================================
 
 set -e
@@ -29,10 +19,6 @@ cd "${SCRIPT_DIR}/../.."
 PROJECT_ROOT="$(pwd)"
 
 trap 'cd "${ORIG_PWD}"' EXIT
-
-# ========================================================================
-# ⚙️ Default Configuration
-# ========================================================================
 
 COMPILER="${DEFAULT_COMPILER}"
 RESET="false"
@@ -64,11 +50,6 @@ EXAMPLES:
   $0 --reset                 Remove container and recreate
   $0 --update                Pull latest image and update
   $0 bash                    Run specific command in container
-
-CONTAINER LIFECYCLE:
-  1. Check/build development image (build.sh handles auto-expansion)
-  2. Create/start container from development image
-  3. Attach to development shell
 EOF
 }
 
@@ -149,12 +130,11 @@ elif ! docker image inspect "${PACKED_IMAGE_NAME}" >/dev/null 2>&1; then
   UPDATE_REASON="🔄 Packed image ${PACKED_IMAGE_NAME} not found locally, pulling..."
 fi
 
-# Handle image update if needed
 if [ -n "$UPDATE_REASON" ]; then
 
   echo "${UPDATE_REASON}"
 
-  # Try to remove existing expanded image before pulling
+  # Remove existing expanded image before pulling (avoid conflicts)
   if docker image inspect "${EXPANDED_IMAGE_NAME}" >/dev/null 2>&1; then
     echo "🧹 Cleaning existing expanded image: ${EXPANDED_IMAGE_NAME}..."
     if ! docker rmi "${EXPANDED_IMAGE_NAME}" >/dev/null 2>&1; then
@@ -194,12 +174,7 @@ if ! docker image inspect "${EXPANDED_IMAGE_NAME}" >/dev/null 2>&1; then
   echo "========================================================================="
   
   # Run packed image container and execute its internal build.sh for expansion
-  # Why use container's build.sh instead of local:
-  # 1. Container's build.sh is the same version as the packed image
-  # 2. Container has all the correct tools and environment
-  # 3. Local build.sh might be from a different branch/version
-  # 4. Ensures consistent expansion regardless of host environment
-  #
+  # To keep the expansion process consistent and reliable, we use the build.sh script from the container itself.
   # Mounts:
   # • /var/run/docker.sock - Allow container to build images on host Docker daemon
   if docker run --rm \
@@ -216,10 +191,6 @@ if ! docker image inspect "${EXPANDED_IMAGE_NAME}" >/dev/null 2>&1; then
     echo "========================================================================="
     echo "❌ EXPANSION FAILED"
     echo "========================================================================="
-    echo "💡 Troubleshooting tips:"
-    echo "   • Check packed image is valid: docker run --rm ${PACKED_IMAGE_NAME} ls -la"
-    echo "   • Review expansion logs above for specific error"
-    echo "========================================================================="
     exit 1
   fi
 else
@@ -230,7 +201,7 @@ fi
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
   echo "🔍 Found existing container: ${CONTAINER_NAME}"
   
-  # Get image IDs for comparison (more reliable than names)
+  # Check if container uses current development image (compare image IDs)
   CONTAINER_IMAGE_ID=$(docker inspect --format='{{.Image}}' "${CONTAINER_NAME}" 2>/dev/null || echo "")
   EXPECTED_IMAGE_ID=$(docker inspect --format='{{.Id}}' "${EXPANDED_IMAGE_NAME}" 2>/dev/null || echo "")
   
@@ -240,9 +211,9 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     echo "🚀 Starting and attaching to container..."
   else
     CONTAINER_IMAGE_NAME=$(docker inspect --format='{{.Config.Image}}' "${CONTAINER_NAME}" 2>/dev/null || echo "unknown")
-    echo "⚠️ WARNING: Container image mismatch detected!"
+    echo "⚠️ WARNING: Container image mismatch!"
     echo "   📦 Container using: ${CONTAINER_IMAGE_NAME} (ID: ${CONTAINER_IMAGE_ID})"
-    echo "   🎯 Expected image: ${EXPANDED_IMAGE_NAME} (ID: ${EXPECTED_IMAGE_ID})"
+    echo "   🎯 Expected: ${EXPANDED_IMAGE_NAME} (ID: ${EXPECTED_IMAGE_ID})"
     echo ""
     echo "💡 Your container is using a different image version."
     echo "🛡️ To ensure data safety, please:"
@@ -263,7 +234,7 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
   exit 0
 fi
 
-# Create new container from development image
+# Create new container
 DOCKER_RUN_ARGS=(-it -w "${CONTAINER_WORKDIR}")
 DOCKER_RUN_ARGS+=(--name "${CONTAINER_NAME}")
 DOCKER_RUN_ARGS+=(--mount "type=bind,src=${PROJECT_ROOT},target=${CONTAINER_WORKDIR}")
