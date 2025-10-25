@@ -1,32 +1,28 @@
 # check=skip=InvalidDefaultArgInFrom,experimental=all
 
 # ========================================================================
-# 🚀 Clice Dev Container Multi-Stage Build System
-# ========================================================================
-# File: docker/linux/Dockerfile
-# Purpose: Optimized multi-stage build for Clice development container
-# 
-# This Dockerfile implements Python-first build approach with minimal
-# system dependencies, letting Python scripts handle dependency installation.
+# Clice Dev Container Multi-Stage Build System
 # ========================================================================
 
 # Arguments passed from docker image build system
 ARG COMPILER
 ARG PACKED_IMAGE_NAME
-ARG CLICE_WORKDIR=/clice
 
 # Global config shared in multi-stage builds
+ARG CLICE_DEV_CONTAINER_BASE_IMAGE=ubuntu:24.04
+ARG CLICE_WORKDIR=/clice
 ARG RELEASE_PACKAGE_DIR=/clice-dev-container-package
-ARG PACKED_RELEASE_PACKAGE_PATH=/release-pkg.tar.xz
+ARG PACKED_RELEASE_PACKAGE_PATH=/release-pkg.7z.run
 ARG ENVIRONMENT_CONFIG_FILE=/root/.bashrc
 ARG BUILD_CACHE_DIR=/var/cache/clice-dev-container
+ARG SETUP_SCRIPTS_DIR=${RELEASE_PACKAGE_DIR}/setup_scripts-unknown
 
 # APT system paths configuration
 ARG APT_CACHE_DIR=/var/cache/apt
 ARG APT_STATE_CACHE_DIR=/var/lib/apt
 
 # UV docker layer cache configuration
-ARG UV_PACKAGE_DIR_NAME=uv-package
+ARG UV_PACKAGE_DIR_NAME=uv-packages
 ARG UV_TARBALL_DIR_NAME=tarball
 
 # Python build scripts communicate via these environment variables
@@ -40,8 +36,8 @@ BUILD_CACHE_DIR=${BUILD_CACHE_DIR}"
 # ========================================================================
 # 🐍 Base Stage: Python Environment Foundation
 # ========================================================================
-FROM ubuntu:24.04 AS base-python-environment-for-build
-LABEL description="Base image with consistent Python and uv environment for builder stages"
+FROM ${CLICE_DEV_CONTAINER_BASE_IMAGE} AS base-python-environment-for-build
+LABEL description="Base image with Python and uv environment for builder stages"
 
 ARG CLICE_WORKDIR
 ARG APT_CACHE_DIR
@@ -60,14 +56,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 COPY docker/linux/utility/pyproject.toml ${CLICE_WORKDIR}/docker/linux/utility/pyproject.toml
 COPY config/default-toolchain-version.json ${CLICE_WORKDIR}/config/default-toolchain-version.json
 
-# Install minimal system dependencies and uv
-RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked \
-    --mount=type=cache,target=${APT_STATE_CACHE_DIR},sharing=locked \
-    --mount=type=cache,target=${BUILD_CACHE_DIR},sharing=locked \
+# Install minimal system dependencies, uv, and Python
+RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked,id=python-build-env-apt \
+    --mount=type=cache,target=${APT_STATE_CACHE_DIR},sharing=locked,id=python-build-env-apt-state \
+    --mount=type=cache,target=${BUILD_CACHE_DIR},sharing=locked,id=python-build-env-cache \
     bash -eux - <<'SCRIPT'
     set -e
     
-    # Disable auto cleanup to keep apt cache
+    # Disable APT auto cleanup to keep apt cache
     # This option would override Binary::apt::APT::Keep-Downloaded-Packages
     rm -f /etc/apt/apt.conf.d/docker-clean
     # It is strange that apt will accept APT::Keep-Downloaded-Packages in commandline,
@@ -105,7 +101,7 @@ RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked \
     UV_BUILD_CACHE_TARBALL_FILE="${UV_BUILD_CACHE_TARBALL_DIR}/${UV_TARBALL_NAME}"
     mkdir -p "${UV_BUILD_CACHE_TARBALL_DIR}"
     
-    # Create package directory for UV
+    # Create package directory for UV, to be copied to release package
     UV_PACKAGE_ROOT="${RELEASE_PACKAGE_DIR}/uv-${UV_VERSION}"
     UV_PACKAGE_CACHE_DIR="${UV_PACKAGE_ROOT}/${UV_PACKAGE_DIR_NAME}"
     UV_PACKAGE_TARBALL_DIR="${UV_PACKAGE_ROOT}/${UV_TARBALL_DIR_NAME}"
@@ -132,11 +128,6 @@ RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked \
     # Verify installation
     echo "✅ UV installed successfully:"
     uv --version
-
-    # Save UV version to a file for expanded-image stage to read
-    # This allows expanded-image to find UV package directory without globbing
-    echo "$UV_VERSION" > "${RELEASE_PACKAGE_DIR}/.uv-version"
-    echo "📝 Saved UV version to: ${RELEASE_PACKAGE_DIR}/.uv-version"
 
     # Get Python version from configuration
     PYTHON_VERSION=$(jq -r .python ${CLICE_WORKDIR}/config/default-toolchain-version.json)
@@ -168,7 +159,7 @@ WORKDIR ${CLICE_WORKDIR}
 # 🏗️ Stage 1: Compiler Toolchain Builder
 # ========================================================================
 FROM base-python-environment-for-build AS toolchain-builder
-LABEL description="Builds custom compiler toolchain with static libstdc++ for glibc compatibility"
+LABEL description="Builds custom compiler toolchain"
 
 ARG CLICE_WORKDIR
 ARG APT_CACHE_DIR
@@ -201,7 +192,7 @@ SCRIPT
 # 🏗️ Stage 2: Dependencies Downloader (Parallel to Stage 1)
 # ========================================================================  
 FROM base-python-environment-for-build AS dependencies-downloader
-LABEL description="Downloads dev-container dependencies for cache optimization"
+LABEL description="Downloads dev-container dependencies"
 
 ARG CLICE_WORKDIR
 ARG APT_CACHE_DIR
@@ -243,19 +234,22 @@ ARG CLICE_WORKDIR
 ARG RELEASE_PACKAGE_DIR
 ARG APT_CACHE_DIR
 ARG APT_STATE_CACHE_DIR
+ARG BUILD_CACHE_DIR
 ARG PYTHON_BUILD_SCRIPT_BASE_ENV_VARIABLES
-
-# For execution in this layer and for package in final image
-COPY config/build_config.py ${CLICE_WORKDIR}/config/build_config.py
-COPY config/default-toolchain-version.json ${CLICE_WORKDIR}/config/default-toolchain-version.json
-COPY docker/linux/utility/build_utils.py ${CLICE_WORKDIR}/docker/linux/utility/build_utils.py
+ARG SETUP_SCRIPTS_DIR
 
 # For execution in this layer only
-COPY docker/linux/utility/create_release_package.py ${CLICE_WORKDIR}/docker/linux/utility/create_release_package.py
+COPY config/build_config.py ${CLICE_WORKDIR}/config/build_config.py
+COPY config/default-toolchain-version.json ${CLICE_WORKDIR}/config/default-toolchain-version.json
 COPY docker/linux/container-entrypoint.sh ${CLICE_WORKDIR}/docker/linux/container-entrypoint.sh
+COPY docker/linux/utility/build_utils.py ${CLICE_WORKDIR}/docker/linux/utility/build_utils.py
+COPY docker/linux/utility/create_release_package.py ${CLICE_WORKDIR}/docker/linux/utility/create_release_package.py
 
-# For final packaging only
-COPY docker/linux/utility/local_setup.py ${CLICE_WORKDIR}/docker/linux/utility/local_setup.py
+# For package
+COPY config/build_config.py ${SETUP_SCRIPTS_DIR}/config/build_config.py
+COPY config/default-toolchain-version.json ${SETUP_SCRIPTS_DIR}/config/default-toolchain-version.json
+COPY docker/linux/utility/local_setup.py ${SETUP_SCRIPTS_DIR}/docker/linux/utility/local_setup.py
+COPY docker/linux/utility/build_utils.py ${SETUP_SCRIPTS_DIR}/docker/linux/utility/build_utils.py
 
 # Copy outputs from previous stages
 # Merge by RELEASE_PACKAGE_DIR structure, each component has its own directory
@@ -269,8 +263,9 @@ COPY --from=toolchain-builder ${RELEASE_PACKAGE_DIR} ${RELEASE_PACKAGE_DIR}
 COPY --from=dependencies-downloader ${RELEASE_PACKAGE_DIR} ${RELEASE_PACKAGE_DIR}
 
 # Setup Python project environment and create final release package
-RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked,id=packed-image-apt \
-    --mount=type=cache,target=${APT_STATE_CACHE_DIR},sharing=locked,id=packed-image-apt-state \
+RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked,id=image-packer-apt \
+    --mount=type=cache,target=${APT_STATE_CACHE_DIR},sharing=locked,id=image-packer-apt-state \
+    --mount=type=cache,target=${BUILD_CACHE_DIR},sharing=locked,id=dependencies-downloader-cache \
     bash -eux - <<'SCRIPT'
     
     # Activate Python environment
@@ -287,19 +282,29 @@ SCRIPT
 # ========================================================================
 # 🏗️ Stage 4: Release Package
 # ========================================================================
-FROM ubuntu:24.04 AS packed-image
+FROM ${CLICE_DEV_CONTAINER_BASE_IMAGE} AS packed-image
 
+ARG CLICE_WORKDIR
 ARG PACKED_RELEASE_PACKAGE_PATH
 
 # Copy only the packed release package
 # All scripts, configs, and .bashrc are already inside the package
 COPY --from=image-packer ${PACKED_RELEASE_PACKAGE_PATH} ${PACKED_RELEASE_PACKAGE_PATH}
 
+# Copy build scripts and Dockerfile
+# These are needed for the final image
+# Instead of using local build.sh and Dockerfile, we use the version packed here
+# So we could make breaking changes to build scripts without breaking released images
+COPY docker/linux/utility/common.sh ${CLICE_WORKDIR}/docker/linux/utility/common.sh
+COPY docker/linux/build.sh ${CLICE_WORKDIR}/docker/linux/build.sh
+COPY docker/linux/Dockerfile ${CLICE_WORKDIR}/docker/linux/Dockerfile
+
 # ========================================================================
 # 🏗️ Stage 5: Development Image (Expanded)
 # ========================================================================
 FROM ${PACKED_IMAGE_NAME} AS expanded-image
-LABEL description="Fully expanded development image with all tools installed"
+LABEL description="Fully expanded development image"
+
 
 ARG CLICE_WORKDIR
 ARG RELEASE_PACKAGE_DIR
@@ -307,26 +312,39 @@ ARG PACKED_RELEASE_PACKAGE_PATH
 ARG PYTHON_BUILD_SCRIPT_BASE_ENV_VARIABLES
 ARG UV_PACKAGE_DIR_NAME
 ARG UV_TARBALL_DIR_NAME
+ARG SETUP_SCRIPTS_DIR
 
 ENV PATH="/root/.local/bin:${PATH}"
 
 # Expand the release image into a full development environment
-# We don't mark here with --mount=type=cache because this is executed on clice developer environment
+# We don't mark here with --mount=type=cache because here is executed on clice developer environment
 # clice developer do not have the cache from previous stages
 RUN bash -eux - <<'SCRIPT'
-    # Extract the release package first
-    echo "📦 Extracting release package..."
+    # Extract self-extracting 7z SFX package (no p7zip-full required)
+    echo "📦 Extracting self-extracting release package..."
     mkdir -p "${RELEASE_PACKAGE_DIR}"
-    tar -xJf "${PACKED_RELEASE_PACKAGE_PATH}" -C "${RELEASE_PACKAGE_DIR}"
+    
+    # Make the SFX archive executable and run it
+    chmod +x "${PACKED_RELEASE_PACKAGE_PATH}"
+    
+    # Run SFX to extract to RELEASE_PACKAGE_DIR
+    # -o: output directory
+    # -y: assume yes for all prompts
+    "${PACKED_RELEASE_PACKAGE_PATH}" -o"${RELEASE_PACKAGE_DIR}" -y
+    
     echo "✅ Release package extracted!"
     
     # Install UV and Python from packaged files (offline installation)
     echo "📦 Installing UV from package..."
-    UV_VERSION_FILE="${RELEASE_PACKAGE_DIR}/.uv-version"
-    UV_VERSION=$(cat "${UV_VERSION_FILE}")    
-    echo "📋 UV version: ${UV_VERSION}"
     
-    UV_PACKAGE_ROOT="${RELEASE_PACKAGE_DIR}/uv-${UV_VERSION}"
+    # Find UV version from directory name (uv-*)
+    UV_PACKAGE_ROOT=$(find "${RELEASE_PACKAGE_DIR}" -maxdepth 1 -type d -name "uv-*" | head -n 1)
+    
+    # Extract version from directory name (e.g., uv-0.9.2 -> 0.9.2)
+    UV_VERSION=$(basename "$UV_PACKAGE_ROOT" | sed 's/^uv-//')
+    echo "📋 UV version: ${UV_VERSION}"
+    echo "📁 UV package root: ${UV_PACKAGE_ROOT}"
+    
     UV_PACKAGE_CACHE_DIR="${UV_PACKAGE_ROOT}/${UV_PACKAGE_DIR_NAME}"
     UV_TARBALL_PATH="${UV_PACKAGE_ROOT}/${UV_TARBALL_DIR_NAME}/uv-*.tar.gz"
     UV_INSTALL_DIR="/root/.local/bin"
@@ -336,21 +354,19 @@ RUN bash -eux - <<'SCRIPT'
     tar -xzf ${UV_TARBALL_PATH} -C ${UV_INSTALL_DIR} --strip-components=1
     echo "✅ UV installed successfully!"
     
-    # Install Python
+    # Install Python - read version from .python-version file in UV package
     PYTHON_VERSION_FILE="${UV_PACKAGE_ROOT}/.python-version"
     PYTHON_VERSION=$(cat "${PYTHON_VERSION_FILE}")
     echo "📋 Python version: ${PYTHON_VERSION}"
     
     echo "🐍 Installing Python ${PYTHON_VERSION}..."
-    UV_CACHE_DIR=${UV_PACKAGE_CACHE_DIR} uv python install "${PYTHON_VERSION}" --default
+    UV_CACHE_DIR=${UV_PACKAGE_CACHE_DIR} uv python install "${PYTHON_VERSION}" --default --preview-features python-install-default
     echo "✅ Python ${PYTHON_VERSION} installed successfully!"
     
-    # Run local setup directly from packaged scripts (no extraction needed)
+    # Run local setup directly from packaged scripts (no download needed)
     echo "🚀 Running local setup to expand environment..."
     
-    # Get path to local_setup.py in package
-    CLICE_SETUP_SCRIPTS_DIR="${RELEASE_PACKAGE_DIR}/clice-setup-scripts-unknown"
-    LOCAL_SETUP_SCRIPT="${CLICE_SETUP_SCRIPTS_DIR}/docker/linux/utility/local_setup.py"
+    LOCAL_SETUP_SCRIPT="${SETUP_SCRIPTS_DIR}/docker/linux/utility/local_setup.py"
         
     # Run local setup directly from package (no venv needed, using system Python)
     eval ${PYTHON_BUILD_SCRIPT_BASE_ENV_VARIABLES} \

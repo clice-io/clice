@@ -1,27 +1,12 @@
 #!/usr/bin/env python3
 """
-📦 Clice Release Package Creator - Stage 3
-
-This script handles the final packaging stage of the multi-stage Docker build.
-It merges the outputs from Stage 1 (toolchain) and Stage 2 (dependencies),
-creates a comprehensive manifest, and packages everything into a single
-compressed archive for the release image.
-
-Components Merged:
-    • Custom compiler toolchain from Stage 1
-    • Development dependencies from Stage 2
-    • Combined dependency manifest
-    • Final compressed release package
-
-The script ensures all components from both stages are properly combined
-and packaged for efficient Docker layer caching and distribution.
+Stage 3: Create final release package by merging toolchain and dependencies,
+generating manifest, and packaging into 7z SFX archive.
 """
 
 import os
 import sys
-import tarfile
 import json
-import shutil
 
 # Add project root to Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -36,30 +21,23 @@ from config.build_config import (
     ALL_COMPONENTS,
     # Component instances for structured access
     TOOLCHAIN,
-    CLICE_SETUP_SCRIPTS,
     BASHRC,
-    UV
+    UV,
+    P7ZIP,
 )
 
-# Import build utilities for parallel execution
 from build_utils import (
     Job,
-    ParallelTaskScheduler
+    ParallelTaskScheduler,
+    run_command
 )
 
 # ========================================================================
 # 🌍 Environment Setup Functions
 # ========================================================================
 
-def setup_environment_variables_and_entrypoint():
-    """
-    Setup .bashrc with environment variables and container entrypoint script.
-    
-    This function creates a complete .bashrc file that:
-    1. Exports environment variables from DEVELOPMENT_SHELL_VARS for persistent shell use
-    2. Sets internal variables (CLICE_WORKDIR, etc.) without export for script-only use
-    3. Embeds the container entrypoint script for auto Python environment setup
-    """
+def setup_environment_variables_and_entrypoint() -> None:
+    """Create .bashrc with environment variables and container entrypoint script."""
     print("🌍 Setting up .bashrc with environment variables and entrypoint script...")
     
     # Read container entrypoint script from BashrcComponent
@@ -111,38 +89,17 @@ def setup_environment_variables_and_entrypoint():
     print("  📝 Internal variables: CLICE_WORKDIR, RELEASE_PACKAGE_DIR, UV_PACKAGE_DIR_NAME")
     print("  📝 Container entrypoint script embedded")
 
-def copy_setup_scripts():
-    """Copy setup scripts and configuration files as complete directory structure."""
-    print("📋 Copying setup scripts and configuration files...")
-    
-    # Get files to copy from component definition
-    for src_rel in CLICE_SETUP_SCRIPTS.files_to_copy:
-        src = os.path.join(CLICE_WORKDIR, src_rel)
-        dst = os.path.join(CLICE_SETUP_SCRIPTS.package_dir, src_rel)
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        shutil.copy2(src, dst)
-        print(f"  ✅ Copied: {src} -> {dst}")
-    
-    print(f"✅ Setup scripts and configs copied to {CLICE_SETUP_SCRIPTS.package_dir}")
-
 # ========================================================================
 # 📋 Manifest Creation Functions
 # ========================================================================
 
-def create_comprehensive_manifest():
-    """
-    📋 Create Comprehensive Release Manifest
-    
-    Creates a detailed manifest of all components based on ALL_COMPONENTS
-    configuration. Analyzes actual package directories and creates a
-    comprehensive overview of the release package contents.
-    """
+def create_comprehensive_manifest() -> None:
     print("📋 Creating comprehensive release manifest based on ALL_COMPONENTS...")
     
     # Create base manifest structure
     manifest = {
         "release_info": {
-            "created_at": os.stat(RELEASE_PACKAGE_DIR).st_ctime if os.path.exists(RELEASE_PACKAGE_DIR) else None,
+            "created_at": os.stat(RELEASE_PACKAGE_DIR).st_birthtime if os.path.exists(RELEASE_PACKAGE_DIR) else None,
             "stage": "final_release",
             "version": "1.0.0"
         },
@@ -238,20 +195,21 @@ def create_comprehensive_manifest():
     print(f"📁 Total files: {manifest['summary']['total_files']}")
     print(f"📦 Total size: {manifest['summary']['total_size_mb']} MB")
 
-def create_final_release_package():
-    """
-    📦 Create Final Release Package
+def update_apt() -> None:
+    print("🔄 Updating APT package database...")
+    run_command("apt update -o DPkg::Lock::Timeout=-1")
+    print("✅ APT database updated")
+
+def install_p7zip() -> None:
+    print("📦 Installing p7zip for archive creation...")
     
-    Creates the final compressed archive containing all components from
-    both build stages. Uses maximum XZ compression for minimal size.
-    
-    The package contains:
-    - Custom compiler toolchain (Stage 1)
-    - Development dependencies (Stage 2) 
-    - Comprehensive release manifest
-    - All directory structures preserved
-    """
-    print("📦 Creating final release package with maximum XZ compression...")
+    packages = " ".join(P7ZIP.build_prerequisites)
+    run_command(f"apt install -y --no-install-recommends -o DPkg::Lock::Timeout=-1 {packages}")
+    print("✅ p7zip installed successfully")
+
+def create_final_release_package() -> None:
+    """Create self-extracting 7z archive containing all components."""
+    print("📦 Creating self-extracting release package with 7z SFX...")
     
     if not os.path.exists(RELEASE_PACKAGE_DIR):
         print("⚠️ No release package directory found")
@@ -261,53 +219,33 @@ def create_final_release_package():
     packed_dir = os.path.dirname(PACKED_RELEASE_PACKAGE_PATH)
     os.makedirs(packed_dir, exist_ok=True)
     
-    # Create archive with maximum XZ compression
     print(f"    📁 Source: {RELEASE_PACKAGE_DIR}")
     print(f"    📁 Target: {PACKED_RELEASE_PACKAGE_PATH}")
     
-    # LZMA could be optimized with multithreading, but reduces compress rate
-    # With higher preset, multithreading benefits diminish. Ref: https://github.com/python/cpython/pull/114954
-    # So we choose single-threaded for best compression
-    with tarfile.open(PACKED_RELEASE_PACKAGE_PATH, 'w:xz', preset=9) as tar:
-        # Add all subdirectories and files, preserving original directory structure
-        for item in os.listdir(RELEASE_PACKAGE_DIR):
-            item_path = os.path.join(RELEASE_PACKAGE_DIR, item)
-            print(f"    📦 Adding: {item}")
-            tar.add(item_path, arcname=item)
+    
+    # Create self-extracting archive using 7z with SFX module
+    # The -sfx option creates a self-extracting executable
+    print(f"🔧 Creating SFX archive with settings: {P7ZIP.compression_options}...")
+    
+    seven_zip_cmd = (
+        f"7z a {P7ZIP.sfx_option} {" ".join(P7ZIP.compression_options)} "
+        f"{PACKED_RELEASE_PACKAGE_PATH} "
+        f"{RELEASE_PACKAGE_DIR}/*"
+    )
+    run_command(seven_zip_cmd)
     
     # Report package statistics
     package_size_mb = os.path.getsize(PACKED_RELEASE_PACKAGE_PATH) / (1024 * 1024)
     
-    # Calculate source directory size for compression ratio
-    source_size_mb = sum(
-        os.path.getsize(os.path.join(dirpath, filename))
-        for dirpath, _, filenames in os.walk(RELEASE_PACKAGE_DIR)
-        for filename in filenames
-    ) / (1024 * 1024)
-    
-    compression_ratio = (source_size_mb - package_size_mb) / source_size_mb * 100 if source_size_mb > 0 else 0
-    
-    print(f"✅ Final release package created: {PACKED_RELEASE_PACKAGE_PATH}")
-    print(f"📊 Source size: {source_size_mb:.1f} MB")
+    print(f"✅ Self-extracting release package created: {PACKED_RELEASE_PACKAGE_PATH}")
     print(f"📊 Package size: {package_size_mb:.1f} MB")
-    print(f"📊 Compression ratio: {compression_ratio:.1f}%")
+    print(f"ℹ️  Extract with: {PACKED_RELEASE_PACKAGE_PATH} -o<output_dir>")
 
 # ========================================================================
 # 🚀 Main Execution
 # ========================================================================
 
-def main():
-    """
-    🚀 Main Stage 3 Execution
-    
-    Orchestrates the final packaging stage using parallel task execution:
-    1. Setup .bashrc with environment variables and entrypoint script
-    2. Copy setup scripts and configuration files
-    3. Create comprehensive manifest based on ALL_COMPONENTS
-    4. Package everything into final release archive
-    
-    This creates the complete release package ready for deployment.
-    """
+def main() -> None:
     print("🚀 ========================================================================")
     print("🚀 CLICE RELEASE PACKAGE CREATOR - STAGE 3")
     print("🚀 ========================================================================")
@@ -316,21 +254,25 @@ def main():
     
     # Define packaging jobs with proper dependency management
     jobs = {
+        "update_apt": Job("update_apt", update_apt, ()),
         "setup_bashrc": Job("setup_bashrc", setup_environment_variables_and_entrypoint, ()),
-        "copy_setup_scripts": Job("copy_setup_scripts", copy_setup_scripts, ()),
         "create_manifest": Job("create_manifest", create_comprehensive_manifest, ()),
+        "install_p7zip": Job("install_p7zip", install_p7zip, ()),
         "create_package": Job("create_package", create_final_release_package, ()),
     }
     
     # Define dependencies
-    # - bashrc setup and script copy can run in parallel
+    # - APT update runs first to refresh package lists
+    # - bashrc setup and script copy can run in parallel with APT update
+    # - p7zip installation depends on APT update being complete
     # - Manifest creation depends on bashrc and scripts being ready
-    # - Package creation depends on manifest
+    # - Package creation depends on manifest and p7zip being ready
     dependencies = {
+        "update_apt": set(),  # Runs first, no dependencies
         "setup_bashrc": set(),
-        "copy_setup_scripts": set(),
-        "create_manifest": {"setup_bashrc", "copy_setup_scripts"},
-        "create_package": {"create_manifest"},
+        "create_manifest": {"setup_bashrc"},
+        "install_p7zip": {"update_apt"},  # Depends on APT update
+        "create_package": {"create_manifest", "install_p7zip"},  # Depends on manifest and 7z
     }
     
     # Execute packaging tasks in parallel where possible
@@ -343,7 +285,6 @@ def main():
     print(f"✅ Final release package: {PACKED_RELEASE_PACKAGE_PATH}")
     print(f"✅ Manifest: {RELEASE_PACKAGE_DIR}/manifest.json")
     print(f"✅ Bashrc: {BASHRC.bashrc_path}")
-    print(f"✅ Setup scripts: {CLICE_SETUP_SCRIPTS.package_dir}")
     print("🎉 ========================================================================")
 
 if __name__ == "__main__":

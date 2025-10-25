@@ -1,13 +1,6 @@
 #!/bin/bash
 # ========================================================================
-# 🚀 Clice Development Container Builder
-# ========================================================================
-# File: docker/linux/build.sh
-# Purpose: Build Clice development container with all tools and dependencies
-# 
-# This script builds a unified development container containing all necessary
-# components for the Clice development environment. The container is ready
-# to use immediately with all tools pre-installed and configured.
+# Clice Development Container Builder
 # ========================================================================
 
 set -e
@@ -26,10 +19,6 @@ cd "${SCRIPT_DIR}/../.."
 PROJECT_ROOT="$(pwd)"
 
 trap 'cd "${ORIG_PWD}"' EXIT
-
-# ========================================================================
-# ⚙️ Default Configuration
-# ========================================================================
 
 COMPILER="${DEFAULT_COMPILER}"
 BUILD_STAGE="${DEFAULT_BUILD_STAGE}"
@@ -70,33 +59,10 @@ EXAMPLES:
   $0 --cache-from clice-io/clice-dev:cache  Use cache from existing image
   $0 --cache-to type=registry,ref=myregistry/myimage:cache   Push cache
 
-VERSION-AWARE BUILDING:
-  When building expanded-image with --version:
-  • First checks for existing release image: clice-io/clice:linux-clang-v1.0.0
-  • If found, builds development image from that release image
-  • If not found, builds full multi-stage (release + development)
-  • Development image will be tagged as: clice-io/clice:linux-clang-v1.0.0-expanded
-
-BUILD MODES:
-  • Multi-stage build: Builds both release and development images
-  • Single-stage build: Builds only the specified stage
-  • Auto-expansion: Development image can build from existing release image
-
 DEBUG MODE:
   --debug enables interactive debugging with docker buildx debug build
-  • Requires Docker 23.0+ with BuildKit experimental features
-  • Automatically sets BUILDX_EXPERIMENTAL=1
-  • On build failure, you can use debug commands to inspect the build state
-  • Example debug commands:
-    - docker buildx debug ps          List debug sessions
-    - docker buildx debug exec <id>   Execute commands in failed build
-    - docker buildx debug shell <id>  Open interactive shell in failed build
-
-The container includes:
-  • Custom toolchain (fully installed and ready)
-  • All development dependencies  
-  • Complete development environment
-  • Version-aware release image support
+  Requires Docker 23.0+ with BuildKit experimental features
+  On build failure, you can use debug commands to inspect the build state
 EOF
 }
 
@@ -184,7 +150,6 @@ if [ "$REBUILD" = "true" ]; then
     fi   
 fi
 
-# Rebuild BUILD_ARGS with correct release base image
 BUILD_ARGS=(
     "--progress=plain"
     "--target"
@@ -201,7 +166,6 @@ BUILD_ARGS=(
     "BUILDKIT_INLINE_CACHE=1"
 )
 
-# Add cache configuration
 if [ -n "$CACHE_FROM" ]; then
     BUILD_ARGS+=("--cache-from=${CACHE_FROM}")
 fi
@@ -211,10 +175,9 @@ if [ -n "$CACHE_TO" ]; then
     echo "📝 Starting build with cache-to logging enabled..."
 fi
 
-# Add final arguments to complete the build command
 BUILD_ARGS+=("-t" "${TARGET_IMAGE_NAME}" "-f" "${DOCKERFILE_PATH}" ".")
 
-# Execute build with or without debug mode
+# Execute with or without debug mode
 if [ "$DEBUG" = "true" ]; then
     # Enable BuildKit experimental features for debug mode
     echo "🐛 Debug mode enabled (BUILDX_EXPERIMENTAL=1)"
@@ -230,7 +193,6 @@ ${BUILD_COMMAND} "${BUILD_ARGS[@]}"
 
 BUILD_SUCCESS=$?
 
-# Log cache operations if cache-to was used  
 if [ -n "$CACHE_TO" ]; then
     echo "💾 Cache operations completed. Cache pushed to: ${CACHE_TO}"
 fi
@@ -260,7 +222,6 @@ if [ $BUILD_SUCCESS -eq 0 ]; then
         echo "🚀 NEXT STEPS:"
         echo "   • Run container: ./docker/linux/run.sh --compiler ${COMPILER}"
         echo "   • Use container: docker run --rm -it ${TARGET_IMAGE_NAME} /bin/bash"
-        echo "   • Development environment is ready to use immediately"
     fi
     
     echo "========================================================================="
@@ -269,11 +230,6 @@ else
     echo "❌ BUILD FAILED!"
     echo "========================================================================="
     echo "🔍 Check the build output above for error details"
-    echo "💡 Common issues:"
-    echo "   • Network connectivity problems"
-    echo "   • Insufficient disk space"
-    echo "   • Docker daemon not running"
-    echo "   • Invalid build arguments"
     echo "========================================================================="
     exit 1
 fi

@@ -1,130 +1,48 @@
-# ========================================================================
-# 🚀 Clice Compiler Toolchain Builder
-# ========================================================================
-# File: docker/linux/utility/build_clice_compiler_toolchain.py
-# Purpose: Automated toolchain construction orchestrator
-# 
-# This module implements a high-performance parallel build system for
-# constructing the complete Clice compiler toolchain from source.
-# 
-# Components Built:
-#   • glibc (GNU C Library)
-#   • GCC libstdc++ (C++ Standard Library) 
-#   • Linux Kernel Headers
-#   • LLVM Project (prepared for future builds)
-# 
-# Features:
-#   • Parallel task execution with dependency resolution
-#   • Robust error handling and recovery
-#   • GPG signature verification
-#   • Automated path fixing for relocatable builds
-# ========================================================================
-
+#!/usr/bin/env python3
 """
-🏗️ Clice Compiler Toolchain Builder
-
-A sophisticated build orchestrator that constructs a complete compiler toolchain
-from source components using parallel execution and dependency management.
-
-This system builds the fundamental components required for the Clice development
-environment, including system libraries, C++ standard library, and kernel headers.
-All components are built with careful attention to compatibility and performance.
-
-The build process is organized into clearly defined stages:
-1. 📦 Setup - Install prerequisites and prepare environment
-2. ⬇️ Download - Fetch source archives with verification
-3. 📂 Extract - Unpack source code to build directories  
-4. 🔨 Build - Compile and install components with proper configuration
-5. 🔧 Post-process - Fix paths and finalize installation
-
-Each stage is executed in parallel where possible, with automatic dependency
-resolution ensuring correct build order.
+Builds custom compiler toolchain (glibc, libstdc++, Linux headers) from source
+using parallel execution with dependency management.
 """
 
-import sys
 import os
+import sys
 
-# ========================================================================
-# 🔧 Project Path Configuration
-# ========================================================================
-# Dynamic project root discovery - enables importing from parent directories
-# This allows the utility scripts to access shared configuration modules
+# Ensure utility directory is in Python path for imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# ========================================================================
-# 📚 Standard Library Imports
-# ========================================================================
-from typing import Dict, Set  # Type hints for better code clarity
+from typing import Dict, Set
 
-# ========================================================================
-# 🛠️ Build System Components
-# ========================================================================
 from build_utils import (
-    Job,                    # Individual build task representation
-    ParallelTaskScheduler,  # High-performance parallel execution engine
-    run_command,           # Shell command execution with environment control
-    install_download_prerequisites,  # Download prerequisite installation
-    install_extract_prerequisites,   # Extract prerequisite installation
-    download_and_verify,            # Component source download and verification
-    extract_source,                 # Component source extraction
+    Job,
+    ParallelTaskScheduler,
+    run_command,
+    install_download_prerequisites,
+    install_extract_prerequisites,
+    download_and_verify,
+    extract_source,
 )
 
-# ========================================================================
-# ⚙️ Configuration Constants
-# ========================================================================
 from config.build_config import (
-    TOOLCHAIN_BUILD_ENV_VARS,          # Build environment variables
-    # Import component instances for structured access
+    TOOLCHAIN_BUILD_ENV_VARS,
     TOOLCHAIN,
-    Component,
-    ToolchainSubComponent
+    ToolchainComponent,
+    GccSubComponent,
+    LinuxSubComponent,
+    GlibcSubComponent
 )
-
-# ========================================================================
-# 🎯 Build Task Implementations
-# ========================================================================
-# Each function represents a discrete build task that can be executed
-# independently once its dependencies are satisfied. The parallel scheduler
-# coordinates execution order based on the dependency graph.
-# ========================================================================
 
 # ========================================================================
 # 📦 Environment Setup Tasks
 # ========================================================================
 
-def update_apt():
-    """
-    🔄 Update APT Package Database
-    
-    Refreshes the APT package manager's local database to ensure we have
-    access to the latest package versions and security updates.
-    
-    This is the foundation step that must complete before any package 
-    installation can proceed safely.
-    """
+def update_apt() -> None:
     print("🔄 [SETUP] Refreshing APT package database...")
     run_command("apt update -o DPkg::Lock::Timeout=-1")
 
-def install_build_prerequisites(component):
-    """
-    🔨 Install Build Stage Prerequisites
-    
-    Installs the build prerequisites for all sub-components of the given component.
-    This collects and deduplicates all build_prerequisites from sub-components,
-    then installs them in a single batch operation.
-    
-    For toolchain component, this includes:
-    • Core build tools (make, binutils, rsync)
-    • Text processing tools (gawk, bison) for glibc
-    • GCC 9 toolchain for glibc compilation
-    • GCC 14 toolchain for libstdc++ compilation
-    
-    Args:
-        component: The parent component (e.g., TOOLCHAIN) whose sub-components'
-                   build prerequisites should be installed
-    
+def install_build_prerequisites(component: ToolchainComponent) -> None:
+    """    
     Note: We maintain multiple GCC versions because glibc requires
     GCC < 10 to avoid linker symbol conflicts, while modern libstdc++
     benefits from the latest compiler features.
@@ -152,11 +70,8 @@ def install_build_prerequisites(component):
 # ========================================================================
 # 📚 GNU C Library (glibc) Tasks
 # ========================================================================
-# glibc is the core system library providing POSIX API implementation.
-# It requires special handling due to its fundamental role in the system.
-# ========================================================================
 
-def fix_glibc_paths():
+def fix_glibc_paths() -> None:
     """
     🔧 Fix Hardcoded Build Paths in glibc Installation
     
@@ -166,13 +81,6 @@ def fix_glibc_paths():
     
     This function scans all installed files and removes build-specific paths,
     making the toolchain portable across different installation directories.
-    
-    Process:
-    1. Walk through all installed files
-    2. Identify text files (skip binaries)
-    3. Search for hardcoded paths
-    4. Remove absolute path references
-    5. Preserve relative path structure
     """
     search_path = TOOLCHAIN.sysroot_dir
     print(f"🔧 [POST-PROCESS] Sanitizing hardcoded paths in {search_path}...")
@@ -210,25 +118,14 @@ def fix_glibc_paths():
     
     print(f"✅ [POST-PROCESS] Path fixing complete ({files_processed} files processed)")
 
-
-def build_and_install_glibc(glibc_component: ToolchainSubComponent, linux_component: ToolchainSubComponent):
-    """
-    🏗️ Build and Install GNU C Library (glibc)
-    
-    Configures, compiles, and installs glibc - the foundational C library
-    that provides POSIX API implementation and system call interface.
-    
+def build_and_install_glibc(glibc_component: GlibcSubComponent, linux_component: LinuxSubComponent) -> None:
+    """    
     Build Configuration:
-    • Uses GCC 9 (required: GCC < 10 to avoid symbol conflicts)
-    • Targets x86_64 architecture with 64-bit support
+    • Uses GCC 9 (required: GCC < 10 to avoid symbol conflicts link error)
     • Disables compiler warnings as errors (--disable-werror)
     • Enables 64-bit libraries, disables 32-bit compatibility
-    
-    Post-installation includes path sanitization to ensure relocatable builds.
-    
-    Note: glibc is built out-of-tree in a separate build directory to
-    maintain clean separation between source and build artifacts.
     """
+
     print(f"🏗️ [BUILD] Starting {glibc_component.name} compilation...")
     print(f"    📋 Using GCC 9 (required for glibc compatibility)")
     print(f"    🎯 Target: {TOOLCHAIN.host_triplet} ({TOOLCHAIN.host_machine})")
@@ -265,29 +162,8 @@ def build_and_install_glibc(glibc_component: ToolchainSubComponent, linux_compon
 # ========================================================================
 # 🐧 Linux Kernel Headers Installation
 # ========================================================================
-# Kernel headers provide system call definitions and kernel API interfaces
-# required for userspace programs to interact with the Linux kernel.
-# ========================================================================
 
-def install_linux_headers(component):
-    """
-    🐧 Install Linux Kernel Headers
-    
-    Extracts and installs sanitized Linux kernel headers that provide
-    system call definitions and kernel API interfaces for userspace programs.
-    
-    The kernel headers are essential for:
-    • System call interface definitions
-    • Kernel data structure layouts
-    • Device driver interfaces
-    • Architecture-specific constants
-    
-    Installation Process:
-    1. Use kernel's built-in header installation system
-    2. Filter out kernel-internal definitions
-    3. Install sanitized headers to sysroot/usr
-    4. Ensure compatibility with userspace programs
-    """
+def install_linux_headers(component: LinuxSubComponent) -> None:
     install_path = os.path.join(TOOLCHAIN.sysroot_dir, "usr")
     print(f"🐧 [INSTALL] Installing Linux kernel headers...")
     print(f"    🏗️ Architecture: {TOOLCHAIN.host_machine}")
@@ -315,52 +191,15 @@ def install_linux_headers(component):
 # ========================================================================
 # 🛠️ GCC Compiler Collection Tasks
 # ========================================================================
-# GCC provides the C++ standard library (libstdc++) and essential runtime
-# libraries. We build only the target libraries, not the full compiler.
-# ========================================================================
 
-def download_gcc_prerequisites(component):
-    """
-    📦 Download GCC Mathematical Prerequisites
-    
-    Downloads and sets up the mathematical libraries required for GCC:
-    • GMP (GNU Multiple Precision Arithmetic Library)
-    • MPFR (Multiple Precision Floating-Point Reliable Library)  
-    • MPC (Multiple Precision Complex Library)
-    
-    These libraries are essential for GCC's internal computations and
-    optimizations. The GCC source tree includes a convenience script
-    that automatically downloads the correct versions.
-    """
+def download_gcc_prerequisites(component: GccSubComponent) -> None:
     print(f"📦 [DOWNLOAD] Fetching {component.name} mathematical prerequisites...")
     print(f"    📋 Components: GMP, MPFR, MPC")
     run_command("./contrib/download_prerequisites", cwd=component.src_dir)
     print(f"✅ [DOWNLOAD] GCC prerequisites ready")
 
-def build_and_install_libstdcpp(component):
-    """
-    🏗️ Build and Install C++ Standard Library (libstdc++)
-    
-    Builds the C++ standard library and essential runtime libraries from GCC.
-    We configure GCC but only build the target libraries we need, avoiding
-    the full compiler build which would be unnecessary and time-consuming.
-    
-    Target Libraries Built:
-    • libgcc - Low-level runtime support (exception handling, etc.)
-    • libstdc++-v3 - Complete C++ standard library
-    • libsanitizer - Address/memory/thread sanitizer support
-    • libatomic - Atomic operations for lock-free programming
-    • libbacktrace - Stack backtrace support for debugging
-    • libgomp - OpenMP parallel programming runtime
-    • libquadmath - Quadruple precision floating-point math
-    
-    Configuration highlights:
-    • Uses modern GCC 14 for latest C++ features
-    • Links against our custom glibc build
-    • Enables LTO for better optimization
-    • Static linking for portable distribution
-    """
-    print(f"🏗️ [BUILD] Starting {component.name} C++ standard library build...")
+def build_and_install_libstdcpp(component: GccSubComponent) -> None:
+    print(f"🔧 [BUILD] Starting {component.name} C++ standard library build...")
     print(f"    📋 Using GCC 14 (modern C++ support)")
     print(f"    🎯 Target libraries: {', '.join(component.target_libs)}")
     print(f"    🔗 Linking with glibc v{TOOLCHAIN.glibc.version}")
@@ -412,30 +251,7 @@ def build_and_install_libstdcpp(component):
 # 🎭 Main Build Orchestrator
 # ========================================================================
 
-def main():
-    """
-    🚀 Main Toolchain Build Orchestrator
-    
-    Coordinates the entire toolchain build process using a sophisticated
-    parallel task scheduler with dependency resolution. The build is organized
-    as a directed acyclic graph (DAG) where each node represents a build task
-    and edges represent dependencies.
-    
-    Build Phases:
-    1. 🔄 Setup - System preparation and prerequisite installation
-    2. ⬇️ Download - Source code fetching with verification
-    3. 📂 Extract - Archive extraction and preparation
-    4. 🏗️ Build - Compilation and installation
-    
-    The scheduler automatically determines the optimal execution order and
-    runs independent tasks in parallel to minimize total build time.
-    
-    Dependency Graph Structure:
-    • Setup tasks run first and can execute in parallel
-    • Download tasks depend on download prerequisites
-    • Extract tasks depend on both download completion and extract tools
-    • Build tasks have complex interdependencies (glibc before libstdc++)
-    """
+def main() -> None:
     print("🚀 ========================================================================")
     print("🚀 CLICE COMPILER TOOLCHAIN BUILD SYSTEM")
     print("🚀 ========================================================================")
@@ -443,13 +259,6 @@ def main():
     print(f"🎯 Target Architecture: {TOOLCHAIN.target_triplet} ({TOOLCHAIN.target_machine})")
     print(f"📋 Components: glibc, Linux headers, libstdc++, LLVM (prepared)")
     print("🚀 ========================================================================\n")
-
-    # ====================================================================
-    # 📋 Build Task Registry
-    # ====================================================================
-    # Each job represents an atomic build operation that can be executed
-    # independently once its dependencies are satisfied.
-    # ====================================================================
     
     all_jobs: Dict[str, Job] = {
         # 📦 System Setup Tasks
@@ -478,17 +287,9 @@ def main():
         "download_llvm": Job("download_llvm", download_and_verify, (TOOLCHAIN.llvm,)),
         "extract_llvm": Job("extract_llvm", extract_source, (TOOLCHAIN.llvm,)),
     }
-
-    # ====================================================================
-    # 🔗 Dependency Graph Definition
-    # ====================================================================
-    # Defines the build order constraints. Each task lists its prerequisites
-    # that must complete before it can begin execution.
-    # ====================================================================
     
     dependency_graph: Dict[str, Set[str]] = {
-        # 📦 Setup Phase - Foundation tasks
-        "update_apt": set(),  # No dependencies - can start immediately
+        "update_apt": set(),
         "install_download_prerequisites": {"update_apt"},
         "install_extract_prerequisites": {"update_apt"},
         "install_build_prerequisites": {"update_apt"},
@@ -522,10 +323,7 @@ def main():
         "download_llvm": {"install_download_prerequisites"},
         "extract_llvm": {"download_llvm", "install_extract_prerequisites"}
     }
-
-    # ====================================================================
-    # 🚀 Launch Parallel Build System
-    # ====================================================================
+    
     print(f"📊 Initializing parallel scheduler with {len(all_jobs)} tasks...")
     print(f"🔗 Total dependencies: {sum(len(deps) for deps in dependency_graph.values())}")
     print(f"⚡ Maximum parallelism: {len([job for job, deps in dependency_graph.items() if not deps])} initial tasks\n")
