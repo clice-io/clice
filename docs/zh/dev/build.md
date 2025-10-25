@@ -116,51 +116,165 @@ $ xmake build --all
 
 ## Dev Container
 
-我们提供了 docker 镜像作为预装环境解决方案，可以有效地解决环境配置问题，可通过下列命令使用（不限脚本调用路径，可以直接运行 ./build.sh）：
+我们提供了完整的 Docker 开发容器解决方案，包含预配置的编译器、构建工具和所有必要依赖，彻底解决环境配置问题。
 
+### 🚀 快速开始
+
+#### 构建开发容器
 ```bash
-# construct container
-docker/linux/build.sh
-# run clang container
-docker/linux/run.sh --compiler clang
-# run gcc container
-docker/linux/run.sh --compiler gcc
-# reset container(delete exist container and reset)
-docker/linux/run.sh --reset
+# 构建默认容器（clang + latest 版本）
+./docker/linux/build.sh
+
+# 构建特定编译器和版本的容器
+./docker/linux/build.sh --compiler gcc --version v1.2.3
+
+# 构建发布镜像（仅打包阶段）
+./docker/linux/build.sh --stage packed-image
+
+# 强制重新构建
+./docker/linux/build.sh --rebuild
 ```
 
-> [!NOTE]
-> 当前该功能仍处于 Preview 阶段，仅支持 Linux，后续会提供 Windows 平台版本，并可能存在功能改动
+#### 运行开发容器
+```bash
+# 运行默认容器
+./docker/linux/run.sh
+
+# 运行特定编译器容器
+./docker/linux/run.sh --compiler gcc
+
+# 运行特定版本容器
+./docker/linux/run.sh --version v1.2.3
+```
+
+#### 容器管理
+```bash
+# 重置容器（删除现有容器后重新创建）
+./docker/linux/run.sh --reset
+
+# 更新容器镜像（拉取最新版本）
+./docker/linux/run.sh --update
+```
+
+### 🏗️ 开发工作流程
+
+#### 完整开发流程示例
+```bash
+# 1. 构建开发容器（首次使用或需要更新时）
+./docker/linux/build.sh --compiler clang
+
+# 2. 启动开发会话
+./docker/linux/run.sh --compiler clang
+
+# 3. 在容器内构建项目（容器已自动挂载项目目录到 /clice）
+cd /clice
+mkdir build && cd build
+
+# 使用 CMake 构建
+cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLVM_INSTALL_PATH="/usr/local/llvm"
+ninja
+
+# 或使用 XMake 构建
+xmake f --mode=debug --toolchain=clang
+xmake build --all
+```
+
+### 📦 容器特性
+
+#### 预装工具和环境
+- **编译器**：GCC 14, Clang 20（来自官方 LLVM PPA）
+- **构建系统**：CMake 3.28+, XMake 2.8+
+- **开发工具**：完整的 C++ 开发栈，包括调试器、分析器等
+- **LLVM 库**：预配置的 LLVM 20.x 开发库和头文件
+- **Python 环境**：使用 uv 管理的一致 Python 环境
+
+#### 自动化特性
+- **环境隔离**：每个编译器和版本独立容器
+- **持久化**：容器状态在会话间保持
+- **自动挂载**：项目目录自动挂载到 `/clice`
+- **版本感知**：支持从已有发布镜像快速创建开发环境
+
+### 🎯 使用场景
+
+#### 日常开发
+```bash
+# 启动开发环境（如果镜像不存在会自动构建）
+./docker/linux/run.sh
+
+# 容器会自动：
+# - 检查并启动现有容器，或创建新容器
+# - 挂载项目目录到 /clice
+# - 提供完整的开发环境
+```
+
+#### 多编译器测试
+```bash
+# 测试不同编译器
+./docker/linux/run.sh --compiler gcc
+./docker/linux/run.sh --compiler clang
+
+# 每个编译器有独立的容器和环境
+```
+
+#### 版本管理
+```bash
+# 使用特定版本
+./docker/linux/build.sh --version v1.0.0
+./docker/linux/run.sh --version v1.0.0
+
+# 更新到最新版本（可以搭配 --version，但是对已发布版本无效，因为已发布版本的镜像无法更新）
+./docker/linux/run.sh --update
+```
+
+### 📋 详细参数说明
+
+#### run.sh 参数
+| 参数 | 描述 | 默认值 |
+|------|------|--------|
+| `--compiler <gcc\|clang>` | 编译器类型 | `clang` |
+| `--version <version>` | 版本标签 | `latest` |
+| `--reset` | 删除并重新创建容器 | - |
+| `--update` | 拉取最新镜像并更新 | - |
+
+#### 生成的镜像命名规则
+- **发布镜像**：`clice-io/clice:linux-{compiler}-{version}`
+- **开发镜像**：`clice-io/clice:linux-{compiler}-{version}-expanded`
+- 示例：
+  - `clice-io/clice:linux-clang-latest`
+  - `clice-io/clice:linux-clang-latest-expanded`
+  - `clice-io/clice:linux-gcc-v1.2.3`
+
+### 🔧 高级用法
+
+#### 自定义命令执行
+```bash
+# 在容器中执行特定命令（使用 -- 分隔）
+./docker/linux/run.sh -- cmake --version
+
+# 执行多个命令
+./docker/linux/run.sh -- "cd /clice/build && cmake .."
+```
+
+#### 容器生命周期管理
+```bash
+# 完全清理并重建
+./docker/linux/run.sh --reset
+
+# 更新到最新镜像
+./docker/linux/run.sh --update
+
+# 检查容器状态
+docker ps -a | grep clice_dev
+docker images | grep clice-io/clice
+```
+
+#### 容器持久化
+- 容器名称：`clice_dev-linux-{compiler}-{version}`
+- 工作目录：`/clice`（挂载到宿主机项目目录）
+- 容器在会话间保持持久，所有安装的工具和配置都会保留，执行 `--reset` 可删除已创建的容器。
 
 ## Building Docker Image
 
-使用以下命令构建 docker 镜像：
+普通用户仅拉取 Docker Image，不需要从源代码构建镜像。
 
-```bash
-$ docker build -t clice .
-```
-
-运行 docker 镜像：
-
-```bash
-$ docker run --rm -it clice --help
-OVERVIEW: clice is a new generation of language server for C/C++
-...
-```
-
-docker 镜像的目录结构如下：
-
-```
-/opt/clice
-├── bin
-│   ├── clice -> /usr/local/bin/clice
-├── include
-├── lib
-├── LICENSE
-├── README.md
-```
-
-提示：可以使用以下命令进入 clice 容器：
-
-```bash
-$ docker run --rm -it --entrypoint bash clice
+clice 构建者可以从源代码构建 Docker Image，详细架构说明请参考 [dev-container-architecture.md](./dev-container-architecture.md)。
