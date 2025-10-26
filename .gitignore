@@ -49,6 +49,9 @@ temp/
 __pycache__/
 .pytest_cache/
 tests/unit/Local/
+perf.data
+flamegraph.svg
+
 
 **/node_modules
 docs/.vitepress/dist

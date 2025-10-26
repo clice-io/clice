@@ -31,7 +31,7 @@ auto Server::on_completion(proto::CompletionParams params) -> Result {
         /// Set compilation params ... .
         CompilationParams params;
         params.kind = CompilationUnit::Completion;
-        params.arguments = database.get_command(path).arguments;
+        params.arguments = database.lookup(path).arguments;
         params.add_remapped_file(path, content);
         params.pch = {pch->path, pch->preamble.size()};
         params.completion = {path, offset};
@@ -88,7 +88,7 @@ async::Task<json::Value> Server::on_signature_help(proto::SignatureHelpParams pa
         /// Set compilation params ... .
         CompilationParams params;
         params.kind = CompilationUnit::Completion;
-        params.arguments = database.get_command(path, options).arguments;
+        params.arguments = database.lookup(path, options).arguments;
         params.add_remapped_file(path, content);
         params.pch = {pch->path, pch->preamble.size()};
         params.completion = {path, offset};

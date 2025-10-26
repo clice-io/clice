@@ -97,7 +97,7 @@ suite<"Command"> command = [] {
 
             CommandOptions options;
             options.suppress_logging = true;
-            expect(eq(result, print_argv(database.get_command(file, options).arguments)));
+            expect(eq(result, print_argv(database.lookup(file, options).arguments)));
         };
 
         /// Filter -c, -o and input file.
@@ -131,8 +131,8 @@ suite<"Command"> command = [] {
 
         CommandOptions options;
         options.suppress_logging = true;
-        auto command1 = database.get_command("test.cpp", options).arguments;
-        auto command2 = database.get_command("test2.cpp", options).arguments;
+        auto command1 = database.lookup("test.cpp", options).arguments;
+        auto command2 = database.lookup("test2.cpp", options).arguments;
         expect(eq(command1.size(), 3));
         expect(eq(command2.size(), 3));
 
@@ -166,32 +166,32 @@ suite<"Command"> command = [] {
 
         remove = {"-DA"};
         options.remove = remove;
-        auto result = database.get_command("main.cpp", options).arguments;
+        auto result = database.lookup("main.cpp", options).arguments;
         expect(eq(print_argv(result), "clang++ -D B=0 main.cpp"));
 
         remove = {"-D", "A"};
         options.remove = remove;
-        result = database.get_command("main.cpp", options).arguments;
+        result = database.lookup("main.cpp", options).arguments;
         expect(eq(print_argv(result), "clang++ -D B=0 main.cpp"));
 
         remove = {"-DA", "-D", "B=0"};
         options.remove = remove;
-        result = database.get_command("main.cpp", options).arguments;
+        result = database.lookup("main.cpp", options).arguments;
         expect(eq(print_argv(result), "clang++ main.cpp"));
 
         remove = {"-D*"};
         options.remove = remove;
-        result = database.get_command("main.cpp", options).arguments;
+        result = database.lookup("main.cpp", options).arguments;
         expect(eq(print_argv(result), "clang++ main.cpp"));
 
         remove = {"-D", "*"};
         options.remove = remove;
-        result = database.get_command("main.cpp", options).arguments;
+        result = database.lookup("main.cpp", options).arguments;
         expect(eq(print_argv(result), "clang++ main.cpp"));
 
         append = {"-D", "C"};
         options.append = append;
-        result = database.get_command("main.cpp", options).arguments;
+        result = database.lookup("main.cpp", options).arguments;
         expect(eq(print_argv(result), "clang++ -D C main.cpp"));
     };
 
@@ -201,7 +201,7 @@ suite<"Command"> command = [] {
         database.update_command("/fake",
                                 "main.cpp",
                                 llvm::StringRef("clang++ @test.txt -std= main.cpp"));
-        auto info = database.get_command("main.cpp", {.query_driver = false});
+        auto info = database.lookup("main.cpp", {.query_driver = false});
     };
 
     skip_unless(CIEnvironment) / test("QueryDriver") = [] {
@@ -241,7 +241,7 @@ suite<"Command"> command = [] {
         CompilationDatabase database;
         using namespace std::literals;
         database.update_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
-        auto arguments = database.get_command("main.cpp", {.resource_dir = true}).arguments;
+        auto arguments = database.lookup("main.cpp", {.resource_dir = true}).arguments;
 
         fatal / expect(eq(arguments.size(), 4));
         expect(eq(arguments[0], "clang++"sv));
@@ -261,7 +261,7 @@ suite<"Command"> command = [] {
 
         CommandOptions options;
         options.suppress_logging = true;
-        auto info = database.get_command(file, options);
+        auto info = database.lookup(file, options);
 
         expect(info.directory == directory);
         expect(info.arguments.size() == arguments.size());

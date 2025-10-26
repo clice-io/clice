@@ -31,6 +31,7 @@ ScanResult scan(llvm::StringRef content) {
                 continue;
             }
 
+            /// Collect module name tokens.
             while(true) {
                 auto name = lexer.advance();
                 if(name.is_eod()) {
