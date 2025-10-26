@@ -541,10 +541,28 @@ struct CompilationDatabase::Impl {
 
         DriverInfo info;
         info.target = self.save_string(driver_info->target);
+
         llvm::SmallVector<const char*> includes;
-        for(auto include: driver_info->includes) {
+        for(llvm::StringRef include: driver_info->includes) {
+            llvm::SmallString<64> buffer;
+
+            /// Make sure the path is absolute, otherwise it may be
+            /// "/usr/lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13", which
+            /// interferes with our determination of the resource directory
+            auto err = fs::real_path(include, buffer);
+            include = buffer;
+
+            /// Remove resource dir of the driver.
+            if(err ||
+               include.contains("lib/gcc")
+               /// FIXME: Only for windows, for Mac removing default resource dir
+               /// may result in unexpected error. Figure out it.
+               || include.contains("lib\\clang")) {
+                continue;
+            }
             includes.emplace_back(self.save_string(include).data());
         }
+
         info.system_includes = self.save_cstring_list(includes);
         self.driver_infos.try_emplace(driver.data(), info);
         return info;
