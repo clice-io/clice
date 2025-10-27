@@ -2,7 +2,10 @@
 
 #include <cstdint>
 #include <string>
+
 #include "AST/SourceCode.h"
+#include "Compiler/Tidy.h"
+
 #include "clang/Basic/Diagnostic.h"
 
 namespace clang {
@@ -52,10 +55,6 @@ struct DiagnosticID {
     /// Whether this diagnostic represents an unused diagnostic.
     bool is_unused() const;
 };
-
-namespace tidy {
-class ClangTidyChecker;
-}
 
 class DiagnosticCollector : public clang::DiagnosticConsumer {
 public:
