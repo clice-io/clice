@@ -53,7 +53,14 @@ struct DiagnosticID {
     bool is_unused() const;
 };
 
-class DiagnosticCollector;
+namespace tidy {
+class ClangTidyChecker;
+}
+
+class DiagnosticCollector : public clang::DiagnosticConsumer {
+public:
+    tidy::ClangTidyChecker* checker = nullptr;
+};
 
 struct Diagnostic {
     /// The diagnostic id.
@@ -69,20 +76,7 @@ struct Diagnostic {
     /// The error message of this diagnostic.
     std::string message;
 
-    static std::pair<DiagnosticCollector*, clang::DiagnosticConsumer*>
-        create(std::shared_ptr<std::vector<Diagnostic>> diagnostics);
-};
-
-class DiagnosticTransform {
-public:
-    virtual clang::DiagnosticsEngine::Level adjust_level(clang::DiagnosticsEngine::Level level,
-                                                         const clang::Diagnostic& diag) = 0;
-    virtual void adjust_diag(Diagnostic& diag) = 0;
-};
-
-class DiagnosticCollector {
-public:
-    virtual void set_transform(DiagnosticTransform* transform) = 0;
+    static DiagnosticCollector* create(std::shared_ptr<std::vector<Diagnostic>> diagnostics);
 };
 
 }  // namespace clice

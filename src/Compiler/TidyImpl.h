@@ -13,7 +13,7 @@ namespace clice::tidy {
 
 using namespace clang::tidy;
 
-class ClangTidyChecker : public DiagnosticTransform {
+class ClangTidyChecker {
 
 public:
     /// The context of the clang-tidy checker.
@@ -26,8 +26,8 @@ public:
     ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider);
 
     clang::DiagnosticsEngine::Level adjust_level(clang::DiagnosticsEngine::Level level,
-                                                 const clang::Diagnostic& diag) override;
-    void adjust_diag(Diagnostic& diag) override;
+                                                 const clang::Diagnostic& diag);
+    void adjust_diag(Diagnostic& diag);
 };
 
 }  // namespace clice::tidy

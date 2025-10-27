@@ -1,4 +1,7 @@
 #include "Compiler/Diagnostic.h"
+#include "Support/Format.h"
+#include "TidyImpl.h"
+
 #include "clang/AST/Type.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
@@ -7,7 +10,6 @@
 #include "clang/Basic/AllDiagnostics.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Preprocessor.h"
-#include "Support/Format.h"
 
 namespace clice {
 
@@ -198,7 +200,7 @@ auto diagnostic_range(const clang::Diagnostic& diagnostic, const clang::LangOpti
     };
 }
 
-class DiagnosticCollectorImpl : public clang::DiagnosticConsumer, public DiagnosticCollector {
+class DiagnosticCollectorImpl : public DiagnosticCollector {
 public:
     DiagnosticCollectorImpl(std::shared_ptr<std::vector<Diagnostic>> diagnostics) :
         diagnostics(diagnostics) {}
@@ -215,8 +217,8 @@ public:
         diagnostic.id.value = raw_diagnostic.getID();
 
         if(!is_note(level)) {
-            if(transform)
-                level = transform->adjust_level(level, raw_diagnostic);
+            if(checker)
+                level = checker->adjust_level(level, raw_diagnostic);
         }
         diagnostic.id.level = diagnostic_level(level);
 
@@ -238,8 +240,8 @@ public:
             diagnostic.range = range;
         }
 
-        if(transform) {
-            transform->adjust_diag(diagnostic);
+        if(checker) {
+            checker->adjust_diag(diagnostic);
         }
 
         /// TODO: handle FixIts
@@ -248,21 +250,14 @@ public:
 
     void EndSourceFile() override {}
 
-    void set_transform(DiagnosticTransform* transform) override {
-        this->transform = transform;
-    }
-
 private:
     std::shared_ptr<std::vector<Diagnostic>> diagnostics;
     const clang::LangOptions* options;
     clang::SourceManager* src_mgr;
-    DiagnosticTransform* transform = nullptr;
 };
 
-std::pair<DiagnosticCollector*, clang::DiagnosticConsumer*>
-    Diagnostic::create(std::shared_ptr<std::vector<Diagnostic>> diagnostics) {
-    auto collector = new DiagnosticCollectorImpl(diagnostics);
-    return std::pair{collector, collector};
+DiagnosticCollector* Diagnostic::create(std::shared_ptr<std::vector<Diagnostic>> diagnostics) {
+    return new DiagnosticCollectorImpl(diagnostics);
 }
 
 }  // namespace clice
