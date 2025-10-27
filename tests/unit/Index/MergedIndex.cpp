@@ -58,7 +58,7 @@ suite<"MergedIndex"> suite = [] {
         auto& graph = tu_index.graph;
         for(auto& [fid, index]: tu_index.file_indices) {
             llvm::StringRef path = graph.paths[graph.path_id(fid)];
-            merged_indices[path].merge("main.cpp", graph.include_location_id(fid), index);
+            merged_indices[path].merge(0, graph.include_location_id(fid), index);
         }
 
         for(auto& [path, merged]: merged_indices) {
@@ -67,10 +67,8 @@ suite<"MergedIndex"> suite = [] {
 
             merged.serialize(os);
 
-            index::MergedIndexView view(s.data());
-            auto merged2 = view.deserialize();
-
-            expect(merged == merged2);
+            auto view = index::MergedIndex(s);
+            expect(merged == view);
         }
     };
 };

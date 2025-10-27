@@ -1,6 +1,7 @@
 #include "AST/Semantic.h"
 #include "Index/TUIndex.h"
 #include "Support/Compare.h"
+#include "llvm/Support/SHA256.h"
 
 namespace clice::index {
 
@@ -114,7 +115,13 @@ public:
             std::ranges::sort(index.occurrences, refl::less);
             auto range = std::ranges::unique(index.occurrences, refl::equal);
             index.occurrences.erase(range.begin(), range.end());
+
+            if(fid == unit.interested_file()) {
+                result.main_file_index = std::move(index);
+            }
         }
+
+        result.file_indices.erase(unit.interested_file());
     }
 
 private:
@@ -123,10 +130,42 @@ private:
 
 }  // namespace
 
+std::array<std::uint8_t, 32> FileIndex::hash() {
+    llvm::SHA256 hasher;
+
+    using u8 = std::uint8_t;
+
+    if(!occurrences.empty()) {
+        static_assert(sizeof(Occurrence) == sizeof(Range) + sizeof(SymbolHash));
+        static_assert(sizeof(Occurrence) % 8 == 0);
+        auto data = reinterpret_cast<u8*>(occurrences.data());
+        auto size = occurrences.size() * sizeof(Occurrence);
+        hasher.update(llvm::ArrayRef(data, size));
+    }
+
+    for(auto& [symbol_id, relations]: relations) {
+        hasher.update(std::bit_cast<std::array<u8, sizeof(symbol_id)>>(symbol_id));
+        static_assert(sizeof(Relation) ==
+                      sizeof(RelationKind) + 4 + sizeof(Range) + sizeof(SymbolHash));
+        static_assert(sizeof(Relation) % 8 == 0);
+
+        if(!relations.empty()) {
+            auto data = reinterpret_cast<u8*>(relations.data());
+            auto size = relations.size() * sizeof(Relation);
+            hasher.update(llvm::ArrayRef(data, size));
+        }
+    }
+
+    return hasher.final();
+}
+
 TUIndex TUIndex::build(CompilationUnit& unit) {
     TUIndex index;
+    index.built_at = unit.build_at();
+
     Builder builder(index, unit);
     builder.build();
+
     return index;
 }
 

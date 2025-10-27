@@ -31,7 +31,7 @@ static std::uint32_t addIncludeChain(CompilationUnit& unit,
         if(success) {
             paths.emplace_back(path);
         }
-        locations[index].path = iter->second;
+        locations[index].path_id = iter->second;
 
         uint32_t include = -1;
         if(presumed.getIncludeLoc().isValid()) {

@@ -83,7 +83,7 @@ auto CompilationUnit::file_offset(clang::SourceLocation location) -> std::uint32
 
 auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
     assert(fid.isValid() && "Invalid fid");
-    if(auto it = impl->pathCache.find(fid); it != impl->pathCache.end()) {
+    if(auto it = impl->path_cache.find(fid); it != impl->path_cache.end()) {
         return it->second;
     }
 
@@ -102,11 +102,11 @@ auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
 
     /// Allocate the path in the storage.
     auto size = path.size();
-    auto data = impl->pathStorage.Allocate<char>(size + 1);
+    auto data = impl->path_storage.Allocate<char>(size + 1);
     memcpy(data, path.data(), size);
     data[size] = '\0';
 
-    auto [it, inserted] = impl->pathCache.try_emplace(fid, llvm::StringRef(data, size));
+    auto [it, inserted] = impl->path_cache.try_emplace(fid, llvm::StringRef(data, size));
     assert(inserted && "File path already exists");
     return it->second;
 }
@@ -121,6 +121,18 @@ auto CompilationUnit::interested_file() -> clang::FileID {
 
 auto CompilationUnit::interested_content() -> llvm::StringRef {
     return file_content(impl->interested);
+}
+
+bool CompilationUnit::is_builtin_file(clang::FileID fid) {
+    // No FileEntryRef => built-in/command line/scratch.
+    if(!impl->src_mgr.getFileEntryRefForID(fid)) {
+        if(auto buffer = impl->src_mgr.getBufferOrNone(fid)) {
+            auto name = buffer->getBufferIdentifier();
+            return name == "<built-in>" || name == "<command line>" || name == "<scratch space>";
+        }
+    }
+
+    return false;
 }
 
 auto CompilationUnit::start_location(clang::FileID fid) -> clang::SourceLocation {
@@ -202,6 +214,22 @@ bool CompilationUnit::is_module_interface_unit() {
     return impl->instance->getPreprocessor().isInNamedInterfaceUnit();
 }
 
+auto CompilationUnit::diagnostics() -> llvm::ArrayRef<Diagnostic> {
+    return *impl->diagnostics;
+}
+
+auto CompilationUnit::top_level_decls() -> llvm::ArrayRef<clang::Decl*> {
+    return impl->top_level_decls;
+}
+
+std::chrono::milliseconds CompilationUnit::build_at() {
+    return impl->build_at;
+}
+
+std::chrono::milliseconds CompilationUnit::build_duration() {
+    return impl->build_duration;
+}
+
 clang::LangOptions& CompilationUnit::lang_options() {
     return impl->instance->getLangOpts();
 }
@@ -236,14 +264,14 @@ std::vector<std::string> CompilationUnit::deps() {
 
 index::SymbolID CompilationUnit::getSymbolID(const clang::NamedDecl* decl) {
     uint64_t hash;
-    auto iter = impl->symbolHashCache.find(decl);
-    if(iter != impl->symbolHashCache.end()) {
+    auto iter = impl->symbol_hash_cache.find(decl);
+    if(iter != impl->symbol_hash_cache.end()) {
         hash = iter->second;
     } else {
         llvm::SmallString<128> USR;
         index::generateUSRForDecl(decl, USR);
         hash = llvm::xxh3_64bits(USR);
-        impl->symbolHashCache.try_emplace(decl, hash);
+        impl->symbol_hash_cache.try_emplace(decl, hash);
     }
     return index::SymbolID{hash, ast::name_of(decl)};
 }
@@ -251,44 +279,31 @@ index::SymbolID CompilationUnit::getSymbolID(const clang::NamedDecl* decl) {
 index::SymbolID CompilationUnit::getSymbolID(const clang::MacroInfo* macro) {
     std::uint64_t hash;
     auto name = token_spelling(macro->getDefinitionLoc());
-    auto iter = impl->symbolHashCache.find(macro);
-    if(iter != impl->symbolHashCache.end()) {
+    auto iter = impl->symbol_hash_cache.find(macro);
+    if(iter != impl->symbol_hash_cache.end()) {
         hash = iter->second;
     } else {
         llvm::SmallString<128> USR;
         index::generateUSRForMacro(name, macro->getDefinitionLoc(), impl->src_mgr, USR);
         hash = llvm::xxh3_64bits(USR);
-        impl->symbolHashCache.try_emplace(macro, hash);
+        impl->symbol_hash_cache.try_emplace(macro, hash);
     }
     return index::SymbolID{hash, name.str()};
 }
 
-bool CompilationUnit::is_builtin_file(clang::FileID fid) {
-    auto path = file_path(fid);
-    return path == "<built-in>" || path == "<command line>" || path == "<scratch space>";
-}
-
-auto CompilationUnit::diagnostics() -> llvm::ArrayRef<Diagnostic> {
-    return *impl->diagnostics;
-}
-
-auto CompilationUnit::top_level_decls() -> llvm::ArrayRef<clang::Decl*> {
-    return impl->top_level_decls;
-}
-
 const llvm::DenseSet<clang::FileID>& CompilationUnit::files() {
-    if(impl->allFiles.empty()) {
+    if(impl->all_files.empty()) {
         /// FIXME: handle preamble and embed file id.
         for(auto& [fid, diretive]: directives()) {
             for(auto& include: diretive.includes) {
                 if(!include.skipped) {
-                    impl->allFiles.insert(include.fid);
+                    impl->all_files.insert(include.fid);
                 }
             }
         }
-        impl->allFiles.insert(impl->src_mgr.getMainFileID());
+        impl->all_files.insert(impl->src_mgr.getMainFileID());
     }
-    return impl->allFiles;
+    return impl->all_files;
 }
 
 clang::TranslationUnitDecl* CompilationUnit::tu() {
@@ -296,12 +311,12 @@ clang::TranslationUnitDecl* CompilationUnit::tu() {
 }
 
 llvm::DenseMap<clang::FileID, Directive>& CompilationUnit::directives() {
-    return impl->m_directives;
+    return impl->directives;
 }
 
 TemplateResolver& CompilationUnit::resolver() {
-    assert(impl->m_resolver && "Template resolver is not available");
-    return *impl->m_resolver;
+    assert(impl->resolver && "Template resolver is not available");
+    return *impl->resolver;
 }
 
 clang::ASTContext& CompilationUnit::context() {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include "Directive.h"
 #include "Compiler/Diagnostic.h"
 #include "AST/SymbolID.h"
@@ -165,6 +167,10 @@ public:
     auto diagnostics() -> llvm::ArrayRef<Diagnostic>;
 
     auto top_level_decls() -> llvm::ArrayRef<clang::Decl*>;
+
+    std::chrono::milliseconds build_at();
+
+    std::chrono::milliseconds build_duration();
 
     clang::LangOptions& lang_options();
 

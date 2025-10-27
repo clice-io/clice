@@ -55,11 +55,14 @@ cl::opt<std::string> resource_dir{
     cl::desc(R"(The path of the clang resource directory, default is "../../lib/clang/version")"),
 };
 
-cl::opt<std::string> log_color{
+cl::opt<logging::ColorMode> log_color{
     "log-color",
     cl::cat(category),
     cl::value_desc("always|auto|never"),
-    cl::init("auto"),
+    cl::init(logging::ColorMode::automatic),
+    cl::values(clEnumValN(logging::ColorMode::automatic, "auto", ""),
+               clEnumValN(logging::ColorMode::always, "always", ""),
+               clEnumValN(logging::ColorMode::never, "never", "")),
     cl::desc("When to use terminal colors, default is auto"),
 };
 
@@ -78,16 +81,8 @@ cl::opt<logging::Level> log_level{
 
 void init_log() {
     using namespace logging;
-    if(auto color_mode = llvm::StringRef{log_color}; !color_mode.compare("never")) {
-        options.color = false;
-    } else if(!color_mode.compare("always")) {
-        options.color = true;
-    } else {
-        // Auto mode
-        options.color = llvm::sys::Process::StandardErrIsDisplayed();
-    }
+    options.color = log_color;
     options.level = log_level;
-
     logging::create_stderr_logger("clice", logging::options);
 }
 

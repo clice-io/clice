@@ -6,7 +6,12 @@ permissions:
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/release.yml"
 
 jobs:
   package:
@@ -16,9 +21,9 @@ jobs:
           - os: windows-2025
             artifact_name: clice.7z
             asset_name: clice-x64-windows-msvc.7z
-            toolchain: clang
+            toolchain: clang-cl
 
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             artifact_name: clice.tar.xz
             asset_name: clice-x86_64-linux-gnu.tar.xz
             toolchain: clang-20
@@ -74,7 +79,14 @@ jobs:
           xmake config --yes --toolchain=${{ matrix.toolchain }} --sdk=/opt/homebrew/opt/llvm@20 --enable_test=n --dev=n --release=y
           xmake pack
 
+      - name: Install uv for integration tests
+        uses: astral-sh/setup-uv@v6
+
+      - name: Run tests
+        run: xmake test --verbose
+
       - name: Upload binaries to release
+        if: github.event_name == 'push'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
