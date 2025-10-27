@@ -95,7 +95,6 @@ file(GLOB_RECURSE CLICE_SOURCES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/src/Support/*.cpp"
 )
 add_library(clice-core STATIC "${CLICE_SOURCES}")
-target_include_directories(clice-core PRIVATE "${CMAKE_SOURCE_DIR}/src/Compiler/generated/")
 add_dependencies(clice-core generate_flatbuffers_schema generate_config)
 
 target_include_directories(clice-core PUBLIC
