@@ -10,25 +10,25 @@
 /// https://github.com/llvm/llvm-project//blob/0865ecc5150b9a55ba1f9e30b6d463a66ac362a6/clang-tools-extra/clangd/ParsedAST.cpp#L547
 /// https://github.com/llvm/llvm-project//blob/0865ecc5150b9a55ba1f9e30b6d463a66ac362a6/clang-tools-extra/clangd/TidyProvider.cpp
 
+#include "TidyImpl.h"
+
 #include "Support/Logging.h"
+#include "Compiler/Diagnostic.h"
+#include "Compiler/Tidy.h"
+#include "Compiler/Utility.h"
+
 #include "clang-tidy/ClangTidyModuleRegistry.h"
 #include "clang-tidy/ClangTidyOptions.h"
 #include "clang-tidy/ClangTidyCheck.h"
 #include "clang-tidy/ClangTidyDiagnosticConsumer.h"
 
+#include "clang/Frontend/CompilerInstance.h"
+
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Process.h"
-
-#include "clang/Frontend/CompilerInstance.h"
-#include <llvm/Support/StringSaver.h>
-
-#include "Compiler/Diagnostic.h"
-#include "Compiler/Tidy.h"
-#include "Compiler/Utility.h"
-
-#include "TidyImpl.h"
+#include "llvm/Support/StringSaver.h"
 
 // Force the linker to link in Clang-tidy modules.
 // clangd doesn't support the static analyzer.
