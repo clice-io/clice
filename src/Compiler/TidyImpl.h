@@ -31,5 +31,3 @@ public:
 };
 
 }  // namespace clice::tidy
-
-namespace clice {}  // namespace clice

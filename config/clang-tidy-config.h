@@ -5,6 +5,7 @@
 #else
 #define CLANG_TIDY_CONFIG_H
 
+// Clice currently doesn't support this configuration, and we use the same default value as clangd.
 #define CLANG_TIDY_ENABLE_STATIC_ANALYZER 0
 
 #endif
