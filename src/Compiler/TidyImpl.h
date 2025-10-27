@@ -2,12 +2,12 @@
 
 #include <memory>
 
+#include "Compiler/Diagnostic.h"
+#include "Compiler/Tidy.h"
+
 #include "clang-tidy/ClangTidyModuleRegistry.h"
 #include "clang-tidy/ClangTidyOptions.h"
 #include "clang-tidy/ClangTidyCheck.h"
-
-#include "Compiler/Diagnostic.h"
-#include "Compiler/Tidy.h"
 
 namespace clice::tidy {
 
