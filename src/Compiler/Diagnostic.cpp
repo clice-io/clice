@@ -217,8 +217,9 @@ public:
         diagnostic.id.value = raw_diagnostic.getID();
 
         if(!is_note(level)) {
-            if(checker)
+            if(checker) {
                 level = checker->adjust_level(level, raw_diagnostic);
+            }
         }
         diagnostic.id.level = diagnostic_level(level);
 

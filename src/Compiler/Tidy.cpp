@@ -73,8 +73,9 @@ std::optional<bool> is_fast_tidy_check(llvm::StringRef check) {
 tidy::ClangTidyCheckFactories get_fast_checks(const tidy::ClangTidyCheckFactories& all) {
     tidy::ClangTidyCheckFactories fast;
     for(const auto& Factory: all) {
-        if(is_fast_tidy_check(Factory.getKey()).value_or(false))
+        if(is_fast_tidy_check(Factory.getKey()).value_or(false)) {
             fast.registerCheckFactory(Factory.first(), Factory.second);
+        }
     }
     return fast;
 }
@@ -82,11 +83,10 @@ tidy::ClangTidyCheckFactories get_fast_checks(const tidy::ClangTidyCheckFactorie
 tidy::ClangTidyOptions create_options() {
     // getDefaults instantiates all check factories, which are registered at link
     // time. So cache the results once.
-    const static auto* default_opts = [] {
-        auto* Opts = new tidy::ClangTidyOptions;
-        *Opts = tidy::ClangTidyOptions::getDefaults();
-        Opts->Checks->clear();
-        return Opts;
+    const static auto default_opts = [] {
+        auto opts = tidy::ClangTidyOptions::getDefaults();
+        opts.Checks->clear();
+        return opts;
     }();
     // These default checks are chosen for:
     //  - low false-positive rate
@@ -131,20 +131,22 @@ tidy::ClangTidyOptions create_options() {
                          // incomplete code.
                          "-bugprone-unchecked-optional-access");
 
-    tidy::ClangTidyOptions opts = *default_opts;
+    tidy::ClangTidyOptions opts = default_opts;
 
-    opts.Checks->clear();
     // clang::clangd::provideEnvironment
-    if(std::optional<std::string> user = llvm::sys::Process::GetEnv("USER"))
+    if(std::optional<std::string> user = llvm::sys::Process::GetEnv("USER")) {
         opts.User = user;
+    }
     // TODO: Providers.push_back(provideClangTidyFiles(TFS)); Filename
     // TODO: if(EnableConfig) Providers.push_back(provideClangdConfig());
     // clang::clangd::provideDefaultChecks
-    if(!opts.Checks || opts.Checks->empty())
+    if(!opts.Checks || opts.Checks->empty()) {
         opts.Checks = default_checks;
+    }
     // clang::clangd::disableUnusableChecks
-    if(opts.Checks && !opts.Checks->empty())
+    if(opts.Checks && !opts.Checks->empty()) {
         opts.Checks->append(bad_checks);
+    }
     return opts;
 }
 
@@ -173,8 +175,9 @@ public:
             std::tie(check, checks) = checks.split(',');
             check = check.trim();
 
-            if(check.empty())
+            if(check.empty()) {
                 continue;
+            }
 
             bool enable = !check.consume_front("-");
             bool glob = check.consume_back("*");
@@ -189,14 +192,17 @@ public:
             }
 
             // In "*,clang-diagnostic-foo", the latter is a no-op.
-            if(default_enable == enable)
+            if(default_enable == enable) {
                 continue;
+            }
             // The only non-glob entries we care about are clang-diagnostic-foo.
-            if(!check.consume_front(CDPrefix))
+            if(!check.consume_front(CDPrefix)) {
                 continue;
+            }
 
-            if(auto group = clang::DiagnosticIDs::getGroupForWarningOption(check))
+            if(auto group = clang::DiagnosticIDs::getGroupForWarningOption(check)) {
                 exceptions.insert(static_cast<unsigned>(*group));
+            }
         }
     }
 
@@ -218,13 +224,15 @@ void apply_warning_options(llvm::ArrayRef<std::string> extra_args,
         // Only handle args that are of the form -W[no-]<group>.
         // Other flags are possible but rare and deliberately out of scope.
         llvm::SmallVector<clang::diag::kind> members;
-        if(!group.consume_front("-W") || group.empty())
+        if(!group.consume_front("-W") || group.empty()) {
             continue;
+        }
         bool enable = !group.consume_front("no-");
         if(diags.getDiagnosticIDs()->getDiagnosticsInGroup(clang::diag::Flavor::WarningOrError,
                                                            group,
-                                                           members))
+                                                           members)) {
             continue;
+        }
 
         // Upgrade (or downgrade) the severity of each diagnostic in the group.
         // If -Werror is on, newly added warnings will be treated as errors.
@@ -235,11 +243,13 @@ void apply_warning_options(llvm::ArrayRef<std::string> extra_args,
                 if(diags.getDiagnosticLevel(id, clang::SourceLocation()) <
                    clang::DiagnosticsEngine::Warning) {
                     auto group = diags.getDiagnosticIDs()->getGroupForDiag(id);
-                    if(!group || !enable_groups(*group))
+                    if(!group || !enable_groups(*group)) {
                         continue;
+                    }
                     diags.setSeverity(id, clang::diag::Severity::Warning, clang::SourceLocation());
-                    if(diags.getWarningsAsErrors())
+                    if(diags.getWarningsAsErrors()) {
                         needs_werror_exclusion = true;
+                    }
                 }
             } else {
                 diags.setSeverity(id, clang::diag::Severity::Ignored, clang::SourceLocation());
@@ -283,8 +293,9 @@ clang::DiagnosticsEngine::Level
                 return clang::DiagnosticsEngine::Ignored;
             }
             if(!context.getOptions().SystemHeaders.value_or(false) && diag.hasSourceManager() &&
-               diag.getSourceManager().isInSystemMacro(diag.getLocation()))
+               diag.getSourceManager().isInSystemMacro(diag.getLocation())) {
                 return clang::DiagnosticsEngine::Ignored;
+            }
 
             // Check for warning-as-error.
             if(level == clang::DiagnosticsEngine::Warning && context.treatAsError(tidy_diag)) {
@@ -355,27 +366,30 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         // Instead, we just use these to filter which extra diagnostics we enable.
         auto& diags = instance.getDiagnostics();
         TidyDiagnosticGroups groups(opts.Checks ? *opts.Checks : llvm::StringRef());
-        if(opts.ExtraArgsBefore)
+        if(opts.ExtraArgsBefore) {
             apply_warning_options(*opts.ExtraArgsBefore, groups, diags);
-        if(opts.ExtraArgs)
+        }
+        if(opts.ExtraArgs) {
             apply_warning_options(*opts.ExtraArgs, groups, diags);
+        }
     }
 
     /// No need to run clang-tidy or IncludeFixerif we are not going to surface
     /// diagnostics.
-    const static auto* all_factories = [] {
-        auto* factories = new tidy::ClangTidyCheckFactories;
-        for(const auto& e: tidy::ClangTidyModuleRegistry::entries())
-            e.instantiate()->addCheckFactories(*factories);
+    const static auto all_factories = [] {
+        tidy::ClangTidyCheckFactories factories;
+        for(const auto& e: tidy::ClangTidyModuleRegistry::entries()) {
+            e.instantiate()->addCheckFactories(factories);
+        }
         return factories;
     }();
-    tidy::ClangTidyCheckFactories factories = get_fast_checks(*all_factories);
+    tidy::ClangTidyCheckFactories factories = get_fast_checks(all_factories);
     std::unique_ptr<ClangTidyChecker> checker = std::make_unique<ClangTidyChecker>(
         std::make_unique<tidy::DefaultOptionsProvider>(tidy::ClangTidyGlobalOptions(), opts));
 
     checker->context.setDiagnosticsEngine(&instance.getDiagnostics());
     checker->context.setASTContext(&instance.getASTContext());
-    // tood: is it always file_name to check?
+    // TODO: is `file_name` always the file to check?
     checker->context.setCurrentFile(file_name);
     checker->context.setSelfContainedDiags(true);
     checker->checks = factories.createChecksForLanguage(&checker->context);

@@ -1,3 +1,6 @@
+
+#include "TidyImpl.h"
+
 #include "CompilationUnitImpl.h"
 #include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
@@ -7,8 +10,6 @@
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/MultiplexConsumer.h"
-
-#include "TidyImpl.h"
 
 namespace clice {
 
