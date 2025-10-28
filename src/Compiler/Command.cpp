@@ -729,7 +729,9 @@ auto CompilationDatabase::load_commands(this Self& self,
 
 auto CompilationDatabase::load_compile_database(this Self& self,
                                                 llvm::ArrayRef<std::string> compile_commands_dirs,
-                                                llvm::StringRef workspace) -> void {}
+                                                llvm::StringRef workspace) -> void {
+    return self.impl->load_compile_database(compile_commands_dirs, workspace);
+}
 
 auto CompilationDatabase::lookup(this Self& self, llvm::StringRef file, CommandOptions options)
     -> LookupInfo {

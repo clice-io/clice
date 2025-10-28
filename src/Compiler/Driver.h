@@ -165,7 +165,7 @@ CompilerFamily driver_family(llvm::StringRef driver) {
         return CompilerFamily::NVCC;
     } else if(driver_name.contains("clang-cl")) {
         return CompilerFamily::ClangCL;
-    } else if(driver_name.contains("clang++")) {
+    } else if(driver_name.contains("clang")) {
         return CompilerFamily::Clang;
     } else if(driver_name == "cc" || driver_name == "c++" || driver_name.contains("gcc") ||
               driver_name.contains("g++")) {
