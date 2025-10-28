@@ -12,10 +12,10 @@
 
 #include "TidyImpl.h"
 
-#include "Support/Logging.h"
+#include "AST/Utility.h"
 #include "Compiler/Diagnostic.h"
 #include "Compiler/Tidy.h"
-#include "Compiler/Utility.h"
+#include "Support/Logging.h"
 
 #include "clang-tidy/ClangTidyModuleRegistry.h"
 #include "clang-tidy/ClangTidyOptions.h"
@@ -72,9 +72,9 @@ std::optional<bool> is_fast_tidy_check(llvm::StringRef check) {
 
 tidy::ClangTidyCheckFactories get_fast_checks(const tidy::ClangTidyCheckFactories& all) {
     tidy::ClangTidyCheckFactories fast;
-    for(const auto& Factory: all) {
-        if(is_fast_tidy_check(Factory.getKey()).value_or(false)) {
-            fast.registerCheckFactory(Factory.first(), Factory.second);
+    for(const auto& factory: all) {
+        if(is_fast_tidy_check(factory.getKey()).value_or(false)) {
+            fast.registerCheckFactory(factory.first(), factory.second);
         }
     }
     return fast;
@@ -280,12 +280,13 @@ clang::DiagnosticsEngine::Level
             // shouldSuppressDiagnostic to avoid I/O.
             // We let suppression comments take precedence over warning-as-error
             // to match clang-tidy's behaviour.
-            bool in_main_file = diag.hasSourceManager() &&
-                                is_inside_main_file(diag.getLocation(), diag.getSourceManager());
-            llvm::SmallVector<clang::tooling::Diagnostic, 1> TidySuppressedErrors;
+            bool in_main_file =
+                diag.hasSourceManager() &&
+                ast::is_inside_main_file(diag.getLocation(), diag.getSourceManager());
+            llvm::SmallVector<clang::tooling::Diagnostic, 1> tidy_suppressed_errors;
             if(in_main_file && context.shouldSuppressDiagnostic(level,
                                                                 diag,
-                                                                TidySuppressedErrors,
+                                                                tidy_suppressed_errors,
                                                                 /*AllowIO=*/false,
                                                                 /*EnableNolintBlocks=*/true)) {
                 // FIXME: should we expose the suppression error (invalid use of

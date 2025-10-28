@@ -15,6 +15,12 @@ bool is_templated(const clang::Decl* decl);
 /// Check whether the decl is anonymous.
 bool is_anonymous(const clang::NamedDecl* decl);
 
+/// Checks whether the location is inside the main file.
+bool is_inside_main_file(clang::SourceLocation loc, const clang::SourceManager& sm);
+
+/// Checks whether the decl is a top-level decl in the main file.
+bool is_clangd_top_level_decl(const clang::Decl* decl);
+
 /// Return the decl where it is instantiated from. If could be a template decl
 /// or a member of a class template. If the decl is a full specialization, return
 /// itself.

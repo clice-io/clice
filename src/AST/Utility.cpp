@@ -16,6 +16,13 @@
 
 namespace clice::ast {
 
+bool is_inside_main_file(clang::SourceLocation loc, const clang::SourceManager& sm) {
+    if(!loc.isValid())
+        return false;
+    clang::FileID fid = sm.getFileID(sm.getExpansionLoc(loc));
+    return fid == sm.getMainFileID() || fid == sm.getPreambleFileID();
+};
+
 bool is_definition(const clang::Decl* decl) {
     if(auto VD = llvm::dyn_cast<clang::VarDecl>(decl)) {
         return VD->isThisDeclarationADefinition();
@@ -56,6 +63,39 @@ bool is_templated(const clang::Decl* decl) {
 bool is_anonymous(const clang::NamedDecl* decl) {
     auto name = decl->getDeclName();
     return name.isIdentifier() && !name.getAsIdentifierInfo();
+}
+
+template <class T>
+bool is_template_specialization_kind(const clang::NamedDecl* decl,
+                                     clang::TemplateSpecializationKind kind) {
+    if(const auto* td = dyn_cast<T>(decl))
+        return td->getTemplateSpecializationKind() == kind;
+    return false;
+}
+
+inline bool is_template_specialization_kind(const clang::NamedDecl* decl,
+                                            clang::TemplateSpecializationKind kind) {
+    return is_template_specialization_kind<clang::FunctionDecl>(decl, kind) ||
+           is_template_specialization_kind<clang::CXXRecordDecl>(decl, kind) ||
+           is_template_specialization_kind<clang::VarDecl>(decl, kind);
+}
+
+inline bool is_implicit_template_instantiation(const clang::NamedDecl* decl) {
+    return is_template_specialization_kind(decl, clang::TSK_ImplicitInstantiation);
+}
+
+bool is_clangd_top_level_decl(const clang::Decl* decl) {
+    auto& sm = decl->getASTContext().getSourceManager();
+    if(!is_inside_main_file(decl->getLocation(), sm))
+        return false;
+    if(const clang::NamedDecl* named_decl = dyn_cast<clang::NamedDecl>(decl))
+        if(is_implicit_template_instantiation(named_decl))
+            return false;
+
+    // ObjCMethodDecl are not actually top-level decls.
+    if(isa<clang::ObjCMethodDecl>(decl))
+        return false;
+    return true;
 }
 
 const static clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clang::Decl* D) {

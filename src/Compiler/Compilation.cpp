@@ -1,12 +1,12 @@
 
 #include "TidyImpl.h"
 
+#include "AST/Utility.h"
 #include "CompilationUnitImpl.h"
 #include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
 #include "Compiler/Diagnostic.h"
 #include "Compiler/Tidy.h"
-#include "Compiler/Utility.h"
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/MultiplexConsumer.h"
@@ -257,7 +257,7 @@ CompilationResult run_clang(CompilationParams& params,
     if(checker) {
         auto clangd_top_level_decls = top_level_decls;
         std::erase_if(clangd_top_level_decls,
-                      [](auto decl) { return !is_clangd_top_level_decl(decl); });
+                      [](auto decl) { return !ast::is_clangd_top_level_decl(decl); });
         // AST traversals should exclude the preamble, to avoid performance cliffs.
         // TODO: is it okay to affect the unit-level traversal scope here?
         instance->getASTContext().setTraversalScope(clangd_top_level_decls);
