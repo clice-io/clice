@@ -143,10 +143,8 @@ void Server::save_cache_info() {
 
 namespace {
 
-bool check_pch_update(llvm::StringRef content,
-                      std::uint32_t bound,
-                      CompilationDatabase::LookupInfo& info,
-                      PCHInfo& pch) {
+bool
+    check_pch_update(llvm::StringRef content, std::uint32_t bound, LookupInfo& info, PCHInfo& pch) {
     if(content.substr(0, bound) != pch.preamble) {
         return true;
     }
@@ -170,7 +168,7 @@ bool check_pch_update(llvm::StringRef content,
 }
 
 /// The actual PCH build task.
-async::Task<bool> build_pch_task(CompilationDatabase::LookupInfo& info,
+async::Task<bool> build_pch_task(LookupInfo& info,
                                  std::string cache_dir,
                                  std::shared_ptr<OpenFile> open_file,
                                  std::string path,
@@ -248,7 +246,7 @@ async::Task<bool> Server::build_pch(std::string file, std::string content) {
     CommandOptions options;
     options.resource_dir = true;
     options.query_driver = true;
-    auto info = database.get_command(file, options);
+    auto info = database.lookup(file, options);
 
     auto bound = compute_preamble_bound(content);
     auto& open_file = opening_files.get_or_add(file);
@@ -315,7 +313,7 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
 
     CompilationParams params;
     params.kind = CompilationUnit::Content;
-    params.arguments = database.get_command(path, options).arguments;
+    params.arguments = database.lookup(path, options).arguments;
     params.add_remapped_file(path, content);
     params.pch = {pch->path, pch->preamble.size()};
     file->diagnostics->clear();

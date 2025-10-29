@@ -10,7 +10,7 @@ namespace clice {
 async::Task<> Indexer::index(llvm::StringRef path) {
     CompilationParams params;
     params.kind = CompilationUnit::Indexing;
-    params.arguments = database.get_command(path).arguments;
+    params.arguments = database.lookup(path).arguments;
 
     auto path_id = project_index.path_pool.path_id(path);
     auto& merged_index = get_index(path_id);
@@ -83,7 +83,7 @@ async::Task<> Indexer::schedule_next() {
 }
 
 async::Task<> Indexer::index_all() {
-    for(auto& [file, cmd]: database) {
+    for(auto& file: database.files()) {
         waitings.push_back(project_index.path_pool.path_id(file));
     }
 

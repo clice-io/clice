@@ -23,6 +23,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         LLVMSupport
         LLVMFrontendOpenMP
         LLVMOption
+        LLVMTargetParser
         clangAST
         clangASTMatchers
         clangBasic

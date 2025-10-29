@@ -63,6 +63,7 @@ target("clice-core")
                 "LLVMSupport",
                 "LLVMFrontendOpenMP",
                 "LLVMOption",
+                "LLVMTargetParser",
                 "clangAST",
                 "clangASTMatchers",
                 "clangBasic",

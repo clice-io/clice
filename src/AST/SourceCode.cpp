@@ -5,37 +5,27 @@
 
 namespace clice {
 
-std::uint32_t getTokenLength(const clang::SourceManager& SM, clang::SourceLocation location) {
-    return clang::Lexer::MeasureTokenLength(location, SM, {});
-}
-
 /// A fake location could be used to calculate the token location offset when lexer
 /// runs in raw mode.
-inline static clang::SourceLocation fake_loc = clang::SourceLocation::getFromRawEncoding(1);
+static clang::SourceLocation fake_loc = clang::SourceLocation::getFromRawEncoding(1);
+static clang::LangOptions default_opts;
 
 Lexer::Lexer(llvm::StringRef content,
              bool ignore_comments,
              const clang::LangOptions* lang_opts,
              bool ignore_end_of_directive) :
-    content(content), ignore_end_of_directive(ignore_end_of_directive) {
-
-    static clang::LangOptions default_opts;
-    auto lexer = new clang::Lexer(fake_loc,
-                                  lang_opts ? *lang_opts : default_opts,
-                                  content.begin(),
-                                  content.begin(),
-                                  content.end());
+    content(content), ignore_end_of_directive(ignore_end_of_directive),
+    lexer(new clang::Lexer(fake_loc,
+                           lang_opts ? *lang_opts : default_opts,
+                           content.begin(),
+                           content.begin(),
+                           content.end())) {
     lexer->SetCommentRetentionState(!ignore_comments);
-    impl = lexer;
 }
 
-Lexer::~Lexer() {
-    delete static_cast<clang::Lexer*>(impl);
-}
+Lexer::~Lexer() = default;
 
 void Lexer::lex(Token& token) {
-    auto lexer = static_cast<clang::Lexer*>(impl);
-
     clang::Token raw_token;
 
     if(parse_header_name) {
@@ -46,22 +36,33 @@ void Lexer::lex(Token& token) {
 
     token.kind = raw_token.getKind();
     token.is_at_start_of_line = raw_token.isAtStartOfLine();
-    token.is_preprocessor_directive = parse_preprocessor_directive;
+    token.is_pp_keyword = parse_pp_keyword;
 
     auto offset = raw_token.getLocation().getRawEncoding() - fake_loc.getRawEncoding();
     token.range = LocalSourceRange{offset, offset + raw_token.getLength()};
 
     if(token.is_at_start_of_line) {
-        if(token.kind == clang::tok::hash) {
-            parse_preprocessor_directive = true;
-            lexer->setParsingPreprocessorDirective(true);
-        }
-
+        /// Reset parse_header_name state.
         parse_header_name = false;
-    } else if(parse_preprocessor_directive) {
-        /// Preprocessor directive token only have one.
-        parse_preprocessor_directive = false;
 
+        if(token.kind == clang::tok::hash ||
+           (module_declaration_context && token.text(content) == "export")) {
+            /// Inform the lexer we are paring directive, then it will emit
+            /// eod(end of directive) token. When there is no end of line
+            /// at the end of file, it also emits eod(before eof).
+            parse_pp_keyword = true;
+            lexer->setParsingPreprocessorDirective(true);
+        } else if(module_declaration_context && token.text(content) == "module") {
+            /// If we already in module context, we regard module as directive keyword.
+            token.is_pp_keyword = true;
+            lexer->setParsingPreprocessorDirective(true);
+        } else {
+            /// When we find the first non directive line, module contexts end.
+            module_declaration_context = false;
+        }
+    } else if(parse_pp_keyword) {
+        /// Reset parse_pp_keyword state.
+        parse_pp_keyword = false;
         parse_header_name = token.text(content) == "include";
     }
 }
@@ -95,7 +96,17 @@ Token Lexer::advance() {
     return current_token;
 }
 
-Token Lexer::advance_until(clang::tok::TokenKind kind) {
+std::optional<Token> Lexer::advance_if(llvm::function_ref<bool(const Token&)> callback) {
+    auto token = next();
+
+    if(callback(token)) {
+        return advance();
+    }
+
+    return std::nullopt;
+}
+
+Token Lexer::advance_until(TokenKind kind) {
     while(true) {
         auto token = advance();
         if(token.kind == kind || token.is_eof()) {

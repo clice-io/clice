@@ -133,7 +133,7 @@ public:
             SymbolKind kind = SymbolKind::Invalid;
             if(token.is_at_start_of_line && token.kind == clang::tok::hash) {
                 kind = SymbolKind::Directive;
-            } else if(token.is_preprocessor_directive) {
+            } else if(token.is_pp_keyword) {
                 kind = SymbolKind::Directive;
             } else {
                 switch(token.kind) {
@@ -176,7 +176,7 @@ public:
 
                     case clang::tok::raw_identifier: {
                         auto last = lexer.last();
-                        if(last.is_preprocessor_directive && last.text(content) == "define") {
+                        if(last.is_pp_keyword && last.text(content) == "define") {
                             kind = SymbolKind::Macro;
                             break;
                         }
