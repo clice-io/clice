@@ -175,7 +175,7 @@ struct Serde<llvm::StringRef> {
     }
 };
 
-template <std::size_t N>
+template <unsigned N>
 struct Serde<llvm::SmallString<N>> {
     using V = llvm::SmallString<N>;
 
