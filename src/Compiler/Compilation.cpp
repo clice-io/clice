@@ -26,16 +26,17 @@ public:
         src_mgr(instance.getSourceManager()), top_level_decls(top_level_decls), stop(stop) {}
 
     void collect_decl(clang::Decl* decl) {
-        auto location = decl->getLocation();
-        if(location.isInvalid()) {
+        if(!(ast::is_inside_main_file(decl->getLocation(), src_mgr))) {
             return;
         }
 
-        location = src_mgr.getExpansionLoc(location);
-        auto fid = src_mgr.getFileID(location);
-        if(fid == src_mgr.getPreambleFileID() || fid == src_mgr.getMainFileID()) {
-            top_level_decls->push_back(decl);
+        if(const clang::NamedDecl* named_decl = dyn_cast<clang::NamedDecl>(decl)) {
+            if(ast::is_implicit_template_instantiation(named_decl)) {
+                return;
+            }
         }
+
+        top_level_decls->push_back(decl);
     }
 
     auto HandleTopLevelDecl(clang::DeclGroupRef group) -> bool final {
@@ -255,12 +256,9 @@ CompilationResult run_clang(CompilationParams& params,
 
     // Must be called before EndSourceFile because the ast context can be destroyed later.
     if(checker) {
-        auto clangd_top_level_decls = top_level_decls;
-        std::erase_if(clangd_top_level_decls,
-                      [](auto decl) { return !ast::is_clangd_top_level_decl(decl); });
         // AST traversals should exclude the preamble, to avoid performance cliffs.
         // TODO: is it okay to affect the unit-level traversal scope here?
-        instance->getASTContext().setTraversalScope(clangd_top_level_decls);
+        instance->getASTContext().setTraversalScope(top_level_decls);
         checker->finder.matchAST(instance->getASTContext());
     }
 

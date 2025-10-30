@@ -80,22 +80,8 @@ inline bool is_template_specialization_kind(const clang::NamedDecl* decl,
            is_template_specialization_kind<clang::VarDecl>(decl, kind);
 }
 
-inline bool is_implicit_template_instantiation(const clang::NamedDecl* decl) {
+bool is_implicit_template_instantiation(const clang::NamedDecl* decl) {
     return is_template_specialization_kind(decl, clang::TSK_ImplicitInstantiation);
-}
-
-bool is_clangd_top_level_decl(const clang::Decl* decl) {
-    auto& sm = decl->getASTContext().getSourceManager();
-    if(!is_inside_main_file(decl->getLocation(), sm))
-        return false;
-    if(const clang::NamedDecl* named_decl = dyn_cast<clang::NamedDecl>(decl))
-        if(is_implicit_template_instantiation(named_decl))
-            return false;
-
-    // ObjCMethodDecl are not actually top-level decls.
-    if(isa<clang::ObjCMethodDecl>(decl))
-        return false;
-    return true;
 }
 
 const static clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clang::Decl* D) {
