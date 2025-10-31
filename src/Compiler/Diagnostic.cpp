@@ -199,9 +199,9 @@ public:
     DiagnosticCollector(std::shared_ptr<std::vector<Diagnostic>> diagnostics) :
         diagnostics(diagnostics) {}
 
-    void BeginSourceFile(const clang::LangOptions& Opts, const clang::Preprocessor* PP) override {
-        options = &Opts;
-        src_mgr = &PP->getSourceManager();
+    void BeginSourceFile(const clang::LangOptions& opts, const clang::Preprocessor* pp) override {
+        options = &opts;
+        src_mgr = &pp->getSourceManager();
     }
 
     void HandleDiagnostic(clang::DiagnosticsEngine::Level level,

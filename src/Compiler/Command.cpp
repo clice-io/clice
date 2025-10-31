@@ -300,13 +300,13 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
 #endif
 
     std::string message;
-    if(int RC = llvm::sys::ExecuteAndWait(driver,
-                                          argv,
-                                          env,
-                                          redirects,
-                                          /*SecondsToWait=*/0,
-                                          /*MemoryLimit=*/0,
-                                          &message)) {
+    if(int ret_code = llvm::sys::ExecuteAndWait(driver,
+                                                argv,
+                                                env,
+                                                redirects,
+                                                /*SecondsToWait=*/0,
+                                                /*MemoryLimit=*/0,
+                                                &message)) {
         return unexpected(ErrorKind::InvokeDriverFail, std::move(message));
     }
 
@@ -317,9 +317,9 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
 
     llvm::StringRef content = file.get()->getBuffer();
 
-    const char* TS = "Target: ";
-    const char* SIS = "#include <...> search starts here:";
-    const char* SIE = "End of search list.";
+    const char* ts = "Target: ";
+    const char* sis = "#include <...> search starts here:";
+    const char* sie = "End of search list.";
 
     llvm::SmallVector<llvm::StringRef> lines;
     content.split(lines, '\n', -1, false);
@@ -333,19 +333,19 @@ auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
     for(const auto& line_ref: lines) {
         auto line = line_ref.trim();
 
-        if(line.starts_with(TS)) {
-            line.consume_front(TS);
+        if(line.starts_with(ts)) {
+            line.consume_front(ts);
             target = line;
             continue;
         }
 
-        if(line == SIS) {
+        if(line == sis) {
             found_start_marker = true;
             in_includes_block = true;
             continue;
         }
 
-        if(line == SIE) {
+        if(line == sie) {
             if(in_includes_block) {
                 in_includes_block = false;
             }

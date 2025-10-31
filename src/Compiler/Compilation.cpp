@@ -135,9 +135,9 @@ auto create_invocation(CompilationParams& params,
     auto& front_opts = invocation->getFrontendOpts();
     front_opts.DisableFree = false;
 
-    clang::LangOptions& langOpts = invocation->getLangOpts();
-    langOpts.CommentOpts.ParseAllComments = true;
-    langOpts.RetainCommentsFromSystemHeaders = true;
+    clang::LangOptions& lang_opts = invocation->getLangOpts();
+    lang_opts.CommentOpts.ParseAllComments = true;
+    lang_opts.RetainCommentsFromSystemHeaders = true;
 
     return invocation;
 }

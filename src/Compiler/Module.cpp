@@ -9,9 +9,9 @@ std::string scanModuleName(CompilationParams& params) {
     /// accepted, the module name in module declaration cannot be a macro now.
     /// It means that if the module declaration doesn't occur in condition preprocess
     /// directive, we can determine the module name just by lexing the source file.
-    clang::LangOptions langOpts;
-    langOpts.Modules = true;
-    langOpts.CPlusPlus20 = true;
+    clang::LangOptions lang_opts;
+    lang_opts.Modules = true;
+    lang_opts.CPlusPlus20 = true;
 
     /// FIXME: Figure out main file from command line.
     assert(params.buffers.size() == 1);
@@ -19,16 +19,16 @@ std::string scanModuleName(CompilationParams& params) {
 
     /// We use raw mode of lexer to avoid the preprocessor.
     clang::Lexer lexer(clang::SourceLocation(),
-                       langOpts,
+                       lang_opts,
                        content.begin(),
                        content.begin(),
                        content.end());
 
     /// Whether we are in a condition directive.
-    bool isInDirective = false;
+    bool is_in_directive = false;
 
     /// Whether we need to preprocess the source file.
-    bool needPreprocess = false;
+    bool need_preprocess = false;
 
     std::string name;
     clang::Token token;
@@ -46,9 +46,9 @@ std::string scanModuleName(CompilationParams& params) {
             lexer.LexFromRawLexer(token);
             auto diretive = token.getRawIdentifier();
             if(diretive == "if" || diretive == "ifdef" || diretive == "ifndef") {
-                isInDirective = true;
+                is_in_directive = true;
             } else if(diretive == "endif") {
-                isInDirective = false;
+                is_in_directive = false;
             }
         } else if(token.is(clang::tok::raw_identifier)) {
             if(token.getRawIdentifier() != "export") [[likely]] {
@@ -61,10 +61,10 @@ std::string scanModuleName(CompilationParams& params) {
             }
 
             /// We are after `export module`.
-            if(isInDirective) {
+            if(is_in_directive) {
                 /// If the module name occurs in a condition directive, we have
                 /// to preprocess the source file to determine the module name.
-                needPreprocess = true;
+                need_preprocess = true;
                 break;
             }
 
@@ -89,7 +89,7 @@ std::string scanModuleName(CompilationParams& params) {
 
     /// If not need to preprocess and the function doesn't return, it means
     /// that this file is not a module interface unit.
-    if(!needPreprocess) {
+    if(!need_preprocess) {
         return "";
     }
 

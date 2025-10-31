@@ -241,9 +241,9 @@ std::vector<std::string> CompilationUnit::deps() {
             }
         }
 
-        for(auto& hasInclude: diretive.has_includes) {
-            if(hasInclude.fid.isValid()) {
-                deps.try_emplace(file_path(hasInclude.fid));
+        for(auto& has_include: diretive.has_includes) {
+            if(has_include.fid.isValid()) {
+                deps.try_emplace(file_path(has_include.fid));
             }
         }
     }
@@ -263,9 +263,9 @@ index::SymbolID CompilationUnit::getSymbolID(const clang::NamedDecl* decl) {
     if(iter != impl->symbol_hash_cache.end()) {
         hash = iter->second;
     } else {
-        llvm::SmallString<128> USR;
-        index::generateUSRForDecl(decl, USR);
-        hash = llvm::xxh3_64bits(USR);
+        llvm::SmallString<128> usr;
+        index::generateUSRForDecl(decl, usr);
+        hash = llvm::xxh3_64bits(usr);
         impl->symbol_hash_cache.try_emplace(decl, hash);
     }
     return index::SymbolID{hash, ast::name_of(decl)};
@@ -278,9 +278,9 @@ index::SymbolID CompilationUnit::getSymbolID(const clang::MacroInfo* macro) {
     if(iter != impl->symbol_hash_cache.end()) {
         hash = iter->second;
     } else {
-        llvm::SmallString<128> USR;
-        index::generateUSRForMacro(name, macro->getDefinitionLoc(), impl->src_mgr, USR);
-        hash = llvm::xxh3_64bits(USR);
+        llvm::SmallString<128> usr;
+        index::generateUSRForMacro(name, macro->getDefinitionLoc(), impl->src_mgr, usr);
+        hash = llvm::xxh3_64bits(usr);
         impl->symbol_hash_cache.try_emplace(macro, hash);
     }
     return index::SymbolID{hash, name.str()};
