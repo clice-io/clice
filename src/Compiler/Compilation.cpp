@@ -213,8 +213,8 @@ CompilationResult run_clang(CompilationParams& params,
     /// Setup clang-tidy
     std::unique_ptr<tidy::ClangTidyChecker> checker;
     if(params.clang_tidy) {
-        tidy::TidyParams params;
-        checker = tidy::configure(*instance, params);
+        tidy::TidyParams tidy_params;
+        checker = tidy::configure(*instance, tidy_params);
         diagnostic_collector->checker = checker.get();
     }
 
