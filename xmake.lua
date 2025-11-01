@@ -271,8 +271,9 @@ package("clice-llvm")
 
             local info = json.loadfile("./config/prebuilt-llvm.json")
             for _, info in ipairs(info) do
-                if  get_config("mode") == info.build_type:lower()
-                and get_config("plat") == info.platform:lower()
+                if info.platform:lower() == get_config("plat")
+                and (info.build_type:lower() == get_config("mode")
+                or info.build_type:lower() == "release" and get_config("mode") == "releasedbg")
                 and (info.is_lto == has_config("release")) then
                     package:add("urls", format("https://github.com/clice-io/llvm-binary/releases/download/%s/%s", info.version, info.filename))
                     package:add("versions", info.version, info.sha256)

@@ -3,7 +3,7 @@
 		"platform": "Windows",
 		"build_type": "Release",
 		"is_lto": false,
-		"filename": "x64-windows-msvc-release.7z",
+		"filename": "x64-windows-msvc-releasedbg.7z",
 		"version": "21.1.4",
 		"sha256": "66dc9686c7b8c2534dc21f2112c2caae66952028a0ae3be50cd94b408642b95b"
 	},
@@ -27,7 +27,7 @@
 		"platform": "Linux",
 		"build_type": "Release",
 		"is_lto": false,
-		"filename": "x86_64-linux-gnu-release.tar.xz",
+		"filename": "x86_64-linux-gnu-releasedbg.tar.xz",
 		"version": "21.1.4",
 		"sha256": "f31f12e07ac6caa4212bae1e9397f9eeefa1502605f8a13eee53fe9707a47b11"
 	},
@@ -51,7 +51,7 @@
 		"platform": "macosx",
 		"build_type": "Release",
 		"is_lto": false,
-		"filename": "arm64-macosx-apple-release.tar.xz",
+		"filename": "arm64-macosx-apple-releasedbg.tar.xz",
 		"version": "21.1.4",
 		"sha256": "b19b605dfbd1fc03ad1e96a4509afcd71c051bef404b97c10568d135905986ff"
 	},
