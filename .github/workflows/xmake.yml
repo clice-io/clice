@@ -56,6 +56,13 @@ jobs:
       - name: Run tests
         run: xmake test --verbose
 
+      - name: Upload artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clice-${{ matrix.os }}-${{ github.sha }}
+          path: ./build
+
   linux:
     strategy:
       matrix:
@@ -108,6 +115,13 @@ jobs:
       - name: Run tests
         run: xmake test --verbose
 
+      - name: Upload artifact
+        if: github.event_name != 'pull_request' && matrix.build_type == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clice-${{ matrix.os }}-${{ github.sha }}
+          path: ./build
+
   macos:
     strategy:
       matrix:
@@ -151,3 +165,10 @@ jobs:
           # Workaround for MacOS
           export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
           xmake test --verbose
+
+      - name: Upload artifact
+        if: github.event_name != 'pull_request' && matrix.build_type == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clice-${{ matrix.os }}-${{ github.sha }}
+          path: ./build
