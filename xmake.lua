@@ -52,7 +52,7 @@ target("clice-core")
     add_files("src/**.cpp|Driver/*.cpp", "include/Index/schema.fbs")
     add_includedirs("include", {public = true})
 
-    add_rules("flatbuffers.schema.gen")
+    add_rules("flatbuffers.schema.gen", "clice_clang_tidy_config")
     add_packages("flatbuffers")
     add_packages("libuv", "spdlog", "toml++", "croaring", {public = true})
 
@@ -175,6 +175,23 @@ target("integration_tests")
         os.vrunv(uv.program, argv, opt)
 
         return true
+    end)
+
+rule("clice_clang_tidy_config")
+    on_load(function (target)
+        import("core.project.depend")
+
+        local autogendir = path.join(target:autogendir(), "rules/clice_clang_tidy_config")
+        os.mkdir(autogendir)
+        target:add("includedirs", autogendir, {public = true})
+
+        local src = path.join(os.projectdir(), "config/clang-tidy-config.h")
+        depend.on_changed(function()
+            os.vcp(src, path.join(autogendir, "clang-tidy-config.h"))
+        end, {
+            files = src,
+            changed = target:is_rebuilt()
+        })
     end)
 
 rule("clice_build_config")

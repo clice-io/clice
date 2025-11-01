@@ -69,6 +69,21 @@ add_custom_target(
     DEPENDS ${GENERATED_HEADER}
 )
 
+set(CONFIG_SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/config/clang-tidy-config.h")
+set(CONFIG_GENERATED_FILE "${CMAKE_CURRENT_BINARY_DIR}/generated/clang-tidy-config.h")
+
+add_custom_command(
+    OUTPUT ${CONFIG_GENERATED_FILE}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CONFIG_SOURCE_FILE} ${CONFIG_GENERATED_FILE}
+    DEPENDS ${CONFIG_SOURCE_FILE}
+    COMMENT "Generating C++ header from ${CONFIG_SOURCE_FILE}"
+)
+
+add_custom_target(
+    generate_config
+    DEPENDS ${CONFIG_GENERATED_FILE}
+)
+
 file(GLOB_RECURSE CLICE_SOURCES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/src/AST/*.cpp"
     "${PROJECT_SOURCE_DIR}/src/Async/*.cpp"
@@ -80,7 +95,7 @@ file(GLOB_RECURSE CLICE_SOURCES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/src/Support/*.cpp"
 )
 add_library(clice-core STATIC "${CLICE_SOURCES}")
-add_dependencies(clice-core generate_flatbuffers_schema)
+add_dependencies(clice-core generate_flatbuffers_schema generate_config)
 
 target_include_directories(clice-core PUBLIC
     "${PROJECT_SOURCE_DIR}/include"

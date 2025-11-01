@@ -1,4 +1,7 @@
 #include "Compiler/Diagnostic.h"
+#include "Support/Format.h"
+#include "TidyImpl.h"
+
 #include "clang/AST/Type.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
@@ -7,7 +10,6 @@
 #include "clang/Basic/AllDiagnostics.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Preprocessor.h"
-#include "Support/Format.h"
 
 namespace clice {
 
@@ -131,6 +133,10 @@ bool DiagnosticID::is_unused() const {
     return source == DiagnosticSource::Clang && unused_diags.contains(value);
 }
 
+bool is_note(clang::DiagnosticsEngine::Level level) {
+    return level == clang::DiagnosticsEngine::Note || level == clang::DiagnosticsEngine::Remark;
+}
+
 static DiagnosticLevel diagnostic_level(clang::DiagnosticsEngine::Level level) {
     switch(level) {
         case clang::DiagnosticsEngine::Ignored: return DiagnosticLevel::Ignored;
@@ -194,14 +200,14 @@ auto diagnostic_range(const clang::Diagnostic& diagnostic, const clang::LangOpti
     };
 }
 
-class DiagnosticCollector : public clang::DiagnosticConsumer {
+class DiagnosticCollectorImpl : public DiagnosticCollector {
 public:
-    DiagnosticCollector(std::shared_ptr<std::vector<Diagnostic>> diagnostics) :
+    DiagnosticCollectorImpl(std::shared_ptr<std::vector<Diagnostic>> diagnostics) :
         diagnostics(diagnostics) {}
 
-    void BeginSourceFile(const clang::LangOptions& Opts, const clang::Preprocessor* PP) override {
-        options = &Opts;
-        src_mgr = &PP->getSourceManager();
+    void BeginSourceFile(const clang::LangOptions& opts, const clang::Preprocessor* pp) override {
+        options = &opts;
+        src_mgr = &pp->getSourceManager();
     }
 
     void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
@@ -209,6 +215,12 @@ public:
 
         auto& diagnostic = diagnostics->emplace_back();
         diagnostic.id.value = raw_diagnostic.getID();
+
+        if(!is_note(level)) {
+            if(checker) {
+                level = checker->adjust_level(level, raw_diagnostic);
+            }
+        }
         diagnostic.id.level = diagnostic_level(level);
 
         /// TODO:
@@ -227,6 +239,10 @@ public:
             auto [fid, range] = *pair;
             diagnostic.fid = fid;
             diagnostic.range = range;
+        }
+
+        if(checker) {
+            checker->adjust_diag(diagnostic);
         }
 
         /// TODO: handle FixIts

@@ -1,7 +1,12 @@
+
+#include "TidyImpl.h"
+
+#include "AST/Utility.h"
 #include "CompilationUnitImpl.h"
 #include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
 #include "Compiler/Diagnostic.h"
+#include "Compiler/Tidy.h"
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/MultiplexConsumer.h"
@@ -21,16 +26,17 @@ public:
         src_mgr(instance.getSourceManager()), top_level_decls(top_level_decls), stop(stop) {}
 
     void collect_decl(clang::Decl* decl) {
-        auto location = decl->getLocation();
-        if(location.isInvalid()) {
+        if(!(ast::is_inside_main_file(decl->getLocation(), src_mgr))) {
             return;
         }
 
-        location = src_mgr.getExpansionLoc(location);
-        auto fid = src_mgr.getFileID(location);
-        if(fid == src_mgr.getPreambleFileID() || fid == src_mgr.getMainFileID()) {
-            top_level_decls->push_back(decl);
+        if(const clang::NamedDecl* named_decl = dyn_cast<clang::NamedDecl>(decl)) {
+            if(ast::is_implicit_template_instantiation(named_decl)) {
+                return;
+            }
         }
+
+        top_level_decls->push_back(decl);
     }
 
     auto HandleTopLevelDecl(clang::DeclGroupRef group) -> bool final {
@@ -135,9 +141,9 @@ auto create_invocation(CompilationParams& params,
     auto& front_opts = invocation->getFrontendOpts();
     front_opts.DisableFree = false;
 
-    clang::LangOptions& langOpts = invocation->getLangOpts();
-    langOpts.CommentOpts.ParseAllComments = true;
-    langOpts.RetainCommentsFromSystemHeaders = true;
+    clang::LangOptions& lang_opts = invocation->getLangOpts();
+    lang_opts.CommentOpts.ParseAllComments = true;
+    lang_opts.RetainCommentsFromSystemHeaders = true;
 
     return invocation;
 }
@@ -198,7 +204,7 @@ CompilationResult run_clang(CompilationParams& params,
     auto action = std::make_unique<ProxyAction>(
         std::make_unique<Action>(),
         /// We only collect top level declarations for parse main file.
-        params.kind == CompilationUnit::Content ? &top_level_decls : nullptr,
+        (params.clang_tidy || params.kind == CompilationUnit::Content) ? &top_level_decls : nullptr,
         params.stop);
 
     if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
@@ -206,7 +212,15 @@ CompilationResult run_clang(CompilationParams& params,
     }
 
     auto& pp = instance->getPreprocessor();
-    /// FIXME: clang-tidy, include-fixer, etc?
+    /// FIXME: include-fixer, etc?
+
+    /// Setup clang-tidy
+    std::unique_ptr<tidy::ClangTidyChecker> checker;
+    if(params.clang_tidy) {
+        tidy::TidyParams tidy_params;
+        checker = tidy::configure(*instance, tidy_params);
+        diagnostic_collector->checker = checker.get();
+    }
 
     /// `BeginSourceFile` may create new preprocessor, so all operations related to preprocessor
     /// should be done after `BeginSourceFile`.
@@ -244,6 +258,19 @@ CompilationResult run_clang(CompilationParams& params,
         token_buffer = std::move(*token_collector).consume();
     }
 
+    // Must be called before EndSourceFile because the ast context can be destroyed later.
+    if(checker) {
+        // AST traversals should exclude the preamble, to avoid performance cliffs.
+        // TODO: is it okay to affect the unit-level traversal scope here?
+        instance->getASTContext().setTraversalScope(top_level_decls);
+        checker->finder.matchAST(instance->getASTContext());
+    }
+
+    /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
+    /// However Action->EndSourceFile() would destroy the ASTContext!
+    /// So just inform the preprocessor of EOF, while keeping everything alive.
+    pp.EndSourceFile();
+
     /// FIXME: getDependencies currently return ArrayRef<std::string>, which actually results in
     /// extra copy. It would be great to avoid this copy.
 
@@ -252,10 +279,15 @@ CompilationResult run_clang(CompilationParams& params,
         resolver.emplace(instance->getSema());
     }
 
+    if(checker) {
+        /// Avoid dangling pointer.
+        diagnostic_collector->checker = nullptr;
+    }
+
     auto build_end = chrono::steady_clock::now().time_since_epoch();
 
     auto impl = new CompilationUnit::Impl{
-        .interested = pp.getSourceManager().getMainFileID(),
+        .interested = instance->getSourceManager().getMainFileID(),
         .src_mgr = instance->getSourceManager(),
         .action = std::move(action),
         .instance = std::move(instance),

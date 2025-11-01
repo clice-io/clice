@@ -201,9 +201,8 @@ auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind ki
             continue;
         }
 
-        /// FIXME: User server's encoding kind.
         ranges::sort(results, refl::less);
-        PositionConverter converter(*content, PositionEncodingKind::UTF16);
+        PositionConverter converter(*content, this->encoding_kind);
 
         for(auto result: results) {
             auto begin = converter.toPosition(result.begin);

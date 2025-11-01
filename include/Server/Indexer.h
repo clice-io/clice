@@ -5,6 +5,7 @@
 
 #include "Config.h"
 #include "Convert.h"
+
 #include "Async/Async.h"
 #include "Compiler/Command.h"
 #include "Index/MergedIndex.h"
@@ -21,8 +22,10 @@ class CompilationUnit;
 
 class Indexer {
 public:
-    Indexer(CompilationDatabase& database, config::Config& config) :
-        database(database), config(config) {}
+    Indexer(CompilationDatabase& database,
+            config::Config& config,
+            const PositionEncodingKind& kind) :
+        database(database), config(config), encoding_kind(kind) {}
 
     async::Task<> index(llvm::StringRef path);
 
@@ -69,6 +72,8 @@ private:
     CompilationDatabase& database;
 
     config::Config& config;
+
+    const PositionEncodingKind& encoding_kind;
 
     index::ProjectIndex project_index;
 

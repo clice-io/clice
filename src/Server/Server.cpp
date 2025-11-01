@@ -95,7 +95,7 @@ async::Task<> Server::registerCapacity(llvm::StringRef id,
     });
 }
 
-Server::Server() : indexer(database, config) {
+Server::Server() : indexer(database, config, kind) {
     register_callback<&Server::on_initialize>("initialize");
     register_callback<&Server::on_initialized>("initialized");
     register_callback<&Server::on_shutdown>("shutdown");
