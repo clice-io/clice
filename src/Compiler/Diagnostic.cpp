@@ -243,7 +243,7 @@ private:
 
 clang::DiagnosticConsumer*
     Diagnostic::create(std::shared_ptr<std::vector<Diagnostic>> diagnostics) {
-    return new DiagnosticCollector(diagnostics);
+    return new DiagnosticCollector(std::move(diagnostics));
 }
 
 }  // namespace clice

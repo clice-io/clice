@@ -206,9 +206,9 @@ void USRGenerator::VisitFunctionDecl(const FunctionDecl* D) {
         IsTemplate = true;
         Out << "@FT@";
         VisitTemplateParameterList(FunTmpl->getTemplateParameters());
-        if(auto RC = D->getTrailingRequiresClause()) {
+        if(auto& RC = D->getTrailingRequiresClause()) {
             Out << ":RC";
-            AppendExprODRHash(RC, Out);
+            AppendExprODRHash(RC.ConstraintExpr, Out);
         }
     } else
         Out << "@F@";
@@ -828,7 +828,8 @@ void USRGenerator::VisitTemplateName(TemplateName Name) {
     if(auto DT = Name.getAsDependentTemplateName()) {
         Out << '^';
         printQualifier(Out, LangOpts, DT->getQualifier());
-        Out << ':' << DT->getIdentifier()->getName();
+        /// FIXME: This may be operators.
+        Out << ':' << DT->getName().getIdentifier();
     }
 }
 
