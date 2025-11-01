@@ -257,9 +257,9 @@ private:
     clang::SourceManager* src_mgr;
 };
 
-clang::DiagnosticConsumer*
+std::unique_ptr<DiagnosticCollector>
     Diagnostic::create(std::shared_ptr<std::vector<Diagnostic>> diagnostics) {
-    return new DiagnosticCollector(std::move(diagnostics));
+    return std::make_unique<DiagnosticCollectorImpl>(std::move(diagnostics));
 }
 
 }  // namespace clice

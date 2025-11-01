@@ -75,7 +75,8 @@ struct Diagnostic {
     /// The error message of this diagnostic.
     std::string message;
 
-    static DiagnosticCollector* create(std::shared_ptr<std::vector<Diagnostic>> diagnostics);
+    static std::unique_ptr<DiagnosticCollector>
+        create(std::shared_ptr<std::vector<Diagnostic>> diagnostics);
 };
 
 }  // namespace clice
