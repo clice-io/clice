@@ -11,27 +11,20 @@
 /// https://github.com/llvm/llvm-project//blob/0865ecc5150b9a55ba1f9e30b6d463a66ac362a6/clang-tools-extra/clangd/TidyProvider.cpp
 
 #include "TidyImpl.h"
-
 #include "AST/Utility.h"
 #include "Compiler/Diagnostic.h"
 #include "Compiler/Tidy.h"
 #include "Support/Logging.h"
-
-#include "clang-tidy/ClangTidyModuleRegistry.h"
-#include "clang-tidy/ClangTidyOptions.h"
-#include "clang-tidy/ClangTidyCheck.h"
-#include "clang-tidy/ClangTidyDiagnosticConsumer.h"
-
-#include "clang/Frontend/CompilerInstance.h"
-
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/StringSaver.h"
-
-// Force the linker to link in Clang-tidy modules.
-// clangd doesn't support the static analyzer.
+#include "clang/Frontend/CompilerInstance.h"
+#include "clang-tidy/ClangTidyOptions.h"
+#include "clang-tidy/ClangTidyCheck.h"
+#include "clang-tidy/ClangTidyModuleRegistry.h"
+#include "clang-tidy/ClangTidyDiagnosticConsumer.h"
 #define CLANG_TIDY_DISABLE_STATIC_ANALYZER_CHECKS
 #include "clang-tidy/ClangTidyForceLinker.h"
 
@@ -59,14 +52,16 @@ bool is_registered_tidy_check(llvm::StringRef check) {
 }
 
 std::optional<bool> is_fast_tidy_check(llvm::StringRef check) {
-    static auto& fast = *new llvm::StringMap<bool>{
+    static auto fast = llvm::StringMap<bool>{
 #define FAST(CHECK, TIME) {#CHECK, true},
 #define SLOW(CHECK, TIME) {#CHECK, false},
 // todo: move me to llvm toolchain headers.
 #include "TidyFastChecks.inc"
     };
-    if(auto it = fast.find(check); it != fast.end())
+
+    if(auto it = fast.find(check); it != fast.end()) {
         return it->second;
+    }
     return std::nullopt;
 }
 
@@ -388,7 +383,9 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     std::unique_ptr<ClangTidyChecker> checker = std::make_unique<ClangTidyChecker>(
         std::make_unique<tidy::DefaultOptionsProvider>(tidy::ClangTidyGlobalOptions(), opts));
 
-    checker->context.setDiagnosticsEngine(&instance.getDiagnostics());
+    checker->context.setDiagnosticsEngine(
+        std::make_unique<clang::DiagnosticOptions>(instance.getDiagnosticOpts()),
+        &instance.getDiagnostics());
     checker->context.setASTContext(&instance.getASTContext());
     // TODO: is `file_name` always the file to check?
     checker->context.setCurrentFile(file_name);
@@ -400,7 +397,6 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         check->registerPPCallbacks(instance.getSourceManager(), pp, pp);
         check->registerMatchers(&checker->finder);
     }
-
     return checker;
 }
 

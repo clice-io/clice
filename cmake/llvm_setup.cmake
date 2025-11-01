@@ -3,12 +3,12 @@ include_guard()
 include(${CMAKE_CURRENT_LIST_DIR}/github.cmake)
 
 # Check if LLVM version is supported
-function(check_llvm_version llvm_ver OUTPUT_VAR)
-    if((NOT DEFINED llvm_ver) OR (llvm_ver STREQUAL ""))
+function(check_llvm_version LOCAL_LLVM_VERSION LLVM_VERSION OUTPUT_VAR)
+    if((NOT DEFINED LOCAL_LLVM_VERSION) OR (LOCAL_LLVM_VERSION STREQUAL ""))
         message(WARNING "LLVM version is not set.")
         set(${OUTPUT_VAR} FALSE PARENT_SCOPE)
-    elseif(NOT (llvm_ver VERSION_GREATER_EQUAL "20.1" AND llvm_ver VERSION_LESS "20.2"))
-        message(WARNING "Unsupported LLVM version: ${llvm_ver}. Only LLVM 20.1.x is supported.")
+    elseif(NOT (LOCAL_LLVM_VERSION VERSION_GREATER_EQUAL LLVM_VERSION))
+        message(WARNING "Unsupported LLVM version: ${LOCAL_LLVM_VERSION}. Only LLVM ${LLVM_VERSION} is supported.")
         set(${OUTPUT_VAR} FALSE PARENT_SCOPE)
     else()
         set(${OUTPUT_VAR} TRUE PARENT_SCOPE)
@@ -16,14 +16,14 @@ function(check_llvm_version llvm_ver OUTPUT_VAR)
 endfunction()
 
 # Look up LLVM version's corresponding commit SHA
-function(lookup_commit llvm_ver OUTPUT_VAR)
-    set(LLVM_TAG "llvmorg-${llvm_ver}")
+function(lookup_commit LLVM_VERSION OUTPUT_VAR)
+    set(LLVM_TAG "llvmorg-${LLVM_VERSION}")
     github_lookup_tag_commit("llvm" "llvm-project" ${LLVM_TAG} COMMIT_SHA)
     set(${OUTPUT_VAR} ${COMMIT_SHA} PARENT_SCOPE)
 endfunction()
 
 # Fetch private Clang header files from LLVM source
-function(fetch_private_clang_files llvm_ver)
+function(fetch_private_clang_files LLVM_VERSION)
     set(PRIVATE_CLANG_FILE_LIST
         "Sema/CoroutineStmtBuilder.h"
         "Sema/TypeLocBuilder.h"
@@ -58,13 +58,13 @@ function(fetch_private_clang_files llvm_ver)
     message(WARNING "Required private clang files incomplete, fetching from llvm-project source...")
 
     # Get the commit SHA for this LLVM version
-    lookup_commit(${llvm_ver} LLVM_COMMIT)
+    lookup_commit(${LLVM_VERSION} LLVM_COMMIT)
     if(LLVM_COMMIT STREQUAL "NOTFOUND")
-        message(WARNING "Failed to lookup commit for LLVM ${llvm_ver}, skipping private clang files download")
+        message(WARNING "Failed to lookup commit for LLVM ${LLVM_VERSION}, skipping private clang files download")
         return()
     endif()
 
-    message(STATUS "LLVM ${llvm_ver} corresponds to commit ${LLVM_COMMIT}")
+    message(STATUS "LLVM ${LLVM_VERSION} corresponds to commit ${LLVM_COMMIT}")
 
     # Download missing files
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/include/clang")
@@ -117,14 +117,14 @@ function(detect_llvm OUTPUT_VAR)
 endfunction()
 
 # Download and install prebuilt LLVM binaries with error checking
-function(install_prebuilt_llvm llvm_ver)
+function(install_prebuilt_llvm LLVM_VERSION)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/.llvm")
 
     # Determine platform-specific package name
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         set(LLVM_BUILD_TYPE "debug")
     elseif(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-        set(LLVM_BUILD_TYPE "release")
+        set(LLVM_BUILD_TYPE "releasedbg")
     else()
         set(LLVM_BUILD_TYPE "release-lto")
     endif()
@@ -146,7 +146,7 @@ function(install_prebuilt_llvm llvm_ver)
     # Download if file does not exist
     if(NOT EXISTS "${DOWNLOAD_PATH}")
         message(STATUS "Downloading prebuilt LLVM package: ${LLVM_PACKAGE}")
-        set(DOWNLOAD_URL "https://github.com/clice-io/llvm-binary/releases/download/${llvm_ver}/${LLVM_PACKAGE}")
+        set(DOWNLOAD_URL "https://github.com/clice-io/llvm-binary/releases/download/${LLVM_VERSION}/${LLVM_PACKAGE}")
         file(DOWNLOAD "${DOWNLOAD_URL}"
                       "${DOWNLOAD_PATH}"
                       STATUS DOWNLOAD_STATUS
@@ -187,7 +187,11 @@ function(install_prebuilt_llvm llvm_ver)
 endfunction()
 
 # Main function to set up LLVM for the project
-function(setup_llvm)
+function(setup_llvm LLVM_VERSION)
+    if(NOT DEFINED LLVM_VERSION OR LLVM_VERSION STREQUAL "")
+        message(FATAL_ERROR "setup_llvm() requires a LLVM_VERSION argument (e.g., '21.1.4').")
+    endif()
+
     # Use existing LLVM installation if path is already set
     if(DEFINED LLVM_INSTALL_PATH AND NOT LLVM_INSTALL_PATH STREQUAL "")
         message(STATUS "LLVM_INSTALL_PATH is set to ${LLVM_INSTALL_PATH}, using it directly.")
@@ -197,14 +201,14 @@ function(setup_llvm)
     set(LLVM_VERSION_OK false)
     if (CMAKE_BUILD_TYPE STREQUAL "Release")
         # Try to detect system LLVM
-        detect_llvm(LLVM_VERSION)
-        check_llvm_version("${LLVM_VERSION}" LLVM_VERSION_OK)
+        detect_llvm(LOCAL_LLVM_VERSION)
+        check_llvm_version("${LOCAL_LLVM_VERSION}" "${LLVM_VERSION}" LLVM_VERSION_OK)
     endif()
 
     # Download prebuilt LLVM if system version is not suitable
     if(NOT LLVM_VERSION_OK)
-        set(LLVM_VERSION "20.1.5")
-        message(WARNING "System LLVM not found, version mismatch or incompatible build type, downloading prebuilt LLVM...")
+        message(WARNING "System LLVM not found, version mismatch or incompatible build type.")
+        message(WARNING "Downloading prebuilt LLVM ${LLVM_VERSION} ...")
         install_prebuilt_llvm("${LLVM_VERSION}")
     endif()
 

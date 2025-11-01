@@ -318,7 +318,9 @@ public:
             TD = TST->getTemplateName().getAsTemplateDecl();
             args = TST->template_arguments();
         } else if(auto DTST = type->getAs<clang::DependentTemplateSpecializationType>()) {
-            if(auto decl = preferred(lookup(DTST->getQualifier(), DTST->getIdentifier()))) {
+            auto& template_name = DTST->getDependentTemplateName();
+            if(auto decl = preferred(
+                   lookup(template_name.getQualifier(), template_name.getName().getIdentifier()))) {
                 TD = decl;
                 args = DTST->template_arguments();
             }
@@ -371,8 +373,7 @@ public:
                 return lookup(type, name);
             }
 
-            case clang::NestedNameSpecifier::TypeSpec:
-            case clang::NestedNameSpecifier::TypeSpecWithTemplate: {
+            case clang::NestedNameSpecifier::TypeSpec: {
                 /// If the prefix is `TypeSpec` or `TypeSpecWithTemplate`, it must be a type.
                 return lookup(clang::QualType(NNS->getAsType(), 0), name);
             }
@@ -597,18 +598,16 @@ public:
 
                 /// Alloc::rebind<T>::other
                 auto prefix =
-                    clang::NestedNameSpecifier::Create(context, nullptr, false, Alloc.getTypePtr());
+                    clang::NestedNameSpecifier::Create(context, nullptr, Alloc.getTypePtr());
 
                 auto rebind = sema.getPreprocessor().getIdentifierInfo("rebind");
 
                 auto DTST = context.getDependentTemplateSpecializationType(
                     clang::ElaboratedTypeKeyword::None,
-                    prefix,
-                    rebind,
+                    clang::DependentTemplateStorage(prefix, rebind, false),
                     arguments);
 
-                prefix =
-                    clang::NestedNameSpecifier::Create(context, prefix, true, DTST.getTypePtr());
+                prefix = clang::NestedNameSpecifier::Create(context, prefix, DTST.getTypePtr());
 
                 auto other = sema.getPreprocessor().getIdentifierInfo("other");
                 auto DNT = context.getDependentNameType(clang::ElaboratedTypeKeyword::Typename,
@@ -624,6 +623,7 @@ public:
                 if(auto TST = Alloc->getAs<clang::TemplateSpecializationType>()) {
                     llvm::SmallVector<clang::TemplateArgument, 4> replaceArguments = {T};
                     return context.getTemplateSpecializationType(TST->getTemplateName(),
+                                                                 replaceArguments,
                                                                  replaceArguments);
                 }
             }
@@ -722,7 +722,9 @@ public:
         }
 
         /// Try resolve the hole.
-        if(auto result = hole(NNS, DTST->getIdentifier(), arguments); !result.isNull()) {
+        if(auto result =
+               hole(NNS, DTST->getDependentTemplateName().getName().getIdentifier(), arguments);
+           !result.isNull()) {
             resolved.try_emplace(DTST, result);
             TLB.pushTrivial(context, result, {});
             return result;
@@ -730,7 +732,8 @@ public:
 
         /// The `lookup` may change the instantiation stack, save the current state.
         auto state = stack.state();
-        if(auto decl = preferred(lookup(NNS, DTST->getIdentifier()))) {
+        if(auto decl =
+               preferred(lookup(NNS, DTST->getDependentTemplateName().getName().getIdentifier()))) {
             /// FIXME: Current implementation results in duplicated lookup.
             /// Cache the result of `lookup` to avoid duplicated lookup.
             if(auto TATD = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(decl)) {
@@ -746,10 +749,13 @@ public:
         }
 
         /// FIXME: figure out here.
-        auto result = context.getDependentTemplateSpecializationType(DTST->getKeyword(),
-                                                                     NNS,
-                                                                     DTST->getIdentifier(),
-                                                                     arguments);
+        auto result = context.getDependentTemplateSpecializationType(
+            DTST->getKeyword(),
+            clang::DependentTemplateStorage(
+                NNS,
+                DTST->getDependentTemplateName().getName().getIdentifier(),
+                false),
+            arguments);
 
         return TLB.push<clang::DependentTemplateSpecializationTypeLoc>(result).getType();
     }

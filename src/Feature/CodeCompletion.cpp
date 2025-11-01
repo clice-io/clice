@@ -180,7 +180,10 @@ CompletionItemKind completion_kind(const clang::NamedDecl* decl) {
         case clang::Decl::ObjCCompatibleAlias:
 
         case clang::Decl::OutlinedFunction:
-        case clang::Decl::HLSLBuffer: {
+        case clang::Decl::HLSLBuffer:
+        case clang::Decl::OpenACCRoutine:
+        case clang::Decl::OpenACCDeclare:
+        case clang::Decl::HLSLRootSignature: {
             std::unreachable();
         }
     }

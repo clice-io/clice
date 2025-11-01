@@ -45,7 +45,10 @@ public:
     }
 
     lookup_result lookup(const clang::DependentTemplateSpecializationType* type) {
-        return lookup(type->getQualifier(), type->getIdentifier());
+        auto& template_name = type->getDependentTemplateName();
+        /// FIXME: Operators does't have a name and will cause crash.
+        auto identifier = template_name.getName().getIdentifier();
+        return lookup(template_name.getQualifier(), identifier);
     }
 
     lookup_result lookup(const clang::DependentScopeDeclRefExpr* expr) {
