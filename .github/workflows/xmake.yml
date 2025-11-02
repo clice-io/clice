@@ -34,7 +34,7 @@ jobs:
       - name: Setup xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
-          xmake-version: branch@master
+          xmake-version: 3.0.0
           actions-cache-folder: ".xmake-cache"
           actions-cache-key: ${{ matrix.os }}
           package-cache: true
@@ -86,7 +86,7 @@ jobs:
       - name: Setup xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
-          xmake-version: branch@master
+          xmake-version: 3.0.0
           actions-cache-folder: ".xmake-cache"
           actions-cache-key: ${{ matrix.os }}
           package-cache: true
@@ -127,7 +127,7 @@ jobs:
       - name: Setup xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
-          xmake-version: branch@master
+          xmake-version: 3.0.0
           actions-cache-folder: ".xmake-cache"
           actions-cache-key: ${{ matrix.os }}
           package-cache: true
