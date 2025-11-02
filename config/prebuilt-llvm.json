@@ -5,7 +5,7 @@
 		"is_lto": false,
 		"filename": "x64-windows-msvc-releasedbg.7z",
 		"version": "21.1.4",
-		"sha256": "66dc9686c7b8c2534dc21f2112c2caae66952028a0ae3be50cd94b408642b95b"
+		"sha256": "324ec6b3634c32e1e999dae505f6ae83386f2a6b9ab96ac03ccfa029fb68b496"
 	},
 	{
 		"platform": "Windows",
@@ -21,7 +21,7 @@
 		"is_lto": false,
 		"filename": "x86_64-linux-gnu-debug.tar.xz",
 		"version": "21.1.4",
-		"sha256": "d28c1d8972f5140fd2cc8448173dff3f7d438fb9bd3482faf91d5af3fee5aba0"
+		"sha256": "7bd68b14f147e291c9af8c32a8e78d57cc7b0e1f9c733df67e963e7062651f10"
 	},
 	{
 		"platform": "Linux",
@@ -29,7 +29,7 @@
 		"is_lto": false,
 		"filename": "x86_64-linux-gnu-releasedbg.tar.xz",
 		"version": "21.1.4",
-		"sha256": "f31f12e07ac6caa4212bae1e9397f9eeefa1502605f8a13eee53fe9707a47b11"
+		"sha256": "d4bf7ca08b07164637595ea3988330305e36354e466832a0fe7c4406fee3ac40"
 	},
 	{
 		"platform": "Linux",
@@ -45,7 +45,7 @@
 		"is_lto": false,
 		"filename": "arm64-macosx-apple-debug.tar.xz",
 		"version": "21.1.4",
-		"sha256": "f4a439078c5d0d6f0153500ff39fc37a991a5eb8b208f63c2e04c5c6ccd7330e"
+		"sha256": "fd77af5a767ac7f4dc682602cfd6c84fbd5082021200e5cd8bd30379f4fd4a4d"
 	},
 	{
 		"platform": "macosx",
@@ -53,7 +53,7 @@
 		"is_lto": false,
 		"filename": "arm64-macosx-apple-releasedbg.tar.xz",
 		"version": "21.1.4",
-		"sha256": "b19b605dfbd1fc03ad1e96a4509afcd71c051bef404b97c10568d135905986ff"
+		"sha256": "87f7667166496639ad60f02a22505296b09e458530a72d52b792ffb29d96a82b"
 	},
 	{
 		"platform": "macosx",
