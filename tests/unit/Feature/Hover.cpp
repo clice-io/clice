@@ -32,6 +32,163 @@ suite<"Hover"> hover = [] {
         decls = std::move(collector.decls);
     };
 
+    test("Inclusion") = [&tester] {
+        tester.clear();
+        constexpr auto code = R"CODE(
+$(inc1)#include <iostream>
+
+#include $(inc2)<assert.h>
+
+int main(void) {
+    std::cout << "hello" << std::endl;
+    return 0;
+}
+        )CODE";
+        auto annotation = AnnotatedSource::from(code);
+        tester.add_main("main.cpp", annotation.content);
+        auto inc1_off = annotation.offsets["inc1"];
+        auto inc2_off = annotation.offsets["inc2"];
+        tester.compile();
+        expect(tester.unit.has_value());
+        auto HI = clice::feature::hover(*tester.unit, inc1_off, {});
+        HI = clice::feature::hover(*tester.unit, inc2_off, {});
+    };
+
+    test("DeducedType_Auto") = [&tester] {
+        tester.clear();
+        constexpr auto code = R"CODE(
+struct A {
+    int a;
+    int b;
+    int c;
+    float d;
+};
+
+struct A1 : A {};
+
+template <typename T>
+struct B {
+    T *inner;
+
+    template <typename S>
+    B(S *s) {
+        inner = s;
+    }
+
+    template <typename S>
+    auto get_as() {
+        return *static_cast<S *>(inner);
+    }
+};
+
+int main(void) {
+    au$(pos_0)to $(pos_0_i)a = A{};
+    au$(pos_1)to $(pos_1_i)b = B<A>(&a);
+    au$(pos_2)to $(pos_2_i)a1 = b.get_as<A1>();
+    au$(pos_3)to $(pos_3_i)msg = "hello world";
+    au$(pos_4)to $(pos_4_i)c1 = 'c';
+    au$(pos_5)to $(pos_5_i)c2 = 0;
+    au$(pos_6)to $(pos_6_i)c3 = 114514;
+    au$(pos_7)to $(pos_7_i)c4 = 11451419198101919810;
+    return 0;
+}
+        )CODE";
+        auto annotation = AnnotatedSource::from(code);
+        tester.add_main("main.cpp", annotation.content);
+        std::vector<unsigned> offsets;
+        tester.compile();
+        expect(tester.unit.has_value());
+        for(auto offset: offsets) {
+            auto HI = clice::feature::hover(*tester.unit, offset, {});
+            if(HI.has_value()) {
+                auto msg = HI->display({});
+                // std::println("{}", *msg);
+            } else {
+                // std::println("No hover info");
+            }
+        }
+    };
+
+    test("DeducedType_Decltype") = [&] {
+        std::println("==================================");
+        tester.clear();
+        constexpr auto code = R"CODE(
+#include <utility>
+
+struct Foo {
+    int x;
+
+    double y() {
+        return 3.14;
+    }
+};
+
+int main() {
+    int a = 42;
+    const int ca = 100;
+    int &ra = a;
+    int &&rra = 123;
+
+    decl$(pos_0)type(a) v1;            // int
+    decl$(pos_1)type(ca) v2 = 114514;  // const int
+    decl$(pos_2)type(ra) v3 = a;       // int&
+    decl$(pos_3)type(rra) v4 = 456;    // int&&
+
+    declt$(pos_4)ype((a)) v5 = a;    // int&
+    declt$(pos_5)ype((ca)) v6 = ca;  // const int&
+    declt$(pos_6)ype((ra)) v7 = ra;  // int&
+    declt$(pos_7)ype((rra)) v8 = a;  // int&
+
+    declty$(pos_8)pe(a + 1) v9;     // int
+    declty$(pos_9)pe(a + 1.0) v10;  // double
+
+    Foo f;
+    decltype(f.x) v11;          // int
+    decltype((f.x)) v12 = f.x;  // int&
+    decltype(f.y()) v13;        // double
+
+    // decltype(auto)
+    auto get_a = [&]() -> declt$(pos_10)ype(auto) {
+        return (a);
+    };
+    auto get_ca = [&]() -> de$(pos_11)cltype(auto) {
+        return ca;
+    };
+    declt$(pos_12)ype(auto) r1 = get_a();   // int&
+    decltyppos_13)ype(auto) r2 = get_ca();  // const int
+
+    // auto vs decltype(auto)
+    auto x1 = (a);            // int
+    de$(pos_13)cltype(auto) x2 = (a);  // int&
+
+    using T1 = dec$(pos_14)ltype(std::declval<Foo>().y());  // double
+    using T2 = dec$(pos_15)ltype((std::declval<Foo>().x));  // int&&
+
+    return 0;
+}
+        )CODE";
+
+        auto annotation = AnnotatedSource::from(code);
+        tester.add_main("main.cpp", annotation.content);
+        std::vector<unsigned> offsets;
+        tester.compile();
+        expect(tester.unit.has_value());
+        int counter = 0;
+        for(auto offset: offsets) {
+            std::println("Processing pos_{}", counter);
+            auto HI = clice::feature::hover(*tester.unit, offset, {});
+            if(HI.has_value()) {
+                auto msg = HI->display({});
+                // std::println("{}", *msg);
+            } else {
+                // std::println("No hover info");
+            }
+            ++counter;
+        }
+
+        std::println("==================================");
+    };
+
     test("Namespace") = [&] {
         run(R"cpp(
 namespace A {
