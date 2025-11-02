@@ -147,7 +147,6 @@ target("unit_tests")
     after_load(function (target)
         target:set("runargs",
             "--test-dir=" .. path.absolute("tests/data"),
-            "--resource-dir=" .. path.join(target:dep("clice-core"):pkg("llvm"):installdir(), "lib/clang/20")
         )
     end)
 
@@ -169,7 +168,6 @@ target("integration_tests")
             "--log-cli-level=INFO",
             "-s", "tests/integration",
             "--executable=" .. target:dep("clice"):targetfile(),
-            "--resource-dir=" .. path.join(target:pkg("llvm"):installdir(), "lib/clang/20"),
         }
         local opt = {envs = envs, curdir = os.projectdir()}
         os.vrunv(uv.program, argv, opt)
