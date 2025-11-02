@@ -319,8 +319,13 @@ public:
             args = TST->template_arguments();
         } else if(auto DTST = type->getAs<clang::DependentTemplateSpecializationType>()) {
             auto& template_name = DTST->getDependentTemplateName();
-            if(auto decl = preferred(
-                   lookup(template_name.getQualifier(), template_name.getName().getIdentifier()))) {
+            /// FIXME: operators does't have the name.
+            auto name = template_name.getName().getIdentifier();
+            if(!name) {
+                return {};
+            }
+
+            if(auto decl = preferred(lookup(template_name.getQualifier(), name))) {
                 TD = decl;
                 args = DTST->template_arguments();
             }
@@ -374,7 +379,7 @@ public:
             }
 
             case clang::NestedNameSpecifier::TypeSpec: {
-                /// If the prefix is `TypeSpec` or `TypeSpecWithTemplate`, it must be a type.
+                /// If the prefix is `TypeSpec`, it must be a type.
                 return lookup(clang::QualType(NNS->getAsType(), 0), name);
             }
 
@@ -721,10 +726,14 @@ public:
             arguments.push_back(arg.getArgument());
         }
 
+        /// FIXME: operator does't have a name.
+        auto name = DTST->getDependentTemplateName().getName().getIdentifier();
+        if(!name) {
+            return clang::QualType();
+        }
+
         /// Try resolve the hole.
-        if(auto result =
-               hole(NNS, DTST->getDependentTemplateName().getName().getIdentifier(), arguments);
-           !result.isNull()) {
+        if(auto result = hole(NNS, name, arguments); !result.isNull()) {
             resolved.try_emplace(DTST, result);
             TLB.pushTrivial(context, result, {});
             return result;
@@ -732,8 +741,7 @@ public:
 
         /// The `lookup` may change the instantiation stack, save the current state.
         auto state = stack.state();
-        if(auto decl =
-               preferred(lookup(NNS, DTST->getDependentTemplateName().getName().getIdentifier()))) {
+        if(auto decl = preferred(lookup(NNS, name))) {
             /// FIXME: Current implementation results in duplicated lookup.
             /// Cache the result of `lookup` to avoid duplicated lookup.
             if(auto TATD = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(decl)) {
@@ -751,10 +759,7 @@ public:
         /// FIXME: figure out here.
         auto result = context.getDependentTemplateSpecializationType(
             DTST->getKeyword(),
-            clang::DependentTemplateStorage(
-                NNS,
-                DTST->getDependentTemplateName().getName().getIdentifier(),
-                false),
+            clang::DependentTemplateStorage(NNS, name, false),
             arguments);
 
         return TLB.push<clang::DependentTemplateSpecializationTypeLoc>(result).getType();
