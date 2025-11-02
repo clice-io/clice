@@ -2,7 +2,7 @@ include_guard()
 
 include(${CMAKE_CURRENT_LIST_DIR}/llvm_setup.cmake)
 
-setup_llvm()
+setup_llvm("21.1.4")
 
 get_filename_component(LLVM_INSTALL_PATH "${LLVM_INSTALL_PATH}" ABSOLUTE)
 

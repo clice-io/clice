@@ -164,20 +164,24 @@ CompilationResult run_clang(CompilationParams& params,
 
     auto diagnostics =
         params.diagnostics ? params.diagnostics : std::make_shared<std::vector<Diagnostic>>();
-    auto diagnostic_collector = Diagnostic::create(diagnostics);
-    auto diagnostic_engine =
-        clang::CompilerInstance::createDiagnostics(*params.vfs,
-                                                   new clang::DiagnosticOptions(),
-                                                   diagnostic_collector);
+    auto diagnostic_consumer = Diagnostic::create(diagnostics);
+
+    /// Temporary diagnostic engine, only used for command line parsing.
+    /// For compilation, we need to create a new diagnostic engine. See also
+    /// https://github.com/llvm/llvm-project/pull/139584#issuecomment-2920704282.
+    clang::DiagnosticOptions options;
+    auto diagnostic_engine = clang::CompilerInstance::createDiagnostics(*params.vfs,
+                                                                        options,
+                                                                        diagnostic_consumer.get(),
+                                                                        false);
 
     auto invocation = create_invocation(params, diagnostic_engine);
     if(!invocation) {
         return std::unexpected("Fail to create compilation invocation!");
     }
 
-    auto instance = std::make_unique<clang::CompilerInstance>();
-    instance->setInvocation(std::move(invocation));
-    instance->setDiagnostics(diagnostic_engine.get());
+    auto instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
+    instance->createDiagnostics(*params.vfs, diagnostic_consumer.release(), true);
 
     if(auto remapping = clang::createVFSFromCompilerInvocation(instance->getInvocation(),
                                                                instance->getDiagnostics(),
@@ -215,7 +219,8 @@ CompilationResult run_clang(CompilationParams& params,
     if(params.clang_tidy) {
         tidy::TidyParams tidy_params;
         checker = tidy::configure(*instance, tidy_params);
-        diagnostic_collector->checker = checker.get();
+        /// TODO: We should make the lifetime of diagnostic consumer more explicit.
+        static_cast<DiagnosticCollector&>(instance->getDiagnosticClient()).checker = checker.get();
     }
 
     /// `BeginSourceFile` may create new preprocessor, so all operations related to preprocessor
@@ -277,7 +282,7 @@ CompilationResult run_clang(CompilationParams& params,
 
     if(checker) {
         /// Avoid dangling pointer.
-        diagnostic_collector->checker = nullptr;
+        static_cast<DiagnosticCollector&>(instance->getDiagnosticClient()).checker = nullptr;
     }
 
     auto build_end = chrono::steady_clock::now().time_since_epoch();
@@ -292,7 +297,7 @@ CompilationResult run_clang(CompilationParams& params,
         .directives = std::move(directives),
         .path_cache = llvm::DenseMap<clang::FileID, llvm::StringRef>(),
         .symbol_hash_cache = llvm::DenseMap<const void*, std::uint64_t>(),
-        .diagnostics = diagnostics,
+        .diagnostics = std::move(diagnostics),
         .top_level_decls = std::move(top_level_decls),
         .build_at = chrono::duration_cast<chrono::milliseconds>(build_at),
         .build_duration = chrono::duration_cast<chrono::milliseconds>(build_end - build_start),

@@ -627,7 +627,6 @@ public:
             }
 
             case clang::NestedNameSpecifier::TypeSpec:
-            case clang::NestedNameSpecifier::TypeSpecWithTemplate:
             case clang::NestedNameSpecifier::Global:
             case clang::NestedNameSpecifier::Super: {
                 break;

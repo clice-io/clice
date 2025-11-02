@@ -116,12 +116,13 @@ target_link_libraries(clice PRIVATE clice-core)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 message(STATUS "Copying resource directory for development build")
-file(COPY
-    "${LLVM_INSTALL_PATH}/lib/clang/20/"
-    DESTINATION "${PROJECT_BINARY_DIR}/lib/clang/20"
+file(
+    COPY "${LLVM_INSTALL_PATH}/lib/clang"
+    DESTINATION "${PROJECT_BINARY_DIR}/lib"
 )
-install(DIRECTORY "${LLVM_INSTALL_PATH}/lib/clang/20/"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/clang/20"
+install(
+    DIRECTORY "${LLVM_INSTALL_PATH}/lib/clang"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}"
 )
 
 if(CLICE_ENABLE_TEST)

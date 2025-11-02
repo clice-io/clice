@@ -123,9 +123,9 @@ public:
         auto fid = sm.getFileID(sm.getExpansionLoc(import_location));
         auto& import = directives[fid].imports.emplace_back();
         import.location = import_location;
-        for(auto& [name, location]: names) {
-            import.name += name->getName();
-            import.name_locations.emplace_back(location);
+        for(auto name: names) {
+            import.name += name.getIdentifierInfo()->getName();
+            import.name_locations.emplace_back(name.getLoc());
         }
     }
 
