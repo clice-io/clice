@@ -64,11 +64,19 @@ auto Server::on_hover(proto::HoverParams params) -> Result {
                                 .show_aka = true};
 
     co_return co_await async::submit([kind = this->kind, offset, &ast, &opt] {
-        auto hover = feature::hover(*ast, offset, opt);
-        // TODO: Join comment with ast info, build structed text
         proto::Hover result;
         result.contents.kind = "markdown";
-        result.contents.value = std::format("{}: {}", hover->kind.name(), hover->name);
+        if(auto hover = feature::hover(*ast, offset, opt); hover) {
+            if(auto info = hover->display(opt); info) {
+                result.contents.value = *info;
+            } else {
+                clice::logging::warn("Cannot display hover info");
+                result.contents.value = "Cannot display hover info";
+            }
+        } else {
+            clice::logging::warn("Cannot get hover info");
+            result.contents.value = "Cannot get hover info";
+        }
         return json::serialize(result);
     });
 }
