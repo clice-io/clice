@@ -141,7 +141,28 @@ auto create_invocation(CompilationParams& params,
     auto& front_opts = invocation->getFrontendOpts();
     front_opts.DisableFree = false;
 
-    clang::LangOptions& lang_opts = invocation->getLangOpts();
+    /// Compiler flags (like gcc/clang's -M, -MD, -MMD, -H, or msvc's /showIncludes)
+    /// can generate dependency files or print included headers to stdout/stderr.
+    ///
+    /// This output can interfere with or corrupt the Language Server Protocol (LSP)
+    /// communication if the server is configured to use stdio for its JSON-RPC transport.
+    /// We explicitly disables all related options to ensure no side-effect output is
+    /// generated during parsing.
+    auto& deps_opts = invocation->getDependencyOutputOpts();
+    deps_opts.IncludeSystemHeaders = false;
+    deps_opts.ShowSkippedHeaderIncludes = false;
+    deps_opts.UsePhonyTargets = false;
+    deps_opts.AddMissingHeaderDeps = false;
+    deps_opts.IncludeModuleFiles = false;
+    deps_opts.ShowIncludesDest = clang::ShowIncludesDestination::None;
+    deps_opts.OutputFile.clear();
+    deps_opts.HeaderIncludeOutputFile.clear();
+    deps_opts.Targets.clear();
+    deps_opts.ExtraDeps.clear();
+    deps_opts.DOTOutputFile.clear();
+    deps_opts.ModuleDependencyOutputDir.clear();
+
+    auto& lang_opts = invocation->getLangOpts();
     lang_opts.CommentOpts.ParseAllComments = true;
     lang_opts.RetainCommentsFromSystemHeaders = true;
 
