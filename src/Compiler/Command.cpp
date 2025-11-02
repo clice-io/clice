@@ -646,104 +646,25 @@ struct CompilationDatabase::Impl {
         }
         return info;
     }
-};
 
-CompilationDatabase::CompilationDatabase() : impl(std::make_unique<CompilationDatabase::Impl>()) {
-    /// Remove the input file, we will add input file ourselves.
-    impl->filtered_options.insert(options::OPT_INPUT);
-
-    /// -c and -o are meaningless for frontend.
-    impl->filtered_options.insert(options::OPT_c);
-    impl->filtered_options.insert(options::OPT_o);
-    impl->filtered_options.insert(options::OPT_dxc_Fc);
-    impl->filtered_options.insert(options::OPT_dxc_Fo);
-
-    /// Remove all options related to PCH building.
-    impl->filtered_options.insert(options::OPT_emit_pch);
-    impl->filtered_options.insert(options::OPT_include_pch);
-    impl->filtered_options.insert(options::OPT__SLASH_Yu);
-    impl->filtered_options.insert(options::OPT__SLASH_Fp);
-
-    /// Remove all options related to C++ module, we will
-    /// build module and set deps ourselves.
-    impl->filtered_options.insert(options::OPT_fmodule_file);
-    impl->filtered_options.insert(options::OPT_fmodule_output);
-    impl->filtered_options.insert(options::OPT_fprebuilt_module_path);
-}
-
-CompilationDatabase::CompilationDatabase(CompilationDatabase&& other) = default;
-
-CompilationDatabase& CompilationDatabase::operator= (CompilationDatabase&& other) = default;
-
-CompilationDatabase::~CompilationDatabase() = default;
-
-std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef argument) {
-    auto& table = clang::driver::getDriverOptTable();
-
-    llvm::SmallString<64> buffer = argument;
-
-    if(argument.ends_with("=")) {
-        buffer += "placeholder";
+    auto CompilationDatabase::load_compile_database(
+        this Self& self,
+        llvm::ArrayRef<std::string> compile_commands_dirs,
+        llvm::StringRef workspace) -> void {
+        return self.impl->load_compile_database(compile_commands_dirs, workspace);
     }
 
-    unsigned index = 0;
-    std::array arguments = {buffer.c_str(), "placeholder"};
-    llvm::opt::InputArgList arg_list(arguments.data(), arguments.data() + arguments.size());
-
-    if(auto arg = table.ParseOneArg(arg_list, index)) {
-        return arg->getOption().getID();
-    } else {
-        return {};
+    auto CompilationDatabase::lookup(this Self& self, llvm::StringRef file, CommandOptions options)
+        -> LookupInfo {
+        return self.impl->lookup(file, options);
     }
-}
 
-auto CompilationDatabase::save_string(this Self& self, llvm::StringRef string) -> llvm::StringRef {
-    return self.impl->save_string(string);
-}
-
-auto CompilationDatabase::query_driver(this Self& self, llvm::StringRef driver)
-    -> std::expected<DriverInfo, QueryDriverError> {
-    return self.impl->query_driver(driver);
-}
-
-auto CompilationDatabase::update_command(this Self& self,
-                                         llvm::StringRef directory,
-                                         llvm::StringRef file,
-                                         llvm::ArrayRef<const char*> arguments) -> UpdateInfo {
-    return self.impl->update_command(directory, file, arguments);
-}
-
-auto CompilationDatabase::update_command(this Self& self,
-                                         llvm::StringRef directory,
-                                         llvm::StringRef file,
-                                         llvm::StringRef command) -> UpdateInfo {
-    return self.impl->update_command(directory, file, command);
-}
-
-auto CompilationDatabase::load_commands(this Self& self,
-                                        llvm::StringRef json_content,
-                                        llvm::StringRef workspace)
-    -> std::expected<std::vector<UpdateInfo>, std::string> {
-    return self.impl->load_commands(json_content, workspace);
-}
-
-auto CompilationDatabase::load_compile_database(this Self& self,
-                                                llvm::ArrayRef<std::string> compile_commands_dirs,
-                                                llvm::StringRef workspace) -> void {
-    return self.impl->load_compile_database(compile_commands_dirs, workspace);
-}
-
-auto CompilationDatabase::lookup(this Self& self, llvm::StringRef file, CommandOptions options)
-    -> LookupInfo {
-    return self.impl->lookup(file, options);
-}
-
-std::vector<const char*> CompilationDatabase::files() {
-    std::vector<const char*> result;
-    for(auto& [file, _]: impl->command_infos) {
-        result.emplace_back(file);
+    std::vector<const char*> CompilationDatabase::files() {
+        std::vector<const char*> result;
+        for(auto& [file, _]: impl->command_infos) {
+            result.emplace_back(file);
+        }
+        return result;
     }
-    return result;
-}
 
 }  // namespace clice

@@ -300,7 +300,7 @@ template <typename... Ts>
 struct Struct<Inheritance<Ts...>> {
     constexpr inline static bool reflectable_struct = (refl::reflectable_struct<Ts> && ...);
 
-    constexpr static std::size_t member_count = (Struct<Ts>::member_count + ...);
+    constexpr static std::size_t member_count = (impl::member_count<Ts>() + ...);
 
     template <typename Object>
     constexpr static auto collect_members(Object&& object) {

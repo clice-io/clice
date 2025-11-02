@@ -1,4 +1,4 @@
-set_xmakever("3.0.3")
+set_xmakever("3.0.0")
 set_project("clice")
 
 set_allowedplats("windows", "linux", "macosx")
@@ -52,7 +52,7 @@ target("clice-core")
     add_files("src/**.cpp|Driver/*.cpp", "include/Index/schema.fbs")
     add_includedirs("include", {public = true})
 
-    add_rules("flatbuffers.schema.gen")
+    add_rules("flatbuffers.schema.gen", "clice_clang_tidy_config")
     add_packages("flatbuffers")
     add_packages("libuv", "spdlog", "toml++", "croaring", {public = true})
 
@@ -128,7 +128,7 @@ target("clice")
     end)
 
     after_build(function (target)
-        local res_dir = path.join(target:targetdir(), "lib/clang")
+        local res_dir = path.join(target:targetdir(), "../lib/clang")
         if not os.exists(res_dir) then
             local llvm_dir = target:dep("clice-core"):pkg("llvm"):installdir()
             os.vcp(path.join(llvm_dir, "lib/clang"), res_dir)
@@ -147,8 +147,7 @@ target("unit_tests")
 
     after_load(function (target)
         target:set("runargs",
-            "--test-dir=" .. path.absolute("tests/data"),
-            "--resource-dir=" .. path.join(target:dep("clice-core"):pkg("llvm"):installdir(), "lib/clang/20")
+            "--test-dir=" .. path.absolute("tests/data")
         )
     end)
 
@@ -170,12 +169,28 @@ target("integration_tests")
             "--log-cli-level=INFO",
             "-s", "tests/integration",
             "--executable=" .. target:dep("clice"):targetfile(),
-            "--resource-dir=" .. path.join(target:pkg("llvm"):installdir(), "lib/clang/20"),
         }
         local opt = {envs = envs, curdir = os.projectdir()}
         os.vrunv(uv.program, argv, opt)
 
         return true
+    end)
+
+rule("clice_clang_tidy_config")
+    on_load(function (target)
+        import("core.project.depend")
+
+        local autogendir = path.join(target:autogendir(), "rules/clice_clang_tidy_config")
+        os.mkdir(autogendir)
+        target:add("includedirs", autogendir, {public = true})
+
+        local src = path.join(os.projectdir(), "config/clang-tidy-config.h")
+        depend.on_changed(function()
+            os.vcp(src, path.join(autogendir, "clang-tidy-config.h"))
+        end, {
+            files = src,
+            changed = target:is_rebuilt()
+        })
     end)
 
 rule("clice_build_config")
@@ -255,8 +270,9 @@ package("clice-llvm")
 
             local info = json.loadfile("./config/prebuilt-llvm.json")
             for _, info in ipairs(info) do
-                if  get_config("mode") == info.build_type:lower()
-                and get_config("plat") == info.platform:lower()
+                if info.platform:lower() == get_config("plat")
+                and (info.build_type:lower() == get_config("mode")
+                or info.build_type:lower() == "release" and get_config("mode") == "releasedbg")
                 and (info.is_lto == has_config("release")) then
                     package:add("urls", format("https://github.com/clice-io/llvm-binary/releases/download/%s/%s", info.version, info.filename))
                     package:add("versions", info.version, info.sha256)

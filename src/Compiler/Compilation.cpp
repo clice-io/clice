@@ -1,7 +1,12 @@
+
+#include "TidyImpl.h"
+
+#include "AST/Utility.h"
 #include "CompilationUnitImpl.h"
 #include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
 #include "Compiler/Diagnostic.h"
+#include "Compiler/Tidy.h"
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/MultiplexConsumer.h"
@@ -21,16 +26,17 @@ public:
         src_mgr(instance.getSourceManager()), top_level_decls(top_level_decls), stop(stop) {}
 
     void collect_decl(clang::Decl* decl) {
-        auto location = decl->getLocation();
-        if(location.isInvalid()) {
+        if(!(ast::is_inside_main_file(decl->getLocation(), src_mgr))) {
             return;
         }
 
-        location = src_mgr.getExpansionLoc(location);
-        auto fid = src_mgr.getFileID(location);
-        if(fid == src_mgr.getPreambleFileID() || fid == src_mgr.getMainFileID()) {
-            top_level_decls->push_back(decl);
+        if(const clang::NamedDecl* named_decl = dyn_cast<clang::NamedDecl>(decl)) {
+            if(ast::is_implicit_template_instantiation(named_decl)) {
+                return;
+            }
         }
+
+        top_level_decls->push_back(decl);
     }
 
     auto HandleTopLevelDecl(clang::DeclGroupRef group) -> bool final {
@@ -135,9 +141,30 @@ auto create_invocation(CompilationParams& params,
     auto& front_opts = invocation->getFrontendOpts();
     front_opts.DisableFree = false;
 
-    clang::LangOptions& langOpts = invocation->getLangOpts();
-    langOpts.CommentOpts.ParseAllComments = true;
-    langOpts.RetainCommentsFromSystemHeaders = true;
+    /// Compiler flags (like gcc/clang's -M, -MD, -MMD, -H, or msvc's /showIncludes)
+    /// can generate dependency files or print included headers to stdout/stderr.
+    ///
+    /// This output can interfere with or corrupt the Language Server Protocol (LSP)
+    /// communication if the server is configured to use stdio for its JSON-RPC transport.
+    /// We explicitly disables all related options to ensure no side-effect output is
+    /// generated during parsing.
+    auto& deps_opts = invocation->getDependencyOutputOpts();
+    deps_opts.IncludeSystemHeaders = false;
+    deps_opts.ShowSkippedHeaderIncludes = false;
+    deps_opts.UsePhonyTargets = false;
+    deps_opts.AddMissingHeaderDeps = false;
+    deps_opts.IncludeModuleFiles = false;
+    deps_opts.ShowIncludesDest = clang::ShowIncludesDestination::None;
+    deps_opts.OutputFile.clear();
+    deps_opts.HeaderIncludeOutputFile.clear();
+    deps_opts.Targets.clear();
+    deps_opts.ExtraDeps.clear();
+    deps_opts.DOTOutputFile.clear();
+    deps_opts.ModuleDependencyOutputDir.clear();
+
+    auto& lang_opts = invocation->getLangOpts();
+    lang_opts.CommentOpts.ParseAllComments = true;
+    lang_opts.RetainCommentsFromSystemHeaders = true;
 
     return invocation;
 }
@@ -158,19 +185,24 @@ CompilationResult run_clang(CompilationParams& params,
 
     auto diagnostics =
         params.diagnostics ? params.diagnostics : std::make_shared<std::vector<Diagnostic>>();
-    auto diagnostic_engine =
-        clang::CompilerInstance::createDiagnostics(*params.vfs,
-                                                   new clang::DiagnosticOptions(),
-                                                   Diagnostic::create(diagnostics));
+    auto diagnostic_consumer = Diagnostic::create(diagnostics);
+
+    /// Temporary diagnostic engine, only used for command line parsing.
+    /// For compilation, we need to create a new diagnostic engine. See also
+    /// https://github.com/llvm/llvm-project/pull/139584#issuecomment-2920704282.
+    clang::DiagnosticOptions options;
+    auto diagnostic_engine = clang::CompilerInstance::createDiagnostics(*params.vfs,
+                                                                        options,
+                                                                        diagnostic_consumer.get(),
+                                                                        false);
 
     auto invocation = create_invocation(params, diagnostic_engine);
     if(!invocation) {
         return std::unexpected("Fail to create compilation invocation!");
     }
 
-    auto instance = std::make_unique<clang::CompilerInstance>();
-    instance->setInvocation(std::move(invocation));
-    instance->setDiagnostics(diagnostic_engine.get());
+    auto instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
+    instance->createDiagnostics(*params.vfs, diagnostic_consumer.release(), true);
 
     if(auto remapping = clang::createVFSFromCompilerInvocation(instance->getInvocation(),
                                                                instance->getDiagnostics(),
@@ -193,7 +225,7 @@ CompilationResult run_clang(CompilationParams& params,
     auto action = std::make_unique<ProxyAction>(
         std::make_unique<Action>(),
         /// We only collect top level declarations for parse main file.
-        params.kind == CompilationUnit::Content ? &top_level_decls : nullptr,
+        (params.clang_tidy || params.kind == CompilationUnit::Content) ? &top_level_decls : nullptr,
         params.stop);
 
     if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
@@ -201,7 +233,16 @@ CompilationResult run_clang(CompilationParams& params,
     }
 
     auto& pp = instance->getPreprocessor();
-    /// FIXME: clang-tidy, include-fixer, etc?
+    /// FIXME: include-fixer, etc?
+
+    /// Setup clang-tidy
+    std::unique_ptr<tidy::ClangTidyChecker> checker;
+    if(params.clang_tidy) {
+        tidy::TidyParams tidy_params;
+        checker = tidy::configure(*instance, tidy_params);
+        /// TODO: We should make the lifetime of diagnostic consumer more explicit.
+        static_cast<DiagnosticCollector&>(instance->getDiagnosticClient()).checker = checker.get();
+    }
 
     /// `BeginSourceFile` may create new preprocessor, so all operations related to preprocessor
     /// should be done after `BeginSourceFile`.
@@ -239,6 +280,19 @@ CompilationResult run_clang(CompilationParams& params,
         token_buffer = std::move(*token_collector).consume();
     }
 
+    // Must be called before EndSourceFile because the ast context can be destroyed later.
+    if(checker) {
+        // AST traversals should exclude the preamble, to avoid performance cliffs.
+        // TODO: is it okay to affect the unit-level traversal scope here?
+        instance->getASTContext().setTraversalScope(top_level_decls);
+        checker->finder.matchAST(instance->getASTContext());
+    }
+
+    /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
+    /// However Action->EndSourceFile() would destroy the ASTContext!
+    /// So just inform the preprocessor of EOF, while keeping everything alive.
+    pp.EndSourceFile();
+
     /// FIXME: getDependencies currently return ArrayRef<std::string>, which actually results in
     /// extra copy. It would be great to avoid this copy.
 
@@ -247,10 +301,15 @@ CompilationResult run_clang(CompilationParams& params,
         resolver.emplace(instance->getSema());
     }
 
+    if(checker) {
+        /// Avoid dangling pointer.
+        static_cast<DiagnosticCollector&>(instance->getDiagnosticClient()).checker = nullptr;
+    }
+
     auto build_end = chrono::steady_clock::now().time_since_epoch();
 
     auto impl = new CompilationUnit::Impl{
-        .interested = pp.getSourceManager().getMainFileID(),
+        .interested = instance->getSourceManager().getMainFileID(),
         .src_mgr = instance->getSourceManager(),
         .action = std::move(action),
         .instance = std::move(instance),
@@ -259,7 +318,7 @@ CompilationResult run_clang(CompilationParams& params,
         .directives = std::move(directives),
         .path_cache = llvm::DenseMap<clang::FileID, llvm::StringRef>(),
         .symbol_hash_cache = llvm::DenseMap<const void*, std::uint64_t>(),
-        .diagnostics = diagnostics,
+        .diagnostics = std::move(diagnostics),
         .top_level_decls = std::move(top_level_decls),
         .build_at = chrono::duration_cast<chrono::milliseconds>(build_at),
         .build_duration = chrono::duration_cast<chrono::milliseconds>(build_end - build_start),

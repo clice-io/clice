@@ -198,8 +198,10 @@ public:
         }
     };
 
-    template <>
-    struct promise_result<void> {
+    // WORKAROUND: GCC bug - full specialization in non-namespace scope not supported
+    // see: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85282
+    template <std::same_as<void> V>
+    struct promise_result<V> {
         void return_void() noexcept {}
     };
 

@@ -15,6 +15,9 @@ struct CompilationParams {
     /// The kind of this compilation.
     CompilationUnit::Kind kind;
 
+    /// Whether to run clang-tidy.
+    bool clang_tidy = false;
+
     /// Output file path.
     llvm::SmallString<128> output_file;
 

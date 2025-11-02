@@ -45,7 +45,14 @@ public:
     }
 
     lookup_result lookup(const clang::DependentTemplateSpecializationType* type) {
-        return lookup(type->getQualifier(), type->getIdentifier());
+        auto& template_name = type->getDependentTemplateName();
+        auto identifier = template_name.getName().getIdentifier();
+        if(identifier) {
+            return lookup(template_name.getQualifier(), identifier);
+        } else {
+            /// FIXME: Operators does't have a name.
+            return {};
+        }
     }
 
     lookup_result lookup(const clang::DependentScopeDeclRefExpr* expr) {
