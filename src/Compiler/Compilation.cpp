@@ -219,7 +219,8 @@ CompilationResult run_clang(CompilationParams& params,
     if(params.clang_tidy) {
         tidy::TidyParams tidy_params;
         checker = tidy::configure(*instance, tidy_params);
-        diagnostic_consumer->checker = checker.get();
+        /// TODO: We should make the lifetime of diagnostic consumer more explicit.
+        static_cast<DiagnosticCollector&>(instance->getDiagnosticClient()).checker = checker.get();
     }
 
     /// `BeginSourceFile` may create new preprocessor, so all operations related to preprocessor
@@ -277,6 +278,11 @@ CompilationResult run_clang(CompilationParams& params,
     std::optional<TemplateResolver> resolver;
     if(instance->hasSema()) {
         resolver.emplace(instance->getSema());
+    }
+
+    if(checker) {
+        /// Avoid dangling pointer.
+        static_cast<DiagnosticCollector&>(instance->getDiagnosticClient()).checker = nullptr;
     }
 
     auto build_end = chrono::steady_clock::now().time_since_epoch();
