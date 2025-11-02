@@ -7,14 +7,14 @@ namespace clice::testing {
 namespace {
 
 suite<"ClangTidy"> clang_tidy = [] {
-    test("FaskCheck") = [] {
-        expect(that % tidy::is_fast_tidy_check("readability-misleading-indentation"));
-        expect(that % tidy::is_fast_tidy_check("bugprone-unused-return-value"));
+    test("FastCheck") = [] {
+        expect(tidy::is_fast_tidy_check("readability-misleading-indentation"));
+        expect(tidy::is_fast_tidy_check("bugprone-unused-return-value"));
 
         // clangd/unittests/TidyProviderTests.cpp
-        expect(that % tidy::is_fast_tidy_check("misc-const-correctness") == false);
-        expect(that % tidy::is_fast_tidy_check("bugprone-suspicious-include") == true);
-        expect(that % tidy::is_fast_tidy_check("replay-preamble-check") == std::nullopt);
+        expect(tidy::is_fast_tidy_check("misc-const-correctness") == false);
+        expect(tidy::is_fast_tidy_check("bugprone-suspicious-include") == true);
+        expect(tidy::is_fast_tidy_check("replay-preamble-check") == std::nullopt);
     };
 
     test("Tidy") = [] {
