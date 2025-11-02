@@ -3,6 +3,7 @@
 #include "AST/SourceCode.h"
 #include "AST/SymbolKind.h"
 #include "Index/Shared.h"
+#include "Protocol/Basic.h"
 
 namespace clice::config {
 
@@ -34,8 +35,8 @@ struct HoverItem {
         BitWidth,
         /// The index of a field in a class/struct.
         FieldIndex,
-        /// The value of an enum item.
-        EnumValue,
+        /// The value of variable(on initialization / constant) | enum item
+        Value,
     };
 
     using enum HoverKind;
@@ -63,6 +64,14 @@ struct Hover {
 
     /// The source code of the declaration.
     std::string source;
+
+    /// Highlight range
+    std::optional<proto::Range> hl_range;
+
+    std::optional<std::string> get_item_content(HoverItem::HoverKind kind);
+
+    /// Return the markdown string of hover info
+    std::optional<std::string> display(config::HoverOptions opt);
 };
 
 std::optional<Hover> hover(CompilationUnitRef unit,
