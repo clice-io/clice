@@ -44,7 +44,7 @@ inline std::expected<void, std::string> init_resource_dir(llvm::StringRef execut
     path::append(path, path::parent_path(execute), "..");
     path::append(path, "lib", "clang", "21");
     if(auto error = real_path(path, path)) {
-        return std::unexpected(std::format("{}:{}", error, path));
+        return std::unexpected(std::format("{}:{}", error, path.str()));
     }
     resource_dir = path.str();
     return std::expected<void, std::string>();

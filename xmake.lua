@@ -127,7 +127,7 @@ target("clice")
     end)
 
     after_build(function (target)
-        local res_dir = path.join(target:targetdir(), "lib/clang")
+        local res_dir = path.join(target:targetdir(), "../lib/clang")
         if not os.exists(res_dir) then
             local llvm_dir = target:dep("clice-core"):pkg("llvm"):installdir()
             os.vcp(path.join(llvm_dir, "lib/clang"), res_dir)
