@@ -61,7 +61,7 @@ void Runner::add_suite(std::string_view name, Suite suite) {
     suites[name].emplace_back(suite);
 }
 
-void Runner::on_test(std::string_view name, Test test, bool skipped) {
+void Runner::add_test(std::string_view name, Test test, bool skipped, bool only) {
     std::string full_name = std::format("{}.{}", curr_suite_name, name);
 
     /// If this test if filter, directly return.
@@ -81,13 +81,17 @@ void Runner::on_test(std::string_view name, Test test, bool skipped) {
         return;
     }
 
+    (only ? only_tests : tests).emplace_back(std::move(full_name), std::move(test));
+}
+
+void Runner::on_test(std::string_view full_name, Test test) {
     /// Reset whether this test is failed or fatal.
     curr_failed = false;
     curr_fatal = false;
 
     using namespace std::chrono;
 
-    std::println("{}[ RUN      ] {}.{}{}", GREEN, curr_suite_name, name, CLEAR);
+    std::println("{}[ RUN      ] {}{}", GREEN, full_name, CLEAR);
     auto begin = system_clock::now();
 
     test();
@@ -155,9 +159,25 @@ int Runner::run_tests() {
         curr_tests_count = 0;
         curr_failed_tests_count = 0;
         curr_test_duration = std::chrono::milliseconds();
+        tests.clear();
+        only_tests.clear();
 
         for(auto& callback: suite) {
             callback();
+        }
+
+        if(!only_tests.empty()) {
+            for(auto&& [full_name, test]: std::move(this->tests)) {
+                /// The rest tests are skipped.
+                std::println("{}[ SKIPPED  ] {}{}", YELLOW, full_name, CLEAR);
+            }
+            for(auto&& [full_name, test]: std::move(this->only_tests)) {
+                on_test(full_name, std::move(test));
+            }
+        } else {
+            for(auto&& [full_name, test]: std::move(this->tests)) {
+                on_test(full_name, std::move(test));
+            }
         }
 
         /// If there is any test in the suite, we print the suite info.
