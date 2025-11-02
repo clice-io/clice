@@ -146,7 +146,7 @@ target("unit_tests")
 
     after_load(function (target)
         target:set("runargs",
-            "--test-dir=" .. path.absolute("tests/data"),
+            "--test-dir=" .. path.absolute("tests/data")
         )
     end)
 
