@@ -37,7 +37,7 @@ jobs:
           xmake-version: 3.0.0
           actions-cache-folder: ".xmake-cache"
           actions-cache-key: ${{ matrix.os }}
-          package-cache: true
+          package-cache: false
           package-cache-key: ${{ matrix.os }}
           build-cache: true
           build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
@@ -89,7 +89,7 @@ jobs:
           xmake-version: 3.0.0
           actions-cache-folder: ".xmake-cache"
           actions-cache-key: ${{ matrix.os }}
-          package-cache: true
+          package-cache: false
           package-cache-key: ${{ matrix.os }}
           build-cache: true
           build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
@@ -130,7 +130,7 @@ jobs:
           xmake-version: 3.0.0
           actions-cache-folder: ".xmake-cache"
           actions-cache-key: ${{ matrix.os }}
-          package-cache: true
+          package-cache: false
           package-cache-key: ${{ matrix.os }}
           build-cache: true
           build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
