@@ -22,19 +22,29 @@ table CacheEntry {
     canonical_id: uint;
 }
 
-struct Context {
-    include_: uint;
+struct IncludeContext {
+    include_id: uint;
     canonical_id: uint;
 }
 
-table HeaderContexts {
+table HeaderContextEntry {
+    path_id: uint;
     version: uint;
-    includes: [Context];
+    includes: [IncludeContext];
 }
 
-table HeaderContextsEntry {
-    path: string;
-    contexts: HeaderContexts;
+struct IncludeLocation {
+    path_id: uint;
+    line: uint;
+    include_id: uint;
+}
+
+table CompilationContextEntry {
+    path_id: uint;
+    version: uint;
+    canonical_id: uint;
+    build_at: ulong;
+    include_locations: [IncludeLocation];
 }
 
 table OccurrenceEntry {
@@ -67,7 +77,9 @@ table MergedIndex {
 
     canonical_cache: [CacheEntry];
 
-    contexts: [HeaderContextsEntry];
+    header_contexts: [HeaderContextEntry];
+
+    compilation_contexts: [CompilationContextEntry];
 
     occurrences: [OccurrenceEntry];
 

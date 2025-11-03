@@ -230,7 +230,7 @@ private:
     /// All registered LSP callbacks.
     llvm::StringMap<Callback> callbacks;
 
-    PositionEncodingKind kind;
+    PositionEncodingKind kind = PositionEncodingKind::UTF16;
 
     std::string workspace;
 
