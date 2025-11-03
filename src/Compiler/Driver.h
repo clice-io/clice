@@ -347,8 +347,8 @@ auto query_driver(llvm::StringRef driver) -> std::expected<QueryResult, QueryDri
 
         /// An workaround to use clang's toolchain to find vsinstall information
         /// and related includes.
-        thread_local clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
-                                                     new clang::DiagnosticOptions());
+        clang::DiagnosticOptions options;
+        thread_local clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(), options);
         clang::driver::Driver driver("", target, engine);
         llvm::SmallVector<const char*> args = {"", "-xc++", "NUL"};
         llvm::opt::InputArgList list(args.begin(), args.end());
