@@ -108,6 +108,10 @@ jobs:
       - name: Run tests
         run: xmake test --verbose
 
+      # Workaround `no space left on device`
+      - name: Remove llvm package
+        run: rm -rf /home/runner/.xmake/packages/c/clice-llvm
+
   macos:
     strategy:
       matrix:
