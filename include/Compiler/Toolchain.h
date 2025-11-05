@@ -1,9 +1,10 @@
 #pragma once
 
 #include <expected>
+#include "Support/Enum.h"
+#include "Support/Format.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "Support/Enum.h"
 
 namespace clice::toolchain {
 
@@ -43,7 +44,6 @@ auto query_driver(llvm::StringRef driver) -> std::expected<QueryResult, QueryDri
 
 template <>
 struct std::formatter<clice::toolchain::QueryDriverError> : std::formatter<std::string_view> {
-
     template <typename FormatContext>
     auto format(const clice::toolchain::QueryDriverError& e, FormatContext& ctx) const {
         return std::format_to(ctx.out(), "{} {}", e.kind.name(), e.detail);

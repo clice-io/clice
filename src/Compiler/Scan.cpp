@@ -20,8 +20,8 @@ ScanResult scan(llvm::StringRef content) {
 
         if(token.is_header_name()) {
             auto spelling = token.text(content);
-            result.includes.emplace_back(spelling.starts_with('"') || spelling.ends_with('"'),
-                                         0,
+            result.includes.emplace_back(spelling.starts_with('<') || spelling.ends_with('>'),
+                                         /// 0,
                                          spelling.trim("<\">"));
         } else if(token.is_pp_keyword && token.text(content) == "module") {
             auto next = lexer.next();

@@ -12,7 +12,7 @@ struct Inclusion {
     bool angled;
 
     /// The line of this inclusion(zero based).
-    std::uint32_t line;
+    /// std::uint32_t line;
 
     /// The included file.
     llvm::StringRef file;
