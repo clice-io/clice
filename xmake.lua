@@ -40,7 +40,8 @@ if has_config("release") then
 end
 
 add_defines("TOML_EXCEPTIONS=0")
-add_requires(libuv_require, "spdlog[header_only=n,std_format,noexcept]" ,"toml++", "croaring", "flatbuffers")
+add_requires("spdlog", {system=false, version="1.15.3", configs = {header_only = false, std_format = true, noexcept = true}})
+add_requires(libuv_require, "toml++", "croaring", "flatbuffers")
 add_requires("clice-llvm", {alias = "llvm"})
 
 add_rules("mode.release", "mode.debug", "mode.releasedbg")
