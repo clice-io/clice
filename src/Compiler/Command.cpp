@@ -646,6 +646,10 @@ auto CompilationDatabase::load_compile_database(llvm::ArrayRef<std::string> comp
         "Can not found any valid CDB file from given directories, search recursively from workspace: {} ...",
         workspace);
 
+    return;
+
+    /// FIXME: Recursive workspace scanning shouldn't be enabled by default, as it
+    /// might scan unintended directories.
     std::error_code ec;
     for(fs::recursive_directory_iterator it(workspace, ec), end; it != end && !ec;
         it.increment(ec)) {
@@ -703,7 +707,7 @@ auto CompilationDatabase::lookup(llvm::StringRef file, CommandOptions options) -
 
             /// FIXME: Cache -I so that we can append directly, avoid duplicate lookup.
             for(auto& system_header: driver_info->system_includes) {
-                record("-I");
+                record("-isystem");
                 record(system_header);
             }
         } else if(!options.suppress_logging) {
