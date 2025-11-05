@@ -2,6 +2,7 @@
 
 #include <expected>
 
+#include "Toolchain.h"
 #include "Support/Enum.h"
 #include "Support/Format.h"
 
@@ -64,24 +65,6 @@ struct LookupInfo {
     std::vector<std::uint32_t> include_indices;
 };
 
-struct QueryDriverError {
-    struct ErrorKind : refl::Enum<ErrorKind> {
-        enum Kind : std::uint8_t {
-            NotFoundInPATH,
-            NotImplemented,
-            FailToCreateTempFile,
-            InvokeDriverFail,
-            OutputFileNotReadable,
-            InvalidOutputFormat,
-        };
-
-        using Enum::Enum;
-    };
-
-    ErrorKind kind;
-    std::string detail;
-};
-
 class CompilationDatabase {
 public:
     CompilationDatabase();
@@ -105,50 +88,37 @@ public:
     /// Get an the option for specific argument.
     static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
 
-    auto save_string(this Self& self, llvm::StringRef string) -> llvm::StringRef;
+    auto save_string(llvm::StringRef string) -> llvm::StringRef;
 
     /// Query the compiler driver and return its driver info.
-    auto query_driver(this Self& self, llvm::StringRef driver)
-        -> std::expected<DriverInfo, QueryDriverError>;
+    auto query_driver(llvm::StringRef driver)
+        -> std::expected<DriverInfo, toolchain::QueryDriverError>;
 
     /// Update with arguments.
-    auto update_command(this Self& self,
-                        llvm::StringRef directory,
+    auto update_command(llvm::StringRef directory,
                         llvm::StringRef file,
                         llvm::ArrayRef<const char*> arguments) -> UpdateInfo;
 
     /// Update with full command.
-    auto update_command(this Self& self,
-                        llvm::StringRef directory,
-                        llvm::StringRef file,
-                        llvm::StringRef command) -> UpdateInfo;
+    auto update_command(llvm::StringRef directory, llvm::StringRef file, llvm::StringRef command)
+        -> UpdateInfo;
 
     /// Update commands from json file and return all updated file.
-    auto load_commands(this Self& self, llvm::StringRef json_content, llvm::StringRef workspace)
+    auto load_commands(llvm::StringRef json_content, llvm::StringRef workspace)
         -> std::expected<std::vector<UpdateInfo>, std::string>;
 
     /// Load compile commands from given directories. If no valid commands are found,
     /// search recursively from the workspace directory.
-    auto load_compile_database(this Self& self,
-                               llvm::ArrayRef<std::string> compile_commands_dirs,
+    auto load_compile_database(llvm::ArrayRef<std::string> compile_commands_dirs,
                                llvm::StringRef workspace) -> void;
 
     /// Get compile command from database. `file` should has relative path of workspace.
-    auto lookup(this Self& self, llvm::StringRef file, CommandOptions options = {}) -> LookupInfo;
+    auto lookup(llvm::StringRef file, CommandOptions options = {}) -> LookupInfo;
 
     std::vector<const char*> files();
 
 private:
-    std::unique_ptr<Impl> impl;
+    std::unique_ptr<Impl> self;
 };
 
 }  // namespace clice
-
-template <>
-struct std::formatter<clice::QueryDriverError> : std::formatter<std::string_view> {
-
-    template <typename FormatContext>
-    auto format(const clice::QueryDriverError& e, FormatContext& ctx) const {
-        return std::format_to(ctx.out(), "{} {}", e.kind.name(), e.detail);
-    }
-};
