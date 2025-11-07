@@ -35,12 +35,6 @@ def pytest_addoption(parser: pytest.Parser):
         help="The port to connect to",
     )
 
-    parser.addoption(
-        "--resource-dir",
-        required=False,
-        help="Path to the of the clang resource directory.",
-    )
-
 
 @pytest.fixture(scope="session")
 def executable(request) -> Path | None:
@@ -60,23 +54,13 @@ def executable(request) -> Path | None:
 
 
 @pytest.fixture(scope="session")
-def resource_dir(request) -> Path | None:
-    path = request.config.getoption("--resource-dir")
-    if not path:
-        return None
-    return Path(path).resolve()
-
-
-@pytest.fixture(scope="session")
 def test_data_dir(request):
     path = os.path.join(os.path.dirname(__file__), "data")
     return Path(path).resolve()
 
 
 @pytest_asyncio.fixture(scope="function")
-async def client(
-    request, executable: Path | None, resource_dir: Path | None, test_data_dir: Path
-):
+async def client(request, executable: Path | None, test_data_dir: Path):
     config = request.config
     mode = config.getoption("--mode")
 
@@ -84,9 +68,6 @@ async def client(
         str(executable),
         f"--mode={mode}",
     ]
-
-    if resource_dir:
-        cmd.append(f"--resource-dir={resource_dir}")
 
     client = LSPClient(
         cmd,

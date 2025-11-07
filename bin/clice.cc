@@ -48,13 +48,6 @@ cl::opt<unsigned int> port{
     cl::desc("The port to connect to"),
 };
 
-cl::opt<std::string> resource_dir{
-    "resource-dir",
-    cl::cat(category),
-    cl::value_desc("path"),
-    cl::desc(R"(The path of the clang resource directory, default is "../../lib/clang/version")"),
-};
-
 cl::opt<logging::ColorMode> log_color{
     "log-color",
     cl::cat(category),
@@ -108,22 +101,12 @@ bool check_arguments(int argc, const char** argv) {
     }
 
     // Initialize resource directory
-    if(resource_dir.empty()) {
-        LOGGING_INFO("No resource directory specified, using default resource directory");
-        // Try to initialize default resource directory
-        if(auto result = fs::init_resource_dir(argv[0]); !result) {
-            LOGGING_WARN("Cannot find default resource directory, because {}", result.error());
-            return false;
-        }
-    } else {
-        // Set and check the specified resource directory
-        fs::resource_dir = resource_dir.getValue();
-        if(fs::exists(fs::resource_dir)) {
-            LOGGING_INFO("Resource directory found: {}", fs::resource_dir);
-        } else {
-            LOGGING_WARN("Resource directory not found: {}", fs::resource_dir);
-            return false;
-        }
+
+    LOGGING_INFO("No resource directory specified, using default resource directory");
+    // Try to initialize default resource directory
+    if(auto result = fs::init_resource_dir(argv[0]); !result) {
+        LOGGING_WARN("Cannot find default resource directory, because {}", result.error());
+        return false;
     }
 
     return true;
