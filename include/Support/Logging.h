@@ -86,7 +86,7 @@ void critical [[noreturn]] (logging_format<Args...> fmt, Args&&... args) {
 }  // namespace clice::logging
 
 #define LOGGING_MESSAGE(name, fmt, ...)                                                            \
-    if(clice::logging::options.level == clice::logging::Level::name) {                             \
+    if(clice::logging::options.level <= clice::logging::Level::name) {                             \
         clice::logging::name(fmt __VA_OPT__(, ) __VA_ARGS__);                                      \
     }
 
