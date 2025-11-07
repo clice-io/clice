@@ -193,12 +193,12 @@ auto query_driver(llvm::StringRef driver) -> std::expected<QueryResult, QueryDri
         bool keep_output_file = true;
         auto clean_up = llvm::make_scope_exit([&output_path, &keep_output_file]() {
             if(keep_output_file) {
-                logging::warn("Query driver failed, output file:{}", output_path);
+                LOGGING_WARN("Query driver failed, output file:{}", output_path);
                 return;
             }
 
             if(auto errc = llvm::sys::fs::remove(output_path)) {
-                logging::warn("Fail to remove temporary file: {}", errc.message());
+                LOGGING_WARN("Fail to remove temporary file: {}", errc.message());
             }
         });
 

@@ -72,10 +72,27 @@ void warn(logging_format<Args...> fmt, Args&&... args) {
 }
 
 template <typename... Args>
-void fatal [[noreturn]] (logging_format<Args...> fmt, Args&&... args) {
+void err(logging_format<Args...> fmt, Args&&... args) {
     logging::log(spdlog::level::err, fmt.location, fmt.str, std::forward<Args>(args)...);
+}
+
+template <typename... Args>
+void critical [[noreturn]] (logging_format<Args...> fmt, Args&&... args) {
+    logging::log(spdlog::level::critical, fmt.location, fmt.str, std::forward<Args>(args)...);
     spdlog::shutdown();
     std::exit(1);
 }
 
 }  // namespace clice::logging
+
+#define LOGGING_MESSAGE(name, fmt, ...)                                                            \
+    if(clice::logging::options.level == clice::logging::Level::name) {                             \
+        clice::logging::name(fmt __VA_OPT__(, ) __VA_ARGS__);                                      \
+    }
+
+#define LOGGING_TRACE(fmt, ...) LOGGING_MESSAGE(trace, fmt, __VA_ARGS__)
+#define LOGGING_DEBUG(fmt, ...) LOGGING_MESSAGE(debug, fmt, __VA_ARGS__)
+#define LOGGING_INFO(fmt, ...) LOGGING_MESSAGE(info, fmt, __VA_ARGS__)
+#define LOGGING_WARN(fmt, ...) LOGGING_MESSAGE(warn, fmt, __VA_ARGS__)
+#define LOGGING_ERROR(fmt, ...) LOGGING_MESSAGE(err, fmt, __VA_ARGS__)
+#define LOGGING_FATAL(fmt, ...) clice::logging::critical(fmt __VA_OPT__(, ) __VA_ARGS__);

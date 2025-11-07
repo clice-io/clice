@@ -15,7 +15,7 @@ async::Task<> Indexer::index(llvm::StringRef path) {
     auto path_id = project_index.path_pool.path_id(path);
     auto& merged_index = get_index(path_id);
     if(!merged_index.need_update(project_index.path_pool.paths)) {
-        logging::info("Check update for {}, not need to update", path);
+        LOGGING_INFO("Check update for {}, not need to update", path);
         co_return;
     }
 
@@ -25,7 +25,7 @@ async::Task<> Indexer::index(llvm::StringRef path) {
     auto tu_index = co_await async::submit([&]() -> std::optional<index::TUIndex> {
         auto unit = compile(params);
         if(!unit) {
-            logging::info("Fail to index for {}, because: {}", path, unit.error());
+            LOGGING_INFO("Fail to index for {}, because: {}", path, unit.error());
             return std::nullopt;
         }
 
@@ -55,7 +55,7 @@ async::Task<> Indexer::index(llvm::StringRef path) {
                 std::move(tu_index->graph.locations),
                 tu_index->main_file_index);
 
-    logging::info("Successfully index {}", path);
+    LOGGING_INFO("Successfully index {}", path);
 }
 
 async::Task<> Indexer::schedule_next() {
@@ -107,9 +107,9 @@ void Indexer::load_from_disk() {
     if(auto content = fs::read(output_path); content && !content->empty()) {
         /// FIXME: from should return a expected ...
         project_index = index::ProjectIndex::from(content->data());
-        logging::info("Load project index form {} successfully", output_path);
+        LOGGING_INFO("Load project index form {} successfully", output_path);
     } else {
-        logging::info("Fail to load project index form {}", output_path);
+        LOGGING_INFO("Fail to load project index form {}", output_path);
     }
 
     /// FIXME: check indices update ....
@@ -117,9 +117,9 @@ void Indexer::load_from_disk() {
 
 void Indexer::save_to_disk() {
     if(auto err = fs::create_directories(config.project.index_dir)) {
-        logging::warn("Fail to create index output dir: {}, because: {}",
-                      config.project.index_dir,
-                      err);
+        LOGGING_WARN("Fail to create index output dir: {}, because: {}",
+                     config.project.index_dir,
+                     err);
         return;
     }
 
@@ -139,9 +139,7 @@ void Indexer::save_to_disk() {
             std::error_code err;
             llvm::raw_fd_ostream os(output_path, err, fs::CreationDisposition::CD_CreateAlways);
             if(err) {
-                logging::info("Fail to create output index file: {}, because: {}",
-                              output_path,
-                              err);
+                LOGGING_INFO("Fail to create output index file: {}, because: {}", output_path, err);
                 continue;
             }
 
@@ -149,7 +147,7 @@ void Indexer::save_to_disk() {
 
             auto opath_id = project_index.path_pool.path_id(output_path);
             project_index.indices.try_emplace(path_id, opath_id);
-            logging::info("Successfully save index for {} to {}", path, output_path);
+            LOGGING_INFO("Successfully save index for {} to {}", path, output_path);
         }
     }
 
@@ -158,12 +156,12 @@ void Indexer::save_to_disk() {
     std::error_code err;
     llvm::raw_fd_ostream os(output_path, err, fs::CreationDisposition::CD_CreateAlways);
     if(err) {
-        logging::info("Fail to create output index file: {}, because: {}", output_path, err);
+        LOGGING_INFO("Fail to create output index file: {}, because: {}", output_path, err);
         return;
     }
 
     project_index.serialize(os);
-    logging::info("Successfully save project index to {}", output_path);
+    LOGGING_INFO("Successfully save project index to {}", output_path);
 }
 
 auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind kind) -> Result {

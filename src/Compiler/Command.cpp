@@ -176,10 +176,10 @@ struct CompilationDatabase::Impl {
 
         using Arg = std::unique_ptr<llvm::opt::Arg>;
         auto on_error = [&](int index, int count) {
-            logging::warn("missing argument index: {}, count: {} when parse: {}",
-                          index,
-                          count,
-                          file);
+            LOGGING_WARN("missing argument index: {}, count: {} when parse: {}",
+                         index,
+                         count,
+                         file);
         };
 
         /// Prepare for removing arguments.
@@ -284,7 +284,7 @@ struct CompilationDatabase::Impl {
                 // /path/to/foobar
                 if(other.starts_with(dir) &&
                    (other.size() == dir.size() || path::is_separator(other[dir.size()]))) {
-                    logging::info("Guess command for:{}, from existed file: {}", file, other_file);
+                    LOGGING_INFO("Guess command for:{}, from existed file: {}", file, other_file);
                     return LookupInfo{info.directory, info.arguments};
                 }
             }
@@ -492,7 +492,7 @@ auto CompilationDatabase::update_command(llvm::StringRef directory,
         /// Handle response file.
         if(argument.starts_with("@")) {
             if(!response_file.empty()) {
-                logging::warn(
+                LOGGING_WARN(
                     "clice currently supports only one response file in the command, when loads {}",
                     file);
             }
@@ -624,17 +624,17 @@ auto CompilationDatabase::load_compile_database(llvm::ArrayRef<std::string> comp
         std::string filepath = path::join(dir, "compile_commands.json");
         auto content = fs::read(filepath);
         if(!content) {
-            logging::warn("Failed to read CDB file: {}, {}", filepath, content.error());
+            LOGGING_WARN("Failed to read CDB file: {}, {}", filepath, content.error());
             return false;
         }
 
         auto load = this->load_commands(*content, workspace);
         if(!load) {
-            logging::warn("Failed to load CDB file: {}. {}", filepath, load.error());
+            LOGGING_WARN("Failed to load CDB file: {}. {}", filepath, load.error());
             return false;
         }
 
-        logging::info("Load CDB file: {} successfully, {} items loaded", filepath, load->size());
+        LOGGING_INFO("Load CDB file: {} successfully, {} items loaded", filepath, load->size());
         return true;
     };
 
@@ -642,7 +642,7 @@ auto CompilationDatabase::load_compile_database(llvm::ArrayRef<std::string> comp
         return;
     }
 
-    logging::warn(
+    LOGGING_WARN(
         "Can not found any valid CDB file from given directories, search recursively from workspace: {} ...",
         workspace);
 
@@ -673,7 +673,7 @@ auto CompilationDatabase::load_compile_database(llvm::ArrayRef<std::string> comp
     }
 
     /// TODO: Add a default command in clice.toml. Or load commands from .clangd ?
-    logging::warn(
+    LOGGING_WARN(
         "Can not found any valid CDB file in current workspace, fallback to default mode.");
 }
 
@@ -711,7 +711,7 @@ auto CompilationDatabase::lookup(llvm::StringRef file, CommandOptions options) -
                 record(system_header);
             }
         } else if(!options.suppress_logging) {
-            logging::warn("Failed to query driver:{}, error:{}", driver, driver_info.error());
+            LOGGING_WARN("Failed to query driver:{}, error:{}", driver, driver_info.error());
         }
     }
 

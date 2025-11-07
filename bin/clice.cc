@@ -104,24 +104,24 @@ bool check_arguments(int argc, const char** argv) {
     init_log();
 
     for(int i = 0; i < argc; ++i) {
-        logging::info("argv[{}] = {}", i, argv[i]);
+        LOGGING_INFO("argv[{}] = {}", i, argv[i]);
     }
 
     // Initialize resource directory
     if(resource_dir.empty()) {
-        logging::info("No resource directory specified, using default resource directory");
+        LOGGING_INFO("No resource directory specified, using default resource directory");
         // Try to initialize default resource directory
         if(auto result = fs::init_resource_dir(argv[0]); !result) {
-            logging::warn("Cannot find default resource directory, because {}", result.error());
+            LOGGING_WARN("Cannot find default resource directory, because {}", result.error());
             return false;
         }
     } else {
         // Set and check the specified resource directory
         fs::resource_dir = resource_dir.getValue();
         if(fs::exists(fs::resource_dir)) {
-            logging::info("Resource directory found: {}", fs::resource_dir);
+            LOGGING_INFO("Resource directory found: {}", fs::resource_dir);
         } else {
-            logging::warn("Resource directory not found: {}", fs::resource_dir);
+            LOGGING_WARN("Resource directory not found: {}", fs::resource_dir);
             return false;
         }
     }
@@ -151,13 +151,13 @@ int main(int argc, const char** argv) {
     switch(mode) {
         case Mode::Pipe: {
             async::net::listen(loop);
-            logging::info("Server starts listening on stdin/stdout");
+            LOGGING_INFO("Server starts listening on stdin/stdout");
             break;
         }
 
         case Mode::Socket: {
             async::net::listen(host.c_str(), port, loop);
-            logging::info("Server starts listening on {}:{}", host.getValue(), port.getValue());
+            LOGGING_INFO("Server starts listening on {}:{}", host.getValue(), port.getValue());
             break;
         }
 
@@ -169,7 +169,7 @@ int main(int argc, const char** argv) {
 
     async::run();
 
-    logging::info("clice exit normally!");
+    LOGGING_INFO("clice exit normally!");
 
     return 0;
 }
