@@ -184,7 +184,7 @@ int main(int argc, const char* argv[]) {
     llvm::cl::HideUnrelatedOptions(unittest_category);
     llvm::cl::ParseCommandLineOptions(argc, argv, "clice test\n");
 
-    logging::create_stderr_logger("clice", logging::options);
+    logging::stderr_logger("clice", logging::options);
 
     if(!test_filter.empty()) {
         if(auto result = GlobPattern::create(test_filter)) {

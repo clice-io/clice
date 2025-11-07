@@ -28,6 +28,11 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
         LOGGING_INFO("Use default config: {0}", json::serialize(config));
     }
 
+    if(!config.project.logging_dir.empty()) {
+        logging::file_loggger("clice", config.project.logging_dir, logging::options);
+        logging::flush();
+    }
+
     /// Set server options.
     opening_files.set_capability(config.project.max_active_file);
 

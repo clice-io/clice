@@ -9,15 +9,26 @@ using Level = spdlog::level::level_enum;
 using ColorMode = spdlog::color_mode;
 
 struct Options {
+    /// The logging level.
     Level level = Level::info;
+
+    /// The logging color.
     ColorMode color = ColorMode::automatic;
+
+    /// If enable, we will record the logs of console sink and replay it
+    /// when create a new sink,
+    bool replay_console = true;
 };
+
+inline void flush() {
+    spdlog::default_logger()->flush();
+}
 
 extern Options options;
 
-void create_stderr_logger(std::string_view name, const Options& options);
+void stderr_logger(std::string_view name, const Options& options);
 
-void create_file_loggger(std::string_view name, std::string_view dir, const Options& options);
+void file_loggger(std::string_view name, std::string_view dir, const Options& options);
 
 template <typename... Args>
 struct logging_rformat {

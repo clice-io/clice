@@ -62,55 +62,16 @@ cl::opt<logging::ColorMode> log_color{
 cl::opt<logging::Level> log_level{
     "log-level",
     cl::cat(category),
-    cl::value_desc("trace|debug|info|warn|fatal"),
+    cl::value_desc("trace|debug|info|warn|error"),
     cl::init(logging::Level::info),
     cl::values(clEnumValN(logging::Level::trace, "trace", ""),
                clEnumValN(logging::Level::debug, "debug", ""),
                clEnumValN(logging::Level::info, "info", ""),
                clEnumValN(logging::Level::warn, "warn", ""),
-               clEnumValN(logging::Level::err, "fatal", "")),
+               clEnumValN(logging::Level::err, "error", ""),
+               clEnumValN(logging::Level::off, "off", "")),
     cl::desc("The log level, default is info"),
 };
-
-void init_log() {
-    using namespace logging;
-    options.color = log_color;
-    options.level = log_level;
-    logging::create_stderr_logger("clice", logging::options);
-}
-
-/// Check the command line arguments and initialize the clice.
-bool check_arguments(int argc, const char** argv) {
-    /// Hide unrelated options.
-    cl::HideUnrelatedOptions(category);
-
-    // Set version printer and parse command line options
-    cl::SetVersionPrinter([](llvm::raw_ostream& os) {
-        os << std::format("clice version: {}\nllvm version: {}\n",
-                          clice::config::version,
-                          clice::config::llvm_version);
-    });
-    cl::ParseCommandLineOptions(argc,
-                                argv,
-                                "clice is a new generation of language server for C/C++");
-
-    init_log();
-
-    for(int i = 0; i < argc; ++i) {
-        LOGGING_INFO("argv[{}] = {}", i, argv[i]);
-    }
-
-    // Initialize resource directory
-
-    LOGGING_INFO("No resource directory specified, using default resource directory");
-    // Try to initialize default resource directory
-    if(auto result = fs::init_resource_dir(argv[0]); !result) {
-        LOGGING_WARN("Cannot find default resource directory, because {}", result.error());
-        return false;
-    }
-
-    return true;
-}
 
 }  // namespace
 
@@ -118,9 +79,27 @@ int main(int argc, const char** argv) {
     llvm::InitLLVM guard(argc, argv);
     llvm::setBugReportMsg(
         "Please report bugs to https://github.com/clice-io/clice/issues and include the crash backtrace");
+    cl::SetVersionPrinter([](llvm::raw_ostream& os) {
+        os << std::format("clice version: {}\nllvm version: {}\n",
+                          clice::config::version,
+                          clice::config::llvm_version);
+    });
+    cl::HideUnrelatedOptions(category);
+    cl::ParseCommandLineOptions(argc,
+                                argv,
+                                "clice is a new generation of language server for C/C++");
 
-    if(!check_arguments(argc, argv)) {
+    logging::options.color = log_color;
+    logging::options.level = log_level;
+    logging::stderr_logger("clice", logging::options);
+
+    if(auto result = fs::init_resource_dir(argv[0]); !result) {
+        LOGGING_WARN("Cannot find default resource directory, because {}", result.error());
         return 1;
+    }
+
+    for(int i = 0; i < argc; ++i) {
+        LOGGING_INFO("argv[{}] = {}", i, argv[i]);
     }
 
     async::init();
@@ -153,6 +132,8 @@ int main(int argc, const char** argv) {
     async::run();
 
     LOGGING_INFO("clice exit normally!");
+
+    logging::flush();
 
     return 0;
 }
