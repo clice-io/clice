@@ -28,6 +28,7 @@ void stderr_logger(std::string_view name, const Options& options) {
 
     logger->set_level(options.level);
     logger->set_pattern(pattern);
+    logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
 }
 
@@ -50,6 +51,7 @@ void file_loggger(std::string_view name, std::string_view dir, const Options& op
     auto logger = std::make_shared<spdlog::logger>(std::string(name), std::move(sink));
     logger->set_level(options.level);
     logger->set_pattern(pattern);
+    logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
 }
 

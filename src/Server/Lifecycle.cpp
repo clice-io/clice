@@ -22,15 +22,14 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
 
     /// Initialize configuration.
     if(auto result = config.parse(workspace)) {
-        LOGGING_INFO("Config initialized successfully: {0}", json::serialize(config));
+        LOGGING_INFO("Config initialized successfully: {0:4}", json::serialize(config));
     } else {
         LOGGING_WARN("Fail to load config, because: {0}", result.error());
-        LOGGING_INFO("Use default config: {0}", json::serialize(config));
+        LOGGING_INFO("Use default config: {0:4}", json::serialize(config));
     }
 
     if(!config.project.logging_dir.empty()) {
         logging::file_loggger("clice", config.project.logging_dir, logging::options);
-        logging::flush();
     }
 
     /// Set server options.

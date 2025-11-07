@@ -94,8 +94,7 @@ int main(int argc, const char** argv) {
     logging::stderr_logger("clice", logging::options);
 
     if(auto result = fs::init_resource_dir(argv[0]); !result) {
-        LOGGING_WARN("Cannot find default resource directory, because {}", result.error());
-        return 1;
+        LOGGING_FATAL("Cannot find default resource directory, because {}", result.error());
     }
 
     for(int i = 0; i < argc; ++i) {
@@ -132,8 +131,6 @@ int main(int argc, const char** argv) {
     async::run();
 
     LOGGING_INFO("clice exit normally!");
-
-    logging::flush();
 
     return 0;
 }

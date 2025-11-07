@@ -20,10 +20,6 @@ struct Options {
     bool replay_console = true;
 };
 
-inline void flush() {
-    spdlog::default_logger()->flush();
-}
-
 extern Options options;
 
 void stderr_logger(std::string_view name, const Options& options);
