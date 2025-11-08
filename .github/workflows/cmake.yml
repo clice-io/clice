@@ -17,6 +17,7 @@ on:
       - "include/**"
       - "src/**"
       - "tests/**"
+      - "config/**"
       - "CMakeLists.txt"
 
 jobs:
