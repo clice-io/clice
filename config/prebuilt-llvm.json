@@ -5,15 +5,15 @@
 		"is_lto": false,
 		"filename": "x64-windows-msvc-releasedbg.7z",
 		"version": "21.1.4",
-		"sha256": "324ec6b3634c32e1e999dae505f6ae83386f2a6b9ab96ac03ccfa029fb68b496"
+		"sha256": "841aab279cae175b18992b50104166e9f5f3735162907accd9217ebb26d1ecaf"
 	},
 	{
 		"platform": "Windows",
 		"build_type": "Release",
 		"is_lto": true,
 		"filename": "x64-windows-msvc-release-lto.7z",
-		"version": "20.1.5",
-		"sha256": "0548c0e3f613d1ec853d493870e68c7d424d70442d144fb35b99dc65fc682918"
+		"version": "21.1.4",
+		"sha256": "d39c8975638ac34dfd514286d5535872f18dcad98351cc72b941337d6daa7ca0"
 	},
 	{
 		"platform": "Linux",
@@ -21,7 +21,7 @@
 		"is_lto": false,
 		"filename": "x86_64-linux-gnu-debug.tar.xz",
 		"version": "21.1.4",
-		"sha256": "7bd68b14f147e291c9af8c32a8e78d57cc7b0e1f9c733df67e963e7062651f10"
+		"sha256": "4aaa9ad0f389386d5ba78480185e787f8b643f880e07df854da26367fcd1cccc"
 	},
 	{
 		"platform": "Linux",
@@ -29,15 +29,15 @@
 		"is_lto": false,
 		"filename": "x86_64-linux-gnu-releasedbg.tar.xz",
 		"version": "21.1.4",
-		"sha256": "d4bf7ca08b07164637595ea3988330305e36354e466832a0fe7c4406fee3ac40"
+		"sha256": "f2cd5c0482e18e0593a8309f630cd261e1d8e19f0b37680b3b6b94292f3f502c"
 	},
 	{
 		"platform": "Linux",
 		"build_type": "Release",
 		"is_lto": true,
 		"filename": "x86_64-linux-gnu-release-lto.tar.xz",
-		"version": "20.1.5",
-		"sha256": "37bc9680df5b766de6367c3c690fe8be993e94955341e63fb5ee6a3132080059"
+		"version": "21.1.4",
+		"sha256": "902d0fbdebcd022914106a5ae1af05d16177f41c8de34b0701eac070d5e0b364"
 	},
 	{
 		"platform": "macosx",
@@ -45,7 +45,7 @@
 		"is_lto": false,
 		"filename": "arm64-macosx-apple-debug.tar.xz",
 		"version": "21.1.4",
-		"sha256": "fd77af5a767ac7f4dc682602cfd6c84fbd5082021200e5cd8bd30379f4fd4a4d"
+		"sha256": "ae5509d8d1cfc7441c34f6ee4fcac6eb31aae30d8b54a8f9ba3e9948a22fbc8e"
 	},
 	{
 		"platform": "macosx",
@@ -53,7 +53,7 @@
 		"is_lto": false,
 		"filename": "arm64-macosx-apple-releasedbg.tar.xz",
 		"version": "21.1.4",
-		"sha256": "87f7667166496639ad60f02a22505296b09e458530a72d52b792ffb29d96a82b"
+		"sha256": "993cc2000b3ce008f47e8dd2fc0f4679149d9696dbe197ebc8ed1f3f7306b54b"
 	},
 	{
 		"platform": "macosx",
