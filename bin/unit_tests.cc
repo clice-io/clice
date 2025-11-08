@@ -18,19 +18,13 @@ namespace {
 
 namespace cl = llvm::cl;
 
-cl::OptionCategory unittest_category("Clice Unittest Options");
+cl::OptionCategory unittest_category("clice Unittest Options");
 
 cl::opt<std::string> test_dir{
     "test-dir",
     cl::desc("Specify the test source directory path"),
     cl::value_desc("path"),
     cl::Required,
-    cl::cat(unittest_category),
-};
-
-cl::opt<std::string> resource_dir{
-    "resource-dir",
-    cl::desc("Resource dir path"),
     cl::cat(unittest_category),
 };
 
@@ -190,7 +184,7 @@ int main(int argc, const char* argv[]) {
     llvm::cl::HideUnrelatedOptions(unittest_category);
     llvm::cl::ParseCommandLineOptions(argc, argv, "clice test\n");
 
-    logging::create_stderr_logger("clice", logging::options);
+    logging::stderr_logger("clice", logging::options);
 
     if(!test_filter.empty()) {
         if(auto result = GlobPattern::create(test_filter)) {
@@ -198,13 +192,9 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-    if(!resource_dir.empty()) {
-        fs::resource_dir = resource_dir;
-    } else {
-        if(auto result = fs::init_resource_dir(argv[0]); !result) {
-            std::println("Failed to get resource directory, because {}", result.error());
-            return 1;
-        }
+    if(auto result = fs::init_resource_dir(argv[0]); !result) {
+        std::println("Failed to get resource directory, because {}", result.error());
+        return 1;
     }
 
     using namespace clice::testing;

@@ -24,12 +24,6 @@
 
 namespace clice {
 
-#ifdef NDEBUG
-#define LOGGING_DEBUG(...)
-#else
-#define LOGGING_DEBUG(...) logging::debug(__VA_ARGS__)
-#endif
-
 namespace {
 
 using Node = SelectionTree::Node;

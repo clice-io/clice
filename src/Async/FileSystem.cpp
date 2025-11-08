@@ -122,7 +122,7 @@ handle::~handle() {
     uv_fs_t request;
     int error = uv_fs_close(async::loop, &request, file, nullptr);
     if(error < 0) {
-        logging::warn("Failed to close file: {}", uv_strerror(error));
+        LOGGING_WARN("Failed to close file: {}", uv_strerror(error));
     }
     uv_fs_req_cleanup(&request);
 }

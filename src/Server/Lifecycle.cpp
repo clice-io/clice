@@ -3,9 +3,9 @@
 namespace clice {
 
 async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
-    logging::info("Initialize from client: {}, version: {}",
-                  params.clientInfo.name,
-                  params.clientInfo.version);
+    LOGGING_INFO("Initialize from client: {}, version: {}",
+                 params.clientInfo.name,
+                 params.clientInfo.version);
 
     /// FIXME: adjust position encoding.
     kind = PositionEncodingKind::UTF16;
@@ -17,15 +17,19 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
             return *params.rootUri;
         }
 
-        logging::fatal("The client should provide one workspace folder or rootUri at least!");
+        LOGGING_FATAL("The client should provide one workspace folder or rootUri at least!");
     })());
 
     /// Initialize configuration.
     if(auto result = config.parse(workspace)) {
-        logging::info("Config initialized successfully: {0}", json::serialize(config));
+        LOGGING_INFO("Config initialized successfully: {0:4}", json::serialize(config));
     } else {
-        logging::warn("Fail to load config, because: {0}", result.error());
-        logging::info("Use default config: {0}", json::serialize(config));
+        LOGGING_WARN("Fail to load config, because: {0}", result.error());
+        LOGGING_INFO("Use default config: {0:4}", json::serialize(config));
+    }
+
+    if(!config.project.logging_dir.empty()) {
+        logging::file_loggger("clice", config.project.logging_dir, logging::options);
     }
 
     /// Set server options.

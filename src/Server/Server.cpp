@@ -124,7 +124,7 @@ Server::Server() : indexer(database, config, kind) {
 async::Task<> Server::on_receive(json::Value value) {
     auto object = value.getAsObject();
     if(!object) [[unlikely]] {
-        logging::fatal("Invalid LSP message, not an object: {}", value);
+        LOGGING_FATAL("Invalid LSP message, not an object: {}", value);
     }
 
     /// If the json object has an `id`, it's a request,
@@ -135,7 +135,7 @@ async::Task<> Server::on_receive(json::Value value) {
     if(auto result = object->getString("method")) {
         method = *result;
     } else [[unlikely]] {
-        logging::warn("Invalid LSP message, method not found: {}", value);
+        LOGGING_WARN("Invalid LSP message, method not found: {}", value);
         if(id) {
             co_await response(std::move(*id),
                               proto::ErrorCodes::InvalidRequest,
@@ -152,7 +152,7 @@ async::Task<> Server::on_receive(json::Value value) {
     /// Handle request and notification separately.
     auto it = callbacks.find(method);
     if(it == callbacks.end()) {
-        logging::info("Ignore unhandled method: {}", method);
+        LOGGING_INFO("Ignore unhandled method: {}", method);
         co_return;
     }
 
@@ -160,24 +160,24 @@ async::Task<> Server::on_receive(json::Value value) {
         auto current_id = client_request_id++;
         auto start_time = std::chrono::steady_clock::now();
 
-        logging::info("<-- Handling request: {}({})", method, current_id);
+        LOGGING_INFO("<-- Handling request: {}({})", method, current_id);
         auto result = co_await it->second(*this, std::move(params));
         co_await response(std::move(*id), std::move(result));
 
         auto end_time = std::chrono::steady_clock::now();
         auto duration =
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        logging::info("--> Handled request: {}({}) {}ms", method, current_id, duration.count());
+        LOGGING_INFO("--> Handled request: {}({}) {}ms", method, current_id, duration.count());
     } else {
         auto start_time = std::chrono::steady_clock::now();
-        logging::info("<-- Handling notification: {}", method);
+        LOGGING_INFO("<-- Handling notification: {}", method);
 
         auto result = co_await it->second(*this, std::move(params));
 
         auto end_time = std::chrono::steady_clock::now();
         auto duration =
             std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        logging::info("--> Handled notification: {} {}ms", method, duration.count());
+        LOGGING_INFO("--> Handled notification: {} {}ms", method, duration.count());
     }
 
     co_return;

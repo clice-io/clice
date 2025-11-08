@@ -73,16 +73,31 @@ template <>
 struct std::formatter<clice::json::Value> : std::formatter<llvm::StringRef> {
     using Base = std::formatter<llvm::StringRef>;
 
+    int indent = 0;
+
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
-        return Base::parse(ctx);
+        auto it = ctx.begin();
+        auto end = ctx.end();
+        if(it == end) {
+            return it;
+        }
+
+        int parsed_indent = 0;
+        while(it != end && *it >= '0' && *it <= '9') {
+            parsed_indent = parsed_indent * 10 + (*it - '0');
+            ++it;
+        }
+        indent = parsed_indent;
+
+        return it;
     }
 
     template <typename FormatContext>
     auto format(const clice::json::Value& value, FormatContext& ctx) const {
         llvm::SmallString<128> buffer;
         llvm::raw_svector_ostream os{buffer};
-        os << value;
+        llvm::json::OStream(os, indent).value(value);
         return Base::format(buffer, ctx);
     }
 };

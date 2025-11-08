@@ -48,13 +48,6 @@ cl::opt<unsigned int> port{
     cl::desc("The port to connect to"),
 };
 
-cl::opt<std::string> resource_dir{
-    "resource-dir",
-    cl::cat(category),
-    cl::value_desc("path"),
-    cl::desc(R"(The path of the clang resource directory, default is "../../lib/clang/version")"),
-};
-
 cl::opt<logging::ColorMode> log_color{
     "log-color",
     cl::cat(category),
@@ -69,65 +62,16 @@ cl::opt<logging::ColorMode> log_color{
 cl::opt<logging::Level> log_level{
     "log-level",
     cl::cat(category),
-    cl::value_desc("trace|debug|info|warn|fatal"),
+    cl::value_desc("trace|debug|info|warn|error"),
     cl::init(logging::Level::info),
     cl::values(clEnumValN(logging::Level::trace, "trace", ""),
                clEnumValN(logging::Level::debug, "debug", ""),
                clEnumValN(logging::Level::info, "info", ""),
                clEnumValN(logging::Level::warn, "warn", ""),
-               clEnumValN(logging::Level::err, "fatal", "")),
+               clEnumValN(logging::Level::err, "error", ""),
+               clEnumValN(logging::Level::off, "off", "")),
     cl::desc("The log level, default is info"),
 };
-
-void init_log() {
-    using namespace logging;
-    options.color = log_color;
-    options.level = log_level;
-    logging::create_stderr_logger("clice", logging::options);
-}
-
-/// Check the command line arguments and initialize the clice.
-bool check_arguments(int argc, const char** argv) {
-    /// Hide unrelated options.
-    cl::HideUnrelatedOptions(category);
-
-    // Set version printer and parse command line options
-    cl::SetVersionPrinter([](llvm::raw_ostream& os) {
-        os << std::format("clice version: {}\nllvm version: {}\n",
-                          clice::config::version,
-                          clice::config::llvm_version);
-    });
-    cl::ParseCommandLineOptions(argc,
-                                argv,
-                                "clice is a new generation of language server for C/C++");
-
-    init_log();
-
-    for(int i = 0; i < argc; ++i) {
-        logging::info("argv[{}] = {}", i, argv[i]);
-    }
-
-    // Initialize resource directory
-    if(resource_dir.empty()) {
-        logging::info("No resource directory specified, using default resource directory");
-        // Try to initialize default resource directory
-        if(auto result = fs::init_resource_dir(argv[0]); !result) {
-            logging::warn("Cannot find default resource directory, because {}", result.error());
-            return false;
-        }
-    } else {
-        // Set and check the specified resource directory
-        fs::resource_dir = resource_dir.getValue();
-        if(fs::exists(fs::resource_dir)) {
-            logging::info("Resource directory found: {}", fs::resource_dir);
-        } else {
-            logging::warn("Resource directory not found: {}", fs::resource_dir);
-            return false;
-        }
-    }
-
-    return true;
-}
 
 }  // namespace
 
@@ -135,9 +79,26 @@ int main(int argc, const char** argv) {
     llvm::InitLLVM guard(argc, argv);
     llvm::setBugReportMsg(
         "Please report bugs to https://github.com/clice-io/clice/issues and include the crash backtrace");
+    cl::SetVersionPrinter([](llvm::raw_ostream& os) {
+        os << std::format("clice version: {}\nllvm version: {}\n",
+                          clice::config::version,
+                          clice::config::llvm_version);
+    });
+    cl::HideUnrelatedOptions(category);
+    cl::ParseCommandLineOptions(argc,
+                                argv,
+                                "clice is a new generation of language server for C/C++");
 
-    if(!check_arguments(argc, argv)) {
-        return 1;
+    logging::options.color = log_color;
+    logging::options.level = log_level;
+    logging::stderr_logger("clice", logging::options);
+
+    if(auto result = fs::init_resource_dir(argv[0]); !result) {
+        LOGGING_FATAL("Cannot find default resource directory, because {}", result.error());
+    }
+
+    for(int i = 0; i < argc; ++i) {
+        LOGGING_INFO("argv[{}] = {}", i, argv[i]);
     }
 
     async::init();
@@ -151,13 +112,13 @@ int main(int argc, const char** argv) {
     switch(mode) {
         case Mode::Pipe: {
             async::net::listen(loop);
-            logging::info("Server starts listening on stdin/stdout");
+            LOGGING_INFO("Server starts listening on stdin/stdout");
             break;
         }
 
         case Mode::Socket: {
             async::net::listen(host.c_str(), port, loop);
-            logging::info("Server starts listening on {}:{}", host.getValue(), port.getValue());
+            LOGGING_INFO("Server starts listening on {}:{}", host.getValue(), port.getValue());
             break;
         }
 
@@ -169,7 +130,7 @@ int main(int argc, const char** argv) {
 
     async::run();
 
-    logging::info("clice exit normally!");
+    LOGGING_INFO("clice exit normally!");
 
     return 0;
 }

@@ -334,11 +334,11 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         return nullptr;
     }
     auto file_name = input.getFile();
-    logging::info("Tidy configure file: {}", file_name);
+    LOGGING_INFO("Tidy configure file: {}", file_name);
 
     tidy::ClangTidyOptions opts = create_options();
     if(opts.Checks) {
-        logging::info("Tidy configure checks: {}", *opts.Checks);
+        LOGGING_INFO("Tidy configure checks: {}", *opts.Checks);
     }
 
     {
@@ -391,7 +391,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     checker->context.setCurrentFile(file_name);
     checker->context.setSelfContainedDiags(true);
     checker->checks = factories.createChecksForLanguage(&checker->context);
-    logging::info("Tidy configure checks: {}", checker->checks.size());
+    LOGGING_INFO("Tidy configure checks: {}", checker->checks.size());
     clang::Preprocessor* pp = &instance.getPreprocessor();
     for(const auto& check: checker->checks) {
         check->registerPPCallbacks(instance.getSourceManager(), pp, pp);
