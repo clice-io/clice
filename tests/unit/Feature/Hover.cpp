@@ -33,8 +33,9 @@ suite<"Hover"> hover = [] {
     };
 
     test("Inclusion") = [&tester] {
-        tester.clear();
-        constexpr auto code = R"CODE(
+        {
+            tester.clear();
+            constexpr auto code = R"CODE(
 $(inc1)#include <iostream>
 
 #include $(inc2)<assert.h>
@@ -44,14 +45,71 @@ int main(void) {
     return 0;
 }
         )CODE";
+            auto annotation = AnnotatedSource::from(code);
+            tester.add_main("main.cpp", annotation.content);
+            auto inc1_off = annotation.offsets["inc1"];
+            auto inc2_off = annotation.offsets["inc2"];
+            tester.compile_with_pch();
+            expect(tester.unit.has_value());
+            auto HI = clice::feature::hover(*tester.unit, inc1_off, {});
+            HI = clice::feature::hover(*tester.unit, inc2_off, {});
+        }
+
+        {
+            tester.clear();
+            constexpr auto code = R"CODE(
+#inc$(inc1)lude <assert.h>
+#inc$(inc2)lude <stdio.h>
+
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
+int main(int argc, char **argv) {
+    assert(argc <= 10);
+    int x = max(114, 514);
+    printf("%d", max(argc, x));
+    return 0;
+}
+            )CODE";
+            auto annotation = AnnotatedSource::from(code);
+            tester.add_main("main.cpp", annotation.content);
+            auto inc1_off = annotation.offsets["inc1"];
+            auto inc2_off = annotation.offsets["inc2"];
+            tester.compile();
+            expect(tester.unit.has_value());
+            auto HI = clice::feature::hover(*tester.unit, inc1_off, {});
+            HI = clice::feature::hover(*tester.unit, inc2_off, {});
+        }
+    };
+
+    test("Macros") = [&] {
+        tester.clear();
+        constexpr auto code = R"CODE(
+#include <iostream>
+
+using namespace std;
+
+#define m$(pos_0)ax(a, b) ((a) > (b) ? (a) : (b))
+#define P$(pos_1)I 3.14
+#define I$(pos_2)NF 1e18
+#define D$(pos_3)UMMY
+#define a$(pos_4)bs(a) ((a) >= 0 ? (a) : -(a))
+
+int main(int argc, char **argv) {
+    int x, y;
+    cin >> x >> y;
+#define en$(pos_5)dl '\n'
+    cout << x * P$(pos_6)I << endl;
+    cout << (x < 0721 ? "ciallo" : "hello") << e$(pos_7)ndl;
+#undef endl
+    cout << ma$(pos_8)x(x$(pos_9), y) << endl;
+    cout << m$(pos_10)ax(a$(pos_11)bs(x), abs(y)) << '\n';
+    constexpr auto X = INF;
+    return 0;
+}
+    )CODE";
         auto annotation = AnnotatedSource::from(code);
         tester.add_main("main.cpp", annotation.content);
-        auto inc1_off = annotation.offsets["inc1"];
-        auto inc2_off = annotation.offsets["inc2"];
-        tester.compile();
-        expect(tester.unit.has_value());
-        auto HI = clice::feature::hover(*tester.unit, inc1_off, {});
-        HI = clice::feature::hover(*tester.unit, inc2_off, {});
+        for(unsigned idx = 0; idx < annotation.offsets.size(); ++idx) {}
     };
 
     test("DeducedType_Auto") = [&tester] {
@@ -98,19 +156,20 @@ int main(void) {
         std::vector<unsigned> offsets;
         tester.compile();
         expect(tester.unit.has_value());
-        for(auto offset: offsets) {
+        const unsigned count = annotation.offsets.size();
+        for(unsigned i = 0; i < count; ++i) {
+            unsigned offset = annotation.offsets[std::format("pos_{}", i)];
             auto HI = clice::feature::hover(*tester.unit, offset, {});
             if(HI.has_value()) {
                 auto msg = HI->display({});
-                // std::println("{}", *msg);
+                std::println("```\n{}```\n", *msg);
             } else {
-                // std::println("No hover info");
+                std::println("No hover info");
             }
         }
     };
 
     test("DeducedType_Decltype") = [&] {
-        std::println("==================================");
         tester.clear();
         constexpr auto code = R"CODE(
 #include <utility>
@@ -155,7 +214,7 @@ int main() {
         return ca;
     };
     declt$(pos_12)ype(auto) r1 = get_a();   // int&
-    decltyppos_13)ype(auto) r2 = get_ca();  // const int
+    decltyp$(pos_13)ype(auto) r2 = get_ca();  // const int
 
     // auto vs decltype(auto)
     auto x1 = (a);            // int
@@ -170,23 +229,19 @@ int main() {
 
         auto annotation = AnnotatedSource::from(code);
         tester.add_main("main.cpp", annotation.content);
-        std::vector<unsigned> offsets;
         tester.compile();
         expect(tester.unit.has_value());
-        int counter = 0;
-        for(auto offset: offsets) {
-            std::println("Processing pos_{}", counter);
+        const unsigned count = annotation.offsets.size();
+        for(unsigned i = 0; i < count; ++i) {
+            unsigned offset = annotation.offsets[std::format("pos_{}", i)];
             auto HI = clice::feature::hover(*tester.unit, offset, {});
             if(HI.has_value()) {
                 auto msg = HI->display({});
-                // std::println("{}", *msg);
+                std::println("```\n{}```\n", *msg);
             } else {
-                // std::println("No hover info");
+                std::println("No hover info");
             }
-            ++counter;
         }
-
-        std::println("==================================");
     };
 
     test("Namespace") = [&] {

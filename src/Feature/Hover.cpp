@@ -12,6 +12,16 @@ namespace clice::feature {
 
 namespace {
 
+static auto to_proto_range(clang::SourceManager& sm, clang::SourceRange range) -> proto::Range {
+    auto range_b = range.getBegin();
+    auto range_e = range.getEnd();
+    auto begin = proto::Position{sm.getSpellingLineNumber(range_b) - 1,
+                                 sm.getSpellingColumnNumber(range_b) - 1};
+    auto end = proto::Position{sm.getSpellingLineNumber(range_e) - 1,
+                               sm.getSpellingColumnNumber(range_e) - 1};
+    return {begin, end};
+};
+
 static std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
                                               const clang::NamedDecl* decl,
                                               const config::HoverOptions& opt) {
@@ -59,7 +69,7 @@ static std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
     return items;
 }
 
-static std::vector<HoverItem> get_hover_items(CompilationUnit& unit,
+static std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
                                               const clang::TypeLoc* typeloc,
                                               const config::HoverOptions& opt) {
     return {};
@@ -104,7 +114,7 @@ static std::string get_source_code(CompilationUnitRef unit, clang::SourceRange r
 // // scope
 // <Access specifier> <type> <name> <initialized value>
 // ```
-static std::string get_source_code(CompilationUnit& unit,
+static std::string get_source_code(CompilationUnitRef unit,
                                    const clang::NamedDecl* decl,
                                    config::HoverOptions opt) {
     clang::SourceRange range = decl->getSourceRange();
@@ -131,10 +141,11 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
     clice::logging::warn("Hit a typeloc");
     typeloc->dump(llvm::errs(), unit.context());
     auto ty = typeloc->getType();
+    // FIXME: AutoTypeLoc / DecltypeTypeLoc
     return Hover{.kind = SymbolKind::Type, .name = ty.getAsString()};
 }
 
-static std::optional<Hover> hover(CompilationUnit& unit,
+static std::optional<Hover> hover(CompilationUnitRef unit,
                                   const SelectionTree::Node* node,
                                   const config::HoverOptions& opt) {
     using namespace clang;
@@ -147,6 +158,8 @@ static std::optional<Hover> hover(CompilationUnit& unit,
     kind_flag_def(Decl);
     kind_flag_def(Stmt);
     kind_flag_def(Type);
+    kind_flag_def(AutoTypeLoc);
+    kind_flag_def(DecltypeTypeLoc);
     kind_flag_def(OMPClause);
     kind_flag_def(TemplateArgument);
     kind_flag_def(TemplateArgumentLoc);
@@ -166,6 +179,15 @@ static std::optional<Hover> hover(CompilationUnit& unit,
     } else if(is_in_range(QualType, TypeLoc)) {
         // Typeloc
         clice::logging::warn("Hit a `TypeLoc`");
+        // auto and decltype is specially processed
+        if(is(AutoTypeLoc)) {
+            clice::logging::warn("Hit a `AutoTypeLoc`");
+            return std::nullopt;
+        }
+        if(is(DecltypeTypeLoc)) {
+            clice::logging::warn("Hit a `DecltypeTypeLoc`");
+            return std::nullopt;
+        }
         if(auto typeloc = node->get<clang::TypeLoc>()) {
             return hover(unit, typeloc, opt);
         }
@@ -199,13 +221,18 @@ std::optional<Hover> hover(CompilationUnitRef unit,
                            const config::HoverOptions& opt) {
     auto& sm = unit.context().getSourceManager();
 
-    auto src_loc_in_main_file = [&sm](uint32_t off) -> std::optional<clang::SourceLocation> {
-        return sm.getLocForStartOfFile(sm.getMainFileID()).getLocWithOffset(off);
+    auto src_loc_in_main_file = [&sm, &unit](uint32_t off) -> std::optional<clang::SourceLocation> {
+        auto fid = sm.getMainFileID();
+        auto buf = sm.getBufferData(fid);
+        if(off > buf.size()) {
+            return std::nullopt;
+        }
+        return unit.create_location(fid, off);
     };
 
+    // SpellLoc
     auto loc = src_loc_in_main_file(offset);
     if(!loc.has_value()) {
-        clice::logging::warn("Invalid file offset, cannot get location");
         return std::nullopt;
     }
 
@@ -213,10 +240,10 @@ std::optional<Hover> hover(CompilationUnitRef unit,
     bool linenr_invalid = false;
     unsigned linenr = sm.getPresumedLineNumber(*loc, &linenr_invalid);
     if(linenr_invalid) {
-        clice::logging::warn("Invalid location, cannot get linenr");
         return std::nullopt;
     }
-    clice::logging::warn("Hover at linenr: {}", linenr);
+
+    // FIXME: Cannot handle pch: cannot find records when compiled with pch
     auto directive = unit.directives()[sm.getMainFileID()];
     for(auto& inclusion: directive.includes) {
         bool invalid = false;
@@ -234,9 +261,59 @@ std::optional<Hover> hover(CompilationUnitRef unit,
         }
     }
 
+    // clice::logging::warn("Hit a macro");
+    auto tokens_under_cursor = unit.spelled_tokens_touch(*loc);
+    if(tokens_under_cursor.empty()) {
+        clice::logging::warn("Cannot detect tokens");
+        return std::nullopt;
+    }
+    auto hl_range = tokens_under_cursor.back().range(sm).toCharRange(sm).getAsRange();
+    for(auto& token: tokens_under_cursor) {
+        if(token.kind() == clang::tok::identifier) {
+            for(auto& m: directive.macros) {
+                if(token.location() == m.loc) {
+                    // TODO: Found macro
+                    auto name_range = token.range(sm).toCharRange(sm).getAsRange();
+                    auto macro_name = get_source_code(unit, name_range);
+                    macro_name.pop_back();
+                    Hover hi;
+                    hi.kind = SymbolKind::Macro;
+                    hi.name = macro_name;
+                    auto source = "#define " + get_source_code(unit,
+                                                               {m.macro->getDefinitionLoc(),
+                                                                m.macro->getDefinitionEndLoc()});
+                    if(m.kind == MacroRef::Ref) {
+                        // TODO: Expanded tokens
+                        if(auto expansion = unit.token_buffer().expansionStartingAt(&token)) {
+                            std::string expaned_source;
+                            for(const auto& expanded_tok: expansion->Expanded) {
+                                expaned_source += expanded_tok.text(sm);
+                                // TODO: Format code?
+                                // expaned_source += ' ';
+                                // TODO: Config field: expansion display size
+                            }
+                            if(!expaned_source.empty()) {
+                                source += "\n\n// Expands to:\n";
+                                source += expaned_source;
+                                source += '\n';
+                            }
+                        }
+                    }
+                    hi.source = source;
+                    hi.hl_range = to_proto_range(sm, hl_range);
+                    return hi;
+                }
+            }
+        }
+    }
+
     auto tree = SelectionTree::create_right(unit, {offset, offset});
     if(auto node = tree.common_ancestor()) {
-        return hover(unit, node, opt);
+        if(auto info = hover(unit, node, opt)) {
+            info->hl_range = to_proto_range(sm, hl_range);
+            return info;
+        }
+        return std::nullopt;
     } else {
         clice::logging::warn("Not an ast node");
     }
@@ -256,15 +333,20 @@ std::optional<std::string> Hover::get_item_content(HoverItem::HoverKind kind) {
 std::optional<std::string> Hover::display(config::HoverOptions opt) {
     std::string content;
     llvm::raw_string_ostream os(content);
+    // TODO: generate markdown
     os << std::format("{}: {}\n", this->kind.name(), this->name);
     os << std::format("Contains {} items\n", this->items.size());
     for(auto& hi: this->items) {
         os << std::format("- {}: {}\n", clice::refl::enum_name(hi.kind), hi.value);
     }
-    os << "---\n";
-    os << "Document:\n```text\n" << this->document << "\n```\n";
-    os << "---\n";
-    os << "Source code:\n```cpp\n" << this->source << "\n```\n";
+    if(this->document) {
+        os << "---\n";
+        os << "Document:\n```text\n" << *this->document << "\n```\n";
+    }
+    if(!this->source.empty()) {
+        os << "---\n";
+        os << "Source code:\n```cpp\n" << this->source << "\n```\n";
+    }
     return os.str();
 }
 

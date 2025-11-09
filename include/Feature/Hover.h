@@ -57,7 +57,7 @@ struct Hover {
     std::vector<HoverItem> items;
 
     /// Raw document in the source code.
-    std::string document;
+    std::optional<std::string> document;
 
     /// The full qualified name of the declaration.
     std::string qualifier;
