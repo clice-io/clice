@@ -34,7 +34,7 @@ static std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
 
     /// TODO: Add other hover items.
     if(auto fd = llvm::dyn_cast<clang::FieldDecl>(decl)) {
-        clice::logging::warn("Got a field decl");
+        LOGGING_WARN("Got a field decl");
         const auto record = fd->getParent();
         add_item(HoverItem::Type, fd->getType().getAsString());
 
@@ -57,12 +57,12 @@ static std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
 
         if(fd->isBitField()) {
             add_item(HoverItem::BitWidth, llvm::Twine(fd->getBitWidthValue()).str());
-            clice::logging::warn("Got bit field, name: {}, bitwidth: {}",
-                                 fd->getName(),
-                                 fd->getBitWidthValue());
+            LOGGING_WARN("Got bit field, name: {}, bitwidth: {}",
+                         fd->getName(),
+                         fd->getBitWidthValue());
         }
     } else if(auto vd = llvm::dyn_cast<clang::VarDecl>(decl)) {
-        clice::logging::warn("Got a var decl");
+        LOGGING_WARN("Got a var decl");
         add_item(HoverItem::Type, vd->getType().getAsString());
     }
 
@@ -109,6 +109,208 @@ static std::string get_source_code(CompilationUnitRef unit, clang::SourceRange r
         lo)};
 }
 
+static clang::TemplateTypeParmTypeLoc getContainedAutoParamType(clang::TypeLoc TL) {
+    if(auto QTL = TL.getAs<clang::QualifiedTypeLoc>())
+        return getContainedAutoParamType(QTL.getUnqualifiedLoc());
+    if(llvm::isa<clang::PointerType, clang::ReferenceType, clang::ParenType>(TL.getTypePtr()))
+        return getContainedAutoParamType(TL.getNextTypeLoc());
+    if(auto FTL = TL.getAs<clang::FunctionTypeLoc>())
+        return getContainedAutoParamType(FTL.getReturnLoc());
+    if(auto TTPTL = TL.getAs<clang::TemplateTypeParmTypeLoc>()) {
+        if(TTPTL.getTypePtr()->getDecl()->isImplicit())
+            return TTPTL;
+    }
+    return {};
+}
+
+template <typename TemplateDeclTy>
+static clang::NamedDecl* getOnlyInstantiationImpl(TemplateDeclTy* TD) {
+    clang::NamedDecl* Only = nullptr;
+    for(auto* Spec: TD->specializations()) {
+        if(Spec->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization)
+            continue;
+        if(Only != nullptr)
+            return nullptr;
+        Only = Spec;
+    }
+    return Only;
+}
+
+static clang::NamedDecl* getOnlyInstantiation(clang::NamedDecl* TemplatedDecl) {
+    if(clang::TemplateDecl* TD = TemplatedDecl->getDescribedTemplate()) {
+        if(auto* CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(TD))
+            return getOnlyInstantiationImpl(CTD);
+        if(auto* FTD = llvm::dyn_cast<clang::FunctionTemplateDecl>(TD))
+            return getOnlyInstantiationImpl(FTD);
+        if(auto* VTD = llvm::dyn_cast<clang::VarTemplateDecl>(TD))
+            return getOnlyInstantiationImpl(VTD);
+    }
+    return nullptr;
+}
+
+/// Computes the deduced type at a given location by visiting the relevant
+/// nodes. We use this to display the actual type when hovering over an "auto"
+/// keyword or "decltype()" expression.
+/// FIXME: This could have been a lot simpler by visiting AutoTypeLocs but it
+/// seems that the AutoTypeLocs that can be visited along with their AutoType do
+/// not have the deduced type set. Instead, we have to go to the appropriate
+/// DeclaratorDecl/FunctionDecl and work our back to the AutoType that does have
+/// a deduced type set. The AST should be improved to simplify this scenario.
+class DeducedTypeVisitor : public clang::RecursiveASTVisitor<DeducedTypeVisitor> {
+    clang::SourceLocation SearchedLocation;
+    const clang::HeuristicResolver* Resolver;
+
+public:
+    DeducedTypeVisitor(clang::SourceLocation SearchedLocation,
+                       const clang::HeuristicResolver* Resolver) :
+        SearchedLocation(SearchedLocation), Resolver(Resolver) {}
+
+    // Handle auto initializers:
+    //- auto i = 1;
+    //- decltype(auto) i = 1;
+    //- auto& i = 1;
+    //- auto* i = &a;
+    bool VisitDeclaratorDecl(clang::DeclaratorDecl* D) {
+        if(!D->getTypeSourceInfo() ||
+           !D->getTypeSourceInfo()->getTypeLoc().getContainedAutoTypeLoc() ||
+           D->getTypeSourceInfo()->getTypeLoc().getContainedAutoTypeLoc().getNameLoc() !=
+               SearchedLocation)
+            return true;
+
+        if(auto* AT = D->getType()->getContainedAutoType()) {
+            if(AT->isUndeducedAutoType()) {
+                if(const auto* VD = dyn_cast<clang::VarDecl>(D)) {
+                    if(Resolver && VD->hasInit()) {
+                        // FIXME:
+                        // DeducedType = Resolver->resolveExprToType(VD->getInit());
+                        DeducedType = VD->getType();
+                        return true;
+                    }
+                }
+            }
+            DeducedType = AT->desugar();
+        }
+        return true;
+    }
+
+    // Handle auto return types:
+    //- auto foo() {}
+    //- auto& foo() {}
+    //- auto foo() -> int {}
+    //- auto foo() -> decltype(1+1) {}
+    //- operator auto() const { return 10; }
+    bool VisitFunctionDecl(clang::FunctionDecl* D) {
+        if(!D->getTypeSourceInfo())
+            return true;
+        // Loc of auto in return type (c++14).
+        auto CurLoc = D->getReturnTypeSourceRange().getBegin();
+        // Loc of "auto" in operator auto()
+        if(CurLoc.isInvalid() && isa<clang::CXXConversionDecl>(D))
+            CurLoc = D->getTypeSourceInfo()->getTypeLoc().getBeginLoc();
+        // Loc of "auto" in function with trailing return type (c++11).
+        if(CurLoc.isInvalid())
+            CurLoc = D->getSourceRange().getBegin();
+        if(CurLoc != SearchedLocation)
+            return true;
+
+        const clang::AutoType* AT = D->getReturnType()->getContainedAutoType();
+        if(AT && !AT->getDeducedType().isNull()) {
+            DeducedType = AT->getDeducedType();
+        } else if(auto* DT = dyn_cast<clang::DecltypeType>(D->getReturnType())) {
+            // auto in a trailing return type just points to a DecltypeType and
+            // getContainedAutoType does not unwrap it.
+            if(!DT->getUnderlyingType().isNull())
+                DeducedType = DT->getUnderlyingType();
+        } else if(!D->getReturnType().isNull()) {
+            DeducedType = D->getReturnType();
+        }
+        return true;
+    }
+
+    // Handle non-auto decltype, e.g.:
+    // - auto foo() -> decltype(expr) {}
+    // - decltype(expr);
+    bool VisitDecltypeTypeLoc(clang::DecltypeTypeLoc TL) {
+        if(TL.getBeginLoc() != SearchedLocation)
+            return true;
+
+        // A DecltypeType's underlying type can be another DecltypeType! E.g.
+        //  int I = 0;
+        //  decltype(I) J = I;
+        //  decltype(J) K = J;
+        const clang::DecltypeType* DT = dyn_cast<clang::DecltypeType>(TL.getTypePtr());
+        while(DT && !DT->getUnderlyingType().isNull()) {
+            DeducedType = DT->getUnderlyingType();
+            DT = dyn_cast<clang::DecltypeType>(DeducedType.getTypePtr());
+        }
+        return true;
+    }
+
+    // Handle functions/lambdas with `auto` typed parameters.
+    // We deduce the type if there's exactly one instantiation visible.
+    bool VisitParmVarDecl(clang::ParmVarDecl* PVD) {
+        if(!PVD->getType()->isDependentType())
+            return true;
+        // 'auto' here does not name an AutoType, but an implicit template param.
+        clang::TemplateTypeParmTypeLoc Auto =
+            getContainedAutoParamType(PVD->getTypeSourceInfo()->getTypeLoc());
+        if(Auto.isNull() || Auto.getNameLoc() != SearchedLocation)
+            return true;
+
+        // We expect the TTP to be attached to this function template.
+        // Find the template and the param index.
+        auto* Templated = llvm::dyn_cast<clang::FunctionDecl>(PVD->getDeclContext());
+        if(!Templated)
+            return true;
+        auto* FTD = Templated->getDescribedFunctionTemplate();
+        if(!FTD)
+            return true;
+        int ParamIndex = paramIndex(*FTD, *Auto.getDecl());
+        if(ParamIndex < 0) {
+            assert(false && "auto TTP is not from enclosing function?");
+            return true;
+        }
+
+        // Now find the instantiation and the deduced template type arg.
+        auto* Instantiation =
+            llvm::dyn_cast_or_null<clang::FunctionDecl>(getOnlyInstantiation(Templated));
+        if(!Instantiation)
+            return true;
+        const auto* Args = Instantiation->getTemplateSpecializationArgs();
+        if(Args->size() != FTD->getTemplateParameters()->size())
+            return true;  // no weird variadic stuff
+        DeducedType = Args->get(ParamIndex).getAsType();
+        return true;
+    }
+
+    static int paramIndex(const clang::TemplateDecl& TD, clang::NamedDecl& Param) {
+        unsigned I = 0;
+        for(auto* ND: *TD.getTemplateParameters()) {
+            if(&Param == ND)
+                return I;
+            ++I;
+        }
+        return -1;
+    }
+
+    clang::QualType DeducedType;
+};
+
+// FIXME: Do as clangd did(?) a more simple way?
+static std::optional<clang::QualType> getDeducedType(clang::ASTContext& ASTCtx,
+                                                     const clang::HeuristicResolver* Resolver,
+                                                     clang::SourceLocation Loc) {
+    if(!Loc.isValid()) {
+        return {};
+    }
+    DeducedTypeVisitor V(Loc, Resolver);
+    V.TraverseAST(ASTCtx);
+    if(V.DeducedType.isNull()) {
+        return std::nullopt;
+    }
+    return V.DeducedType;
+}
+
 // TODO: How does clangd put together decl, name, scope and sometimes initialized value?
 // ```
 // // scope
@@ -135,13 +337,10 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
 }
 
 static std::optional<Hover> hover(CompilationUnitRef unit,
-                                  const clang::TypeLoc* typeloc,
+                                  const clang::QualType& ty,
                                   const config::HoverOptions& opt) {
     // TODO: Hover for type
-    clice::logging::warn("Hit a typeloc");
-    typeloc->dump(llvm::errs(), unit.context());
-    auto ty = typeloc->getType();
-    // FIXME: AutoTypeLoc / DecltypeTypeLoc
+    // TODO: Add source code
     return Hover{.kind = SymbolKind::Type, .name = ty.getAsString()};
 }
 
@@ -149,8 +348,8 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
                                   const SelectionTree::Node* node,
                                   const config::HoverOptions& opt) {
     using namespace clang;
+    auto wanted_node = node;
     auto Kind = node->data.getNodeKind();
-    clice::logging::warn("Node kind is: {}", Kind.asStringRef());
 
 #define kind_flag_def(Ty) static constexpr auto Flag##Ty = ASTNodeKind::getFromNodeKind<Ty>()
     kind_flag_def(QualType);
@@ -169,42 +368,42 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
     kind_flag_def(Attr);
     kind_flag_def(ObjCProtocolLoc);
 
-#define is_in_range(LHS, RHS)                                                                      \
-    (!((Kind < Flag##LHS) && (Kind.isSame(Flag##LHS))) && (Kind < Flag##RHS))
-
 #define is(flag) (Kind.isSame(Flag##flag))
 
+#define is_in_range(LHS, RHS) (!((Kind < Flag##LHS) && is(LHS)) && (Kind < Flag##RHS))
+
+    // auto and decltype is specially processed
+    if(is(AutoTypeLoc) || is(DecltypeTypeLoc)) {
+        auto resolver = HeuristicResolver(unit.context());
+        if(auto ty = getDeducedType(unit.context(), &resolver, node->source_range().getBegin())) {
+            return hover(unit, *ty, opt);
+        } else {
+            LOGGING_WARN("Cannot get deduced type");
+        }
+    }
+
     if(is(NestedNameSpecifierLoc)) {
-        clice::logging::warn("Hit a `NestedNameSpecifierLoc`");
+        LOGGING_WARN("Hit a `NestedNameSpecifierLoc`");
     } else if(is_in_range(QualType, TypeLoc)) {
         // Typeloc
-        clice::logging::warn("Hit a `TypeLoc`");
-        // auto and decltype is specially processed
-        if(is(AutoTypeLoc)) {
-            clice::logging::warn("Hit a `AutoTypeLoc`");
-            return std::nullopt;
-        }
-        if(is(DecltypeTypeLoc)) {
-            clice::logging::warn("Hit a `DecltypeTypeLoc`");
-            return std::nullopt;
-        }
+        LOGGING_WARN("Hit a `TypeLoc`");
         if(auto typeloc = node->get<clang::TypeLoc>()) {
-            return hover(unit, typeloc, opt);
+            return hover(unit, typeloc->getType(), opt);
         }
     } else if(is_in_range(Decl, Stmt)) {
         // Decl
-        clice::logging::warn("Hit a `Decl`");
+        LOGGING_WARN("Hit a `Decl`");
         if(auto decl = node->get<clang::NamedDecl>()) {
             return hover(unit, decl, opt);
         } else {
-            clice::logging::warn("Not intersted");
+            LOGGING_WARN("Not intersted");
         }
     } else if(is_in_range(Attr, ObjCProtocolLoc)) {
-        clice::logging::warn("Hit an `Attr`");
+        LOGGING_WARN("Hit an `Attr`");
         // TODO: Attr
     } else {
         // Not interested
-        clice::logging::warn("Not interested");
+        LOGGING_WARN("Not interested");
     }
 
 #undef is
@@ -261,10 +460,9 @@ std::optional<Hover> hover(CompilationUnitRef unit,
         }
     }
 
-    // clice::logging::warn("Hit a macro");
     auto tokens_under_cursor = unit.spelled_tokens_touch(*loc);
     if(tokens_under_cursor.empty()) {
-        clice::logging::warn("Cannot detect tokens");
+        LOGGING_WARN("Cannot detect tokens");
         return std::nullopt;
     }
     auto hl_range = tokens_under_cursor.back().range(sm).toCharRange(sm).getAsRange();
@@ -309,13 +507,14 @@ std::optional<Hover> hover(CompilationUnitRef unit,
 
     auto tree = SelectionTree::create_right(unit, {offset, offset});
     if(auto node = tree.common_ancestor()) {
+        LOGGING_WARN("Got node: {}", node->kind());
         if(auto info = hover(unit, node, opt)) {
             info->hl_range = to_proto_range(sm, hl_range);
             return info;
         }
         return std::nullopt;
     } else {
-        clice::logging::warn("Not an ast node");
+        LOGGING_WARN("Not an ast node");
     }
 
     return std::nullopt;
