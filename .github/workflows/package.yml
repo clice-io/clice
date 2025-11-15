@@ -75,15 +75,14 @@ jobs:
       - name: Configure and Package
         shell: bash
         run: |
-          XMAKE_CONFIG_CMD="xmake config --yes --toolchain=${{ matrix.toolchain }} --enable_test=n --dev=n --release=y"
-
-          if [[ "${{ runner.os }}" == "macOS" ]]; then
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            xmake config --yes --enable_test=n --dev=n --release=y --toolchain=${{ matrix.toolchain }} -p windows
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            xmake config --yes --enable_test=n --dev=n --release=y --toolchain=${{ matrix.toolchain }}
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
             export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
-            XMAKE_CONFIG_CMD="$XMAKE_CONFIG_CMD --sdk=/opt/homebrew/opt/llvm@20"
+            xmake config --yes --enable_test=n --dev=n --release=y --toolchain=${{ matrix.toolchain }} --sdk=/opt/homebrew/opt/llvm@20
           fi
-
-          echo "Running: $XMAKE_CONFIG_CMD"
-          eval $XMAKE_CONFIG_CMD
 
           xmake pack
 
