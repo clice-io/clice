@@ -9,6 +9,8 @@
 
 namespace clice::toolchain {
 
+namespace {
+
 namespace opt = llvm::opt;
 namespace driver = clang::driver;
 
@@ -46,20 +48,6 @@ template struct Thief<&opt::OptTable::DashDashParsing,
                       &opt::OptTable::GroupedShortOptions,
                       &driver::Driver::getToolChain>;
 
-Toolchain query_toolchain(llvm::ArrayRef<const char*> arguments) {
-    llvm::StringRef driver = arguments[0];
-
-    /// judge tool chain kind ...
-
-    return {};
-}
-
-using ErrorKind = toolchain::QueryDriverError::ErrorKind;
-
-auto unexpected(ErrorKind kind, std::string message) {
-    return std::unexpected<toolchain::QueryDriverError>({kind, std::move(message)});
-};
-
 enum class CompilerFamily {
     Unknown,
     GCC,      // Covers gcc, g++, cc, c++, and versioned/arch variants
@@ -93,6 +81,12 @@ CompilerFamily driver_family(llvm::StringRef driver) {
     }
     return CompilerFamily::Unknown;
 }
+
+using ErrorKind = toolchain::QueryDriverError::ErrorKind;
+
+auto unexpected(ErrorKind kind, std::string message) {
+    return std::unexpected<toolchain::QueryDriverError>({kind, std::move(message)});
+};
 
 auto parse_query_result(llvm::StringRef content, QueryResult& info)
     -> std::expected<void, QueryDriverError> {
@@ -142,6 +136,31 @@ auto parse_query_result(llvm::StringRef content, QueryResult& info)
     }
 
     return std::expected<void, QueryDriverError>();
+}
+
+}  // namespace
+
+Toolchain query_toolchain(llvm::ArrayRef<const char*> arguments) {
+    llvm::StringRef driver = arguments[0];
+
+    /// Note: The name used to invoke the compiler driver affects its behavior.
+    /// For example, `/usr/bin/clang++` is often a symbolic link to
+    /// `/usr/lib/llvm-20/bin/clang`. Invoking it as `clang++` enables C++ mode
+    /// and links C++ libraries by default, while invoking as `clang` defaults to C mode.
+    /// Therefore, never use `realpath` on the initial `driver` name, as that
+    /// would lose the context needed for the driver to behave correctly (and break caching).
+    llvm::SmallString<128> path;
+    if(!path::is_absolute(driver)) {
+        /// If the path is not absolute path like g++, find it in the env vars.
+        auto program = llvm::sys::findProgramByName(driver);
+        /// if(!program) {
+        ///     return unexpected(ErrorKind::NotFoundInPATH, program.getError().message());
+        /// }
+        path = *program;
+        driver = path;
+    }
+
+    auto family = driver_family(driver);
 }
 
 auto query_driver(llvm::StringRef driver) -> std::expected<QueryResult, QueryDriverError> {

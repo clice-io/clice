@@ -4,8 +4,8 @@
 #include "Support/Logging.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Program.h"
 #include "Driver.h"
+#include "Support/StringPool.h"
 
 namespace llvm {
 
@@ -50,9 +50,56 @@ struct CommandInfo {
     std::uint32_t response_file_index = 0;
 };
 
+namespace {
+
+using StringID = StringSet::ID;
+
+template <typename T>
+using ObjectRef = T*;
+
+struct CommandInfo2 {
+    StringID directory;
+
+    llvm::ArrayRef<StringID> arguments;
+};
+
+struct JSONItem {
+    std::uint32_t source_id;
+
+    CommandInfo2* command_info;
+};
+
+struct JSONSource {
+    /// The path of this json source file.
+    StringID path;
+
+    /// All parsed item of this json ....
+    std::vector<JSONItem*> items;
+};
+
+struct CompilationDatabase2 {
+    llvm::BumpPtrAllocator allocator;
+
+    std::vector<JSONSource> source;
+
+    StringSet strings = {allocator};
+
+    ObjectSet<JSONItem> items = {allocator};
+
+    ObjectSet<CommandInfo2> commands = {allocator};
+
+    llvm::DenseMap<std::uint32_t, object_ptr<JSONItem>> files;
+};
+
+}  // namespace
+
 struct CompilationDatabase::Impl {
     /// The memory pool to hold all cstring and command list.
     llvm::BumpPtrAllocator allocator;
+
+    StringSet string_pool = {allocator};
+
+    std::vector<JSONSource> source;
 
     /// A cache between input string and its cache cstring
     /// in the allocator, make sure end with `\0`.
@@ -208,6 +255,8 @@ struct CompilationDatabase::Impl {
                 auto& opt = arg->getOption();
                 auto id = opt.getID();
 
+                opt.dump();
+
                 /// Filter options we don't need.
                 if(self.filtered_options.contains(id)) {
                     return;
@@ -358,26 +407,6 @@ CompilationDatabase& CompilationDatabase::operator= (CompilationDatabase&& other
 
 CompilationDatabase::~CompilationDatabase() = default;
 
-std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef argument) {
-    auto& table = clang::driver::getDriverOptTable();
-
-    llvm::SmallString<64> buffer = argument;
-
-    if(argument.ends_with("=")) {
-        buffer += "placeholder";
-    }
-
-    unsigned index = 0;
-    std::array arguments = {buffer.c_str(), "placeholder"};
-    llvm::opt::InputArgList arg_list(arguments.data(), arguments.data() + arguments.size());
-
-    if(auto arg = table.ParseOneArg(arg_list, index)) {
-        return arg->getOption().getID();
-    } else {
-        return {};
-    }
-}
-
 auto CompilationDatabase::save_string(llvm::StringRef string) -> llvm::StringRef {
     return self->save_string(string);
 }
@@ -507,7 +536,7 @@ auto CompilationDatabase::update_command(llvm::StringRef directory,
     /// Cache the canonical arguments
     arguments = self->save_cstring_list(canonical_arguments);
 
-    UpdateKind kind = UpdateKind::Unchange;
+    UpdateKind kind = UpdateKind::Unchanged;
     CommandInfo info = {
         directory,
         arguments,
@@ -518,7 +547,7 @@ auto CompilationDatabase::update_command(llvm::StringRef directory,
     auto [it, success] = self->command_infos.try_emplace(file.data(), info);
     if(success) {
         /// If successfully inserted, we are loading new file.
-        kind = UpdateKind::Create;
+        kind = UpdateKind::Inserted;
     } else {
         /// If failed to insert, compare whether need to update. Because we cache
         /// all the ref structure here, so just comparing the pointer is fine.
@@ -604,12 +633,12 @@ auto CompilationDatabase::load_commands(llvm::StringRef json_content, llvm::Stri
             }
 
             auto info = this->update_command(*directory, source, carguments);
-            if(info.kind != UpdateKind::Unchange) {
+            if(info.kind != UpdateKind::Unchanged) {
                 infos.emplace_back(info);
             }
         } else if(auto command = object.getString("command")) {
             auto info = this->update_command(*directory, source, *command);
-            if(info.kind != UpdateKind::Unchange) {
+            if(info.kind != UpdateKind::Unchanged) {
                 infos.emplace_back(info);
             }
         }
