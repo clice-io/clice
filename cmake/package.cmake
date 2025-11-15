@@ -13,7 +13,6 @@ endif()
 # set llvm include and lib path
 add_library(llvm-libs INTERFACE IMPORTED)
 
-message(STATUS "LLVM include path: ${LLVM_INSTALL_PATH}/include")
 # add to include directories
 target_include_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/include")
 
@@ -27,11 +26,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         clangAST
         clangASTMatchers
         clangBasic
-        clangDependencyScanning
         clangDriver
         clangFormat
         clangFrontend
-        clangIndex
         clangLex
         clangSema
         clangSerialization
@@ -70,11 +67,10 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 else()
     file(GLOB LLVM_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/*${CMAKE_STATIC_LIBRARY_SUFFIX}")
     target_link_libraries(llvm-libs INTERFACE ${LLVM_LIBRARIES})
+    target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)
 endif()
 
-
 if(WIN32)
-    target_compile_definitions(llvm-libs INTERFACE "CLANG_BUILD_STATIC")
     target_link_libraries(llvm-libs INTERFACE version ntdll)
 endif()
 

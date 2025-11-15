@@ -5,7 +5,7 @@
 		"is_lto": false,
 		"filename": "x64-windows-msvc-releasedbg.7z",
 		"version": "21.1.4",
-		"sha256": "841aab279cae175b18992b50104166e9f5f3735162907accd9217ebb26d1ecaf"
+		"sha256": "02634ff12194994d93e9c76902866c03516c836ab7b55952933fd9ebcf039664"
 	},
 	{
 		"platform": "Windows",
@@ -13,7 +13,7 @@
 		"is_lto": true,
 		"filename": "x64-windows-msvc-release-lto.7z",
 		"version": "21.1.4",
-		"sha256": "d39c8975638ac34dfd514286d5535872f18dcad98351cc72b941337d6daa7ca0"
+		"sha256": "7792cfd1e2d9240b49e3db81a6a04f33cbc44afa91e9a637c0490c28d4eee95c"
 	},
 	{
 		"platform": "Linux",
@@ -21,7 +21,7 @@
 		"is_lto": false,
 		"filename": "x86_64-linux-gnu-debug.tar.xz",
 		"version": "21.1.4",
-		"sha256": "4aaa9ad0f389386d5ba78480185e787f8b643f880e07df854da26367fcd1cccc"
+		"sha256": "9c7b98e198ce1c5611e153c3602fb1dc03912f230bded99baaaa56ac1ea21cb4"
 	},
 	{
 		"platform": "Linux",
@@ -29,7 +29,7 @@
 		"is_lto": false,
 		"filename": "x86_64-linux-gnu-releasedbg.tar.xz",
 		"version": "21.1.4",
-		"sha256": "f2cd5c0482e18e0593a8309f630cd261e1d8e19f0b37680b3b6b94292f3f502c"
+		"sha256": "99269acd2d9c5debf30062bf57d7bfd41154f2d0baee94abdb56b421c8e5b92c"
 	},
 	{
 		"platform": "Linux",
@@ -37,7 +37,7 @@
 		"is_lto": true,
 		"filename": "x86_64-linux-gnu-release-lto.tar.xz",
 		"version": "21.1.4",
-		"sha256": "902d0fbdebcd022914106a5ae1af05d16177f41c8de34b0701eac070d5e0b364"
+		"sha256": "e5a6c567e30cbe51e4b98151f52071d0013839e7b5eabe7a2a2767c8234d06b2"
 	},
 	{
 		"platform": "macosx",
@@ -53,14 +53,14 @@
 		"is_lto": false,
 		"filename": "arm64-macosx-apple-releasedbg.tar.xz",
 		"version": "21.1.4",
-		"sha256": "993cc2000b3ce008f47e8dd2fc0f4679149d9696dbe197ebc8ed1f3f7306b54b"
+		"sha256": "dc308b0057f472e82c2eb14b300db6ee58fb4160f3428948b5a9dcae931a3378"
 	},
 	{
 		"platform": "macosx",
 		"build_type": "Release",
 		"is_lto": true,
 		"filename": "arm64-macosx-apple-release-lto.tar.xz",
-		"version": "20.1.5",
-		"sha256": "57a58adcc0a033acd66dbf8ed1f6bcf4f334074149e37bf803fc6bf022d419d2"
+		"version": "21.1.4",
+		"sha256": "c92d0323ff83e678fec7496c8b024a64b1731c3840752be9a4ade3b99dfd52ff"
 	}
 ]

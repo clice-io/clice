@@ -9,7 +9,6 @@ on:
       - "src/**"
       - "tests/**"
       - "xmake.lua"
-
   pull_request:
     branches: [main]
     paths:
@@ -21,52 +20,21 @@ on:
       - "xmake.lua"
 
 jobs:
-  windows:
+  build:
     strategy:
+      fail-fast: false
       matrix:
-        os: [windows-2025]
+        os: [windows-2025, ubuntu-24.04, macos-15]
+        build_type: [debug, releasedbg]
+        exclude:
+          - os: windows-2025
+            build_type: debug
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup xmake
-        uses: xmake-io/github-action-setup-xmake@v1
-        with:
-          xmake-version: 3.0.4
-          actions-cache-folder: ".xmake-cache"
-          actions-cache-key: ${{ matrix.os }}
-          package-cache: true
-          package-cache-key: ${{ matrix.os }}
-          build-cache: true
-          build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
-
-      - name: Xmake configure
-        run: |
-          xmake config --yes --ci=y --toolchain=clang
-
-      - name: Build clice
-        run: |
-          xmake build --verbose --diagnosis --all
-
-      - name: Install uv for integration tests
-        uses: astral-sh/setup-uv@v6
-
-      - name: Run tests
-        run: xmake test --verbose
-
-  linux:
-    strategy:
-      matrix:
-        os: [ubuntu-24.04]
-        build_type: [release, debug]
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - name: Setup llvm & libstdc++ & cmake & ninja
+      - name: Setup dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt update
           sudo apt install -y gcc-14 g++-14 libstdc++-14-dev
@@ -74,13 +42,16 @@ jobs:
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
           sudo update-alternatives --set gcc /usr/bin/gcc-14
           sudo update-alternatives --set g++ /usr/bin/g++-14
-
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20 all
-
           sudo apt install -y cmake ninja-build
 
+      - name: Setup dependencies (MacOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@20 lld@20
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -95,9 +66,16 @@ jobs:
           build-cache: true
           build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
 
-      - name: Xmake configure
+      - name: XMake configure
+        shell: bash
         run: |
-          xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang-20
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang -p windows
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang-20
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang --sdk=/opt/homebrew/opt/llvm@20
+          fi
 
       - name: Build clice
         run: |
@@ -107,52 +85,15 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Run tests
-        run: xmake test --verbose
-
-      # Workaround `no space left on device`
-      - name: Remove llvm package
-        run: rm -rf /home/runner/.xmake/packages/c/clice-llvm
-
-  macos:
-    strategy:
-      matrix:
-        os: [macos-15]
-        build_type: [release, debug]
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup llvm
+        shell: bash
         run: |
-          brew install llvm@20
+          # Workaround for macOS
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
+          fi
 
-      - name: Setup xmake
-        uses: xmake-io/github-action-setup-xmake@v1
-        with:
-          xmake-version: 3.0.4
-          actions-cache-folder: ".xmake-cache"
-          actions-cache-key: ${{ matrix.os }}
-          package-cache: true
-          package-cache-key: ${{ matrix.os }}
-          build-cache: true
-          build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
-
-      - name: Xmake configure
-        run: |
-          xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang --sdk=/opt/homebrew/opt/llvm@20
-
-      - name: Build clice
-        run: |
-          xmake build --verbose --diagnosis --all
-
-      - name: Install uv for integration tests
-        uses: astral-sh/setup-uv@v6
-
-      - name: Run tests
-        run: |
-          # Workaround for MacOS
-          export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
           xmake test --verbose
+
+      - name: Remove llvm package (Linux)
+        if: runner.os == 'Linux'
+        run: rm -rf /home/runner/.xmake/packages/c/clice-llvm

@@ -9,7 +9,6 @@ on:
       - "src/**"
       - "tests/**"
       - "CMakeLists.txt"
-
   pull_request:
     branches: [main]
     paths:
@@ -23,39 +22,48 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025, macos-15]
+        include:
+          - os: windows-2025
+            build_type: RelWithDebInfo
+            cc: clang
+            cxx: clang++
+          - os: ubuntu-24.04
+            build_type: Debug
+            cc: clang-20
+            cxx: clang++-20
+          - os: macos-15
+            build_type: Debug
+            cc: clang
+            cxx: clang++
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Setup ninja
-        if: matrix.os == 'windows-2025'
+      - name: Setup dependencies (Windows)
+        if: runner.os == 'Windows'
         uses: MinoruSekine/setup-scoop@v4.0.1
         with:
           buckets: main
           apps: ninja
 
-      - name: Setup llvm & libstdc++ & cmake & ninja
-        if: matrix.os == 'ubuntu-24.04'
+      - name: Setup dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt update
           sudo apt install -y gcc-14 g++-14 libstdc++-14-dev
-
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
-
           sudo update-alternatives --set gcc /usr/bin/gcc-14
           sudo update-alternatives --set g++ /usr/bin/g++-14
-
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20 all
-
           sudo apt install -y cmake ninja-build
 
-      - name: Setup llvm@20 and lld
-        if: matrix.os == 'macos-15'
+      - name: Setup dependencies (MacOS)
+        if: runner.os == 'macOS'
         run: |
           brew install llvm@20 lld@20
 
@@ -63,40 +71,35 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup msvc sysroot for cmake
-        if: matrix.os == 'windows-2025'
+        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Build clice (release, windows)
-        if: matrix.os == 'windows-2025'
+      - name: Build clice
+        shell: bash
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCLICE_ENABLE_TEST=ON -DCLICE_CI_ENVIRONMENT=ON
-          cmake --build build
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
+          fi
 
-      - name: Build clice (debug, linux)
-        if: matrix.os == 'ubuntu-24.04'
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 -DCLICE_ENABLE_TEST=ON -DCLICE_CI_ENVIRONMENT=ON
-          cmake --build build
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCLICE_ENABLE_TEST=ON \
+            -DCLICE_CI_ENVIRONMENT=ON
 
-      - name: Build clice (debug, macos)
-        if: matrix.os == 'macos-15'
-        run: |
-          export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCLICE_ENABLE_TEST=ON -DCLICE_CI_ENVIRONMENT=ON
           cmake --build build
 
       - name: Install uv for integration tests
         uses: astral-sh/setup-uv@v6
 
       - name: Run tests
-        if: matrix.os == 'windows-2025'
-        run: |
-          ./build/bin/unit_tests.exe --test-dir="./tests/data"
-          uv run pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice.exe
         shell: bash
-
-      - name: Run tests
-        if: matrix.os == 'ubuntu-24.04' ||  matrix.os == 'macos-15'
         run: |
-          ./build/bin/unit_tests --test-dir="./tests/data"
-          uv run pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice
+          EXE_EXT=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            EXE_EXT=".exe"
+          fi
+
+          ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
+          uv run pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
