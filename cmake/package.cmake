@@ -27,11 +27,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         clangAST
         clangASTMatchers
         clangBasic
-        clangDependencyScanning
         clangDriver
         clangFormat
         clangFrontend
-        clangIndex
         clangLex
         clangSema
         clangSerialization
