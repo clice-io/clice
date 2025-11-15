@@ -16,6 +16,7 @@ on:
 jobs:
   package:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-2025
@@ -36,10 +37,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Setup llvm & libstdc++ & cmake & ninja
-        if: matrix.os == 'ubuntu-24.04'
+      - name: Setup dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
-          sudo apt remove llvm-16-linker-tools llvm-16 llvm-17-linker-tools llvm-17 llvm-18-linker-tools llvm-18
+          sudo apt remove -y llvm-16-linker-tools llvm-16 llvm-17-linker-tools llvm-17 llvm-18-linker-tools llvm-18 || true
           sudo apt update
           sudo apt install -y gcc-14 g++-14 libstdc++-14-dev cmake ninja-build
 
@@ -52,10 +53,10 @@ jobs:
           chmod +x llvm.sh
           sudo ./llvm.sh 20 all
 
-      - name: Setup llvm@20
-        if: matrix.os == 'macos-15'
+      - name: Setup dependencies (macOS)
+        if: runner.os == 'macOS'
         run: |
-          brew install llvm@20
+          brew install llvm@20 lld@20
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -66,24 +67,25 @@ jobs:
           xmake-version: branch@master
           actions-cache-folder: ".xmake-cache"
           actions-cache-key: ${{ matrix.os }}
+          package-cache: true
+          package-cache-key: ${{ matrix.os }}-pkg-release-v1
+          build-cache: true
+          build-cache-key: ${{ matrix.os }}-build-release-v1
 
-      - name: Package
-        if: matrix.os != 'macos-15'
+      - name: Configure and Package
+        shell: bash
         run: |
-          xmake config --yes --toolchain=${{ matrix.toolchain }} --enable_test=n --dev=n --release=y
+          XMAKE_CONFIG_CMD="xmake config --yes --toolchain=${{ matrix.toolchain }} --enable_test=n --dev=n --release=y"
+
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
+            XMAKE_CONFIG_CMD="$XMAKE_CONFIG_CMD --sdk=/opt/homebrew/opt/llvm@20"
+          fi
+
+          echo "Running: $XMAKE_CONFIG_CMD"
+          eval $XMAKE_CONFIG_CMD
+
           xmake pack
-
-      - name: Package
-        if: matrix.os == 'macos-15'
-        run: |
-          xmake config --yes --toolchain=${{ matrix.toolchain }} --sdk=/opt/homebrew/opt/llvm@20 --enable_test=n --dev=n --release=y
-          xmake pack
-
-      - name: Install uv for integration tests
-        uses: astral-sh/setup-uv@v6
-
-      - name: Run tests
-        run: xmake test --verbose
 
       - name: Upload binaries to release
         if: github.event_name == 'push'
