@@ -1,4 +1,4 @@
-name: release
+name: package
 
 permissions:
   contents: write
@@ -11,7 +11,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - ".github/workflows/release.yml"
+      - ".github/workflows/package.yml"
 
 jobs:
   package:
