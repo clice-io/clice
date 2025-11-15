@@ -66,10 +66,10 @@ jobs:
         if: matrix.os == 'windows-2025'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Build clice (release, windows)
+      - name: Build clice (releasedbg, windows)
         if: matrix.os == 'windows-2025'
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCLICE_ENABLE_TEST=ON -DCLICE_CI_ENVIRONMENT=ON
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCLICE_ENABLE_TEST=ON -DCLICE_CI_ENVIRONMENT=ON
           cmake --build build
 
       - name: Build clice (debug, linux)

@@ -117,7 +117,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-15]
-        build_type: [release, debug]
+        build_type: [releasedbg, debug]
 
     runs-on: ${{ matrix.os }}
 

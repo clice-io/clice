@@ -34,9 +34,14 @@ endif()
 
 if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
-    target_link_options(clice_options INTERFACE -fuse-ld=lld-link)
+    target_link_options(clice_options INTERFACE
+        -fuse-ld=lld-link
+    )
 else()
-    target_link_options(clice_options INTERFACE -fuse-ld=lld)
+    target_link_options(clice_options INTERFACE
+        -fuse-ld=lld
+        -Wl,--gc-sections
+    )
 endif()
 
 if (MSVC)
@@ -51,6 +56,8 @@ else()
         -fno-exceptions
         -Wno-deprecated-declarations
         -Wno-undefined-inline
+        -ffunction-sections
+        -fdata-sections
     )
 endif()
 

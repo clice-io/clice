@@ -194,14 +194,9 @@ rule("clice_clang_tidy_config")
 
 rule("clice_build_config")
     on_load(function (target)
-        target:add("cxflags", "-fno-rtti", {tools = {"clang", "clangxx", "gcc", "gxx"}})
-        target:add("cxflags", "/GR-", {tools = {"clang_cl", "cl"}})
-        -- Fix MSVC Non-standard preprocessor caused error C1189
-        -- While compiling Command.cpp, MSVC won't expand Options macro correctly
-        -- Output: D:\Desktop\code\clice\build\.packages\l\llvm\20.1.5\cc2aa9f1d09a4b71b6fa3bf0011f6387\include\clang/Driver/Options.inc(3590): error C2365: “clang::driver::options::OPT_”: redefinition; previous definition was 'enumerator'
-        target:add("cxflags", "cl::/Zc:preprocessor")
-
         target:set("exceptions", "no-cxx")
+        target:add("cxflags","-fno-rtti" ,"-Wno-undefined-inline", {tools = {"clang", "clangxx", "gcc", "gxx"}})
+        target:add("cxflags", "/GR-", "/Zc:preprocessor", {tools = {"clang_cl", "cl"}})
 
         if target:is_plat("windows") and not target:toolchain("msvc") then
             target:set("toolset", "ar", "llvm-ar")
@@ -215,6 +210,7 @@ rule("clice_build_config")
             -- gnu ld need to fix link order
             target:add("ldflags", "-fuse-ld=lld")
         end
+
         if has_config("ci") then
             target:add("cxxflags", "-DCLICE_CI_ENVIRONMENT")
         end

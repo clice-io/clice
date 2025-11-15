@@ -2,18 +2,17 @@ include_guard()
 
 include(${CMAKE_CURRENT_LIST_DIR}/llvm_setup.cmake)
 
-setup_llvm("21.1.4")
-
 get_filename_component(LLVM_INSTALL_PATH "${LLVM_INSTALL_PATH}" ABSOLUTE)
 
 if(NOT EXISTS "${LLVM_INSTALL_PATH}")
     message(FATAL_ERROR "Error: The specified LLVM_INSTALL_PATH does not exist: ${LLVM_INSTALL_PATH}")
 endif()
 
+setup_llvm("21.1.4")
+
 # set llvm include and lib path
 add_library(llvm-libs INTERFACE IMPORTED)
 
-message(STATUS "LLVM include path: ${LLVM_INSTALL_PATH}/include")
 # add to include directories
 target_include_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/include")
 
@@ -68,11 +67,10 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 else()
     file(GLOB LLVM_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/*${CMAKE_STATIC_LIBRARY_SUFFIX}")
     target_link_libraries(llvm-libs INTERFACE ${LLVM_LIBRARIES})
+    target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)
 endif()
 
-
 if(WIN32)
-    target_compile_definitions(llvm-libs INTERFACE "CLANG_BUILD_STATIC")
     target_link_libraries(llvm-libs INTERFACE version ntdll)
 endif()
 
