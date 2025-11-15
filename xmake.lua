@@ -275,7 +275,7 @@ package("clice-llvm")
                 and (info.build_type:lower() == get_config("mode")
                 or info.build_type:lower() == "release" and get_config("mode") == "releasedbg")
                 and (info.is_lto == has_config("release")) then
-                    package:add("urls", format("https://github.com/clice-io/llvm-binary/releases/download/%s/%s", info.version, info.filename))
+                    package:add("urls", format("https://github.com/clice-io/clice-llvm/releases/download/%s/%s", info.version, info.filename))
                     package:add("versions", info.version, info.sha256)
                 end
             end

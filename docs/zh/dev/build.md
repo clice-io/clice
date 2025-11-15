@@ -45,14 +45,14 @@ clice 使用 C++23 作为语言标准 ，请确保有可用的 clang 19 以及�
 
 # Linux precompiled binary require glibc 2.35 (build on ubuntu 22.04)
 $ mkdir -p ./.llvm
-$ curl -L "https://github.com/clice-io/llvm-binary/releases/download/20.1.5/x86_64-linux-gnu-release.tar.xz" | tar -xJ -C ./.llvm
+$ curl -L "https://github.com/clice-io/clice-llvm/releases/download/20.1.5/x86_64-linux-gnu-release.tar.xz" | tar -xJ -C ./.llvm
 
 # MacOS precompiled binary require macos15+
 $ mkdir -p ./.llvm
-$ curl -L "https://github.com/clice-io/llvm-binary/releases/download/20.1.5/arm64-macosx-apple-release.tar.xz" | tar -xJ -C ./.llvm
+$ curl -L "https://github.com/clice-io/clice-llvm/releases/download/20.1.5/arm64-macosx-apple-release.tar.xz" | tar -xJ -C ./.llvm
 
 # Windows precompiled binary only MD runtime support
-$ curl -O -L "https://github.com/clice-io/llvm-binary/releases/download/20.1.5/x64-windows-msvc-release.7z"
+$ curl -O -L "https://github.com/clice-io/clice-llvm/releases/download/20.1.5/x64-windows-msvc-release.7z"
 $ 7z x x64-windows-msvc-release.7z "-o.llvm"
 ```
 
