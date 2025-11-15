@@ -70,7 +70,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang
+            xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang -p windows
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang-20
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
