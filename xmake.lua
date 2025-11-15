@@ -194,6 +194,14 @@ rule("clice_clang_tidy_config")
         })
     end)
 
+    before_build(function (target)
+        local dest = path.join(target:autogendir(), "rules/clice_clang_tidy_config/clang-tidy-config.h")
+        if not os.exists(dest) then
+            local src = path.join(os.projectdir(), "config/clang-tidy-config.h")
+            os.vcp(src, dest)
+        end
+    end)
+
 rule("clice_build_config")
     on_load(function (target)
         target:add("cxflags", "-fno-rtti", {tools = {"clang", "clangxx", "gcc", "gxx"}})
