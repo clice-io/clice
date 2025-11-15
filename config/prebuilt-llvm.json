@@ -5,7 +5,7 @@
 		"is_lto": false,
 		"filename": "x64-windows-msvc-releasedbg.7z",
 		"version": "21.1.4",
-		"sha256": "841aab279cae175b18992b50104166e9f5f3735162907accd9217ebb26d1ecaf"
+		"sha256": "9d0dd1158a4459347ca9797c1fddca1010626fb65ee897e65784cf5d87cc3ad4"
 	},
 	{
 		"platform": "Windows",
@@ -13,7 +13,7 @@
 		"is_lto": true,
 		"filename": "x64-windows-msvc-release-lto.7z",
 		"version": "21.1.4",
-		"sha256": "d39c8975638ac34dfd514286d5535872f18dcad98351cc72b941337d6daa7ca0"
+		"sha256": "864a19be9bd296ba3f3703eafb03d55e302f2d2d5fa091c89c685a0ccf78855c"
 	},
 	{
 		"platform": "Linux",
@@ -21,7 +21,7 @@
 		"is_lto": false,
 		"filename": "x86_64-linux-gnu-debug.tar.xz",
 		"version": "21.1.4",
-		"sha256": "4aaa9ad0f389386d5ba78480185e787f8b643f880e07df854da26367fcd1cccc"
+		"sha256": "d731f94491d683d87345add5879d381e0cb7f8d183c2bc648a8854d72e1bc7a9"
 	},
 	{
 		"platform": "Linux",
@@ -29,7 +29,7 @@
 		"is_lto": false,
 		"filename": "x86_64-linux-gnu-releasedbg.tar.xz",
 		"version": "21.1.4",
-		"sha256": "f2cd5c0482e18e0593a8309f630cd261e1d8e19f0b37680b3b6b94292f3f502c"
+		"sha256": "9ec0e759fad949a6d9122b6d83898096fcc12a5a90b9ac0a4f77c964ab853c0e"
 	},
 	{
 		"platform": "Linux",
@@ -37,7 +37,7 @@
 		"is_lto": true,
 		"filename": "x86_64-linux-gnu-release-lto.tar.xz",
 		"version": "21.1.4",
-		"sha256": "902d0fbdebcd022914106a5ae1af05d16177f41c8de34b0701eac070d5e0b364"
+		"sha256": "e1950f91f3bc5ff6accaca2995c9eef3be39942baed05faff642b3dd5bc98b57"
 	},
 	{
 		"platform": "macosx",
@@ -45,7 +45,7 @@
 		"is_lto": false,
 		"filename": "arm64-macosx-apple-debug.tar.xz",
 		"version": "21.1.4",
-		"sha256": "ae5509d8d1cfc7441c34f6ee4fcac6eb31aae30d8b54a8f9ba3e9948a22fbc8e"
+		"sha256": "cf43bd7e56e3869251bbfd43abdb437dbe139f5d44a02b77b5458d2a2e23a862"
 	},
 	{
 		"platform": "macosx",
@@ -53,14 +53,14 @@
 		"is_lto": false,
 		"filename": "arm64-macosx-apple-releasedbg.tar.xz",
 		"version": "21.1.4",
-		"sha256": "993cc2000b3ce008f47e8dd2fc0f4679149d9696dbe197ebc8ed1f3f7306b54b"
+		"sha256": "21b796e7143b7780285e916d7bad9b8ba9f762a183c97adca9078eaff67b5945"
 	},
 	{
 		"platform": "macosx",
 		"build_type": "Release",
 		"is_lto": true,
 		"filename": "arm64-macosx-apple-release-lto.tar.xz",
-		"version": "20.1.5",
-		"sha256": "57a58adcc0a033acd66dbf8ed1f6bcf4f334074149e37bf803fc6bf022d419d2"
+		"version": "21.1.4",
+		"sha256": "8ba5e9d7f87972f77002be92bbe1e40b6541ed67b017b29673851ebc50aa83f5"
 	}
 ]
