@@ -35,6 +35,12 @@ if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
     target_link_options(clice_options INTERFACE
         -fuse-ld=lld-link
+        -Wl,/OPT:REF
+    )
+elseif(APPLE)
+    target_link_options(clice_options INTERFACE
+        -fuse-ld=lld
+        -Wl,-dead_strip
     )
 else(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(clice_options INTERFACE

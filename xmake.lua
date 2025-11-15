@@ -16,7 +16,7 @@ if has_config("dev") then
         set_runtimes("MD")
         if is_mode("debug") then
             print("clice does not support build in debug mode with pre-compiled llvm binary on windows.\n"
-                .."See https://github.com/clice-io/clice/issues/42 for more information.")
+                .. "See https://github.com/clice-io/clice/issues/42 for more information.")
             os.raise()
         end
     elseif is_mode("debug") and is_plat("linux", "macosx") then
@@ -40,7 +40,7 @@ if has_config("release") then
 end
 
 add_defines("TOML_EXCEPTIONS=0")
-add_requires("spdlog", {system=false, version="1.15.3", configs = {header_only = false, std_format = true, noexcept = true}})
+add_requires("spdlog", {system = false, version = "1.15.3", configs = {header_only = false, std_format = true, noexcept = true}})
 add_requires(libuv_require, "toml++", "croaring", "flatbuffers")
 add_requires("clice-llvm", {alias = "llvm"})
 
@@ -105,14 +105,14 @@ target("clice-core")
                 "clangToolingInclusions",
                 "clangToolingInclusionsStdlib",
                 "clangToolingSyntax",
-        }})
-        on_config(function (target)
+            }
+        })
+        on_config(function(target)
             local llvm_dynlib_dir = path.join(target:pkg("llvm"):installdir(), "lib")
             target:add("rpathdirs", llvm_dynlib_dir)
         end)
     elseif is_mode("release", "releasedbg") then
         add_packages("llvm", {public = true})
-        add_ldflags("-Wl,--gc-sections")
     end
 
 target("clice")
@@ -121,12 +121,12 @@ target("clice")
 
     add_deps("clice-core")
 
-    on_config(function (target)
+    on_config(function(target)
         local llvm_dir = target:dep("clice-core"):pkg("llvm"):installdir()
         target:add("installfiles", path.join(llvm_dir, "lib/clang/(**)"), {prefixdir = "lib/clang"})
     end)
 
-    after_build(function (target)
+    after_build(function(target)
         local res_dir = path.join(target:targetdir(), "../lib/clang")
         if not os.exists(res_dir) then
             local llvm_dir = target:dep("clice-core"):pkg("llvm"):installdir()
@@ -144,7 +144,7 @@ target("unit_tests")
 
     add_tests("default")
 
-    after_load(function (target)
+    after_load(function(target)
         target:set("runargs",
             "--test-dir=" .. path.absolute("tests/data")
         )
@@ -159,7 +159,7 @@ target("integration_tests")
 
     add_tests("default")
 
-    on_test(function (target, opt)
+    on_test(function(target, opt)
         import("lib.detect.find_tool")
 
         local uv = assert(find_tool("uv"), "uv not found!")
@@ -176,7 +176,7 @@ target("integration_tests")
     end)
 
 rule("clice_clang_tidy_config")
-    on_load(function (target)
+    on_load(function(target)
         import("core.project.depend")
 
         local autogendir = path.join(target:autogendir(), "rules/clice_clang_tidy_config")
@@ -193,9 +193,9 @@ rule("clice_clang_tidy_config")
     end)
 
 rule("clice_build_config")
-    on_load(function (target)
+    on_load(function(target)
         target:set("exceptions", "no-cxx")
-        target:add("cxflags","-fno-rtti" ,"-Wno-undefined-inline", {tools = {"clang", "clangxx", "gcc", "gxx"}})
+        target:add("cxflags", "-fno-rtti", "-Wno-undefined-inline", {tools = {"clang", "clangxx", "gcc", "gxx"}})
         target:add("cxflags", "/GR-", "/Zc:preprocessor", {tools = {"clang_cl", "cl"}})
 
         if target:is_plat("windows") and not target:toolchain("msvc") then
@@ -207,8 +207,9 @@ rule("clice_build_config")
                 target:add("ldflags", "-fuse-ld=lld-link")
             end
         elseif target:is_plat("linux") then
-            -- gnu ld need to fix link order
-            target:add("ldflags", "-fuse-ld=lld")
+            target:add("ldflags", "-fuse-ld=lld", "-Wl,--gc-sections")
+        elseif target:is_plat("macosx") then
+            target:add("ldflags", "-fuse-ld=lld", "-Wl,-dead_strip")
         end
 
         if has_config("ci") then
@@ -219,7 +220,7 @@ rule("clice_build_config")
 rule("flatbuffers.schema.gen")
     set_extensions(".fbs")
 
-    on_prepare_files(function (target, jobgraph, sourcebatch, opt)
+    on_prepare_files(function(target, jobgraph, sourcebatch, opt)
         import("lib.detect.find_tool")
         import("core.project.depend")
         import("utils.progress")
@@ -236,7 +237,7 @@ rule("flatbuffers.schema.gen")
                 local generate_dir = path.normalize(path.join(autogendir, path.directory(sourcefile)))
                 target:add("includedirs", generate_dir, {public = true})
                 os.mkdir(generate_dir)
-                jobgraph:add(job, function (index, total, opt)
+                jobgraph:add(job, function(index, total, opt)
                     local argv = {
                         "--cpp",
                         "-o", generate_dir,
@@ -260,15 +261,16 @@ package("clice-llvm")
     if has_config("llvm") then
         set_sourcedir(get_config("llvm"))
     else
-        on_source(function (package)
+        on_source(function(package)
             import("core.base.json")
 
             local info = json.loadfile("./config/prebuilt-llvm.json")
             for _, info in ipairs(info) do
                 if info.platform:lower() == get_config("plat")
-                and (info.build_type:lower() == get_config("mode")
-                or info.build_type:lower() == "release" and get_config("mode") == "releasedbg")
-                and (info.is_lto == has_config("release")) then
+                    and (info.build_type:lower() == get_config("mode")
+                        or info.build_type:lower() == "release" and get_config("mode") == "releasedbg")
+                    and (info.is_lto == has_config("release"))
+                then
                     package:add("urls", format("https://github.com/clice-io/clice-llvm/releases/download/%s/%s", info.version, info.filename))
                     package:add("versions", info.version, info.sha256)
                 end
@@ -286,7 +288,7 @@ package("clice-llvm")
         add_syslinks("version", "ntdll")
     end
 
-    on_install(function (package)
+    on_install(function(package)
         if not package:config("shared") then
             package:add("defines", "CLANG_BUILD_STATIC")
         end
@@ -311,7 +313,7 @@ if has_config("release") then
         add_targets("clice")
         add_installfiles(path.join(os.projectdir(), "docs/clice.toml"))
 
-        on_load(function (package)
+        on_load(function(package)
             local llvm_dir = package:target("clice"):dep("clice-core"):pkg("llvm"):installdir()
             package:add("installfiles", path.join(llvm_dir, "lib/clang/(**)"), {prefixdir = "lib/clang"})
         end)
