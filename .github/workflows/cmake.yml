@@ -62,7 +62,7 @@ jobs:
           sudo ./llvm.sh 20 all
           sudo apt install -y cmake ninja-build
 
-      - name: Setup dependencies (macOS)
+      - name: Setup dependencies (MacOS)
         if: runner.os == 'macOS'
         run: |
           brew install llvm@20 lld@20
