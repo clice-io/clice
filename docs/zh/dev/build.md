@@ -24,8 +24,8 @@ clice 使用 C++23 作为语言标准 ，请确保有可用的 clang 20 以及�
 使用如下的命令构建 clice
 
 ```shell
-$ cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-$ cmake --build build
+cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake --build build
 ```
 
 可选的构建选项：
@@ -42,8 +42,8 @@ $ cmake --build build
 使用如下的命令即可构建 clice
 
 ```bash
-$ xmake f -c --mode=releasedbg --toolchain=clang
-$ xmake build --all
+xmake f -c --mode=releasedbg --toolchain=clang
+xmake build --all
 ```
 
 可选的构建选项：
@@ -71,13 +71,11 @@ $ xmake build --all
 >
 > 可以参考 CI 中的 [cmake](https://github.com/clice-io/clice/blob/main/.github/workflows/cmake.yml) 和 [xmake](https://github.com/clice-io/clice/blob/main/.github/workflows/xmake.yml) 文件作为参考，它们与预编译 llvm libs 的环境保持严格一致。
 
-2. 自己重新一个与当前环境一致的 llvm/clang
-
-如果默认的预编译二进制文件（方法 1）在你的系统上因 ABI 或库版本（如 glibc）不兼容而运行失败，或者你需要一个自定义的 Debug 版本，那么我们推荐你使用此方法从头编译 llvm libs。我们提供了一个脚本，用于构建 clice 所需要的 llvm libs：[build-llvm-libs.py](https://github.com/clice-io/clice/blob/main/scripts/build-llvm-libs.py)。
+2. 自己重新一个与当前环境一致的 llvm/clang。如果默认的预编译二进制文件（方法 1）在你的系统上因 ABI 或库版本（如 glibc）不兼容而运行失败，或者你需要一个自定义的 Debug 版本，那么我们推荐你使用此方法从头编译 llvm libs。我们提供了一个脚本，用于构建 clice 所需要的 llvm libs：[build-llvm-libs.py](https://github.com/clice-io/clice/blob/main/scripts/build-llvm-libs.py)。
 
 ```bash
-$ cd llvm-project
-$ python3 <clice>/scripts/build-llvm-libs.py debug
+cd llvm-project
+python3 <clice>/scripts/build-llvm-libs.py debug
 ```
 
 也可以参考 llvm 的官方构建教程 [Building LLVM with CMake](https://llvm.org/docs/CMake.html)。
