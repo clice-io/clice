@@ -50,7 +50,7 @@ jobs:
       - name: Setup dependencies (MacOS)
         if: runner.os == 'macOS'
         run: |
-          brew install llvm@20
+          brew install llvm@20 lld@20
 
       - name: Checkout repository
         uses: actions/checkout@v4
