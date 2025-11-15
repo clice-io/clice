@@ -42,7 +42,7 @@ elseif(APPLE)
         -fuse-ld=lld
         -Wl,-dead_strip
     )
-else(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(clice_options INTERFACE
         -fuse-ld=lld
         -Wl,--gc-sections
