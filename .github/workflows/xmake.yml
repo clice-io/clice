@@ -25,6 +25,7 @@ jobs:
     strategy:
       matrix:
         os: [windows-2025]
+        build_type: [releasedbg]
 
     runs-on: ${{ matrix.os }}
 
@@ -45,7 +46,7 @@ jobs:
 
       - name: Xmake configure
         run: |
-          xmake config --yes --ci=y --toolchain=clang
+          xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang
 
       - name: Build clice
         run: |
@@ -61,7 +62,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-24.04]
-        build_type: [release, debug]
+        build_type: [debug, releasedbg]
 
     runs-on: ${{ matrix.os }}
 
