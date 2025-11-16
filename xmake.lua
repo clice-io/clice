@@ -116,13 +116,15 @@ target("clice-core")
     end
 
 target("clice")
-    if has_config("release") then
-        set_strip("all")
-    end
-
     set_kind("binary")
     add_files("bin/clice.cc")
     add_deps("clice-core")
+
+    -- workaround
+    -- @see https://github.com/xmake-io/xmake/issues/7029
+    if is_plat("macosx") then
+        set_toolset("dsymutil", "dsymutil")
+    end
 
     on_config(function(target)
         local llvm_dir = target:dep("clice-core"):pkg("llvm"):installdir()
