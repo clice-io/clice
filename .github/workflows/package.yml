@@ -26,7 +26,7 @@ jobs:
             symbol_asset_name: clice-x64-windows-msvc-symbol.zip
             toolchain: clang-cl
 
-          - os: ubuntu-24.04
+          - os: ubuntu-22.04
             artifact_name: clice.tar.gz
             asset_name: clice-x86_64-linux-gnu.tar.gz
             symbol_artifact_name: clice-symbol.tar.gz

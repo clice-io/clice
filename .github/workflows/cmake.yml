@@ -29,7 +29,7 @@ jobs:
             build_type: RelWithDebInfo
             cc: clang
             cxx: clang++
-          - os: ubuntu-24.04
+          - os: ubuntu-22.04
             build_type: Debug
             cc: clang-20
             cxx: clang++-20
