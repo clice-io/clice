@@ -222,7 +222,7 @@ rule("clice_build_config")
         elseif target:is_plat("linux") then
             target:add("ldflags", "-fuse-ld=lld", "-Wl,--gc-sections")
         elseif target:is_plat("macosx") then
-            target:add("ldflags", "-fuse-ld=lld", "-Wl,-dead_strip")
+            target:add("ldflags", "-fuse-ld=lld", "-Wl,-dead_strip,-object_path_lto,clice.lto.o")
         end
 
         if has_config("ci") then
