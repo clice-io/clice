@@ -42,6 +42,7 @@ jobs:
         uses: jlumbroso/free-disk-space@main
 
       - name: Increase swap file size (Linux)
+        if: runner.os == 'Linux'
         run: |
           echo "===== Initial Status ====="
           sudo swapon --show
