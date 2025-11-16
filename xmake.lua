@@ -308,13 +308,7 @@ package("clice-llvm")
 
 if has_config("release") then
     xpack("clice")
-        if is_plat("windows") then
-            set_formats("zip")
-            set_extension(".7z")
-        else
-            set_formats("targz")
-            set_extension(".tar.xz")
-        end
+        set_formats("zip")
 
         set_prefixdir("clice")
 

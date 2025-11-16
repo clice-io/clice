@@ -37,7 +37,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Setup dependencies (Linux)
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+
+      - name: Setup dependencies and increase swap size(Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt remove -y llvm-16-linker-tools llvm-16 llvm-17-linker-tools llvm-17 llvm-18-linker-tools llvm-18 || true
@@ -52,6 +55,22 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20 all
+
+          echo "===== Initial Status ====="
+          sudo swapon --show
+          free -h
+
+          echo "===== Creating Swap File ====="
+          sudo swapoff -a
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+
+          echo "===== Final Status ====="
+          sudo swapon --show
+          free -h
+          df -h
 
       - name: Setup dependencies (macOS)
         if: runner.os == 'macOS'
