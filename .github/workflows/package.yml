@@ -98,12 +98,12 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            xmake config --yes --enable_test=n --dev=n --release=y --toolchain=${{ matrix.toolchain }} -p windows
+            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }} -p windows
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            xmake config --yes --enable_test=n --dev=n --release=y --toolchain=${{ matrix.toolchain }}
+            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }}
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
             export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
-            xmake config --yes --enable_test=n --dev=n --release=y --toolchain=${{ matrix.toolchain }} --sdk=/opt/homebrew/opt/llvm@20
+            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }} --sdk=/opt/homebrew/opt/llvm@20
           fi
 
           xmake pack -v
