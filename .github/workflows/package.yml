@@ -27,17 +27,17 @@ jobs:
             toolchain: clang-cl
 
           - os: ubuntu-24.04
-            artifact_name: clice.tar.xz
-            asset_name: clice-x86_64-linux-gnu.tar.xz
-            symbol_artifact_name: clice-symbol.tar.xz
-            symbol_assert_name: clice-x86_64-linux-gnu-symbol.tar.xz
+            artifact_name: clice.tar.gz
+            asset_name: clice-x86_64-linux-gnu.tar.gz
+            symbol_artifact_name: clice-symbol.tar.gz
+            symbol_assert_name: clice-x86_64-linux-gnu-symbol.tar.gz
             toolchain: clang-20
 
           - os: macos-15
-            artifact_name: clice.tar.xz
-            asset_name: clice-arm64-macos-darwin.tar.xz
-            symbol_artifact_name: clice-symbol.tar.xz
-            symbol_assert_name: clice-arm64-macos-darwin-symbol.tar.xz
+            artifact_name: clice.tar.gz
+            asset_name: clice-arm64-macos-darwin.tar.gz
+            symbol_artifact_name: clice-symbol.tar.gz
+            symbol_assert_name: clice-arm64-macos-darwin-symbol.tar.gz
             toolchain: clang
 
     runs-on: ${{ matrix.os }}
