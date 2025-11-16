@@ -64,6 +64,8 @@ jobs:
 
       - name: Setup dependencies (MacOS)
         if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
         run: |
           brew install llvm@20 lld@20
 

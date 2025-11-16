@@ -318,6 +318,7 @@ if has_config("release") then
 
         set_prefixdir("clice")
 
+        set_strip("all")
         add_targets("clice")
         -- add_installfiles(path.join(os.projectdir(), "docs/clice.toml"))
 
