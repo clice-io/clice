@@ -23,21 +23,21 @@ jobs:
             artifact_name: clice.zip
             asset_name: clice-x64-windows-msvc.zip
             symbol_artifact_name: clice-symbol.zip
-            symbol_assert_name: clice-x64-windows-msvc-symbol.zip
+            symbol_asset_name: clice-x64-windows-msvc-symbol.zip
             toolchain: clang-cl
 
           - os: ubuntu-24.04
             artifact_name: clice.tar.gz
             asset_name: clice-x86_64-linux-gnu.tar.gz
             symbol_artifact_name: clice-symbol.tar.gz
-            symbol_assert_name: clice-x86_64-linux-gnu-symbol.tar.gz
+            symbol_asset_name: clice-x86_64-linux-gnu-symbol.tar.gz
             toolchain: clang-20
 
           - os: macos-15
             artifact_name: clice.tar.gz
             asset_name: clice-arm64-macos-darwin.tar.gz
             symbol_artifact_name: clice-symbol.tar.gz
-            symbol_assert_name: clice-arm64-macos-darwin-symbol.tar.gz
+            symbol_asset_name: clice-arm64-macos-darwin-symbol.tar.gz
             toolchain: clang
 
     runs-on: ${{ matrix.os }}
@@ -132,6 +132,6 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/xpack/clice/${{ matrix.symbol_artifact_name }}
-          asset_name: ${{ matrix.symbol_assert_name }}
+          asset_name: ${{ matrix.symbol_asset_name }}
           tag: ${{ github.ref }}
           overwrite: true
