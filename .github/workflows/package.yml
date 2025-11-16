@@ -106,7 +106,7 @@ jobs:
             xmake config --yes --enable_test=n --dev=n --release=y --toolchain=${{ matrix.toolchain }} --sdk=/opt/homebrew/opt/llvm@20
           fi
 
-          xmake pack
+          xmake pack -v
 
       - name: Upload binaries to release
         if: github.event_name == 'push'
