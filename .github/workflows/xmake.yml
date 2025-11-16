@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2025, ubuntu-22.04, macos-15]
+        os: [windows-2025, ubuntu-24.04, macos-15]
         build_type: [debug, releasedbg]
         exclude:
           - os: windows-2025
