@@ -6,8 +6,8 @@
 #include <optional>
 #include <coroutine>
 #include <source_location>
-
-#include "Support/Format.h"
+#include <memory>
+#include <print>
 
 namespace clice::async {
 
@@ -18,15 +18,12 @@ struct promise_base {
     enum Flags : uint8_t {
         Empty = 0,
 
-        /// The task is cancelled.
-        Cancelled = 1,
-
         /// The coroutine handle will be destroyed when the task is done or cancelled.
-        Disposable = 1 << 1,
+        Disposable = 1,
 
         /// The coroutine is done or is cancelled and resumed, means it will never
         /// scheduled again.
-        Finished = 1 << 2,
+        Finished = 1 << 1,
     };
 
     uint8_t flags;
@@ -37,7 +34,11 @@ struct promise_base {
     /// If this is a top-level coroutine, it is empty.
     promise_base* continuation = nullptr;
 
-    promise_base* next = nullptr;
+    /// Pointer to the shared cancellation flag.
+    /// All coroutines in the same chain share the same cancellation flag.
+    /// This allows O(1) cancellation without traversing the entire chain.
+    bool* cancelled_flag = nullptr;
+    std::shared_ptr<bool> cancellation_token;
 
     std::source_location location;
 
@@ -45,6 +46,8 @@ struct promise_base {
     void set(std::coroutine_handle<Promise> handle) {
         flags = Empty;
         data = handle.address();
+        cancellation_token = std::make_shared<bool>(false);
+        cancelled_flag = cancellation_token.get();
     }
 
     auto handle() const noexcept {
@@ -62,15 +65,11 @@ struct promise_base {
     }
 
     void cancel() {
-        auto p = this;
-        while(p) {
-            p->flags |= Flags::Cancelled;
-            p = p->next;
-        }
+        *cancelled_flag = true;
     }
 
     bool cancelled() const noexcept {
-        return flags & Flags::Cancelled;
+        return *cancelled_flag;
     }
 
     void dispose() {
@@ -93,7 +92,7 @@ struct promise_base {
         if(cancelled()) {
             /// If the task is cancelled and disposable, destroy the coroutine handle.
             auto p = this;
-            while(p && p->cancelled()) {
+            while(p) {
                 auto con = p->continuation;
 
                 if(p->disposable()) {
@@ -134,7 +133,6 @@ struct final {
         /// In the final suspend point, this coroutine is already done.
         /// So try to resume the waiting coroutine if it exists.
         if(continuation) {
-            continuation->next = nullptr;
             handle = continuation->resume_handle();
         }
 
@@ -167,7 +165,11 @@ struct task {
         /// It will be scheduled in the final suspend point.
         assert(!handle.promise().continuation && "await_suspend: already waiting");
         handle.promise().continuation = &waiting.promise();
-        waiting.promise().next = &handle.promise();
+
+        /// Share the cancellation flag with the child task.
+        /// This allows O(1) cancellation propagation.
+        handle.promise().cancellation_token = waiting.promise().cancellation_token;
+        handle.promise().cancelled_flag = handle.promise().cancellation_token.get();
 
         /// If this `Task` is awaited from another coroutine, we should schedule
         /// the this task first.
@@ -198,8 +200,8 @@ public:
         }
     };
 
-    // WORKAROUND: GCC bug - full specialization in non-namespace scope not supported
-    // see: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85282
+    /// WORKAROUND: GCC bug - full specialization in non-namespace scope not supported
+    /// see: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85282
     template <std::same_as<void> V>
     struct promise_result<V> {
         void return_void() noexcept {}
@@ -209,7 +211,7 @@ public:
         promise_type(std::source_location location = std::source_location::current()) {
             set(handle());
             this->location = location;
-        };
+        }
 
         auto get_return_object() {
             return Task<T>(handle());
