@@ -1,0 +1,137 @@
+name: package
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - "v*"
+
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/package.yml"
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            artifact_name: clice.zip
+            asset_name: clice-x64-windows-msvc.zip
+            symbol_artifact_name: clice-symbol.zip
+            symbol_asset_name: clice-x64-windows-msvc-symbol.zip
+            toolchain: clang-cl
+
+          - os: ubuntu-24.04
+            artifact_name: clice.tar.gz
+            asset_name: clice-x86_64-linux-gnu.tar.gz
+            symbol_artifact_name: clice-symbol.tar.gz
+            symbol_asset_name: clice-x86_64-linux-gnu-symbol.tar.gz
+            toolchain: clang-20
+
+          - os: macos-15
+            artifact_name: clice.tar.gz
+            asset_name: clice-arm64-macos-darwin.tar.gz
+            symbol_artifact_name: clice-symbol.tar.gz
+            symbol_asset_name: clice-arm64-macos-darwin-symbol.tar.gz
+            toolchain: clang
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Free disk space (Linux)
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@main
+
+      - name: Increase swap file size (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          echo "===== Initial Status ====="
+          sudo swapon --show
+          free -h
+
+          echo "===== Creating Swap File ====="
+          sudo swapoff -a
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+
+          echo "===== Final Status ====="
+          sudo swapon --show
+          free -h
+          df -h
+
+      - name: Setup dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-14 g++-14 libstdc++-14-dev cmake ninja-build
+
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+          sudo update-alternatives --set gcc /usr/bin/gcc-14
+          sudo update-alternatives --set g++ /usr/bin/g++-14
+
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20 all
+
+      - name: Setup dependencies (MacOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+        run: |
+          brew install llvm@20 lld@20
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: 3.0.4
+          actions-cache-folder: ".xmake-cache"
+          actions-cache-key: ${{ matrix.os }}
+          package-cache: true
+          package-cache-key: ${{ matrix.os }}-pkg-release-v1
+          build-cache: true
+          build-cache-key: ${{ matrix.os }}-build-release-v1
+
+      - name: Configure and Package
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }} -p windows
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }}
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
+            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }} --sdk=/opt/homebrew/opt/llvm@20
+          fi
+
+          xmake pack -v
+
+      - name: Upload Main Package to Release
+        if: github.event_name == 'push'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/xpack/clice/${{ matrix.artifact_name }}
+          asset_name: ${{ matrix.asset_name }}
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload Symbol Package to Release
+        if: github.event_name == 'push'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/xpack/clice/${{ matrix.symbol_artifact_name }}
+          asset_name: ${{ matrix.symbol_asset_name }}
+          tag: ${{ github.ref }}
+          overwrite: true

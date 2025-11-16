@@ -118,8 +118,13 @@ target("clice-core")
 target("clice")
     set_kind("binary")
     add_files("bin/clice.cc")
-
     add_deps("clice-core")
+
+    -- workaround
+    -- @see https://github.com/xmake-io/xmake/issues/7029
+    if is_plat("macosx") then
+        set_toolset("dsymutil", "dsymutil")
+    end
 
     on_config(function(target)
         local llvm_dir = target:dep("clice-core"):pkg("llvm"):installdir()
@@ -215,9 +220,9 @@ rule("clice_build_config")
                 target:add("ldflags", "-fuse-ld=lld-link")
             end
         elseif target:is_plat("linux") then
-            target:add("ldflags", "-fuse-ld=lld", "-Wl,--gc-sections")
+            target:add("ldflags", "-fuse-ld=lld", "-static-libstdc++", "-Wl,--gc-sections")
         elseif target:is_plat("macosx") then
-            target:add("ldflags", "-fuse-ld=lld", "-Wl,-dead_strip")
+            target:add("ldflags", "-fuse-ld=lld", "-static-libc++", "-Wl,-dead_strip,-object_path_lto,clice.lto.o")
         end
 
         if has_config("ci") then
@@ -310,19 +315,44 @@ if has_config("release") then
     xpack("clice")
         if is_plat("windows") then
             set_formats("zip")
-            set_extension(".7z")
+            set_extension(".zip")
         else
             set_formats("targz")
-            set_extension(".tar.xz")
+            set_extension(".tar.gz")
         end
 
         set_prefixdir("clice")
 
         add_targets("clice")
-        add_installfiles(path.join(os.projectdir(), "docs/clice.toml"))
+        -- add_installfiles(path.join(os.projectdir(), "docs/clice.toml"))
 
-        on_load(function(package)
-            local llvm_dir = package:target("clice"):dep("clice-core"):pkg("llvm"):installdir()
-            package:add("installfiles", path.join(llvm_dir, "lib/clang/(**)"), {prefixdir = "lib/clang"})
+        on_package(function (package)
+            import("utils.archive")
+
+            local build_dir = path.absolute(package:install_rootdir())
+            os.tryrm(build_dir)
+            os.mkdir(build_dir)
+
+            local function clice_archive(output_file)
+                local old_dir = os.cd(build_dir)
+                local archive_files = os.files("**")
+                os.cd(old_dir)
+                os.tryrm(output_file)
+                cprint("packing %s .. ", output_file)
+                archive.archive(path.absolute(output_file), archive_files, {curdir = build_dir, compress = "best"})
+            end
+
+            local target = package:target("clice")
+            os.vcp(target:symbolfile(), build_dir)
+            clice_archive(path.join(package:outputdir(), "clice-symbol" .. package:extension()))
+
+            os.tryrm(build_dir)
+            os.mkdir(path.join(build_dir, "bin"))
+            os.vcp(target:targetfile(), path.join(build_dir, "bin"))
+            os.vcp(path.join(os.projectdir(), "docs/clice.toml"), build_dir)
+
+            local llvm_dir = target:dep("clice-core"):pkg("llvm"):installdir()
+            os.vcp(path.join(llvm_dir, "lib/clang"), path.join(build_dir, "lib/clang"))
+            clice_archive(path.join(package:outputdir(), "clice" .. package:extension()))
         end)
 end

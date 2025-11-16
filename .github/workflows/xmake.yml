@@ -49,6 +49,8 @@ jobs:
 
       - name: Setup dependencies (MacOS)
         if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
         run: |
           brew install llvm@20 lld@20
 
@@ -66,7 +68,7 @@ jobs:
           build-cache: true
           build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
 
-      - name: XMake configure
+      - name: Build clice
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
@@ -74,11 +76,10 @@ jobs:
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang-20
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
             xmake config --yes --ci=y --mode=${{ matrix.build_type }} --toolchain=clang --sdk=/opt/homebrew/opt/llvm@20
           fi
 
-      - name: Build clice
-        run: |
           xmake build --verbose --diagnosis --all
 
       - name: Install uv for integration tests
