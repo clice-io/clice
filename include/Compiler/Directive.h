@@ -127,6 +127,37 @@ struct Import {
     std::vector<clang::SourceLocation> name_locations;
 };
 
+struct Embed {
+    /// The file name in the embed directive, not including quotes or angle brackets.
+    llvm::StringRef file_name;
+
+    /// The actual file that may be embedded by this embed directive.
+    clang::OptionalFileEntryRef file;
+
+    /// Whether the file name is angled.
+    bool is_angled;
+
+    /// Location of the `#` token.
+    clang::SourceLocation loc;
+
+    /// TODO: Currently we do not store parameters of the embed directive.
+    /// See clang::LexEmbedParametersResult for details.
+};
+
+struct HasEmbed {
+    /// The file name in the embed directive, not including quotes or angle brackets.
+    llvm::StringRef file_name;
+
+    /// The actual file that may be embedded by this embed directive.
+    clang::OptionalFileEntryRef file;
+
+    /// Whether the file name is angled.
+    bool is_angled;
+
+    /// Location of the `__has_embed` token.
+    clang::SourceLocation loc;
+};
+
 struct Directive {
     std::vector<Include> includes;
     std::vector<HasInclude> has_includes;
@@ -134,6 +165,8 @@ struct Directive {
     std::vector<MacroRef> macros;
     std::vector<Pragma> pragmas;
     std::vector<Import> imports;
+    std::vector<Embed> embeds;
+    std::vector<HasEmbed> has_embeds;
 
     /// Tell preprocessor to collect directives information and store them in `directives`.
     static void attach(clang::Preprocessor& pp,

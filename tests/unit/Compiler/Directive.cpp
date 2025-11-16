@@ -11,6 +11,8 @@ suite<"Directive"> directive = [] {
     std::vector<Condition> conditions;
     std::vector<MacroRef> macros;
     std::vector<Pragma> pragmas;
+    std::vector<Embed> embeds;
+    std::vector<HasEmbed> has_embeds;
 
     using u32 = std::uint32_t;
 
@@ -24,6 +26,8 @@ suite<"Directive"> directive = [] {
         conditions = tester.unit->directives()[fid].conditions;
         macros = tester.unit->directives()[fid].macros;
         pragmas = tester.unit->directives()[fid].pragmas;
+        embeds = tester.unit->directives()[fid].embeds;
+        has_embeds = tester.unit->directives()[fid].has_embeds;
     };
 
     auto expect_include = [&](u32 index, llvm::StringRef position, llvm::StringRef path) {
@@ -50,6 +54,25 @@ suite<"Directive"> directive = [] {
 
         expect(that % target == path);
     };
+
+    auto expect_embed = [&](u32 index, llvm::StringRef position, llvm::StringRef filename) {
+        auto& embed = embeds[index];
+        auto [_, offset] = tester.unit->decompose_location(embed.loc);
+        expect(that % offset == tester.point(position));
+
+        expect(that % embed.file.has_value());
+        expect(that % embed.file_name == filename);
+    };
+
+    auto expect_has_embed =
+        [&](u32 index, llvm::StringRef position, llvm::StringRef filename, bool exists = true) {
+            auto& has_embed = has_embeds[index];
+            auto [_, offset] = tester.unit->decompose_location(has_embed.loc);
+            expect(that % offset == tester.point(position));
+
+            expect(that % has_embed.file.has_value() == exists);
+            expect(that % has_embed.file_name == filename);
+        };
 
     auto expect_con = [&](u32 index, Condition::BranchKind kind, llvm::StringRef pos) {
         auto& condition = conditions[index];
@@ -124,6 +147,65 @@ suite<"Directive"> directive = [] {
         expect_has_inl(1, "1", "");
     };
 
+    test("Embed") = [&] {
+        run(R"cpp(
+#[bytes10.bin]
+0123456789
+
+#[bytes5.bin]
+ABCDE
+
+#[main.cpp]
+const char e0 = {
+$(0)#embed "bytes10.bin"
+};
+
+const char e1 = {
+$(1)#embed "bytes10.bin"
+};
+
+const char e2 = {
+$(2)#embed "bytes5.bin"
+};
+
+const char e3 = {
+$(3)#embed "bytes5.bin"
+};
+
+const char e4 = {
+$(4)#embed "non-existed.bin"
+};
+
+)cpp");
+
+        // e4 will not be processed by clang::PPCallbacks::EmbedDirective(), so there is only 4
+        // embeds.
+        expect(that % embeds.size() == 4);
+        expect_embed(0, "0", "bytes10.bin");
+        expect_embed(1, "1", "bytes10.bin");
+        expect_embed(2, "2", "bytes5.bin");
+        expect_embed(3, "3", "bytes5.bin");
+    };
+
+    test("HasEmbed") = [&] {
+        run(R"cpp(
+#[test.bin]
+
+#[main.cpp]
+#embed "test.bin"
+
+#if __has_embed$(0)("test.bin")
+#endif
+
+#if __has_embed$(1)("non-existed.bin")
+#endif
+)cpp");
+
+        expect(that % has_embeds.size() == 2);
+        expect_has_embed(0, "0", "test.bin");
+        expect_has_embed(1, "1", "non-existed.bin", /*exists=*/false);
+    };
+
     test("Condition") = [&] {
         run(R"cpp(
 #[main.cpp]
@@ -196,7 +278,6 @@ $(2)#pragma endregion
         expect_pragma(2, Pragma::Kind::EndRegion, "2", "#pragma endregion");
     };
 };
-
 }  // namespace
 
 }  // namespace clice::testing
