@@ -309,6 +309,7 @@ package("clice-llvm")
 if has_config("release") then
     xpack("clice")
         set_formats("zip")
+        set_extension(".zip")
 
         set_prefixdir("clice")
 

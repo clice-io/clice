@@ -37,25 +37,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Free Disk Space
+      - name: Free disk space (Linux)
+        if: runner.os == 'Linux'
         uses: jlumbroso/free-disk-space@main
 
-      - name: Setup dependencies and increase swap size(Linux)
-        if: runner.os == 'Linux'
+      - name: Increase swap file size (Linux)
         run: |
-          sudo apt remove -y llvm-16-linker-tools llvm-16 llvm-17-linker-tools llvm-17 llvm-18-linker-tools llvm-18 || true
-          sudo apt update
-          sudo apt install -y gcc-14 g++-14 libstdc++-14-dev cmake ninja-build
-
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
-          sudo update-alternatives --set gcc /usr/bin/gcc-14
-          sudo update-alternatives --set g++ /usr/bin/g++-14
-
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 20 all
-
           echo "===== Initial Status ====="
           sudo swapon --show
           free -h
@@ -72,7 +59,22 @@ jobs:
           free -h
           df -h
 
-      - name: Setup dependencies (macOS)
+      - name: Setup dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-14 g++-14 libstdc++-14-dev cmake ninja-build
+
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+          sudo update-alternatives --set gcc /usr/bin/gcc-14
+          sudo update-alternatives --set g++ /usr/bin/g++-14
+
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20 all
+
+      - name: Setup dependencies (MacOS)
         if: runner.os == 'macOS'
         run: |
           brew install llvm@20 lld@20
