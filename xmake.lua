@@ -116,9 +116,12 @@ target("clice-core")
     end
 
 target("clice")
+    if has_config("release") then
+        set_strip("all")
+    end
+
     set_kind("binary")
     add_files("bin/clice.cc")
-
     add_deps("clice-core")
 
     on_config(function(target)
@@ -318,7 +321,6 @@ if has_config("release") then
 
         set_prefixdir("clice")
 
-        set_strip("all")
         add_targets("clice")
         -- add_installfiles(path.join(os.projectdir(), "docs/clice.toml"))
 
