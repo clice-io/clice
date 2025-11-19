@@ -27,8 +27,12 @@ include("${PROJECT_SOURCE_DIR}/cmake/package.cmake")
 
 add_library(clice_options INTERFACE)
 
+if(CLICE_ENABLE_TEST)
+    target_compile_definitions(clice_options INTERFACE CLICE_ENABLE_TEST=1)
+endif()
+
 if(CLICE_CI_ENVIRONMENT)
-    target_compile_definitions(clice_options INTERFACE CLICE_CI_ENVIRONMENT)
+    target_compile_definitions(clice_options INTERFACE CLICE_CI_ENVIRONMENT=1)
 endif()
 
 if(WIN32)

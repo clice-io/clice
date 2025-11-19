@@ -7,7 +7,7 @@
 #include "Convert.h"
 
 #include "Async/Async.h"
-#include "Compiler/Command.h"
+#include "Compiler/CompilationDatabase.h"
 #include "Index/MergedIndex.h"
 #include "Index/ProjectIndex.h"
 #include "Protocol/Protocol.h"

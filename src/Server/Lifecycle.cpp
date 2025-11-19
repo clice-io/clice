@@ -36,7 +36,9 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
     opening_files.set_capability(config.project.max_active_file);
 
     /// Load compile commands.json
-    database.load_compile_database(config.project.compile_commands_dirs, workspace);
+    for(auto& dir: config.project.compile_commands_dirs) {
+        database.load_compile_database(path::join(dir, "compile_commands.json"));
+    }
 
     /// Load cache info.
     load_cache_info();

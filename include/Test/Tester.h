@@ -3,7 +3,7 @@
 #include "Test.h"
 #include "Annotation.h"
 #include "Protocol/Protocol.h"
-#include "Compiler/Command.h"
+#include "Compiler/CompilationDatabase.h"
 #include "Compiler/Compilation.h"
 
 namespace clice::testing {
@@ -34,7 +34,7 @@ struct Tester {
     void prepare(llvm::StringRef standard = "-std=c++20") {
         auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
 
-        database.update_command("fake", src_path, command);
+        database.add_command("fake", src_path, command);
         params.kind = CompilationUnit::Content;
 
         CommandOptions options;
@@ -70,7 +70,7 @@ struct Tester {
         params.diagnostics = std::make_shared<std::vector<Diagnostic>>();
         auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
 
-        database.update_command("fake", src_path, command);
+        database.add_command("fake", src_path, command);
         params.kind = CompilationUnit::Preamble;
 
         CommandOptions options;

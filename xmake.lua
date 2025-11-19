@@ -226,7 +226,11 @@ rule("clice_build_config")
         end
 
         if has_config("ci") then
-            target:add("cxxflags", "-DCLICE_CI_ENVIRONMENT")
+            target:add("cxxflags", "-DCLICE_CI_ENVIRONMEN=1")
+        end
+
+        if has_config("enable_test") then
+            target:add("cxxflags", "-DCLICE_ENABLE_TEST=1")
         end
     end)
 

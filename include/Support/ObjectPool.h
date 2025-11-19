@@ -204,6 +204,17 @@ struct DenseMapInfo<clice::object_ptr<T>> {
     }
 
     inline static bool isEqual(O lhs, O rhs) {
+        if(lhs == rhs) {
+            return true;
+        };
+
+        const O Empty = getEmptyKey();
+        const O Tombstone = getTombstoneKey();
+
+        if(lhs == Empty || rhs == Empty || lhs == Tombstone || rhs == Tombstone) {
+            return false;
+        }
+
         return DenseMapInfo<U>::isEqual(*lhs, *rhs);
     }
 };

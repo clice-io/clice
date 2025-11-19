@@ -143,8 +143,10 @@ void Server::save_cache_info() {
 
 namespace {
 
-bool
-    check_pch_update(llvm::StringRef content, std::uint32_t bound, LookupInfo& info, PCHInfo& pch) {
+bool check_pch_update(llvm::StringRef content,
+                      std::uint32_t bound,
+                      CompilationContext& info,
+                      PCHInfo& pch) {
     if(content.substr(0, bound) != pch.preamble) {
         return true;
     }
@@ -168,7 +170,7 @@ bool
 }
 
 /// The actual PCH build task.
-async::Task<bool> build_pch_task(LookupInfo& info,
+async::Task<bool> build_pch_task(CompilationContext& info,
                                  std::string cache_dir,
                                  std::shared_ptr<OpenFile> open_file,
                                  std::string path,

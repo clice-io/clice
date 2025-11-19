@@ -45,7 +45,7 @@ struct DriverInfo {
     llvm::StringRef target;
 
     /// The default system includes of this driver.
-    llvm::ArrayRef<const char*> system_includes;
+    std::vector<const char*> system_includes;
 };
 
 struct UpdateInfo {
@@ -96,10 +96,6 @@ private:
     struct Impl;
 
 public:
-    /// Add a command to the compilation database. This function is mainly
-    ///  used in the unit tests.
-    void add_command(llvm::StringRef file, llvm::StringRef directory, llvm::StringRef command);
-
     /// Read the compilation database on the give file and return the
     /// incremental update infos.
     std::vector<UpdateInfo> load_compile_database(llvm::StringRef file);
@@ -109,8 +105,8 @@ public:
     /// to the handle. Otherwise we just return the first one(if the file have)
     /// multiple compilation contexts.
     CompilationContext lookup(llvm::StringRef file,
-                              const void* context = nullptr,
-                              const CommandOptions& options = {});
+                              const CommandOptions& options = {},
+                              const void* context = nullptr);
 
     /// TODO: list all compilation context of the file, this is useful to show
     /// all contexts and let user choose one.
@@ -119,36 +115,33 @@ public:
     /// Get an the option for specific argument.
     static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
 
+    /// FIXME: bad interface design ...
     std::vector<const char*> files();
 
+    /// FIXME: remove this api?
     auto save_string(llvm::StringRef string) -> llvm::StringRef;
 
+    /// FIXME: remove this
     /// Query the compiler driver and return its driver info.
     auto query_driver(llvm::StringRef driver)
         -> std::expected<DriverInfo, toolchain::QueryDriverError>;
 
+    /// TODO: implement and replace query driver ...
     auto query_toolchain(llvm::ArrayRef<const char*> arguments) -> std::vector<const char*>;
 
-    /// Update with arguments.
-    auto update_command(llvm::StringRef directory,
-                        llvm::StringRef file,
-                        llvm::ArrayRef<const char*> arguments) -> UpdateInfo;
+#ifdef CLICE_ENABLE_TEST
 
-    /// Update with full command.
-    auto update_command(llvm::StringRef directory, llvm::StringRef file, llvm::StringRef command)
-        -> UpdateInfo;
+    void add_command(llvm::StringRef directory,
+                     llvm::StringRef file,
+                     llvm::ArrayRef<const char*> arguments);
 
+    void add_command(llvm::StringRef directory, llvm::StringRef file, llvm::StringRef command);
+
+    /// FIXME: remove this
     /// Update commands from json file and return all updated file.
     std::expected<std::vector<UpdateInfo>, std::string> load_commands(llvm::StringRef json_content,
                                                                       llvm::StringRef workspace);
-
-    /// Load compile commands from given directories. If no valid commands are found,
-    /// search recursively from the workspace directory.
-    void load_compile_database(llvm::ArrayRef<std::string> compile_commands_dirs,
-                               llvm::StringRef workspace);
-
-    /// Get compile command from database. `file` should has relative path of workspace.
-    auto lookup(llvm::StringRef file, CommandOptions options = {}) -> LookupInfo;
+#endif
 
 private:
     std::unique_ptr<Impl> self;

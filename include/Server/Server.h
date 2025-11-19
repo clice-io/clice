@@ -4,7 +4,7 @@
 #include "Convert.h"
 #include "Indexer.h"
 #include "Async/Async.h"
-#include "Compiler/Command.h"
+#include "Compiler/CompilationDatabase.h"
 #include "Compiler/Preamble.h"
 #include "Compiler/Diagnostic.h"
 #include "Feature/DocumentLink.h"

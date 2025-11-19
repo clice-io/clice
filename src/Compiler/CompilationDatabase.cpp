@@ -1,11 +1,11 @@
-#include "Compiler/Command.h"
+#include "Compiler/CompilationDatabase.h"
 #include "Compiler/Compilation.h"
 #include "Support/FileSystem.h"
 #include "Support/Logging.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
 #include "Driver.h"
-#include "Support/StringPool.h"
+#include "Support/ObjectPool.h"
 
 namespace clice {
 
@@ -361,9 +361,10 @@ struct CompilationDatabase::Impl {
                         llvm::StringRef file,
                         const CompilationInfo& info,
                         const CommandOptions& options) {
+        llvm::StringRef directory = self.strings.get(info.directory);
         llvm::SmallVector<const char*, 32> arguments;
         for(auto arg: info.arguments) {
-            arguments.emplace_back(self.strings.get(arg));
+            arguments.emplace_back(self.strings.get(arg).data());
         }
 
         /// Store the final result arguments.
@@ -453,8 +454,6 @@ struct CompilationDatabase::Impl {
                 auto& opt = arg->getOption();
                 auto id = opt.getID();
 
-                opt.dump();
-
                 /// Filter options we don't need.
                 if(self.filtered_options.contains(id)) {
                     return;
@@ -484,7 +483,7 @@ struct CompilationDatabase::Impl {
                     add_string("-I");
                     llvm::StringRef value = arg->getValue(0);
                     if(!value.empty() && !path::is_absolute(value)) {
-                        add_string(path::join(info.directory, value));
+                        add_string(path::join(directory, value));
                     } else {
                         add_string(value);
                     }
@@ -661,8 +660,8 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
 }
 
 CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
-                                               const void* context,
-                                               const CommandOptions& options) {
+                                               const CommandOptions& options,
+                                               const void* context) {
     object_ptr<CompilationInfo> info = nullptr;
 
     auto path_id = self->strings.get(file);
@@ -700,9 +699,29 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         arguments.emplace_back(self->strings.save(s).data());
     };
 
-    if(options.query_driver) {}
-
     if(options.query_driver) {
+        llvm::StringRef driver = arguments[0];
+        /// FIXME: We may want to query with current includes, because some options
+        /// will affect the driver, e.g. --sysroot.
+        if(auto driver_info = this->query_driver(driver)) {
+            /// FIXME: Cache query result to avoid duplicate query.
+            append_arg("-nostdlibinc");
+
+            if(!driver_info->target.empty()) {
+                append_arg(std::format("--target={}", driver_info->target));
+            }
+
+            /// FIXME: Cache -I so that we can append directly, avoid duplicate lookup.
+            for(auto& system_header: driver_info->system_includes) {
+                append_arg("-isystem");
+                append_arg(system_header);
+            }
+        } else if(!options.suppress_logging) {
+            LOGGING_WARN("Failed to query driver:{}, error:{}", driver, driver_info.error());
+        }
+    }
+
+    if(options.resource_dir) {
         append_arg("-resource-dir");
         append_arg(fs::resource_dir);
     }
@@ -731,5 +750,79 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
         return {};
     }
 }
+
+std::vector<const char*> CompilationDatabase::files() {
+    std::vector<const char*> result;
+    for(auto& [file, _]: self->files) {
+        result.emplace_back(self->strings.get(file).data());
+    }
+    return result;
+}
+
+llvm::StringRef CompilationDatabase::save_string(llvm::StringRef string) {
+    return self->strings.save(string);
+}
+
+auto CompilationDatabase::query_driver(llvm::StringRef driver)
+    -> std::expected<DriverInfo, toolchain::QueryDriverError> {
+    driver = self->strings.save(driver).data();
+    /// FIXME: cache info ...
+    auto driver_info = toolchain::query_driver(driver);
+    if(!driver_info) {
+        return std::unexpected(driver_info.error());
+    }
+
+    DriverInfo info;
+    info.target = self->strings.save(driver_info->target);
+
+    std::vector<const char*> includes;
+    for(llvm::StringRef include: driver_info->includes) {
+        llvm::SmallString<64> buffer;
+
+        /// Make sure the path is absolute, otherwise it may be
+        /// "/usr/lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13", which
+        /// interferes with our determination of the resource directory
+        auto err = fs::real_path(include, buffer);
+        include = buffer;
+
+        /// Remove resource dir of the driver.
+        if(err ||
+           include.contains("lib/gcc")
+           /// FIXME: Only for windows, for Mac removing default resource dir
+           /// may result in unexpected error. Figure out it.
+           || include.contains("lib\\clang")) {
+            continue;
+        }
+        includes.emplace_back(self->strings.save(include).data());
+    }
+
+    info.system_includes = std::move(includes);
+    return info;
+}
+
+#ifdef CLICE_ENABLE_TEST
+
+void CompilationDatabase::add_command(llvm::StringRef directory,
+                                      llvm::StringRef file,
+
+                                      llvm::ArrayRef<const char*> arguments) {
+    JSONItem item;
+    item.json_src_path = self->strings.get("fake");
+    item.file_path = self->strings.get(file);
+    item.info = self->save_compilation_info(file, directory, arguments);
+    self->insert_item(self->items.save(item));
+}
+
+void CompilationDatabase::add_command(llvm::StringRef directory,
+                                      llvm::StringRef file,
+                                      llvm::StringRef command) {
+    JSONItem item;
+    item.json_src_path = self->strings.get("fake");
+    item.file_path = self->strings.get(file);
+    item.info = self->save_compilation_info(file, directory, command);
+    self->insert_item(self->items.save(item));
+}
+
+#endif
 
 }  // namespace clice

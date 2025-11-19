@@ -3,7 +3,7 @@
 
 #include "AST/Utility.h"
 #include "CompilationUnitImpl.h"
-#include "Compiler/Command.h"
+#include "Compiler/CompilationDatabase.h"
 #include "Compiler/Compilation.h"
 #include "Compiler/Diagnostic.h"
 #include "Compiler/Tidy.h"
