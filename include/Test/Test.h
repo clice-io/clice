@@ -23,7 +23,9 @@ public:
 
     void add_suite(std::string_view name, Suite suite);
 
-    void on_test(std::string_view name, Test test, bool skipped);
+    void add_test(std::string_view name, Test test, bool skipped, bool only);
+
+    void on_test(std::string_view name, Test test);
 
     /// Current test is failed, continue to execute the next test in the suite.
     void fail(const may_failure& failure);
@@ -57,6 +59,8 @@ private:
     std::chrono::milliseconds curr_test_duration;
     std::chrono::milliseconds total_test_duration;
     std::unordered_map<std::string_view, std::vector<Suite>> suites;
+    std::vector<std::tuple<std::string, Test>> tests;
+    std::vector<std::tuple<std::string, Test>> only_tests;
 };
 
 template <fixed_string suite_name>
@@ -73,10 +77,11 @@ struct test {
 
     template <typename Test>
     void operator= (Test&& test) {
-        Runner::instance().on_test(name, std::forward<Test>(test), skipped);
+        Runner::instance().add_test(name, std::forward<Test>(test), skipped, only);
     }
 
     bool skipped = false;
+    bool only = false;
     std::string name;
 };
 
@@ -145,6 +150,14 @@ struct skip_if {
 
     test&& operator/ (test&& test) const {
         test.skipped = condition;
+        return std::move(test);
+    }
+};
+
+struct only {
+
+    test&& operator/ (test&& test) const {
+        test.only = true;
         return std::move(test);
     }
 };
