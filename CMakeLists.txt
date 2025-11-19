@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(CLICE_PROJECT LANGUAGES C CXX)
 
-
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -34,9 +33,20 @@ endif()
 
 if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
-    target_link_options(clice_options INTERFACE -fuse-ld=lld-link)
-else()
-    target_link_options(clice_options INTERFACE -fuse-ld=lld)
+    target_link_options(clice_options INTERFACE
+        -fuse-ld=lld-link
+        -Wl,/OPT:REF
+    )
+elseif(APPLE)
+    target_link_options(clice_options INTERFACE
+        -fuse-ld=lld
+        -Wl,-dead_strip
+    )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(clice_options INTERFACE
+        -fuse-ld=lld
+        -Wl,--gc-sections
+    )
 endif()
 
 if (MSVC)
@@ -51,6 +61,8 @@ else()
         -fno-exceptions
         -Wno-deprecated-declarations
         -Wno-undefined-inline
+        -ffunction-sections
+        -fdata-sections
     )
 endif()
 

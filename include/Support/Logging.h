@@ -87,7 +87,7 @@ template <typename... Args>
 void critical [[noreturn]] (logging_format<Args...> fmt, Args&&... args) {
     logging::log(spdlog::level::critical, fmt.location, fmt.str, std::forward<Args>(args)...);
     spdlog::shutdown();
-    std::exit(1);
+    std::abort();
 }
 
 }  // namespace clice::logging
