@@ -1,0 +1,152 @@
+name: nightly
+
+on:
+  schedule:
+    # Run at 11:00 UTC every day (19:00 CST)
+    - cron: "0 11 * * *"
+
+jobs:
+  build_and_upload:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            artifact_name: clice.zip
+            asset_name: clice-x64-windows-msvc
+            symbol_artifact_name: clice-symbol.zip
+            symbol_asset_name: clice-x64-windows-msvc-symbol
+            toolchain: clang-cl
+
+          - os: ubuntu-24.04
+            artifact_name: clice.tar.gz
+            asset_name: clice-x86_64-linux-gnu
+            symbol_artifact_name: clice-symbol.tar.gz
+            symbol_asset_name: clice-x86_64-linux-gnu-symbol
+            toolchain: clang-20
+
+          - os: macos-15
+            artifact_name: clice.tar.gz
+            asset_name: clice-arm64-macos-darwin
+            symbol_artifact_name: clice-symbol.tar.gz
+            symbol_asset_name: clice-arm64-macos-darwin-symbol
+            toolchain: clang
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Free disk space (Linux)
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@main
+
+      - name: Increase swap file size (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          echo "===== Initial Status ====="
+          sudo swapon --show
+          free -h
+
+          echo "===== Creating Swap File ====="
+          sudo swapoff -a
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+
+          echo "===== Final Status ====="
+          sudo swapon --show
+          free -h
+          df -h
+
+      - name: Setup dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-14 g++-14 libstdc++-14-dev cmake ninja-build
+
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+          sudo update-alternatives --set gcc /usr/bin/gcc-14
+          sudo update-alternatives --set g++ /usr/bin/g++-14
+
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20 all
+
+      - name: Setup dependencies (MacOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+        run: |
+          brew install llvm@20 lld@20
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: 3.0.4
+          actions-cache-folder: ".xmake-cache"
+          actions-cache-key: ${{ matrix.os }}
+          package-cache: true
+          package-cache-key: ${{ matrix.os }}-pkg-nightly-v1
+          build-cache: true
+          build-cache-key: ${{ matrix.os }}-build-nightly-v1
+
+      - name: Get build identifiers
+        id: vars
+        shell: bash
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      - name: Check for new commits
+        id: check_commits
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          # Get the SHA of the last successful run of this workflow on the main branch
+          last_successful_sha=$(gh run list --workflow="nightly.yml" --branch="main" --status="success" --limit=1 --json headSha -q ".[0].headSha")
+          current_sha="${{ github.sha }}"
+
+          echo "Last successful SHA on main: ${last_successful_sha:-"None"}"
+          echo "Current SHA: $current_sha"
+
+          if [[ "$last_successful_sha" == "$current_sha" ]]; then
+            echo "No new commits since last successful run. Skipping build."
+            echo "should_skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "New commits found. Proceeding with build."
+            echo "should_skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure and Package
+        if: steps.check_commits.outputs.should_skip == 'false'
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }} -p windows
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }}
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
+            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }} --sdk=/opt/homebrew/opt/llvm@20
+          fi
+
+          xmake pack -v
+
+      - name: Upload Main Package Artifact
+        if: steps.check_commits.outputs.should_skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.sha_short }}
+          path: build/xpack/clice/${{ matrix.artifact_name }}
+
+      - name: Upload Symbol Package Artifact
+        if: steps.check_commits.outputs.should_skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.symbol_asset_name }}-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.sha_short }}
+          path: build/xpack/clice/${{ matrix.symbol_artifact_name }}
