@@ -213,14 +213,16 @@ std::optional<SourceRange> toHalfOpenFileRange(const SourceManager& SM,
 }  // namespace
 
 suite<"SelectionTree"> selection = [] {
-    auto select_right = [](llvm::StringRef code, auto&& callback) {
+    auto select_right = [](llvm::StringRef code,
+                           auto&& callback,
+                           std::source_location location = std::source_location::current()) {
         Tester tester;
         tester.add_main("main.cpp", code);
-        expect(that % tester.compile());
+        expect(that % tester.compile(), location);
         /// expect(that % tester.unit->diagnostics().empty());
 
         auto points = tester.nameless_points();
-        expect(that % points.size() >= 1);
+        expect(that % points.size() >= 1, location);
 
         LocalSourceRange selected_range;
         selected_range.begin = points[0];
