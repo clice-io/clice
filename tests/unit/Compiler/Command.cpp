@@ -1,6 +1,6 @@
 
 #include "Test/Test.h"
-#include "Compiler/CompilationDatabase.h"
+#include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
 
 #include "clang/Driver/Driver.h"
@@ -201,40 +201,7 @@ suite<"Command"> command = [] {
         database.add_command("/fake",
                              "main.cpp",
                              llvm::StringRef("clang++ @test.txt -std= main.cpp"));
-        auto info = database.lookup("main.cpp", {.query_driver = false});
-    };
-
-    skip_unless(CIEnvironment) / test("QueryDriver") = [] {
-        CompilationDatabase database;
-        auto info = database.query_driver("clang++");
-
-        fatal / expect(info);
-        expect(!info->target.empty());
-        expect(!info->system_includes.empty());
-
-        CompilationParams params;
-        params.kind = CompilationUnit::Indexing;
-        params.arguments = {
-            "clang++",
-            "-nostdlibinc",
-            "--target",
-            info->target.data(),
-        };
-        for(auto& include: info->system_includes) {
-            params.arguments.push_back("-I");
-            params.arguments.push_back(include);
-        }
-        params.arguments.push_back("main.cpp");
-
-        llvm::StringRef hello_world = R"(
-            #include <iostream>
-            int main() {
-                std::cout << "Hello world!" << std::endl;
-                return 0;
-            }
-        )";
-        params.add_remapped_file("main.cpp", hello_world);
-        expect(compile(params));
+        auto info = database.lookup("main.cpp", {.query_toolchain = false});
     };
 
     test("ResourceDir") = [] {

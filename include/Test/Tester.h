@@ -3,8 +3,9 @@
 #include "Test.h"
 #include "Annotation.h"
 #include "Protocol/Protocol.h"
-#include "Compiler/CompilationDatabase.h"
+#include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
+#include "Support/Logging.h"
 
 namespace clice::testing {
 
@@ -39,8 +40,10 @@ struct Tester {
 
         CommandOptions options;
         options.resource_dir = true;
-        options.query_driver = true;
+        options.query_toolchain = true;
         options.suppress_logging = true;
+
+        params.arguments_from_database = true;
         params.arguments = database.lookup(src_path, options).arguments;
 
         for(auto& [file, source]: sources.all_files) {
@@ -75,8 +78,10 @@ struct Tester {
 
         CommandOptions options;
         options.resource_dir = true;
-        options.query_driver = true;
+        options.query_toolchain = true;
         options.suppress_logging = true;
+
+        params.arguments_from_database = true;
         params.arguments = database.lookup(src_path, options).arguments;
 
         auto path = fs::createTemporaryFile("clice", "pch");
@@ -102,9 +107,9 @@ struct Tester {
         {
             auto unit = clice::compile(params, info);
             if(!unit) {
-                llvm::outs() << unit.error() << "\n";
+                LOG_ERROR("{}", unit.error());
                 for(auto& diag: *params.diagnostics) {
-                    std::println("{}", diag.message);
+                    LOG_ERROR("{}", diag.message);
                 }
                 return false;
             }
@@ -126,6 +131,10 @@ struct Tester {
 
         auto unit = clice::compile(params);
         if(!unit) {
+            LOG_ERROR("{}", unit.error());
+            for(auto& diag: *params.diagnostics) {
+                LOG_ERROR("{}", diag.message);
+            }
             return false;
         }
 

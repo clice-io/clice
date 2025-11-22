@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Compiler/CompilationDatabase.h"
+#include "Compiler/Command.h"
 #include "Support/Logging.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/Path.h"

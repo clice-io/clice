@@ -36,7 +36,7 @@ struct GetUSRVisitor : public clang::RecursiveASTVisitor<GetUSRVisitor> {
 
         if(offset.has_value() && USR.has_value()) {
             USRs[*offset] = USRInfo{*USR, *offset, decl};
-            // LOGGING_INFO("USR: {} at {}:{}", USR->str(), pos->line, pos->character);
+            // LOG_INFO("USR: {} at {}:{}", USR->str(), pos->line, pos->character);
         }
 
         return true;
@@ -61,7 +61,7 @@ struct USRTester : public Tester {
     llvm::StringRef lookup(llvm::StringRef key) {
         auto iter = USRs.find((*this)["main.cpp", key]);
         if(iter == USRs.end()) {
-            LOGGING_FATAL("USR not found for key: {}", key);
+            LOG_FATAL("USR not found for key: {}", key);
         }
         return iter->second.USR;
     }

@@ -1,4 +1,4 @@
-#include "Compiler/CompilationDatabase.h"
+#include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
 #include "Support/FileSystem.h"
 #include "Support/Logging.h"
@@ -202,7 +202,7 @@ struct CompilationDatabase::Impl {
 
             /// FIXME: Handle response file.
             if(argument.starts_with("@")) {
-                LOGGING_WARN(
+                LOG_WARN(
                     "clice currently supports only one response file in the command, when loads {}",
                     file);
                 continue;
@@ -422,10 +422,7 @@ struct CompilationDatabase::Impl {
 
         using Arg = std::unique_ptr<llvm::opt::Arg>;
         auto on_error = [&](int index, int count) {
-            LOGGING_WARN("missing argument index: {}, count: {} when parse: {}",
-                         index,
-                         count,
-                         file);
+            LOG_WARN("missing argument index: {}, count: {} when parse: {}", index, count, file);
         };
 
         /// Prepare for removing arguments.
@@ -574,22 +571,22 @@ CompilationDatabase::~CompilationDatabase() = default;
 std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringRef path) {
     auto content = llvm::MemoryBuffer::getFile(path);
     if(!content) {
-        LOGGING_ERROR("Failed to read compilation database from {}. Reason: {}",
-                      path,
-                      content.getError());
+        LOG_ERROR("Failed to read compilation database from {}. Reason: {}",
+                  path,
+                  content.getError());
         return {};
     }
 
     auto json = json::parse(content.get()->getBuffer());
     if(!json) {
-        LOGGING_ERROR("Failed to parse compilation database from {}. Reason: {}",
-                      path,
-                      json.takeError());
+        LOG_ERROR("Failed to parse compilation database from {}. Reason: {}",
+                  path,
+                  json.takeError());
         return {};
     }
 
     if(json->kind() != json::Value::Array) {
-        LOGGING_ERROR(
+        LOG_ERROR(
             "Invalid compilation database format in {}. Reason: Root element must be an array.",
             path);
         return {};
@@ -601,7 +598,7 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
     for(size_t i = 0; i < json->getAsArray()->size(); ++i) {
         const auto& value = (*json->getAsArray())[i];
         if(value.kind() != json::Value::Object) {
-            LOGGING_ERROR(
+            LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {}. Reason: item is not an object.",
                 path,
                 i);
@@ -611,7 +608,7 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
         auto& object = *value.getAsObject();
         auto directory = object.getString("directory");
         if(!directory) {
-            LOGGING_ERROR(
+            LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {}. Reason: 'directory' key is missing.",
                 path,
                 i);
@@ -620,7 +617,7 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
 
         auto file = object.getString("file");
         if(!file) {
-            LOGGING_ERROR(
+            LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {}. Reason: 'file' key is missing.",
                 path,
                 i);
@@ -630,7 +627,7 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
         auto arguments = object.getArray("arguments");
         auto command = object.getString("command");
         if(!arguments && !command) {
-            LOGGING_ERROR(
+            LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {}. Reason: neither 'arguments' nor 'command' key is present.",
                 path,
                 i);
@@ -699,31 +696,38 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         arguments.emplace_back(self->strings.save(s).data());
     };
 
-    if(options.query_driver) {
-        llvm::StringRef driver = arguments[0];
-        /// FIXME: We may want to query with current includes, because some options
-        /// will affect the driver, e.g. --sysroot.
-        if(auto driver_info = this->query_driver(driver)) {
-            /// FIXME: Cache query result to avoid duplicate query.
-            append_arg("-nostdlibinc");
-
-            if(!driver_info->target.empty()) {
-                append_arg(std::format("--target={}", driver_info->target));
-            }
-
-            /// FIXME: Cache -I so that we can append directly, avoid duplicate lookup.
-            for(auto& system_header: driver_info->system_includes) {
-                append_arg("-isystem");
-                append_arg(system_header);
-            }
-        } else if(!options.suppress_logging) {
-            LOGGING_WARN("Failed to query driver:{}, error:{}", driver, driver_info.error());
-        }
-    }
-
     if(options.resource_dir) {
         append_arg("-resource-dir");
         append_arg(fs::resource_dir);
+    }
+
+    if(options.query_toolchain) {
+        auto callback = [&](const char* s) {
+            return save_string(s).data();
+        };
+        toolchain::QueryParams params = {file, directory, arguments, callback};
+
+        /// FIXME: querying is expensive, we want to cache this ...
+        arguments = toolchain::query_toolchain(params);
+
+        /// FIXME: we need mangle the arguments again.
+        arguments.insert(arguments.begin() + 1, self->strings.save("-fsyntax-only").data());
+
+        /// Work around ... the logic of this should be moved to query ...
+        bool next_main_file = false;
+        for(auto& arg: arguments) {
+            if(arg == llvm::StringRef("-main-file-name")) {
+                next_main_file = true;
+                continue;
+            }
+
+            if(next_main_file) {
+                arg = self->strings.save(path::filename(file)).data();
+                next_main_file = false;
+            }
+        }
+
+        arguments.pop_back();
     }
 
     arguments.emplace_back(file.data());
@@ -761,43 +765,6 @@ std::vector<const char*> CompilationDatabase::files() {
 
 llvm::StringRef CompilationDatabase::save_string(llvm::StringRef string) {
     return self->strings.save(string);
-}
-
-auto CompilationDatabase::query_driver(llvm::StringRef driver)
-    -> std::expected<DriverInfo, toolchain::QueryDriverError> {
-    driver = self->strings.save(driver).data();
-    /// FIXME: cache info ...
-    auto driver_info = toolchain::query_driver(driver);
-    if(!driver_info) {
-        return std::unexpected(driver_info.error());
-    }
-
-    DriverInfo info;
-    info.target = self->strings.save(driver_info->target);
-
-    std::vector<const char*> includes;
-    for(llvm::StringRef include: driver_info->includes) {
-        llvm::SmallString<64> buffer;
-
-        /// Make sure the path is absolute, otherwise it may be
-        /// "/usr/lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13", which
-        /// interferes with our determination of the resource directory
-        auto err = fs::real_path(include, buffer);
-        include = buffer;
-
-        /// Remove resource dir of the driver.
-        if(err ||
-           include.contains("lib/gcc")
-           /// FIXME: Only for windows, for Mac removing default resource dir
-           /// may result in unexpected error. Figure out it.
-           || include.contains("lib\\clang")) {
-            continue;
-        }
-        includes.emplace_back(self->strings.save(include).data());
-    }
-
-    info.system_includes = std::move(includes);
-    return info;
 }
 
 #ifdef CLICE_ENABLE_TEST

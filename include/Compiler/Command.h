@@ -21,7 +21,7 @@ struct CommandOptions {
     bool resource_dir = false;
 
     /// Query the compiler driver for additional information, such as system includes and target.
-    bool query_driver = false;
+    bool query_toolchain = false;
 
     /// Suppress the warning log if failed to query driver info.
     /// Set true in unittests to avoid cluttering test output.
@@ -120,11 +120,6 @@ public:
 
     /// FIXME: remove this api?
     auto save_string(llvm::StringRef string) -> llvm::StringRef;
-
-    /// FIXME: remove this
-    /// Query the compiler driver and return its driver info.
-    auto query_driver(llvm::StringRef driver)
-        -> std::expected<DriverInfo, toolchain::QueryDriverError>;
 
     /// TODO: implement and replace query driver ...
     auto query_toolchain(llvm::ArrayRef<const char*> arguments) -> std::vector<const char*>;
