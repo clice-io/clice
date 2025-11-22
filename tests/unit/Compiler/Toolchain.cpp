@@ -25,6 +25,9 @@ suite<"Toolchain"> suite = [] {
         expect_family("arm-none-eabi-gcc", GCC);
 
         expect_family("clang", Clang);
+        expect_family("clang++", Clang);
+        expect_family("clang.exe", Clang);
+        expect_family("clang++.exe", Clang);
         expect_family("clang-20", Clang);
         expect_family("clang-20.exe", Clang);
         expect_family("clang-cl", ClangCL);

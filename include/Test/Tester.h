@@ -60,12 +60,16 @@ struct Tester {
     bool compile(llvm::StringRef standard = "-std=c++20") {
         prepare(standard);
 
-        auto info = clice::compile(params);
-        if(!info) {
+        auto unit = clice::compile(params);
+        if(!unit) {
+            LOG_ERROR("{}", unit.error());
+            for(auto& diag: *params.diagnostics) {
+                LOG_ERROR("{}", diag.message);
+            }
             return false;
         }
 
-        this->unit.emplace(std::move(*info));
+        this->unit.emplace(std::move(*unit));
         return true;
     }
 

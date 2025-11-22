@@ -109,7 +109,9 @@ auto create_invocation(CompilationParams& params,
                                                       llvm::ArrayRef(params.arguments).drop_front(),
                                                       *diagnostic_engine,
                                                       params.arguments[0])) {
-            return nullptr;
+            LOG_ERROR_RET(nullptr,
+                          " Fail to create invocation, arguments list is: {}",
+                          print_argv(params.arguments));
         }
     } else {
         /// Create clang invocation.
@@ -124,7 +126,9 @@ auto create_invocation(CompilationParams& params,
 
         invocation = clang::createInvocation(params.arguments, options);
         if(!invocation) {
-            return nullptr;
+            LOG_ERROR_RET(nullptr,
+                          " Fail to create invocation, arguments list is: {}",
+                          print_argv(params.arguments));
         }
     }
 

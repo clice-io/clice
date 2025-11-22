@@ -1,4 +1,5 @@
 #include "Compiler/Toolchain.h"
+#include "Compiler/Command.h"
 #include "Support/FileSystem.h"
 #include "Support/Logging.h"
 #include "llvm/ADT/ScopeExit.h"
@@ -57,6 +58,8 @@ namespace {
 
 std::optional<std::string> execute_command(llvm::ArrayRef<const char*> arguments,
                                            bool capture_stdout = false) {
+    LOG_INFO("Execute command: {}", print_argv(arguments));
+
     llvm::SmallString<64> path;
     if(auto e = fs::createTemporaryFile("query-toolchain", "clice", path)) {
         LOG_ERROR_RET(std::nullopt, "Fail to create temporary file: {}", e);
@@ -120,6 +123,12 @@ bool query_driver(
     clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
                                     options,
                                     new clang::IgnoringDiagConsumer());
+
+    llvm::SmallVector<const char*, 256> list;
+    list.emplace_back(arguments.consume_front());
+    list.emplace_back("-fsyntax-only");
+    list.append(arguments.begin(), arguments.end());
+    arguments = list;
 
     /// Note that clang use the `ClangExecutable` to determine the driver mode when
     /// --driver-mode is not found in the arguments.  and `TargetTriple` is used when
@@ -236,8 +245,8 @@ CompilerFamily driver_family(llvm::StringRef driver) {
             return CompilerFamily::Clang;
         } else if(name.ends_with("clang-cl")) {
             return CompilerFamily::ClangCL;
-        } else if(name.ends_with("cc") || name.ends_with("c++") || name.contains("gcc") ||
-                  name.contains("g++")) {
+        } else if(name.ends_with("cc") || name.ends_with("c++") || name.ends_with("gcc") ||
+                  name.ends_with("g++")) {
             return CompilerFamily::GCC;
         } else if(name.contains("icpc") || name.contains("icc") || name.contains("dpcpp") ||
                   name.contains("icx")) {

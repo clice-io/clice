@@ -218,7 +218,7 @@ suite<"SelectionTree"> selection = [] {
                            std::source_location location = std::source_location::current()) {
         Tester tester;
         tester.add_main("main.cpp", code);
-        expect(that % tester.compile(), location);
+        fatal / expect(that % tester.compile(), location);
         /// expect(that % tester.unit->diagnostics().empty());
 
         auto points = tester.nameless_points();

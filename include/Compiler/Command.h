@@ -78,6 +78,17 @@ struct LookupInfo {
     std::vector<std::uint32_t> include_indices;
 };
 
+inline std::string print_argv(llvm::ArrayRef<const char*> args) {
+    std::string s = "[";
+    s += args.consume_front();
+    for(auto arg: args) {
+        s += " ";
+        s += arg;
+    }
+    s += "]";
+    return s;
+}
+
 class CompilationDatabase {
 public:
     CompilationDatabase();
