@@ -229,13 +229,15 @@ suite<"SelectionTree"> selection = [] {
         callback(tester, tree);
     };
 
-    auto expect_select = [&](llvm::StringRef code, const char* kind) {
+    auto expect_select = [&](llvm::StringRef code,
+                             const char* kind,
+                             std::source_location location = std::source_location::current()) {
         select_right(code, [&](Tester& tester, SelectionTree& tree) {
             auto node = tree.common_ancestor();
             if(!kind) {
-                expect(that % !node);
+                expect(that % !node, location);
             } else {
-                expect(that % node);
+                expect(that % node, location);
                 auto range2 = toHalfOpenFileRange(tester.unit->context().getSourceManager(),
                                                   tester.unit->lang_options(),
                                                   node->source_range());
@@ -247,8 +249,8 @@ suite<"SelectionTree"> selection = [] {
                 /// llvm::outs() << tree << "\n";
                 /// tree.print(llvm::outs(), *node, 2);
 
-                expect(that % node->kind() == llvm::StringRef(kind));
-                expect(that % range == tester.range());
+                expect(that % node->kind() == llvm::StringRef(kind), location);
+                expect(that % range == tester.range(), location);
             }
         });
     };
