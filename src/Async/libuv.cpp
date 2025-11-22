@@ -29,11 +29,8 @@ const std::error_category& category() {
 /// Use source_location to log the file, line, and function name where the error occurred.
 void uv_check_result(const int result, const std::source_location location) {
     if(result < 0) {
-        LOGGING_WARN("libuv error: {}", uv_strerror(result));
-        LOGGING_WARN("At {}:{}:{}",
-                     location.file_name(),
-                     location.line(),
-                     location.function_name());
+        LOG_WARN("libuv error: {}", uv_strerror(result));
+        LOG_WARN("At {}:{}:{}", location.file_name(), location.line(), location.function_name());
     }
 }
 

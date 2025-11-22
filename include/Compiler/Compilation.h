@@ -23,6 +23,8 @@ struct CompilationParams {
 
     std::string directory;
 
+    bool arguments_from_database = false;
+
     /// Responsible for storing the arguments.
     std::vector<const char*> arguments;
 

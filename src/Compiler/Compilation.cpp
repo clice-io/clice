@@ -10,6 +10,7 @@
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/MultiplexConsumer.h"
+#include "Support/Logging.h"
 
 namespace clice {
 
@@ -99,20 +100,36 @@ private:
 auto create_invocation(CompilationParams& params,
                        llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine>& diagnostic_engine)
     -> std::unique_ptr<clang::CompilerInvocation> {
+    std::unique_ptr<clang::CompilerInvocation> invocation;
 
-    /// Create clang invocation.
-    clang::CreateInvocationOptions options = {
-        .Diags = diagnostic_engine,
-        .VFS = params.vfs,
+    /// Arguments from compilation database are already cc1
+    if(params.arguments_from_database) {
+        invocation = std::make_unique<clang::CompilerInvocation>();
+        if(!clang::CompilerInvocation::CreateFromArgs(*invocation,
+                                                      llvm::ArrayRef(params.arguments).drop_front(),
+                                                      *diagnostic_engine,
+                                                      params.arguments[0])) {
+            LOG_ERROR_RET(nullptr,
+                          " Fail to create invocation, arguments list is: {}",
+                          print_argv(params.arguments));
+        }
+    } else {
+        /// Create clang invocation.
+        clang::CreateInvocationOptions options = {
+            .Diags = diagnostic_engine,
+            .VFS = params.vfs,
 
-        /// Avoid replacing -include with -include-pch, also
-        /// see https://github.com/clangd/clangd/issues/856.
-        .ProbePrecompiled = false,
-    };
+            /// Avoid replacing -include with -include-pch, also
+            /// see https://github.com/clangd/clangd/issues/856.
+            .ProbePrecompiled = false,
+        };
 
-    auto invocation = clang::createInvocation(params.arguments, options);
-    if(!invocation) {
-        return nullptr;
+        invocation = clang::createInvocation(params.arguments, options);
+        if(!invocation) {
+            LOG_ERROR_RET(nullptr,
+                          " Fail to create invocation, arguments list is: {}",
+                          print_argv(params.arguments));
+        }
     }
 
     auto& pp_opts = invocation->getPreprocessorOpts();
@@ -336,7 +353,10 @@ CompilationResult preprocess(CompilationParams& params) {
 }
 
 CompilationResult compile(CompilationParams& params) {
-    return run_clang<clang::SyntaxOnlyAction>(params);
+    return run_clang<clang::SyntaxOnlyAction>(params, [](clang::CompilerInstance& instance) {
+        /// Make sure the output file is empty.
+        instance.getFrontendOpts().OutputFile.clear();
+    });
 }
 
 CompilationResult compile(CompilationParams& params, PCHInfo& out) {

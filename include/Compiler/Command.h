@@ -21,7 +21,7 @@ struct CommandOptions {
     bool resource_dir = false;
 
     /// Query the compiler driver for additional information, such as system includes and target.
-    bool query_driver = false;
+    bool query_toolchain = false;
 
     /// Suppress the warning log if failed to query driver info.
     /// Set true in unittests to avoid cluttering test output.
@@ -35,10 +35,9 @@ struct CommandOptions {
 };
 
 enum class UpdateKind : std::uint8_t {
-    Unchange,
-    Create,
-    Update,
-    Delete,
+    Unchanged,
+    Inserted,
+    Deleted,
 };
 
 struct DriverInfo {
@@ -46,14 +45,28 @@ struct DriverInfo {
     llvm::StringRef target;
 
     /// The default system includes of this driver.
-    llvm::ArrayRef<const char*> system_includes;
+    std::vector<const char*> system_includes;
 };
 
 struct UpdateInfo {
     /// The kind of update.
     UpdateKind kind;
 
-    llvm::StringRef file;
+    /// The updated file.
+    std::uint32_t path_id;
+
+    /// The compilation context of this file command, which could
+    /// be used to identity the same file with different compilation
+    /// contexts.
+    const void* context;
+};
+
+struct CompilationContext {
+    /// The working directory of compilation.
+    llvm::StringRef directory;
+
+    /// The compilation arguments.
+    std::vector<const char*> arguments;
 };
 
 struct LookupInfo {
@@ -64,6 +77,17 @@ struct LookupInfo {
     /// The include arguments indices in the arguments list.
     std::vector<std::uint32_t> include_indices;
 };
+
+inline std::string print_argv(llvm::ArrayRef<const char*> args) {
+    std::string s = "[";
+    s += args.consume_front();
+    for(auto arg: args) {
+        s += " ";
+        s += arg;
+    }
+    s += "]";
+    return s;
+}
 
 class CompilationDatabase {
 public:
@@ -82,40 +106,48 @@ public:
 private:
     struct Impl;
 
-    using Self = CompilationDatabase;
-
 public:
+    /// Read the compilation database on the give file and return the
+    /// incremental update infos.
+    std::vector<UpdateInfo> load_compile_database(llvm::StringRef file);
+
+    /// Lookup the compilation context of specific file. If the context
+    /// param is provided, we will return the compilation context corresponding
+    /// to the handle. Otherwise we just return the first one(if the file have)
+    /// multiple compilation contexts.
+    CompilationContext lookup(llvm::StringRef file,
+                              const CommandOptions& options = {},
+                              const void* context = nullptr);
+
+    /// TODO: list all compilation context of the file, this is useful to show
+    /// all contexts and let user choose one.
+    /// std::vector<CompilationContext> fetch_all(llvm::StringRef file);
+
     /// Get an the option for specific argument.
     static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
 
+    /// FIXME: bad interface design ...
+    std::vector<const char*> files();
+
+    /// FIXME: remove this api?
     auto save_string(llvm::StringRef string) -> llvm::StringRef;
 
-    /// Query the compiler driver and return its driver info.
-    auto query_driver(llvm::StringRef driver)
-        -> std::expected<DriverInfo, toolchain::QueryDriverError>;
+    /// TODO: implement and replace query driver ...
+    auto query_toolchain(llvm::ArrayRef<const char*> arguments) -> std::vector<const char*>;
 
-    /// Update with arguments.
-    auto update_command(llvm::StringRef directory,
-                        llvm::StringRef file,
-                        llvm::ArrayRef<const char*> arguments) -> UpdateInfo;
+#ifdef CLICE_ENABLE_TEST
 
-    /// Update with full command.
-    auto update_command(llvm::StringRef directory, llvm::StringRef file, llvm::StringRef command)
-        -> UpdateInfo;
+    void add_command(llvm::StringRef directory,
+                     llvm::StringRef file,
+                     llvm::ArrayRef<const char*> arguments);
 
+    void add_command(llvm::StringRef directory, llvm::StringRef file, llvm::StringRef command);
+
+    /// FIXME: remove this
     /// Update commands from json file and return all updated file.
-    auto load_commands(llvm::StringRef json_content, llvm::StringRef workspace)
-        -> std::expected<std::vector<UpdateInfo>, std::string>;
-
-    /// Load compile commands from given directories. If no valid commands are found,
-    /// search recursively from the workspace directory.
-    auto load_compile_database(llvm::ArrayRef<std::string> compile_commands_dirs,
-                               llvm::StringRef workspace) -> void;
-
-    /// Get compile command from database. `file` should has relative path of workspace.
-    auto lookup(llvm::StringRef file, CommandOptions options = {}) -> LookupInfo;
-
-    std::vector<const char*> files();
+    std::expected<std::vector<UpdateInfo>, std::string> load_commands(llvm::StringRef json_content,
+                                                                      llvm::StringRef workspace);
+#endif
 
 private:
     std::unique_ptr<Impl> self;

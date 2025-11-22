@@ -50,6 +50,8 @@ inline std::expected<void, std::string> init_resource_dir(llvm::StringRef execut
     return std::expected<void, std::string>();
 }
 
+using llvm::sys::fs::createTemporaryFile;
+
 inline std::expected<std::string, std::error_code> createTemporaryFile(llvm::StringRef prefix,
                                                                        llvm::StringRef suffix) {
     llvm::SmallString<128> path;

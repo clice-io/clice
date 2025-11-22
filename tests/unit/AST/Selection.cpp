@@ -213,14 +213,16 @@ std::optional<SourceRange> toHalfOpenFileRange(const SourceManager& SM,
 }  // namespace
 
 suite<"SelectionTree"> selection = [] {
-    auto select_right = [](llvm::StringRef code, auto&& callback) {
+    auto select_right = [](llvm::StringRef code,
+                           auto&& callback,
+                           std::source_location location = std::source_location::current()) {
         Tester tester;
         tester.add_main("main.cpp", code);
-        expect(that % tester.compile());
+        fatal / expect(that % tester.compile(), location);
         /// expect(that % tester.unit->diagnostics().empty());
 
         auto points = tester.nameless_points();
-        expect(that % points.size() >= 1);
+        expect(that % points.size() >= 1, location);
 
         LocalSourceRange selected_range;
         selected_range.begin = points[0];
@@ -229,28 +231,33 @@ suite<"SelectionTree"> selection = [] {
         callback(tester, tree);
     };
 
-    auto expect_select = [&](llvm::StringRef code, const char* kind) {
-        select_right(code, [&](Tester& tester, SelectionTree& tree) {
-            auto node = tree.common_ancestor();
-            if(!kind) {
-                expect(that % !node);
-            } else {
-                expect(that % node);
-                auto range2 = toHalfOpenFileRange(tester.unit->context().getSourceManager(),
-                                                  tester.unit->lang_options(),
-                                                  node->source_range());
-                LocalSourceRange range = {
-                    tester.unit->file_offset(range2->getBegin()),
-                    tester.unit->file_offset(range2->getEnd()),
-                };
+    auto expect_select = [&](llvm::StringRef code,
+                             const char* kind,
+                             std::source_location location = std::source_location::current()) {
+        select_right(
+            code,
+            [&](Tester& tester, SelectionTree& tree) {
+                auto node = tree.common_ancestor();
+                if(!kind) {
+                    expect(that % !node, location);
+                } else {
+                    expect(that % node, location);
+                    auto range2 = toHalfOpenFileRange(tester.unit->context().getSourceManager(),
+                                                      tester.unit->lang_options(),
+                                                      node->source_range());
+                    LocalSourceRange range = {
+                        tester.unit->file_offset(range2->getBegin()),
+                        tester.unit->file_offset(range2->getEnd()),
+                    };
 
-                /// llvm::outs() << tree << "\n";
-                /// tree.print(llvm::outs(), *node, 2);
+                    /// llvm::outs() << tree << "\n";
+                    /// tree.print(llvm::outs(), *node, 2);
 
-                expect(that % node->kind() == llvm::StringRef(kind));
-                expect(that % range == tester.range());
-            }
-        });
+                    expect(that % node->kind() == llvm::StringRef(kind), location);
+                    expect(that % range == tester.range(), location);
+                }
+            },
+            location);
     };
 
     test("Expressions") = [&] {

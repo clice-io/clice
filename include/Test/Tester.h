@@ -5,6 +5,7 @@
 #include "Protocol/Protocol.h"
 #include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
+#include "Support/Logging.h"
 
 namespace clice::testing {
 
@@ -34,13 +35,15 @@ struct Tester {
     void prepare(llvm::StringRef standard = "-std=c++20") {
         auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
 
-        database.update_command("fake", src_path, command);
+        database.add_command("fake", src_path, command);
         params.kind = CompilationUnit::Content;
 
         CommandOptions options;
         options.resource_dir = true;
-        options.query_driver = true;
+        options.query_toolchain = true;
         options.suppress_logging = true;
+
+        params.arguments_from_database = true;
         params.arguments = database.lookup(src_path, options).arguments;
 
         for(auto& [file, source]: sources.all_files) {
@@ -57,12 +60,16 @@ struct Tester {
     bool compile(llvm::StringRef standard = "-std=c++20") {
         prepare(standard);
 
-        auto info = clice::compile(params);
-        if(!info) {
+        auto unit = clice::compile(params);
+        if(!unit) {
+            LOG_ERROR("{}", unit.error());
+            for(auto& diag: *params.diagnostics) {
+                LOG_ERROR("{}", diag.message);
+            }
             return false;
         }
 
-        this->unit.emplace(std::move(*info));
+        this->unit.emplace(std::move(*unit));
         return true;
     }
 
@@ -70,13 +77,15 @@ struct Tester {
         params.diagnostics = std::make_shared<std::vector<Diagnostic>>();
         auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
 
-        database.update_command("fake", src_path, command);
+        database.add_command("fake", src_path, command);
         params.kind = CompilationUnit::Preamble;
 
         CommandOptions options;
         options.resource_dir = true;
-        options.query_driver = true;
+        options.query_toolchain = true;
         options.suppress_logging = true;
+
+        params.arguments_from_database = true;
         params.arguments = database.lookup(src_path, options).arguments;
 
         auto path = fs::createTemporaryFile("clice", "pch");
@@ -102,9 +111,9 @@ struct Tester {
         {
             auto unit = clice::compile(params, info);
             if(!unit) {
-                llvm::outs() << unit.error() << "\n";
+                LOG_ERROR("{}", unit.error());
                 for(auto& diag: *params.diagnostics) {
-                    std::println("{}", diag.message);
+                    LOG_ERROR("{}", diag.message);
                 }
                 return false;
             }
@@ -126,6 +135,10 @@ struct Tester {
 
         auto unit = clice::compile(params);
         if(!unit) {
+            LOG_ERROR("{}", unit.error());
+            for(auto& diag: *params.diagnostics) {
+                LOG_ERROR("{}", diag.message);
+            }
             return false;
         }
 

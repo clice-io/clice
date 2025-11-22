@@ -3,9 +3,9 @@
 namespace clice {
 
 async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
-    LOGGING_INFO("Initialize from client: {}, version: {}",
-                 params.clientInfo.name,
-                 params.clientInfo.version);
+    LOG_INFO("Initialize from client: {}, version: {}",
+             params.clientInfo.name,
+             params.clientInfo.version);
 
     /// FIXME: adjust position encoding.
     kind = PositionEncodingKind::UTF16;
@@ -17,15 +17,15 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
             return *params.rootUri;
         }
 
-        LOGGING_FATAL("The client should provide one workspace folder or rootUri at least!");
+        LOG_FATAL("The client should provide one workspace folder or rootUri at least!");
     })());
 
     /// Initialize configuration.
     if(auto result = config.parse(workspace)) {
-        LOGGING_INFO("Config initialized successfully: {0:4}", json::serialize(config));
+        LOG_INFO("Config initialized successfully: {0:4}", json::serialize(config));
     } else {
-        LOGGING_WARN("Fail to load config, because: {0}", result.error());
-        LOGGING_INFO("Use default config: {0:4}", json::serialize(config));
+        LOG_WARN("Fail to load config, because: {0}", result.error());
+        LOG_INFO("Use default config: {0:4}", json::serialize(config));
     }
 
     if(!config.project.logging_dir.empty()) {
@@ -36,7 +36,9 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
     opening_files.set_capability(config.project.max_active_file);
 
     /// Load compile commands.json
-    database.load_compile_database(config.project.compile_commands_dirs, workspace);
+    for(auto& dir: config.project.compile_commands_dirs) {
+        database.load_compile_database(path::join(dir, "compile_commands.json"));
+    }
 
     /// Load cache info.
     load_cache_info();

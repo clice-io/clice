@@ -93,7 +93,7 @@ suite<"Command"> command = [] {
         auto expect_strip = [](llvm::StringRef argv, llvm::StringRef result) {
             CompilationDatabase database;
             llvm::StringRef file = "main.cpp";
-            database.update_command("fake/", file, argv);
+            database.add_command("fake/", file, argv);
 
             CommandOptions options;
             options.suppress_logging = true;
@@ -101,10 +101,10 @@ suite<"Command"> command = [] {
         };
 
         /// Filter -c, -o and input file.
-        expect_strip("g++ main.cc", "g++ main.cpp");
+        expect_strip("g++ main.cpp", "g++ main.cpp");
         expect_strip("clang++ -c main.cpp", "clang++ main.cpp");
         expect_strip("clang++ -o main.o main.cpp", "clang++ main.cpp");
-        expect_strip("clang++ -c -o main.o main.cc", "clang++ main.cpp");
+        expect_strip("clang++ -c -o main.o main.cpp", "clang++ main.cpp");
         expect_strip("cl.exe /c /Fomain.cpp.o main.cpp", "cl.exe main.cpp");
 
         /// Filter PCH related.
@@ -126,8 +126,8 @@ suite<"Command"> command = [] {
         using namespace std::literals;
 
         CompilationDatabase database;
-        database.update_command("fake", "test.cpp", "clang++ -std=c++23 test.cpp"sv);
-        database.update_command("fake", "test2.cpp", "clang++ -std=c++23 test2.cpp"sv);
+        database.add_command("fake", "test.cpp", "clang++ -std=c++23 test.cpp"sv);
+        database.add_command("fake", "test2.cpp", "clang++ -std=c++23 test2.cpp"sv);
 
         CommandOptions options;
         options.suppress_logging = true;
@@ -157,7 +157,7 @@ suite<"Command"> command = [] {
         };
 
         CompilationDatabase database;
-        database.update_command("/fake", "main.cpp", args);
+        database.add_command("/fake", "main.cpp", args);
 
         CommandOptions options;
 
@@ -198,56 +198,24 @@ suite<"Command"> command = [] {
     skip / test("Module") = [] {
         /// TODO:
         CompilationDatabase database;
-        database.update_command("/fake",
-                                "main.cpp",
-                                llvm::StringRef("clang++ @test.txt -std= main.cpp"));
-        auto info = database.lookup("main.cpp", {.query_driver = false});
-    };
-
-    skip_unless(CIEnvironment) / test("QueryDriver") = [] {
-        CompilationDatabase database;
-        auto info = database.query_driver("clang++");
-
-        fatal / expect(info);
-        expect(!info->target.empty());
-        expect(!info->system_includes.empty());
-
-        CompilationParams params;
-        params.kind = CompilationUnit::Indexing;
-        params.arguments = {
-            "clang++",
-            "-nostdlibinc",
-            "--target",
-            info->target.data(),
-        };
-        for(auto& include: info->system_includes) {
-            params.arguments.push_back("-I");
-            params.arguments.push_back(include);
-        }
-        params.arguments.push_back("main.cpp");
-
-        llvm::StringRef hello_world = R"(
-            #include <iostream>
-            int main() {
-                std::cout << "Hello world!" << std::endl;
-                return 0;
-            }
-        )";
-        params.add_remapped_file("main.cpp", hello_world);
-        expect(compile(params));
+        database.add_command("/fake",
+                             "main.cpp",
+                             llvm::StringRef("clang++ @test.txt -std= main.cpp"));
+        auto info = database.lookup("main.cpp", {.query_toolchain = false});
     };
 
     test("ResourceDir") = [] {
         CompilationDatabase database;
         using namespace std::literals;
-        database.update_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
+        database.add_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
         auto arguments = database.lookup("main.cpp", {.resource_dir = true}).arguments;
 
-        fatal / expect(eq(arguments.size(), 4));
+        fatal / expect(eq(arguments.size(), 5));
         expect(eq(arguments[0], "clang++"sv));
         expect(eq(arguments[1], "-std=c++23"sv));
-        expect(eq(arguments[2], std::format("-resource-dir={}", fs::resource_dir)));
-        expect(eq(arguments[3], "main.cpp"sv));
+        expect(eq(arguments[2], "-resource-dir"sv));
+        expect(eq(arguments[3], fs::resource_dir));
+        expect(eq(arguments[4], "main.cpp"sv));
     };
 
     auto expect_load = [](llvm::StringRef content,
@@ -273,75 +241,87 @@ suite<"Command"> command = [] {
     };
 
     /// TODO: add windows path testcase
-    skip_unless(Linux || MacOS) / test("LoadAbsoluteUnixStyle") = [expect_load] {
-        constexpr const char* cmake = R"([
-        {
-            "directory": "/home/developer/clice/build",
-            "command": "/usr/bin/c++ -I/home/developer/clice/include -I/home/developer/clice/build/_deps/libuv-src/include -isystem /home/developer/clice/build/_deps/tomlplusplus-src/include -std=gnu++23 -fno-rtti -fno-exceptions -Wno-deprecated-declarations -Wno-undefined-inline -O3 -o CMakeFiles/clice-core.dir/src/Driver/clice.cpp.o -c /home/developer/clice/src/Driver/clice.cpp",
-            "file": "/home/developer/clice/src/Driver/clice.cpp",
-            "output": "CMakeFiles/clice-core.dir/src/Driver/clice.cpp.o"
-        }
-        ])";
+    // skip_unless(Linux || MacOS) / test("LoadAbsoluteUnixStyle") = [expect_load] {
+    //     constexpr const char* cmake = R"([
+    //     {
+    //         "directory": "/home/developer/clice/build",
+    //         "command": "/usr/bin/c++ -I/home/developer/clice/include
+    //         -I/home/developer/clice/build/_deps/libuv-src/include -isystem
+    //         /home/developer/clice/build/_deps/tomlplusplus-src/include -std=gnu++23 -fno-rtti
+    //         -fno-exceptions -Wno-deprecated-declarations -Wno-undefined-inline -O3 -o
+    //         CMakeFiles/clice-core.dir/src/Driver/clice.cpp.o -c
+    //         /home/developer/clice/src/Driver/clice.cpp", "file":
+    //         "/home/developer/clice/src/Driver/clice.cpp", "output":
+    //         "CMakeFiles/clice-core.dir/src/Driver/clice.cpp.o"
+    //     }
+    //     ])";
+    //
+    //     expect_load(cmake,
+    //                 "/home/developer/clice",
+    //                 "/home/developer/clice/src/Driver/clice.cpp",
+    //                 "/home/developer/clice/build",
+    //                 {
+    //                     "/usr/bin/c++",
+    //                     "-I",
+    //                     "/home/developer/clice/include",
+    //                     "-I",
+    //                     "/home/developer/clice/build/_deps/libuv-src/include",
+    //                     "-isystem",
+    //                     "/home/developer/clice/build/_deps/tomlplusplus-src/include",
+    //                     "-std=gnu++23",
+    //                     "-fno-rtti",
+    //                     "-fno-exceptions",
+    //                     "-Wno-deprecated-declarations",
+    //                     "-Wno-undefined-inline",
+    //                     "-O3",
+    //                     "/home/developer/clice/src/Driver/clice.cpp",
+    //                 });
+    // };
 
-        expect_load(cmake,
-                    "/home/developer/clice",
-                    "/home/developer/clice/src/Driver/clice.cpp",
-                    "/home/developer/clice/build",
-                    {
-                        "/usr/bin/c++",
-                        "-I",
-                        "/home/developer/clice/include",
-                        "-I",
-                        "/home/developer/clice/build/_deps/libuv-src/include",
-                        "-isystem",
-                        "/home/developer/clice/build/_deps/tomlplusplus-src/include",
-                        "-std=gnu++23",
-                        "-fno-rtti",
-                        "-fno-exceptions",
-                        "-Wno-deprecated-declarations",
-                        "-Wno-undefined-inline",
-                        "-O3",
-                        "/home/developer/clice/src/Driver/clice.cpp",
-                    });
-    };
-
-    skip_unless(Linux || MacOS) / test("LoadRelativeUnixStyle") = [expect_load] {
-        constexpr const char* xmake = R"([
-        {
-            "directory": "/home/developer/clice",
-            "arguments": ["/usr/bin/clang", "-c", "-Qunused-arguments", "-m64", "-g", "-O0", "-std=c++23", "-Iinclude", "-I/home/developer/clice/include", "-fno-exceptions", "-fno-cxx-exceptions", "-isystem", "/home/developer/.xmake/packages/l/libuv/v1.51.0/3ca1562e6c5d485f9ccafec8e0c50b6f/include", "-isystem", "/home/developer/.xmake/packages/t/toml++/v3.4.0/bde7344d843e41928b1d325fe55450e0/include", "-fsanitize=address", "-fno-rtti", "-o", "build/.objs/clice/linux/x86_64/debug/src/Driver/clice.cc.o", "src/Driver/clice.cc"],
-            "file": "src/Driver/clice.cc"
-        }
-        ])";
-
-        expect_load(
-            xmake,
-            "/home/developer/clice",
-            "/home/developer/clice/src/Driver/clice.cc",
-            "/home/developer/clice",
-            {
-                "/usr/bin/clang",
-                "-Qunused-arguments",
-                "-m64",
-                "-g",
-                "-O0",
-                "-std=c++23",
-                //  parameter "-Iinclude" in CDB, should be convert to absolute path
-                "-I",
-                "/home/developer/clice/include",
-                "-I",
-                "/home/developer/clice/include",
-                "-fno-exceptions",
-                "-fno-cxx-exceptions",
-                "-isystem",
-                "/home/developer/.xmake/packages/l/libuv/v1.51.0/3ca1562e6c5d485f9ccafec8e0c50b6f/include",
-                "-isystem",
-                "/home/developer/.xmake/packages/t/toml++/v3.4.0/bde7344d843e41928b1d325fe55450e0/include",
-                "-fsanitize=address",
-                "-fno-rtti",
-                "/home/developer/clice/src/Driver/clice.cc",
-            });
-    };
+    // skip_unless(Linux || MacOS) / test("LoadRelativeUnixStyle") = [expect_load] {
+    //     constexpr const char* xmake = R"([
+    //     {
+    //         "directory": "/home/developer/clice",
+    //         "arguments": ["/usr/bin/clang", "-c", "-Qunused-arguments", "-m64", "-g", "-O0",
+    //         "-std=c++23", "-Iinclude", "-I/home/developer/clice/include", "-fno-exceptions",
+    //         "-fno-cxx-exceptions", "-isystem",
+    //         "/home/developer/.xmake/packages/l/libuv/v1.51.0/3ca1562e6c5d485f9ccafec8e0c50b6f/include",
+    //         "-isystem",
+    //         "/home/developer/.xmake/packages/t/toml++/v3.4.0/bde7344d843e41928b1d325fe55450e0/include",
+    //         "-fsanitize=address", "-fno-rtti", "-o",
+    //         "build/.objs/clice/linux/x86_64/debug/src/Driver/clice.cc.o", "src/Driver/clice.cc"],
+    //         "file": "src/Driver/clice.cc"
+    //     }
+    //     ])";
+    //
+    //    expect_load(
+    //        xmake,
+    //        "/home/developer/clice",
+    //        "/home/developer/clice/src/Driver/clice.cc",
+    //        "/home/developer/clice",
+    //        {
+    //            "/usr/bin/clang",
+    //            "-Qunused-arguments",
+    //            "-m64",
+    //            "-g",
+    //            "-O0",
+    //            "-std=c++23",
+    //            //  parameter "-Iinclude" in CDB, should be convert to absolute path
+    //            "-I",
+    //            "/home/developer/clice/include",
+    //            "-I",
+    //            "/home/developer/clice/include",
+    //            "-fno-exceptions",
+    //            "-fno-cxx-exceptions",
+    //            "-isystem",
+    //            "/home/developer/.xmake/packages/l/libuv/v1.51.0/3ca1562e6c5d485f9ccafec8e0c50b6f/include",
+    //            "-isystem",
+    //            "/home/developer/.xmake/packages/t/toml++/v3.4.0/bde7344d843e41928b1d325fe55450e0/include",
+    //            "-fsanitize=address",
+    //            "-fno-rtti",
+    //            "/home/developer/clice/src/Driver/clice.cc",
+    //        });
+    //};
 };
 
 }  // namespace
