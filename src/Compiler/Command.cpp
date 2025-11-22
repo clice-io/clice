@@ -2,35 +2,11 @@
 #include "Compiler/Compilation.h"
 #include "Support/FileSystem.h"
 #include "Support/Logging.h"
+#include "Support/StringPool.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Program.h"
 #include "Driver.h"
-
-namespace llvm {
-
-template <>
-struct DenseMapInfo<llvm::ArrayRef<const char*>> {
-    using T = llvm::ArrayRef<const char*>;
-
-    inline static T getEmptyKey() {
-        return T(reinterpret_cast<T::const_pointer>(~0), T::size_type(0));
-    }
-
-    inline static T getTombstoneKey() {
-        return T(reinterpret_cast<T::const_pointer>(~1), T::size_type(0));
-    }
-
-    static unsigned getHashValue(const T& value) {
-        return llvm::hash_combine_range(value.begin(), value.end());
-    }
-
-    static bool isEqual(const T& lhs, const T& rhs) {
-        return lhs == rhs;
-    }
-};
-
-}  // namespace llvm
 
 namespace clice {
 
@@ -50,71 +26,10 @@ struct CommandInfo {
     std::uint32_t response_file_index = 0;
 };
 
-struct CompilationDatabase::Impl {
-    /// The memory pool to hold all cstring and command list.
-    llvm::BumpPtrAllocator allocator;
-
-    /// A cache between input string and its cache cstring
-    /// in the allocator, make sure end with `\0`.
-    llvm::DenseSet<llvm::StringRef> string_cache;
-
-    /// A cache between input command and its cache array
-    /// in the allocator.
-    llvm::DenseSet<llvm::ArrayRef<const char*>> arguments_cache;
-
-    /// The clang options we want to filter in all cases, like -c and -o.
-    llvm::DenseSet<std::uint32_t> filtered_options;
-
-    /// A map between file path and its canonical command list.
-    llvm::DenseMap<const char*, CommandInfo> command_infos;
-
-    /// A map between driver path and its query driver info.
-    llvm::DenseMap<const char*, DriverInfo> driver_infos;
-
-    ArgumentParser parser = {&allocator};
-
+struct CompilationDatabase::Impl : public StringPool {
     using Self = CompilationDatabase::Impl;
 
-    auto save_string(this Self& self, llvm::StringRef string) -> llvm::StringRef {
-        assert(!string.empty() && "expected non empty string");
-        auto it = self.string_cache.find(string);
-
-        /// If we already store the argument, reuse it.
-        if(it != self.string_cache.end()) {
-            return *it;
-        }
-
-        /// Allocate for new string.
-        const auto size = string.size();
-        auto ptr = self.allocator.Allocate<char>(size + 1);
-        std::memcpy(ptr, string.data(), size);
-        ptr[size] = '\0';
-
-        /// Insert it to cache.
-        auto result = llvm::StringRef(ptr, size);
-        self.string_cache.insert(result);
-        return result;
-    }
-
-    auto save_cstring_list(this Self& self, llvm::ArrayRef<const char*> arguments)
-        -> llvm::ArrayRef<const char*> {
-        auto it = self.arguments_cache.find(arguments);
-
-        /// If we already store the argument, reuse it.
-        if(it != self.arguments_cache.end()) {
-            return *it;
-        }
-
-        /// Allocate for new array.
-        const auto size = arguments.size();
-        auto ptr = self.allocator.Allocate<const char*>(size);
-        ranges::copy(arguments, ptr);
-
-        /// Insert it to cache.
-        auto result = llvm::ArrayRef<const char*>(ptr, size);
-        self.arguments_cache.insert(result);
-        return result;
-    }
+    Impl() : StringPool(), parser(&get_allocator()) {}
 
     auto process_command(this Self& self,
                          llvm::StringRef file,
@@ -125,7 +40,7 @@ struct CompilationDatabase::Impl {
         llvm::SmallVector<const char*, 16> final_arguments;
 
         auto add_string = [&](llvm::StringRef argument) {
-            auto saved = self.save_string(argument);
+            auto saved = self.save_cstr(argument);
             final_arguments.emplace_back(saved.data());
         };
 
@@ -185,7 +100,7 @@ struct CompilationDatabase::Impl {
         /// Prepare for removing arguments.
         llvm::SmallVector<const char*> remove;
         for(auto& arg: options.remove) {
-            remove.push_back(self.save_string(arg).data());
+            remove.push_back(self.save_cstr(arg).data());
         }
 
         /// FIXME: Handle unknow remove arguments.
@@ -297,10 +212,21 @@ struct CompilationDatabase::Impl {
         LookupInfo info;
         constexpr const char* fallback[] = {"clang++", "-std=c++20"};
         for(const char* arg: fallback) {
-            info.arguments.emplace_back(self.save_string(arg).data());
+            info.arguments.emplace_back(self.save_cstr(arg).data());
         }
         return info;
     }
+
+    /// The clang options we want to filter in all cases, like -c and -o.
+    llvm::DenseSet<std::uint32_t> filtered_options;
+
+    /// A map between file path and its canonical command list.
+    llvm::DenseMap<const char*, CommandInfo> command_infos;
+
+    /// A map between driver path and its query driver info.
+    llvm::DenseMap<const char*, DriverInfo> driver_infos;
+
+    ArgumentParser parser;
 };
 
 using ID = options::ID;
@@ -352,9 +278,10 @@ CompilationDatabase::CompilationDatabase() : self(std::make_unique<CompilationDa
     }
 }
 
-CompilationDatabase::CompilationDatabase(CompilationDatabase&& other) = default;
+CompilationDatabase::CompilationDatabase(CompilationDatabase&& other) noexcept = default;
 
-CompilationDatabase& CompilationDatabase::operator= (CompilationDatabase&& other) = default;
+CompilationDatabase&
+    CompilationDatabase::operator= (CompilationDatabase&& other) noexcept = default;
 
 CompilationDatabase::~CompilationDatabase() = default;
 
@@ -379,12 +306,12 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
 }
 
 auto CompilationDatabase::save_string(llvm::StringRef string) -> llvm::StringRef {
-    return self->save_string(string);
+    return self->save_cstr(string);
 }
 
 auto CompilationDatabase::query_driver(llvm::StringRef driver)
     -> std::expected<DriverInfo, toolchain::QueryDriverError> {
-    driver = self->save_string(driver).data();
+    driver = self->save_cstr(driver).data();
     auto it = self->driver_infos.find(driver.data());
     if(it != self->driver_infos.end()) {
         return it->second;
@@ -396,7 +323,7 @@ auto CompilationDatabase::query_driver(llvm::StringRef driver)
     }
 
     DriverInfo info;
-    info.target = self->save_string(driver_info->target);
+    info.target = self->save_cstr(driver_info->target);
 
     llvm::SmallVector<const char*> includes;
     for(llvm::StringRef include: driver_info->includes) {
@@ -416,10 +343,10 @@ auto CompilationDatabase::query_driver(llvm::StringRef driver)
            || include.contains("lib\\clang")) {
             continue;
         }
-        includes.emplace_back(self->save_string(include).data());
+        includes.emplace_back(self->save_cstr(include).data());
     }
 
-    info.system_includes = self->save_cstring_list(includes);
+    info.system_includes = self->save_cstr_list(includes);
     self->driver_infos.try_emplace(driver.data(), info);
     return info;
 }
@@ -429,8 +356,8 @@ auto CompilationDatabase::update_command(llvm::StringRef directory,
                                          llvm::ArrayRef<const char*> arguments) -> UpdateInfo {
     self->parser.set_arguments(arguments);
 
-    file = self->save_string(file);
-    directory = self->save_string(directory);
+    file = self->save_cstr(file);
+    directory = self->save_cstr(directory);
 
     llvm::StringRef response_file;
     std::uint32_t response_file_index = 0;
@@ -496,16 +423,16 @@ auto CompilationDatabase::update_command(llvm::StringRef directory,
                     "clice currently supports only one response file in the command, when loads {}",
                     file);
             }
-            response_file = self->save_string(argument);
+            response_file = self->save_cstr(argument);
             response_file_index = it;
             continue;
         }
 
-        canonical_arguments.push_back(self->save_string(argument).data());
+        canonical_arguments.push_back(self->save_cstr(argument).data());
     }
 
     /// Cache the canonical arguments
-    arguments = self->save_cstring_list(canonical_arguments);
+    arguments = self->save_cstr_list(canonical_arguments);
 
     UpdateKind kind = UpdateKind::Unchange;
     CommandInfo info = {
@@ -680,7 +607,7 @@ auto CompilationDatabase::load_compile_database(llvm::ArrayRef<std::string> comp
 auto CompilationDatabase::lookup(llvm::StringRef file, CommandOptions options) -> LookupInfo {
     LookupInfo info;
 
-    file = self->save_string(file);
+    file = self->save_cstr(file);
     auto it = self->command_infos.find(file.data());
     if(it != self->command_infos.end()) {
         info.directory = it->second.directory;
@@ -690,7 +617,7 @@ auto CompilationDatabase::lookup(llvm::StringRef file, CommandOptions options) -
     }
 
     auto record = [&info, this](llvm::StringRef argument) {
-        info.arguments.emplace_back(self->save_string(argument).data());
+        info.arguments.emplace_back(self->save_cstr(argument).data());
     };
 
     if(options.query_driver) {

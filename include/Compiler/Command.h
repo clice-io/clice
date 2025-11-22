@@ -71,11 +71,11 @@ public:
 
     CompilationDatabase(const CompilationDatabase&) = delete;
 
-    CompilationDatabase(CompilationDatabase&& other);
+    CompilationDatabase(CompilationDatabase&& other) noexcept;
 
     CompilationDatabase& operator= (const CompilationDatabase&) = delete;
 
-    CompilationDatabase& operator= (CompilationDatabase&& other);
+    CompilationDatabase& operator= (CompilationDatabase&& other) noexcept;
 
     ~CompilationDatabase();
 
