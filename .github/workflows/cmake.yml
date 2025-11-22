@@ -103,5 +103,9 @@ jobs:
             EXE_EXT=".exe"
           fi
 
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
+          fi
+
           ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
           uv run pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
