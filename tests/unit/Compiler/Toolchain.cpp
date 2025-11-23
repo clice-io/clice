@@ -3,6 +3,7 @@
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/StringSaver.h"
 #include "clang/Driver/Driver.h"
+#include "Support/Logging.h"
 
 namespace clice::testing {
 
@@ -40,28 +41,47 @@ suite<"Toolchain"> suite = [] {
         expect_family("zig.exe", Zig);
     };
 
-    test("GCC") = [] {
+    using namespace std::string_view_literals;
+
+    skip_unless(CIEnvironment && (Windows || Linux)) / test("GCC") = [] {
+        auto file = fs::createTemporaryFile("clice", "cpp");
+        if(!file) {
+            LOG_ERROR_RET(void(), "{}", file.error());
+        }
+
         llvm::BumpPtrAllocator a;
         llvm::StringSaver s(a);
         auto arguments = toolchain::query_toolchain({
-            .arguments = {"g++", "-xc++", "/dev/null"},
+            .arguments = {"g++", "-xc++", file->c_str()},
             .callback = [&](const char* str) { return s.save(str).data(); }
         });
 
-        for(auto arg: arguments) {
-            std::println("{}", arg);
+        expect(arguments.size() > 2);
+        expect(eq(arguments[1], "-cc1"sv));
+    };
+
+    skip_unless(CIEnvironment) / test("MSVC") = [] {
+
+    };
+
+    skip_unless(CIEnvironment) / test("Clang") = [] {
+        auto file = fs::createTemporaryFile("clice", "cpp");
+        if(!file) {
+            LOG_ERROR_RET(void(), "{}", file.error());
         }
+
+        llvm::BumpPtrAllocator a;
+        llvm::StringSaver s(a);
+        auto arguments = toolchain::query_toolchain({
+            .arguments = {"g++", "-xc++", file->c_str()},
+            .callback = [&](const char* str) { return s.save(str).data(); }
+        });
+
+        expect(arguments.size() > 2);
+        expect(eq(arguments[1], "-cc1"sv));
     };
 
-    test("MSVC") = [] {
-
-    };
-
-    test("Clang") = [] {
-
-    };
-
-    test("Zig") = [] {
+    skip_unless(CIEnvironment) / test("Zig") = [] {
 
     };
 };

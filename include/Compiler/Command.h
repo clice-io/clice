@@ -40,14 +40,6 @@ enum class UpdateKind : std::uint8_t {
     Deleted,
 };
 
-struct DriverInfo {
-    /// The target of this driver.
-    llvm::StringRef target;
-
-    /// The default system includes of this driver.
-    std::vector<const char*> system_includes;
-};
-
 struct UpdateInfo {
     /// The kind of update.
     UpdateKind kind;
@@ -69,25 +61,7 @@ struct CompilationContext {
     std::vector<const char*> arguments;
 };
 
-struct LookupInfo {
-    llvm::StringRef directory;
-
-    std::vector<const char*> arguments;
-
-    /// The include arguments indices in the arguments list.
-    std::vector<std::uint32_t> include_indices;
-};
-
-inline std::string print_argv(llvm::ArrayRef<const char*> args) {
-    std::string s = "[";
-    s += args.consume_front();
-    for(auto arg: args) {
-        s += " ";
-        s += arg;
-    }
-    s += "]";
-    return s;
-}
+std::string print_argv(llvm::ArrayRef<const char*> args);
 
 class CompilationDatabase {
 public:
@@ -102,9 +76,6 @@ public:
     CompilationDatabase& operator= (CompilationDatabase&& other);
 
     ~CompilationDatabase();
-
-private:
-    struct Impl;
 
 public:
     /// Read the compilation database on the give file and return the
@@ -147,6 +118,7 @@ public:
 #endif
 
 private:
+    struct Impl;
     std::unique_ptr<Impl> self;
 };
 

@@ -792,4 +792,17 @@ void CompilationDatabase::add_command(llvm::StringRef directory,
 
 #endif
 
+std::string print_argv(llvm::ArrayRef<const char*> args) {
+    std::string s = "[";
+    if(!args.empty()) {
+        s += args.consume_front();
+        for(auto arg: args) {
+            s += " ";
+            s += arg;
+        }
+        s += "]";
+    }
+    return s;
+}
+
 }  // namespace clice
