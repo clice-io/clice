@@ -711,8 +711,6 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         arguments = toolchain::query_toolchain(params);
 
         /// FIXME: we need mangle the arguments again.
-        arguments.insert(arguments.begin() + 2, self->strings.save("-fsyntax-only").data());
-
         /// Work around ... the logic of this should be moved to query ...
         bool next_main_file = false;
         for(auto& arg: arguments) {

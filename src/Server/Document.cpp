@@ -328,9 +328,9 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
     auto ast = co_await async::submit([&] { return compile(params); });
     if(!ast) {
         /// FIXME: Fails needs cancel waiting tasks.
-        LOG_WARN("Building AST fails for {}, Beacuse: {}", path, ast.error());
+        LOG_ERROR("Building AST fails for {}, Beacuse: {}", path, ast.error());
         for(auto& diagnostic: *file->diagnostics) {
-            LOG_WARN("{}", diagnostic.message);
+            LOG_ERROR("{}", diagnostic.message);
         }
         co_return;
     }

@@ -455,7 +455,7 @@ std::vector<const char*> query_clang_toolchain(const QueryParams& params) {
             }
 
             for(auto arg: args) {
-                if(arg == "-###"sv || arg == "-fsyntax-only"sv) {
+                if(arg == "-###"sv) {
                     continue;
                 }
                 result.emplace_back(params.callback(arg));
