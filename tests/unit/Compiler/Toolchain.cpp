@@ -73,7 +73,7 @@ suite<"Toolchain"> suite = [] {
         llvm::BumpPtrAllocator a;
         llvm::StringSaver s(a);
         auto arguments = toolchain::query_toolchain({
-            .arguments = {"g++", "-xc++", file->c_str()},
+            .arguments = {"clang++", "-xc++", file->c_str()},
             .callback = [&](const char* str) { return s.save(str).data(); }
         });
 
