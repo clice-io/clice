@@ -800,8 +800,8 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
             s += " ";
             s += arg;
         }
-        s += "]";
     }
+    s += "]";
     return s;
 }
 
