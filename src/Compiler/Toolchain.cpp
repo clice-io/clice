@@ -223,12 +223,12 @@ void parse_version_result(llvm::StringRef content, QueryResult& info) {
     }
 
     if(!found_start_marker) {
-        LOG_ERROR("");
+        LOG_ERROR("Failed to parse version output: missing include search start marker");
         return;
     }
 
     if(in_includes_block) {
-        LOG_ERROR("");
+        LOG_ERROR("Failed to parse version output: unclosed include search block");
         return;
     }
 }
@@ -333,8 +333,8 @@ std::vector<const char*> query_toolchain(const QueryParams& params) {
         }
     });
     modified_arguments.emplace_back(src_path.c_str());
-
-    params_copy.arguments = modified_arguments;
+    arguments = modified_arguments;
+    params_copy.arguments = arguments;
 
     auto family = driver_family(driver);
     switch(family) {
@@ -360,12 +360,13 @@ std::vector<const char*> query_toolchain(const QueryParams& params) {
                       driver);
 
             std::vector<const char*> result;
-            query_driver(arguments, [&](const char* driver, llvm::ArrayRef<const char*> cc1_args) {
-                result.emplace_back(params.callback(driver));
-                for(auto arg: cc1_args) {
-                    result.emplace_back(params.callback(arg));
-                }
-            });
+            query_driver(params_copy.arguments,
+                         [&](const char* driver, llvm::ArrayRef<const char*> cc1_args) {
+                             result.emplace_back(params.callback(driver));
+                             for(auto arg: cc1_args) {
+                                 result.emplace_back(params.callback(arg));
+                             }
+                         });
             return result;
         }
     }

@@ -132,9 +132,6 @@ public:
     /// FIXME: remove this api?
     auto save_string(llvm::StringRef string) -> llvm::StringRef;
 
-    /// TODO: implement and replace query driver ...
-    auto query_toolchain(llvm::ArrayRef<const char*> arguments) -> std::vector<const char*>;
-
 #ifdef CLICE_ENABLE_TEST
 
     void add_command(llvm::StringRef directory,

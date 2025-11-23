@@ -100,6 +100,10 @@ private:
 auto create_invocation(CompilationParams& params,
                        llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine>& diagnostic_engine)
     -> std::unique_ptr<clang::CompilerInvocation> {
+    if(params.arguments.empty()) {
+        LOG_ERROR_RET(nullptr, "Fail to create invocation: empty argument list from database");
+    }
+
     std::unique_ptr<clang::CompilerInvocation> invocation;
 
     /// Arguments from compilation database are already cc1

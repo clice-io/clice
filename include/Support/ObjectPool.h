@@ -64,17 +64,13 @@ private:
 
 template <typename T>
 struct object_ptr {
-    T* ptr;
+    T* ptr = nullptr;
 
     object_ptr() noexcept = default;
 
     object_ptr(std::nullptr_t) noexcept : ptr(nullptr) {}
 
     explicit object_ptr(T* p) noexcept : ptr(p) {}
-
-    T* get() const noexcept {
-        return ptr;
-    }
 
     T& operator* () const noexcept {
         return *ptr;
@@ -112,6 +108,12 @@ public:
     ~ObjectSet() {
         if constexpr(!std::is_trivially_destructible_v<T>) {
             for(auto object: objects) {
+                if(object) {
+                    std::destroy_at(object.ptr);
+                }
+            }
+
+            for(auto& [object, _]: removed) {
                 if(object) {
                     std::destroy_at(object.ptr);
                 }
