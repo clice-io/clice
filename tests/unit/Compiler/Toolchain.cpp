@@ -1,3 +1,4 @@
+#include "Compiler/Compilation.h"
 #include "Test/Test.h"
 #include "Compiler/Toolchain.h"
 #include "llvm/Support/Allocator.h"
@@ -52,12 +53,29 @@ suite<"Toolchain"> suite = [] {
         llvm::BumpPtrAllocator a;
         llvm::StringSaver s(a);
         auto arguments = toolchain::query_toolchain({
-            .arguments = {"g++", "-xc++", file->c_str()},
+            .arguments = {"g++",
+                          "-std=c++23", "-resource-dir",
+                          fs::resource_dir.c_str(),
+                          "-xc++", file->c_str()},
             .callback = [&](const char* str) { return s.save(str).data(); }
         });
 
         expect(arguments.size() > 2);
         expect(eq(arguments[1], "-cc1"sv));
+
+        CompilationParams params;
+        params.arguments_from_database = true;
+        params.arguments = arguments;
+        params.add_remapped_file(file->c_str(), R"(
+            #include <print>
+            int main() {
+                std::println("Hello world!");
+                return 0;
+            }
+        )");
+
+        auto unit = compile(params);
+        expect(unit && unit->diagnostics().empty());
     };
 
     skip_unless(CIEnvironment) / test("MSVC") = [] {
@@ -73,12 +91,29 @@ suite<"Toolchain"> suite = [] {
         llvm::BumpPtrAllocator a;
         llvm::StringSaver s(a);
         auto arguments = toolchain::query_toolchain({
-            .arguments = {"clang++", "-xc++", file->c_str()},
+            .arguments = {"clang++",
+                          "-std=c++23", "-resource-dir",
+                          fs::resource_dir.c_str(),
+                          "-xc++", file->c_str()},
             .callback = [&](const char* str) { return s.save(str).data(); }
         });
 
         expect(arguments.size() > 2);
         expect(eq(arguments[1], "-cc1"sv));
+
+        CompilationParams params;
+        params.arguments_from_database = true;
+        params.arguments = arguments;
+        params.add_remapped_file(file->c_str(), R"(
+            #include <print>
+            int main() {
+                std::println("Hello world!");
+                return 0;
+            }
+        )");
+
+        auto unit = compile(params);
+        expect(unit && unit->diagnostics().empty());
     };
 
     skip_unless(CIEnvironment) / test("Zig") = [] {
