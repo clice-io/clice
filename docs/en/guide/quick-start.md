@@ -62,6 +62,28 @@ TODO:
 
 ### Xmake
 
+Use one of the following approaches to generate a compilation database.
+
+#### Command Line
+
+Run the following command to manually generate compilation database.
+
+```bash
+xmake project -k compile_commands --lsp=clangd build
+```
+
+> Compilation database generated manually doesn't automatically update itself. Re-generate if changes are made to the project.
+
+#### VSCode Extension
+
+The Xmake offical VSCode extension provides autonomous generation of compilation database upon updates on `xmake.lua`. However, it generates the database to `.vscode` directory. Append this setting in `settings.json`:
+
+```json
+"xmake.compileCommandsDirectory": "build"
+```
+
+to explicitly ask the extension to generate the compilation database in `build`.
+
 ### Others
 
 For any other build system, you can try using [bear](https://github.com/rizsotto/Bear) or [scan-build](https://github.com/rizsotto/scan-build) to intercept compilation commands and obtain the compilation database (no guarantee of success). We plan to write a **new tool** in the future that captures compilation commands through a fake compiler approach.

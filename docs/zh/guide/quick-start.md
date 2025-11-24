@@ -63,6 +63,28 @@ TODO:
 
 ### Xmake
 
+用下列任意方法生成编译数据库。
+
+#### 命令行手动生成
+
+在命令行中执行以下命令：
+
+```bash
+xmake project -k compile_commands --lsp=clangd build
+```
+
+> 通过这种方法生成的编译数据库无法自动更新，需要在项目编译配置更改时手动重新生成
+
+#### VSCode扩展
+
+Xmake提供的官方VSCode扩展已经自带了编译数据库生成（保存时其会自动生成编译数据库）。然而默认情况下，它将编译数据库生成到了`.vscode`文件夹。在`settings.json`中添加以下配置：
+
+```json
+"xmake.compileCommandsDirectory": "build"
+```
+
+以将编译数据库的生成目录调整到`build`，供clice使用。
+
 ### Others
 
 对于任意其它的构建系统，可以尝试使用 [bear](https://github.com/rizsotto/Bear) 或者 [scan-build](https://github.com/rizsotto/scan-build) 来拦截编译命令并获取到编译数据库（不保证成功）。我们计划在未来编写一个**新的工具**，通过假编译器的方式来实现编译命令的捕获。
