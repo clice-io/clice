@@ -41,7 +41,7 @@ end
 
 add_defines("TOML_EXCEPTIONS=0")
 add_requires("spdlog", {system = false, version = "1.15.3", configs = {header_only = false, std_format = true, noexcept = true}})
-add_requires(libuv_require, "toml++", "croaring", "flatbuffers")
+add_requires(libuv_require, "toml++", "croaring", "flatbuffers", "cpptrace")
 add_requires("clice-llvm", {alias = "llvm"})
 
 add_rules("mode.release", "mode.debug", "mode.releasedbg")
@@ -145,6 +145,7 @@ target("unit_tests")
     add_files("bin/unit_tests.cc", "tests/unit/**.cpp")
     add_includedirs(".", {public = true})
 
+    add_packages("cpptrace")
     add_deps("clice-core")
 
     add_tests("default")

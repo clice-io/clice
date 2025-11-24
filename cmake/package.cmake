@@ -117,6 +117,7 @@ FetchContent_Declare(
     GIT_TAG        v4.4.2
 )
 set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "" FORCE)
+set(ENABLE_ROARING_MICROBENCHMARKS OFF CACHE INTERNAL "" FORCE)
 
 # flatbuffers
 FetchContent_Declare(
@@ -128,7 +129,14 @@ set(FLATBUFFERS_BUILD_GRPC OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring flatbuffers)
+# cpptrace
+FetchContent_Declare(
+    cpptrace
+    GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
+    GIT_TAG        v1.0.4
+)
+
+FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring flatbuffers cpptrace)
 
 if(WIN32)
     target_compile_definitions(uv_a PRIVATE _CRT_SECURE_NO_WARNINGS)
