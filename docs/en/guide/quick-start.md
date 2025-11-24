@@ -76,7 +76,7 @@ xmake project -k compile_commands --lsp=clangd build
 
 #### VSCode Extension
 
-The Xmake offical VSCode extension provides autonomous generation of compilation database upon updates on `xmake.lua`. However, it generates the database to `.vscode` directory. Append this setting in `settings.json`:
+The Xmake official VSCode extension provides autonomous generation of compilation database upon updates on `xmake.lua`. However, it generates the database to `.vscode` directory. Append this setting in `settings.json`:
 
 ```json
 "xmake.compileCommandsDirectory": "build"
