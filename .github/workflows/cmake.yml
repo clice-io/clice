@@ -80,6 +80,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "macOS" ]]; then
+            export SDKROOT=$(xcrun --show-sdk-path)
             export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
           fi
 
