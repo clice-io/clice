@@ -176,6 +176,8 @@ target("integration_tests", function()
 		local uv = assert(find_tool("uv"), "uv not found!")
 		local argv = {
 			"run",
+			"--project",
+			"tests",
 			"pytest",
 			"--log-cli-level=INFO",
 			"-s",

@@ -108,4 +108,4 @@ jobs:
           fi
 
           ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
-          uv run pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
+          uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
