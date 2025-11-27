@@ -182,8 +182,8 @@ target("integration_tests", function()
 			"tests/integration",
 			"--executable=" .. target:dep("clice"):targetfile(),
 		}
-		local opt = { envs = envs, curdir = os.projectdir() }
-		os.vrunv(uv.program, argv, opt)
+		local run_opt = { curdir = os.projectdir() }
+		os.vrunv(uv.program, argv, run_opt)
 
 		return true
 	end)

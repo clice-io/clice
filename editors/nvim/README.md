@@ -1,3 +1,3 @@
 # clice-nvim
 
-Provide extended functionality for [clice](github.com/clice-io/clice)
+Provide extended functionality for [clice](https://github.com/clice-io/clice)
