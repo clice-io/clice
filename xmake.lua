@@ -43,6 +43,9 @@ add_defines("TOML_EXCEPTIONS=0")
 add_requires("spdlog", {system = false, version = "1.15.3", configs = {header_only = false, std_format = true, noexcept = true}})
 add_requires(libuv_require, "toml++", "croaring", "flatbuffers")
 add_requires("clice-llvm", {alias = "llvm"})
+if is_cross() then
+    add_requires("flatbuffers~host", {host = true, kind = "binary", alias = "flatc"})
+end
 
 add_rules("mode.release", "mode.debug", "mode.releasedbg")
 set_languages("c++23")
@@ -54,7 +57,7 @@ target("clice-core")
     add_includedirs("include", {public = true})
 
     add_rules("flatbuffers.schema.gen", "clice_clang_tidy_config")
-    add_packages("flatbuffers")
+    add_packages("flatbuffers", "flatc")
     add_packages("libuv", "spdlog", "toml++", "croaring", {public = true})
 
     if is_mode("debug") then
@@ -208,8 +211,13 @@ rule("clice_clang_tidy_config")
 rule("clice_build_config")
     on_load(function(target)
         target:set("exceptions", "no-cxx")
-        target:add("cxflags", "-fno-rtti", "-Wno-undefined-inline", {tools = {"clang", "clangxx", "gcc", "gxx"}})
         target:add("cxflags", "/GR-", "/Zc:preprocessor", {tools = {"clang_cl", "cl"}})
+        if target:toolchain("zig") then
+            target:add("cxflags", "-fno-rtti", "-Wno-undefined-inline")
+            target:add("undefines", "_LIBCPP_ENABLE_CXX17_REMOVED_UNEXPECTED_FUNCTIONS")
+        else
+            target:add("cxflags", "-fno-rtti", "-Wno-undefined-inline", {tools = {"clang", "clangxx", "gcc", "gxx"}})
+        end
 
         if target:is_plat("windows") and not target:toolchain("msvc") then
             target:set("toolset", "ar", "llvm-ar")
