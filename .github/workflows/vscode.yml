@@ -1,9 +1,13 @@
-name: Release VS Code Extension
+name: CI/CD VS Code Extension
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
+    branches: ["main"]
+    paths: ["editors/vscode/**"]
+  pull_request:
+    branches: ["main"]
+    paths: ["editors/vscode/**"]
 
 jobs:
   publish:
@@ -30,24 +34,26 @@ jobs:
       - name: Install vsce
         run: npm install -g vsce
 
-      - name: Publish to Marketplace (Pre-release)
-        if: contains(github.ref, '-')
+      - name: Publish and Package to Marketplace
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
-          npm run publish -- -p $VSCE_PAT --pre-release
-          npm run package -- --pre-release
+          FLAG=""
 
-      - name: Publish to Marketplace (Stable)
-        if: contains(github.ref, '-') == false
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          npm run publish -- -p $VSCE_PAT
-          npm run package
+          if [[ "${{ github.ref_name }}" == *"-"* ]]; then
+            FLAG="--pre-release"
+          fi
+
+          npm run package -- $FLAG
+
+          if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
+            npm run publish -- -p $VSCE_PAT $FLAG
+          fi
 
       - name: Upload .vsix to Release
         uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: "editors/vscode/*.vsix"
           tag: ${{ github.ref }}
