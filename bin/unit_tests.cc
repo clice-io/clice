@@ -1,4 +1,5 @@
 #include "Test/Test.h"
+#include "Test/Test2.h"
 #include "Support/Logging.h"
 #include "Support/GlobPattern.h"
 
@@ -198,5 +199,5 @@ int main(int argc, const char* argv[]) {
     }
 
     using namespace clice::testing;
-    return Runner::instance().run_tests();
+    return Runner2::instance().run_tests();
 }
