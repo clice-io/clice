@@ -143,7 +143,7 @@
     "vscode:prepublish": "webpack --mode production --devtool hidden-source-map",
     "package": "vsce package --baseImagesUrl https://raw.githubusercontent.com/clice-project/clice-vscode/main/",
     "publish": "vsce publish --baseImagesUrl https://raw.githubusercontent.com/clice-project/clice-vscode/main/",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
     "release:patch": "npm version patch -m \"release: v%s\" && git push --follow-tags",

@@ -7,7 +7,8 @@ This is the vscode extension for [clice](https://github.com/clice-project/clice)
 - install dependencies
 
 ```shell
-git clone https://github.com/clice-project/clice-vscode.git
+git clone https://github.com/clice-io/clice.git
+cd clice/editors/vscode
 npm install
 ```
 

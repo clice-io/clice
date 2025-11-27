@@ -43,7 +43,7 @@ export async function activate(context: ExtensionContext) {
 			run: { command: executable, args: args },
 			debug: { command: executable, args: args }
 		};
-	} else if (setting.mode == "socket") {
+	} else if (setting.mode === "socket") {
 		serverOptions = (): Promise<StreamInfo> => {
 			return new Promise((resolve, reject) => {
 				const client = new net.Socket();

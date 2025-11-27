@@ -135,15 +135,21 @@ export async function ensureServerBinary(
     }
 }
 
-function downloadFile(url: string, destPath: string, channel: vscode.OutputChannel): Promise<void> {
+function downloadFile(url: string, destPath: string, channel: vscode.OutputChannel, maxRedirects = 5): Promise<void> {
     return new Promise((resolve, reject) => {
+        if (maxRedirects <= 0) {
+            reject(new Error('Too many redirects'));
+            return;
+        }
+
         const file = fs.createWriteStream(destPath);
         channel.appendLine(`[Download] Start downloading to ${destPath}`);
 
         https.get(url, { headers: { 'User-Agent': 'VSCode-Extension' } }, (response) => {
             if (response.statusCode === 302 || response.statusCode === 301) {
                 channel.appendLine(`[Download] Redirecting to ${response.headers.location}`);
-                downloadFile(response.headers.location!, destPath, channel).then(resolve).catch(reject);
+                file.close();
+                downloadFile(response.headers.location!, destPath, channel, maxRedirects - 1).then(resolve).catch(reject);
                 return;
             }
             if (response.statusCode !== 200) {
@@ -158,6 +164,7 @@ function downloadFile(url: string, destPath: string, channel: vscode.OutputChann
                 resolve();
             });
         }).on('error', (err) => {
+            file.close();
             fs.unlink(destPath, () => { });
             reject(err);
         });

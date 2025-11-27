@@ -20,6 +20,11 @@ export function getSetting(): Setting | undefined {
     const host = setting.get<string>('host')!;
     const port = setting.get<number>('port')!;
 
+    if (mode === "socket" && (!host || !port)) {
+        vscode.window.showErrorMessage('Socket mode requires both host and port to be configured.');
+        return undefined;
+    }
+
     return {
         executable, mode, host, port,
     }
