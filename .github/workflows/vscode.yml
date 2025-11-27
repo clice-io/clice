@@ -38,12 +38,7 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
-          FLAG=""
-
-          if [[ "${{ github.ref_name }}" == *"-"* ]]; then
-            FLAG="--pre-release"
-          fi
-
+          FLAG="${{ contains(github.ref_name, '-') && '--pre-release' || '' }}"
           npm run package -- $FLAG
 
           if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
