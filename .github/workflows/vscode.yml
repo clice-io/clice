@@ -42,7 +42,7 @@ jobs:
           npm run package -- $FLAG
 
           if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
-            npm run publish -- -p $VSCE_PAT $FLAG
+            npm run publish -- -p "$VSCE_PAT" $FLAG
           fi
 
       - name: Upload .vsix to Release
