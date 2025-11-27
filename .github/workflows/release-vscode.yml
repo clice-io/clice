@@ -1,0 +1,51 @@
+name: Release VS Code Extension
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install vsce
+        run: npm install -g vsce
+
+      - name: Publish to Marketplace (Pre-release)
+        if: contains(github.ref, '-')
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          npm run publish -- -p $VSCE_PAT --pre-release
+          npm run package -- --pre-release
+
+      - name: Publish to Marketplace (Stable)
+        if: contains(github.ref, '-') == false
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          npm run publish -- -p $VSCE_PAT
+          npm run package
+
+      - name: Upload .vsix to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: "*.vsix"
+          tag: ${{ github.ref }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
