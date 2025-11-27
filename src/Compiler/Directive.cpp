@@ -57,13 +57,38 @@ private:
         }
 
         auto& directive = directives[sm.getFileID(loc)];
-        directive.macros.emplace_back(MacroRef{def, kind, loc});
+        directive.macros.push_back({def, kind, loc});
     }
 
 public:
     /// ============================================================================
     ///                         Rewritten Preprocessor Callbacks
     /// ============================================================================
+
+    void HasEmbed(clang::SourceLocation location,
+                  llvm::StringRef filename,
+                  bool is_angled,
+                  clang::OptionalFileEntryRef file) override {
+        directives[sm.getFileID(location)].has_embeds.push_back({
+            filename,
+            file,
+            is_angled,
+            location,
+        });
+    }
+
+    void EmbedDirective(clang::SourceLocation location,
+                        clang::StringRef filename,
+                        bool is_angled,
+                        clang::OptionalFileEntryRef file,
+                        const clang::LexEmbedParametersResult& Params) override {
+        directives[sm.getFileID(location)].embeds.push_back({
+            filename,
+            file,
+            is_angled,
+            location,
+        });
+    }
 
     void InclusionDirective(clang::SourceLocation hash_loc,
                             const clang::Token& include_tok,
@@ -80,7 +105,7 @@ public:
 
         /// An `IncludeDirective` call is always followed by either a `LexedFileChanged`
         /// or a `FileSkipped`. so we cannot get the file id of included file here.
-        directives[prev_fid].includes.emplace_back(Include{
+        directives[prev_fid].includes.push_back({
             .fid = {},
             .location = include_tok.getLocation(),
             .filename_range = filename_range.getAsRange(),
@@ -139,7 +164,10 @@ public:
             fid = sm.translateFile(*file);
         }
 
-        directives[sm.getFileID(location)].has_includes.emplace_back(fid, location);
+        directives[sm.getFileID(location)].has_includes.push_back({
+            fid,
+            location,
+        });
     }
 
     void PragmaDirective(clang::SourceLocation loc,
@@ -158,7 +186,7 @@ public:
                                                             : Pragma::Other;
 
         auto& directive = directives[fid];
-        directive.pragmas.emplace_back(Pragma{
+        directive.pragmas.push_back({
             that_line,
             kind,
             loc,
