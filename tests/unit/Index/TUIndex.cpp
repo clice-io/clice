@@ -1,98 +1,92 @@
+#include "Test/Test2.h"
 #include "Test/Tester.h"
 #include "Index/TUIndex.h"
 
 namespace clice::testing {
-
 namespace {
 
-suite<"TUIndex"> suite = [] {
-    Tester tester;
-    index::TUIndex tu_index;
+TEST_SUITE(TUIndex) {
 
-    auto build_index = [&](llvm::StringRef code,
-                           std::source_location location = std::source_location::current()) {
-        tester.clear();
-        tester.add_main("main.cpp", code);
-        fatal / expect(tester.compile(), location);
+Tester tester;
+index::TUIndex tu_index;
 
-        tu_index = index::TUIndex::build(*tester.unit);
-    };
+void build_index(llvm::StringRef code,
+                 std::source_location location = std::source_location::current()) {
+    tester.clear();
+    tester.add_main("main.cpp", code);
+    ASSERT_TRUE(tester.compile());
 
-    auto select = [&](llvm::StringRef pos,
-                      llvm::StringRef file = "") -> std::vector<index::Occurrence> {
-        auto offset = tester.point(pos, file);
-        auto fid = file.empty() ? tester.unit->interested_file() : tester.unit->file_id(file);
-        auto& index = fid == tester.unit->interested_file() ? tu_index.main_file_index
-                                                            : tu_index.file_indices[fid];
+    tu_index = index::TUIndex::build(*tester.unit);
+}
 
-        auto it = std::ranges::lower_bound(
-            index.occurrences,
-            offset,
-            {},
-            [](index::Occurrence& occurrence) { return occurrence.range.end; });
+auto select(llvm::StringRef pos, llvm::StringRef file = "") -> std::vector<index::Occurrence> {
+    auto offset = tester.point(pos, file);
+    auto fid = file.empty() ? tester.unit->interested_file() : tester.unit->file_id(file);
+    auto& index = fid == tester.unit->interested_file() ? tu_index.main_file_index
+                                                        : tu_index.file_indices[fid];
 
-        std::vector<index::Occurrence> occurrences;
-        while(it != index.occurrences.end()) {
-            if(it->range.contains(offset)) {
-                occurrences.emplace_back(*it);
-                it++;
-                continue;
-            }
+    auto it =
+        std::ranges::lower_bound(index.occurrences, offset, {}, [](index::Occurrence& occurrence) {
+            return occurrence.range.end;
+        });
 
-            break;
+    std::vector<index::Occurrence> occurrences;
+    while(it != index.occurrences.end()) {
+        if(it->range.contains(offset)) {
+            occurrences.emplace_back(*it);
+            it++;
+            continue;
         }
-        return occurrences;
-    };
 
-    auto expect_select = [&](llvm::StringRef pos,
-                             llvm::StringRef expect_range,
-                             llvm::StringRef file = "",
-                             std::source_location location = std::source_location::current()) {
-        auto offset = tester.point(pos, file);
-        auto range = tester.range(expect_range, file);
-        auto occurrences = select(pos, file);
+        break;
+    }
+    return occurrences;
+}
 
-        fatal / expect(!occurrences.empty(), location)
-            << std::format("Fail to find symbol for offset: {}, target range: {}",
-                           offset,
-                           dump(range));
+void expect_select(llvm::StringRef pos,
+                   llvm::StringRef expect_range,
+                   llvm::StringRef file = "",
+                   std::source_location location = std::source_location::current()) {
+    auto offset = tester.point(pos, file);
+    auto range = tester.range(expect_range, file);
+    auto occurrences = select(pos, file);
 
-        /// FIXME: Make eq pretty print reflectable struct.
-        expect(eq(dump(occurrences.front().range), dump(range)), location);
-    };
+    ASSERT_FALSE(occurrences.empty());
+    /// << std::format("Fail to find symbol for offset: {}, target range: {}", offset, dump(range));
 
-    auto go_to_definition = [&](llvm::StringRef pos,
-                                llvm::StringRef definition,
-                                llvm::StringRef file = "",
-                                std::source_location location = std::source_location::current()) {
-        auto offset = tester.point(pos, file);
-        auto range = tester.range(definition, file);
-        auto occurrences = select(pos, file);
+    /// FIXME: Make eq pretty print reflectable struct.
+    ASSERT_EQ(dump(occurrences.front().range), dump(range));
+};
 
-        fatal / expect(occurrences.size() == 1, location)
-            << std::format("Fail to find symbol for offset: {}, target range: {}",
-                           offset,
-                           dump(range));
+void go_to_definition(llvm::StringRef pos,
+                      llvm::StringRef definition,
+                      llvm::StringRef file = "",
+                      std::source_location location = std::source_location::current()) {
+    auto offset = tester.point(pos, file);
+    auto range = tester.range(definition, file);
+    auto occurrences = select(pos, file);
 
-        auto fid = file.empty() ? tester.unit->interested_file() : tester.unit->file_id(file);
-        auto& index = fid == tester.unit->interested_file() ? tu_index.main_file_index
-                                                            : tu_index.file_indices[fid];
+    ASSERT_EQ(occurrences.size(), 1U);
+    /// << std::format("Fail to find symbol for offset: {}, target range: {}", offset, dump(range));
 
-        auto it = index.relations.find(occurrences.front().target);
-        fatal / expect(it != index.relations.end(), location)
-            << std::format("Cannot find target: {}", occurrences.front().target);
+    auto fid = file.empty() ? tester.unit->interested_file() : tester.unit->file_id(file);
+    auto& index = fid == tester.unit->interested_file() ? tu_index.main_file_index
+                                                        : tu_index.file_indices[fid];
 
-        auto& relations = it->second;
-        auto target =
-            std::ranges::find(relations, RelationKind::Definition, &index::Relation::kind);
+    auto it = index.relations.find(occurrences.front().target);
+    ASSERT_TRUE(it != index.relations.end());
+    ///<< std::format("Cannot find target: {}", occurrences.front().target);
 
-        fatal / expect(target != relations.end(), location)
-            << std::format("Fail to find definition in {}", dump(relations));
-        expect(eq(dump(target->range), dump(range)), location);
-    };
+    auto& relations = it->second;
+    auto target = std::ranges::find(relations, RelationKind::Definition, &index::Relation::kind);
 
-    test("Basic") = [&] {
-        build_index(R"(
+    ASSERT_TRUE(target != relations.end());
+    ///   << std::format("Fail to find definition in {}", dump(relations));
+    ASSERT_EQ(dump(target->range), dump(range));
+}
+
+TEST_CASE(Basic) {
+    build_index(R"(
             int @1[f$(1)oo]();
 
             int @2[b$(2)ar]() {
@@ -100,17 +94,17 @@ suite<"TUIndex"> suite = [] {
             }
         )");
 
-        auto& index = tu_index.main_file_index;
-        expect(eq(index.relations.size(), 2));
-        expect(eq(index.occurrences.size(), 3));
+    auto& index = tu_index.main_file_index;
+    ASSERT_EQ(index.relations.size(), 2U);
+    ASSERT_EQ(index.occurrences.size(), 3U);
 
-        expect_select("1", "1");
-        expect_select("2", "2");
-        expect_select("3", "3");
-    };
+    expect_select("1", "1");
+    expect_select("2", "2");
+    expect_select("3", "3");
+}
 
-    test("ClassTemplate") = [&] {
-        build_index(R"(
+TEST_CASE(ClassTemplate) {
+    build_index(R"(
             template <typename T, typename U>
             struct $(primary_decl)foo;
 
@@ -141,21 +135,21 @@ suite<"TUIndex"> suite = [] {
             $(implicit_full)foo<int, int> a;
         )");
 
-        go_to_definition("primary_decl", "primary");
-        go_to_definition("explicit_primary", "primary");
-        go_to_definition("implicit_primary_1", "primary");
-        go_to_definition("implicit_primary_2", "primary");
-        go_to_definition("partial_spec_decl", "partial_spec");
-        go_to_definition("explicit_partial", "partial_spec");
-        go_to_definition("implicit_partial", "partial_spec");
-        /// FIXME: Figure forward template declaration.
-        /// go_to_definition("forward_full", "full_spec");
-        go_to_definition("full_spec_decl", "full_spec");
-        go_to_definition("implicit_full", "full_spec");
-    };
+    go_to_definition("primary_decl", "primary");
+    go_to_definition("explicit_primary", "primary");
+    go_to_definition("implicit_primary_1", "primary");
+    go_to_definition("implicit_primary_2", "primary");
+    go_to_definition("partial_spec_decl", "partial_spec");
+    go_to_definition("explicit_partial", "partial_spec");
+    go_to_definition("implicit_partial", "partial_spec");
+    /// FIXME: Figure forward template declaration.
+    /// go_to_definition("forward_full", "full_spec");
+    go_to_definition("full_spec_decl", "full_spec");
+    go_to_definition("implicit_full", "full_spec");
+}
 
-    test("FunctionTemplate") = [&] {
-        build_index(R"(
+TEST_CASE(FunctionTemplate) {
+    build_index(R"(
             template <typename T> void $(primary_decl)foo();
 
             template <typename T> void @primary[foo]() {}
@@ -172,28 +166,28 @@ suite<"TUIndex"> suite = [] {
             }
         )");
 
-        go_to_definition("primary_decl", "primary");
-        /// FIXME: clang doen't record location info of explicit function instantiation/
-        /// See https://github.com/llvm/llvm-project/issues/115418.
-        /// go_to_definition("explicit_primary", "primary");
-        go_to_definition("implicit_primary", "primary");
-        go_to_definition("spec_decl", "spec");
-        go_to_definition("implicit_spec", "spec");
-    };
+    go_to_definition("primary_decl", "primary");
+    /// FIXME: clang doen't record location info of explicit function instantiation/
+    /// See https://github.com/llvm/llvm-project/issues/115418.
+    /// go_to_definition("explicit_primary", "primary");
+    go_to_definition("implicit_primary", "primary");
+    go_to_definition("spec_decl", "spec");
+    go_to_definition("implicit_spec", "spec");
+}
 
-    test("AliasTemplate") = [&] {
-        build_index(R"(
+TEST_CASE(AliasTemplate) {
+    build_index(R"(
             template <typename T>
             using @primary[foo] = T;
 
             $(implicit_primary)foo<int> a;
         )");
 
-        go_to_definition("implicit_primary", "primary");
-    };
+    go_to_definition("implicit_primary", "primary");
+}
 
-    test("VarTemplate") = [&] {
-        build_index(R"(
+TEST_CASE(VarTemplate) {
+    build_index(R"(
             template <typename T, typename U>
             extern int $(primary_decl)foo;
 
@@ -222,18 +216,18 @@ suite<"TUIndex"> suite = [] {
             }
         )");
 
-        go_to_definition("primary_decl", "primary");
-        /// go_to_definition("explicit_primary", "primary");
-        go_to_definition("implicit_primary_1", "primary");
-        go_to_definition("implicit_primary_2", "primary");
-        go_to_definition("partial_spec_decl", "partial_spec");
-        /// tester.GotoDefinition("explicit_partial", "partial_spec");
-        go_to_definition("implicit_partial", "partial_spec");
-        go_to_definition("implicit_full", "full_spec");
-    };
+    go_to_definition("primary_decl", "primary");
+    /// go_to_definition("explicit_primary", "primary");
+    go_to_definition("implicit_primary_1", "primary");
+    go_to_definition("implicit_primary_2", "primary");
+    go_to_definition("partial_spec_decl", "partial_spec");
+    /// tester.GotoDefinition("explicit_partial", "partial_spec");
+    go_to_definition("implicit_partial", "partial_spec");
+    go_to_definition("implicit_full", "full_spec");
+}
 
-    test("Concept") = [&] {
-        build_index(R"(
+TEST_CASE(Concept) {
+    build_index(R"(
             template <typename T>
             concept @primary[$(primary)foo] = true;
 
@@ -242,12 +236,11 @@ suite<"TUIndex"> suite = [] {
             $(implicit2)foo auto bar = 1;
         )");
 
-        go_to_definition("primary", "primary");
-        go_to_definition("implicit", "primary");
-        go_to_definition("implicit2", "primary");
-    };
-};
+    go_to_definition("primary", "primary");
+    go_to_definition("implicit", "primary");
+    go_to_definition("implicit2", "primary");
+}
 
+};  // TEST_SUITE(TUIndex)
 }  // namespace
-
 }  // namespace clice::testing

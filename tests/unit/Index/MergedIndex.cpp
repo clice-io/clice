@@ -1,3 +1,4 @@
+#include "Test/Test2.h"
 #include "Test/Tester.h"
 #include "Index/MergedIndex.h"
 #include "Async/Async.h"
@@ -6,46 +7,46 @@ namespace clice::testing {
 
 namespace {
 
-suite<"MergedIndex"> suite = [] {
-    Tester tester;
-    index::TUIndex tu_index;
+TEST_SUITE(MergedIndex) {
 
-    auto build_index = [&](llvm::StringRef code,
-                           std::source_location location = std::source_location::current()) {
-        tester.clear();
-        tester.add_main("main.cpp", code);
-        fatal / expect(tester.compile(), location);
+Tester tester;
+index::TUIndex tu_index;
 
-        tu_index = index::TUIndex::build(*tester.unit);
-    };
+void build_index(llvm::StringRef code,
+                 std::source_location location = std::source_location::current()) {
+    tester.clear();
+    tester.add_main("main.cpp", code);
+    ASSERT_TRUE(tester.compile());
 
-    auto expect_select = [&](llvm::StringRef pos,
-                             llvm::StringRef expect_range,
-                             llvm::StringRef file = "",
-                             std::source_location location = std::source_location::current()) {
-        auto offset = tester.point(pos, file);
-        auto range = tester.range(expect_range, file);
+    tu_index = index::TUIndex::build(*tester.unit);
+};
 
-        auto fid = file.empty() ? tester.unit->interested_file() : tester.unit->file_id(file);
-        auto& index = tu_index.file_indices[fid];
+void expect_select(llvm::StringRef pos,
+                   llvm::StringRef expect_range,
+                   llvm::StringRef file = "",
+                   std::source_location location = std::source_location::current()) {
+    auto offset = tester.point(pos, file);
+    auto range = tester.range(expect_range, file);
 
-        auto it = std::ranges::lower_bound(
-            index.occurrences,
-            offset,
-            {},
-            [](index::Occurrence& occurrence) { return occurrence.range.end; });
+    auto fid = file.empty() ? tester.unit->interested_file() : tester.unit->file_id(file);
+    auto& index = tu_index.file_indices[fid];
 
-        auto err =
-            std::format("Fail to find symbol for offser: {} range: range: {}", offset, dump(range));
+    auto it =
+        std::ranges::lower_bound(index.occurrences, offset, {}, [](index::Occurrence& occurrence) {
+            return occurrence.range.end;
+        });
 
-        fatal / expect(it != index.occurrences.end(), location) << err;
+    auto err =
+        std::format("Fail to find symbol for offser: {} range: range: {}", offset, dump(range));
 
-        /// FIXME: Make eq pretty print reflectable struct.
-        expect(eq(dump(it->range), dump(range)), location);
-    };
+    ASSERT_TRUE(it != index.occurrences.end());
 
-    test("Serialization") = [&] {
-        build_index(R"(
+    /// FIXME: Make eq pretty print reflectable struct.
+    ASSERT_EQ(dump(it->range), dump(range));
+}
+
+TEST_CASE(Serialization) {
+    build_index(R"(
             #include <iostream>
 
             int main () {
@@ -54,25 +55,24 @@ suite<"MergedIndex"> suite = [] {
             }
         )");
 
-        llvm::StringMap<index::MergedIndex> merged_indices;
-        auto& graph = tu_index.graph;
-        for(auto& [fid, index]: tu_index.file_indices) {
-            llvm::StringRef path = graph.paths[graph.path_id(fid)];
-            merged_indices[path].merge(0, graph.include_location_id(fid), index);
-        }
+    llvm::StringMap<index::MergedIndex> merged_indices;
+    auto& graph = tu_index.graph;
+    for(auto& [fid, index]: tu_index.file_indices) {
+        llvm::StringRef path = graph.paths[graph.path_id(fid)];
+        merged_indices[path].merge(0, graph.include_location_id(fid), index);
+    }
 
-        for(auto& [path, merged]: merged_indices) {
-            llvm::SmallString<1024> s;
-            llvm::raw_svector_ostream os(s);
+    for(auto& [path, merged]: merged_indices) {
+        llvm::SmallString<1024> s;
+        llvm::raw_svector_ostream os(s);
 
-            merged.serialize(os);
+        merged.serialize(os);
 
-            auto view = index::MergedIndex(s);
-            expect(merged == view);
-        }
-    };
-};
+        auto view = index::MergedIndex(s);
+        ASSERT_TRUE(merged == view);
+    }
+}
 
+};  // TEST_SUITE(MergedIndex)
 }  // namespace
-
 }  // namespace clice::testing
