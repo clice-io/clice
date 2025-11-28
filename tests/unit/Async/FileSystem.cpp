@@ -3,45 +3,43 @@
 #include "Support/FileSystem.h"
 
 namespace clice::testing {
-
 namespace {
+TEST_SUITE(Async) {
 
-suite<"Async"> suite = [] {
-    test("FileSystemRead") = [] {
-        auto path = fs::createTemporaryFile("prefix", "suffix");
-        expect(that % path.has_value());
+TEST_CASE(FileRead) {
+    auto path = fs::createTemporaryFile("prefix", "suffix");
+    ASSERT_TRUE(path.has_value());
 
-        auto result = fs::write(*path, "hello");
-        expect(that % result.has_value());
+    auto result = fs::write(*path, "hello");
+    ASSERT_TRUE(result.has_value());
 
-        auto main = [&] -> async::Task<> {
-            auto content = co_await async::fs::read(*path);
-            expect(that % content.has_value());
-            expect(that % *content == std::string_view("hello"));
-        };
-
-        async::run(main());
+    auto main = [&] -> async::Task<> {
+        auto content = co_await async::fs::read(*path);
+        CO_ASSERT_TRUE(content.has_value());
+        CO_ASSERT_EQ(*content, std::string_view("hello"));
     };
 
-    test("FileSystemWrite") = [] {
-        auto path = fs::createTemporaryFile("prefix", "suffix");
-        expect(that % path.has_value());
+    async::run(main());
+}
 
-        auto main = [&] -> async::Task<> {
-            char buffer[] = "hello";
+TEST_CASE(FileWrite) {
+    auto path = fs::createTemporaryFile("prefix", "suffix");
+    ASSERT_TRUE(path.has_value());
 
-            auto result = co_await async::fs::write(*path, buffer, 5);
-            expect(that % result.has_value());
-        };
+    auto main = [&] -> async::Task<> {
+        char buffer[] = "hello";
 
-        async::run(main());
-
-        auto content = fs::read(*path);
-        expect(that % content.has_value());
-        expect(that % *content == std::string_view("hello"));
+        auto result = co_await async::fs::write(*path, buffer, 5);
+        CO_ASSERT_TRUE(result.has_value());
     };
-};
 
+    async::run(main());
+
+    auto content = fs::read(*path);
+    ASSERT_TRUE(content.has_value());
+    ASSERT_EQ(*content, std::string_view("hello"));
+}
+
+};  // TEST_SUITE(Async)
 }  // namespace
-
 }  // namespace clice::testing

@@ -145,4 +145,36 @@ inline void print_trace(cpptrace::stacktrace& trace, std::source_location locati
     }
 #endif
 
+#define CO_ASSERT_TRUE(expr)                                                                       \
+    if(!(expr)) {                                                                                  \
+        auto trace = cpptrace::generate_trace();                                                   \
+        print_trace(trace, std::source_location::current());                                       \
+        failure();                                                                                 \
+        co_return;                                                                                 \
+    }
+
+#define CO_ASSERT_FALSE(expr)                                                                      \
+    if((expr)) {                                                                                   \
+        auto trace = cpptrace::generate_trace();                                                   \
+        print_trace(trace, std::source_location::current());                                       \
+        failure();                                                                                 \
+        co_return;                                                                                 \
+    }
+
+#define CO_ASSERT_EQ(lhs, rhs)                                                                     \
+    if((lhs) != (rhs)) {                                                                           \
+        auto trace = cpptrace::generate_trace();                                                   \
+        print_trace(trace, std::source_location::current());                                       \
+        failure();                                                                                 \
+        co_return;                                                                                 \
+    }
+
+#define CO_ASSERT_NE(lhs, rhs)                                                                     \
+    if((lhs) == (rhs)) {                                                                           \
+        auto trace = cpptrace::generate_trace();                                                   \
+        print_trace(trace, std::source_location::current());                                       \
+        failure();                                                                                 \
+        co_return;                                                                                 \
+    }
+
 }  // namespace clice::testing

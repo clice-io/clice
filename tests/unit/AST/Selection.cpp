@@ -16,7 +16,6 @@ std::ostringstream& operator<< (std::ostringstream& os, const LocalSourceRange& 
 }  // namespace clice
 
 namespace clice::testing {
-
 namespace {
 
 using namespace clang;

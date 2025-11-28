@@ -1,26 +1,24 @@
-#include "Test/Test.h"
+#include "Test/Test2.h"
 #include "Async/Async.h"
 
 namespace clice::testing {
-
 namespace {
+TEST_SUITE(Async) {
 
-suite<"Async"> suite = [] {
-    test("Sleep") = [] {
-        int x = 1;
-        auto task_gen = [&]() -> async::Task<> {
-            x = 2;
-            co_await async::sleep(100);
-            x = 3;
-        };
-
-        auto task = task_gen();
-        async::run(task);
-
-        expect(that % x == 3);
+TEST_CASE(Sleep) {
+    int x = 1;
+    auto task_gen = [&]() -> async::Task<> {
+        x = 2;
+        co_await async::sleep(100);
+        x = 3;
     };
-};
 
+    auto task = task_gen();
+    async::run(task);
+
+    ASSERT_EQ(x, 3);
+}
+
+};  // TEST_SUITE(Async)
 }  // namespace
-
 }  // namespace clice::testing

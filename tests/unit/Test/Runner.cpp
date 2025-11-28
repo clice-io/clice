@@ -42,7 +42,7 @@ int Runner2::run_tests(llvm::StringRef filter) {
     for(auto suite: suites) {
         auto cases = suite.cases();
         total_suites_count += 1;
-        total_tests_count += cases.size();
+
         all_suites.emplace_back(suite.name, std::move(cases));
     }
 
@@ -68,6 +68,7 @@ int Runner2::run_tests(llvm::StringRef filter) {
             }
 
             std::println("{}[ RUN      ] {}.{}{}", GREEN, suite_name, test_name, CLEAR);
+            total_tests_count += 1;
 
             using namespace std::chrono;
             auto begin = system_clock::now();

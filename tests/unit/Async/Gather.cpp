@@ -1,70 +1,69 @@
-#include "Test/Test.h"
+#include <vector>
+#include "Test/Test2.h"
 #include "Async/Async.h"
 
 namespace clice::testing {
-
 namespace {
+TEST_SUITE(Async) {
 
-suite<"Async"> suite = [] {
-    test("GatherPack") = [] {
-        int x = 0;
+TEST_CASE(GatherPack) {
+    int x = 0;
 
-        auto task_gen = [&]() -> async::Task<int> {
-            co_await async::sleep(100);
-            x += 1;
-            co_return x;
-        };
-
-        auto [a, b, c] = async::run(task_gen(), task_gen(), task_gen());
-
-        expect(that % a == 1);
-        expect(that % b == 2);
-        expect(that % c == 3);
+    auto task_gen = [&]() -> async::Task<int> {
+        co_await async::sleep(100);
+        x += 1;
+        co_return x;
     };
 
-    test("GatherRange") = [] {
-        std::vector<int> args;
-        for(int i = 0; i < 30; ++i) {
-            args.push_back(i);
-        }
+    auto [a, b, c] = async::run(task_gen(), task_gen(), task_gen());
 
-        std::vector<int> results;
+    ASSERT_EQ(a, 1);
+    ASSERT_EQ(b, 2);
+    ASSERT_EQ(c, 3);
+}
 
-        auto task_gen = [&](int x) -> async::Task<bool> {
-            co_await async::sleep(10);
-            results.push_back(x);
-            co_return true;
-        };
+TEST_CASE(GatherRange) {
+    std::vector<int> args;
+    for(int i = 0; i < 30; ++i) {
+        args.push_back(i);
+    }
 
-        auto core = async::gather(args, task_gen);
-        async::run(core);
+    std::vector<int> results;
 
-        expect(that % args == results);
-        expect(that % core.result() == true);
+    auto task_gen = [&](int x) -> async::Task<bool> {
+        co_await async::sleep(10);
+        results.push_back(x);
+        co_return true;
     };
 
-    test("GatherCancel") = [] {
-        std::vector<int> args;
-        for(int i = 0; i < 30; ++i) {
-            args.push_back(i);
-        }
+    auto core = async::gather(args, task_gen);
+    async::run(core);
 
-        std::vector<int> results;
+    ASSERT_EQ(args, results);
+    ASSERT_EQ(core.result(), true);
+}
 
-        auto task_gen = [&](int x) -> async::Task<bool> {
-            co_await async::sleep(10);
-            results.push_back(x);
-            co_return false;
-        };
+TEST_CASE(GatherCancel) {
+    std::vector<int> args;
+    for(int i = 0; i < 30; ++i) {
+        args.push_back(i);
+    }
 
-        auto core = async::gather(args, task_gen);
-        async::run(core);
+    std::vector<int> results;
 
-        expect(that % results.size() == 1);
-        expect(that % core.result() == false);
+    auto task_gen = [&](int x) -> async::Task<bool> {
+        co_await async::sleep(10);
+        results.push_back(x);
+        co_return false;
     };
-};
 
+    auto core = async::gather(args, task_gen);
+    async::run(core);
+
+    ASSERT_EQ(results.size(), 1U);
+    ASSERT_EQ(core.result(), false);
+}
+
+};  // TEST_SUITE(Async)
 }  // namespace
-
 }  // namespace clice::testing
