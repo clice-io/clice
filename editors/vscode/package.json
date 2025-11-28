@@ -1,0 +1,174 @@
+{
+  "name": "clice-vscode",
+  "displayName": "clice",
+  "description": "VSCode extension for clice",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clice-project/clice-vscode"
+  },
+  "version": "0.1.4",
+  "publisher": "ykiko",
+  "icon": "clice.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "C",
+    "C++",
+    "cuda",
+    "clang"
+  ],
+  "activationEvents": [
+    "onLanguage:c",
+    "onLanguage:cpp",
+    "onLanguage:cuda-cpp"
+  ],
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "C/C++ Language Client",
+      "properties": {
+        "clice-client.trace.server": {
+          "default": "verbose"
+        },
+        "clice.executable": {
+          "type": "string",
+          "default": "",
+          "description": "The path of clice executable."
+        },
+        "clice.mode": {
+          "type": "string",
+          "default": "pipe",
+          "enum": [
+            "pipe",
+            "socket"
+          ],
+          "description": "How to communicate with clice. pipe or socket. For daily use please use pipe."
+        },
+        "clice.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "The host to connect to (default: 127.0.0.1)"
+        },
+        "clice.port": {
+          "type": "number",
+          "default": 50051,
+          "description": "The port to connect to"
+        }
+      }
+    },
+    "commands": [],
+    "semanticTokenTypes": [
+      {
+        "id": "character",
+        "description": "C/C++ character literal (e.g., 'a')",
+        "superType": "string"
+      },
+      {
+        "id": "directive",
+        "description": "C/C++ preprocessor directive (e.g., #include)",
+        "superType": "keyword"
+      },
+      {
+        "id": "header",
+        "description": "C/C++ header name (e.g., <iostream>)",
+        "superType": "string"
+      },
+      {
+        "id": "module",
+        "description": "C++20 module name",
+        "superType": "namespace"
+      },
+      {
+        "id": "macroParameter",
+        "description": "C/C++ macro parameter",
+        "superType": "parameter"
+      },
+      {
+        "id": "union",
+        "description": "C/C++ union type",
+        "superType": "struct"
+      },
+      {
+        "id": "field",
+        "description": "C/C++ field (member variable)",
+        "superType": "variable"
+      },
+      {
+        "id": "label",
+        "description": "C/C++ label (for goto)",
+        "superType": "variable"
+      },
+      {
+        "id": "concept",
+        "description": "C++20 concept",
+        "superType": "type"
+      },
+      {
+        "id": "attribute",
+        "description": "GNU/MSVC/C++11/C23 attribute",
+        "superType": "macro"
+      },
+      {
+        "id": "paren",
+        "description": "Parentheses `()`",
+        "superType": "operator"
+      },
+      {
+        "id": "bracket",
+        "description": "Brackets `[]`",
+        "superType": "operator"
+      },
+      {
+        "id": "brace",
+        "description": "Braces `{}`",
+        "superType": "operator"
+      },
+      {
+        "id": "angle",
+        "description": "Angle brackets `<>`",
+        "superType": "operator"
+      }
+    ]
+  },
+  "main": "./dist/extension.js",
+  "scripts": {
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "vscode:prepublish": "webpack --mode production --devtool hidden-source-map",
+    "package": "vsce package --baseImagesUrl https://raw.githubusercontent.com/clice-project/clice-vscode/main/",
+    "publish": "vsce publish --baseImagesUrl https://raw.githubusercontent.com/clice-project/clice-vscode/main/",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "vscode-test",
+    "release:patch": "npm version patch -m \"release: v%s\" && git push --follow-tags",
+    "release:minor": "npm version minor -m \"release: v%s\" && git push --follow-tags"
+  },
+  "devDependencies": {
+    "@types/decompress": "^4.2.7",
+    "@types/mocha": "^10.0.7",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^7.14.1",
+    "@typescript-eslint/parser": "^7.11.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.4.0",
+    "eslint": "^8.57.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.4.5",
+    "webpack": "^5.92.1",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "decompress": "^4.2.1",
+    "vscode-languageclient": "^9.0.1"
+  },
+  "overrides": {
+    "glob": "^11.1.0"
+  }
+}

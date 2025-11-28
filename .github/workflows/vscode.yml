@@ -1,0 +1,55 @@
+name: CI/CD VS Code Extension
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["main"]
+    paths: ["editors/vscode/**"]
+  pull_request:
+    branches: ["main"]
+    paths: ["editors/vscode/**"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        working-directory: editors/vscode
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install vsce
+        run: npm install -g vsce
+
+      - name: Publish and Package to Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          FLAG="${{ contains(github.ref_name, '-') && '--pre-release' || '' }}"
+          npm run package -- $FLAG
+
+          if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
+            npm run publish -- -p "$VSCE_PAT" $FLAG
+          fi
+
+      - name: Upload .vsix to Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: "editors/vscode/*.vsix"
+          tag_name: ${{ github.ref }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
