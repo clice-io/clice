@@ -1,3 +1,7 @@
+#include <tuple>
+#include <utility>
+#include <optional>
+#include "Test/Test.h"
 #include "Test/Tester.h"
 #include "AST/Selection.h"
 #include "clang/Lex/Lexer.h"
@@ -212,450 +216,446 @@ std::optional<SourceRange> toHalfOpenFileRange(const SourceManager& SM,
 
 }  // namespace
 
-suite<"SelectionTree"> selection = [] {
-    auto select_right = [](llvm::StringRef code,
-                           auto&& callback,
-                           std::source_location location = std::source_location::current()) {
-        Tester tester;
-        tester.add_main("main.cpp", code);
-        fatal / expect(that % tester.compile(), location);
-        /// expect(that % tester.unit->diagnostics().empty());
+TEST_SUITE(SelectionTree) {
 
-        auto points = tester.nameless_points();
-        expect(that % points.size() >= 1, location);
+template <typename Callback>
+void select_right(llvm::StringRef code, Callback&& callback) {
+    Tester tester;
+    tester.add_main("main.cpp", code);
+    ASSERT_TRUE(tester.compile());
+    /// ASSERT_TRUE(tester.unit->diagnostics().empty());
 
-        LocalSourceRange selected_range;
-        selected_range.begin = points[0];
-        selected_range.end = points.size() == 2 ? points[1] : points[0];
-        auto tree = SelectionTree::create_right(*tester.unit, selected_range);
-        callback(tester, tree);
-    };
+    auto points = tester.nameless_points();
+    ASSERT_FALSE(points.empty());
 
-    auto expect_select = [&](llvm::StringRef code,
-                             const char* kind,
-                             std::source_location location = std::source_location::current()) {
-        select_right(
-            code,
-            [&](Tester& tester, SelectionTree& tree) {
-                auto node = tree.common_ancestor();
-                if(!kind) {
-                    expect(that % !node, location);
-                } else {
-                    expect(that % node, location);
-                    auto range2 = toHalfOpenFileRange(tester.unit->context().getSourceManager(),
-                                                      tester.unit->lang_options(),
-                                                      node->source_range());
-                    LocalSourceRange range = {
-                        tester.unit->file_offset(range2->getBegin()),
-                        tester.unit->file_offset(range2->getEnd()),
-                    };
+    LocalSourceRange selected_range;
+    selected_range.begin = points[0];
+    selected_range.end = points.size() == 2 ? points[1] : points[0];
+    auto tree = SelectionTree::create_right(*tester.unit, selected_range);
+    std::forward<Callback>(callback)(tester, tree);
+}
 
-                    /// llvm::outs() << tree << "\n";
-                    /// tree.print(llvm::outs(), *node, 2);
+void expect_select(llvm::StringRef code, const char* kind) {
+    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+        auto node = tree.common_ancestor();
+        if(!kind) {
+            ASSERT_FALSE(node);
+            return;
+        }
 
-                    expect(that % node->kind() == llvm::StringRef(kind), location);
-                    expect(that % range == tester.range(), location);
-                }
-            },
-            location);
-    };
+        ASSERT_TRUE(node);
+        auto range2 = toHalfOpenFileRange(tester.unit->context().getSourceManager(),
+                                          tester.unit->lang_options(),
+                                          node->source_range());
+        ASSERT_TRUE(range2.has_value());
 
-    test("Expressions") = [&] {
-        expect_select(R"(
-          struct AAA { struct BBB { static int ccc(); };};
-          int x = @[AAA::BBB::c$c$c]();
-          )",
-                      "DeclRefExpr");
+        LocalSourceRange range = {
+            tester.unit->file_offset(range2->getBegin()),
+            tester.unit->file_offset(range2->getEnd()),
+        };
 
-        expect_select(R"(
-          struct AAA { struct BBB { static int ccc(); };};
-          int x = @[AAA::BBB::ccc($)];
-          )",
-                      "CallExpr");
+        /// llvm::outs() << tree << "\n";
+        /// tree.print(llvm::outs(), *node, 2);
 
-        expect_select(R"(
-          struct S {
-            int foo() const;
-            int bar() { return @[f$oo](); }
-          };
-          )",
-                      "MemberExpr");
+        ASSERT_EQ(node->kind(), llvm::StringRef(kind));
+        ASSERT_EQ(range, tester.range());
+    });
+}
 
-        expect_select(R"(void foo() { @[$foo](); })", "DeclRefExpr");
-        expect_select(R"(void foo() { @[f$oo](); })", "DeclRefExpr");
-        expect_select(R"(void foo() { @[fo$o](); })", "DeclRefExpr");
+TEST_CASE(Expressions) {
+    expect_select(R"(
+        struct AAA { struct BBB { static int ccc(); };};
+        int x = @[AAA::BBB::c$c$c]();
+    )",
+                  "DeclRefExpr");
 
-        expect_select(R"(void foo() { @[foo$] (); })", "DeclRefExpr");
+    expect_select(R"(
+        struct AAA { struct BBB { static int ccc(); };};
+        int x = @[AAA::BBB::ccc($)];
+    )",
+                  "CallExpr");
 
-        expect_select(R"(void foo() { @[foo$()]; })", "CallExpr");
-        expect_select(R"(void foo() { @[foo$()]; /*comment*/$})", "CallExpr");
-        expect_select(R"(const int x = 1, y = 2; int array[ @[$x] ][10][y];)", "DeclRefExpr");
-        expect_select(R"(const int x = 1, y = 2; int array[x][10][ @[$y] ];)", "DeclRefExpr");
-        expect_select(R"(void func(int x) { int v_array[ @[$x] ][10]; })", "DeclRefExpr");
-        expect_select(R"(
+    expect_select(R"(
+        struct S {
+          int foo() const;
+          int bar() { return @[f$oo](); }
+        };
+    )",
+                  "MemberExpr");
+
+    expect_select(R"(void foo() { @[$foo](); })", "DeclRefExpr");
+    expect_select(R"(void foo() { @[f$oo](); })", "DeclRefExpr");
+    expect_select(R"(void foo() { @[fo$o](); })", "DeclRefExpr");
+
+    expect_select(R"(void foo() { @[foo$] (); })", "DeclRefExpr");
+
+    expect_select(R"(void foo() { @[foo$()]; })", "CallExpr");
+    expect_select(R"(void foo() { @[foo$()]; /*comment*/$})", "CallExpr");
+    expect_select(R"(const int x = 1, y = 2; int array[ @[$x] ][10][y];)", "DeclRefExpr");
+    expect_select(R"(const int x = 1, y = 2; int array[x][10][ @[$y] ];)", "DeclRefExpr");
+    expect_select(R"(void func(int x) { int v_array[ @[$x] ][10]; })", "DeclRefExpr");
+    expect_select(R"(
         int a;
         decltype(@[$a] + a) b;
-        )",
-                      "DeclRefExpr");
+    )",
+                  "DeclRefExpr");
 
-        expect_select(R"(
+    expect_select(R"(
         void func() { @[__$func__]; }
-        )",
-                      "PredefinedExpr");
-    };
+    )",
+                  "PredefinedExpr");
+}
 
-    test("Literals") = [&] {
-        expect_select(R"(
-          auto lambda = [](const char*){ return 0; };
-          int x = lambda(@["y$"]);
-          )",
-                      "StringLiteral");
+TEST_CASE(Literals) {
+    expect_select(R"(
+        auto lambda = [](const char*){ return 0; };
+        int x = lambda(@["y$"]);
+    )",
+                  "StringLiteral");
 
-        expect_select(R"(int x = @[42]$;)", "IntegerLiteral");
-        expect_select(R"(const int x = 1, y = 2; int array[x][ @[$10] ][y];)", "IntegerLiteral");
+    expect_select(R"(int x = @[42]$;)", "IntegerLiteral");
+    expect_select(R"(const int x = 1, y = 2; int array[x][ @[$10] ][y];)", "IntegerLiteral");
 
-        expect_select(R"(
-          struct Foo{};
-          Foo operator""_ud(unsigned long long);
-          Foo x = @[$12_ud];
-          )",
-                      "UserDefinedLiteral");
-    };
+    expect_select(R"(
+        struct Foo{};
+        Foo operator""_ud(unsigned long long);
+        Foo x = @[$12_ud];
+    )",
+                  "UserDefinedLiteral");
+}
 
-    test("ControlFlow") = [&] {
-        expect_select(R"(
-          void foo() { @[if (1$11) { return; } else {$ }]} }
-          )",
-                      "IfStmt");
+TEST_CASE(ControlFlow) {
+    expect_select(R"(
+        void foo() { @[if (1$11) { return; } else {$ }]} }
+    )",
+                  "IfStmt");
 
-        expect_select(R"(int bar; void foo() @[{ foo (); }]$)", "CompoundStmt");
+    expect_select(R"(int bar; void foo() @[{ foo (); }]$)", "CompoundStmt");
 
-        /// FIXME:
-        /// expect_select(R"(
-        ///     /*error-ok*/
-        ///     void func() @[{^])",
-        ///               "CompoundStmt");
+    /// FIXME:
+    /// expect_select(R"(
+    ///     /*error-ok*/
+    ///     void func() @[{^])",
+    ///               "CompoundStmt");
 
-        expect_select(R"(
-          struct Str {
-            const char *begin();
-            const char *end();
-          };
-          Str makeStr(const char*);
-          void loop() {
-            for (const char C : @[mak$eStr("foo"$)])
-              ;
-          }
-          )",
-                      "CallExpr");
-    };
+    expect_select(R"(
+        struct Str {
+          const char *begin();
+          const char *end();
+        };
+        Str makeStr(const char*);
+        void loop() {
+          for (const char C : @[mak$eStr("foo"$)])
+            ;
+        }
+    )",
+                  "CallExpr");
+}
 
-    test("Declarations") = [&] {
-        /// FIXME: how to handle this?
-        /// expect_select(R"(
-        ///      #define TARGET void foo()
-        ///      @[TAR$GET{ return; }]
-        ///      )",
-        ///              "FunctionDecl");
+TEST_CASE(Declarations) {
+    /// FIXME: how to handle this?
+    /// expect_select(R"(
+    ///      #define TARGET void foo()
+    ///      @[TAR$GET{ return; }]
+    ///      )",
+    ///              "FunctionDecl");
 
-        expect_select(R"(@[$void foo$()];)", "FunctionDecl");
-        expect_select(R"(@[void $foo()];)", "FunctionDecl");
+    expect_select(R"(@[$void foo$()];)", "FunctionDecl");
+    expect_select(R"(@[void $foo()];)", "FunctionDecl");
 
-        expect_select(R"(
-          struct S { S(const char*); };
-          @[S s $= "foo"];
-          )",
-                      "VarDecl");
+    expect_select(R"(
+        struct S { S(const char*); };
+        @[S s $= "foo"];
+    )",
+                  "VarDecl");
 
-        expect_select(R"(
-          struct S { S(const char*); };
-          @[S $s = "foo"];
-          )",
-                      "VarDecl");
+    expect_select(R"(
+        struct S { S(const char*); };
+        @[S $s = "foo"];
+    )",
+                  "VarDecl");
 
-        expect_select(R"(
-          @[void (*$S)(int) = nullptr];
-          )",
-                      "VarDecl");
+    expect_select(R"(
+        @[void (*$S)(int) = nullptr];
+    )",
+                  "VarDecl");
 
-        expect_select(R"(@[int $a], b;)", "VarDecl");
-        expect_select(R"(@[int a, $b];)", "VarDecl");
-        expect_select(R"(@[struct {int x;} $y];)", "VarDecl");
-        expect_select(R"(struct foo { @[int has$h<:32:>]; };)", "FieldDecl");
-        expect_select(R"(struct {@[int $x];} y;)", "FieldDecl");
+    expect_select(R"(@[int $a], b;)", "VarDecl");
+    expect_select(R"(@[int a, $b];)", "VarDecl");
+    expect_select(R"(@[struct {int x;} $y];)", "VarDecl");
+    expect_select(R"(struct foo { @[int has$h<:32:>]; };)", "FieldDecl");
+    expect_select(R"(struct {@[int $x];} y;)", "FieldDecl");
 
-        expect_select(R"(
+    expect_select(R"(
         void test(int bar) {
-          auto l = [ $@[foo = bar] ] { };
-        })",
-                      "VarDecl");
-    };
+        auto l = [ $@[foo = bar] ] { };
+    })",
+                  "VarDecl");
+}
 
-    test("Types") = [&] {
-        expect_select(R"(
-          struct AAA { struct BBB { static int ccc(); };};
-          int x = AAA::@[B$B$B]::ccc();
-          )",
-                      "RecordTypeLoc");
-        expect_select(R"(
-          struct AAA { struct BBB { static int ccc(); };};
-          int x = AAA::@[B$BB$]::ccc();
-          )",
-                      "RecordTypeLoc");
-        expect_select(R"(
-          struct Foo {};
-          struct Bar : private @[Fo$o] {};
-          )",
-                      "RecordTypeLoc");
-        expect_select(R"(
-          struct Foo {};
-          struct Bar : @[Fo$o] {};
-          )",
-                      "RecordTypeLoc");
-        expect_select(R"(@[$void] (*S)(int) = nullptr;)", "BuiltinTypeLoc");
-        /// expect_select(R"(@[void (*S)$(int)] = nullptr;)", "FunctionProtoTypeLoc");
-        expect_select(R"(@[void ($*S)(int)] = nullptr;)", "PointerTypeLoc");
-        /// expect_select(R"(@[void $(*S)(int)] = nullptr;)", "ParenTypeLoc");
-        expect_select(R"(@[$void] foo();)", "BuiltinTypeLoc");
-        expect_select(R"(@[void foo$()];)", "FunctionProtoTypeLoc");
-        expect_select(R"(const int x = 1, y = 2; @[i$nt] array[x][10][y];)", "BuiltinTypeLoc");
-        expect_select(R"(int (*getFunc(@[do$uble]))(int);)", "BuiltinTypeLoc");
-        expect_select(R"(class X{}; @[int X::$*]y[10];)", "MemberPointerTypeLoc");
-        expect_select(R"(const @[a$uto] x = 42;)", "AutoTypeLoc");
-        /// expect_select(R"(@[decltype$(1)] b;)", "DecltypeTypeLoc");
-        expect_select(R"(@[de$cltype(a$uto)] a = 1;)", "AutoTypeLoc");
-        expect_select(R"(
+TEST_CASE(Types) {
+    expect_select(R"(
+        struct AAA { struct BBB { static int ccc(); };};
+        int x = AAA::@[B$B$B]::ccc();
+    )",
+                  "RecordTypeLoc");
+    expect_select(R"(
+        struct AAA { struct BBB { static int ccc(); };};
+        int x = AAA::@[B$BB$]::ccc();
+    )",
+                  "RecordTypeLoc");
+    expect_select(R"(
+        struct Foo {};
+        struct Bar : private @[Fo$o] {};
+    )",
+                  "RecordTypeLoc");
+    expect_select(R"(
+        struct Foo {};
+        struct Bar : @[Fo$o] {};
+    )",
+                  "RecordTypeLoc");
+    expect_select(R"(@[$void] (*S)(int) = nullptr;)", "BuiltinTypeLoc");
+    /// expect_select(R"(@[void (*S)$(int)] = nullptr;)", "FunctionProtoTypeLoc");
+    expect_select(R"(@[void ($*S)(int)] = nullptr;)", "PointerTypeLoc");
+    /// expect_select(R"(@[void $(*S)(int)] = nullptr;)", "ParenTypeLoc");
+    expect_select(R"(@[$void] foo();)", "BuiltinTypeLoc");
+    expect_select(R"(@[void foo$()];)", "FunctionProtoTypeLoc");
+    expect_select(R"(const int x = 1, y = 2; @[i$nt] array[x][10][y];)", "BuiltinTypeLoc");
+    expect_select(R"(int (*getFunc(@[do$uble]))(int);)", "BuiltinTypeLoc");
+    expect_select(R"(class X{}; @[int X::$*]y[10];)", "MemberPointerTypeLoc");
+    expect_select(R"(const @[a$uto] x = 42;)", "AutoTypeLoc");
+    /// expect_select(R"(@[decltype$(1)] b;)", "DecltypeTypeLoc");
+    expect_select(R"(@[de$cltype(a$uto)] a = 1;)", "AutoTypeLoc");
+    expect_select(R"(
         typedef int Foo;
         enum Bar : @[Fo$o] {};
-      )",
-                      "TypedefTypeLoc");
-        expect_select(R"(
+    )",
+                  "TypedefTypeLoc");
+    expect_select(R"(
         typedef int Foo;
         enum Bar : @[Fo$o];
-      )",
-                      "TypedefTypeLoc");
-    };
+    )",
+                  "TypedefTypeLoc");
+}
 
-    test("CXXFeatures") = [&] {
-        expect_select(R"(
+TEST_CASE(CXXFeatures) {
+    expect_select(R"(
           template <typename T>
           int x = @[T::$U::]ccc();
           )",
-                      "NestedNameSpecifierLoc");
-        expect_select(R"(
+                  "NestedNameSpecifierLoc");
+    expect_select(R"(
           struct Foo {};
           struct Bar : @[v$ir$tual private Foo] {};
           )",
-                      "CXXBaseSpecifier");
-        expect_select(R"(
+                  "CXXBaseSpecifier");
+    expect_select(R"(
           struct X { X(int); };
           class Y {
             X x;
             Y() : @[$x(4)] {}
           };
           )",
-                      "CXXCtorInitializer");
-        expect_select(R"(@[st$ruct {int x;}] y;)", "CXXRecordDecl");
-        expect_select(R"(struct foo { @[op$erator int()]; };)", "CXXConversionDecl");
-        expect_select(R"(struct foo { @[$~foo()]; };)", "CXXDestructorDecl");
-        expect_select(R"(struct foo { @[~$foo()]; };)", "CXXDestructorDecl");
-        expect_select(R"(struct foo { @[fo$o(){}] };)", "CXXConstructorDecl");
-        expect_select(R"(
+                  "CXXCtorInitializer");
+    expect_select(R"(@[st$ruct {int x;}] y;)", "CXXRecordDecl");
+    expect_select(R"(struct foo { @[op$erator int()]; };)", "CXXConversionDecl");
+    expect_select(R"(struct foo { @[$~foo()]; };)", "CXXDestructorDecl");
+    expect_select(R"(struct foo { @[~$foo()]; };)", "CXXDestructorDecl");
+    expect_select(R"(struct foo { @[fo$o(){}] };)", "CXXConstructorDecl");
+    expect_select(R"(
         struct S1 { void f(); };
         struct S2 { S1 * operator->(); };
         void test(S2 s2) {
           s2@[-$>]f();
         }
       )",
-                      "DeclRefExpr");  // Test for overloaded operator->
-    };
+                  "DeclRefExpr");  // Test for overloaded operator->
+}
 
-    test("UsingEnum") = [&] {
-        expect_select(R"(
+TEST_CASE(UsingEnum) {
+    expect_select(R"(
         namespace ns { enum class A {}; };
         using enum ns::@[$A];
         )",
-                      "EnumTypeLoc");
-        expect_select(R"(
+                  "EnumTypeLoc");
+    expect_select(R"(
         namespace ns { enum class A {}; using B = A; };
         using enum ns::@[$B];
         )",
-                      "TypedefTypeLoc");
-        expect_select(R"(
+                  "TypedefTypeLoc");
+    expect_select(R"(
         namespace ns { enum class A {}; };
         using enum @[$ns::]A;
         )",
-                      "NestedNameSpecifierLoc");
-        expect_select(R"(
+                  "NestedNameSpecifierLoc");
+    expect_select(R"(
         namespace ns { enum class A {}; };
         @[using $enum ns::A];
         )",
-                      "UsingEnumDecl");
-        expect_select(R"(
+                  "UsingEnumDecl");
+    expect_select(R"(
         namespace ns { enum class A {}; };
         @[$using enum ns::A];
         )",
-                      "UsingEnumDecl");
-    };
+                  "UsingEnumDecl");
+}
 
-    test("Templates") = [&] {
-        expect_select(R"(template<typename ...T> void foo(@[T*$...]x);)", "PackExpansionTypeLoc");
-        expect_select(R"(template<typename ...T> void foo(@[$T]*...x);)",
-                      "TemplateTypeParmTypeLoc");
-        expect_select(R"(template <typename T> void foo() { @[$T] t; })",
-                      "TemplateTypeParmTypeLoc");
-        expect_select(R"(
+TEST_CASE(Templates) {
+    expect_select(R"(template<typename ...T> void foo(@[T*$...]x);)", "PackExpansionTypeLoc");
+    expect_select(R"(template<typename ...T> void foo(@[$T]*...x);)", "TemplateTypeParmTypeLoc");
+    expect_select(R"(template <typename T> void foo() { @[$T] t; })", "TemplateTypeParmTypeLoc");
+    expect_select(R"(
           template <class T> struct Foo {};
           template <@[template<class> class /*cursor here*/$U]>
             struct Foo<U<int>*> {};
           )",
-                      "TemplateTemplateParmDecl");
-        expect_select(R"(template <class T> struct foo { ~foo<@[$T]>(){} };)",
-                      "TemplateTypeParmTypeLoc");
-        expect_select(R"(
+                  "TemplateTemplateParmDecl");
+    expect_select(R"(template <class T> struct foo { ~foo<@[$T]>(){} };)",
+                  "TemplateTypeParmTypeLoc");
+    expect_select(R"(
         template <typename> class Vector {};
         template <template <typename> class Container> class A {};
         A<@[V$ector]> a;
       )",
-                      "TemplateArgumentLoc");
-    };
+                  "TemplateArgumentLoc");
+}
 
-    test("Concepts") = [&] {
-        expect_select(R"(
+TEST_CASE(Concepts) {
+    expect_select(R"(
         template <class> concept C = true;
         auto x = @[$C<int>];
       )",
-                      "ConceptReference");
-        expect_select(R"(
+                  "ConceptReference");
+    expect_select(R"(
         template <class> concept C = true;
         @[$C] auto x = 0;
       )",
-                      "ConceptReference");
-        expect_select(R"(
+                  "ConceptReference");
+    expect_select(R"(
         template <class> concept C = true;
         void foo(@[$C] auto x) {}
       )",
-                      "ConceptReference");
-        expect_select(R"(
+                  "ConceptReference");
+    expect_select(R"(
         template <class> concept C = true;
         template <@[$C] x> int i = 0;
       )",
-                      "ConceptReference");
-        expect_select(R"(
+                  "ConceptReference");
+    expect_select(R"(
         namespace ns { template <class> concept C = true; }
         auto x = @[ns::$C<int>];
       )",
-                      "ConceptReference");
-        expect_select(R"(
+                  "ConceptReference");
+    expect_select(R"(
         template <typename T, typename K>
         concept D = true;
         template <typename T> void g(D<@[$T]> auto abc) {}
       )",
-                      "TemplateTypeParmTypeLoc");
-    };
+                  "TemplateTypeParmTypeLoc");
+}
 
-    test("Attributes") = [&] {
-        expect_select(R"(
+TEST_CASE(Attributes) {
+    expect_select(R"(
         void f(int * __attribute__((@[no$nnull])) );
       )",
-                      "NonNullAttr");
-        expect_select(R"(
+                  "NonNullAttr");
+    expect_select(R"(
         // Digraph syntax for attributes to avoid accidental annotations.
         class [[gsl::Owner( @[in$t] )]] X{};
       )",
-                      "BuiltinTypeLoc");
-    };
+                  "BuiltinTypeLoc");
+}
 
-    test("Macros") = [&] {
-        expect_select(R"(
+TEST_CASE(Macros) {
+    expect_select(R"(
             int x(int);
             #define M(foo) x(foo)
             int a = 42;
             int b = M(@[$a]);
             )",
-                      "DeclRefExpr");
-        expect_select(R"(
+                  "DeclRefExpr");
+    expect_select(R"(
             void foo();
             #define CALL_FUNCTION(X) X()
             void bar() { CALL_FUNCTION(@[f$o$o]); }
             )",
-                      "DeclRefExpr");
-        expect_select(R"(
+                  "DeclRefExpr");
+    expect_select(R"(
             void foo();
             #define CALL_FUNCTION(X) X()
             void bar() { @[CALL_FUNC$TION(fo$o)]; }
             )",
-                      "CallExpr");
-        expect_select(R"(
+                  "CallExpr");
+    expect_select(R"(
             void foo();
             #define CALL_FUNCTION(X) X()
             void bar() { @[C$ALL_FUNC$TION(foo)]; }
             )",
-                      "CallExpr");
-    };
+                  "CallExpr");
+}
 
-    test("NullOrInvalid") = [&] {
-        expect_select(R"(
+TEST_CASE(NullOrInvalid) {
+    expect_select(R"(
               void foo();
               #$define CALL_FUNCTION(X) X($)
               void bar() { CALL_FUNCTION(foo); }
               )",
-                      nullptr);
-        expect_select(R"(
+                  nullptr);
+    expect_select(R"(
               void foo();
               #define CALL_FUNCTION(X) X()
               void bar() { CALL_FUNCTION(foo$)$; }
               )",
-                      nullptr);
-        expect_select(R"(
+                  nullptr);
+    expect_select(R"(
               namespace ns {
               #if 0
               void fo$o() {}
               #endif
               }
               )",
-                      nullptr);
-        expect_select(R"(co$nst auto x = 42;)", nullptr);
-        expect_select(R"($)", nullptr);
-        expect_select(R"(int x = 42;$)", nullptr);
-        expect_select(R"($int x; int y;$)", nullptr);
-        expect_select(R"(void foo() { @[foo$] (); })",
-                      "DeclRefExpr");  // Technically valid, but tricky
-    };
+                  nullptr);
+    expect_select(R"(co$nst auto x = 42;)", nullptr);
+    expect_select(R"($)", nullptr);
+    expect_select(R"(int x = 42;$)", nullptr);
+    expect_select(R"($int x; int y;$)", nullptr);
+    expect_select(R"(void foo() { @[foo$] (); })",
+                  "DeclRefExpr");  // Technically valid, but tricky
+}
 
-    test("InjectedClassName") = [&] {
-        llvm::StringRef code = "struct $X { int x; };";
-        select_right(code, [](Tester& tester, SelectionTree& tree) {
-            auto ancestor = tree.common_ancestor();
-            expect(that % ancestor->kind() == llvm::StringRef("CXXRecordDecl"));
-            auto* D = dyn_cast<clang::CXXRecordDecl>(ancestor->get<clang::Decl>());
-            expect(that % !D->isInjectedClassName());
-        });
-    };
+TEST_CASE(InjectedClassName) {
+    llvm::StringRef code = "struct $X { int x; };";
+    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+        auto ancestor = tree.common_ancestor();
+        ASSERT_EQ(ancestor->kind(), llvm::StringRef("CXXRecordDecl"));
+        auto* D = dyn_cast<clang::CXXRecordDecl>(ancestor->get<clang::Decl>());
+        ASSERT_FALSE(D->isInjectedClassName());
+    });
+}
 
-    test("Metrics") = [&] {
-        llvm::StringRef code = R"cpp(
+TEST_CASE(Metrics) {
+    llvm::StringRef code = R"cpp(
     // error-ok: testing behavior on recovery expression
     int foo();
     int foo(int, int);
     int x = fo^o(42);
   )cpp";
 
-        /// FIXME:
-    };
+    /// FIXME:
+}
 
-    test("Selected") = [&] {
-        /// FIXME:
-    };
+TEST_CASE(Selected) {
+    /// FIXME:
+}
 
-    test("PathologicalPreprocessor") = [&] {
-        /// FIXME:
-    };
+TEST_CASE(PathologicalPreprocessor) {
+    /// FIXME:
+}
 
-    test("IncludedFile") = [&] {
-        /// FIXME:
-        Tester tester;
-        llvm::StringRef code = R"(
+TEST_CASE(IncludedFile) {
+    /// FIXME:
+    Tester tester;
+    llvm::StringRef code = R"(
 #[expand.inc]
 while (0)
 
@@ -665,39 +665,39 @@ void test() {
   break;
 }
 )";
-        tester.add_files("main.cpp", code);
-        expect(that % tester.compile());
+    tester.add_files("main.cpp", code);
+    ASSERT_TRUE(tester.compile());
 
-        auto point = tester.nameless_points("main.cpp")[0];
-        auto tree = SelectionTree::create_right(*tester.unit, {point, point});
-        expect(that % tester.unit->diagnostics().empty());
+    auto point = tester.nameless_points("main.cpp")[0];
+    auto tree = SelectionTree::create_right(*tester.unit, {point, point});
+    ASSERT_TRUE(tester.unit->diagnostics().empty());
 
-        expect(that % tree.common_ancestor() == nullptr);
-    };
+    ASSERT_EQ(tree.common_ancestor(), nullptr);
+}
 
-    test("Implicit") = [&] {
-        llvm::StringRef code = R"cpp(
+TEST_CASE(Implicit) {
+    llvm::StringRef code = R"cpp(
     struct S { S(const char*); };
     int f(S);
     int x = f("$");
   )cpp";
 
-        select_right(code, [](Tester& tester, SelectionTree& tree) {
-            auto ancestor = tree.common_ancestor();
-            expect(that % ancestor->kind() == llvm::StringRef("StringLiteral"));
-            expect(that % ancestor->parent->kind() == llvm::StringRef("ImplicitCastExpr"));
-            expect(that % ancestor->parent->parent->kind() == llvm::StringRef("CXXConstructExpr"));
+    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+        auto ancestor = tree.common_ancestor();
+        ASSERT_EQ(ancestor->kind(), llvm::StringRef("StringLiteral"));
+        ASSERT_EQ(ancestor->parent->kind(), llvm::StringRef("ImplicitCastExpr"));
+        ASSERT_EQ(ancestor->parent->parent->kind(), llvm::StringRef("CXXConstructExpr"));
 
-            auto implicit = ancestor->parent->parent->parent;
-            expect(that % implicit->kind() == llvm::StringRef("ImplicitCastExpr"));
-            expect(that % implicit->parent->kind() == llvm::StringRef("CallExpr"));
-            expect(that % ancestor == &implicit->ignore_implicit());
-            expect(that % &ancestor->outer_implicit() == implicit);
-        });
-    };
+        auto implicit = ancestor->parent->parent->parent;
+        ASSERT_EQ(implicit->kind(), llvm::StringRef("ImplicitCastExpr"));
+        ASSERT_EQ(implicit->parent->kind(), llvm::StringRef("CallExpr"));
+        ASSERT_EQ(ancestor, &implicit->ignore_implicit());
+        ASSERT_EQ(&ancestor->outer_implicit(), implicit);
+    });
+}
 
-    test("DeclContextIsLexical") = [&] {
-        llvm::StringRef code = R"cpp(
+TEST_CASE(DeclContextIsLexical) {
+    llvm::StringRef code = R"cpp(
 namespace a {
     void f$oo();
 }
@@ -705,12 +705,12 @@ namespace a {
 void a::foo() { }
   )cpp";
 
-        select_right(code, [](Tester& tester, SelectionTree& tree) {
-            auto ancestor = tree.common_ancestor();
-            expect(that % !ancestor->decl_context().isTranslationUnit());
-        });
+    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+        auto ancestor = tree.common_ancestor();
+        ASSERT_FALSE(ancestor->decl_context().isTranslationUnit());
+    });
 
-        code = R"cpp(
+    code = R"cpp(
 namespace a {
     void foo();
 }
@@ -718,28 +718,28 @@ namespace a {
 void a::f$oo() { }
   )cpp";
 
-        select_right(code, [](Tester& tester, SelectionTree& tree) {
-            auto ancestor = tree.common_ancestor();
-            expect(that % ancestor->decl_context().isTranslationUnit());
-        });
-    };
+    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+        auto ancestor = tree.common_ancestor();
+        ASSERT_TRUE(ancestor->decl_context().isTranslationUnit());
+    });
+}
 
-    test("DeclContextLambda") = [&] {
-        llvm::StringRef code = R"cpp(
+TEST_CASE(DeclContextLambda) {
+    llvm::StringRef code = R"cpp(
 void foo();
 auto lambda = [] {
   return $foo();
 };
   )cpp";
 
-        select_right(code, [](Tester& tester, SelectionTree& tree) {
-            auto ancestor = tree.common_ancestor();
-            expect(that % ancestor->decl_context().isFunctionOrMethod());
-        });
-    };
+    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+        auto ancestor = tree.common_ancestor();
+        ASSERT_TRUE(ancestor->decl_context().isFunctionOrMethod());
+    });
+}
 
-    test("UsingConcepts") = [&] {
-        llvm::StringRef code = R"cpp(
+TEST_CASE(UsingConcepts) {
+    llvm::StringRef code = R"cpp(
 namespace ns {
 template <typename T>
 concept Foo = true;
@@ -754,19 +754,21 @@ auto Func(Fo$o auto V) -> Fo$o decltype(auto) {
 }
   )cpp";
 
-        Tester tester;
-        tester.add_main("main.cpp", code);
-        expect(that % tester.compile());
+    Tester tester;
+    tester.add_main("main.cpp", code);
+    ASSERT_TRUE(tester.compile());
 
-        auto points = tester.nameless_points();
+    for(auto point: tester.nameless_points()) {
+        auto tree = SelectionTree::create_right(*tester.unit, {point, point});
+        auto* ancestor = tree.common_ancestor();
+        ASSERT_TRUE(ancestor);
+        auto* C = ancestor->get<clang::ConceptReference>();
+        ASSERT_TRUE(C);
+        ASSERT_TRUE(C->getFoundDecl());
+        ASSERT_EQ(C->getFoundDecl()->getKind(), clang::Decl::UsingShadow);
+    }
+}
 
-        for(auto point: tester.nameless_points()) {
-            auto tree = SelectionTree::create_right(*tester.unit, {point, point});
-            auto* C = tree.common_ancestor()->get<clang::ConceptReference>();
-            expect(that % C && C->getFoundDecl() &&
-                   C->getFoundDecl()->getKind() == clang::Decl::UsingShadow);
-        }
-    };
-};
+};  // TEST_SUITE(SelectionTree)
 
 }  // namespace clice::testing

@@ -83,7 +83,7 @@ inline void print_trace(cpptrace::stacktrace& trace, std::source_location locati
     trace.print();
 }
 
-#define TEST_SUITE(name) struct name : TestSuiteDef<#name, name>
+#define TEST_SUITE(name) struct name##TEST : TestSuiteDef<#name, name##TEST>
 
 #define TEST_CASE(name, ...)                                                                       \
     void _register_##name() {                                                                      \
@@ -126,5 +126,23 @@ inline void print_trace(cpptrace::stacktrace& trace, std::source_location locati
         print_trace(trace, std::source_location::current());                                       \
         return failure();                                                                          \
     }
+
+#ifndef ASSERT_NE
+#define ASSERT_NE(lhs, rhs)                                                                        \
+    if((lhs) == (rhs)) {                                                                           \
+        auto trace = cpptrace::generate_trace();                                                   \
+        clice::testing::print_trace(trace, std::source_location::current());                       \
+        return failure();                                                                          \
+    }
+#endif
+
+#ifndef EXPECT_NE
+#define EXPECT_NE(lhs, rhs)                                                                        \
+    if((lhs) == (rhs)) {                                                                           \
+        auto trace = cpptrace::generate_trace();                                                   \
+        clice::testing::print_trace(trace, std::source_location::current());                       \
+        failure();                                                                                 \
+    }
+#endif
 
 }  // namespace clice::testing
