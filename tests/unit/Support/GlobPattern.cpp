@@ -128,7 +128,7 @@ TEST_CASE(BracketExpr) {
     PATDEF(Pat2, R"([\\^a-zA-Z""\\])")
     ASSERT_TRUE(Pat2.match(R"(")"));
     ASSERT_TRUE(Pat2.match(R"(^)"));
-    ASSERT_TRUE(Pat2.match(R"(\\)"));
+    ASSERT_TRUE(Pat2.match(R"(\)"));
     ASSERT_TRUE(Pat2.match(R"(")"));
     ASSERT_TRUE(Pat2.match(R"(x)"));
     ASSERT_TRUE(Pat2.match(R"(X)"));
