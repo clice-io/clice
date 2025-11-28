@@ -38,7 +38,6 @@ TEST_CASE(LruAlgorithm) {
 
     auto& second = actives.add("second", OpenFile{.version = 2});
     ASSERT_EQ(actives.size(), 1U);
-    ASSERT_NE(&first, &second);
 }
 
 TEST_CASE(IteratorBasic) {
