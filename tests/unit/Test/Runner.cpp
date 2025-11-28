@@ -62,7 +62,7 @@ int Runner2::run_tests(llvm::StringRef filter) {
                 continue;
             }
 
-            if(attrs.skiped) {
+            if(attrs.skip) {
                 std::println("{}[ SKIPPED  ] {}.{}{}", YELLOW, suite_name, test_name, CLEAR);
                 continue;
             }

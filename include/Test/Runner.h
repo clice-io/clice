@@ -15,7 +15,7 @@ enum class TestState {
 };
 
 struct TestAttrs {
-    bool skiped = false;
+    bool skip = false;
     bool focus = false;
 };
 

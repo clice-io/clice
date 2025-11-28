@@ -1,81 +1,82 @@
+#include "Test/Test2.h"
 #include "Test/Tester.h"
 
 namespace clice::testing {
 
 namespace {
 
-suite<"Directive"> directive = [] {
-    Tester tester;
-    std::vector<Include> includes;
-    std::vector<HasInclude> has_includes;
-    std::vector<Condition> conditions;
-    std::vector<MacroRef> macros;
-    std::vector<Pragma> pragmas;
+TEST_SUITE(Directive) {
 
-    using u32 = std::uint32_t;
+Tester tester;
+std::vector<Include> includes;
+std::vector<HasInclude> has_includes;
+std::vector<Condition> conditions;
+std::vector<MacroRef> macros;
+std::vector<Pragma> pragmas;
 
-    auto run = [&](llvm::StringRef code) {
-        tester.clear();
-        tester.add_files("main.cpp", code);
-        tester.compile("-std=c++23");
-        auto fid = tester.unit->interested_file();
-        includes = tester.unit->directives()[fid].includes;
-        has_includes = tester.unit->directives()[fid].has_includes;
-        conditions = tester.unit->directives()[fid].conditions;
-        macros = tester.unit->directives()[fid].macros;
-        pragmas = tester.unit->directives()[fid].pragmas;
-    };
+using u32 = std::uint32_t;
 
-    auto expect_include = [&](u32 index, llvm::StringRef position, llvm::StringRef path) {
-        auto& include = includes[index];
-        auto [_, offset] = tester.unit->decompose_location(include.location);
-        expect(that % offset == tester.point(position));
+void run(llvm::StringRef code) {
+    tester.clear();
+    tester.add_files("main.cpp", code);
+    ASSERT_TRUE(tester.compile("-std=c++23"));
+    auto fid = tester.unit->interested_file();
+    includes = tester.unit->directives()[fid].includes;
+    has_includes = tester.unit->directives()[fid].has_includes;
+    conditions = tester.unit->directives()[fid].conditions;
+    macros = tester.unit->directives()[fid].macros;
+    pragmas = tester.unit->directives()[fid].pragmas;
+}
 
-        /// FIXME: Implicit relative path ...
-        llvm::SmallString<64> target = include.skipped ? "" : tester.unit->file_path(include.fid);
-        path::remove_dots(target);
+void expect_include(u32 index, llvm::StringRef position, llvm::StringRef path) {
+    auto& include = includes[index];
+    auto [_, offset] = tester.unit->decompose_location(include.location);
+    ASSERT_EQ(offset, tester.point(position));
 
-        expect(that % target == path);
-    };
+    /// FIXME: Implicit relative path ...
+    llvm::SmallString<64> target = include.skipped ? "" : tester.unit->file_path(include.fid);
+    path::remove_dots(target);
 
-    auto expect_has_inl = [&](u32 index, llvm::StringRef position, llvm::StringRef path) {
-        auto& has_include = has_includes[index];
-        auto [_, offset] = tester.unit->decompose_location(has_include.location);
-        expect(that % offset == tester.point(position));
+    ASSERT_EQ(target, path);
+}
 
-        /// FIXME:
-        llvm::SmallString<64> target =
-            has_include.fid.isValid() ? tester.unit->file_path(has_include.fid) : "";
-        path::remove_dots(target);
+void expect_has_inl(u32 index, llvm::StringRef position, llvm::StringRef path) {
+    auto& has_include = has_includes[index];
+    auto [_, offset] = tester.unit->decompose_location(has_include.location);
+    ASSERT_EQ(offset, tester.point(position));
 
-        expect(that % target == path);
-    };
+    /// FIXME:
+    llvm::SmallString<64> target =
+        has_include.fid.isValid() ? tester.unit->file_path(has_include.fid) : "";
+    path::remove_dots(target);
 
-    auto expect_con = [&](u32 index, Condition::BranchKind kind, llvm::StringRef pos) {
-        auto& condition = conditions[index];
-        auto [_, offset] = tester.unit->decompose_location(condition.loc);
-        expect(that % int(condition.kind) == int(kind));
-        expect(that % offset == tester.point(pos));
-    };
+    ASSERT_EQ(target, path);
+}
 
-    auto expect_macro = [&](u32 index, MacroRef::Kind kind, llvm::StringRef position) {
-        auto& macro = macros[index];
-        auto [_, offset] = tester.unit->decompose_location(macro.loc);
-        expect(that % int(macro.kind) == int(kind));
-        expect(that % offset == tester.point(position));
-    };
+void expect_con(u32 index, Condition::BranchKind kind, llvm::StringRef pos) {
+    auto& condition = conditions[index];
+    auto [_, offset] = tester.unit->decompose_location(condition.loc);
+    ASSERT_EQ(int(condition.kind), int(kind));
+    ASSERT_EQ(offset, tester.point(pos));
+}
 
-    auto expect_pragma =
-        [&](u32 index, Pragma::Kind kind, llvm::StringRef pos, llvm::StringRef text) {
-            auto& pragma = pragmas[index];
-            auto [_, offset] = tester.unit->decompose_location(pragma.loc);
-            expect(that % int(pragma.kind) == int(kind));
-            expect(that % pragma.stmt == text);
-            expect(that % offset == tester.point(pos));
-        };
+void expect_macro(u32 index, MacroRef::Kind kind, llvm::StringRef position) {
+    auto& macro = macros[index];
+    auto [_, offset] = tester.unit->decompose_location(macro.loc);
+    ASSERT_EQ(int(macro.kind), int(kind));
+    ASSERT_EQ(offset, tester.point(position));
+}
 
-    test("Include") = [&] {
-        run(R"cpp(
+void expect_pragma(u32 index, Pragma::Kind kind, llvm::StringRef pos, llvm::StringRef text) {
+    auto& pragma = pragmas[index];
+    auto [_, offset] = tester.unit->decompose_location(pragma.loc);
+    ASSERT_EQ(int(pragma.kind), int(kind));
+    ASSERT_EQ(pragma.stmt, text);
+    ASSERT_EQ(offset, tester.point(pos));
+}
+
+TEST_CASE(Include) {
+    run(R"cpp(
 #[test.h]
 
 #[pragma_once.h]
@@ -95,19 +96,19 @@ suite<"Directive"> directive = [] {
 #$(5)include "guard_macro.h"
 )cpp");
 
-        expect(that % includes.size() == 6);
-        expect_include(0, "0", "test.h");
-        expect_include(1, "1", "test.h");
-        expect_include(2, "2", "pragma_once.h");
-        expect_include(3, "3", "");
-        expect_include(4, "4", "guard_macro.h");
-        expect_include(5, "5", "");
+    ASSERT_EQ(includes.size(), 6U);
+    expect_include(0, "0", "test.h");
+    expect_include(1, "1", "test.h");
+    expect_include(2, "2", "pragma_once.h");
+    expect_include(3, "3", "");
+    expect_include(4, "4", "guard_macro.h");
+    expect_include(5, "5", "");
 
-        /// TODO: test include source range.
-    };
+    /// TODO: test include source range.
+};
 
-    test("HasInclude") = [&] {
-        run(R"cpp(
+TEST_CASE(HasInclude) {
+    run(R"cpp(
 #[test.h]
 
 #[main.cpp]
@@ -119,13 +120,13 @@ suite<"Directive"> directive = [] {
 #endif
 )cpp");
 
-        expect(that % has_includes.size() == 2);
-        expect_has_inl(0, "0", "test.h");
-        expect_has_inl(1, "1", "");
-    };
+    ASSERT_EQ(has_includes.size(), 2U);
+    expect_has_inl(0, "0", "test.h");
+    expect_has_inl(1, "1", "");
+};
 
-    test("Condition") = [&] {
-        run(R"cpp(
+TEST_CASE(Condition) {
+    run(R"cpp(
 #[main.cpp]
 #$(0)if 0
 #$(1)elif 1
@@ -138,19 +139,19 @@ suite<"Directive"> directive = [] {
 #$(7)endif
 )cpp");
 
-        expect(that % conditions.size() == 8);
-        expect_con(0, Condition::BranchKind::If, "0");
-        expect_con(1, Condition::BranchKind::Elif, "1");
-        expect_con(2, Condition::BranchKind::Else, "2");
-        expect_con(3, Condition::BranchKind::EndIf, "3");
-        expect_con(4, Condition::BranchKind::Ifdef, "4");
-        expect_con(5, Condition::BranchKind::Elifdef, "5");
-        expect_con(6, Condition::BranchKind::Else, "6");
-        expect_con(7, Condition::BranchKind::EndIf, "7");
-    };
+    ASSERT_EQ(conditions.size(), 8U);
+    expect_con(0, Condition::BranchKind::If, "0");
+    expect_con(1, Condition::BranchKind::Elif, "1");
+    expect_con(2, Condition::BranchKind::Else, "2");
+    expect_con(3, Condition::BranchKind::EndIf, "3");
+    expect_con(4, Condition::BranchKind::Ifdef, "4");
+    expect_con(5, Condition::BranchKind::Elifdef, "5");
+    expect_con(6, Condition::BranchKind::Else, "6");
+    expect_con(7, Condition::BranchKind::EndIf, "7");
+};
 
-    test("Macro") = [&] {
-        run(R"cpp(
+TEST_CASE(Macro) {
+    run(R"cpp(
 #[main.cpp]
 #define $(0)expr(v) v
 
@@ -170,32 +171,33 @@ int y = $(6)expr($(7)expr(1));
 
 )cpp");
 
-        expect(that % macros.size() == 9);
-        expect_macro(0, MacroRef::Kind::Def, "0");
-        expect_macro(1, MacroRef::Kind::Ref, "1");
-        expect_macro(2, MacroRef::Kind::Ref, "2");
-        expect_macro(3, MacroRef::Kind::Undef, "3");
-        expect_macro(4, MacroRef::Kind::Def, "4");
-        expect_macro(5, MacroRef::Kind::Ref, "5");
-        expect_macro(6, MacroRef::Kind::Ref, "6");
-        expect_macro(7, MacroRef::Kind::Ref, "7");
-        expect_macro(8, MacroRef::Kind::Undef, "8");
-    };
+    ASSERT_EQ(macros.size(), 9U);
+    expect_macro(0, MacroRef::Kind::Def, "0");
+    expect_macro(1, MacroRef::Kind::Ref, "1");
+    expect_macro(2, MacroRef::Kind::Ref, "2");
+    expect_macro(3, MacroRef::Kind::Undef, "3");
+    expect_macro(4, MacroRef::Kind::Def, "4");
+    expect_macro(5, MacroRef::Kind::Ref, "5");
+    expect_macro(6, MacroRef::Kind::Ref, "6");
+    expect_macro(7, MacroRef::Kind::Ref, "7");
+    expect_macro(8, MacroRef::Kind::Undef, "8");
+};
 
-    test("Pragma") = [&] {
-        run(R"cpp(
+TEST_CASE(Pragma) {
+    run(R"cpp(
 #[main.cpp]
 $(0)#pragma GCC poison printf sprintf fprintf
 $(1)#pragma region
 $(2)#pragma endregion
 )cpp");
 
-        expect(that % pragmas.size() == 3);
-        expect_pragma(0, Pragma::Kind::Other, "0", "#pragma GCC poison printf sprintf fprintf");
-        expect_pragma(1, Pragma::Kind::Region, "1", "#pragma region");
-        expect_pragma(2, Pragma::Kind::EndRegion, "2", "#pragma endregion");
-    };
+    ASSERT_EQ(pragmas.size(), 3U);
+    expect_pragma(0, Pragma::Kind::Other, "0", "#pragma GCC poison printf sprintf fprintf");
+    expect_pragma(1, Pragma::Kind::Region, "1", "#pragma region");
+    expect_pragma(2, Pragma::Kind::EndRegion, "2", "#pragma endregion");
 };
+
+};  // TEST_SUITE(Directive)
 
 }  // namespace
 

@@ -1,4 +1,4 @@
-#include "Test/Test.h"
+#include "Test/Test2.h"
 #include "Compiler/Diagnostic.h"
 #include "Compiler/Compilation.h"
 
@@ -78,58 +78,60 @@ namespace {
 
 using namespace clice;
 
-suite<"Diagnostic"> diagnostic = [] {
-    test("CommandError") = [] {
-        CompilationParams params;
-        /// miss input file.
-        params.arguments = {"clang++"};
-        params.add_remapped_file("main.cpp", "int main() { return 0; }");
-        auto unit = compile(params);
-        expect(that % !unit);
-    };
+TEST_SUITE(Diagnostic) {
 
-    test("Error") = [] {
-        CompilationParams params;
-        params.arguments = {"clang++", "main.cpp"};
-        params.add_remapped_file("main.cpp", "int main() { return 0 }");
-        auto unit = compile(params);
-        expect(that % unit.has_value());
-        expect(that % !unit->diagnostics().empty());
+TEST_CASE(CommandError) {
+    CompilationParams params;
+    /// miss input file.
+    params.arguments = {"clang++"};
+    params.add_remapped_file("main.cpp", "int main() { return 0; }");
+    auto unit = compile(params);
+    ASSERT_FALSE(unit.has_value());
+}
 
-        /// for(auto& diag: unit->diagnostics()) {
-        ///     std::println("{}", diag.message);
-        /// }
-    };
+TEST_CASE(Error) {
+    CompilationParams params;
+    params.arguments = {"clang++", "main.cpp"};
+    params.add_remapped_file("main.cpp", "int main() { return 0 }");
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.has_value());
+    ASSERT_FALSE(unit->diagnostics().empty());
 
-    test("PCHError") = [] {
-        /// Any error in compilation will result in failure on generating PCH or PCM.
-        CompilationParams params;
-        params.arguments = {"clang++", "main.cpp"};
-        params.output_file = "fake.pch";
-        params.add_remapped_file("main.cpp", R"(
-void foo() {}
-void foo() {}
-)");
-
-        PCHInfo info;
-        auto unit = compile(params, info);
-        expect(that % !unit);
-    };
-
-    test("ASTError") = [] {
-        /// Event fatal error may generate incomplete AST, but it is fine.
-        CompilationParams params;
-        params.arguments = {"clang++", "main.cpp"};
-        params.add_remapped_file("main.cpp", R"(
-void foo() {}
-void foo() {}
-)");
-
-        PCHInfo info;
-        auto unit = compile(params);
-        expect(that % unit.has_value());
-    };
+    /// for(auto& diag: unit->diagnostics()) {
+    ///     std::println("{}", diag.message);
+    /// }
 };
+
+TEST_CASE(PCHError) {
+    /// Any error in compilation will result in failure on generating PCH or PCM.
+    CompilationParams params;
+    params.arguments = {"clang++", "main.cpp"};
+    params.output_file = "fake.pch";
+    params.add_remapped_file("main.cpp", R"(
+void foo() {}
+void foo() {}
+)");
+
+    PCHInfo info;
+    auto unit = compile(params, info);
+    ASSERT_FALSE(unit.has_value());
+}
+
+TEST_CASE(ASTError) {
+    /// Event fatal error may generate incomplete AST, but it is fine.
+    CompilationParams params;
+    params.arguments = {"clang++", "main.cpp"};
+    params.add_remapped_file("main.cpp", R"(
+void foo() {}
+void foo() {}
+)");
+
+    PCHInfo info;
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.has_value());
+}
+
+};  // TEST_SUITE(Diagnostic)
 
 }  // namespace
 

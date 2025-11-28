@@ -1,4 +1,5 @@
 #include <thread>
+#include "Test/Test2.h"
 #include "Test/Tester.h"
 #include "Compiler/Compilation.h"
 #include "Support/FileSystem.h"
@@ -7,11 +8,12 @@ namespace clice::testing {
 
 namespace {
 
-suite<"Compiler"> compiler = [] {
-    test("TopLevelDecls") = [] {
-        Tester tester;
+TEST_SUITE(Compiler) {
 
-        llvm::StringRef content = R"(
+TEST_CASE(TopLevelDecls) {
+    Tester tester;
+
+    llvm::StringRef content = R"(
 #include <iostream>
 
 int x = 1;
@@ -29,18 +31,18 @@ struct Bar {
 };
 )";
 
-        tester.add_main("main.cpp", content);
-        fatal / expect(tester.compile_with_pch());
-        expect(that % tester.unit->top_level_decls().size() == 4);
-    };
+    tester.add_main("main.cpp", content);
+    ASSERT_TRUE(tester.compile_with_pch());
+    ASSERT_EQ(tester.unit->top_level_decls().size(), 4U);
+}
 
-    test("StopCompilation") = [] {
-        std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
+TEST_CASE(StopCompilation) {
+    std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
 
-        Tester tester;
-        tester.params.stop = stop;
+    Tester tester;
+    tester.params.stop = stop;
 
-        llvm::StringRef content = R"(
+    llvm::StringRef content = R"(
 #include <iostream>
 #include <vector>
 #include <string>
@@ -48,20 +50,21 @@ struct Bar {
 #include <unordered_map>
 #include <optional>
 )";
-        tester.add_main("main.cpp", content);
+    tester.add_main("main.cpp", content);
 
-        bool result = true;
+    bool result = true;
 
-        std::thread thread([&]() { result = tester.compile_with_pch(); });
+    std::thread thread([&]() { result = tester.compile_with_pch(); });
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        stop->store(true);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    stop->store(true);
 
-        thread.join();
+    thread.join();
 
-        expect(that % !result);
-    };
-};
+    ASSERT_FALSE(result);
+}
+
+};  // TEST_SUITE(Compiler)
 
 }  // namespace
 

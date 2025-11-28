@@ -1,4 +1,4 @@
-#include "Test/Test.h"
+#include "Test/Test2.h"
 #include "Compiler/Compilation.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -52,76 +52,78 @@ auto scan = [](llvm::StringRef content) {
     return std::move(*info);
 };
 
-suite<"Module"> module = [] {
-    test("Scan") = [&] {
-        /// Simple case.
-        const char* content = R"(
+TEST_SUITE(Module) {
+
+TEST_CASE(Scan) {
+    /// Simple case.
+    const char* content = R"(
 export module A;
 import B;
     )";
-        auto info = scan(content);
-        expect(that % info.isInterfaceUnit == true);
-        expect(that % info.name == "A"sv);
-        expect(that % info.mods.size() == 1);
-        expect(that % info.mods[0] == "B"sv);
+    auto info = scan(content);
+    ASSERT_TRUE(info.isInterfaceUnit);
+    ASSERT_EQ(info.name, "A"sv);
+    ASSERT_EQ(info.mods.size(), 1U);
+    ASSERT_EQ(info.mods[0], "B"sv);
 
-        /// FIXME: Fix standard library search path(resource dir).
+    /// FIXME: Fix standard library search path(resource dir).
 
-        /// With global module fragment and private module fragment.
-        ///    content = R"(
-        /// module;
-        /// #include <iostream>
-        /// export module A;
-        /// import B;
-        /// import C;
-        /// module : private;
-        ///)";
-        ///    info = scan(content);
-        ///    expect(that % info.isInterfaceUnit == true);
-        ///    expect(that % info.name == "A");
-        ///    expect(that % info.mods.size() == 2);
-        ///    expect(that % info.mods[0] == "B");
-        ///    expect(that % info.mods[1] == "C");
+    /// With global module fragment and private module fragment.
+    ///    content = R"(
+    /// module;
+    /// #include <iostream>
+    /// export module A;
+    /// import B;
+    /// import C;
+    /// module : private;
+    ///)";
+    ///    info = scan(content);
+    ///    expect(that % info.isInterfaceUnit == true);
+    ///    expect(that % info.name == "A");
+    ///    expect(that % info.mods.size() == 2);
+    ///    expect(that % info.mods[0] == "B");
+    ///    expect(that % info.mods[1] == "C");
 
-        /// With module partition.
-        ///    content = R"(
-        /// module;
-        /// #include <iostream>
-        /// export module A:B;
-        /// import B;
-        /// import C;
-        /// module : private;
-        ///)";
-        ///    info = scan(content);
-        ///    expect(that % info.isInterfaceUnit == true);
-        ///    expect(that % info.name == "A:B");
-        ///    expect(that % info.mods.size() == 2);
-        ///    expect(that % info.mods[0] == "B");
-        ///    expect(that % info.mods[1] == "C");
+    /// With module partition.
+    ///    content = R"(
+    /// module;
+    /// #include <iostream>
+    /// export module A:B;
+    /// import B;
+    /// import C;
+    /// module : private;
+    ///)";
+    ///    info = scan(content);
+    ///    expect(that % info.isInterfaceUnit == true);
+    ///    expect(that % info.name == "A:B");
+    ///    expect(that % info.mods.size() == 2);
+    ///    expect(that % info.mods[0] == "B");
+    ///    expect(that % info.mods[1] == "C");
 
-        content = R"(
+    content = R"(
 module A;
 import B;
 import C;
 )";
-        info = scan(content);
-        expect(that % info.isInterfaceUnit == false);
-        expect(that % info.name == "A"sv);
-        expect(that % info.mods.size() == 2);
-        expect(that % info.mods[0] == "B"sv);
-        expect(that % info.mods[1] == "C"sv);
-    };
+    info = scan(content);
+    ASSERT_FALSE(info.isInterfaceUnit);
+    ASSERT_EQ(info.name, "A"sv);
+    ASSERT_EQ(info.mods.size(), 2U);
+    ASSERT_EQ(info.mods[0], "B"sv);
+    ASSERT_EQ(info.mods[1], "C"sv);
+};
 
-    test("Normal") = [&] {
-        const char* content = R"(
+TEST_CASE(Normal) {
+    const char* content = R"(
 export module A;
 )";
-        auto pcm = buildPCM("A.ixx", content);
-        // expect(that % pcm.isInterfaceUnit == true);
-        // expect(that % pcm.name == "A");
-        // expect(that % pcm.mods.size() == 0);
-    };
+    auto pcm = buildPCM("A.ixx", content);
+    // expect(that % pcm.isInterfaceUnit == true);
+    // expect(that % pcm.name == "A");
+    // expect(that % pcm.mods.size() == 0);
 };
+
+};  // TEST_SUITE(Module)
 
 // TEST(Module, ScanModuleName) {
 //     CompilationParams params;
