@@ -1,38 +1,38 @@
+#include "Test/Test2.h"
 #include "Test/Tester.h"
 #include "Feature/DocumentSymbol.h"
 #include "AST/Utility.h"
 
 namespace clice::testing {
-
 namespace {
+TEST_SUITE(DocumentSymbol) {
 
-suite<"DocumentSymbol"> document_symbol = [] {
-    Tester tester;
-    std::vector<feature::DocumentSymbol> symbols;
+Tester tester;
+std::vector<feature::DocumentSymbol> symbols;
 
-    auto run = [&](llvm::StringRef code) {
-        tester.clear();
-        tester.add_main("main.cpp", code);
-        tester.compile_with_pch();
-        expect(that % tester.unit.has_value());
-        symbols = feature::document_symbols(*tester.unit);
-    };
+void run(llvm::StringRef code) {
+    tester.clear();
+    tester.add_main("main.cpp", code);
+    ASSERT_TRUE(tester.compile_with_pch());
+    ASSERT_TRUE(tester.unit.has_value());
+    symbols = feature::document_symbols(*tester.unit);
+}
 
-    auto total_size_wrapper = [](const std::vector<feature::DocumentSymbol>& result) -> size_t {
-        size_t size = 0;
-        std::function<void(const std::vector<feature::DocumentSymbol>&, size_t&)> total_size =
-            [&total_size](const std::vector<feature::DocumentSymbol>& result, size_t& size) {
-                for(auto& item: result) {
-                    ++size;
-                    total_size(item.children, size);
-                }
-            };
-        total_size(result, size);
-        return size;
-    };
+auto total_size_wrapper(const std::vector<feature::DocumentSymbol>& result) -> size_t {
+    size_t size = 0;
+    std::function<void(const std::vector<feature::DocumentSymbol>&, size_t&)> total_size =
+        [&total_size](const std::vector<feature::DocumentSymbol>& result, size_t& size) {
+            for(auto& item: result) {
+                ++size;
+                total_size(item.children, size);
+            }
+        };
+    total_size(result, size);
+    return size;
+};
 
-    test("Namespace") = [&] {
-        const char* main = R"cpp(
+TEST_CASE(Namespace) {
+    const char* main = R"cpp(
 namespace _1 {
     namespace _2 {
 
@@ -52,12 +52,12 @@ namespace _1::_2{
 }
 )cpp";
 
-        run(main);
-        expect(that % total_size_wrapper(symbols) == 8);
-    };
+    run(main);
+    ASSERT_EQ(total_size_wrapper(symbols), 8U);
+}
 
-    test("Struct") = [&] {
-        const char* main = R"cpp(
+TEST_CASE(Struct) {
+    const char* main = R"cpp(
 struct _1 {};
 struct _2 {};
 
@@ -67,12 +67,12 @@ struct _3 {
 };
 )cpp";
 
-        run(main);
-        expect(that % total_size_wrapper(symbols) == 5);
-    };
+    run(main);
+    ASSERT_EQ(total_size_wrapper(symbols), 5U);
+}
 
-    test("Field") = [&] {
-        const char* main = R"cpp(
+TEST_CASE(Field) {
+    const char* main = R"cpp(
 struct x {
     int x1;
     int x2;
@@ -86,12 +86,12 @@ struct x {
 };
 )cpp";
 
-        run(main);
-        expect(that % total_size_wrapper(symbols) == 7);
-    };
+    run(main);
+    ASSERT_EQ(total_size_wrapper(symbols), 7U);
+}
 
-    test("Constructor") = [&] {
-        const char* main = R"cpp(
+TEST_CASE(Constructor) {
+    const char* main = R"cpp(
 struct S {
     int x;
 
@@ -101,12 +101,12 @@ struct S {
     ~S() {}
 };
 )cpp";
-        run(main);
-        expect(that % total_size_wrapper(symbols) == 6);
-    };
+    run(main);
+    ASSERT_EQ(total_size_wrapper(symbols), 6U);
+}
 
-    test("Method") = [&] {
-        const char* main = R"cpp(
+TEST_CASE(Method) {
+    const char* main = R"cpp(
 
 struct _0 {
     void f(int x) {}
@@ -118,12 +118,12 @@ struct _0 {
 };
 )cpp";
 
-        run(main);
-        expect(that % total_size_wrapper(symbols) == 7);
-    };
+    run(main);
+    ASSERT_EQ(total_size_wrapper(symbols), 7U);
+}
 
-    test("Enum") = [&] {
-        const char* main = R"cpp(
+TEST_CASE(Enum) {
+    const char* main = R"cpp(
 
 enum class A {
     _1,
@@ -138,22 +138,22 @@ enum B {
 };
 )cpp";
 
-        run(main);
-        expect(that % total_size_wrapper(symbols) == 8);
-    };
+    run(main);
+    ASSERT_EQ(total_size_wrapper(symbols), 8U);
+}
 
-    test("TopLevelVariable") = [&] {
-        const char* main = R"cpp(
+TEST_CASE(TopLevelVariable) {
+    const char* main = R"cpp(
 constexpr auto x = 1;
 int y = 2;
 )cpp";
 
-        run(main);
-        expect(that % total_size_wrapper(symbols) == 2);
-    };
+    run(main);
+    ASSERT_EQ(total_size_wrapper(symbols), 2U);
+}
 
-    test("Macro") = [&] {
-        const char* main = R"cpp(
+TEST_CASE(Macro) {
+    const char* main = R"cpp(
 #define CLASS(X) class X
 
 CLASS(test) {
@@ -164,12 +164,11 @@ CLASS(test) {
 VAR(test)
 )cpp";
 
-        run(main);
+    run(main);
 
-        /// expect(that % total_size_wrapper(symbols) == 3);
-    };
-};
+    /// expect(that % total_size_wrapper(symbols) == 3);
+}
 
+};  // TEST_SUITE(DocumentSymbol)
 }  // namespace
-
 }  // namespace clice::testing

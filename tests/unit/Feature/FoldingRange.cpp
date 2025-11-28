@@ -1,40 +1,40 @@
+#include "Test/Test2.h"
 #include "Test/Tester.h"
 #include "Feature/FoldingRange.h"
 
 namespace clice::testing {
-
 namespace {
+TEST_SUITE(FoldingRange) {
 
-suite<"FoldingRange"> folding_range = [] {
-    Tester tester;
-    feature::FoldingRanges ranges;
+Tester tester;
+feature::FoldingRanges ranges;
 
-    auto run = [&](llvm::StringRef code) {
-        tester.clear();
-        tester.add_main("main.cpp", code);
-        tester.compile_with_pch();
-        ranges = feature::folding_ranges(*tester.unit);
-    };
+void run(llvm::StringRef code) {
+    tester.clear();
+    tester.add_main("main.cpp", code);
+    ASSERT_TRUE(tester.compile_with_pch());
+    ranges = feature::folding_ranges(*tester.unit);
+};
 
-    auto expect_folding = [&](std::uint32_t index,
-                              llvm::StringRef begin,
-                              llvm::StringRef end,
-                              feature::FoldingRangeKind kind,
-                              std::source_location loc = std::source_location::current()) {
-        auto& folding = ranges[index];
-        auto begin_point = tester.point(begin, "main.cpp");
-        auto end_point = tester.point(end, "main.cpp");
-        expect(that % folding.range.begin == begin_point, loc);
-        expect(that % folding.range.end == end_point, loc);
+void expect_folding(std::uint32_t index,
+                    llvm::StringRef begin,
+                    llvm::StringRef end,
+                    feature::FoldingRangeKind kind,
+                    std::source_location loc = std::source_location::current()) {
+    auto& folding = ranges[index];
+    auto begin_point = tester.point(begin, "main.cpp");
+    auto end_point = tester.point(end, "main.cpp");
+    ASSERT_EQ(folding.range.begin, begin_point);
+    ASSERT_EQ(folding.range.end, end_point);
 
-        /// FIXME: folding.kind is not implemented
-        /// expect(that % folding.kind.value() == kind.value(), loc);
-    };
+    /// FIXME: folding.kind is not implemented
+    /// expect(that % folding.kind.value() == kind.value(), loc);
+};
 
-    using enum feature::FoldingRangeKind::Kind;
+using enum feature::FoldingRangeKind::Kind;
 
-    test("Namespace") = [&] {
-        run(R"cpp(
+TEST_CASE(Namespace) {
+    run(R"cpp(
 namespace single_line { }
 
 namespace with_nodes $(1){
@@ -53,17 +53,17 @@ namespace strange
 
 $(7)NS_BEGIN
 NS_END$(8)
-            )cpp");
+)cpp");
 
-        expect(that % ranges.size() == 4);
-        expect_folding(0, "1", "2", Namespace);
-        expect_folding(1, "3", "4", Namespace);
-        expect_folding(2, "5", "6", Namespace);
-        expect_folding(3, "7", "8", Namespace);
-    };
+    ASSERT_EQ(ranges.size(), 4U);
+    expect_folding(0, "1", "2", Namespace);
+    expect_folding(1, "3", "4", Namespace);
+    expect_folding(2, "5", "6", Namespace);
+    expect_folding(3, "7", "8", Namespace);
+}
 
-    test("Enum") = [&] {
-        run(R"cpp(
+TEST_CASE(Enum) {
+    run(R"cpp(
 enum e1 $(1){
     A,
     B,
@@ -80,13 +80,13 @@ enum e3 { D };
 
 )cpp");
 
-        expect(that % ranges.size() == 2);
-        expect_folding(0, "1", "2", Enum);
-        expect_folding(1, "3", "4", Enum);
-    };
+    ASSERT_EQ(ranges.size(), 2U);
+    expect_folding(0, "1", "2", Enum);
+    expect_folding(1, "3", "4", Enum);
+}
 
-    test("Record") = [&] {
-        run(R"cpp(
+TEST_CASE(Record) {
+    run(R"cpp(
 struct s1 $(1){
     int x;
     float y;
@@ -114,17 +114,17 @@ void foo() $(9){
 }$(10)
 )cpp");
 
-        expect(that % ranges.size() == 6);
-        expect_folding(0, "1", "2", Struct);
-        expect_folding(1, "3", "4", Union);
-        expect_folding(2, "5", "6", Struct);
-        expect_folding(3, "7", "8", Struct);
-        expect_folding(4, "9", "10", FunctionBody);
-        expect_folding(5, "11", "12", Struct);
-    };
+    ASSERT_EQ(ranges.size(), 6U);
+    expect_folding(0, "1", "2", Struct);
+    expect_folding(1, "3", "4", Union);
+    expect_folding(2, "5", "6", Struct);
+    expect_folding(3, "7", "8", Struct);
+    expect_folding(4, "9", "10", FunctionBody);
+    expect_folding(5, "11", "12", Struct);
+};
 
-    test("Method") = [&] {
-        run(R"cpp(
+TEST_CASE(Method) {
+    run(R"cpp(
 struct s2 $(1){
     int x;
     float y;
@@ -147,15 +147,15 @@ struct s3 $(3){
 }$(4);
 )cpp");
 
-        expect(that % ranges.size() == 4);
-        expect_folding(0, "1", "2", Struct);
-        expect_folding(1, "3", "4", Struct);
-        expect_folding(2, "5", "6", FunctionBody);
-        expect_folding(3, "7", "8", FunctionBody);
-    };
+    ASSERT_EQ(ranges.size(), 4U);
+    expect_folding(0, "1", "2", Struct);
+    expect_folding(1, "3", "4", Struct);
+    expect_folding(2, "5", "6", FunctionBody);
+    expect_folding(3, "7", "8", FunctionBody);
+};
 
-    test("Lambda") = [&] {
-        run(R"cpp(
+TEST_CASE(Lambda) {
+    run(R"cpp(
 auto z = $(1)[
     x = 0, y = 1
 ]$(2) () $(3){
@@ -190,18 +190,18 @@ auto l4 = [] $(13)(
 )$(14) {};
 )cpp");
 
-        expect(that % ranges.size() == 7);
-        expect_folding(0, "1", "2", LambdaCapture);
-        expect_folding(1, "3", "4", FunctionBody);
-        expect_folding(2, "5", "6", LambdaCapture);
-        expect_folding(3, "7", "8", FunctionBody);
-        expect_folding(4, "9", "10", FunctionBody);
-        expect_folding(5, "11", "12", FunctionBody);
-        expect_folding(6, "13", "14", FunctionBody);
-    };
+    ASSERT_EQ(ranges.size(), 7U);
+    expect_folding(0, "1", "2", LambdaCapture);
+    expect_folding(1, "3", "4", FunctionBody);
+    expect_folding(2, "5", "6", LambdaCapture);
+    expect_folding(3, "7", "8", FunctionBody);
+    expect_folding(4, "9", "10", FunctionBody);
+    expect_folding(5, "11", "12", FunctionBody);
+    expect_folding(6, "13", "14", FunctionBody);
+};
 
-    test("Function") = [&] {
-        run(R"cpp(
+TEST_CASE(Function) {
+    run(R"cpp(
 void e() {};
 
 void f $(1)(
@@ -235,18 +235,18 @@ void k() $(13){
 }$(14)
 )cpp");
 
-        expect(that % ranges.size() == 7);
-        expect_folding(0, "1", "2", FunctionParams);
-        expect_folding(1, "3", "4", FunctionBody);
-        expect_folding(2, "5", "6", FunctionParams);
-        expect_folding(3, "7", "8", FunctionBody);
-        expect_folding(4, "9", "10", FunctionBody);
-        expect_folding(5, "11", "12", FunctionParams);
-        expect_folding(6, "13", "14", FunctionBody);
-    };
+    ASSERT_EQ(ranges.size(), 7U);
+    expect_folding(0, "1", "2", FunctionParams);
+    expect_folding(1, "3", "4", FunctionBody);
+    expect_folding(2, "5", "6", FunctionParams);
+    expect_folding(3, "7", "8", FunctionBody);
+    expect_folding(4, "9", "10", FunctionBody);
+    expect_folding(5, "11", "12", FunctionParams);
+    expect_folding(6, "13", "14", FunctionBody);
+}
 
-    test("FunctionCall") = [&] {
-        run(R"cpp(
+TEST_CASE(FunctionCall) {
+    run(R"cpp(
 int f(int p1, int p2, int p3, int p4, int p5, int p6) { return p1 + p2; }
 
 int main() $(1){
@@ -264,14 +264,14 @@ int main() $(1){
 }$(6)
 )cpp");
 
-        expect(that % ranges.size() == 3);
-        expect_folding(0, "1", "6", FunctionBody);
-        expect_folding(1, "2", "3", FunctionCall);
-        expect_folding(2, "4", "5", FunctionCall);
-    };
+    ASSERT_EQ(ranges.size(), 3U);
+    expect_folding(0, "1", "6", FunctionBody);
+    expect_folding(1, "2", "3", FunctionCall);
+    expect_folding(2, "4", "5", FunctionCall);
+}
 
-    test("CompoundStmt") = [&] {
-        run(R"cpp(
+TEST_CASE(CompoundStmt) {
+    run(R"cpp(
 int main() $(1){
 
     $(3){
@@ -290,10 +290,10 @@ int main() $(1){
 }$(2)
 
 )cpp");
-    };
+}
 
-    test("InitializeList") = [&] {
-        run(R"cpp(
+TEST_CASE(InitializeList) {
+    run(R"cpp(
 struct L { int xs[4]; };
 
 L l1 = $(1){
@@ -307,13 +307,13 @@ L l2 = $(3){
 
 )cpp");
 
-        expect(that % ranges.size() == 2);
-        expect_folding(0, "1", "2", Initializer);
-        expect_folding(1, "3", "4", Initializer);
-    };
+    ASSERT_EQ(ranges.size(), 2U);
+    expect_folding(0, "1", "2", Initializer);
+    expect_folding(1, "3", "4", Initializer);
+}
 
-    test("AccessSpecifier") = [&] {
-        run(R"cpp(
+TEST_CASE(AccessSpecifier) {
+    run(R"cpp(
 class c1 $(1){
 public$(3):
 private$(4):
@@ -345,24 +345,24 @@ $(17)PROTECTED$(16)
 }$(12);
 )cpp");
 
-        expect_folding(0, "1", "2", Class);
-        expect_folding(1, "3", "4", AccessSpecifier);
-        expect_folding(2, "4", "5", AccessSpecifier);
-        expect_folding(3, "5", "2", AccessSpecifier);
+    expect_folding(0, "1", "2", Class);
+    expect_folding(1, "3", "4", AccessSpecifier);
+    expect_folding(2, "4", "5", AccessSpecifier);
+    expect_folding(3, "5", "2", AccessSpecifier);
 
-        expect_folding(4, "6", "7", Class);
-        expect_folding(5, "8", "9", AccessSpecifier);
-        expect_folding(6, "9", "10", AccessSpecifier);
-        expect_folding(7, "10", "7", AccessSpecifier);
+    expect_folding(4, "6", "7", Class);
+    expect_folding(5, "8", "9", AccessSpecifier);
+    expect_folding(6, "9", "10", AccessSpecifier);
+    expect_folding(7, "10", "7", AccessSpecifier);
 
-        expect_folding(8, "11", "12", Class);
-        expect_folding(9, "13", "14", AccessSpecifier);
-        expect_folding(10, "15", "16", AccessSpecifier);
-        expect_folding(11, "17", "12", AccessSpecifier);
-    };
+    expect_folding(8, "11", "12", Class);
+    expect_folding(9, "13", "14", AccessSpecifier);
+    expect_folding(10, "15", "16", AccessSpecifier);
+    expect_folding(11, "17", "12", AccessSpecifier);
+}
 
-    test("Directive") = [&] {
-        run(R"cpp(
+TEST_CASE(Directive) {
+    run(R"cpp(
 #ifdef M1
 
 #else
@@ -374,10 +374,10 @@ $(17)PROTECTED$(16)
 
 #endif
 )cpp");
-    };
+}
 
-    test("PragmaRegion") = [&] {
-        run(R"cpp(
+TEST_CASE(PragmaRegion) {
+    run(R"cpp(
 $(1)#pragma region level1
     $(2)#pragma region level2
         $(3)#pragma region level3
@@ -394,14 +394,13 @@ $(1)#pragma region level1
 #pragma region  // mismatch region, skipped
 )cpp");
 
-        /// FIXME: PCH make pragma region not work
-        /// expect(that % ranges.size() == 3);
-        /// expect_folding(0, "1", "6", Region);
-        /// expect_folding(1, "2", "5", Region);
-        /// expect_folding(2, "3", "4", Region);
-    };
-};
+    /// FIXME: PCH make pragma region not work
+    /// expect(that % ranges.size() == 3);
+    /// expect_folding(0, "1", "6", Region);
+    /// expect_folding(1, "2", "5", Region);
+    /// expect_folding(2, "3", "4", Region);
+}
 
+};  // TEST_SUITE(FoldingRange)
 }  // namespace
-
 }  // namespace clice::testing

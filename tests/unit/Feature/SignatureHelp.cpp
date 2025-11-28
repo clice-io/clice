@@ -1,26 +1,26 @@
+#include "Test/Test2.h"
 #include "Test/Tester.h"
 #include "Feature/SignatureHelp.h"
 
 namespace clice::testing {
-
 namespace {
+TEST_SUITE(SignatureHelp) {
 
-suite<"SignatureHelp"> signature_help = [] {
-    Tester tester;
-    proto::SignatureHelp help;
+Tester tester;
+proto::SignatureHelp help;
 
-    auto run = [&](llvm::StringRef code) {
-        tester.clear();
-        tester.add_main("main.cpp", code);
-        tester.prepare();
+void run(llvm::StringRef code) {
+    tester.clear();
+    tester.add_main("main.cpp", code);
+    tester.prepare();
 
-        tester.params.completion = {"main.cpp", tester.nameless_points()[0]};
+    tester.params.completion = {"main.cpp", tester.nameless_points()[0]};
 
-        help = feature::signature_help(tester.params, {});
-    };
+    help = feature::signature_help(tester.params, {});
+};
 
-    test("Simple") = [&] {
-        run(R"cpp(
+TEST_CASE(Simple) {
+    run(R"cpp(
 void foo();
 
 void foo(int x);
@@ -32,12 +32,11 @@ int main() {
 }
 )cpp");
 
-        expect(eq(help.signatures.size(), 3));
-    };
+    ASSERT_EQ(help.signatures.size(), 3U);
+}
 
-    /// FIXME: Add more tests.
-};
+/// FIXME: Add more tests.
 
+};  // TEST_SUITE(SignatureHelp)
 }  // namespace
-
 }  // namespace clice::testing

@@ -1,3 +1,4 @@
+#include "Test/Test2.h"
 #include "Test/Tester.h"
 #include "Feature/InlayHint.h"
 
@@ -5,97 +6,96 @@ namespace clice::testing {
 
 namespace {
 
-suite<"InlayHint"> inlay_hint = [] {
-    Tester tester;
-    std::vector<feature::InlayHint> hints;
-    llvm::DenseMap<std::uint32_t, feature::InlayHint> hints_map;
+TEST_SUITE(InlayHint) {
 
-    auto run = [&](llvm::StringRef code,
-                   std::source_location location = std::source_location::current()) {
-        tester.clear();
-        tester.add_main("main.cpp", code);
-        tester.compile_with_pch("-std=c++23");
+Tester tester;
+std::vector<feature::InlayHint> hints;
+llvm::DenseMap<std::uint32_t, feature::InlayHint> hints_map;
 
-        LocalSourceRange range = LocalSourceRange(0, tester.unit->interested_content().size());
-        hints = feature::inlay_hints(*tester.unit, range, {});
+void run(llvm::StringRef code, std::source_location location = std::source_location::current()) {
+    tester.clear();
+    tester.add_main("main.cpp", code);
+    tester.compile_with_pch("-std=c++23");
 
-        hints_map.clear();
-        for(auto& hint: hints) {
-            hints_map[hint.offset] = hint;
+    LocalSourceRange range = LocalSourceRange(0, tester.unit->interested_content().size());
+    hints = feature::inlay_hints(*tester.unit, range, {});
+
+    hints_map.clear();
+    for(auto& hint: hints) {
+        hints_map[hint.offset] = hint;
+    }
+
+    if(!tester.unit->diagnostics().empty()) {
+        for(auto& diagnostic: tester.unit->diagnostics()) {
+            std::println("{}", diagnostic.message);
         }
+    }
 
-        if(!tester.unit->diagnostics().empty()) {
-            for(auto& diagnostic: tester.unit->diagnostics()) {
-                std::println("{}", diagnostic.message);
-            }
-        }
+    ASSERT_TRUE(tester.unit->diagnostics().empty());
+}
 
-        fatal / expect(tester.unit->diagnostics().empty(), location);
-    };
+void dump_results() {
+    std::println("{}", pretty_dump(hints));
+}
 
-    auto dump_results = [&] {
-        std::println("{}", pretty_dump(hints));
-    };
+void expect_size(std::uint32_t size,
+                 std::source_location location = std::source_location::current()) {
+    ASSERT_EQ(hints.size(), size);
+}
 
-    auto expect_size = [&](std::uint32_t size,
-                           std::source_location location = std::source_location::current()) {
-        fatal / expect(eq(hints.size(), size), location) << pretty_dump(hints);
-    };
+void expect_hint(llvm::StringRef pos,
+                 llvm::StringRef name,
+                 std::source_location location = std::source_location::current()) {
+    auto offset = tester.point(pos);
+    auto it = hints_map.find(offset);
+    ASSERT_TRUE(it != hints_map.end());
 
-    auto expect_hint = [&](llvm::StringRef pos,
-                           llvm::StringRef name,
-                           std::source_location location = std::source_location::current()) {
-        auto offset = tester.point(pos);
-        auto it = hints_map.find(offset);
-        fatal / expect(it != hints_map.end(), location)
-            << std::format("offset is {}\n", offset) << pretty_dump(hints);
+    auto& parts = it->second.parts;
+    /// Currently, we has only one label.
+    ASSERT_EQ(parts.size(), 1U);
+    ASSERT_EQ(parts[0].name, name);
+};
 
-        auto& parts = it->second.parts;
-        /// Currently, we has only one label.
-        fatal / expect(eq(parts.size(), 1), location);
-        expect(eq(parts[0].name, name), location);
-    };
-
-    test("Parameters") = [&] {
-        /// Name hint for normal param.
-        run(R"c(
+TEST_CASE(Parameters) {
+    /// Name hint for normal param.
+    run(R"c(
             int foo(int param);
             int x = foo($(0)42);
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        // No hint for anonymous param.
-        run(R"c(
+    // No hint for anonymous param.
+    run(R"c(
             int foo(int);
             int x = foo(42);
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        /// Reference hint for anonymous lvalue ref param.
-        run(R"c(
+    /// Reference hint for anonymous lvalue ref param.
+    run(R"c(
             int foo(int&);
             int x = 1;
             int y = foo($(0)x);
         )c");
-        expect_size(1);
-        expect_hint("0", "&:");
+    expect_size(1);
+    expect_hint("0", "&:");
 
-        // No hint for anonymous const lvalue ref param.
-        run(R"c(
+    // No hint for anonymous const lvalue ref param.
+    run(R"c(
             int foo(const int&);
             int x = foo(42);
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        run(R"c(
+    run(R"c(
             template <typename... Args>
             int foo(Args&& ...);
             int x = foo(42);
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        run(R"c(
+    run(R"c(
             namespace std {
                 template <typename T> T&& forward(T&);
             }
@@ -105,40 +105,40 @@ suite<"InlayHint"> inlay_hint = [] {
             int bar(Args&&... args) { return foo(std::forward<Args>(args)...); }
             int x = bar(42);
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // No hint for anonymous r-value ref parameter
-        run(R"c(
+    // No hint for anonymous r-value ref parameter
+    run(R"c(
             int foo(int&&);
             int x = foo(42);
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // Parameter name picked up from definition if necessary
-        run(R"c(
+    // Parameter name picked up from definition if necessary
+    run(R"c(
             int foo(int);
             int x = foo($(0)42);
             int foo(int param) {
                 return 0;
             }
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        // Parameter name picked up from definition if necessary
-        run(R"c(
+    // Parameter name picked up from definition if necessary
+    run(R"c(
             int foo(int, int b);
             int x = foo($(0)42, $(1)42);
             int foo(int a, int) {
                 return 0;
             }
         )c");
-        expect_size(2);
-        expect_hint("0", "a:");
-        expect_hint("1", "b:");
+    expect_size(2);
+    expect_hint("0", "a:");
+    expect_hint("1", "b:");
 
-        // Parameter name picked up from definition in a resolved forwarded parameter
-        run(R"c(
+    // Parameter name picked up from definition in a resolved forwarded parameter
+    run(R"c(
             int foo(int, int);
             template <typename... Args>
             int bar(Args... args) {
@@ -149,68 +149,68 @@ suite<"InlayHint"> inlay_hint = [] {
                 return 0;
             }
         )c");
-        expect_size(2);
-        expect_hint("0", "a:");
-        expect_hint("1", "b:");
+    expect_size(2);
+    expect_hint("0", "a:");
+    expect_hint("1", "b:");
 
-        // Prefer name from declaration
-        run(R"c(
+    // Prefer name from declaration
+    run(R"c(
             int foo(int good);
             int x = foo($(0)42);
             int foo(int bad) {
                 return 0;
             }
         )c");
-        expect_size(1);
-        expect_hint("0", "good:");
+    expect_size(1);
+    expect_hint("0", "good:");
 
-        // Only name hint for const l-value ref parameter
-        run(R"c(
+    // Only name hint for const l-value ref parameter
+    run(R"c(
             int foo(const int& param);
             int x = foo($(0)42);
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        // Only name hint for const l-value ref parameter via type alias
-        run(R"c(
+    // Only name hint for const l-value ref parameter via type alias
+    run(R"c(
             using alias = const int&;
             int foo(alias param);
             int x = 1;
             int y = foo($(0)x);
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        // Reference and name hint for l-value ref parameter
-        run(R"c(
+    // Reference and name hint for l-value ref parameter
+    run(R"c(
             int foo(int& param);
             int x = 1;
             int y = foo($(0)x);
         )c");
-        expect_size(1);
-        expect_hint("0", "&param:");
+    expect_size(1);
+    expect_hint("0", "&param:");
 
-        // Reference and name hint for l-value ref parameter via type alias
-        run(R"c(
+    // Reference and name hint for l-value ref parameter via type alias
+    run(R"c(
             using alias = int&;
             int foo(alias param);
             int x = 1;
             int y = foo($(0)x);
         )c");
-        expect_size(1);
-        expect_hint("0", "&param:");
+    expect_size(1);
+    expect_hint("0", "&param:");
 
-        // Only name hint for r-value ref parameter
-        run(R"c(
+    // Only name hint for r-value ref parameter
+    run(R"c(
             int foo(int&& param);
             int x = foo($(0)42);
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        // Arg matches param
-        run(R"c(
+    // Arg matches param
+    run(R"c(
             void foo(int param);
             struct S {
                 static const int param = 42;
@@ -230,11 +230,11 @@ suite<"InlayHint"> inlay_hint = [] {
                 }
             };
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        // Arg matches param reference
-        run(R"c(
+    // Arg matches param reference
+    run(R"c(
             void foo(int& param);
             void foo2(const int& param);
             void bar() {
@@ -245,11 +245,11 @@ suite<"InlayHint"> inlay_hint = [] {
                 foo2(param);
             }
         )c");
-        expect_size(1);
-        expect_hint("0", "&:");
+    expect_size(1);
+    expect_hint("0", "&:");
 
-        // Name hint for variadic parameter using std::forward in a constructor call
-        run(R"c(
+    // Name hint for variadic parameter using std::forward in a constructor call
+    run(R"c(
             namespace std { template <typename T> T&& forward(T&); }
             struct S { S(int a); };
             template <typename T, typename... Args>
@@ -257,22 +257,22 @@ suite<"InlayHint"> inlay_hint = [] {
             int x = 1;
             S y = bar<S>($(0)x);
         )c");
-        expect_size(1);
-        expect_hint("0", "a:");
+    expect_size(1);
+    expect_hint("0", "a:");
 
-        // Name hint for variadic parameter in a constructor call
-        run(R"c(
+    // Name hint for variadic parameter in a constructor call
+    run(R"c(
             struct S { S(int a); };
             template <typename T, typename... Args>
             T bar(Args&&... args) { return T{args...}; }
             int x = 1;
             S y = bar<S>($(0)x);
         )c");
-        expect_size(1);
-        expect_hint("0", "a:");
+    expect_size(1);
+    expect_hint("0", "a:");
 
-        // Name for variadic parameter using std::forward
-        run(R"c(
+    // Name for variadic parameter using std::forward
+    run(R"c(
             namespace std { template <typename T> T&& forward(T&); }
             int foo(int a);
             template <typename... Args>
@@ -280,32 +280,32 @@ suite<"InlayHint"> inlay_hint = [] {
             int x = 1;
             int y = bar($(0)x);
         )c");
-        expect_size(1);
-        expect_hint("0", "a:");
+    expect_size(1);
+    expect_hint("0", "a:");
 
-        // Name hint for variadic parameter
-        run(R"c(
+    // Name hint for variadic parameter
+    run(R"c(
             int foo(int a);
             template <typename... Args>
             int bar(Args&&... args) { return foo(args...); }
             int x = bar($(0)42);
         )c");
-        expect_size(1);
-        expect_hint("0", "a:");
+    expect_size(1);
+    expect_hint("0", "a:");
 
-        // Name hint for variadic parameter when the parameter pack is not the last template
-        // parameter
-        run(R"c(
+    // Name hint for variadic parameter when the parameter pack is not the last template
+    // parameter
+    run(R"c(
             int foo(int a);
             template <typename... Args, typename Arg>
             int bar(Arg, Args&&... args) { return foo(args...); }
             int x = bar(1, $(0)42);
         )c");
-        expect_size(1);
-        expect_hint("0", "a:");
+    expect_size(1);
+    expect_hint("0", "a:");
 
-        // Name for variadic parameter that involves both head and tail parameters
-        run(R"c(
+    // Name for variadic parameter that involves both head and tail parameters
+    run(R"c(
             namespace std { template <typename T> T&& forward(T&); }
             int baz(int, int b, double);
             template <typename... Args>
@@ -316,12 +316,12 @@ suite<"InlayHint"> inlay_hint = [] {
             int bar(Args&&... args) { return foo(std::forward<Args>(args)...); }
             int x = bar($(0)32, $(1)42);
         )c");
-        expect_size(2);
-        expect_hint("0", "a:");
-        expect_hint("1", "b:");
+    expect_size(2);
+    expect_hint("0", "a:");
+    expect_hint("1", "b:");
 
-        // No hint for operator call with operator syntax
-        run(R"c(
+    // No hint for operator call with operator syntax
+    run(R"c(
             struct S {};
             void operator+(S lhs, S rhs);
             void bar() {
@@ -329,10 +329,10 @@ suite<"InlayHint"> inlay_hint = [] {
                 a + b;
             }
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // Function call operator
-        run(R"c(
+    // Function call operator
+    run(R"c(
             struct W {
                 void operator()(int x);
             };
@@ -362,21 +362,21 @@ suite<"InlayHint"> inlay_hint = [] {
             }
         )c");
 
-        expect_hint("0", "x:");
-        expect_hint("1", "x:");
-        expect_hint("2", "x:");
-        expect_hint("3", "y:");
-        expect_hint("4", "x:");
-        expect_hint("5", "y:");
-        expect_hint("6", "x:");
-        expect_hint("7", "x:");
-        expect_hint("8", "x:");
-        expect_hint("9", "x:");
-        expect_hint("10", "a:");
-        expect_hint("11", "b:");
+    expect_hint("0", "x:");
+    expect_hint("1", "x:");
+    expect_hint("2", "x:");
+    expect_hint("3", "y:");
+    expect_hint("4", "x:");
+    expect_hint("5", "y:");
+    expect_hint("6", "x:");
+    expect_hint("7", "x:");
+    expect_hint("8", "x:");
+    expect_hint("9", "x:");
+    expect_hint("10", "a:");
+    expect_hint("11", "b:");
 
-        // Deducing this
-        run(R"c(
+    // Deducing this
+    run(R"c(
             struct S {
                 template <typename This>
                 int operator()(this This &&Self, int Param) {
@@ -399,13 +399,13 @@ suite<"InlayHint"> inlay_hint = [] {
             }
         )c");
 
-        expect_hint("0", "Param:");
-        expect_hint("1", "Param:");
-        expect_hint("2", "Param:");
-        expect_hint("3", "C:");
+    expect_hint("0", "Param:");
+    expect_hint("1", "Param:");
+    expect_hint("2", "Param:");
+    expect_hint("3", "C:");
 
-        // Constructor with parentheses
-        run(R"c(
+    // Constructor with parentheses
+    run(R"c(
             struct S {
                 S(int param);
             };
@@ -413,11 +413,11 @@ suite<"InlayHint"> inlay_hint = [] {
                 S obj($(0)42);
             }
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        // Constructor with braces
-        run(R"c(
+    // Constructor with braces
+    run(R"c(
             struct S {
                 S(int param);
             };
@@ -425,11 +425,11 @@ suite<"InlayHint"> inlay_hint = [] {
                 S obj{$(0)42};
             }
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        // Member initialization
-        run(R"c(
+    // Member initialization
+    run(R"c(
             struct S {
                 S(int param);
             };
@@ -439,11 +439,11 @@ suite<"InlayHint"> inlay_hint = [] {
                 T() : member($(0)42) {}
             };
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        // Function pointer
-        run(R"c(
+    // Function pointer
+    run(R"c(
             void (*f1)(int param);
             void (*f2)(int param) noexcept;
             using f3_t = void(*)(int param);
@@ -458,26 +458,26 @@ suite<"InlayHint"> inlay_hint = [] {
                 f4($(3)42);
             }
         )c");
-        expect_size(4);
-        expect_hint("0", "param:");
-        expect_hint("1", "param:");
-        expect_hint("2", "param:");
-        expect_hint("3", "param:");
+    expect_size(4);
+    expect_hint("0", "param:");
+    expect_hint("1", "param:");
+    expect_hint("2", "param:");
+    expect_hint("3", "param:");
 
-        // Leading underscore
-        run(R"c(
+    // Leading underscore
+    run(R"c(
             void foo(int p1, int _p2, int __p3);
             void bar() {
                 foo($(0)41, $(1)42, $(2)43);
             }
         )c");
-        expect_size(3);
-        expect_hint("0", "p1:");
-        expect_hint("1", "p2:");
-        expect_hint("2", "p3:");
+    expect_size(3);
+    expect_hint("0", "p1:");
+    expect_hint("1", "p2:");
+    expect_hint("2", "p3:");
 
-        // Variadic function
-        run(R"c(
+    // Variadic function
+    run(R"c(
             template <typename... T>
             void foo(int fixed, T... variadic);
 
@@ -485,22 +485,22 @@ suite<"InlayHint"> inlay_hint = [] {
                 foo($(0)41, 42, 43);
             }
         )c");
-        expect_size(1);
-        expect_hint("0", "fixed:");
+    expect_size(1);
+    expect_hint("0", "fixed:");
 
-        // Varargs function
-        run(R"c(
+    // Varargs function
+    run(R"c(
             void foo(int fixed, ...);
 
             void bar() {
                 foo($(0)41, 42, 43);
             }
         )c");
-        expect_size(1);
-        expect_hint("0", "fixed:");
+    expect_size(1);
+    expect_hint("0", "fixed:");
 
-        // Do not show hint for parameter of copy or move constructor
-        run(R"c(
+    // Do not show hint for parameter of copy or move constructor
+    run(R"c(
             struct S {
                 S();
                 S(const S& other);
@@ -513,19 +513,19 @@ suite<"InlayHint"> inlay_hint = [] {
                 S c = S(S());  // move
             }
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // Do not hint call to user-defined literal operator
-        run(R"c(
+    // Do not hint call to user-defined literal operator
+    run(R"c(
             long double operator ""_w(long double param);
             void bar() {
                 1.2_w;
             }
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // Parameter name comment
-        run(R"c(
+    // Parameter name comment
+    run(R"c(
             void foo(int param);
             void bar() {
                 foo(/*param*/42);
@@ -538,12 +538,12 @@ suite<"InlayHint"> inlay_hint = [] {
                 foo(/* the answer */$(1)42);
             }
         )c");
-        expect_size(2);
-        expect_hint("0", "param:");
-        expect_hint("1", "param:");
+    expect_size(2);
+    expect_hint("0", "param:");
+    expect_hint("1", "param:");
 
-        // Setter functions
-        run(R"c(
+    // Setter functions
+    run(R"c(
             struct S {
                 void setParent(S* parent);
                 void set_parent(S* parent);
@@ -562,42 +562,42 @@ suite<"InlayHint"> inlay_hint = [] {
                 s.setTimeoutMillis($(1)120);
             }
         )c");
-        expect_size(2);
-        expect_hint("0", "timeoutMillis:");
-        expect_hint("1", "timeout_millis:");
-    };
+    expect_size(2);
+    expect_hint("0", "timeoutMillis:");
+    expect_hint("1", "timeout_millis:");
+};
 
-    test("Types") = [&] {
-        // Basic type hint
-        run(R"c(
+TEST_CASE(Types) {
+    // Basic type hint
+    run(R"c(
             auto waldo$(0) = 42;
         )c");
-        expect_size(1);
-        expect_hint("0", ": int");
+    expect_size(1);
+    expect_hint("0", ": int");
 
-        // Decorations
-        run(R"c(
+    // Decorations
+    run(R"c(
             int x = 42;
             auto* var1$(0) = &x;
             auto&& var2$(1) = x;
             const auto& var3$(2) = x;
         )c");
-        expect_size(3);
-        expect_hint("0", ": int *");
-        expect_hint("1", ": int &");
-        expect_hint("2", ": const int &");
+    expect_size(3);
+    expect_hint("0", ": int *");
+    expect_hint("1", ": int &");
+    expect_hint("2", ": const int &");
 
-        // Decltype auto
-        run(R"c(
+    // Decltype auto
+    run(R"c(
             int x = 42;
             int& y = x;
             decltype(auto) z$(0) = y;
         )c");
-        expect_size(1);
-        expect_hint("0", ": int &");
+    expect_size(1);
+    expect_hint("0", ": int &");
 
-        // No qualifiers
-        run(R"c(
+    // No qualifiers
+    run(R"c(
             namespace A {
                 namespace B {
                     struct S1 {};
@@ -614,12 +614,12 @@ suite<"InlayHint"> inlay_hint = [] {
                 }
             }
         )c");
-        expect_size(2);
-        expect_hint("0", ": S1");
-        expect_hint("1", ": S2::Inner<int>");
+    expect_size(2);
+    expect_hint("0", ": S1");
+    expect_hint("1", ": S2::Inner<int>");
 
-        // Lambda
-        run(R"c(
+    // Lambda
+    run(R"c(
             void f() {
                 int cap = 42;
                 auto L$(0) = [cap, init$(1) = 1 + 1](int a)$(2) {
@@ -627,21 +627,21 @@ suite<"InlayHint"> inlay_hint = [] {
                 };
             }
         )c");
-        expect_size(3);
-        expect_hint("0", ": (lambda)");
-        expect_hint("1", ": int");
-        expect_hint("2", "-> int");
+    expect_size(3);
+    expect_hint("0", ": (lambda)");
+    expect_hint("1", ": int");
+    expect_hint("2", "-> int");
 
-        // Lambda return hint shown even if no param list
-        run(R"c(
+    // Lambda return hint shown even if no param list
+    run(R"c(
             auto x$(0) = []$(1){return 42;};
         )c");
-        expect_size(2);
-        expect_hint("0", ": (lambda)");
-        expect_hint("1", "-> int");
+    expect_size(2);
+    expect_hint("0", ": (lambda)");
+    expect_hint("1", "-> int");
 
-        // Structured bindings - public struct
-        run(R"c(
+    // Structured bindings - public struct
+    run(R"c(
             struct Point {
                 int x;
                 int y;
@@ -649,21 +649,21 @@ suite<"InlayHint"> inlay_hint = [] {
             Point foo();
             auto [x$(0), y$(1)] = foo();
         )c");
-        expect_size(2);
-        expect_hint("0", ": int");
-        expect_hint("1", ": int");
+    expect_size(2);
+    expect_hint("0", ": int");
+    expect_hint("1", ": int");
 
-        // Structured bindings - array
-        run(R"c(
+    // Structured bindings - array
+    run(R"c(
             int arr[2];
             auto [x$(0), y$(1)] = arr;
         )c");
-        expect_size(2);
-        expect_hint("0", ": int");
-        expect_hint("1", ": int");
+    expect_size(2);
+    expect_hint("0", ": int");
+    expect_hint("1", ": int");
 
-        // Structured bindings - tuple-like
-        run(R"c(
+    // Structured bindings - tuple-like
+    run(R"c(
             struct IntPair {
                 int a;
                 int b;
@@ -699,12 +699,12 @@ suite<"InlayHint"> inlay_hint = [] {
             IntPair bar();
             auto [x$(0), y$(1)] = bar();
         )c");
-        expect_size(2);
-        expect_hint("0", ": int");
-        expect_hint("1", ": int");
+    expect_size(2);
+    expect_hint("0", ": int");
+    expect_hint("1", ": int");
 
-        // Return type deduction
-        run(R"c(
+    // Return type deduction
+    run(R"c(
             auto f1(int x)$(0);  // Hint forward declaration too
             auto f1(int x)$(1) { return x + 1; }
 
@@ -725,15 +725,15 @@ suite<"InlayHint"> inlay_hint = [] {
                 operator auto()$(4) { return 42; }
             };
         )c");
-        expect_size(5);
-        expect_hint("0", "-> int");
-        expect_hint("1", "-> int");
-        expect_hint("2", "-> int &");
-        expect_hint("3", "-> void");
-        expect_hint("4", "-> int");
+    expect_size(5);
+    expect_hint("0", "-> int");
+    expect_hint("1", "-> int");
+    expect_hint("2", "-> int &");
+    expect_hint("3", "-> void");
+    expect_hint("4", "-> int");
 
-        // Decltype
-        run(R"c(
+    // Decltype
+    run(R"c(
             decltype(0)$(0) a;
             decltype(a)$(1) b;
             const decltype(0)$(2) &c = b;
@@ -746,18 +746,18 @@ suite<"InlayHint"> inlay_hint = [] {
 
             auto h$(6) = decltype(0)$(7){};
         )c");
-        expect_size(8);
-        expect_hint("0", ": int");
-        expect_hint("1", ": int");
-        expect_hint("2", ": int");
-        expect_hint("3", ": int");
-        expect_hint("4", ": int");
-        expect_hint("5", ": int");
-        expect_hint("6", ": int");
-        expect_hint("7", ": int");
+    expect_size(8);
+    expect_hint("0", ": int");
+    expect_hint("1", ": int");
+    expect_hint("2", ": int");
+    expect_hint("3", ": int");
+    expect_hint("4", ": int");
+    expect_hint("5", ": int");
+    expect_hint("6", ": int");
+    expect_hint("7", ": int");
 
-        // Long type name
-        run(R"c(
+    // Long type name
+    run(R"c(
             template <typename, typename, typename>
             struct A {};
             struct MultipleWords {};
@@ -765,10 +765,10 @@ suite<"InlayHint"> inlay_hint = [] {
             // Omit type hint past a certain length (currently 32)
             auto var = foo();
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // Default template args
-        run(R"c(
+    // Default template args
+    run(R"c(
             template <typename, typename = int>
             struct A {};
             A<float> foo();
@@ -776,12 +776,12 @@ suite<"InlayHint"> inlay_hint = [] {
             A<float> bar[1];
             auto [binding$(1)] = bar;
         )c");
-        expect_size(2);
-        expect_hint("0", ": A<float>");
-        expect_hint("1", ": A<float>");
+    expect_size(2);
+    expect_hint("0", ": A<float>");
+    expect_hint("1", ": A<float>");
 
-        // Deduplication
-        run(R"c(
+    // Deduplication
+    run(R"c(
             template <typename T>
             void foo() {
                 auto var$(0) = 42;
@@ -790,53 +790,53 @@ suite<"InlayHint"> inlay_hint = [] {
             template void foo<int>();
             template void foo<float>();
         )c");
-        expect_size(1);
-        expect_hint("0", ": int");
+    expect_size(1);
+    expect_hint("0", ": int");
 
-        // Singly instantiated template
-        run(R"c(
+    // Singly instantiated template
+    run(R"c(
             auto lambda$(0) = [](auto* param$(1), auto) { return 42; };
             int m = lambda("foo", 3);
         )c");
-        expect_hint("0", ": (lambda)");
-        expect_hint("1", ": const char *");
+    expect_hint("0", ": (lambda)");
+    expect_hint("1", ": const char *");
 
-        // No hint for packs, or auto params following packs
-        run(R"c(
+    // No hint for packs, or auto params following packs
+    run(R"c(
             int x(auto a$(0), auto... b, auto c) { return 42; }
             int m = x<void*, char, float>(nullptr, 'c', 2.0, 2);
         )c");
-        expect_hint("0", ": void *");
-    };
+    expect_hint("0", ": void *");
+};
 
-    skip / test("Designators") = [&] {
-        // Basic designator hints
-        run(R"c(
+TEST_CASE(Designators, {.skip = true}) {
+    // Basic designator hints
+    run(R"c(
             struct S { int x, y, z; };
             S s {$(0)1, $(1)2+2};
 
             int x[] = {$(2)0, $(3)1};
         )c");
-        expect_size(4);
-        expect_hint("0", ".x=");
-        expect_hint("1", ".y=");
-        expect_hint("2", "[0]=");
-        expect_hint("3", "[1]=");
+    expect_size(4);
+    expect_hint("0", ".x=");
+    expect_hint("1", ".y=");
+    expect_hint("2", "[0]=");
+    expect_hint("3", "[1]=");
 
-        // Nested designators
-        run(R"c(
+    // Nested designators
+    run(R"c(
             struct Inner { int x, y; };
             struct Outer { Inner a, b; };
             Outer o{ $(0)a{ $(1)1, $(2)2 }, $(3)bx3 };
         )c");
-        expect_size(4);
-        expect_hint("0", ".a=");
-        expect_hint("1", ".x=");
-        expect_hint("2", ".y=");
-        expect_hint("3", ".b.x=");
+    expect_size(4);
+    expect_hint("0", ".a=");
+    expect_hint("1", ".x=");
+    expect_hint("2", ".y=");
+    expect_hint("3", ".b.x=");
 
-        // Anonymous record
-        run(R"c(
+    // Anonymous record
+    run(R"c(
             struct S {
                 union {
                     struct {
@@ -848,51 +848,51 @@ suite<"InlayHint"> inlay_hint = [] {
             };
             S s{$(0)xy42};
         )c");
-        expect_size(1);
-        expect_hint("0", ".x.y=");
+    expect_size(1);
+    expect_hint("0", ".x.y=");
 
-        // Suppression
-        run(R"c(
+    // Suppression
+    run(R"c(
             struct Point { int a, b, c, d, e, f, g, h; };
             Point p{/*a=*/1, .c=2, /* .d = */3, $(0)4};
         )c");
-        expect_size(1);
-        expect_hint("0", ".e=");
+    expect_size(1);
+    expect_hint("0", ".e=");
 
-        // Std array
-        run(R"c(
+    // Std array
+    run(R"c(
             template <typename T, int N> struct Array { T __elements[N]; };
             Array<int, 2> x = {$(0)0, $(1)1};
         )c");
-        expect_size(2);
-        expect_hint("0", "[0]=");
-        expect_hint("1", "[1]=");
+    expect_size(2);
+    expect_hint("0", "[0]=");
+    expect_hint("1", "[1]=");
 
-        // Only aggregate init
-        run(R"c(
+    // Only aggregate init
+    run(R"c(
             struct Copyable { int x; } c;
             Copyable d{c};
 
             struct Constructible { Constructible(int x); };
             Constructible x{42};
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // No crash
-        run(R"c(
+    // No crash
+    run(R"c(
             struct A {};
             struct Foo {int a; int b;};
             void test() {
                 Foo f{A(), $(0)1};
             }
         )c");
-        expect_size(1);
-        expect_hint("0", ".b=");
-    };
+    expect_size(1);
+    expect_hint("0", ".b=");
+};
 
-    skip / test("BlockEnd") = [&] {
-        // Functions
-        run(R"c(
+TEST_CASE(BlockEnd, {.skip = true}) {
+    // Functions
+    run(R"c(
             int foo() {
                 return 41;
             $(0)}
@@ -914,13 +914,13 @@ suite<"InlayHint"> inlay_hint = [] {
                 return true;
             $(2)}
         )c");
-        expect_size(3);
-        expect_hint("0", " // foo");
-        expect_hint("1", " // bar");
-        expect_hint("2", " // operator==");
+    expect_size(3);
+    expect_hint("0", " // foo");
+    expect_hint("1", " // bar");
+    expect_hint("2", " // operator==");
 
-        // Methods
-        run(R"c(
+    // Methods
+    run(R"c(
             struct Test {
                 // No hint because there's no function body
                 Test() = default;
@@ -961,17 +961,17 @@ suite<"InlayHint"> inlay_hint = [] {
             void Test::method4() {
             $(6)}
         )c");
-        expect_size(7);
-        expect_hint("0", " // ~Test");
-        expect_hint("1", " // method1");
-        expect_hint("2", " // method3");
-        expect_hint("3", " // operator+");
-        expect_hint("4", " // operator bool");
-        expect_hint("5", " // Test::method2");
-        expect_hint("6", " // Test::method4");
+    expect_size(7);
+    expect_hint("0", " // ~Test");
+    expect_hint("1", " // method1");
+    expect_hint("2", " // method3");
+    expect_hint("3", " // operator+");
+    expect_hint("4", " // operator bool");
+    expect_hint("5", " // Test::method2");
+    expect_hint("6", " // Test::method4");
 
-        // Namespaces
-        run(R"c(
+    // Namespaces
+    run(R"c(
             namespace {
                 void foo();
             $(0)}
@@ -980,12 +980,12 @@ suite<"InlayHint"> inlay_hint = [] {
                 void bar();
             $(1)}
         )c");
-        expect_size(2);
-        expect_hint("0", " // namespace");
-        expect_hint("1", " // namespace ns");
+    expect_size(2);
+    expect_hint("0", " // namespace");
+    expect_hint("1", " // namespace ns");
 
-        // Types
-        run(R"c(
+    // Types
+    run(R"c(
             struct S {
             $(0)};
 
@@ -1001,15 +1001,15 @@ suite<"InlayHint"> inlay_hint = [] {
             enum class E2 {
             $(4)};
         )c");
-        expect_size(5);
-        expect_hint("0", " // struct S");
-        expect_hint("1", " // class C");
-        expect_hint("2", " // union U");
-        expect_hint("3", " // enum E1");
-        expect_hint("4", " // enum class E2");
+    expect_size(5);
+    expect_hint("0", " // struct S");
+    expect_hint("1", " // class C");
+    expect_hint("2", " // union U");
+    expect_hint("3", " // enum E1");
+    expect_hint("4", " // enum class E2");
 
-        // If statements
-        run(R"c(
+    // If statements
+    run(R"c(
             void foo(bool cond) {
                 if (cond)
                     ;
@@ -1038,17 +1038,17 @@ suite<"InlayHint"> inlay_hint = [] {
                 $(6)}
             }
         )c");
-        expect_size(7);
-        expect_hint("0", " // if cond");
-        expect_hint("1", " // if cond");
-        expect_hint("2", " // if");
-        expect_hint("3", " // if !cond");
-        expect_hint("4", " // if cond");
-        expect_hint("5", " // if X");
-        expect_hint("6", " // if i > 10");
+    expect_size(7);
+    expect_hint("0", " // if cond");
+    expect_hint("1", " // if cond");
+    expect_hint("2", " // if");
+    expect_hint("3", " // if !cond");
+    expect_hint("4", " // if cond");
+    expect_hint("5", " // if X");
+    expect_hint("6", " // if i > 10");
 
-        // Loops
-        run(R"c(
+    // Loops
+    run(R"c(
             void foo() {
                 while (true)
                     ;
@@ -1070,25 +1070,25 @@ suite<"InlayHint"> inlay_hint = [] {
                 $(3)}
             }
         )c");
-        expect_size(4);
-        expect_hint("0", " // while true");
-        expect_hint("1", " // for true");
-        expect_hint("2", " // for I");
-        expect_hint("3", " // for V");
+    expect_size(4);
+    expect_hint("0", " // while true");
+    expect_hint("1", " // for true");
+    expect_hint("2", " // for I");
+    expect_hint("3", " // for V");
 
-        // Switch
-        run(R"c(
+    // Switch
+    run(R"c(
             void foo(int I) {
                 switch (I) {
                     case 0: break;
                 $(0)}
             }
         )c");
-        expect_size(1);
-        expect_hint("0", " // switch I");
+    expect_size(1);
+    expect_hint("0", " // switch I");
 
-        // Print literals
-        run(R"c(
+    // Print literals
+    run(R"c(
             void foo() {
                 while ("foo") {
                 $(0)}
@@ -1106,15 +1106,15 @@ suite<"InlayHint"> inlay_hint = [] {
                 $(4)}
             }
         )c");
-        expect_size(5);
-        expect_hint("0", " // while \"foo\"");
-        expect_hint("1", " // while \"foo but...\"");
-        expect_hint("2", " // while true");
-        expect_hint("3", " // while 1");
-        expect_hint("4", " // while 1.5");
+    expect_size(5);
+    expect_hint("0", " // while \"foo\"");
+    expect_hint("1", " // while \"foo but...\"");
+    expect_hint("2", " // while true");
+    expect_hint("3", " // while 1");
+    expect_hint("4", " // while 1.5");
 
-        // Print refs
-        run(R"c(
+    // Print refs
+    run(R"c(
             namespace ns {
                 int Var;
                 int func();
@@ -1137,14 +1137,14 @@ suite<"InlayHint"> inlay_hint = [] {
                 $(3)}
             }
         )c");
-        expect_size(4);
-        expect_hint("0", " // while Var");
-        expect_hint("1", " // while func");
-        expect_hint("2", " // while Field");
-        expect_hint("3", " // while method");
+    expect_size(4);
+    expect_hint("0", " // while Var");
+    expect_hint("1", " // while func");
+    expect_hint("2", " // while Field");
+    expect_hint("3", " // while method");
 
-        // Print conversions
-        run(R"c(
+    // Print conversions
+    run(R"c(
             struct S {
                 S(int);
                 S(int, int);
@@ -1161,13 +1161,13 @@ suite<"InlayHint"> inlay_hint = [] {
                 $(2)}
             }
         )c");
-        expect_size(3);
-        expect_hint("0", " // while float");
-        expect_hint("1", " // while S");
-        expect_hint("2", " // while S");
+    expect_size(3);
+    expect_hint("0", " // while float");
+    expect_hint("1", " // while S");
+    expect_hint("2", " // while S");
 
-        // Print operators
-        run(R"c(
+    // Print operators
+    run(R"c(
             using Integer = int;
             void foo(Integer I) {
                 while(++I){
@@ -1192,17 +1192,17 @@ suite<"InlayHint"> inlay_hint = [] {
                 $(6)}
             }
         )c");
-        expect_size(7);
-        expect_hint("0", " // while ++I");
-        expect_hint("1", " // while I++");
-        expect_hint("2", " // while");
-        expect_hint("3", " // while I < 0");
-        expect_hint("4", " // while ... < I");
-        expect_hint("5", " // while I < ...");
-        expect_hint("6", " // while");
+    expect_size(7);
+    expect_hint("0", " // while ++I");
+    expect_hint("1", " // while I++");
+    expect_hint("2", " // while");
+    expect_hint("3", " // while I < 0");
+    expect_hint("4", " // while ... < I");
+    expect_hint("5", " // while I < ...");
+    expect_hint("6", " // while");
 
-        // Trailing semicolon
-        run(R"c(
+    // Trailing semicolon
+    run(R"c(
             // The hint is placed after the trailing ';'
             struct S1 {
             $(0)}  ;
@@ -1229,13 +1229,13 @@ suite<"InlayHint"> inlay_hint = [] {
 
             s2;
         )c");
-        expect_size(3);
-        expect_hint("0", " // struct S1");
-        expect_hint("1", " // struct S2");
-        expect_hint("2", " // struct");
+    expect_size(3);
+    expect_hint("0", " // struct S1");
+    expect_hint("1", " // struct S2");
+    expect_hint("2", " // struct");
 
-        // Trailing text
-        run(R"c(
+    // Trailing text
+    run(R"c(
             struct S1 {
             $(0)}      ;
 
@@ -1252,12 +1252,12 @@ suite<"InlayHint"> inlay_hint = [] {
             namespace ns {
             } // namespace ns
         )c");
-        expect_size(2);
-        expect_hint("0", " // struct S1");
-        expect_hint("1", " // struct S3");
+    expect_size(2);
+    expect_hint("0", " // struct S1");
+    expect_hint("1", " // struct S3");
 
-        // Macro
-        run(R"c(
+    // Macro
+    run(R"c(
             #define DECL_STRUCT(NAME) struct NAME {
             #define RBRACE }
 
@@ -1268,11 +1268,11 @@ suite<"InlayHint"> inlay_hint = [] {
             DECL_STRUCT(S2)
             RBRACE;
         )c");
-        expect_size(1);
-        expect_hint("0", " // struct S1");
+    expect_size(1);
+    expect_hint("0", " // struct S1");
 
-        // Pointer to member function
-        run(R"c(
+    // Pointer to member function
+    run(R"c(
             class A {};
             using Predicate = bool(A::*)();
             void foo(A* a, Predicate p) {
@@ -1280,27 +1280,27 @@ suite<"InlayHint"> inlay_hint = [] {
                 $(0)}
             }
         )c");
-        expect_size(1);
-        expect_hint("0", " // if");
-    };
+    expect_size(1);
+    expect_hint("0", " // if");
+};
 
-    skip / test("DefaultArguments") = [&] {
-        // Smoke test
-        run(R"c(
+TEST_CASE(DefaultArguments, {.skip = true}) {
+    // Smoke test
+    run(R"c(
             int foo(int A = 4) { return A; }
             int bar(int A, int B = 1, bool C = foo($(0))) { return A; }
             int A = bar($(1)2$(2));
 
             void baz(int = 5) { if (false) baz($(3)); };
         )c");
-        expect_size(4);
-        expect_hint("0", "A: 4");
-        expect_hint("1", "A: ");
-        expect_hint("2", ", B: 1, C: foo()");
-        expect_hint("3", "5");
+    expect_size(4);
+    expect_hint("0", "A: 4");
+    expect_hint("1", "A: ");
+    expect_hint("2", ", B: 1, C: foo()");
+    expect_hint("3", "5");
 
-        // Without parameter names
-        run(R"c(
+    // Without parameter names
+    run(R"c(
             struct Baz {
                 Baz(float a = 3 //
                             + 2);
@@ -1320,36 +1320,36 @@ suite<"InlayHint"> inlay_hint = [] {
                 auto foo4 = Foo{4$(4)};
             }
         )c");
-        expect_size(5);
-        expect_hint("0", "...");
-        expect_hint("1", ", Baz{}");
-        expect_hint("2", ", Baz{}");
-        expect_hint("3", ", Baz{}");
-        expect_hint("4", ", Baz{}");
-    };
+    expect_size(5);
+    expect_hint("0", "...");
+    expect_hint("1", ", Baz{}");
+    expect_hint("2", ", Baz{}");
+    expect_hint("3", ", Baz{}");
+    expect_hint("4", ", Baz{}");
+};
 
-    test("Special") = [&] {
-        // Macros
-        run(R"c(
+TEST_CASE(Special) {
+    // Macros
+    run(R"c(
             void foo(int param);
             #define ExpandsToCall() foo(42)
             void bar() {
                 ExpandsToCall();
             }
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        run(R"c(
+    run(R"c(
             #define PI 3.14
             void foo(double param);
             void bar() {
                 foo($(0)PI);
             }
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        run(R"c(
+    run(R"c(
             void abort();
             #define ASSERT(expr) if (!(expr)) abort()
             int foo(int param);
@@ -1357,20 +1357,20 @@ suite<"InlayHint"> inlay_hint = [] {
                 ASSERT(foo($(0)42) == 0);
             }
         )c");
-        expect_size(1);
-        expect_hint("0", "param:");
+    expect_size(1);
+    expect_hint("0", "param:");
 
-        run(R"c(
+    run(R"c(
             void foo(double x, double y);
             #define CONSTANTS 3.14, 2.72
             void bar() {
                 foo(CONSTANTS);
             }
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // Implicit constructor
-        run(R"c(
+    // Implicit constructor
+    run(R"c(
             struct S {
                 S(int param);
             };
@@ -1382,10 +1382,10 @@ suite<"InlayHint"> inlay_hint = [] {
                 return 42;
             }
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // Aggregate init
-        run(R"c(
+    // Aggregate init
+    run(R"c(
             struct Point {
                 int x;
                 int y;
@@ -1394,20 +1394,20 @@ suite<"InlayHint"> inlay_hint = [] {
                 Point p{41, 42};
             }
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // Builtin functions
-        run(R"c(
+    // Builtin functions
+    run(R"c(
             namespace std { template <typename T> T&& forward(T&); }
             void foo() {
                 int i;
                 int&& s = std::forward(i);
             }
         )c");
-        expect_size(0);
+    expect_size(0);
 
-        // Pseudo object expression
-        run(R"c(
+    // Pseudo object expression
+    run(R"c(
             struct S {
                 __declspec(property(get=GetX, put=PutX)) int x[];
                 int GetX(int y, int z) { return 42 + y; }
@@ -1429,15 +1429,15 @@ suite<"InlayHint"> inlay_hint = [] {
                 return s.x[ $(1)1 ][ $(2)2 ]; // `x[y: 1][z: 2]`
             }
         )c");
-        expect_size(3);
-        expect_hint("0", "Format:");
-        expect_hint("1", "y:");
-        expect_hint("2", "z:");
-    };
+    expect_size(3);
+    expect_hint("0", "Format:");
+    expect_hint("1", "y:");
+    expect_hint("2", "z:");
+};
 
-    test("VariadicTemplate") = [&] {
-        // Arg packs and constructors
-        run(R"c(
+TEST_CASE(VariadicTemplate) {
+    // Arg packs and constructors
+    run(R"c(
             struct Foo{ Foo(); Foo(int x); };
 
             void foo(Foo a, int b);
@@ -1460,19 +1460,19 @@ suite<"InlayHint"> inlay_hint = [] {
                 bax($(8)42);
             }
         )c");
-        /// FIXME:
-        /// expect_hint("0", "a:");
-        /// expect_hint("1", "b:");
-        /// expect_hint("2", "a:");
-        expect_hint("3", "a:");
-        expect_hint("4", "b:");
-        expect_hint("5", "a:");
-        expect_hint("6", "b:");
-        expect_hint("7", "x:");
-        expect_hint("8", "b:");
+    /// FIXME:
+    /// expect_hint("0", "a:");
+    /// expect_hint("1", "b:");
+    /// expect_hint("2", "a:");
+    expect_hint("3", "a:");
+    expect_hint("4", "b:");
+    expect_hint("5", "a:");
+    expect_hint("6", "b:");
+    expect_hint("7", "x:");
+    expect_hint("8", "b:");
 
-        // Doesn't expand all args
-        run(R"c(
+    // Doesn't expand all args
+    run(R"c(
             void foo(int x, int y);
             int id(int a, int b, int c);
             template <typename... Args>
@@ -1483,16 +1483,16 @@ suite<"InlayHint"> inlay_hint = [] {
                 bar(1, 2); // FIXME: We could have `bar(a: 1, a: 2)` here.
             }
         )c");
-        /// FIXME:
-        /// expect_size(3);
-        /// expect_hint("0", "a:");
-        /// expect_hint("1", "b:");
-        /// expect_hint("2", "c:");
-    };
+    /// FIXME:
+    /// expect_size(3);
+    /// expect_hint("0", "a:");
+    /// expect_hint("1", "b:");
+    /// expect_hint("2", "c:");
+}
 
-    skip / test("Dependent") = [&] {
-        // Dependent calls
-        run(R"c(
+TEST_CASE(Dependent, {.skip = true}) {
+    // Dependent calls
+    run(R"c(
             template <typename T>
             void nonmember(T par1);
 
@@ -1517,12 +1517,12 @@ suite<"InlayHint"> inlay_hint = [] {
                 }
             };
         )c");
-        expect_size(3);
-        expect_hint("0", "par1:");
-        expect_hint("1", "par2:");
-        expect_hint("2", "par3:");
-    };
-};
+    expect_size(3);
+    expect_hint("0", "par1:");
+    expect_hint("1", "par2:");
+    expect_hint("2", "par3:");
+}
 
+};  // TEST_SUITE(InlayHint)
 }  // namespace
 }  // namespace clice::testing

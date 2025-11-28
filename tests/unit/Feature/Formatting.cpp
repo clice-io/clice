@@ -1,17 +1,15 @@
-#include "Test/Test.h"
+#include "Test/Test2.h"
 #include "Feature/Formatting.h"
 
 namespace clice::testing {
-
 namespace {
+TEST_SUITE(Formatting) {
 
-suite<"Formatting"> suite = [] {
-    test("Simple") = [] {
-        auto edits = feature::document_format("main.cpp", "int main() { return 0; }", std::nullopt);
-        expect(ne(edits.size(), 0));
-    };
-};
+TEST_CASE(Simple) {
+    auto edits = feature::document_format("main.cpp", "int main() { return 0; }", std::nullopt);
+    ASSERT_NE(edits.size(), 0U);
+}
 
+};  // TEST_SUITE(Formatting)
 }  // namespace
-
 }  // namespace clice::testing

@@ -1,3 +1,4 @@
+#include "Test/Test2.h"
 #include "Test/Tester.h"
 #include "Feature/SemanticToken.h"
 
@@ -8,84 +9,85 @@ namespace {
 using enum SymbolKind::Kind;
 using enum SymbolModifiers::Kind;
 
-suite<"SemanticToken"> semantic_token = [] {
-    Tester tester;
-    feature::SemanticTokens tokens;
+TEST_SUITE(SemanticToken) {
 
-    auto run = [&](llvm::StringRef code) {
-        tester.clear();
-        tester.add_main("main.cpp", code);
-        tester.compile_with_pch();
-        tokens = feature::semantic_tokens(*tester.unit);
-    };
+Tester tester;
+feature::SemanticTokens tokens;
 
-    auto expect_token = [&](llvm::StringRef pos,
-                            SymbolKind kind,
-                            SymbolModifiers modifiers = SymbolModifiers(),
-                            std::source_location loc = std::source_location::current()) {
-        auto range = tester.range(pos);
+void run(llvm::StringRef code) {
+    tester.clear();
+    tester.add_main("main.cpp", code);
+    ASSERT_TRUE(tester.compile_with_pch());
+    tokens = feature::semantic_tokens(*tester.unit);
+};
 
-        auto found = false;
+void expect_token(llvm::StringRef pos,
+                  SymbolKind kind,
+                  SymbolModifiers modifiers = SymbolModifiers(),
+                  std::source_location loc = std::source_location::current()) {
+    auto range = tester.range(pos);
 
-        for(auto& token: tokens) {
-            if(token.range == range) {
-                expect(token.kind == kind, loc);
-                expect(token.modifiers == modifiers, loc);
-                found = true;
-                break;
-            }
+    auto found = false;
+
+    for(auto& token: tokens) {
+        if(token.range == range) {
+            ASSERT_EQ(token.kind, kind);
+            ASSERT_EQ(token.modifiers, modifiers);
+            found = true;
+            break;
         }
+    }
 
-        expect(found, loc);
-    };
+    ASSERT_TRUE(found);
+};
 
-    test("Include") = [&] {
-        run(R"cpp(
+TEST_CASE(Include) {
+    run(R"cpp(
  @0[#include] @1[<stddef.h>]
  @2[#include] @3["stddef.h"]
  @4[#] @5[include] @6["stddef.h"]
  )cpp");
 
-        expect_token("0", Directive);
-        expect_token("1", Header);
-        expect_token("2", Directive);
-        expect_token("3", Header);
-        expect_token("4", Directive);
-        expect_token("5", Directive);
-        expect_token("6", Header);
-    };
+    expect_token("0", Directive);
+    expect_token("1", Header);
+    expect_token("2", Directive);
+    expect_token("3", Header);
+    expect_token("4", Directive);
+    expect_token("5", Directive);
+    expect_token("6", Header);
+}
 
-    test("Comment") = [&] {
-        run(R"cpp(
+TEST_CASE(Comment) {
+    run(R"cpp(
 @line[/// line comment]
 int x = 1;
 )cpp");
 
-        expect_token("line", Comment);
-    };
+    expect_token("line", Comment);
+}
 
-    test("Keyword") = [&] {
-        run(R"cpp(
+TEST_CASE(Keyword) {
+    run(R"cpp(
 @int[int] main() {
     @return[return] 0;
 }
 )cpp");
 
-        expect_token("int", Keyword);
-        expect_token("return", Keyword);
-    };
+    expect_token("int", Keyword);
+    expect_token("return", Keyword);
+}
 
-    test("Macro") = [&] {
-        run(R"cpp(
+TEST_CASE(Macro) {
+    run(R"cpp(
 @directive[#define] @macro[FOO]
 )cpp");
 
-        expect_token("directive", Directive);
-        expect_token("macro", Macro);
-    };
+    expect_token("directive", Directive);
+    expect_token("macro", Macro);
+}
 
-    test("FinalAndOverride") = [&] {
-        run(R"cpp(
+TEST_CASE(FinalAndOverride) {
+    run(R"cpp(
 struct A @final[final] {};
 
 struct B {
@@ -101,13 +103,13 @@ struct D : C {
 };
 )cpp");
 
-        expect_token("final", Keyword);
-        expect_token("override", Keyword);
-        expect_token("final2", Keyword);
-    };
+    expect_token("final", Keyword);
+    expect_token("override", Keyword);
+    expect_token("final2", Keyword);
+}
 
-    test("VarDecl") = [&] {
-        run(R"cpp(
+TEST_CASE(VarDecl) {
+    run(R"cpp(
 extern int @x1[x];
 
 int @x2[x] = 1;
@@ -132,18 +134,18 @@ int main() {
 }
 )cpp");
 
-        expect_token("x1", Variable, Declaration);
-        expect_token("x2", Variable, Definition);
-        expect_token("y1", Variable, SymbolModifiers(Declaration, Templated));
-        expect_token("y2", Variable, SymbolModifiers(Definition, Templated));
-        expect_token("y3", Variable, SymbolModifiers(Declaration, Templated));
-        expect_token("y4", Variable, SymbolModifiers(Definition, Templated));
-        expect_token("y5", Variable, Definition);
-        expect_token("x3", Variable, SymbolModifiers());
-    };
+    expect_token("x1", Variable, Declaration);
+    expect_token("x2", Variable, Definition);
+    expect_token("y1", Variable, SymbolModifiers(Declaration, Templated));
+    expect_token("y2", Variable, SymbolModifiers(Definition, Templated));
+    expect_token("y3", Variable, SymbolModifiers(Declaration, Templated));
+    expect_token("y4", Variable, SymbolModifiers(Definition, Templated));
+    expect_token("y5", Variable, Definition);
+    expect_token("x3", Variable, SymbolModifiers());
+}
 
-    test("FunctionDecl") = [&] {
-        run(R"cpp(
+TEST_CASE(FunctionDecl) {
+    run(R"cpp(
 extern int @foo1[foo]();
 
 int @foo2[foo]() {
@@ -159,14 +161,14 @@ int @bar2[bar]() {
 }
 )cpp");
 
-        expect_token("foo1", Function, Declaration);
-        expect_token("foo2", Function, Definition);
-        expect_token("bar1", Function, SymbolModifiers(Declaration, Templated));
-        expect_token("bar2", Function, SymbolModifiers(Definition, Templated));
-    };
+    expect_token("foo1", Function, Declaration);
+    expect_token("foo2", Function, Definition);
+    expect_token("bar1", Function, SymbolModifiers(Declaration, Templated));
+    expect_token("bar2", Function, SymbolModifiers(Definition, Templated));
+}
 
-    test("RecordDecl") = [&] {
-        run(R"cpp(
+TEST_CASE(RecordDecl) {
+    run(R"cpp(
 class @A1[A];
 
 class @A2[A] {};
@@ -180,14 +182,15 @@ union @C1[C];
 union @C2[C] {};
 )cpp");
 
-        expect_token("A1", Class, Declaration);
-        expect_token("A2", Class, Definition);
-        expect_token("B1", Struct, Declaration);
-        expect_token("B2", Struct, Definition);
-        expect_token("C1", Union, Declaration);
-        expect_token("C2", Union, Definition);
-    };
-};
+    expect_token("A1", Class, Declaration);
+    expect_token("A2", Class, Definition);
+    expect_token("B1", Struct, Declaration);
+    expect_token("B2", Struct, Definition);
+    expect_token("C1", Union, Declaration);
+    expect_token("C2", Union, Definition);
+}
+
+};  // TEST_SUITE(SemanticToken)
 
 }  // namespace
 
