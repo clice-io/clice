@@ -9,6 +9,7 @@
 #include "Support/FileSystem.h"
 #include "Support/FixedString.h"
 #include "llvm/ADT/FunctionExtras.h"
+#include "Test2.h"
 
 namespace clice::testing {
 

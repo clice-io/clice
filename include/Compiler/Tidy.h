@@ -5,7 +5,9 @@
 #include <memory>
 
 namespace clang {
+
 class CompilerInstance;
+
 }
 
 namespace clice::tidy {

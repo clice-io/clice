@@ -58,4 +58,5 @@ struct Widget {
 
 template <typename T>
 Widget(T) -> Widget<typename T::value_type>;
+
 }  // namespace foo

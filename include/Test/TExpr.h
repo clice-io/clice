@@ -39,6 +39,7 @@ decltype(auto) compute(const Expr& expr) {
 
 #define BINARY_PREDICATE(name, op)                                                                 \
     namespace clice::testing {                                                                     \
+                                                                                                   \
     decltype(auto) name##_impl(auto&& lhs, auto&& rhs);                                            \
                                                                                                    \
     template <typename LHS, typename RHS>                                                          \
@@ -55,6 +56,7 @@ decltype(auto) compute(const Expr& expr) {
                                                                                                    \
     template <typename LHS, typename RHS>                                                          \
     name(const LHS&, const RHS&) -> name<LHS, RHS>;                                                \
+                                                                                                   \
     }                                                                                              \
                                                                                                    \
     template <typename LHS, typename RHS>                                                          \

@@ -48,4 +48,5 @@ constexpr inline bool CIEnvironment = true;
 #else
 constexpr inline bool CIEnvironment = false;
 #endif
+
 }  // namespace clice::testing

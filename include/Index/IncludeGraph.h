@@ -5,7 +5,9 @@
 #include "llvm/ADT/DenseMap.h"
 
 namespace clice {
+
 class CompilationUnit;
+
 }
 
 namespace clice::index {

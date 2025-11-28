@@ -93,6 +93,7 @@ SpacesInParensOptions:
 
 SpacesInSquareBrackets: false
 
+WrapNamespaceBodyWithEmptyLines: Always
 # Order
 QualifierAlignment: Custom
 QualifierOrder: ["constexpr", "const", "inline", "static", "type"]
@@ -101,3 +102,4 @@ SortUsingDeclarations: Never
 IncludeBlocks: Merge
 
 ForEachMacros: ["REFLECTABLE_RECORD"]
+NamespaceMacros: [TEST_SUITE]

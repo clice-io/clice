@@ -4,6 +4,7 @@
 #include "llvm/ADT/StringExtras.h"
 
 namespace clice {
+
 void DoxygenInfo::add_block_command_comment(llvm::StringRef tag, llvm::StringRef content) {
     auto [it, _] = block_command_comments.try_emplace(tag);
     it->second.emplace_back(content.str());
@@ -246,4 +247,5 @@ std::pair<DoxygenInfo, std::string> strip_doxygen_info(llvm::StringRef raw_comme
     }
     return {di, os.str()};
 }
+
 }  // namespace clice

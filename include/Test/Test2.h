@@ -1,11 +1,14 @@
+#pragma once
+
+#include <source_location>
 #include <string>
 #include <print>
 #include <vector>
 #include "Support/FixedString.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/FunctionExtras.h"
-#include "Test.h"
 #include "Runner.h"
+#include "cpptrace/cpptrace.hpp"
 
 namespace clice::testing {
 
@@ -17,8 +20,22 @@ private:
         TestState (Derived::*func)();
     };
 
+    TestState state = TestState::Passed;
+
 public:
     using Self = Derived;
+
+    void failure() {
+        state = TestState::Failed;
+    }
+
+    void pass() {
+        state = TestState::Passed;
+    }
+
+    void skip() {
+        state = TestState::Skipped;
+    }
 
     constexpr inline static auto& test_cases() {
         static std::vector<TestCase> instance;
@@ -35,7 +52,7 @@ public:
         return true;
     }();
 
-    template <fixed_string CaseName, auto Case>
+    template <fixed_string CaseName, auto Case, TestAttrs attrs = {}>
     inline static bool _register_test_case = [] {
         auto run_test = +[] -> TestState {
             Derived test;
@@ -43,27 +60,71 @@ public:
                 test.setup();
             }
 
-            auto state = (test.*Case)({});
+            (test.*Case)();
 
             if constexpr(requires { test.teardown(); }) {
                 test.teardown();
             }
 
-            return state;
+            return test.state;
         };
 
-        test_cases().emplace_back(CaseName.data(), run_test, TestAttrs::parse(Case));
+        test_cases().emplace_back(CaseName.data(), run_test, attrs);
         return true;
     }();
 };
+
+inline void print_trace(cpptrace::stacktrace& trace, std::source_location location) {
+    auto& frames = trace.frames;
+    auto it = std::ranges::find_if(frames, [&](cpptrace::stacktrace_frame& frame) {
+        return frame.filename != location.file_name();
+    });
+    frames.erase(it, frames.end());
+    trace.print();
+}
 
 #define TEST_SUITE(name) struct name : TestSuiteDef<#name, name>
 
 #define TEST_CASE(name, ...)                                                                       \
     void _register_##name() {                                                                      \
         (void)_register_suites<>;                                                                  \
-        (void)_register_test_case<#name, &Self::test_##name>;                                      \
+        (void)_register_test_case<#name, &Self::test_##name __VA_OPT__(, ) __VA_ARGS__>;           \
     }                                                                                              \
-    TestState test_##name(test_tag<__VA_ARGS__>)
+    void test_##name()
+
+#define EXPECT_TRUE(expr)                                                                          \
+    if(expr) {                                                                                     \
+        auto trace = cpptrace::generate_trace();                                                   \
+        print_trace(trace, std::source_location::current());                                       \
+        failure();                                                                                 \
+    }
+
+#define EXPECT_EQ(lhs, rhs)                                                                        \
+    if(lhs != rhs) {                                                                               \
+        auto trace = cpptrace::generate_trace();                                                   \
+        print_trace(trace, std::source_location::current());                                       \
+        failure();                                                                                 \
+    }
+
+#define ASSERT_TRUE(expr)                                                                          \
+    if(!(expr)) {                                                                                  \
+        auto trace = cpptrace::generate_trace();                                                   \
+        print_trace(trace, std::source_location::current());                                       \
+        return failure();                                                                          \
+    }
+
+#define ASSERT_FALSE(expr)                                                                         \
+    if((expr)) {                                                                                   \
+        auto trace = cpptrace::generate_trace();                                                   \
+        print_trace(trace, std::source_location::current());                                       \
+        return failure();                                                                          \
+    }
+
+#define ASSERT_EQ(lhs, rhs)                                                                        \
+    if(lhs != rhs) {                                                                               \
+        auto trace = cpptrace::generate_trace();                                                   \
+        print_trace(trace, std::source_location::current());                                       \
+        return failure();                                                                          \
+    }
 
 }  // namespace clice::testing

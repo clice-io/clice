@@ -67,6 +67,7 @@ struct DenseMapInfo<clice::index::Relation> {
                lhs.target_symbol == rhs.target_symbol;
     }
 };
+
 }  // namespace llvm
 
 namespace clice::index {

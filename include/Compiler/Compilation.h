@@ -6,7 +6,9 @@
 #include "Support/FileSystem.h"
 
 namespace clang {
+
 class CodeCompleteConsumer;
+
 }
 
 namespace clice {

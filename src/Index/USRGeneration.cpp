@@ -51,6 +51,7 @@ void AppendExprODRHash(const Expr* expr, llvm::raw_ostream& Out) {
 };
 
 namespace {
+
 class USRGenerator : public ConstDeclVisitor<USRGenerator> {
     SmallVectorImpl<char>& Buf;
     llvm::raw_svector_ostream Out;
@@ -139,6 +140,7 @@ public:
     ///  the decl had no name.
     bool EmitDeclName(const NamedDecl* D);
 };
+
 }  // end anonymous namespace
 
 //===----------------------------------------------------------------------===//

@@ -199,5 +199,5 @@ int main(int argc, const char* argv[]) {
     }
 
     using namespace clice::testing;
-    return Runner2::instance().run_tests();
+    return Runner2::instance().run_tests(test_filter);
 }
