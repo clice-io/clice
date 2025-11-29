@@ -2,12 +2,10 @@
 #include <string>
 #include "Test/Test.h"
 #include "Support/Doxygen.h"
-#include "Support/Format.h"
+#include "Support/Logging.h"
 
 namespace clice::testing {
-
 namespace {
-
 TEST_SUITE(Doxygen) {
 
 TEST_CASE(DoxygenInfo) {
@@ -69,27 +67,27 @@ TEST_CASE(DoxygenParserSimple) {
 )";
         auto [di, md] = strip_doxygen_info(raw_comment);
         ASSERT_EQ(di.get_block_command_comments().size(), 0U);
-        std::println("Rest:\n```{}```", md);
+        LOG_DEBUG("Rest:\n```{}```", md);
     }
 
     // ParamCommandComment
     {
         constexpr auto raw_comment = R"( @)";
-        std::println("Processing raw comment: `{}`", raw_comment);
+        LOG_DEBUG("Processing raw comment: `{}`", raw_comment);
         auto [di, md] = strip_doxygen_info(raw_comment);
-        std::println("Rest:\n```\n{}\n```\n", md);
+        LOG_DEBUG("Rest:\n```\n{}\n```\n", md);
     }
 
     {
         constexpr auto raw_comment = R"( @param)";
-        std::println("Processing raw comment: `{}`", raw_comment);
+        LOG_DEBUG("Processing raw comment: `{}`", raw_comment);
         auto [di, md] = strip_doxygen_info(raw_comment);
-        std::println("Rest:\n```\n{}\n```\n", md);
+        LOG_DEBUG("Rest:\n```\n{}\n```\n", md);
     }
 
     {
         constexpr auto raw_comment = R"( @param[in,out] foo doc for foo)";
-        std::println("Processing raw comment: `{}`", raw_comment);
+        LOG_DEBUG("Processing raw comment: `{}`", raw_comment);
         auto [di, md] = strip_doxygen_info(raw_comment);
         ASSERT_TRUE(md.empty());
         auto info_foo = di.find_param_info("foo");
@@ -98,7 +96,7 @@ TEST_CASE(DoxygenParserSimple) {
             llvm::StringRef doc = info_foo.value()->content;
             ASSERT_EQ(info_foo.value()->direction,
                       DoxygenInfo::ParamCommandCommentContent::ParamDirection::InOut);
-            std::println("Doc:\n```\n{}\n```\n", doc);
+            LOG_DEBUG("Doc:\n```\n{}\n```\n", doc);
         }
     }
 
@@ -121,7 +119,7 @@ TEST_CASE(DoxygenParserSimple) {
             llvm::StringRef doc = info_foo.value()->content;
             ASSERT_EQ(info_foo.value()->direction,
                       DoxygenInfo::ParamCommandCommentContent::ParamDirection::Out);
-            std::println("Doc:\n```\n{}\n```", doc);
+            LOG_DEBUG("Doc:\n```\n{}\n```", doc);
         }
 
         auto info_bar = di.find_param_info("bar");
@@ -130,7 +128,7 @@ TEST_CASE(DoxygenParserSimple) {
             llvm::StringRef doc = info_bar.value()->content;
             ASSERT_EQ(info_bar.value()->direction,
                       DoxygenInfo::ParamCommandCommentContent::ParamDirection::In);
-            std::println("Doc:\n```\n{}\n```", doc);
+            LOG_DEBUG("Doc:\n```\n{}\n```", doc);
         }
 
         auto info_baz = di.find_param_info("baz");
@@ -146,7 +144,7 @@ TEST_CASE(DoxygenParserSimple) {
 
 TEST_CASE(DoxygenParserIntegrated) {
     {
-        std::println("##################################################################");
+        LOG_DEBUG("##################################################################");
         constexpr auto raw_comment = R"(
  @brief Calculates the area of a rectangle.
 
@@ -171,13 +169,13 @@ TEST_CASE(DoxygenParserIntegrated) {
  details 2 blah blah... line2
         )";
         auto [di, md] = strip_doxygen_info(raw_comment);
-        std::println("Markdown After Stripping:\n```\n{}\n```", md);
+        LOG_DEBUG("Markdown After Stripping:\n```\n{}\n```", md);
         auto info_width = di.find_param_info("width");
         ASSERT_TRUE(info_width.has_value());
         if(info_width.has_value()) {
             ASSERT_EQ(info_width.value()->direction,
                       DoxygenInfo::ParamCommandCommentContent::ParamDirection::In);
-            std::println("Doc for `width`:\n```\n{}\n```", info_width.value()->content);
+            LOG_DEBUG("Doc for `width`:\n```\n{}\n```", info_width.value()->content);
         }
 
         auto info_height = di.find_param_info("height");
@@ -185,28 +183,28 @@ TEST_CASE(DoxygenParserIntegrated) {
         if(info_height.has_value()) {
             ASSERT_EQ(info_height.value()->direction,
                       DoxygenInfo::ParamCommandCommentContent::ParamDirection::In);
-            std::println("Doc for `height`:\n```\n{}\n```", info_height.value()->content);
+            LOG_DEBUG("Doc for `height`:\n```\n{}\n```", info_height.value()->content);
         }
 
         auto bcc_list = di.get_block_command_comments();
         ASSERT_EQ(bcc_list.size(), 3U);
 
-        std::println("RegularTags:");
+        LOG_DEBUG("RegularTags:");
         for(auto& [tag_name, content]: bcc_list) {
-            std::println("=================================");
-            std::println("Tag name: `{}`", tag_name);
+            LOG_DEBUG("=================================");
+            LOG_DEBUG("Tag name: `{}`", tag_name);
             for(auto& item: content) {
-                std::println("Item:\n```\n{}\n```", item.content);
+                LOG_DEBUG("Item:\n```\n{}\n```", item.content);
             }
-            std::println("=================================");
+            LOG_DEBUG("=================================");
         }
 
         auto ret_info = di.get_return_info();
         ASSERT_TRUE(ret_info.has_value());
         if(ret_info.has_value()) {
-            std::println("Doc for return value:\n```\n{}\n```", ret_info.value());
+            LOG_DEBUG("Doc for return value:\n```\n{}\n```", ret_info.value());
         }
-        std::println("##################################################################");
+        LOG_DEBUG("##################################################################");
     }
 
     // Full test
@@ -268,13 +266,13 @@ TEST_CASE(DoxygenParserIntegrated) {
  @return doc for return value
 )";
         auto [di, md] = strip_doxygen_info(raw_comment);
-        std::println("Markdown After Stripping:\n```\n{}\n```", md);
+        LOG_DEBUG("Markdown After Stripping:\n```\n{}\n```", md);
         auto info_foo = di.find_param_info("foo");
         ASSERT_TRUE(info_foo.has_value());
         if(info_foo.has_value()) {
             ASSERT_EQ(info_foo.value()->direction,
                       DoxygenInfo::ParamCommandCommentContent::ParamDirection::In);
-            std::println("Doc for `foo`:\n```\n{}\n```", info_foo.value()->content);
+            LOG_DEBUG("Doc for `foo`:\n```\n{}\n```", info_foo.value()->content);
         }
 
         auto info_bar = di.find_param_info("bar");
@@ -282,7 +280,7 @@ TEST_CASE(DoxygenParserIntegrated) {
         if(info_bar.has_value()) {
             ASSERT_EQ(info_bar.value()->direction,
                       DoxygenInfo::ParamCommandCommentContent::ParamDirection::Out);
-            std::println("Doc for `bar`:\n```\n{}\n```", info_bar.value()->content);
+            LOG_DEBUG("Doc for `bar`:\n```\n{}\n```", info_bar.value()->content);
         }
 
         auto info_baz = di.find_param_info("baz");
@@ -290,7 +288,7 @@ TEST_CASE(DoxygenParserIntegrated) {
         if(info_baz.has_value()) {
             ASSERT_EQ(info_baz.value()->direction,
                       DoxygenInfo::ParamCommandCommentContent::ParamDirection::InOut);
-            std::println("Doc for `baz`:\n```\n{}\n```", info_baz.value()->content);
+            LOG_DEBUG("Doc for `baz`:\n```\n{}\n```", info_baz.value()->content);
         }
 
         auto info_awa = di.find_param_info("awa");
@@ -298,33 +296,31 @@ TEST_CASE(DoxygenParserIntegrated) {
         if(info_awa.has_value()) {
             ASSERT_EQ(info_awa.value()->direction,
                       DoxygenInfo::ParamCommandCommentContent::ParamDirection::Unspecified);
-            std::println("Doc for `awa`:\n```\n{}\n```", info_awa.value()->content);
+            LOG_DEBUG("Doc for `awa`:\n```\n{}\n```", info_awa.value()->content);
         }
 
         auto bcc_list = di.get_block_command_comments();
         ASSERT_EQ(bcc_list.size(), 4U);
 
-        std::println("RegularTags:");
+        LOG_DEBUG("RegularTags:");
         for(auto& [tag_name, content]: bcc_list) {
-            std::println("=================================");
-            std::println("Tag name: `{}`", tag_name);
+            LOG_DEBUG("=================================");
+            LOG_DEBUG("Tag name: `{}`", tag_name);
             for(auto& item: content) {
-                std::println("Item:\n```\n{}\n```", item.content);
+                LOG_DEBUG("Item:\n```\n{}\n```", item.content);
             }
-            std::println("=================================");
+            LOG_DEBUG("=================================");
         }
 
         auto ret_info = di.get_return_info();
         ASSERT_TRUE(ret_info.has_value());
         if(ret_info.has_value()) {
-            std::println("Doc for return value:\n```\n{}\n```", ret_info.value());
+            LOG_DEBUG("Doc for return value:\n```\n{}\n```", ret_info.value());
         }
-        std::println("##################################################################");
+        LOG_DEBUG("##################################################################");
     }
 }
 
 };  // TEST_SUITE(Doxygen)
-
 }  // namespace
-
 }  // namespace clice::testing
