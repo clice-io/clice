@@ -1,4 +1,4 @@
-#include "Test/Test2.h"
+#include "Test/Test.h"
 #include "Test/Tester.h"
 #include "Feature/InlayHint.h"
 

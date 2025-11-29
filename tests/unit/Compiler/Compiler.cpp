@@ -1,5 +1,5 @@
 #include <thread>
-#include "Test/Test2.h"
+#include "Test/Test.h"
 #include "Test/Tester.h"
 #include "Compiler/Compilation.h"
 #include "Support/FileSystem.h"

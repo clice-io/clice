@@ -4,7 +4,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "Test/Test2.h"
+#include "Test/Test.h"
 #include "Support/JSON.h"
 
 #include "llvm/ADT/ArrayRef.h"

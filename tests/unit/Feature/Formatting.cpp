@@ -1,4 +1,4 @@
-#include "Test/Test2.h"
+#include "Test/Test.h"
 #include "Feature/Formatting.h"
 
 namespace clice::testing {

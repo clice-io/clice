@@ -1,5 +1,5 @@
 
-#include "Test/Test2.h"
+#include "Test/Test.h"
 #include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
 

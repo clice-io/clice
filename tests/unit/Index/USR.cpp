@@ -1,5 +1,5 @@
 #include "Support/Logging.h"
-#include "Test/Test2.h"
+#include "Test/Test.h"
 #include "Test/Tester.h"
 #include "Index/USR.h"
 #include "clang/AST/DeclBase.h"

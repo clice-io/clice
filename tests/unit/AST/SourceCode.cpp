@@ -1,6 +1,6 @@
 #include <cstddef>
 #include <vector>
-#include "Test/Test2.h"
+#include "Test/Test.h"
 #include "AST/SourceCode.h"
 
 namespace clice::testing {

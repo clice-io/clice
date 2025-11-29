@@ -1,4 +1,4 @@
-#include "Test/Test2.h"
+#include "Test/Test.h"
 #include "Compiler/Preamble.h"
 #include "Compiler/Compilation.h"
 #include "Test/Annotation.h"

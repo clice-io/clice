@@ -1,5 +1,5 @@
 #include <iostream>
-#include "Test/Test2.h"
+#include "Test/Test.h"
 #include "Support/GlobPattern.h"
 
 namespace clice::testing {
