@@ -1,10 +1,13 @@
+#include "AST/Selection.h"
+
+#include <algorithm>
+#include <optional>
 #include <set>
 #include <string>
-#include <optional>
-#include <algorithm>
-#include "AST/Selection.h"
+
 #include "Compiler/CompilationUnit.h"
 #include "Support/Logging.h"
+
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"

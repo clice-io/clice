@@ -1,8 +1,9 @@
 #pragma once
 
 #include "AST/SourceCode.h"
-#include "llvm/ADT/StringRef.h"
+
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace clice::testing {
 

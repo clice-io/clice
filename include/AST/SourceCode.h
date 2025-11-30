@@ -1,8 +1,9 @@
 #pragma once
 
 #include <tuple>
-#include "clang/Lex/Token.h"
+
 #include "clang/Basic/SourceLocation.h"
+#include "clang/Lex/Token.h"
 
 namespace std {
 

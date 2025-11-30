@@ -1,7 +1,6 @@
 #include "Test/Test.h"
-#include "Test/Test.h"
-#include "Support/Logging.h"
 #include "Support/GlobPattern.h"
+#include "Support/Logging.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/CommandLine.h"

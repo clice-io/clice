@@ -1,9 +1,11 @@
+#include <optional>
 #include <tuple>
 #include <utility>
-#include <optional>
+
 #include "Test/Test.h"
 #include "Test/Tester.h"
 #include "AST/Selection.h"
+
 #include "clang/Lex/Lexer.h"
 
 namespace clice {

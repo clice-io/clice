@@ -1,15 +1,15 @@
-#include "Feature/Formatting.h"
-#include "Server/Server.h"
-#include "Server/Convert.h"
 #include "Compiler/Compilation.h"
 #include "Feature/CodeCompletion.h"
-#include "Feature/Hover.h"
-#include "Feature/SignatureHelp.h"
 #include "Feature/DocumentLink.h"
 #include "Feature/DocumentSymbol.h"
 #include "Feature/FoldingRange.h"
-#include "Feature/SemanticToken.h"
+#include "Feature/Formatting.h"
+#include "Feature/Hover.h"
 #include "Feature/InlayHint.h"
+#include "Feature/SemanticToken.h"
+#include "Feature/SignatureHelp.h"
+#include "Server/Convert.h"
+#include "Server/Server.h"
 
 namespace clice {
 

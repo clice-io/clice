@@ -1,10 +1,11 @@
-#include "Support/Logging.h"
-#include "Server/Server.h"
 #include "Compiler/Compilation.h"
 #include "Feature/Diagnostic.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/FileOutputBuffer.h"
+#include "Server/Server.h"
+#include "Support/Logging.h"
+
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/Support/FileOutputBuffer.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 

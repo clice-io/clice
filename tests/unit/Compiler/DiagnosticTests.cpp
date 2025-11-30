@@ -1,6 +1,6 @@
 #include "Test/Test.h"
-#include "Compiler/Diagnostic.h"
 #include "Compiler/Compilation.h"
+#include "Compiler/Diagnostic.h"
 
 namespace clice::testing {
 

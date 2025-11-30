@@ -1,7 +1,12 @@
-#include <print>
-#include <chrono>
 #include "Test/Runner.h"
+
+#include <chrono>
+#include <print>
+
+#include "Support/Format.h"
 #include "Support/GlobPattern.h"
+
+#include "llvm/ADT/StringMap.h"
 
 namespace clice::testing {
 
@@ -33,17 +38,16 @@ int Runner2::run_tests(llvm::StringRef filter) {
         }
     }
 
+    llvm::StringMap<std::vector<TestCase>> all_suites;
+
     struct Suite {
         std::string name;
         std::vector<TestCase> cases;
     };
 
-    std::vector<Suite> all_suites;
     for(auto suite: suites) {
         auto cases = suite.cases();
-        total_suites_count += 1;
-
-        all_suites.emplace_back(suite.name, std::move(cases));
+        all_suites[suite.name] = std::move(cases);
     }
 
     std::println("{}[----------] Global test environment set-up.{}", GREEN, CLEAR);
@@ -63,11 +67,11 @@ int Runner2::run_tests(llvm::StringRef filter) {
             }
 
             if(attrs.skip) {
-                std::println("{}[ SKIPPED  ] {}.{}{}", YELLOW, suite_name, test_name, CLEAR);
+                std::println("{}[ SKIPPED  ] {}{}", YELLOW, display_name, CLEAR);
                 continue;
             }
 
-            std::println("{}[ RUN      ] {}.{}{}", GREEN, suite_name, test_name, CLEAR);
+            std::println("{}[ RUN      ] {}{}", GREEN, display_name, CLEAR);
             total_tests_count += 1;
 
             using namespace std::chrono;
@@ -77,11 +81,10 @@ int Runner2::run_tests(llvm::StringRef filter) {
 
             bool curr_failed = state == TestState::Failed;
             auto duration = duration_cast<milliseconds>(end - begin);
-            std::println("{0}[   {1} ] {2}.{3} ({4} ms){5}",
+            std::println("{0}[   {1} ] {2} ({3} ms){4}",
                          curr_failed ? RED : GREEN,
                          curr_failed ? "FAILED" : "    OK",
-                         suite_name,
-                         test_name,
+                         display_name,
                          duration.count(),
                          CLEAR);
 

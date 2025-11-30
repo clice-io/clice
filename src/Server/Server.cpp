@@ -1,5 +1,6 @@
-#include "Support/Logging.h"
 #include "Server/Server.h"
+
+#include "Support/Logging.h"
 
 namespace clice {
 

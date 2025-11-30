@@ -1,7 +1,7 @@
 #include "Test/Test.h"
 #include "Test/Tester.h"
-#include "Feature/DocumentSymbol.h"
 #include "AST/Utility.h"
+#include "Feature/DocumentSymbol.h"
 
 namespace clice::testing {
 namespace {

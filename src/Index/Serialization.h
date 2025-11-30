@@ -1,8 +1,9 @@
 #include "schema_generated.h"
 #include "Support/Bitmap.h"
 #include "Support/Ranges.h"
-#include "llvm/ADT/StringRef.h"
+
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace clice::index {
 

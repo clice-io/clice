@@ -1,18 +1,20 @@
 #include "AST/Utility.h"
+
 #include "Support/Format.h"
+
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
+#include "llvm/Support/SaveAndRestore.h"
+#include "llvm/Support/ScopedPrinter.h"
+#include "clang/AST/ASTDiagnostic.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/AST/StmtVisitor.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/SourceManager.h"
-#include "clang/AST/StmtVisitor.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/SaveAndRestore.h"
-#include "llvm/Support/ScopedPrinter.h"
-#include "llvm/ADT/SmallSet.h"
-#include "clang/AST/ASTDiagnostic.h"
 
 namespace clice::ast {
 
@@ -98,7 +100,6 @@ const static clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(con
 
 const clang::NamedDecl* instantiated_from(const clang::NamedDecl* decl) {
     if(auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
-
         auto kind = CTSD->getTemplateSpecializationKind();
         if(kind == clang::TSK_Undeclared) {
             /// The instantiation of template is lazy, in this case, the specialization is

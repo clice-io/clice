@@ -1,7 +1,7 @@
 #pragma once
 
-#include <ranges>
 #include <concepts>
+#include <ranges>
 
 namespace clice {
 

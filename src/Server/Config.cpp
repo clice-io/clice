@@ -1,11 +1,12 @@
 #define TOML_EXCEPTIONS 0
-#include "toml++/toml.hpp"
-
 #include "Server/Config.h"
+
 #include "Server/Version.h"
+#include "Support/FileSystem.h"
 #include "Support/Logging.h"
 #include "Support/Ranges.h"
-#include "Support/FileSystem.h"
+
+#include "toml++/toml.hpp"
 #include "llvm/ADT/StringMap.h"
 
 namespace clice::config {

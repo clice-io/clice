@@ -1,10 +1,11 @@
-#include "Compiler/Compilation.h"
 #include "Test/Test.h"
+#include "Compiler/Compilation.h"
 #include "Compiler/Toolchain.h"
+#include "Support/Logging.h"
+
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/StringSaver.h"
 #include "clang/Driver/Driver.h"
-#include "Support/Logging.h"
 
 namespace clice::testing {
 namespace {
@@ -42,7 +43,6 @@ TEST_CASE(Family) {
 };
 
 TEST_CASE(GCC, {.skip = !(CIEnvironment && (Windows || Linux))}) {
-
     auto file = fs::createTemporaryFile("clice", "cpp");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());

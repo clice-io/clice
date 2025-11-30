@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Struct.h"
+
 #include "llvm/Support/HashBuilder.h"
 
 namespace clice::refl {

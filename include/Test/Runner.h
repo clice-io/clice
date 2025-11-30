@@ -1,9 +1,10 @@
 #pragma once
 
-#include <vector>
 #include <string>
-#include "llvm/ADT/StringRef.h"
+#include <vector>
+
 #include "llvm/ADT/FunctionExtras.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace clice::testing {
 

@@ -1,8 +1,9 @@
+#include "Feature/SemanticToken.h"
+
 #include "AST/Semantic.h"
 #include "Index/Shared.h"
-#include "Support/Ranges.h"
 #include "Support/Compare.h"
-#include "Feature/SemanticToken.h"
+#include "Support/Ranges.h"
 
 namespace clice::feature {
 

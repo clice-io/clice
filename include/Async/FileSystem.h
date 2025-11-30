@@ -3,15 +3,14 @@
 #include <chrono>
 #include <cstddef>
 
-#include "libuv.h"
-#include "Task.h"
 #include "Awaiter.h"
-
-#include "Support/JSON.h"
+#include "Task.h"
+#include "libuv.h"
 #include "Support/Enum.h"
+#include "Support/JSON.h"
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/FunctionExtras.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace clice::async {
 

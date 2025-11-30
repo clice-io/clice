@@ -1,12 +1,12 @@
-#include "Server/Version.h"
 #include "Server/Server.h"
-#include "Support/Logging.h"
+#include "Server/Version.h"
 #include "Support/Format.h"
+#include "Support/Logging.h"
 
-#include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Process.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/Process.h"
 
 namespace cl = llvm::cl;
 using namespace clice;

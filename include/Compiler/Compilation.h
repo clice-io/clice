@@ -1,8 +1,8 @@
 #pragma once
 
+#include "CompilationUnit.h"
 #include "Module.h"
 #include "Preamble.h"
-#include "CompilationUnit.h"
 #include "Support/FileSystem.h"
 
 namespace clang {

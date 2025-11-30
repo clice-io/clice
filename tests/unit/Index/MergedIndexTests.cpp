@@ -1,7 +1,7 @@
 #include "Test/Test.h"
 #include "Test/Tester.h"
-#include "Index/MergedIndex.h"
 #include "Async/Async.h"
+#include "Index/MergedIndex.h"
 
 namespace clice::testing {
 

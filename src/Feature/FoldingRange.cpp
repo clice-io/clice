@@ -1,6 +1,7 @@
+#include "Feature/FoldingRange.h"
+
 #include "AST/FilterASTVisitor.h"
 #include "Compiler/Compilation.h"
-#include "Feature/FoldingRange.h"
 #include "Support/Compare.h"
 
 namespace clice::feature {
@@ -253,7 +254,6 @@ private:
 
     /// Collect all condition macro's block as folding range.
     void collect_condition_directive(const std::vector<Condition>& conds) {
-
         // All condition directives have been stored in `conds` variable, ordered by presumed line
         // number increasement, so use a stack to handle the branch structure.
         llvm::SmallVector<const Condition*> stack = {};

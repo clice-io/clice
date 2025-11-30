@@ -1,11 +1,13 @@
 #pragma once
 
 #include <stack>
+
 #include "SourceCode.h"
+
+#include "llvm/ADT/SmallVector.h"
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/Tooling/Syntax/Tokens.h"
-#include "llvm/ADT/SmallVector.h"
 
 namespace clice {
 

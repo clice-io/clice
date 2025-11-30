@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Test.h"
 #include "Annotation.h"
-#include "Protocol/Protocol.h"
+#include "Test.h"
 #include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
+#include "Protocol/Protocol.h"
 #include "Support/Logging.h"
 
 namespace clice::testing {

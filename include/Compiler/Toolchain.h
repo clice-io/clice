@@ -1,8 +1,8 @@
 #pragma once
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace clice::toolchain {
 

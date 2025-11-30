@@ -1,5 +1,7 @@
 #include "Compiler/Module.h"
+
 #include "Compiler/Compilation.h"
+
 #include "clang/Lex/Lexer.h"
 
 namespace clice {

@@ -12,11 +12,11 @@
 
 #include <cassert>
 #include <expected>
-#include <type_traits>
 #include <system_error>
+#include <type_traits>
 
-#include "Support/TypeTraits.h"
 #include "Support/Logging.h"
+#include "Support/TypeTraits.h"
 
 namespace clice::async {
 

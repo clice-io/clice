@@ -1,6 +1,6 @@
+#include "Server/Indexer.h"
 
 #include "Compiler/Compilation.h"
-#include "Server/Indexer.h"
 #include "Server/Convert.h"
 #include "Support/Compare.h"
 #include "Support/Logging.h"

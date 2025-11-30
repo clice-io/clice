@@ -1,6 +1,8 @@
 #include "Feature/Formatting.h"
-#include "Support/Logging.h"
+
 #include "Server/Convert.h"
+#include "Support/Logging.h"
+
 #include "clang/Format/Format.h"
 
 namespace clice::feature {

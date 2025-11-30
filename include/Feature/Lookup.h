@@ -1,8 +1,8 @@
 #pragma once
 
+#include "AST/SymbolKind.h"
 #include "Server/Protocol.h"
 #include "Support/Struct.h"
-#include "AST/SymbolKind.h"
 
 namespace clice::proto {
 

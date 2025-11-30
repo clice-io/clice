@@ -1,6 +1,6 @@
 #include "Test/Test.h"
-#include "Compiler/Tidy.h"
 #include "Compiler/Compilation.h"
+#include "Compiler/Tidy.h"
 
 namespace clice::testing {
 namespace {

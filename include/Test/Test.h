@@ -1,17 +1,19 @@
 #pragma once
 
+#include <print>
 #include <source_location>
 #include <string>
-#include <print>
 #include <vector>
-#include "Support/FixedString.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/FunctionExtras.h"
-#include "Runner.h"
-#include "cpptrace/cpptrace.hpp"
+
 #include "Platform.h"
+#include "Runner.h"
 #include "Support/Compare.h"
 #include "Support/FileSystem.h"
+#include "Support/FixedString.h"
+
+#include "cpptrace/cpptrace.hpp"
+#include "llvm/ADT/FunctionExtras.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace clice::testing {
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "clang/AST/Decl.h"
 #include "llvm/ADT/SmallVector.h"
+#include "clang/AST/Decl.h"
 
 namespace clice::index {
 

@@ -1,9 +1,10 @@
 #pragma once
 
-#include <vector>
 #include <cstdint>
+#include <vector>
 
 #include "AST/SourceCode.h"
+
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {

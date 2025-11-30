@@ -1,8 +1,8 @@
 #pragma once
 
-#include "llvm/ADT/StringRef.h"
-
 #include <memory>
+
+#include "llvm/ADT/StringRef.h"
 
 namespace clang {
 

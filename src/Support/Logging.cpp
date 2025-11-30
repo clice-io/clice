@@ -1,10 +1,11 @@
 #include "Support/Logging.h"
+
 #include "Support/FileSystem.h"
 
-#include "spdlog/sinks/stdout_sinks.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/sinks/stdout_sinks.h"
 
 namespace clice::logging {
 

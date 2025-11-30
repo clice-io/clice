@@ -1,16 +1,18 @@
 #include "Compiler/Toolchain.h"
+
 #include "Compiler/Command.h"
 #include "Support/FileSystem.h"
 #include "Support/Logging.h"
+
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
-#include "llvm/Support/FileSystem.h"
-#include "clang/Driver/Driver.h"
-#include "clang/Driver/Compilation.h"
-#include "clang/Driver/Tool.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/TargetParser/Host.h"
+#include "clang/Driver/Compilation.h"
+#include "clang/Driver/Driver.h"
+#include "clang/Driver/Tool.h"
 
 #ifndef _WIN32
 

@@ -1,4 +1,5 @@
 #include "Index/IncludeGraph.h"
+
 #include "Compiler/CompilationUnit.h"
 
 namespace clice::index {

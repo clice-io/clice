@@ -5,8 +5,8 @@
 #include "Indexer.h"
 #include "Async/Async.h"
 #include "Compiler/Command.h"
-#include "Compiler/Preamble.h"
 #include "Compiler/Diagnostic.h"
+#include "Compiler/Preamble.h"
 #include "Feature/DocumentLink.h"
 #include "Protocol/Protocol.h"
 

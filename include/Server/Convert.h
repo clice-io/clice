@@ -1,9 +1,9 @@
 #pragma once
 
-#include "Protocol/Protocol.h"
-#include "Feature/SemanticToken.h"
-#include "Feature/CodeCompletion.h"
 #include "Compiler/Diagnostic.h"
+#include "Feature/CodeCompletion.h"
+#include "Feature/SemanticToken.h"
+#include "Protocol/Protocol.h"
 #include "Support/FileSystem.h"
 #include "Support/JSON.h"
 

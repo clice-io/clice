@@ -2,6 +2,7 @@
 
 #include "AST/SourceCode.h"
 #include "Protocol/Feature/Formatting.h"
+
 #include "llvm/ADT/StringRef.h"
 
 namespace clice::feature {

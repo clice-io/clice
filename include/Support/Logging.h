@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Format.h"
+
 #include "spdlog/spdlog.h"
 
 namespace clice::logging {

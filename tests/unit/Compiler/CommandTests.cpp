@@ -1,12 +1,11 @@
-
 #include "Test/Test.h"
 #include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
 
-#include "clang/Driver/Driver.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Program.h"
-#include "llvm/ADT/ScopeExit.h"
+#include "clang/Driver/Driver.h"
 
 namespace clice::testing {
 
@@ -43,7 +42,6 @@ void expect_id(llvm::StringRef command, option opt) {
 }
 
 TEST_CASE(GetOptionID) {
-
     /// GroupClass
     expect_id("-g", option::OPT_g_Flag);
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Support/Enum.h"
+
 #include "clang/AST/Decl.h"
 
 namespace clice {

@@ -2,8 +2,9 @@
 
 #include "Compiler/CompilationUnit.h"
 #include "Compiler/Diagnostic.h"
-#include "clang/Frontend/FrontendActions.h"
+
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/FrontendActions.h"
 
 namespace clice {
 

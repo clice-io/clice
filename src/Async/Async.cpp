@@ -1,6 +1,6 @@
-#include <deque>
-
 #include "Async/Async.h"
+
+#include <deque>
 
 namespace clice::async {
 

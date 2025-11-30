@@ -1,7 +1,7 @@
-#include "Test/Test.h"
-#include "Compiler/Preamble.h"
-#include "Compiler/Compilation.h"
 #include "Test/Annotation.h"
+#include "Test/Test.h"
+#include "Compiler/Compilation.h"
+#include "Compiler/Preamble.h"
 #include "Compiler/Scan.h"
 
 namespace clice::testing {
@@ -175,7 +175,6 @@ int foo();
 
     /// Compute implicit include.
     {
-
         CompilationParams params;
         params.add_remapped_file("main.cpp", content);
         params.arguments = {"clang++", "-std=c++20", "main.cpp"};

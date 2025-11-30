@@ -1,10 +1,10 @@
 #pragma once
 
 #include <array>
-#include <string>
-#include <vector>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace clice::proto {
 

@@ -1,10 +1,11 @@
 #pragma once
 
 #include <chrono>
+
 #include "IncludeGraph.h"
+#include "AST/RelationKind.h"
 #include "AST/SourceCode.h"
 #include "AST/SymbolKind.h"
-#include "AST/RelationKind.h"
 #include "Support/Bitmap.h"
 
 namespace clice::index {

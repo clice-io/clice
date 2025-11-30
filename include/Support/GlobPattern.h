@@ -1,8 +1,8 @@
 #pragma once
 
+#include <bitset>
 #include <expected>
 #include <string>
-#include <bitset>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"

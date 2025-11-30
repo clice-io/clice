@@ -1,4 +1,5 @@
 #include "Feature/Diagnostic.h"
+
 #include "Compiler/CompilationUnit.h"
 #include "Server/Convert.h"
 #include "Support/Logging.h"

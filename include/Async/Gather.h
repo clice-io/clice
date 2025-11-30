@@ -1,10 +1,10 @@
 #pragma once
 
-#include <tuple>
 #include <thread>
+#include <tuple>
 
-#include "Task.h"
 #include "Event.h"
+#include "Task.h"
 
 namespace clice::async {
 

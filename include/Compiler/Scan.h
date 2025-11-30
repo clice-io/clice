@@ -2,8 +2,10 @@
 
 #include <string>
 #include <vector>
-#include "llvm/ADT/StringRef.h"
+
 #include "AST/SourceCode.h"
+
+#include "llvm/ADT/StringRef.h"
 
 namespace clice {
 

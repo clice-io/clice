@@ -1,7 +1,7 @@
 #pragma once
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
 
 namespace clice {

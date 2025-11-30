@@ -1,16 +1,16 @@
-
-#include "TidyImpl.h"
-
-#include "AST/Utility.h"
-#include "CompilationUnitImpl.h"
-#include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
+
+#include "CompilationUnitImpl.h"
+#include "TidyImpl.h"
+#include "AST/Utility.h"
+#include "Compiler/Command.h"
 #include "Compiler/Diagnostic.h"
 #include "Compiler/Tidy.h"
-#include "clang/Lex/PreprocessorOptions.h"
-#include "clang/Frontend/TextDiagnosticPrinter.h"
-#include "clang/Frontend/MultiplexConsumer.h"
 #include "Support/Logging.h"
+
+#include "clang/Frontend/MultiplexConsumer.h"
+#include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "clang/Lex/PreprocessorOptions.h"
 
 namespace clice {
 

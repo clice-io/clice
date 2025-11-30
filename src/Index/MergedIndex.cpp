@@ -1,7 +1,9 @@
+#include "Index/MergedIndex.h"
+
 #include "Serialization.h"
 #include "Support/Compare.h"
 #include "Support/FileSystem.h"
-#include "Index/MergedIndex.h"
+
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_os_ostream.h"
 
@@ -399,7 +401,6 @@ void MergedIndex::lookup(this const Self& self,
                          SymbolHash symbol,
                          RelationKind kind,
                          llvm::function_ref<bool(const Relation&)> callback) {
-
     if(self.impl) {
         auto it = self.impl->relations.find(symbol);
         if(it == self.impl->relations.end()) [[unlikely]] {

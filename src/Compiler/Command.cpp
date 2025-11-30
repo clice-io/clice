@@ -1,11 +1,13 @@
 #include "Compiler/Command.h"
+
+#include "Driver.h"
 #include "Compiler/Compilation.h"
 #include "Support/FileSystem.h"
 #include "Support/Logging.h"
+#include "Support/ObjectPool.h"
+
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
-#include "Driver.h"
-#include "Support/ObjectPool.h"
 
 namespace clice {
 

@@ -1,5 +1,6 @@
 #include <set>
 #include <string>
+
 #include "Test/Test.h"
 #include "Support/Doxygen.h"
 #include "Support/Logging.h"

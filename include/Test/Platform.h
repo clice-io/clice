@@ -1,4 +1,3 @@
-
 namespace clice::testing {
 
 /// True if the target platform is Windows.
