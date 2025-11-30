@@ -1,5 +1,6 @@
 #pragma once
 
+#include <source_location>
 #include <string>
 #include <vector>
 
@@ -22,8 +23,10 @@ struct TestAttrs {
 
 struct TestCase {
     std::string name;
-    llvm::unique_function<TestState()> test;
+    std::string path;
+    std::size_t line;
     TestAttrs attrs;
+    llvm::unique_function<TestState()> test;
 };
 
 struct TestSuite {

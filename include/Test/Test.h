@@ -20,11 +20,6 @@ namespace clice::testing {
 template <fixed_string TestName, typename Derived>
 struct TestSuiteDef {
 private:
-    struct TestCaseDef {
-        std::string name;
-        TestState (Derived::*func)();
-    };
-
     TestState state = TestState::Passed;
 
 public:
@@ -57,7 +52,11 @@ public:
         return true;
     }();
 
-    template <fixed_string CaseName, auto Case, TestAttrs attrs = {}>
+    template <fixed_string case_name,
+              auto test_body,
+              fixed_string path,
+              std::size_t line,
+              TestAttrs attrs = {}>
     inline static bool _register_test_case = [] {
         auto run_test = +[] -> TestState {
             Derived test;
@@ -65,7 +64,7 @@ public:
                 test.setup();
             }
 
-            (test.*Case)();
+            (test.*test_body)();
 
             if constexpr(requires { test.teardown(); }) {
                 test.teardown();
@@ -74,7 +73,7 @@ public:
             return test.state;
         };
 
-        test_cases().emplace_back(CaseName.data(), run_test, attrs);
+        test_cases().emplace_back(case_name.data(), path.data(), line, attrs, run_test);
         return true;
     }();
 };
@@ -92,94 +91,40 @@ inline void print_trace(cpptrace::stacktrace& trace, std::source_location locati
 
 #define TEST_CASE(name, ...)                                                                       \
     void _register_##name() {                                                                      \
+        constexpr auto file_name = std::source_location::current().file_name();                    \
+        constexpr auto file_len = std::string_view(file_name).size();                              \
         (void)_register_suites<>;                                                                  \
-        (void)_register_test_case<#name, &Self::test_##name __VA_OPT__(, ) __VA_ARGS__>;           \
+        (void)_register_test_case<#name,                                                           \
+                                  &Self::test_##name,                                              \
+                                  fixed_string<file_len>(file_name),                               \
+                                  std::source_location::current().line() __VA_OPT__(, )            \
+                                      __VA_ARGS__>;                                                \
     }                                                                                              \
     void test_##name()
 
-#define EXPECT_TRUE(expr)                                                                          \
-    if(expr) {                                                                                     \
-        auto trace = cpptrace::generate_trace();                                                   \
-        print_trace(trace, std::source_location::current());                                       \
-        failure();                                                                                 \
-    }
+#define CLICE_CHECK_IMPL(condition, return_action)                                                 \
+    do {                                                                                           \
+        if(condition) [[unlikely]] {                                                               \
+            auto trace = cpptrace::generate_trace();                                               \
+            clice::testing::print_trace(trace, std::source_location::current());                   \
+            failure();                                                                             \
+            return_action;                                                                         \
+        }                                                                                          \
+    } while(0)
 
-#define EXPECT_EQ(lhs, rhs)                                                                        \
-    if(lhs != rhs) {                                                                               \
-        auto trace = cpptrace::generate_trace();                                                   \
-        print_trace(trace, std::source_location::current());                                       \
-        failure();                                                                                 \
-    }
+#define EXPECT_TRUE(expr) CLICE_CHECK_IMPL(!(expr), (void)0)
+#define EXPECT_FALSE(expr) CLICE_CHECK_IMPL((expr), (void)0)
+#define EXPECT_EQ(lhs, rhs) CLICE_CHECK_IMPL((lhs) != (rhs), (void)0)
+#define EXPECT_NE(lhs, rhs) CLICE_CHECK_IMPL((lhs) == (rhs), (void)0)
 
-#define ASSERT_TRUE(expr)                                                                          \
-    if(!(expr)) {                                                                                  \
-        auto trace = cpptrace::generate_trace();                                                   \
-        print_trace(trace, std::source_location::current());                                       \
-        return failure();                                                                          \
-    }
+#define ASSERT_TRUE(expr) CLICE_CHECK_IMPL(!(expr), return)
+#define ASSERT_FALSE(expr) CLICE_CHECK_IMPL((expr), return)
+#define ASSERT_EQ(lhs, rhs) CLICE_CHECK_IMPL((lhs) != (rhs), return)
+#define ASSERT_NE(lhs, rhs) CLICE_CHECK_IMPL((lhs) == (rhs), return)
 
-#define ASSERT_FALSE(expr)                                                                         \
-    if((expr)) {                                                                                   \
-        auto trace = cpptrace::generate_trace();                                                   \
-        print_trace(trace, std::source_location::current());                                       \
-        return failure();                                                                          \
-    }
-
-#define ASSERT_EQ(lhs, rhs)                                                                        \
-    if(lhs != rhs) {                                                                               \
-        auto trace = cpptrace::generate_trace();                                                   \
-        print_trace(trace, std::source_location::current());                                       \
-        return failure();                                                                          \
-    }
-
-#ifndef ASSERT_NE
-#define ASSERT_NE(lhs, rhs)                                                                        \
-    if((lhs) == (rhs)) {                                                                           \
-        auto trace = cpptrace::generate_trace();                                                   \
-        clice::testing::print_trace(trace, std::source_location::current());                       \
-        return failure();                                                                          \
-    }
-#endif
-
-#ifndef EXPECT_NE
-#define EXPECT_NE(lhs, rhs)                                                                        \
-    if((lhs) == (rhs)) {                                                                           \
-        auto trace = cpptrace::generate_trace();                                                   \
-        clice::testing::print_trace(trace, std::source_location::current());                       \
-        failure();                                                                                 \
-    }
-#endif
-
-#define CO_ASSERT_TRUE(expr)                                                                       \
-    if(!(expr)) {                                                                                  \
-        auto trace = cpptrace::generate_trace();                                                   \
-        print_trace(trace, std::source_location::current());                                       \
-        failure();                                                                                 \
-        co_return;                                                                                 \
-    }
-
-#define CO_ASSERT_FALSE(expr)                                                                      \
-    if((expr)) {                                                                                   \
-        auto trace = cpptrace::generate_trace();                                                   \
-        print_trace(trace, std::source_location::current());                                       \
-        failure();                                                                                 \
-        co_return;                                                                                 \
-    }
-
-#define CO_ASSERT_EQ(lhs, rhs)                                                                     \
-    if((lhs) != (rhs)) {                                                                           \
-        auto trace = cpptrace::generate_trace();                                                   \
-        print_trace(trace, std::source_location::current());                                       \
-        failure();                                                                                 \
-        co_return;                                                                                 \
-    }
-
-#define CO_ASSERT_NE(lhs, rhs)                                                                     \
-    if((lhs) == (rhs)) {                                                                           \
-        auto trace = cpptrace::generate_trace();                                                   \
-        print_trace(trace, std::source_location::current());                                       \
-        failure();                                                                                 \
-        co_return;                                                                                 \
-    }
+#define CO_ASSERT_TRUE(expr) CLICE_CHECK_IMPL(!(expr), co_return)
+#define CO_ASSERT_FALSE(expr) CLICE_CHECK_IMPL((expr), co_return)
+#define CO_ASSERT_EQ(lhs, rhs) CLICE_CHECK_IMPL((lhs) != (rhs), co_return)
+#define CO_ASSERT_NE(lhs, rhs) CLICE_CHECK_IMPL((lhs) == (rhs), co_return)
 
 }  // namespace clice::testing
