@@ -157,7 +157,7 @@ TEST_CASE(Struct) {
         int x;
         int y;
 
-        bool operator== (const A& other) const = default;
+        bool operator==(const A& other) const = default;
     };
 
     json::Value expected = json::Object{
@@ -173,7 +173,7 @@ TEST_CASE(Struct) {
         A a;
         std::string s;
 
-        bool operator== (const B& other) const = default;
+        bool operator==(const B& other) const = default;
     };
 
     json::Value expected2 = json::Object{

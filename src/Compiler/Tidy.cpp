@@ -203,7 +203,7 @@ public:
         }
     }
 
-    bool operator() (clang::diag::Group group_id) const {
+    bool operator()(clang::diag::Group group_id) const {
         return exceptions.contains(static_cast<unsigned>(group_id)) ? !default_enable
                                                                     : default_enable;
     }

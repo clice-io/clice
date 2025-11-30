@@ -9,7 +9,7 @@ struct X {
     int x;
     int y;
 
-    friend constexpr bool operator== (const X& lhs, const X& rhs) noexcept = default;
+    friend constexpr bool operator==(const X& lhs, const X& rhs) noexcept = default;
 };
 
 static_assert(std::is_same_v<refl::member_types<X>, type_list<int, int>>);

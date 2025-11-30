@@ -59,11 +59,11 @@ public:
 
     /// Copies are no good - contain pointers to other nodes.
     SelectionTree(const SelectionTree&) = delete;
-    SelectionTree& operator= (const SelectionTree&) = delete;
+    SelectionTree& operator=(const SelectionTree&) = delete;
 
     /// Moves are OK though - internal storage is pointer-stable when moved.
     SelectionTree(SelectionTree&&) = default;
-    SelectionTree& operator= (SelectionTree&&) = default;
+    SelectionTree& operator=(SelectionTree&&) = default;
 
     // Describes to what extent an AST node is covered by the selection.
     enum SelectionKind : unsigned char {
@@ -131,7 +131,7 @@ public:
 
     void print(llvm::raw_ostream& os, const Node& node, int indent) const;
 
-    friend llvm::raw_ostream& operator<< (llvm::raw_ostream& os, const SelectionTree& tree) {
+    friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const SelectionTree& tree) {
         tree.print(os, tree.root(), 1);
         return os;
     }

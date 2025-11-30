@@ -196,7 +196,7 @@ public:
 
 private:
     struct range_less {
-        bool operator() (TokenRange L, TokenRange R) const {
+        bool operator()(TokenRange L, TokenRange R) const {
             return L.begin() < R.begin();
         }
     };

@@ -116,7 +116,7 @@ struct Point {
     uint32_t x;
     uint32_t y;
 
-    bool operator== (const Point& other) const = default;
+    bool operator==(const Point& other) const = default;
 };
 
 TEST_CASE(Struct) {

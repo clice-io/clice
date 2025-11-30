@@ -71,9 +71,9 @@ public:
 
     CompilationDatabase(CompilationDatabase&& other);
 
-    CompilationDatabase& operator= (const CompilationDatabase&) = delete;
+    CompilationDatabase& operator=(const CompilationDatabase&) = delete;
 
-    CompilationDatabase& operator= (CompilationDatabase&& other);
+    CompilationDatabase& operator=(CompilationDatabase&& other);
 
     ~CompilationDatabase();
 

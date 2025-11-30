@@ -55,9 +55,9 @@ public:
 
     ~handle();
 
-    handle& operator= (const handle&) = delete;
+    handle& operator=(const handle&) = delete;
 
-    handle& operator= (handle&& other) noexcept = delete;
+    handle& operator=(handle&& other) noexcept = delete;
 
     int value() const {
         return file;

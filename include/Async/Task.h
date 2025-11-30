@@ -247,9 +247,9 @@ public:
         other.core = nullptr;
     }
 
-    Task& operator= (const Task&) = delete;
+    Task& operator=(const Task&) = delete;
 
-    Task& operator= (Task&& other) noexcept {
+    Task& operator=(Task&& other) noexcept {
         if(core) {
             core.destroy();
         }

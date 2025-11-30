@@ -26,9 +26,9 @@ public:
 
     MergedIndex(MergedIndex&& other);
 
-    MergedIndex& operator= (const MergedIndex&) = delete;
+    MergedIndex& operator=(const MergedIndex&) = delete;
 
-    MergedIndex& operator= (MergedIndex&& other);
+    MergedIndex& operator=(MergedIndex&& other);
 
     ~MergedIndex();
 
@@ -69,7 +69,7 @@ public:
     /// Merge the index with given header context.
     void merge(this Self& self, std::uint32_t path_id, std::uint32_t include_id, FileIndex& index);
 
-    friend bool operator== (MergedIndex& lhs, MergedIndex& rhs);
+    friend bool operator==(MergedIndex& lhs, MergedIndex& rhs);
 
 private:
     /// The binary serialization data of index. If you load merged index

@@ -79,7 +79,7 @@ struct IncludeContext {
 
     std::uint32_t canonical_id;
 
-    friend bool operator== (const IncludeContext&, const IncludeContext&) = default;
+    friend bool operator==(const IncludeContext&, const IncludeContext&) = default;
 };
 
 struct HeaderContext {
@@ -87,7 +87,7 @@ struct HeaderContext {
 
     llvm::SmallVector<IncludeContext> includes;
 
-    friend bool operator== (const HeaderContext&, const HeaderContext&) = default;
+    friend bool operator==(const HeaderContext&, const HeaderContext&) = default;
 };
 
 struct CompilationContext {
@@ -99,7 +99,7 @@ struct CompilationContext {
 
     std::vector<IncludeLocation> include_locations;
 
-    friend bool operator== (const CompilationContext&, const CompilationContext&) = default;
+    friend bool operator==(const CompilationContext&, const CompilationContext&) = default;
 };
 
 struct MergedIndex::Impl {
@@ -167,7 +167,7 @@ struct MergedIndex::Impl {
         self.max_canonical_id += 1;
     }
 
-    friend bool operator== (const Impl&, const Impl&) = default;
+    friend bool operator==(const Impl&, const Impl&) = default;
 };
 
 MergedIndex::MergedIndex(std::unique_ptr<llvm::MemoryBuffer> buffer, std::unique_ptr<Impl> impl) :
@@ -180,7 +180,7 @@ MergedIndex::MergedIndex(llvm::StringRef data) :
 
 MergedIndex::MergedIndex(MergedIndex&& other) = default;
 
-MergedIndex& MergedIndex::operator= (MergedIndex&& other) = default;
+MergedIndex& MergedIndex::operator=(MergedIndex&& other) = default;
 
 MergedIndex::~MergedIndex() = default;
 
@@ -535,7 +535,7 @@ void MergedIndex::merge(this Self& self,
     });
 }
 
-bool operator== (MergedIndex& lhs, MergedIndex& rhs) {
+bool operator==(MergedIndex& lhs, MergedIndex& rhs) {
     lhs.load_in_memory();
     rhs.load_in_memory();
     return *lhs.impl == *rhs.impl;

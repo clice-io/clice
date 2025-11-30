@@ -263,7 +263,7 @@ struct Proxy {
         };
     }
 
-    auto operator[] (std::size_t index) const {
+    auto operator[](std::size_t index) const {
         return Proxy<typename T::value_type>{base, &as_array()[index]};
     }
 

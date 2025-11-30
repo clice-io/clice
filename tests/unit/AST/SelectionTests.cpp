@@ -10,7 +10,7 @@
 
 namespace clice {
 
-std::ostringstream& operator<< (std::ostringstream& os, const LocalSourceRange& range) {
+std::ostringstream& operator<<(std::ostringstream& os, const LocalSourceRange& range) {
     os << range.begin << " - " << range.end;
     return os;
 }

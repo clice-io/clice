@@ -18,9 +18,9 @@ public:
 
     StringSet(StringSet&&) = delete;
 
-    StringSet& operator= (const StringSet&) = delete;
+    StringSet& operator=(const StringSet&) = delete;
 
-    StringSet& operator= (StringSet&&) = delete;
+    StringSet& operator=(StringSet&&) = delete;
 
     ~StringSet() = default;
 
@@ -72,7 +72,7 @@ struct object_ptr {
 
     explicit object_ptr(T* p) noexcept : ptr(p) {}
 
-    T& operator* () const noexcept {
+    T& operator*() const noexcept {
         return *ptr;
     }
 
@@ -84,7 +84,7 @@ struct object_ptr {
         return ptr != nullptr;
     }
 
-    std::strong_ordering operator<=> (const object_ptr&) const = default;
+    std::strong_ordering operator<=>(const object_ptr&) const = default;
 };
 
 template <typename T>
@@ -101,9 +101,9 @@ public:
 
     ObjectSet(ObjectSet&&) = delete;
 
-    ObjectSet& operator= (const ObjectSet&) = delete;
+    ObjectSet& operator=(const ObjectSet&) = delete;
 
-    ObjectSet& operator= (ObjectSet&&) = delete;
+    ObjectSet& operator=(ObjectSet&&) = delete;
 
     ~ObjectSet() {
         if constexpr(!std::is_trivially_destructible_v<T>) {

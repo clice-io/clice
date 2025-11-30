@@ -47,7 +47,7 @@ struct LocalSourceRange {
     /// The end position offset to the source file.
     uint32_t end = static_cast<uint32_t>(-1);
 
-    constexpr bool operator== (const LocalSourceRange& other) const = default;
+    constexpr bool operator==(const LocalSourceRange& other) const = default;
 
     constexpr auto length() {
         return end - begin;
@@ -129,9 +129,9 @@ public:
 
     Lexer(Lexer&&) = delete;
 
-    Lexer& operator= (const Lexer&) = delete;
+    Lexer& operator=(const Lexer&) = delete;
 
-    Lexer& operator= (Lexer&&) = delete;
+    Lexer& operator=(Lexer&&) = delete;
 
     ~Lexer();
 

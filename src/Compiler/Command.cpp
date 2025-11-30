@@ -22,7 +22,7 @@ struct CompilationInfo {
     /// The canonical compilation arguments(input file and output file are removed).
     llvm::ArrayRef<StringID> arguments;
 
-    friend bool operator== (const CompilationInfo&, const CompilationInfo&) = default;
+    friend bool operator==(const CompilationInfo&, const CompilationInfo&) = default;
 };
 
 /// An item in the compilation database.
@@ -42,12 +42,12 @@ struct JSONItem {
     /// get involved in equality judgement or hash computing.
     object_ptr<JSONItem> next = {nullptr};
 
-    friend bool operator== (const JSONItem& lhs, const JSONItem& rhs) {
+    friend bool operator==(const JSONItem& lhs, const JSONItem& rhs) {
         return lhs.json_src_path == rhs.json_src_path && lhs.file_path == rhs.file_path &&
                lhs.info == rhs.info;
     }
 
-    friend bool operator< (const JSONItem& lhs, const JSONItem& rhs) {
+    friend bool operator<(const JSONItem& lhs, const JSONItem& rhs) {
         return std::tie(lhs.file_path, lhs.info) < std::tie(rhs.file_path, rhs.info);
     }
 };
@@ -566,7 +566,7 @@ CompilationDatabase::CompilationDatabase() : self(std::make_unique<CompilationDa
 
 CompilationDatabase::CompilationDatabase(CompilationDatabase&& other) = default;
 
-CompilationDatabase& CompilationDatabase::operator= (CompilationDatabase&& other) = default;
+CompilationDatabase& CompilationDatabase::operator=(CompilationDatabase&& other) = default;
 
 CompilationDatabase::~CompilationDatabase() = default;
 

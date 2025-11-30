@@ -16,7 +16,7 @@ struct Equal {
 
 struct equal_t {
     template <typename LHS, typename RHS = LHS>
-    constexpr static bool operator() (const LHS& lhs, const RHS& rhs) {
+    constexpr static bool operator()(const LHS& lhs, const RHS& rhs) {
         return Equal<LHS, RHS>::equal(lhs, rhs);
     }
 };
@@ -68,7 +68,7 @@ struct Less {
 
 struct less_t {
     template <typename RHS, typename LHS = RHS>
-    constexpr static bool operator() (const LHS& lhs, const RHS& rhs) {
+    constexpr static bool operator()(const LHS& lhs, const RHS& rhs) {
         return Less<RHS, LHS>::less(lhs, rhs);
     }
 };
@@ -127,7 +127,7 @@ struct Less<T> {
 
 struct less_equal_t {
     template <typename LHS, typename RHS = LHS>
-    constexpr static bool operator() (const LHS& lhs, const RHS& rhs) {
+    constexpr static bool operator()(const LHS& lhs, const RHS& rhs) {
         return equal(lhs, rhs) || less(lhs, rhs);
     }
 };
