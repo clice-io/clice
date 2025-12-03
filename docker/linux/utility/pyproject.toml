@@ -4,5 +4,6 @@ version = "0.1.0"
 description = "Python dependencies for clice's development container build scripts."
 requires-python = ">=3.13"
 dependencies = [
-    "python-gnupg"
+    "py-minisign>=0.13.0",
+    "python-gnupg>=0.5.0"
 ]

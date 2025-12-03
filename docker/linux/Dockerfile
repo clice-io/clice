@@ -27,6 +27,7 @@ ARG UV_TARBALL_DIR_NAME=tarball
 
 # Python build scripts communicate via these environment variables
 ARG PYTHON_BUILD_SCRIPT_BASE_ENV_VARIABLES="\
+COMPILER=${COMPILER} \
 CLICE_WORKDIR=${CLICE_WORKDIR} \
 RELEASE_PACKAGE_DIR=${RELEASE_PACKAGE_DIR} \
 PACKED_RELEASE_PACKAGE_PATH=${PACKED_RELEASE_PACKAGE_PATH} \
@@ -53,8 +54,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Do NOT copy all config at once, or all stages would be rebuilt when any file changes
 # Only copy what is needed for this stage
-COPY docker/linux/utility/pyproject.toml ${CLICE_WORKDIR}/docker/linux/utility/pyproject.toml
-COPY config/default-toolchain-version.json ${CLICE_WORKDIR}/config/default-toolchain-version.json
+COPY docker/linux/utility/pyproject.toml                       ${CLICE_WORKDIR}/docker/linux/utility/pyproject.toml
+COPY config/docker_build_stages/default-toolchain-version.json ${CLICE_WORKDIR}/config/docker_build_stages/default-toolchain-version.json
 
 # Install minimal system dependencies, uv, and Python
 RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked,id=python-build-env-apt \
@@ -75,7 +76,7 @@ RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked,id=python-build-en
     apt install -y --no-install-recommends -o DPkg::Lock::Timeout=-1 curl jq ca-certificates
     
     # Get uv version from configuration
-    UV_VERSION=$(jq -r .uv ${CLICE_WORKDIR}/config/default-toolchain-version.json)
+    UV_VERSION=$(jq -r .uv ${CLICE_WORKDIR}/config/docker_build_stages/default-toolchain-version.json)
     echo "📦 Installing uv version: $UV_VERSION"
     
     # Determine architecture for uv standalone build
@@ -130,7 +131,7 @@ RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked,id=python-build-en
     uv --version
 
     # Get Python version from configuration
-    PYTHON_VERSION=$(jq -r .python ${CLICE_WORKDIR}/config/default-toolchain-version.json)
+    PYTHON_VERSION=$(jq -r .python ${CLICE_WORKDIR}/config/docker_build_stages/default-toolchain-version.json)
     echo "🐍 Installing Python version: $PYTHON_VERSION"
     
     # Install Python using UV with package_dir as cache
@@ -161,16 +162,18 @@ WORKDIR ${CLICE_WORKDIR}
 FROM base-python-environment-for-build AS toolchain-builder
 LABEL description="Builds custom compiler toolchain"
 
+ARG COMPILER
 ARG CLICE_WORKDIR
 ARG APT_CACHE_DIR
 ARG APT_STATE_CACHE_DIR
 ARG BUILD_CACHE_DIR
 ARG PYTHON_BUILD_SCRIPT_BASE_ENV_VARIABLES
 
-COPY config/build_config.py ${CLICE_WORKDIR}/config/build_config.py
-COPY config/default-toolchain-version.json ${CLICE_WORKDIR}/config/default-toolchain-version.json
-COPY docker/linux/utility/build_utils.py ${CLICE_WORKDIR}/docker/linux/utility/build_utils.py
-COPY docker/linux/utility/build_clice_compiler_toolchain.py ${CLICE_WORKDIR}/docker/linux/utility/build_clice_compiler_toolchain.py
+COPY config/docker_build_stages/common.py                      ${CLICE_WORKDIR}/config/docker_build_stages/common.py
+COPY config/docker_build_stages/default-toolchain-version.json ${CLICE_WORKDIR}/config/docker_build_stages/default-toolchain-version.json
+COPY config/docker_build_stages/toolchain_config.py            ${CLICE_WORKDIR}/config/docker_build_stages/toolchain_config.py
+COPY docker/linux/utility/build_utils.py                       ${CLICE_WORKDIR}/docker/linux/utility/build_utils.py
+COPY docker/linux/utility/build_clice_compiler_toolchain.py    ${CLICE_WORKDIR}/docker/linux/utility/build_clice_compiler_toolchain.py
 
 # Build the custom toolchain (Python script handles all dependencies)
 RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked,id=toolchain-builder-apt \
@@ -194,19 +197,21 @@ SCRIPT
 FROM base-python-environment-for-build AS dependencies-downloader
 LABEL description="Downloads dev-container dependencies"
 
+ARG COMPILER
 ARG CLICE_WORKDIR
 ARG APT_CACHE_DIR
 ARG APT_STATE_CACHE_DIR
 ARG BUILD_CACHE_DIR
 ARG PYTHON_BUILD_SCRIPT_BASE_ENV_VARIABLES
 
-COPY config/build_config.py ${CLICE_WORKDIR}/config/build_config.py
-COPY config/default-toolchain-version.json ${CLICE_WORKDIR}/config/default-toolchain-version.json
-COPY docker/linux/utility/build_utils.py ${CLICE_WORKDIR}/docker/linux/utility/build_utils.py
-COPY docker/linux/utility/download_dependencies.py ${CLICE_WORKDIR}/docker/linux/utility/download_dependencies.py
+COPY config/docker_build_stages/common.py                      ${CLICE_WORKDIR}/config/docker_build_stages/common.py
+COPY config/docker_build_stages/default-toolchain-version.json ${CLICE_WORKDIR}/config/docker_build_stages/default-toolchain-version.json
+COPY config/docker_build_stages/dependencies_config.py         ${CLICE_WORKDIR}/config/docker_build_stages/dependencies_config.py
+COPY docker/linux/utility/build_utils.py                       ${CLICE_WORKDIR}/docker/linux/utility/build_utils.py
+COPY docker/linux/utility/download_dependencies.py             ${CLICE_WORKDIR}/docker/linux/utility/download_dependencies.py
 
 # for download python dependencies
-COPY pyproject.toml ${CLICE_WORKDIR}/pyproject.toml
+COPY tests/pyproject.toml ${CLICE_WORKDIR}/tests/pyproject.toml
 
 # Setup Python project environment and download dependencies
 RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked,id=dependencies-downloader-apt \
@@ -230,6 +235,7 @@ SCRIPT
 FROM base-python-environment-for-build AS image-packer
 LABEL description="Merges toolchain and dependencies into final release package"
 
+ARG COMPILER
 ARG CLICE_WORKDIR
 ARG RELEASE_PACKAGE_DIR
 ARG APT_CACHE_DIR
@@ -239,17 +245,23 @@ ARG PYTHON_BUILD_SCRIPT_BASE_ENV_VARIABLES
 ARG SETUP_SCRIPTS_DIR
 
 # For execution in this layer only
-COPY config/build_config.py ${CLICE_WORKDIR}/config/build_config.py
-COPY config/default-toolchain-version.json ${CLICE_WORKDIR}/config/default-toolchain-version.json
-COPY docker/linux/container-entrypoint.sh ${CLICE_WORKDIR}/docker/linux/container-entrypoint.sh
-COPY docker/linux/utility/build_utils.py ${CLICE_WORKDIR}/docker/linux/utility/build_utils.py
-COPY docker/linux/utility/create_release_package.py ${CLICE_WORKDIR}/docker/linux/utility/create_release_package.py
+COPY config/docker_build_stages/common.py                      ${CLICE_WORKDIR}/config/docker_build_stages/common.py
+COPY config/docker_build_stages/default-toolchain-version.json ${CLICE_WORKDIR}/config/docker_build_stages/default-toolchain-version.json
+COPY config/docker_build_stages/toolchain_config.py            ${CLICE_WORKDIR}/config/docker_build_stages/toolchain_config.py
+COPY config/docker_build_stages/dependencies_config.py         ${CLICE_WORKDIR}/config/docker_build_stages/dependencies_config.py
+COPY config/docker_build_stages/package_config.py              ${CLICE_WORKDIR}/config/docker_build_stages/package_config.py
+COPY docker/linux/utility/container-entrypoint.sh              ${CLICE_WORKDIR}/docker/linux/utility/container-entrypoint.sh
+COPY docker/linux/utility/build_utils.py                       ${CLICE_WORKDIR}/docker/linux/utility/build_utils.py
+COPY docker/linux/utility/create_release_package.py            ${CLICE_WORKDIR}/docker/linux/utility/create_release_package.py
 
-# For package
-COPY config/build_config.py ${SETUP_SCRIPTS_DIR}/config/build_config.py
-COPY config/default-toolchain-version.json ${SETUP_SCRIPTS_DIR}/config/default-toolchain-version.json
-COPY docker/linux/utility/local_setup.py ${SETUP_SCRIPTS_DIR}/docker/linux/utility/local_setup.py
-COPY docker/linux/utility/build_utils.py ${SETUP_SCRIPTS_DIR}/docker/linux/utility/build_utils.py
+# For package (setup scripts)
+COPY config/docker_build_stages/common.py                      ${SETUP_SCRIPTS_DIR}/config/docker_build_stages/common.py
+COPY config/docker_build_stages/default-toolchain-version.json ${SETUP_SCRIPTS_DIR}/config/docker_build_stages/default-toolchain-version.json
+COPY config/docker_build_stages/dependencies_config.py         ${SETUP_SCRIPTS_DIR}/config/docker_build_stages/dependencies_config.py
+COPY config/docker_build_stages/toolchain_config.py            ${SETUP_SCRIPTS_DIR}/config/docker_build_stages/toolchain_config.py
+COPY config/docker_build_stages/package_config.py              ${SETUP_SCRIPTS_DIR}/config/docker_build_stages/package_config.py
+COPY docker/linux/utility/build_utils.py                       ${SETUP_SCRIPTS_DIR}/docker/linux/utility/build_utils.py
+COPY docker/linux/utility/local_setup.py                       ${SETUP_SCRIPTS_DIR}/docker/linux/utility/local_setup.py
 
 # Copy outputs from previous stages
 # Merge by RELEASE_PACKAGE_DIR structure, each component has its own directory
@@ -296,8 +308,8 @@ COPY --from=image-packer ${PACKED_RELEASE_PACKAGE_PATH} ${PACKED_RELEASE_PACKAGE
 # Instead of using local build.sh and Dockerfile, we use the version packed here
 # So we could make breaking changes to build scripts without breaking released images
 COPY docker/linux/utility/common.sh ${CLICE_WORKDIR}/docker/linux/utility/common.sh
-COPY docker/linux/build.sh ${CLICE_WORKDIR}/docker/linux/build.sh
-COPY docker/linux/Dockerfile ${CLICE_WORKDIR}/docker/linux/Dockerfile
+COPY docker/linux/build.sh          ${CLICE_WORKDIR}/docker/linux/build.sh
+COPY docker/linux/Dockerfile        ${CLICE_WORKDIR}/docker/linux/Dockerfile
 
 # ========================================================================
 # 🏗️ Stage 5: Development Image (Expanded)
@@ -305,7 +317,7 @@ COPY docker/linux/Dockerfile ${CLICE_WORKDIR}/docker/linux/Dockerfile
 FROM ${PACKED_IMAGE_NAME} AS expanded-image
 LABEL description="Fully expanded development image"
 
-
+ARG COMPILER
 ARG CLICE_WORKDIR
 ARG RELEASE_PACKAGE_DIR
 ARG PACKED_RELEASE_PACKAGE_PATH

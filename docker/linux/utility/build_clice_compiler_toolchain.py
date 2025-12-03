@@ -12,7 +12,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from typing import Dict, Set
+from typing import Dict, List, Set
 
 from build_utils import (
     Job,
@@ -22,24 +22,22 @@ from build_utils import (
     install_extract_prerequisites,
     download_and_verify,
     extract_source,
+    extract_package,
 )
 
-from config.build_config import (
-    TOOLCHAIN_BUILD_ENV_VARS,
+from config.docker_build_stages.common import TOOLCHAIN_BUILD_ENV_VARS, COMPILER
+from config.docker_build_stages.toolchain_config import (
     TOOLCHAIN,
     ToolchainComponent,
     GccSubComponent,
     LinuxSubComponent,
-    GlibcSubComponent
+    GlibcSubComponent,
+    ZigSubComponent
 )
 
 # ========================================================================
 # 📦 Environment Setup Tasks
 # ========================================================================
-
-def update_apt() -> None:
-    print("🔄 [SETUP] Refreshing APT package database...")
-    run_command("apt update -o DPkg::Lock::Timeout=-1")
 
 def install_build_prerequisites(component: ToolchainComponent) -> None:
     """    
@@ -49,9 +47,8 @@ def install_build_prerequisites(component: ToolchainComponent) -> None:
     """
     # Collect all build prerequisites from sub-components
     all_prerequisites = set()
-    if hasattr(component, 'sub_components'):
-        for sub_component in component.sub_components:
-            all_prerequisites.update(sub_component.build_prerequisites)
+    for sub_component in component.sub_components:
+        all_prerequisites.update(sub_component.build_prerequisites)
     
     if not all_prerequisites:
         print(f"ℹ️ [SETUP] No build prerequisites for {component.name}")
@@ -248,6 +245,18 @@ def build_and_install_libstdcpp(component: GccSubComponent) -> None:
     print(f"✅ [COMPLETE] C++ standard library build finished")
 
 # ========================================================================
+# ⚡ Zig Compiler Tasks
+# ========================================================================
+
+def extract_zig(component: ZigSubComponent) -> None:
+    archive_path = os.path.join(component.cache_dir, component.tarball_name)
+    extract_package(
+        archive_path=archive_path,
+        target_dir=component.package_dir,
+        strip_top_level=True
+    )
+
+# ========================================================================
 # 🎭 Main Build Orchestrator
 # ========================================================================
 
@@ -257,78 +266,74 @@ def main() -> None:
     print("🚀 ========================================================================")
     print(f"📁 Sysroot Directory: {TOOLCHAIN.sysroot_dir}")
     print(f"🎯 Target Architecture: {TOOLCHAIN.target_triplet} ({TOOLCHAIN.target_machine})")
-    print(f"📋 Components: glibc, Linux headers, libstdc++, LLVM (prepared)")
+    print(f"🔧 Selected Compiler: {COMPILER}")
     print("🚀 ========================================================================\n")
     
-    all_jobs: Dict[str, Job] = {
-        # 📦 System Setup Tasks
-        "update_apt": Job("update_apt", update_apt),
-        "install_download_prerequisites": Job("install_download_prerequisites", install_download_prerequisites, (TOOLCHAIN,)),
-        "install_extract_prerequisites": Job("install_extract_prerequisites", install_extract_prerequisites, (TOOLCHAIN,)),
-        "install_build_prerequisites": Job("install_build_prerequisites", install_build_prerequisites, (TOOLCHAIN,)),
-
-        # 📚 GNU C Library (glibc) Pipeline
-        "download_glibc": Job("download_glibc", download_and_verify, (TOOLCHAIN.glibc,)),
-        "extract_glibc": Job("extract_glibc", extract_source, (TOOLCHAIN.glibc,)),
-        "build_and_install_glibc": Job("build_and_install_glibc", build_and_install_glibc, (TOOLCHAIN.glibc, TOOLCHAIN.linux)),
-        
-        # 🐧 Linux Kernel Headers Pipeline  
-        "download_linux": Job("download_linux", download_and_verify, (TOOLCHAIN.linux,)),
-        "extract_linux": Job("extract_linux", extract_source, (TOOLCHAIN.linux,)),
-        "install_linux_headers": Job("install_linux_headers", install_linux_headers, (TOOLCHAIN.linux,)),
-
-        # 🛠️ GCC C++ Standard Library Pipeline
-        "download_gcc": Job("download_gcc", download_and_verify, (TOOLCHAIN.gcc,)),
-        "extract_gcc": Job("extract_gcc", extract_source, (TOOLCHAIN.gcc,)),
-        "download_gcc_prerequisites": Job("download_gcc_prerequisites", download_gcc_prerequisites, (TOOLCHAIN.gcc,)),
-        "build_and_install_libstdcpp": Job("build_and_install_libstdcpp", build_and_install_libstdcpp, (TOOLCHAIN.gcc,)),
-
-        # ⚡ LLVM Project Pipeline (prepared for future builds)
-        "download_llvm": Job("download_llvm", download_and_verify, (TOOLCHAIN.llvm,)),
-        "extract_llvm": Job("extract_llvm", extract_source, (TOOLCHAIN.llvm,)),
-    }
+    # Define all jobs with dependencies
+    install_download_prereq_job = Job("install_download_prerequisites", install_download_prerequisites, (TOOLCHAIN,))
+    install_extract_prereq_job = Job("install_extract_prerequisites", install_extract_prerequisites, (TOOLCHAIN,))
+    install_build_prereq_job = Job("install_build_prerequisites", install_build_prerequisites, (TOOLCHAIN,))
     
-    dependency_graph: Dict[str, Set[str]] = {
-        "update_apt": set(),
-        "install_download_prerequisites": {"update_apt"},
-        "install_extract_prerequisites": {"update_apt"},
-        "install_build_prerequisites": {"update_apt"},
-        
-        # 📚 glibc Build Pipeline
-        "download_glibc": {"install_download_prerequisites"},
-        "extract_glibc": {"download_glibc", "install_extract_prerequisites"},
-        "build_and_install_glibc": {
-            "extract_glibc",
-            "install_build_prerequisites",
-            "install_linux_headers"  # glibc requires Linux headers for compilation
-        },
-        
-        # 🐧 Linux Headers Pipeline (must complete before glibc build)
-        "download_linux": {"install_download_prerequisites"},
-        "extract_linux": {"download_linux", "install_extract_prerequisites"},
-        "install_linux_headers": {"extract_linux", "install_build_prerequisites"},
+    all_jobs = [
+        install_download_prereq_job,
+        install_extract_prereq_job,
+        install_build_prereq_job,
+    ]
+    
+    extend_jobs: List[Job] = []
 
-        # 🛠️ GCC Pipeline (requires glibc and kernel headers)
-        "download_gcc": {"install_download_prerequisites"},
-        "extract_gcc": {"download_gcc", "install_extract_prerequisites"},
-        "download_gcc_prerequisites": {"extract_gcc"},
-        "build_and_install_libstdcpp": {
-            "download_gcc_prerequisites",  # GCC math libraries ready
-            "build_and_install_glibc",     # System library available
-            "install_linux_headers",       # Kernel interfaces available
-            "install_build_prerequisites"  # Build tools ready
-        },
+    # Conditional: Build gcc/clang toolchain (glibc + libstdc++) OR download zig
+    match COMPILER:
+        case "clang":
+            # Glibc Pipeline
+            download_glibc_job = Job("download_glibc", download_and_verify, (TOOLCHAIN.glibc,), [install_download_prereq_job])
+            extract_glibc_job = Job("extract_glibc", extract_source, (TOOLCHAIN.glibc,), [download_glibc_job, install_extract_prereq_job])
+        
+            # Linux Headers Pipeline
+            download_linux_job = Job("download_linux", download_and_verify, (TOOLCHAIN.linux,), [install_download_prereq_job])
+            extract_linux_job = Job("extract_linux", extract_source, (TOOLCHAIN.linux,), [download_linux_job, install_extract_prereq_job])
+            install_linux_headers_job = Job("install_linux_headers", install_linux_headers, (TOOLCHAIN.linux,), [extract_linux_job, install_build_prereq_job])
 
-        # ⚡ LLVM Pipeline (prepared for future expansion)
-        "download_llvm": {"install_download_prerequisites"},
-        "extract_llvm": {"download_llvm", "install_extract_prerequisites"}
-    }
+            # Glibc build depends on Linux headers
+            build_glibc_job = Job("build_and_install_glibc", build_and_install_glibc, (TOOLCHAIN.glibc, TOOLCHAIN.linux), 
+                                  [extract_glibc_job, install_build_prereq_job, install_linux_headers_job])
+
+            # GCC Pipeline
+            download_gcc_job = Job("download_gcc", download_and_verify, (TOOLCHAIN.gcc,), [install_download_prereq_job])
+            extract_gcc_job = Job("extract_gcc", extract_source, (TOOLCHAIN.gcc,), [download_gcc_job, install_extract_prereq_job])
+            download_gcc_prereq_job = Job("download_gcc_prerequisites", download_gcc_prerequisites, (TOOLCHAIN.gcc,), [extract_gcc_job])
+            build_libstdcpp_job = Job("build_and_install_libstdcpp", build_and_install_libstdcpp, (TOOLCHAIN.gcc,),
+                                      [download_gcc_prereq_job, build_glibc_job, install_linux_headers_job, install_build_prereq_job])
+        
+            extend_jobs = [
+                download_glibc_job,
+                extract_glibc_job,
+                download_linux_job,
+                extract_linux_job,
+                install_linux_headers_job,
+                build_glibc_job,
+                download_gcc_job,
+                extract_gcc_job,
+                download_gcc_prereq_job,
+                build_libstdcpp_job,
+            ]
+        case "zig":
+            # Zig Pipeline: download, verify, and extract using standard component functions
+            download_zig_job = Job("download_zig", download_and_verify, (TOOLCHAIN.zig,), [install_download_prereq_job])
+            extract_zig_job = Job("extract_zig", extract_zig, (TOOLCHAIN.zig,), [download_zig_job, install_extract_prereq_job])
+            extend_jobs = [download_zig_job, extract_zig_job]
+        case _:
+            raise ValueError(f"Unsupported compiler: {COMPILER}")
+    
+    all_jobs.extend(extend_jobs)
     
     print(f"📊 Initializing parallel scheduler with {len(all_jobs)} tasks...")
-    print(f"🔗 Total dependencies: {sum(len(deps) for deps in dependency_graph.values())}")
-    print(f"⚡ Maximum parallelism: {len([job for job, deps in dependency_graph.items() if not deps])} initial tasks\n")
+    total_deps = sum(len(job.dependencies) for job in all_jobs)
+    print(f"🔗 Total dependency edges: {total_deps}")
+    independent_jobs = [job.name for job in all_jobs if not job.dependencies]
+    print(f"⚡ Maximum parallelism: {len(independent_jobs)} initial tasks: {independent_jobs}\n")
     
-    scheduler = ParallelTaskScheduler(all_jobs, dependency_graph)
+    scheduler = ParallelTaskScheduler(all_jobs)
     scheduler.run()
 
     print("\n🎉 ========================================================================")

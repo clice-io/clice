@@ -175,12 +175,44 @@ if ! docker image inspect "${EXPANDED_IMAGE_NAME}" >/dev/null 2>&1; then
   
   # Run packed image container and execute its internal build.sh for expansion
   # To keep the expansion process consistent and reliable, we use the build.sh script from the container itself.
+  # 
+  # Since newer Docker versions don't include CLI without installation, we can't use docker buildx directly.
+  # Instead, we use chroot approach:
+  # 1. Mount host root directory to a temp folder inside container
+  # 2. Copy /clice to host temp directory
+  # 3. chroot into host root and execute build.sh
+  #
   # Mounts:
-  # • /var/run/docker.sock - Allow container to build images on host Docker daemon
+  # • / (host root) - Mount to temp directory for chroot access
+  
+  # Create temp directory on host for chroot
+  HOST_TEMP_DIR=$(mktemp -d -p /tmp clice-expand.XXXXXX)
+  
+  echo "📁 Created host temp directory: ${HOST_TEMP_DIR}"
+  echo "🔄 Preparing chroot environment..."
+  
   if docker run --rm \
-      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v "/:/host-root" \
+      -e "HOST_TEMP_DIR=${HOST_TEMP_DIR}" \
+      -e "COMPILER=${COMPILER}" \
+      -e "VERSION=${VERSION}" \
       "${PACKED_IMAGE_NAME}" \
-      /bin/bash -c "cd ${CLICE_DIR} && ./docker/linux/build.sh --stage expanded-image --compiler ${COMPILER} --version ${VERSION}"; then
+      /bin/bash -c '
+        set -e
+        echo "📦 Copying /clice to host temp directory..."
+        cp -r /clice "/host-root${HOST_TEMP_DIR}/"
+        
+        echo "🔧 Executing build.sh via chroot..."
+        chroot /host-root /bin/bash -c "
+          cd ${HOST_TEMP_DIR}/clice && \
+          ./docker/linux/build.sh --stage expanded-image --compiler ${COMPILER} --version ${VERSION} --debug
+        "
+        
+        echo "🧹 Cleaning up temp directory..."
+        rm -rf "/host-root${HOST_TEMP_DIR}"
+      '; then
+    # Clean up host temp directory (in case container cleanup failed)
+    rm -rf "${HOST_TEMP_DIR}" 2>/dev/null || true
     echo "========================================================================="
     echo "✅ EXPANSION COMPLETED SUCCESSFULLY"
     echo "========================================================================="

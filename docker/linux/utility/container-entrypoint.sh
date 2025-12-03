@@ -1,7 +1,7 @@
 # ========================================================================
 # 🚀 Clice Dev Container Shell Initialization
 # ========================================================================
-# File: docker/linux/container-entrypoint.sh
+# File: docker/linux/utility/container-entrypoint.sh
 # Purpose: Bash initialization script for Clice dev container
 # 
 # This script is sourced by .bashrc and performs:
@@ -18,7 +18,7 @@ if [[ $- == *i* ]]; then
 
     echo "📦 Running uv sync..."
     
-    if UV_CACHE_DIR="${UV_PACKAGE_CACHE_DIR}" uv sync --project "${CLICE_WORKDIR}/pyproject.toml"; then
+    if UV_CACHE_DIR="${UV_PACKAGE_CACHE_DIR}" uv sync --project "${CLICE_WORKDIR}/tests/pyproject.toml"; then
         echo "✅ Python environment ready at ${CLICE_WORKDIR}/.venv"
     else
         echo "⚠️  Failed to sync Python environment (pyproject.toml might not exist)"

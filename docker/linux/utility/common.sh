@@ -39,7 +39,7 @@ get_packed_image_name() {
     local version="$2"
     local image_tag
     image_tag=$(get_image_tag "$compiler" "$version")
-    echo "clice.io/clice:${image_tag}"
+    echo "clice.io/clice-dev:${image_tag}"
 }
 
 # Generates the full name for the expanded (development) image.

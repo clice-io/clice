@@ -108,7 +108,8 @@ elif [ "$BUILD_STAGE" = "expanded-image" ]; then
     TARGET_IMAGE_NAME="$EXPANDED_IMAGE_NAME"
 else
     TARGET_IMAGE_NAME="clice-dev_container-debug_build-$BUILD_STAGE"
-    echo "🔧 Debug Building Intermediate Stage: $BUILD_STAGE" >&2; usage;
+    BUILD_COMMAND_DEBUG_EXTRA="--on always"
+    echo "🔧 Debug Building Intermediate Stage: $BUILD_STAGE" >&2;
 fi
 
 # ========================================================================
@@ -183,7 +184,7 @@ if [ "$DEBUG" = "true" ]; then
     echo "🐛 Debug mode enabled (BUILDX_EXPERIMENTAL=1)"
 
     export BUILDX_EXPERIMENTAL=1
-    BUILD_COMMAND="docker buildx debug --invoke /bin/bash build"
+    BUILD_COMMAND="docker buildx debug --invoke /bin/bash ${BUILD_COMMAND_DEBUG_EXTRA} build"
 else
     BUILD_COMMAND="docker buildx build"
 fi

@@ -13,16 +13,19 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from config.build_config import (
-    PACKED_RELEASE_PACKAGE_PATH,
+from config.docker_build_stages.common import (
+    COMPILER,
     RELEASE_PACKAGE_DIR,
+    PACKED_RELEASE_PACKAGE_PATH,
     CLICE_WORKDIR,
     DEVELOPMENT_SHELL_VARS,
+    TOOLCHAIN_VERSIONS,
+)
+from config.docker_build_stages.toolchain_config import TOOLCHAIN
+from config.docker_build_stages.dependencies_config import UV
+from config.docker_build_stages.package_config import (
     ALL_COMPONENTS,
-    # Component instances for structured access
-    TOOLCHAIN,
     BASHRC,
-    UV,
     P7ZIP,
 )
 
@@ -68,6 +71,35 @@ def setup_environment_variables_and_entrypoint() -> None:
             f.write(f'export {key}="{value}"\n')
         f.write("\n")
         
+        # Export compiler-specific environment variables
+        f.write("# Compiler environment variables\n")
+        match COMPILER:
+            case "gcc":
+                gcc_path = f"/usr/bin/gcc-{TOOLCHAIN_VERSIONS['gcc']}"
+                gxx_path = f"/usr/bin/g++-{TOOLCHAIN_VERSIONS['gcc']}"
+                f.write(f'export CC="{gcc_path}"\n')
+                f.write(f'export CXX="{gxx_path}"\n')
+                # For GCC/Clang, SYSROOT points to custom-built glibc/libstdc++
+                sysroot = TOOLCHAIN.sysroot_dir
+                f.write(f'export SYSROOT="{sysroot}"\n')
+            case "clang":
+                clang_path = f"/usr/bin/clang-{TOOLCHAIN_VERSIONS['clang']}"
+                clangxx_path = f"/usr/bin/clang++-{TOOLCHAIN_VERSIONS['clang']}"
+                f.write(f'export CC="{clang_path}"\n')
+                f.write(f'export CXX="{clangxx_path}"\n')
+                # For GCC/Clang, SYSROOT points to custom-built glibc/libstdc++
+                sysroot = TOOLCHAIN.sysroot_dir
+                f.write(f'export SYSROOT="{sysroot}"\n')
+            case "zig":
+                zig_bin = os.path.join(TOOLCHAIN.zig.package_dir, 'zig')
+                f.write(f'export CC="{zig_bin} cc"\n')
+                f.write(f'export CXX="{zig_bin} c++"\n')
+                # Zig uses its own bundled libc, no traditional sysroot
+                f.write('# Note: Zig uses its own bundled libc\n')
+            case _:
+                raise ValueError(f"Unsupported compiler: {COMPILER}")
+        f.write("\n")
+        
         # Set internal variables for container entrypoint (not exported)
         f.write("# Internal variables for container entrypoint (not exported to user environment)\n")
         f.write(f'CLICE_WORKDIR="{CLICE_WORKDIR}"\n')
@@ -86,6 +118,10 @@ def setup_environment_variables_and_entrypoint() -> None:
     print(f"  📝 Exported variables: {len(DEVELOPMENT_SHELL_VARS)} from DEVELOPMENT_SHELL_VARS")
     for key in DEVELOPMENT_SHELL_VARS.keys():
         print(f"    • {key}")
+    print(f"  📝 Compiler: {COMPILER}")
+    print(f"    • CC and CXX configured for {COMPILER}")
+    if COMPILER in ["gcc", "clang"]:
+        print(f"    • SYSROOT={TOOLCHAIN.sysroot_dir}")
     print("  📝 Internal variables: CLICE_WORKDIR, RELEASE_PACKAGE_DIR, UV_PACKAGE_DIR_NAME")
     print("  📝 Container entrypoint script embedded")
 
@@ -99,7 +135,7 @@ def create_comprehensive_manifest() -> None:
     # Create base manifest structure
     manifest = {
         "release_info": {
-            "created_at": os.stat(RELEASE_PACKAGE_DIR).st_birthtime if os.path.exists(RELEASE_PACKAGE_DIR) else None,
+            "created_at": os.stat(RELEASE_PACKAGE_DIR).st_ctime if os.path.exists(RELEASE_PACKAGE_DIR) else None,
             "stage": "final_release",
             "version": "1.0.0"
         },
@@ -161,7 +197,7 @@ def create_comprehensive_manifest() -> None:
                     "glibc_version": TOOLCHAIN.glibc.version,
                     "gcc_version": TOOLCHAIN.gcc.version,
                     "linux_version": TOOLCHAIN.linux.version,
-                    "llvm_version": TOOLCHAIN.llvm.version,
+                    # "llvm_version": TOOLCHAIN.llvm.version,
                 }
             
             case "clice-setup-scripts":
@@ -194,11 +230,6 @@ def create_comprehensive_manifest() -> None:
     print(f"📊 Components: {manifest['summary']['available_components']}/{manifest['summary']['total_components']} available")
     print(f"📁 Total files: {manifest['summary']['total_files']}")
     print(f"📦 Total size: {manifest['summary']['total_size_mb']} MB")
-
-def update_apt() -> None:
-    print("🔄 Updating APT package database...")
-    run_command("apt update -o DPkg::Lock::Timeout=-1")
-    print("✅ APT database updated")
 
 def install_p7zip() -> None:
     print("📦 Installing p7zip for archive creation...")
@@ -253,30 +284,20 @@ def main() -> None:
     print("🚀 ========================================================================\n")
     
     # Define packaging jobs with proper dependency management
-    jobs = {
-        "update_apt": Job("update_apt", update_apt, ()),
-        "setup_bashrc": Job("setup_bashrc", setup_environment_variables_and_entrypoint, ()),
-        "create_manifest": Job("create_manifest", create_comprehensive_manifest, ()),
-        "install_p7zip": Job("install_p7zip", install_p7zip, ()),
-        "create_package": Job("create_package", create_final_release_package, ()),
-    }
+    setup_bashrc_job = Job("setup_bashrc", setup_environment_variables_and_entrypoint, ())
+    install_p7zip_job = Job("install_p7zip", install_p7zip, ())
+    create_manifest_job = Job("create_manifest", create_comprehensive_manifest, (), [setup_bashrc_job])
+    create_package_job = Job("create_package", create_final_release_package, (), [create_manifest_job, install_p7zip_job])
     
-    # Define dependencies
-    # - APT update runs first to refresh package lists
-    # - bashrc setup and script copy can run in parallel with APT update
-    # - p7zip installation depends on APT update being complete
-    # - Manifest creation depends on bashrc and scripts being ready
-    # - Package creation depends on manifest and p7zip being ready
-    dependencies = {
-        "update_apt": set(),  # Runs first, no dependencies
-        "setup_bashrc": set(),
-        "create_manifest": {"setup_bashrc"},
-        "install_p7zip": {"update_apt"},  # Depends on APT update
-        "create_package": {"create_manifest", "install_p7zip"},  # Depends on manifest and 7z
-    }
+    all_jobs = [
+        setup_bashrc_job,
+        install_p7zip_job,
+        create_manifest_job,
+        create_package_job,
+    ]
     
     # Execute packaging tasks in parallel where possible
-    scheduler = ParallelTaskScheduler(jobs, dependencies)
+    scheduler = ParallelTaskScheduler(all_jobs)
     scheduler.run()
     
     print("\n🎉 ========================================================================")

@@ -4,6 +4,7 @@ Final setup: Install pre-downloaded packages (APT, toolchain, CMake, XMake, Pyth
 and deploy .bashrc configuration.
 """
 
+from typing import List, Optional
 import os
 import sys
 import shutil
@@ -13,12 +14,15 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from config.build_config import (
+from config.docker_build_stages.common import (
+    COMPILER,
     RELEASE_PACKAGE_DIR,  
     CLICE_WORKDIR,
-    APT, UV, CMAKE, XMAKE, TOOLCHAIN, BASHRC,
-    APTComponent, UVComponent, CMakeComponent, XMakeComponent, ToolchainComponent
+    TOOLCHAIN_VERSIONS,
 )
+from config.docker_build_stages.dependencies_config import APT, UV, CMAKE, XMAKE, APTComponent, CMakeComponent, UVComponent, XMakeComponent
+from config.docker_build_stages.toolchain_config import TOOLCHAIN, ToolchainComponent
+from config.docker_build_stages.package_config import BASHRC
 
 from build_utils import (
     Job,
@@ -66,6 +70,32 @@ def install_apt_packages(apt_component: APTComponent) -> None:
 def install_toolchain(toolchain_component: ToolchainComponent) -> None:
     print("🔧 Installing custom toolchain...")
     
+    match COMPILER:
+        case "gcc":
+            run_command(f'update-alternatives --install /usr/bin/cc cc "/usr/bin/gcc-{TOOLCHAIN_VERSIONS["gcc"]}" {TOOLCHAIN_VERSIONS["gcc"]}')
+            run_command(f'update-alternatives --install /usr/bin/gcc gcc "/usr/bin/gcc-{TOOLCHAIN_VERSIONS["gcc"]}" {TOOLCHAIN_VERSIONS["gcc"]}')
+            run_command(f'update-alternatives --install /usr/bin/c++ c++ "/usr/bin/g++-{TOOLCHAIN_VERSIONS["gcc"]}" {TOOLCHAIN_VERSIONS["gcc"]}')
+            run_command(f'update-alternatives --install /usr/bin/g++ g++ "/usr/bin/g++-{TOOLCHAIN_VERSIONS["gcc"]}" {TOOLCHAIN_VERSIONS["gcc"]}')
+        case "clang":
+            run_command(f'update-alternatives --install /usr/bin/cc cc "/usr/bin/clang-{TOOLCHAIN_VERSIONS["clang"]}" {TOOLCHAIN_VERSIONS["clang"]}')
+            run_command(f'update-alternatives --install /usr/bin/clang clang "/usr/bin/clang-{TOOLCHAIN_VERSIONS["clang"]}" {TOOLCHAIN_VERSIONS["clang"]}')
+            run_command(f'update-alternatives --install /usr/bin/c++ c++ "/usr/bin/clang++-{TOOLCHAIN_VERSIONS["clang"]}" {TOOLCHAIN_VERSIONS["clang"]}')
+            run_command(f'update-alternatives --install /usr/bin/clang++ clang++ "/usr/bin/clang++-{TOOLCHAIN_VERSIONS["clang"]}" {TOOLCHAIN_VERSIONS["clang"]}')
+        case "zig":
+            # Zig binary is directly in package_dir after stripping top-level directory
+            zig_bin = os.path.join(toolchain_component.zig.package_dir, 'zig')
+            
+            # Setup alternatives for zig, cc, and c++
+            run_command(f'update-alternatives --install /usr/bin/zig zig "{zig_bin}" 100')
+            # run_command(f'update-alternatives --install /usr/bin/cc cc "{zig_bin} cc" 100')
+            # run_command(f'update-alternatives --install /usr/bin/c++ c++ "{zig_bin} c++" 100')
+            print(f"✅ Zig compiler configured: {zig_bin}")
+        case _:
+            raise ValueError(f"Unsupported compiler specified: {COMPILER}")
+
+    # clice requires to link with lld
+    run_command(f'update-alternatives --install /usr/bin/ld ld "/usr/bin/lld-{TOOLCHAIN_VERSIONS["clang"]}" {TOOLCHAIN_VERSIONS["clang"]}')
+
     print(f"✅ Toolchain available at: {toolchain_component.package_dir}")
 
 def install_cmake(cmake_component: CMakeComponent) -> None:
@@ -108,6 +138,11 @@ def install_xmake(xmake_component: XMakeComponent) -> None:
     
     # Install XMake using update-alternatives
     run_command(f"update-alternatives --install /usr/bin/xmake xmake {xmake_path} 100")
+
+    # Run XMake
+    # First time we execute the bundle, it sets up its internal environment
+    # Environment variable is not setup yet, so we need --root option to bypass xmake root account check
+    run_command("xmake --root --version")
     
     print("✅ XMake installed successfully")
 
@@ -140,30 +175,26 @@ def main() -> None:
     print("🚀 Setting up Clice Dev Container...")
     
     # Define setup jobs with proper dependency management
-    # Note: Release archive is already extracted by Dockerfile, so we start with installations
-    jobs = {
-        "setup_git_safe_directory": Job("setup_git_safe_directory", setup_git_safe_directory, ()),
-        "install_apt_packages": Job("install_apt_packages", install_apt_packages, (APT,)),
-        "install_toolchain": Job("install_toolchain", install_toolchain, (TOOLCHAIN,)),
-        "install_cmake": Job("install_cmake", install_cmake, (CMAKE,)),
-        "install_xmake": Job("install_xmake", install_xmake, (XMAKE,)),
-        "install_python_packages": Job("install_python_packages", install_python_packages, (UV,)),
-        "deploy_bashrc": Job("deploy_bashrc", deploy_bashrc, ()),
-    }
+    install_apt_job = Job("install_apt_packages", install_apt_packages, (APT,))
+    setup_git_job = Job("setup_git_safe_directory", setup_git_safe_directory, (), [install_apt_job])
+    install_toolchain_job = Job("install_toolchain", install_toolchain, (TOOLCHAIN,), [install_apt_job])
+    install_cmake_job = Job("install_cmake", install_cmake, (CMAKE,))
+    install_xmake_job = Job("install_xmake", install_xmake, (XMAKE,))
+    install_python_job = Job("install_python_packages", install_python_packages, (UV,))
+    deploy_bashrc_job = Job("deploy_bashrc", deploy_bashrc, ())
     
-    # Define dependencies - git setup depends on apt packages
-    dependencies = {
-        "install_apt_packages": set(),
-        "setup_git_safe_directory": {"install_apt_packages"},
-        "install_toolchain": set(),
-        "install_cmake": set(),
-        "install_xmake": set(),
-        "install_python_packages": set(),
-        "deploy_bashrc": set(),
-    }
+    all_jobs = [
+        install_apt_job,
+        setup_git_job,
+        install_toolchain_job,
+        install_cmake_job,
+        install_xmake_job,
+        install_python_job,
+        deploy_bashrc_job,
+    ]
     
     # Execute setup tasks in parallel where possible
-    scheduler = ParallelTaskScheduler(jobs, dependencies)
+    scheduler = ParallelTaskScheduler(all_jobs)
     scheduler.run()
     
     print("✅ Clice development environment setup completed successfully!")

@@ -8,7 +8,7 @@ import os
 import shutil
 import sys
 import subprocess
-from typing import List
+from typing import List, Dict, Set, Optional
 
 # Add project root to Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -22,11 +22,8 @@ from build_utils import (
     run_command,
     verify_sha256
 )
-from config.build_config import (
-    RELEASE_PACKAGE_DIR,
-    PYPROJECT_PATH,
-    APT, UV, CMAKE, XMAKE
-)
+from config.docker_build_stages.common import RELEASE_PACKAGE_DIR
+from config.docker_build_stages.dependencies_config import APT, UV, CMAKE, XMAKE
 
 # ========================================================================
 # 🛠️ Download Task Implementations  
@@ -35,11 +32,8 @@ from config.build_config import (
 def install_download_prerequisites() -> None:
     print("📦 Installing dependencies download prerequisites...")
     
-    # Update package lists first  
-    run_command("apt update -o DPkg::Lock::Timeout=-1")
-    
     # Install all download prerequisites (universal + APT-specific)
-    download_prerequisites = APT.download_prerequisites
+    download_prerequisites: List[str] = APT.download_prerequisites
     run_command(f"apt install -y --no-install-recommends=true -o DPkg::Lock::Timeout=-1 {' '.join(download_prerequisites)}")
     
     print(f"✅ Installed {len(download_prerequisites)} download prerequisites")
@@ -48,28 +42,30 @@ def get_apt_package_list(base_packages: List[str]) -> List[str]:
     """Get recursive APT dependencies using apt-cache depends + awk pattern."""
     print("🔍 Resolving recursive dependencies using StackOverflow command pattern...")
     
-    all_packages = set()
+    all_packages: Set[str] = set()
     
     for package in base_packages:
         try:
             # Use the exact command from StackOverflow
-            apt_cache_cmd = [
+            apt_cache_cmd: List[str] = [
                 "apt-cache", "depends", "--recurse", "--no-recommends", 
                 "--no-suggests", "--no-conflicts", "--no-breaks", 
                 "--no-replaces", "--no-enhances", package
             ]
             
             # Run apt-cache depends command
-            result = subprocess.run(apt_cache_cmd, capture_output=True, text=True, check=True)
+            result: subprocess.CompletedProcess[str] = subprocess.run(
+                apt_cache_cmd, capture_output=True, text=True, check=True
+            )
             
             # Use awk pattern to extract dependency packages: $1 ~ /^Depends:/{print $2}
             for line in result.stdout.split('\n'):
                 line = line.strip()
                 if line.startswith('Depends:'):
                     # Extract the package name after "Depends: "
-                    parts = line.split()
+                    parts: List[str] = line.split()
                     if len(parts) >= 2:
-                        pkg_name = parts[1]
+                        pkg_name: str = parts[1]
                         # Remove architecture suffix and version constraints
                         pkg_name = pkg_name.split(':')[0].split('(')[0].split('[')[0].strip()
                         if pkg_name and not pkg_name.startswith('<') and pkg_name != '|':
@@ -82,21 +78,18 @@ def get_apt_package_list(base_packages: List[str]) -> List[str]:
     
     # Filter available packages (remove virtual/unavailable packages)
     print(f"🔍 Found {len(all_packages)} total dependency packages, filtering available ones...")
-    available_packages = base_packages.copy()
+    available_packages_set: Set[str] = set(base_packages)
     
     for package in sorted(all_packages):
-        try:
-            # Quick availability check
-            result = subprocess.run(
-                ["apt-cache", "show", package],
-                capture_output=True, text=True, check=True
-            )
-            if result.returncode == 0:
-                available_packages.append(package)
-        except subprocess.CalledProcessError:
-            # Skip unavailable packages
-            continue
+        # Quick availability check
+        result = subprocess.run(
+            ["apt-cache", "show", package],
+            capture_output=True, text=True, check=True
+        )
+        if result.returncode == 0:
+            available_packages_set.add(package)
     
+    available_packages: List[str] = sorted(available_packages_set)
     print(f"📋 Final package list: {len(available_packages)} available packages")
     return available_packages
 
@@ -108,75 +101,110 @@ def download_apt_packages() -> None:
     os.makedirs(APT.package_dir, exist_ok=True)
     
     # Stage 1: Get package list
-    base_packages = list(set(APT.all_packages))
+    base_packages: List[str] = list(set(APT.all_packages))
     print(f"📋 Base packages from config: {len(base_packages)} packages")
     
-    available_packages = get_apt_package_list(base_packages)
+    available_packages: List[str] = get_apt_package_list(base_packages)
     
     # Stage 2: Download packages using apt-get download
-    print(f"📥 Downloading {len(available_packages)} packages to cache: {APT.cache_dir}")
-    
+    print(f"📥 Downloading {len(available_packages)} packages to cache: {APT.cache_dir}")    
 
-    # Use the exact pattern: apt-get download $(package_list)
-    # Split into batches to avoid command line length limits
-    batch_size = 50
-    downloaded_count = 0
+    # Download all packages at once
+    packages_str: str = ' '.join(available_packages)
+    run_command(f"apt-get download {packages_str}", cwd=APT.cache_dir)
     
-    for i in range(0, len(available_packages), batch_size):
-        batch = available_packages[i:i + batch_size]
-        
-        print(f"📦 Downloading batch {i//batch_size + 1}/{(len(available_packages) + batch_size - 1)//batch_size} ({len(batch)} packages)...")
-        
+    print(f"✅ Downloaded {len(available_packages)} packages to cache")
+    
+    # Count actual .deb files in cache directory
+    cached_deb_count: int = len([f for f in os.listdir(APT.cache_dir) if f.endswith('.deb')])
+    print(f"📋 Found {cached_deb_count} .deb files in cache directory")
+    
+    # Stage 3: Parse all packages at once with apt-cache show to get real packages and their info
+    print("📦 Parsing package information to identify real packages and versions...")
+    
+    # Get system architecture
+    arch_result: subprocess.CompletedProcess[str] = subprocess.run(
+        ["dpkg", "--print-architecture"],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    system_arch: str = arch_result.stdout.strip()
+    
+    # Map package name -> exact filename (only for real packages)
+    package_to_filename: Dict[str, str] = {}
+    virtual_packages: List[str] = []
+    
+    for pkg in available_packages:
         try:
-            # Run apt-get download for this batch
-            result = subprocess.run(
-                ["apt-get", "download"] + batch,
-                cwd=APT.cache_dir, 
-                capture_output=True, 
-                text=True, 
+            # Single apt-cache show call to get all info at once
+            show_result: subprocess.CompletedProcess[str] = subprocess.run(
+                ["apt-cache", "show", pkg],
+                capture_output=True,
+                text=True,
                 check=True
             )
-            downloaded_count += len(batch)
+            
+            # Parse the output to extract Package, Version, and Architecture
+            package_name: Optional[str] = None
+            version: Optional[str] = None
+            pkg_arch: str = system_arch  # Default
+            
+            for line in show_result.stdout.split('\n'):
+                if line.startswith('Package:'):
+                    package_name = line.split(':', 1)[1].strip()
+                elif line.startswith('Version:'):
+                    version = line.split(':', 1)[1].strip()
+                elif line.startswith('Architecture:'):
+                    pkg_arch = line.split(':', 1)[1].strip()
+                
+                # Stop after first package stanza (in case of multiple versions)
+                if line.strip() == '' and package_name and version:
+                    break
+            
+            # Check if this is a virtual package (Package field doesn't match query)
+            if not package_name or package_name != pkg:
+                virtual_packages.append(pkg)
+                print(f"📝 Skipping virtual package: {pkg} (resolves to {package_name})")
+                continue
+            
+            if not version:
+                print(f"⚠️ No version found for {pkg}")
+                continue
+            
+            # Construct expected filename based on Debian package naming convention
+            # URL-encode colons in version
+            encoded_version: str = version.replace(':', '%3a')
+            expected_filename: str = f"{pkg}_{encoded_version}_{pkg_arch}.deb"
+            
+            package_to_filename[pkg] = expected_filename
             
         except subprocess.CalledProcessError as e:
-            print(f"⚠️ Batch download failed, trying individual packages...")
-            # Fallback: download packages individually
-            for package in batch:
-                try:
-                    subprocess.run(
-                        ["apt-get", "download", package],
-                        cwd=APT.cache_dir,
-                        capture_output=True,
-                        text=True,
-                        check=True
-                    )
-                    downloaded_count += 1
-                except subprocess.CalledProcessError:
-                    print(f"⚠️ Failed to download {package}")
+            # If apt-cache show fails, it's likely a virtual package
+            virtual_packages.append(pkg)
+            print(f"📝 Skipping virtual package (no show output): {pkg}")
     
-    print(f"✅ Downloaded {downloaded_count} packages to cache")
+    print(f"📋 Identified {len(package_to_filename)} real packages with .deb files")
+    print(f"📝 Identified {len(virtual_packages)} virtual packages (no .deb files)")
     
-    # Copy packages from cache to package directory (only available_packages)
-    print("📦 Copying packages from cache to package directory...")
-    copied_count = 0
+    # Also verify that actual .deb files in cache match what we copied
+    if len(virtual_packages) + len(package_to_filename) != len(available_packages):
+        error_msg: str = f"File count mismatch: {len(available_packages)} available vs {len(package_to_filename)} real + {len(virtual_packages)} virtual"
+        print(f"❌ {error_msg}")
+        raise RuntimeError(error_msg)
     
-    # Create a set of expected package prefixes for efficient lookup
-    package_prefixes = set()
-    for pkg in available_packages:
-        package_prefixes.add(pkg + "_")
+    # Stage 4: Copy only the exact files
+    print("📦 Copying exact package files from cache to package directory...")
     
-    for file in os.listdir(APT.cache_dir):
-        if file.endswith('.deb'):
-            # Check if this .deb file corresponds to one of our available packages
-            file_matches = any(file.startswith(prefix) for prefix in package_prefixes)
-            if file_matches:
-                src = os.path.join(APT.cache_dir, file)
-                dst = os.path.join(APT.package_dir, file)
-                shutil.copy2(src, dst)
-                copied_count += 1
+    for pkg, filename in package_to_filename.items():
+        src: str = os.path.join(APT.cache_dir, filename)
+        dst: str = os.path.join(APT.package_dir, filename)
+        
+        shutil.copy2(src, dst)
     
-    print(f"✅ APT packages ready in {APT.package_dir}")
-    print(f"📊 Copied {copied_count} packages from cache")
+    print(f"📊 Copied {len(package_to_filename)} real packages")
+    print(f"📝 Skipped {len(virtual_packages)} virtual packages (no .deb files)")
+    print(f"✅ Verification passed: Download count matches copy count")
     print(f"📁 Cache directory: {APT.cache_dir} (preserved for future builds)")
 
 def download_cmake() -> None:
@@ -188,31 +216,31 @@ def download_cmake() -> None:
     os.makedirs(CMAKE.package_dir, exist_ok=True)
     
     # Use CMake component configuration
-    cmake_filename = CMAKE.tarball_name
-    cmake_url = CMAKE.tarball_url
+    cmake_filename: str = CMAKE.tarball_name
+    cmake_url: str = CMAKE.tarball_url
     
     # Download to cache directory first
-    cmake_cache_file = f"{CMAKE.cache_dir}/{cmake_filename}"
-    cmake_package_file = f"{CMAKE.package_dir}/{cmake_filename}"
+    cmake_cache_file: str = f"{CMAKE.cache_dir}/{cmake_filename}"
+    cmake_package_file: str = f"{CMAKE.package_dir}/{cmake_filename}"
     
     # Download CMake installer (.sh script) to cache
     download_file(cmake_url, cmake_cache_file)
     
     # Download verification files to cache using component structure
-    sha_url = CMAKE.verification_url
-    sha_filename = CMAKE.verification_name
-    sha_cache_file = f"{CMAKE.cache_dir}/{sha_filename}"
+    sha_url: str = CMAKE.verification_url
+    sha_filename: str = CMAKE.verification_name
+    sha_cache_file: str = f"{CMAKE.cache_dir}/{sha_filename}"
     
     # Download SHA file for integrity verification
     download_file(sha_url, sha_cache_file)
     
     # Verify CMake file integrity using build_utils
     with open(sha_cache_file, 'r') as f:
-        sha_content = f.read().strip()
+        sha_content: str = f.read().strip()
         # Parse SHA file format: "hash  filename"
         for line in sha_content.split('\n'):
             if cmake_filename in line:
-                expected_hash = line.split()[0]
+                expected_hash: str = line.split()[0]
                 if verify_sha256(cmake_cache_file, expected_hash):
                     print("✅ CMake file integrity verification successful")
                 else:
@@ -238,12 +266,12 @@ def download_xmake() -> None:
     os.makedirs(XMAKE.package_dir, exist_ok=True)
     
     # Use XMake component configuration
-    xmake_filename = XMAKE.tarball_name
-    xmake_url = XMAKE.tarball_url
+    xmake_filename: str = XMAKE.tarball_name
+    xmake_url: str = XMAKE.tarball_url
     
     # Download to cache directory first
-    xmake_cache_file = f"{XMAKE.cache_dir}/{xmake_filename}"
-    xmake_package_file = f"{XMAKE.package_dir}/{xmake_filename}"
+    xmake_cache_file: str = f"{XMAKE.cache_dir}/{xmake_filename}"
+    xmake_package_file: str = f"{XMAKE.package_dir}/{xmake_filename}"
     
     # Download XMake bundle to cache
     download_file(xmake_url, xmake_cache_file)
@@ -265,15 +293,13 @@ def download_python_packages() -> None:
     
     # Set UV_CACHE_DIR to packages cache directory
     print(f"📥 Downloading package wheels to UV packages package dir: {UV.packages_package_dir}")
-    print(f"📋 Using pyproject.toml from: {PYPROJECT_PATH}")
+    print(f"📋 Using pyproject.toml from: {UV.pyproject_file_path}")
     
     # Run uv sync with project root as working directory
     # UV will automatically find pyproject.toml in the project root
-    project_root = os.path.dirname(PYPROJECT_PATH)
-    
     run_command(
         f"UV_CACHE_DIR={UV.packages_package_dir} uv sync --no-install-project --no-editable",
-        cwd=project_root
+        cwd=os.path.dirname(UV.pyproject_file_path)
     )
 
     print(f"✅ Package wheels cached to: {UV.packages_package_dir}")
@@ -292,28 +318,22 @@ def main() -> None:
     os.makedirs(RELEASE_PACKAGE_DIR, exist_ok=True)
     
     # Define download jobs with proper dependency management
-    # Note: Python installation is now done in Dockerfile, not here
-    jobs = {
-        "install_download_prerequisites": Job("install_download_prerequisites", install_download_prerequisites, ()),
-        "download_apt_packages": Job("download_apt_packages", download_apt_packages, ()),
-        "download_python_packages": Job("download_python_packages", download_python_packages, ()),
-        "download_cmake": Job("download_cmake", download_cmake, ()),
-        "download_xmake": Job("download_xmake", download_xmake, ()),
-    }
+    install_download_prereq_job = Job("install_download_prerequisites", install_download_prerequisites, ())
+    download_apt_job = Job("download_apt_packages", download_apt_packages, (), [install_download_prereq_job])
+    download_python_job = Job("download_python_packages", download_python_packages, (), [install_download_prereq_job])
+    download_cmake_job = Job("download_cmake", download_cmake, (), [install_download_prereq_job])
+    download_xmake_job = Job("download_xmake", download_xmake, (), [install_download_prereq_job])
     
-    # Define dependencies
-    # UV and packages downloads need install_download_prerequisites
-    # Python installation is handled in Dockerfile base-stage
-    dependencies = {
-        "install_download_prerequisites": set(),
-        "download_apt_packages": {"install_download_prerequisites"},
-        "download_python_packages": {"install_download_prerequisites"},
-        "download_cmake": {"install_download_prerequisites"},
-        "download_xmake": {"install_download_prerequisites"},
-    }
+    all_jobs = [
+        install_download_prereq_job,
+        download_apt_job,
+        download_python_job,
+        download_cmake_job,
+        download_xmake_job,
+    ]
     
     # Execute downloads in parallel where possible
-    scheduler = ParallelTaskScheduler(jobs, dependencies)
+    scheduler = ParallelTaskScheduler(all_jobs)
     scheduler.run()
     
     print("✅ All dependencies downloaded successfully!")
