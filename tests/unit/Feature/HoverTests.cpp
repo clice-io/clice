@@ -33,6 +33,218 @@ void run(llvm::StringRef code, LocalSourceRange range = {}) {
     decls = std::move(collector.decls);
 }
 
+TEST_CASE(Inclusion){{tester.clear();
+constexpr auto code = R"CODE(
+$(inc1)#include <iostream>
+
+#include $(inc2)<assert.h>
+
+int main(void) {
+    std::cout << "hello" << std::endl;
+    return 0;
+}
+        )CODE";
+auto annotation = AnnotatedSource::from(code);
+tester.add_main("main.cpp", annotation.content);
+auto inc1_off = annotation.offsets["inc1"];
+auto inc2_off = annotation.offsets["inc2"];
+tester.compile_with_pch();
+ASSERT_TRUE(tester.unit.has_value());
+auto HI = clice::feature::hover(*tester.unit, inc1_off, {});
+HI = clice::feature::hover(*tester.unit, inc2_off, {});
+
+}  // TEST_SUITE(Hover)
+
+{
+    tester.clear();
+    constexpr auto code = R"CODE(
+#inc$(inc1)lude <assert.h>
+#inc$(inc2)lude <stdio.h>
+
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
+int main(int argc, char **argv) {
+    assert(argc <= 10);
+    int x = max(114, 514);
+    printf("%d", max(argc, x));
+    return 0;
+}
+            )CODE";
+    auto annotation = AnnotatedSource::from(code);
+    tester.add_main("main.cpp", annotation.content);
+    auto inc1_off = annotation.offsets["inc1"];
+    auto inc2_off = annotation.offsets["inc2"];
+    tester.compile();
+    ASSERT_TRUE(tester.unit.has_value());
+    auto HI = clice::feature::hover(*tester.unit, inc1_off, {});
+    HI = clice::feature::hover(*tester.unit, inc2_off, {});
+}
+
+};  // namespace
+
+TEST_CASE(Macros) {
+    tester.clear();
+    constexpr auto code = R"CODE(
+#include <iostream>
+
+using namespace std;
+
+#define m$(pos_0)ax(a, b) ((a) > (b) ? (a) : (b))
+#define P$(pos_1)I 3.14
+#define I$(pos_2)NF 1e18
+#define D$(pos_3)UMMY
+#define a$(pos_4)bs(a) ((a) >= 0 ? (a) : -(a))
+
+int main(int argc, char **argv) {
+    int x, y;
+    cin >> x >> y;
+#define en$(pos_5)dl '\n'
+    cout << x * P$(pos_6)I << endl;
+    cout << (x < 0721 ? "ciallo" : "hello") << e$(pos_7)ndl;
+#undef endl
+    cout << ma$(pos_8)x(x$(pos_9), y) << endl;
+    cout << m$(pos_10)ax(a$(pos_11)bs(x), abs(y)) << '\n';
+    constexpr auto X = INF;
+    return 0;
+}
+    )CODE";
+    auto annotation = AnnotatedSource::from(code);
+    tester.add_main("main.cpp", annotation.content);
+    for(unsigned idx = 0; idx < annotation.offsets.size(); ++idx) {}
+};
+
+TEST_CASE(DeducedType_Auto) {
+    tester.clear();
+    constexpr auto code = R"CODE(
+struct A {
+    int a;
+    int b;
+    int c;
+    float d;
+};
+
+struct A1 : A {};
+
+template <typename T>
+struct B {
+    T *inner;
+
+    template <typename S>
+    B(S *s) {
+        inner = s;
+    }
+
+    template <typename S>
+    auto get_as() {
+        return *static_cast<S *>(inner);
+    }
+};
+
+int main(void) {
+    au$(pos_0)to $(pos_0_i)a = A{};
+    au$(pos_1)to $(pos_1_i)b = B<A>(&a);
+    au$(pos_2)to $(pos_2_i)a1 = b.get_as<A1>();
+    au$(pos_3)to $(pos_3_i)msg = "hello world";
+    au$(pos_4)to $(pos_4_i)c1 = 'c';
+    au$(pos_5)to $(pos_5_i)c2 = 0;
+    au$(pos_6)to $(pos_6_i)c3 = 114514;
+    au$(pos_7)to $(pos_7_i)c4 = 11451419198101919810;
+    return 0;
+}
+        )CODE";
+    auto annotation = AnnotatedSource::from(code);
+    tester.add_main("main.cpp", annotation.content);
+    std::vector<unsigned> offsets;
+    tester.compile();
+    ASSERT_TRUE(tester.unit.has_value());
+    const unsigned count = annotation.offsets.size();
+    for(unsigned i = 0; i < count; ++i) {
+        unsigned offset = annotation.offsets[std::format("pos_{}", i)];
+        auto HI = clice::feature::hover(*tester.unit, offset, {});
+        if(HI.has_value()) {
+            auto msg = HI->display({});
+            std::println("```\n{}```\n", *msg);
+        } else {
+            std::println("No hover info");
+        }
+    }
+};
+
+TEST_CASE(DeducedType_Decltype) {
+    tester.clear();
+    constexpr auto code = R"CODE(
+#include <utility>
+
+struct Foo {
+    int x;
+
+    double y() {
+        return 3.14;
+    }
+};
+
+int main() {
+    int a = 42;
+    const int ca = 100;
+    int &ra = a;
+    int &&rra = 123;
+
+    decl$(pos_0)type(a) v1;            // int
+    decl$(pos_1)type(ca) v2 = 114514;  // const int
+    decl$(pos_2)type(ra) v3 = a;       // int&
+    decl$(pos_3)type(rra) v4 = 456;    // int&&
+
+    declt$(pos_4)ype((a)) v5 = a;    // int&
+    declt$(pos_5)ype((ca)) v6 = ca;  // const int&
+    declt$(pos_6)ype((ra)) v7 = ra;  // int&
+    declt$(pos_7)ype((rra)) v8 = a;  // int&
+
+    declty$(pos_8)pe(a + 1) v9;     // int
+    declty$(pos_9)pe(a + 1.0) v10;  // double
+
+    Foo f;
+    decltype(f.x) v11;          // int
+    decltype((f.x)) v12 = f.x;  // int&
+    decltype(f.y()) v13;        // double
+
+    // decltype(auto)
+    auto get_a = [&]() -> declt$(pos_10)ype(auto) {
+        return (a);
+    };
+    auto get_ca = [&]() -> de$(pos_11)cltype(auto) {
+        return ca;
+    };
+    declt$(pos_12)ype(auto) r1 = get_a();   // int&
+    decltyp$(pos_13)ype(auto) r2 = get_ca();  // const int
+
+    // auto vs decltype(auto)
+    auto x1 = (a);            // int
+    de$(pos_13)cltype(auto) x2 = (a);  // int&
+
+    using T1 = dec$(pos_14)ltype(std::declval<Foo>().y());  // double
+    using T2 = dec$(pos_15)ltype((std::declval<Foo>().x));  // int&&
+
+    return 0;
+}
+        )CODE";
+
+    auto annotation = AnnotatedSource::from(code);
+    tester.add_main("main.cpp", annotation.content);
+    tester.compile();
+    ASSERT_TRUE(tester.unit.has_value());
+    const unsigned count = annotation.offsets.size();
+    for(unsigned i = 0; i < count; ++i) {
+        unsigned offset = annotation.offsets[std::format("pos_{}", i)];
+        auto HI = clice::feature::hover(*tester.unit, offset, {});
+        if(HI.has_value()) {
+            auto msg = HI->display({});
+            std::println("```\n{}```\n", *msg);
+        } else {
+            std::println("No hover info");
+        }
+    }
+};
+
 TEST_CASE(Namespace) {
     run(R"cpp(
 namespace A {
@@ -403,6 +615,6 @@ struct A {
     run(code);
 }
 
-};  // TEST_SUITE(Hover)
+};  // namespace clice::testing
 }  // namespace
 }  // namespace clice::testing
