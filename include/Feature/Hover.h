@@ -22,6 +22,7 @@ struct HoverOptions {
 namespace clice::feature {
 
 struct HoverItem {
+    // NOTE: Use a set of drieved classes?
     enum class HoverKind : uint8_t {
         /// The typename of a variable or a type alias.
         Type,
