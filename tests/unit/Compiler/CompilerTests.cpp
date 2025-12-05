@@ -5,6 +5,8 @@
 #include "Compiler/Compilation.h"
 #include "Support/FileSystem.h"
 
+#include "clang/Tooling/DependencyScanning/DependencyScanningTool.h"
+
 namespace clice::testing {
 
 namespace {
@@ -63,6 +65,18 @@ TEST_CASE(StopCompilation) {
     thread.join();
 
     ASSERT_FALSE(result);
+}
+
+TEST_CASE(ScanDeps) {
+    namespace deps = clang::tooling::dependencies;
+    deps::DependencyScanningService service(deps::ScanningMode::DependencyDirectivesScan,
+                                            deps::ScanningOutputFormat::Full);
+    deps::DependencyScanningTool tool(service);
+
+    auto err = tool.getDependencyFile({}, "");
+    if(!err) {
+        /// TODO:
+    }
 }
 
 };  // TEST_SUITE(Compiler)

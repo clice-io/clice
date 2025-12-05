@@ -79,6 +79,7 @@ target("clice-core", function()
 				"clangLex",
 				"clangSema",
 				"clangSerialization",
+				"clangDependencyScanning",
 				"clangTidy",
 				"clangTidyUtils",
 				-- ALL_CLANG_TIDY_CHECKS
