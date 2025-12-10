@@ -168,7 +168,8 @@ static std::string get_document(CompilationUnit& unit,
     if(!comment) {
         return "";
     }
-    auto raw_string = comment->getRawText(Ctx.getSourceManager()).str();
+    auto raw_string = comment->getFormattedText(Ctx.getSourceManager(), Ctx.getDiagnostics());
+    LOG_WARN("Got comment:\n```\n{}\n```\n", raw_string);
     return "";
 }
 
@@ -426,7 +427,9 @@ static std::optional<Hover> hover(CompilationUnit& unit,
                                   const config::HoverOptions& opt) {
     // TODO: Hover for type
     // TODO: Add source code
-    return Hover{.kind = SymbolKind::Type, .name = ty.getAsString()};
+    auto& ctx = unit.context();
+    auto pp = ctx.getPrintingPolicy();
+    return Hover{.kind = SymbolKind::Type, .name = print_type(ctx, ty, pp, opt)};
 }
 
 static std::optional<Hover> hover(CompilationUnit& unit,
