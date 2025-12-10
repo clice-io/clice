@@ -35,6 +35,19 @@ cl::opt<bool> enable_example{
     cl::cat(unittest_category),
 };
 
+cl::opt<logging::Level> log_level{
+    "log-level",
+    cl::value_desc("trace|debug|info|warn|error"),
+    cl::init(logging::Level::info),
+    cl::values(clEnumValN(logging::Level::trace, "trace", ""),
+               clEnumValN(logging::Level::debug, "debug", ""),
+               clEnumValN(logging::Level::info, "info", ""),
+               clEnumValN(logging::Level::warn, "warn", ""),
+               clEnumValN(logging::Level::err, "error", ""),
+               clEnumValN(logging::Level::off, "off", "")),
+    cl::desc("The log level, default is info"),
+};
+
 }  // namespace
 
 int main(int argc, const char* argv[]) {
@@ -42,6 +55,7 @@ int main(int argc, const char* argv[]) {
     llvm::cl::HideUnrelatedOptions(unittest_category);
     llvm::cl::ParseCommandLineOptions(argc, argv, "clice test\n");
 
+    logging::options.level = log_level;
     logging::stderr_logger("clice", logging::options);
 
     if(auto result = fs::init_resource_dir(argv[0]); !result) {
