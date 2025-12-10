@@ -245,6 +245,72 @@ int main() {
     }
 };
 
+TEST_CASE(Comments) {
+    constexpr auto code = R"CODE(
+/// This is line comment
+/// This comment line 2
+///     This comment line 3 with indent
+/// This comment line 4
+static void fu$(pos_0)nc() {
+
+}
+
+// This is line comment
+// This comment line 2
+//     This comment line 3 with indent
+// This comment line 4
+static void fu$(pos_1)nc1() {
+
+}
+
+/*
+ * This is block comment
+ * This comment line 2
+ *     This comment line 3 with indent
+ * This comment line 4
+ */
+static void fu$(pos_2)nc2() {
+
+}
+
+/**
+ * This is block comment
+ * This comment line 2
+ *     This comment line 3 with indent
+ * This comment line 4
+ **/
+static void fu$(pos_3)nc3() {
+
+}
+
+/********************************************
+ * This is block comment
+ * This comment line 2
+ *     This comment line 3 with indent
+ * This comment line 4
+ *******************************************/
+static void fu$(pos_4)nc4() {
+
+}
+    )CODE";
+
+    auto annotation = AnnotatedSource::from(code);
+    tester.add_main("main.cpp", annotation.content);
+    tester.compile();
+    ASSERT_TRUE(tester.unit.has_value());
+    const unsigned count = annotation.offsets.size();
+    for(unsigned i = 0; i < count; ++i) {
+        unsigned offset = annotation.offsets[std::format("pos_{}", i)];
+        auto HI = clice::feature::hover(*tester.unit, offset, {});
+        // if(HI.has_value()) {
+        //     auto msg = HI->display({});
+        //     std::println("```\n{}```\n", *msg);
+        // } else {
+        //     std::println("No hover info");
+        // }
+    }
+}
+
 TEST_CASE(Namespace) {
     run(R"cpp(
 namespace A {
