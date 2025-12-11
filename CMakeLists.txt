@@ -24,6 +24,11 @@ if(NOT WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fsanitize=address")
 endif()
 
+if(APPLE)
+    # https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
+    string(APPEND CMAKE_CXX_FLAGS " -D_LIBCPP_DISABLE_AVAILABILITY=1")
+endif()
+
 include("${PROJECT_SOURCE_DIR}/cmake/package.cmake")
 
 add_library(clice_options INTERFACE)
@@ -43,10 +48,6 @@ if(WIN32)
         -Wl,/OPT:REF
     )
 elseif(APPLE)
-    target_compile_options(clice_options INTERFACE
-        # https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
-        -D_LIBCPP_DISABLE_AVAILABILITY=1
-    )
     target_link_options(clice_options INTERFACE
         -fuse-ld=lld
         -Wl,-dead_strip
