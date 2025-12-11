@@ -27,16 +27,10 @@ jobs:
         include:
           - os: windows-2025
             build_type: RelWithDebInfo
-            cc: clang
-            cxx: clang++
           - os: ubuntu-24.04
             build_type: Debug
-            cc: clang
-            cxx: clang++
           - os: macos-15
             build_type: Debug
-            cc: clang
-            cxx: clang++
 
     runs-on: ${{ matrix.os }}
 
@@ -45,9 +39,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Pixi
-        uses: prefix-dev/setup-pixi@v0.8.1
+        uses: prefix-dev/setup-pixi@v0.9.3
         with:
-          pixi-version: v0.39.0
+          pixi-version: v0.59.0
           environments: develop
           activate-environment: true
           cache: true
@@ -58,8 +52,8 @@ jobs:
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
-            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
             -DCLICE_ENABLE_TEST=ON \
             -DCLICE_CI_ENVIRONMENT=ON
 
