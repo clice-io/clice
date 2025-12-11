@@ -61,8 +61,8 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.cc }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
             -DCLICE_ENABLE_TEST=ON \
-            -DCLICE_CI_ENVIRONMENT=ON
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+            -DCLICE_CI_ENVIRONMENT=ON \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="15.0"
 
           cmake --build build
 
