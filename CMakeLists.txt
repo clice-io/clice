@@ -43,6 +43,10 @@ if(WIN32)
         -Wl,/OPT:REF
     )
 elseif(APPLE)
+    target_compile_options(clice_options INTERFACE
+        # https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
+        -D_LIBCPP_DISABLE_AVAILABILITY=1
+    )
     target_link_options(clice_options INTERFACE
         -fuse-ld=lld
         -Wl,-dead_strip
