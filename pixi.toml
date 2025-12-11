@@ -1,7 +1,12 @@
 [workspace]
 name = "clice"
 version = "0.1.0"
+description = "A next-generation C++ language server for modern C++"
 authors = ["ykiko <ykikoykikoykiko@gmail.com>"]
+
+license = "Apache-2.0"
+license-file = "LICENSE"
+
 channels = ["conda-forge"]
 platforms = ["win-64", "linux-64", "osx-arm64"]
 
