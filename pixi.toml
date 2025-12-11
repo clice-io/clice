@@ -13,9 +13,9 @@ platforms = ["win-64", "linux-64", "osx-arm64"]
 [dependencies]
 cmake = ">=3.28"
 ninja = "*"
-clang = ">=20.1.8"
-clangxx = ">=20.1.8"
-lld = ">=20.1.8"
+clang = "==20.1.8"
+clangxx = "==20.1.8"
+lld = "==20.1.8"
 
 [target.linux-64.dependencies]
 # sysroot_linux-64 = "==2.17"
