@@ -3,6 +3,7 @@ project(CLICE_PROJECT LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(GNUInstallDirs)
@@ -49,6 +50,7 @@ elseif(APPLE)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(clice_options INTERFACE
         -fuse-ld=lld
+        -static-libstdc++ -static-libgcc
         -Wl,--gc-sections
     )
 endif()

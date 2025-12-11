@@ -135,6 +135,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
     GIT_TAG        v1.0.4
 )
+set(CPPTRACE_DISABLE_CXX_20_MODULES ON CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring flatbuffers cpptrace)
 
