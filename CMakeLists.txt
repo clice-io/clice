@@ -26,7 +26,7 @@ endif()
 
 if(APPLE)
     # https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
-    string(APPEND CMAKE_CXX_FLAGS " -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0")
+    string(APPEND CMAKE_CXX_FLAGS " -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 -D_LIBCPP_DISABLE_AVAILABILITY=1")
 endif()
 
 include("${PROJECT_SOURCE_DIR}/cmake/package.cmake")
