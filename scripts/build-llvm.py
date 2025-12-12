@@ -8,7 +8,9 @@ from pathlib import Path
 
 def resolve_tool(name: str) -> str:
     path = shutil.which(name)
-    return path if path else name
+    if not path:
+        return name
+    return Path(path).as_posix()
 
 
 def main():
