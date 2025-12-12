@@ -65,6 +65,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Increase Swap Space
+        if: runner.os == 'Linux'
+        run: |
+          echo "===== Initial Status ====="
+          sudo swapon --show
+          free -h
+
+          echo "===== Creating Swap File ====="
+          sudo swapoff -a
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+
+          echo "===== Final Status ====="
+          sudo swapon --show
+          free -h
+          df -h
+
       - name: Setup Pixi
         uses: prefix-dev/setup-pixi@v0.9.3
         with:
