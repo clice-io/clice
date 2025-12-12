@@ -151,13 +151,8 @@ def main():
         "-G",
         "Ninja",
         f"-DCMAKE_INSTALL_PREFIX={install_prefix}",
-        "-DCMAKE_C_COMPILER=clang",
-        "-DCMAKE_CXX_COMPILER=clang++",
         "-DCMAKE_C_FLAGS=-w",
         "-DCMAKE_CXX_FLAGS=-w",
-        "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
-        "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld",
-        "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld",
         "-DLLVM_ENABLE_ZLIB=OFF",
         "-DLLVM_ENABLE_ZSTD=OFF",
         "-DLLVM_ENABLE_LIBXML2=OFF",
@@ -192,10 +187,22 @@ def main():
         "-DCMAKE_JOB_POOL_LINK=console",
         "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
         "-DLLVM_TARGETS_TO_BUILD=all",
-        "-DLLVM_USE_LINKER=lld",
         # Distribution
         f"-DLLVM_DISTRIBUTION_COMPONENTS={components_joined}",
     ]
+
+    if sys.platform == "win32":
+        cmake_args.append("-DCMAKE_C_COMPILER=clang-cl")
+        cmake_args.append("-DCMAKE_CXX_COMPILER=clang-cl")
+        cmake_args.append("-DLLVM_USE_LINKER=lld")
+    else:
+        cmake_args.append("-DCMAKE_C_COMPILER=clang")
+        cmake_args.append("-DCMAKE_CXX_COMPILER=clang++")
+        cmake_args.append("-DLLVM_USE_LINKER=lld")
+
+        cmake_args.append("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
+        cmake_args.append("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
+        cmake_args.append("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
 
     is_shared = "OFF"
 
@@ -254,6 +261,30 @@ def main():
             print(f"  Copied {header}")
         else:
             print(f"  Warning: {header} not found in source.")
+
+    def human_readable(num: int) -> str:
+        for unit in ["B", "KB", "MB", "GB"]:
+            if num < 1024.0:
+                return f"{num:,.1f}{unit}"
+            num /= 1024.0
+        return f"{num:.1f}TB"
+
+    lib_dir = install_prefix / "lib"
+    sizes = []
+    if lib_dir.exists():
+        for p in lib_dir.rglob("*"):
+            if p.is_file():
+                sizes.append((p, p.stat().st_size))
+    sizes.sort(key=lambda x: x[1], reverse=True)
+
+    total_size = sum(sz for _, sz in sizes)
+    print(f"\nLibrary size summary under {lib_dir}:")
+    print(f"  Total: {human_readable(total_size)} across {len(sizes)} files")
+    for path, sz in sizes:
+        rel = path.relative_to(install_prefix)
+        print(f"  {human_readable(sz):>8}  {rel}")
+    if not sizes:
+        print("  (no files found)")
 
     print(f"\nSuccess! Artifacts installed to: {install_prefix}")
 
