@@ -51,11 +51,11 @@ jobs:
         shell: bash
         run: |
           cat > /tmp/hello.cpp <<'EOF'
-          #include <iostream>
+          #include <execinfo.h>
 
           int main() {
-            std::cout << "Hello, world!" << std::endl;
-            return 0;
+            void* frames[10];
+            backtrace(frames, 10);
           }
           EOF
 
