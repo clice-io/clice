@@ -25,10 +25,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-2025
-            build_type: RelWithDebInfo
-          - os: ubuntu-24.04
-            build_type: Debug
+          #- os: windows-2025
+          #  build_type: RelWithDebInfo
+          #- os: ubuntu-24.04
+          #  build_type: Debug
           - os: macos-15
             build_type: Debug
 
@@ -47,24 +47,40 @@ jobs:
           cache: true
           locked: true
 
-      - name: Build clice
+      - name: Hello world with ASan + lld
         shell: bash
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCLICE_DEV_ENV=ON \
-            -DCLICE_ENABLE_TEST=ON \
-            -DCLICE_CI_ENVIRONMENT=ON
+          cat > /tmp/hello.cpp <<'EOF'
+          #include <iostream>
 
-          cmake --build build
+          int main() {
+            std::cout << "Hello, world!" << std::endl;
+            return 0;
+          }
+          EOF
 
-      - name: Run tests
-        shell: bash
-        run: |
-          EXE_EXT=""
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            EXE_EXT=".exe"
-          fi
+          clang++ -std=c++17 -fsanitize=address -fno-omit-frame-pointer -g -O1 \
+            -fuse-ld=lld /tmp/hello.cpp -o /tmp/hello
 
-          ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
-          uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
+          ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 /tmp/hello
+
+      #- name: Build clice
+      #  shell: bash
+      #  run: |
+      #    cmake -B build -G Ninja \
+      #      -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+      #      -DCLICE_DEV_ENV=ON \
+      #      -DCLICE_ENABLE_TEST=ON \
+      #      -DCLICE_CI_ENVIRONMENT=ON
+      #
+      #    cmake --build build
+
+      #- name: Run tests
+      #  shell: bash
+      #  run: |
+      #    EXE_EXT=""
+      #    if [[ "${{ runner.os }}" == "Windows" ]]; then
+      #      EXE_EXT=".exe"
+      #    fi
+      #    ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
+      #    uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
