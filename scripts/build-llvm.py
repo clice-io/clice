@@ -6,6 +6,11 @@ import argparse
 from pathlib import Path
 
 
+def resolve_tool(name: str) -> str:
+    path = shutil.which(name)
+    return path if path else name
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Build LLVM with specific configurations."
@@ -207,9 +212,9 @@ def main():
         cmake_args.append("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
 
     # Use matching LLVM binutils to avoid old bfd LTO plugins
-    cmake_args.append("-DCMAKE_AR=llvm-ar")
-    cmake_args.append("-DCMAKE_RANLIB=llvm-ranlib")
-    cmake_args.append("-DCMAKE_NM=llvm-nm")
+    cmake_args.append(f"-DCMAKE_AR={resolve_tool('llvm-ar')}")
+    cmake_args.append(f"-DCMAKE_RANLIB={resolve_tool('llvm-ranlib')}")
+    cmake_args.append(f"-DCMAKE_NM={resolve_tool('llvm-nm')}")
 
     is_shared = "OFF"
     if args.mode == "debug":
