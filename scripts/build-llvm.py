@@ -195,6 +195,8 @@ def main():
         cmake_args.append("-DCMAKE_C_COMPILER=clang-cl")
         cmake_args.append("-DCMAKE_CXX_COMPILER=clang-cl")
         cmake_args.append("-DLLVM_USE_LINKER=lld")
+        # avoid ml64 requirement on Windows
+        cmake_args.append("-DLLVM_DISABLE_ASSEMBLY_FILES=ON")
     else:
         cmake_args.append("-DCMAKE_C_COMPILER=clang")
         cmake_args.append("-DCMAKE_CXX_COMPILER=clang++")
