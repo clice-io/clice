@@ -73,12 +73,17 @@ RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked,id=python-build-en
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' >> /etc/apt/apt.conf.d/99keepcache
 
     apt update -o DPkg::Lock::Timeout=-1
-    apt install -y --no-install-recommends -o DPkg::Lock::Timeout=-1 curl jq ca-certificates
+    apt install -y --no-install-recommends -o DPkg::Lock::Timeout=-1 curl jq ca-certificates software-properties-common
+    # Python PPA
+    add-apt-repository ppa:deadsnakes/ppa
+    apt update -o DPkg::Lock::Timeout=-1
     
+    # Get Python version from configuration and install via APT
+    PYTHON_VERSION=$(jq -r .python ${CLICE_WORKDIR}/config/docker_build_stages/default-toolchain-version.json)
     # Get uv version from configuration
     UV_VERSION=$(jq -r .uv ${CLICE_WORKDIR}/config/docker_build_stages/default-toolchain-version.json)
-    echo "📦 Installing uv version: $UV_VERSION"
-    
+
+    echo "📦 Installing uv version: $UV_VERSION"    
     # Determine architecture for uv standalone build
     ARCH=$(uname -m)
     case "$ARCH" in
@@ -126,32 +131,23 @@ RUN --mount=type=cache,target=${APT_CACHE_DIR},sharing=locked,id=python-build-en
     mkdir -p /root/.local/bin
     tar -xzf "$UV_PACKAGE_TARBALL_FILE" -C /root/.local/bin --strip-components=1
     
-    # Verify installation
-    echo "✅ UV installed successfully:"
-    uv --version
+    echo "🐍 Installing Python ${PYTHON_VERSION} via APT..."
+    apt install -y --no-install-recommends -o DPkg::Lock::Timeout=-1 "python${PYTHON_VERSION}"
 
-    # Get Python version from configuration
-    PYTHON_VERSION=$(jq -r .python ${CLICE_WORKDIR}/config/docker_build_stages/default-toolchain-version.json)
-    echo "🐍 Installing Python version: $PYTHON_VERSION"
+    # Configure UV to use system Python only
+    echo "🔧 Configuring UV to use system Python (only-system mode)..."
+    uv python install "$PYTHON_VERSION" --default --python-preference only-system
     
-    # Install Python using UV with package_dir as cache
-    echo "🔧 Installing Python ${PYTHON_VERSION} to package directory..."
-    # This creates Python installation cache in RELEASE_PACKAGE_DIR for expand-stage
-    # So we use UV_PACKAGE_CACHE_DIR here
-    UV_CACHE_DIR=${UV_PACKAGE_CACHE_DIR} uv python install "$PYTHON_VERSION" --default
-
     # Save Python version to a file for expanded-image stage to read
-    # This allows expanded-image to know which Python version to install without jq
     echo "$PYTHON_VERSION" > "${UV_PACKAGE_ROOT}/.python-version"
     echo "📝 Saved Python version to: ${UV_PACKAGE_ROOT}/.python-version"
 
-    echo "✅ Python installation cached to: ${UV_PACKAGE_CACHE_DIR}"
-
-    # Setup Python project environment
-    echo "🔧 Setting up Python project environment..."
-    # cache to build cache, here we use docker/linux/utility pyproject.toml, only for build
-    UV_CACHE_DIR=${UV_BUILD_CACHE_PACKAGE_DIR} uv sync --project ${CLICE_WORKDIR}/docker/linux/utility/pyproject.toml
-    echo "✅ Base Python environment setup complete!"
+    # Setup Python project environment using system Python
+    echo "🔧 Setting up Python project environment with system Python..."
+    # UV will use the APT-installed Python (only-system mode)
+    UV_CACHE_DIR=${UV_BUILD_CACHE_PACKAGE_DIR} \
+        uv sync --project ${CLICE_WORKDIR}/docker/linux/utility/pyproject.toml
+    echo "✅ Base Python environment setup complete (using APT Python)!"
 SCRIPT
 
 WORKDIR ${CLICE_WORKDIR}

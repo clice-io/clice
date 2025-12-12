@@ -288,22 +288,33 @@ def download_xmake() -> None:
 def download_python_packages() -> None:
     print("🐍 Downloading Python packages from pyproject.toml...")
     
-    # Create cache directory for packages
-    os.makedirs(UV.packages_package_dir, exist_ok=True)
+    # Create package directory for wheel files
+    os.makedirs(UV.package_dir, exist_ok=True)
     
-    # Set UV_CACHE_DIR to packages cache directory
-    print(f"📥 Downloading package wheels to UV packages package dir: {UV.packages_package_dir}")
+    print(f"📥 Downloading package wheels to: {UV.package_dir}")
     print(f"📋 Using pyproject.toml from: {UV.pyproject_file_path}")
     
-    # Run uv sync with project root as working directory
-    # UV will automatically find pyproject.toml in the project root
+    pyproject_dir = os.path.dirname(UV.pyproject_file_path)
+    
+    # Step 1: Generate requirements.txt from pyproject.toml
+    requirements_file = os.path.join(UV.package_dir, "requirements.txt")
+    print("📝 Generating requirements.txt from pyproject.toml...")
     run_command(
-        f"UV_CACHE_DIR={UV.packages_package_dir} uv sync --no-install-project --no-editable",
-        cwd=os.path.dirname(UV.pyproject_file_path)
+        f"uv pip compile {UV.pyproject_file_path} -o {requirements_file}",
+        cwd=pyproject_dir
+    )
+    
+    # Step 2: Download wheel files to package directory
+    print(f"📦 Downloading wheel files to {UV.package_dir}...")
+    run_command(
+        f"uv pip download -r {requirements_file} --dest {UV.package_dir}",
+        cwd=pyproject_dir
     )
 
-    print(f"✅ Package wheels cached to: {UV.packages_package_dir}")
-    print(f"📁 Packages cache will be available to later stages via cache mount")
+    # Count downloaded wheels
+    wheel_count = len([f for f in os.listdir(UV.package_dir) if f.endswith('.whl')])
+    print(f"✅ Downloaded {wheel_count} wheel files to: {UV.package_dir}")
+    print(f"📁 Wheel files will be available to later stages via cache mount")
 
 # LLVM downloading removed as per requirements
 

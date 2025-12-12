@@ -12,51 +12,45 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from typing import Dict, List, Set
+from typing import Dict, List
 
 from build_utils import (
     Job,
     ParallelTaskScheduler,
     run_command,
-    install_download_prerequisites,
-    install_extract_prerequisites,
     download_and_verify,
     extract_source,
     extract_package,
+    install_download_prerequisites,
+    install_extract_prerequisites
 )
 
-from config.docker_build_stages.common import TOOLCHAIN_BUILD_ENV_VARS, COMPILER
+from config.docker_build_stages.common import TOOLCHAIN_BUILD_ENV_VARS, COMPILER, Component
 from config.docker_build_stages.toolchain_config import (
     TOOLCHAIN,
-    ToolchainComponent,
     GccSubComponent,
     LinuxSubComponent,
     GlibcSubComponent,
     ZigSubComponent
 )
 
-# ========================================================================
-# 📦 Environment Setup Tasks
-# ========================================================================
-
-def install_build_prerequisites(component: ToolchainComponent) -> None:
+def install_build_prerequisites(component: Component) -> None:
     """    
+    Install prerequisites needed for building component.
+    
     Note: We maintain multiple GCC versions because glibc requires
     GCC < 10 to avoid linker symbol conflicts, while modern libstdc++
     benefits from the latest compiler features.
     """
-    # Collect all build prerequisites from sub-components
-    all_prerequisites = set()
-    for sub_component in component.sub_components:
-        all_prerequisites.update(sub_component.build_prerequisites)
+    prerequisites = component.build_prerequisites
     
-    if not all_prerequisites:
+    if not prerequisites:
         print(f"ℹ️ [SETUP] No build prerequisites for {component.name}")
         return
     
     print(f"🔨 [SETUP] Installing build prerequisites for {component.name}...")
-    print(f"    📋 Packages: {', '.join(sorted(all_prerequisites))}")
-    pkg_list = " ".join(sorted(all_prerequisites))
+    print(f"    📋 Packages: {', '.join(sorted(prerequisites))}")
+    pkg_list = " ".join(sorted(prerequisites))
     run_command(f"apt install -y --no-install-recommends=true -o DPkg::Lock::Timeout=-1 {pkg_list}")
     
     # Setup GCC alternatives after installation

@@ -70,8 +70,7 @@ jobs:
           ./docker/linux/build.sh \
             --compiler ${{ matrix.compiler }} \
             --cache-from type=gha,scope=${{ matrix.compiler }} \
-            --cache-to type=gha,mode=max,scope=${{ matrix.compiler }} \
-            --rebuild
+            --cache-to type=gha,mode=max,scope=${{ matrix.compiler }}
 
       - name: Tag and push image to registry
         run: |
