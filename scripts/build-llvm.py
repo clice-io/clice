@@ -204,19 +204,39 @@ def main():
         cmake_args.append("-DLLVM_USE_LINKER=lld")
         # avoid ml64 requirement on Windows
         cmake_args.append("-DLLVM_DISABLE_ASSEMBLY_FILES=ON")
+
+        # use MS-style LLVM archiver to match CMake's expected flags.
+        llvm_lib = resolve_tool("llvm-lib")
+        llvm_ranlib = resolve_tool("llvm-ranlib")
+        llvm_nm = resolve_tool("llvm-nm")
+        cmake_args.append(f"-DCMAKE_AR={llvm_lib}")
+        cmake_args.append(f"-DCMAKE_RANLIB={llvm_ranlib}")
+        cmake_args.append(f"-DCMAKE_NM={llvm_nm}")
+        cmake_args.append(f"-DCMAKE_C_COMPILER_AR={llvm_lib}")
+        cmake_args.append(f"-DCMAKE_CXX_COMPILER_AR={llvm_lib}")
+        cmake_args.append(f"-DCMAKE_C_COMPILER_RANLIB={llvm_ranlib}")
+        cmake_args.append(f"-DCMAKE_CXX_COMPILER_RANLIB={llvm_ranlib}")
     else:
         cmake_args.append("-DCMAKE_C_COMPILER=clang")
         cmake_args.append("-DCMAKE_CXX_COMPILER=clang++")
         cmake_args.append("-DLLVM_USE_LINKER=lld")
 
+        # workaround for macos
         cmake_args.append("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
         cmake_args.append("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
         cmake_args.append("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
 
-    # Use matching LLVM binutils to avoid old bfd LTO plugins
-    cmake_args.append(f"-DCMAKE_AR={resolve_tool('llvm-ar')}")
-    cmake_args.append(f"-DCMAKE_RANLIB={resolve_tool('llvm-ranlib')}")
-    cmake_args.append(f"-DCMAKE_NM={resolve_tool('llvm-nm')}")
+        # use matching LLVM binutils to avoid old bfd LTO plugins
+        llvm_ar = resolve_tool("llvm-ar")
+        llvm_ranlib = resolve_tool("llvm-ranlib")
+        llvm_nm = resolve_tool("llvm-nm")
+        cmake_args.append(f"-DCMAKE_AR={llvm_ar}")
+        cmake_args.append(f"-DCMAKE_RANLIB={llvm_ranlib}")
+        cmake_args.append(f"-DCMAKE_NM={llvm_nm}")
+        cmake_args.append(f"-DCMAKE_C_COMPILER_AR={llvm_ar}")
+        cmake_args.append(f"-DCMAKE_CXX_COMPILER_AR={llvm_ar}")
+        cmake_args.append(f"-DCMAKE_C_COMPILER_RANLIB={llvm_ranlib}")
+        cmake_args.append(f"-DCMAKE_CXX_COMPILER_RANLIB={llvm_ranlib}")
 
     is_shared = "OFF"
     if args.mode == "debug":
