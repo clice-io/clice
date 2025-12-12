@@ -206,8 +206,12 @@ def main():
         cmake_args.append("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
         cmake_args.append("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
 
-    is_shared = "OFF"
+    # Use matching LLVM binutils to avoid old bfd LTO plugins
+    cmake_args.append("-DCMAKE_AR=llvm-ar")
+    cmake_args.append("-DCMAKE_RANLIB=llvm-ranlib")
+    cmake_args.append("-DCMAKE_NM=llvm-nm")
 
+    is_shared = "OFF"
     if args.mode == "debug":
         cmake_args.append("-DCMAKE_BUILD_TYPE=Debug")
         cmake_args.append("-DLLVM_USE_SANITIZER=Address")
@@ -218,9 +222,6 @@ def main():
         cmake_args.append("-DCMAKE_BUILD_TYPE=RelWithDebInfo")
 
     cmake_args.append(f"-DBUILD_SHARED_LIBS={is_shared}")
-
-    if is_shared == "OFF":
-        cmake_args.append("-DCLANG_BUILD_STATIC=ON")
 
     if args.lto.lower() in ["on", "true"]:
         cmake_args.append("-DLLVM_ENABLE_LTO=ON")
