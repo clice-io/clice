@@ -1,0 +1,103 @@
+name: llvm
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/llvm.yml"
+      - "cmake/build-llvm.cmake"
+      - "scripts/build-llvm.py"
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "src/**"
+      - "include/**"
+      - "tests/**"
+
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/llvm.yml"
+      - "cmake/build-llvm.cmake"
+      - "scripts/build-llvm.py"
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "src/**"
+      - "include/**"
+      - "tests/**"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows
+          - os: windows-2025
+            llvm_mode: releasedbg
+            lto: off
+          - os: windows-2025
+            llvm_mode: releasedbg
+            lto: on
+          # Linux
+          - os: ubuntu-24.04
+            llvm_mode: debug
+            lto: off
+          - os: ubuntu-24.04
+            llvm_mode: releasedbg
+            lto: off
+          - os: ubuntu-24.04
+            llvm_mode: releasedbg
+            lto: on
+          # macOS
+          - os: macos-15
+            llvm_mode: debug
+            lto: off
+          - os: macos-15
+            llvm_mode: releasedbg
+            lto: off
+          - os: macos-15
+            llvm_mode: releasedbg
+            lto: on
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.3
+        with:
+          pixi-version: v0.59.0
+          environments: develop
+          activate-environment: true
+          cache: true
+          locked: true
+
+      - name: Clone llvm-project (21.1.4)
+        shell: bash
+        run: |
+          git clone --branch llvmorg-21.1.4 --depth 1 https://github.com/llvm/llvm-project.git .llvm
+
+      - name: Build LLVM (install-distribution)
+        shell: bash
+        run: |
+          cd .llvm
+          python ../scripts/build-llvm.py "${{ matrix.llvm_mode }}" "${{ matrix.lto }}"
+
+      - name: Build clice using installed LLVM
+        shell: bash
+        run: |
+          LLVM_PREFIX=".llvm/build-${{ matrix.llvm_mode }}-install"
+          if [[ "${{ matrix.llvm_mode }}" == "debug" ]]; then
+            CMAKE_BUILD_TYPE=Debug
+          else
+            CMAKE_BUILD_TYPE=RelWithDebInfo
+          fi
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            -DCLICE_DEV_ENV=ON \
+            -DCLICE_ENABLE_TEST=ON \
+            -DCLICE_CI_ENVIRONMENT=ON \
+            -DLLVM_INSTALL_PATH="${LLVM_PREFIX}"
+          cmake --build build
