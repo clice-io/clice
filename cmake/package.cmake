@@ -76,6 +76,7 @@ endif()
 
 # install dependencies
 include(FetchContent)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
 if(WIN32)
     set(NULL_DEVICE NUL)
@@ -88,6 +89,8 @@ FetchContent_Declare(
     libuv
     GIT_REPOSITORY https://github.com/libuv/libuv.git
     GIT_TAG v1.x
+    GIT_SHALLOW    TRUE
+    GIT_PROGRESS   TRUE
 )
 
 if(NOT WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -102,12 +105,16 @@ FetchContent_Declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
     GIT_TAG v1.15.3
+    GIT_SHALLOW    TRUE
+    GIT_PROGRESS   TRUE
 )
 
 # tomlplusplus
 FetchContent_Declare(
     tomlplusplus
     GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
+    GIT_SHALLOW    TRUE
+    GIT_PROGRESS   TRUE
 )
 
 # croaring
@@ -115,6 +122,8 @@ FetchContent_Declare(
     croaring
     GIT_REPOSITORY https://github.com/RoaringBitmap/CRoaring.git
     GIT_TAG        v4.4.2
+    GIT_SHALLOW    TRUE
+    GIT_PROGRESS   TRUE
 )
 set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "" FORCE)
 set(ENABLE_ROARING_MICROBENCHMARKS OFF CACHE INTERNAL "" FORCE)
@@ -124,6 +133,8 @@ FetchContent_Declare(
     flatbuffers
     GIT_REPOSITORY https://github.com/google/flatbuffers.git
     GIT_TAG        v25.9.23
+    GIT_SHALLOW    TRUE
+    GIT_PROGRESS   TRUE
 )
 set(FLATBUFFERS_BUILD_GRPC OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -134,6 +145,8 @@ FetchContent_Declare(
     cpptrace
     GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
     GIT_TAG        v1.0.4
+    GIT_SHALLOW    TRUE
+    GIT_PROGRESS   TRUE
 )
 set(CPPTRACE_DISABLE_CXX_20_MODULES ON CACHE BOOL "" FORCE)
 

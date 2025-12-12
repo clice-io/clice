@@ -52,8 +52,7 @@ jobs:
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCMAKE_C_COMPILER=clang \
-            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCLICE_DEV_ENV=ON \
             -DCLICE_ENABLE_TEST=ON \
             -DCLICE_CI_ENVIRONMENT=ON
 

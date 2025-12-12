@@ -1,4 +1,16 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.30)
+
+if(CLICE_DEV_ENV)
+    set(CMAKE_C_COMPILER "clang")
+    set(CMAKE_CXX_COMPILER "clang++")
+
+    # it's important to set clang to use lld here, otherwise the compiler detection
+    # may fail on some conda prebuilt clang.
+    set(CMAKE_EXE_LINKER_FLAGS    "-fuse-ld=lld" CACHE STRING "Forced LLD" FORCE)
+    set(CMAKE_SHARED_LINKER_FLAGS "-fuse-ld=lld" CACHE STRING "Forced LLD" FORCE)
+    set(CMAKE_MODULE_LINKER_FLAGS "-fuse-ld=lld" CACHE STRING "Forced LLD" FORCE)
+endif()
+
 project(CLICE_PROJECT LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
