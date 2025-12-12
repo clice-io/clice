@@ -19,7 +19,7 @@ lld = "==20.1.8"
 compiler-rt = "==20.1.8"
 
 [target.linux-64.dependencies]
-# sysroot_linux-64 = "==2.17"
+sysroot_linux-64 = "==2.17"
 gcc = "==14.2.0"
 gxx = "==14.2.0"
 
