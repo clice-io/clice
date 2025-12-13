@@ -29,6 +29,11 @@ on:
 
 jobs:
   build:
+    env:
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPILERCHECK: content
+      CCACHE_NOHASHDIR: 1
+      CCACHE_MAXSIZE: 3G
     strategy:
       fail-fast: false
       matrix:
@@ -66,6 +71,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ matrix.os }}-${{ matrix.llvm_mode }}-${{ matrix.lto }}-${{ hashFiles('CMakeLists.txt', 'cmake/**/*.cmake', 'scripts/build-llvm.py', 'xmake.lua') }}
+          restore-keys: |
+            ccache-${{ matrix.os }}-${{ matrix.llvm_mode }}-${{ matrix.lto }}-
+            ccache-${{ matrix.os }}-
+          max-size: 3G
 
       - name: Start resource monitor (Linux/macOS)
         if: runner.os != 'Windows'
@@ -124,6 +138,9 @@ jobs:
 
       - name: Build LLVM (install-distribution)
         shell: bash
+        env:
+          CCACHE_PROGRAM: ccache
+          CLICE_USE_CCACHE: 1
         run: |
           cd .llvm
           python ../scripts/build-llvm.py "${{ matrix.llvm_mode }}" "${{ matrix.lto }}" --build-dir=build
@@ -141,6 +158,8 @@ jobs:
             -DCLICE_DEV_ENV=ON \
             -DCLICE_ENABLE_TEST=ON \
             -DCLICE_CI_ENVIRONMENT=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DLLVM_INSTALL_PATH=".llvm/build-install"
           cmake --build build
 

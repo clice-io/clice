@@ -3,6 +3,7 @@ import sys
 import subprocess
 import shutil
 import argparse
+import os
 from pathlib import Path
 
 
@@ -210,6 +211,15 @@ def main():
         # Distribution
         f"-DLLVM_DISTRIBUTION_COMPONENTS={components_joined}",
     ]
+
+    ccache_program = os.environ.get("CCACHE_PROGRAM") or os.environ.get("CCACHE")
+    if not ccache_program:
+        ccache_program = shutil.which("ccache")
+    if ccache_program:
+        ccache_path = Path(ccache_program).as_posix()
+        print(f"Using ccache: {ccache_path}")
+        cmake_args.append("-DLLVM_CCACHE_BUILD=ON")
+        cmake_args.append(f"-DCCACHE_PROGRAM={ccache_path}")
 
     if sys.platform == "win32":
         cmake_args.append("-DCMAKE_C_COMPILER=clang-cl")
