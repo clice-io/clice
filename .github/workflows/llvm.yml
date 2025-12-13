@@ -7,6 +7,7 @@ on:
       - ".github/workflows/llvm.yml"
       - "cmake/build-llvm.cmake"
       - "scripts/build-llvm.py"
+      - "scripts/**"
       - "CMakeLists.txt"
       - "cmake/**"
       - "src/**"
@@ -19,6 +20,7 @@ on:
       - ".github/workflows/llvm.yml"
       - "cmake/build-llvm.cmake"
       - "scripts/build-llvm.py"
+      - "scripts/**"
       - "CMakeLists.txt"
       - "cmake/**"
       - "src/**"
@@ -65,6 +67,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Start resource monitor (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          MONITOR_LOG="${RUNNER_TEMP}/resource-usage.log"
+          bash scripts/monitor-resources.sh "${MONITOR_LOG}" >/dev/null 2>&1 &
+          echo "RESOURCE_MONITOR_PID=$!" >> "${GITHUB_ENV}"
+          echo "RESOURCE_MONITOR_LOG=${MONITOR_LOG}" >> "${GITHUB_ENV}"
+
+      - name: Start resource monitor (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $log = Join-Path $Env:RUNNER_TEMP "resource-usage.log"
+          $script = Join-Path $PWD.Path "scripts/monitor-resources.ps1"
+          $job = Start-Job -FilePath $script -ArgumentList $log, 30
+          "RESOURCE_MONITOR_JOB_ID=$($job.Id)" | Out-File -FilePath $Env:GITHUB_ENV -Append
+          "RESOURCE_MONITOR_LOG=$log" | Out-File -FilePath $Env:GITHUB_ENV -Append
+
+      - name: Free Disk Space
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@main
+
       - name: Increase Swap Space
         if: runner.os == 'Linux'
         run: |
@@ -102,12 +126,11 @@ jobs:
         shell: bash
         run: |
           cd .llvm
-          python ../scripts/build-llvm.py "${{ matrix.llvm_mode }}" "${{ matrix.lto }}"
+          python ../scripts/build-llvm.py "${{ matrix.llvm_mode }}" "${{ matrix.lto }}" --build-dir=build
 
       - name: Build clice using installed LLVM
         shell: bash
         run: |
-          LLVM_PREFIX=".llvm/build-${{ matrix.llvm_mode }}-install"
           if [[ "${{ matrix.llvm_mode }}" == "debug" ]]; then
             CMAKE_BUILD_TYPE=Debug
           else
@@ -118,5 +141,27 @@ jobs:
             -DCLICE_DEV_ENV=ON \
             -DCLICE_ENABLE_TEST=ON \
             -DCLICE_CI_ENVIRONMENT=ON \
-            -DLLVM_INSTALL_PATH="${LLVM_PREFIX}"
+            -DLLVM_INSTALL_PATH=".llvm/build-install"
           cmake --build build
+
+      - name: Dump resource monitor log (Linux/macOS)
+        if: always() && runner.os != 'Windows'
+        shell: bash
+        run: |
+          echo "===== Resource usage log ====="
+          if [[ -n "${RESOURCE_MONITOR_LOG:-}" && -f "${RESOURCE_MONITOR_LOG}" ]]; then
+            cat "${RESOURCE_MONITOR_LOG}"
+          else
+            echo "Resource log not found"
+          fi
+
+      - name: Dump resource monitor log (Windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "===== Resource usage log ====="
+          if ($Env:RESOURCE_MONITOR_LOG -and (Test-Path $Env:RESOURCE_MONITOR_LOG)) {
+            Get-Content $Env:RESOURCE_MONITOR_LOG
+          } else {
+            Write-Host "Resource log not found"
+          }

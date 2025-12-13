@@ -31,6 +31,11 @@ def main():
         choices=["on", "off", "true", "false"],
         help="Enable LTO (default: off)",
     )
+    parser.add_argument(
+        "--build-dir",
+        dest="build_dir",
+        help="Custom build directory (relative to project root or absolute)",
+    )
 
     args = parser.parse_args()
 
@@ -41,9 +46,17 @@ def main():
         print("Please run this script from the root of the llvm-project repository.")
         sys.exit(1)
 
-    build_dir_name = f"build-{args.mode}"
-    build_dir = project_root / build_dir_name
-    install_prefix = project_root / f"{build_dir_name}-install"
+    lto_enabled = args.lto.lower() in ["on", "true"]
+    if args.build_dir:
+        build_dir = Path(args.build_dir)
+        if not build_dir.is_absolute():
+            build_dir = project_root / build_dir
+    else:
+        build_dir = f"build-{args.mode}"
+        if lto_enabled:
+            build_dir += "-lto"
+        build_dir = project_root / build_dir
+    install_prefix = build_dir.parent / f"{build_dir.name}-install"
 
     print("--- Configuration ---")
     print(f"Mode:           {args.mode}")
@@ -250,7 +263,7 @@ def main():
 
     cmake_args.append(f"-DBUILD_SHARED_LIBS={is_shared}")
 
-    if args.lto.lower() in ["on", "true"]:
+    if lto_enabled:
         cmake_args.append("-DLLVM_ENABLE_LTO=ON")
     else:
         cmake_args.append("-DLLVM_ENABLE_LTO=OFF")
