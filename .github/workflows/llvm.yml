@@ -40,31 +40,31 @@ jobs:
         include:
           # Windows
           - os: windows-2025
-            llvm_mode: releasedbg
-            lto: off
+            llvm_mode: RelWithDebInfo
+            lto: OFF
           - os: windows-2025
-            llvm_mode: releasedbg
-            lto: on
+            llvm_mode: RelWithDebInfo
+            lto: ON
           # Linux
           - os: ubuntu-24.04
-            llvm_mode: debug
-            lto: off
+            llvm_mode: Debug
+            lto: OFF
           - os: ubuntu-24.04
-            llvm_mode: releasedbg
-            lto: off
+            llvm_mode: RelWithDebInfo
+            lto: OFF
           - os: ubuntu-24.04
-            llvm_mode: releasedbg
-            lto: on
+            llvm_mode: RelWithDebInfo
+            lto: ON
           # macOS
           - os: macos-15
-            llvm_mode: debug
-            lto: off
+            llvm_mode: Debug
+            lto: OFF
           - os: macos-15
-            llvm_mode: releasedbg
-            lto: off
+            llvm_mode: RelWithDebInfo
+            lto: OFF
           - os: macos-15
-            llvm_mode: releasedbg
-            lto: on
+            llvm_mode: RelWithDebInfo
+            lto: ON
 
     runs-on: ${{ matrix.os }}
 
@@ -148,18 +148,14 @@ jobs:
       - name: Build clice using installed LLVM
         shell: bash
         run: |
-          if [[ "${{ matrix.llvm_mode }}" == "debug" ]]; then
-            CMAKE_BUILD_TYPE=Debug
-          else
-            CMAKE_BUILD_TYPE=RelWithDebInfo
-          fi
           cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            -DCMAKE_BUILD_TYPE=${{ matrix.llvm_mode }} \
             -DCLICE_DEV_ENV=ON \
             -DCLICE_ENABLE_TEST=ON \
             -DCLICE_CI_ENVIRONMENT=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCLICE_ENABLE_LTO=${{ matrix.lto }} \
             -DLLVM_INSTALL_PATH=".llvm/build-install"
           cmake --build build
 

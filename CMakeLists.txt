@@ -23,11 +23,21 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 
+option(CLICE_ENABLE_LTO "Enable ThinLTO for all targets" OFF)
+
 # Make sure all third libraries are affected by ABI related options
 if(CLICE_USE_LIBCXX)
     string(APPEND CMAKE_CXX_FLAGS " -stdlib=libc++")
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -stdlib=libc++")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -stdlib=libc++")
+endif()
+
+if(CLICE_ENABLE_LTO)
+    string(APPEND CMAKE_C_FLAGS " -flto=thin")
+    string(APPEND CMAKE_CXX_FLAGS " -flto=thin")
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -flto=thin")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -flto=thin")
+    string(APPEND CMAKE_MODULE_LINKER_FLAGS " -flto=thin")
 endif()
 
 if(NOT WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")

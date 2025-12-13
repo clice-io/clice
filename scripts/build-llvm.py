@@ -7,6 +7,21 @@ import os
 from pathlib import Path
 
 
+def normalize_mode(value: str) -> str:
+    mapping = {
+        "debug": "Debug",
+        "release": "Release",
+        "relwithdebinfo": "RelWithDebInfo",
+        "releasedbg": "RelWithDebInfo",
+    }
+    key = value.strip().lower()
+    if key in mapping:
+        return mapping[key]
+    raise argparse.ArgumentTypeError(
+        f"Invalid mode '{value}'. Choose from Debug, Release, RelWithDebInfo."
+    )
+
+
 def resolve_tool(name: str) -> str:
     path = shutil.which(name)
     if not path:
@@ -21,16 +36,18 @@ def main():
     parser.add_argument(
         "mode",
         nargs="?",
-        default="release",
-        choices=["debug", "release", "releasedbg"],
-        help="Build mode (default: release)",
+        default="Release",
+        type=normalize_mode,
+        choices=["Debug", "Release", "RelWithDebInfo"],
+        help="Build mode (default: Release)",
     )
     parser.add_argument(
         "lto",
         nargs="?",
-        default="off",
-        choices=["on", "off", "true", "false"],
-        help="Enable LTO (default: off)",
+        default="OFF",
+        type=lambda s: s.upper(),
+        choices=["ON", "OFF"],
+        help="Enable LTO (default: OFF)",
     )
     parser.add_argument(
         "--build-dir",
@@ -47,13 +64,15 @@ def main():
         print("Please run this script from the root of the llvm-project repository.")
         sys.exit(1)
 
-    lto_enabled = args.lto.lower() in ["on", "true"]
+    lto_enabled = args.lto == "ON"
+    mode_for_dir = args.mode.lower()
+
     if args.build_dir:
         build_dir = Path(args.build_dir)
         if not build_dir.is_absolute():
             build_dir = project_root / build_dir
     else:
-        build_dir = f"build-{args.mode}"
+        build_dir = f"build-{mode_for_dir}"
         if lto_enabled:
             build_dir += "-lto"
         build_dir = project_root / build_dir
@@ -269,19 +288,19 @@ def main():
         cmake_args.append(f"-DCMAKE_CXX_COMPILER_RANLIB={llvm_ranlib}")
 
     is_shared = "OFF"
-    if args.mode == "debug":
+    if args.mode == "Debug":
         cmake_args.append("-DCMAKE_BUILD_TYPE=Debug")
         cmake_args.append("-DLLVM_USE_SANITIZER=Address")
         is_shared = "ON"
-    elif args.mode == "release":
+    elif args.mode == "Release":
         cmake_args.append("-DCMAKE_BUILD_TYPE=Release")
-    elif args.mode == "releasedbg":
+    elif args.mode == "RelWithDebInfo":
         cmake_args.append("-DCMAKE_BUILD_TYPE=RelWithDebInfo")
 
     cmake_args.append(f"-DBUILD_SHARED_LIBS={is_shared}")
 
     if lto_enabled:
-        cmake_args.append("-DLLVM_ENABLE_LTO=ON")
+        cmake_args.append("-DLLVM_ENABLE_LTO=Thin")
     else:
         cmake_args.append("-DLLVM_ENABLE_LTO=OFF")
 
