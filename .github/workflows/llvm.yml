@@ -81,27 +81,6 @@ jobs:
             ccache-${{ matrix.os }}-
           max-size: 8G
 
-      - name: Resolve ccache path (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: |
-          CCACHE_BIN="$(command -v ccache || true)"
-          if [[ -z "${CCACHE_BIN}" ]]; then
-            echo "ccache not found in PATH" >&2
-          else
-            echo "CCACHE_PROGRAM=${CCACHE_BIN}" >> "${GITHUB_ENV}"
-          fi
-
-      - name: Resolve ccache path (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $ccache = Get-Command ccache -ErrorAction SilentlyContinue
-          if ($null -eq $ccache) {
-            Write-Host "ccache not found in PATH"
-          } else {
-            "CCACHE_PROGRAM=$($ccache.Source)" | Out-File -FilePath $Env:GITHUB_ENV -Append
-          }
-
       - name: Start resource monitor (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
