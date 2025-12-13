@@ -40,6 +40,9 @@ jobs:
         include:
           # Windows
           - os: windows-2025
+            llvm_mode: Debug
+            lto: OFF
+          - os: windows-2025
             llvm_mode: RelWithDebInfo
             lto: OFF
           - os: windows-2025
@@ -142,15 +145,14 @@ jobs:
           CCACHE_PROGRAM: ccache
           CLICE_USE_CCACHE: 1
         run: |
-          cd .llvm
-          python ../scripts/build-llvm.py "${{ matrix.llvm_mode }}" "${{ matrix.lto }}" --build-dir=build
+          pixi run build-llvm --llvm-src=.llvm --mode="${{ matrix.llvm_mode }}" --lto="${{ matrix.lto }}" --build-dir=build
 
       - name: Build clice using installed LLVM
         shell: bash
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.llvm_mode }} \
-            -DCLICE_DEV_ENV=ON \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
             -DCLICE_ENABLE_TEST=ON \
             -DCLICE_CI_ENVIRONMENT=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \

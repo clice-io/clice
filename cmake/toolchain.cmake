@@ -1,0 +1,38 @@
+cmake_minimum_required(VERSION 3.30)
+
+if(WIN32)
+    set(CMAKE_C_COMPILER clang-cl CACHE STRING "C compiler")
+    set(CMAKE_CXX_COMPILER clang-cl CACHE STRING "C++ compiler")
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL" CACHE STRING "MSVC runtime")
+else()
+    set(CMAKE_C_COMPILER clang CACHE STRING "C compiler")
+    set(CMAKE_CXX_COMPILER clang++ CACHE STRING "C++ compiler")
+    set(CMAKE_EXE_LINKER_FLAGS "-fuse-ld=lld" CACHE STRING "Executable linker flags")
+    set(CMAKE_SHARED_LINKER_FLAGS "-fuse-ld=lld" CACHE STRING "Shared library linker flags")
+    set(CMAKE_MODULE_LINKER_FLAGS "-fuse-ld=lld" CACHE STRING "Module linker flags")
+endif()
+
+find_program(LLVM_AR_PATH "llvm-lib")
+if(LLVM_AR_PATH)
+    set(CMAKE_AR "${LLVM_AR_PATH}" CACHE FILEPATH "Archiver")
+    set(CMAKE_C_COMPILER_AR "${LLVM_AR_PATH}" CACHE FILEPATH "C archiver")
+    set(CMAKE_CXX_COMPILER_AR "${LLVM_AR_PATH}" CACHE FILEPATH "C++ archiver")
+endif()
+
+find_program(LLVM_RANLIB_PATH "llvm-ranlib")
+if(LLVM_RANLIB_PATH)
+    set(CMAKE_RANLIB "${LLVM_RANLIB_PATH}" CACHE FILEPATH "Ranlib")
+    set(CMAKE_C_COMPILER_RANLIB "${LLVM_RANLIB_PATH}" CACHE FILEPATH "C ranlib")
+    set(CMAKE_CXX_COMPILER_RANLIB "${LLVM_RANLIB_PATH}" CACHE FILEPATH "C++ ranlib")
+endif()
+
+find_program(LLVM_NM_PATH "llvm-nm")
+if(LLVM_NM_PATH)
+    set(CMAKE_NM "${LLVM_NM_PATH}" CACHE FILEPATH "Symbol lister")
+endif()
+
+find_program(LLVM_RC_PATH "llvm-rc")
+if(LLVM_RC_PATH)
+    set(CMAKE_RC_COMPILER "${LLVM_RC_PATH}" CACHE FILEPATH "Resource compiler")
+endif()
+

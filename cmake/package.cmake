@@ -16,7 +16,7 @@ add_library(llvm-libs INTERFACE IMPORTED)
 # add to include directories
 target_include_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/include")
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT WIN32)
     target_link_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/lib")
     target_link_libraries(llvm-libs INTERFACE
         LLVMSupport

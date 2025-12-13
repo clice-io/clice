@@ -40,7 +40,7 @@ if(CLICE_ENABLE_LTO)
     string(APPEND CMAKE_MODULE_LINKER_FLAGS " -flto=thin")
 endif()
 
-if(NOT WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     string(APPEND CMAKE_CXX_FLAGS " -fsanitize=address")
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -fsanitize=address")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fsanitize=address")
@@ -67,7 +67,7 @@ if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
     target_link_options(clice_options INTERFACE
         -fuse-ld=lld-link
-        -Wl,/OPT:REF
+        -Wl,/OPT:REF,/OPT:NOICF
     )
 elseif(APPLE)
     target_link_options(clice_options INTERFACE

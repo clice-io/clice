@@ -19,11 +19,16 @@ lld = "==20.1.8"
 llvm-tools = "==20.1.8"
 compiler-rt = "==20.1.8"
 
-
 [target.linux-64.dependencies]
 sysroot_linux-64 = "==2.17"
 gcc = "==14.2.0"
 gxx = "==14.2.0"
+
+[target.win-64.activation]
+scripts = ["scripts/activate_asan.bat"]
+
+[target.linux-64.activation]
+scripts = ["scripts/activate_linux.sh"]
 
 [feature.test.dependencies]
 uv = "*"
@@ -32,4 +37,5 @@ uv = "*"
 default = []
 develop = ["test"]
 
-[tasks]
+[tasks.build-llvm]
+cmd = ["python3", "scripts/build-llvm.py"]
