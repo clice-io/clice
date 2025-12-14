@@ -37,4 +37,3 @@ find_program(LLVM_RC_PATH "llvm-rc")
 if(LLVM_RC_PATH)
     set(CMAKE_RC_COMPILER "${LLVM_RC_PATH}" CACHE FILEPATH "Resource compiler")
 endif()
-

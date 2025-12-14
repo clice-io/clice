@@ -8,13 +8,12 @@ from pathlib import Path
 def detect_pattern() -> str:
     sys_name = platform.system().lower()
     if "windows" in sys_name:
-        return "*windows*"
+        return "*win*"
     if "linux" in sys_name:
         return "*linux*"
     if "darwin" in sys_name:
         return "*mac*"
-    raise RuntimeError(
-        f"Unsupported platform for artifact pattern: {sys_name}")
+    raise RuntimeError(f"Unsupported platform for artifact pattern: {sys_name}")
 
 
 def require_env(name: str) -> str:

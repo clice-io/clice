@@ -15,8 +15,7 @@ def create_archive(install_dir: Path, archive_path: Path, compresslevel: int) ->
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Pack LLVM install dir to .tar.gz")
+    parser = argparse.ArgumentParser(description="Pack LLVM install dir to .tar.gz")
     parser.add_argument(
         "--install-dir",
         default=".llvm/build-install",

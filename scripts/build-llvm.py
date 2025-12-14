@@ -227,7 +227,6 @@ def main():
         "-DLLVM_BUILD_LLVM_C_DYLIB=OFF",
         "-DLLVM_LINK_LLVM_DYLIB=OFF",
         "-DLLVM_ENABLE_RTTI=OFF",
-
         # Enable features
         "-DLLVM_INCLUDE_TOOLS=ON",
         "-DLLVM_PARALLEL_LINK_JOBS=1",
@@ -236,14 +235,12 @@ def main():
         "-DLLVM_TARGETS_TO_BUILD=all",
         "-DLLVM_USE_LINKER=lld",
         "-DLLVM_DISABLE_ASSEMBLY_FILES=ON",
-
         # Distribution
         f"-DLLVM_DISTRIBUTION_COMPONENTS={components_joined}",
     ]
 
     ccache_env = os.environ.get("CCACHE_PROGRAM") or os.environ.get("CCACHE")
-    ccache_program = shutil.which(
-        ccache_env) if ccache_env else shutil.which("ccache")
+    ccache_program = shutil.which(ccache_env) if ccache_env else shutil.which("ccache")
     if not ccache_program and ccache_env:
         # Fall back to the env value as-is if it points to a real path.
         candidate = Path(ccache_env)
@@ -263,7 +260,6 @@ def main():
         cmake_args.append("-DCMAKE_BUILD_TYPE=Debug")
         cmake_args.append("-DLLVM_USE_SANITIZER=Address")
         is_shared = "ON"
-        asan_enabled = True
     elif args.mode == "Release":
         cmake_args.append("-DCMAKE_BUILD_TYPE=Release")
     elif args.mode == "RelWithDebInfo":
@@ -293,8 +289,7 @@ def main():
     print("\nBuilding 'install-distribution' target...")
     try:
         subprocess.check_call(
-            ["cmake", "--build", str(build_dir),
-             "--target", "install-distribution"]
+            ["cmake", "--build", str(build_dir), "--target", "install-distribution"]
         )
     except subprocess.CalledProcessError:
         print("Build failed!")
@@ -305,8 +300,7 @@ def main():
     install_sema_dir = install_prefix / "include/clang/Sema"
     install_sema_dir.mkdir(parents=True, exist_ok=True)
 
-    headers_to_copy = ["CoroutineStmtBuilder.h",
-                       "TypeLocBuilder.h", "TreeTransform.h"]
+    headers_to_copy = ["CoroutineStmtBuilder.h", "TypeLocBuilder.h", "TreeTransform.h"]
 
     for header in headers_to_copy:
         src = clang_sema_dir / header
