@@ -10,7 +10,7 @@ on:
       - "tests/**"
       - "CMakeLists.txt"
   pull_request:
-    branches: [main]
+    branches: [main-test]
     paths:
       - ".github/workflows/cmake.yml"
       - "include/**"

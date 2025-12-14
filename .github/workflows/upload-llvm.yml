@@ -7,7 +7,7 @@ on:
     types:
       - completed
   pull_request:
-    branches: [main-test]
+    branches: [main]
 
 jobs:
   process-and-upload:
