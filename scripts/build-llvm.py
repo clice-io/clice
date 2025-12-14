@@ -179,8 +179,6 @@ def main():
         "clangToolingRefactoring",
         "clangTransformer",
         "clangCrossTU",
-        "clangStaticAnalyzerCore",
-        "clangStaticAnalyzerFrontend",
         "clangAnalysisFlowSensitive",
         "clangAnalysisFlowSensitiveModels",
         "clangStaticAnalyzerCheckers",

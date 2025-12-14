@@ -147,6 +147,68 @@ jobs:
         run: |
           pixi run build-llvm --llvm-src=.llvm --mode="${{ matrix.llvm_mode }}" --lto="${{ matrix.lto }}" --build-dir=build
 
+      - name: Build clice using installed LLVM
+        shell: bash
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.llvm_mode }} \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
+            -DCLICE_ENABLE_TEST=ON \
+            -DCLICE_CI_ENVIRONMENT=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCLICE_ENABLE_LTO=${{ matrix.lto }} \
+            -DLLVM_INSTALL_PATH=".llvm/build-install"
+          cmake --build build
+
+      - name: Run tests
+        shell: bash
+        run: |
+          EXE_EXT=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            EXE_EXT=".exe"
+          fi
+          ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
+          uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
+
+      - name: Prune LLVM static libraries (Debug/RelWithDebInfo no LTO)
+        if: matrix.llvm_mode == 'Debug' || (matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF')
+        shell: bash
+        run: |
+          MANIFEST="pruned-libs-${{ matrix.os }}.json"
+          echo "LLVM_PRUNED_MANIFEST=${MANIFEST}" >> "${GITHUB_ENV}"
+          python3 scripts/prune-llvm-bin.py \
+            --action discover \
+            --bin-dir ".llvm/build-install/lib" \
+            --build-dir "build" \
+            --max-attempts 60 \
+            --sleep-seconds 60 \
+            --manifest "${MANIFEST}"
+
+      - name: Upload pruned-libs manifest
+        if: matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'
+        uses: actions/upload-artifact@v4
+        with:
+          name: llvm-pruned-libs-${{ matrix.os }}
+          path: ${{ env.LLVM_PRUNED_MANIFEST }}
+          if-no-files-found: error
+
+      - name: Apply pruned-libs manifest (RelWithDebInfo + LTO)
+        if: matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'ON'
+        shell: bash
+        run: |
+          MANIFEST="pruned-libs-${{ matrix.os }}.json"
+          python3 scripts/prune-llvm-bin.py \
+            --action apply \
+            --manifest "${MANIFEST}" \
+            --bin-dir ".llvm/build-install/lib" \
+            --build-dir "build" \
+            --gh-run-id "${{ github.run_id }}" \
+            --gh-artifact "llvm-pruned-libs-${{ matrix.os }}" \
+            --gh-download-dir "artifacts" \
+            --max-attempts 60 \
+            --sleep-seconds 60
+
       - name: Package LLVM install directory
         shell: bash
         run: |
@@ -175,30 +237,6 @@ jobs:
           name: ${{ env.LLVM_INSTALL_ARCHIVE }}
           path: ${{ env.LLVM_INSTALL_ARCHIVE }}
           if-no-files-found: error
-
-      - name: Build clice using installed LLVM
-        shell: bash
-        run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ matrix.llvm_mode }} \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-            -DCLICE_ENABLE_TEST=ON \
-            -DCLICE_CI_ENVIRONMENT=ON \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCLICE_ENABLE_LTO=${{ matrix.lto }} \
-            -DLLVM_INSTALL_PATH=".llvm/build-install"
-          cmake --build build
-
-      - name: Run tests
-        shell: bash
-        run: |
-          EXE_EXT=""
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            EXE_EXT=".exe"
-          fi
-          ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
-          uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
 
       - name: Dump resource monitor log (Linux/macOS)
         if: always() && runner.os != 'Windows'
