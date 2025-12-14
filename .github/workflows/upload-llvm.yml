@@ -6,22 +6,17 @@ on:
     workflows: ["llvm"]
     types:
       - completed
-  workflow_dispatch:
-    inputs:
-      run_id:
-        description: "Build LLVM run id to download"
-        required: false
-        default: ""
+  pull_request:
+    branches: [main-test]
 
 jobs:
   process-and-upload:
     runs-on: ${{ matrix.os }}
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     strategy:
       matrix:
         include:
-          - os: ubuntu-24.04
           - os: windows-2025
+          - os: ubuntu-24.04
           - os: macos-15
 
     steps:

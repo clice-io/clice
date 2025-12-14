@@ -15,7 +15,7 @@ on:
       - "tests/**"
 
   pull_request:
-    branches: [main]
+    branches: [main-test]
     paths:
       - ".github/workflows/llvm.yml"
       - "cmake/build-llvm.cmake"
