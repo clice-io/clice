@@ -30,10 +30,36 @@ if(CLICE_ENABLE_LTO)
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    string(APPEND CMAKE_CXX_FLAGS " -fsanitize=address")
-    string(APPEND CMAKE_EXE_LINKER_FLAGS " -fsanitize=address")
-    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fsanitize=address")
+    add_compile_options(-fsanitize=address)
+
+    if(NOT WIN32)
+        string(APPEND CMAKE_EXE_LINKER_FLAGS " -fsanitize=address")
+        string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fsanitize=address")
+    endif()
+
+    if(MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        execute_process(
+            COMMAND ${CMAKE_CXX_COMPILER} --print-resource-dir
+            OUTPUT_VARIABLE CLANG_RESOURCE_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        set(ASAN_LIB_PATH "${CLANG_RESOURCE_DIR}/lib/windows")
+        link_directories(${ASAN_LIB_PATH})
+
+        set(ASAN_LINK_FLAGS "")
+
+        list(APPEND ASAN_LINK_FLAGS "clang_rt.asan_dynamic-x86_64.lib")
+        list(APPEND ASAN_LINK_FLAGS "/wholearchive:clang_rt.asan_dynamic_runtime_thunk-x86_64.lib")
+
+        foreach(flag ${ASAN_LINK_FLAGS})
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${flag}")
+            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${flag}")
+            set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${flag}")
+        endforeach()
+    endif()
 endif()
+
+
 
 if(APPLE)
     # https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
