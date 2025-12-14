@@ -1,0 +1,35 @@
+name: Process and Publish Binaries
+
+# Triggers: runs after "llvm" workflow completes; also allows manual trigger (requires run_id)
+on:
+  workflow_run:
+    workflows: ["llvm"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build LLVM run id to download"
+        required: false
+        default: ""
+
+jobs:
+  process-and-upload:
+    runs-on: ${{ matrix.os }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-24.04
+          - os: windows-2025
+          - os: macos-15
+
+    steps:
+      - name: Checkout scripts
+        uses: actions/checkout@v4
+
+      - name: Upload LLVM
+        env:
+          RUN_ID: 20195540140
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/upload-llvm.py
