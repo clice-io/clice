@@ -102,10 +102,10 @@ def run_build(build_dir: Path) -> bool:
         return False
 
 
-def candidate_files(bin_dir: Path) -> Iterable[Path]:
-    if not bin_dir.is_dir():
-        raise FileNotFoundError(f"lib dir not found: {bin_dir}")
-    for path in sorted(bin_dir.iterdir()):
+def candidate_files(install_dir: Path) -> Iterable[Path]:
+    if not install_dir.is_dir():
+        raise FileNotFoundError(f"lib dir not found: {install_dir}")
+    for path in sorted(install_dir.iterdir()):
         if not path.is_file():
             continue
         if path.suffix.lower() in {".a", ".lib"}:
@@ -128,20 +128,20 @@ def try_delete(path: Path, build_dir: Path) -> bool:
     return False
 
 
-def discover(bin_dir: Path, build_dir: Path) -> List[str]:
+def discover(install_dir: Path, build_dir: Path) -> List[str]:
     deletable: List[str] = []
-    for path in candidate_files(bin_dir):
+    for path in candidate_files(install_dir):
         if try_delete(path, build_dir):
             deletable.append(path.name)
     return deletable
 
 
 def write_manifest(
-    manifest: Path, removed: List[str], bin_dir: Path, build_dir: Path
+    manifest: Path, removed: List[str], install_dir: Path, build_dir: Path
 ) -> None:
     data = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "bin_dir": str(bin_dir),
+        "install_dir": str(install_dir),
         "build_dir": str(build_dir),
         "removed": removed,
     }
@@ -149,7 +149,7 @@ def write_manifest(
     print(f"Wrote manifest with {len(removed)} entries to {manifest}")
 
 
-def apply_manifest(manifest: Path, bin_dir: Path) -> None:
+def apply_manifest(manifest: Path, install_dir: Path) -> None:
     if not manifest.is_file():
         raise FileNotFoundError(f"Manifest not found: {manifest}")
     data = json.loads(manifest.read_text())
@@ -157,7 +157,7 @@ def apply_manifest(manifest: Path, bin_dir: Path) -> None:
     if not isinstance(removed, list):
         raise ValueError("Manifest missing 'removed' list")
     for name in removed:
-        target = bin_dir / name
+        target = install_dir / name
         if target.exists():
             print(f"Deleting {target}")
             target.unlink()
@@ -240,11 +240,11 @@ def ensure_manifest(
 
 def main() -> None:
     args = parse_args()
-    bin_dir = args.bin_dir
+    install_dir = args.install_dir
     build_dir = args.build_dir
     if args.action == "discover":
-        deletable = discover(bin_dir, build_dir)
-        write_manifest(args.manifest, deletable, bin_dir, build_dir)
+        deletable = discover(install_dir, build_dir)
+        write_manifest(args.manifest, deletable, install_dir, build_dir)
     else:
         manifest = ensure_manifest(
             manifest=args.manifest,
@@ -254,7 +254,7 @@ def main() -> None:
             max_attempts=args.max_attempts,
             sleep_seconds=args.sleep_seconds,
         )
-        apply_manifest(manifest, bin_dir)
+        apply_manifest(manifest, install_dir)
 
 
 if __name__ == "__main__":
