@@ -78,10 +78,12 @@ jobs:
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: ccache-${{ matrix.os }}-${{ matrix.llvm_mode }}-${{ matrix.lto }}-${{ hashFiles('CMakeLists.txt', 'cmake/**/*.cmake', 'scripts/build-llvm.py', 'xmake.lua') }}
+          key: ${{ matrix.os }}-${{ matrix.llvm_mode }}-${{ matrix.lto }}
           restore-keys: |
-            ccache-${{ matrix.os }}-${{ matrix.llvm_mode }}-${{ matrix.lto }}-
-            ccache-${{ matrix.os }}-
+            ccache-ccache-${{ matrix.os }}-${{ matrix.llvm_mode }}-${{ matrix.lto }}-
+            ccache-ccache-${{ matrix.os }}-
+            ${{ matrix.os }}-${{ matrix.llvm_mode }}-${{ matrix.lto }}-
+            ${{ matrix.os }}-
           max-size: 8G
 
       - name: Start resource monitor (Linux/macOS)
