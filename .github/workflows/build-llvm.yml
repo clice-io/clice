@@ -1,19 +1,6 @@
-name: llvm
+name: build llvm
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/llvm.yml"
-      - "cmake/build-llvm.cmake"
-      - "scripts/build-llvm.py"
-      - "scripts/**"
-      - "CMakeLists.txt"
-      - "cmake/**"
-      - "src/**"
-      - "include/**"
-      - "tests/**"
-
   pull_request:
     branches: [main]
     paths:
@@ -29,11 +16,6 @@ on:
 
 jobs:
   build:
-    env:
-      CCACHE_BASEDIR: ${{ github.workspace }}
-      CCACHE_COMPILERCHECK: content
-      CCACHE_NOHASHDIR: 1
-      CCACHE_MAXSIZE: 8G
     strategy:
       fail-fast: false
       matrix:
@@ -75,35 +57,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ${{ matrix.os }}-${{ matrix.llvm_mode }}-${{ matrix.lto }}
-          restore-keys: |
-            ccache-ccache-${{ matrix.os }}-${{ matrix.llvm_mode }}-${{ matrix.lto }}-
-            ccache-ccache-${{ matrix.os }}-
-            ${{ matrix.os }}-${{ matrix.llvm_mode }}-${{ matrix.lto }}-
-            ${{ matrix.os }}-
-          max-size: 8G
-
-      - name: Start resource monitor (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: |
-          MONITOR_LOG="${RUNNER_TEMP}/resource-usage.log"
-          bash scripts/monitor-resources.sh "${MONITOR_LOG}" >/dev/null 2>&1 &
-          echo "RESOURCE_MONITOR_PID=$!" >> "${GITHUB_ENV}"
-          echo "RESOURCE_MONITOR_LOG=${MONITOR_LOG}" >> "${GITHUB_ENV}"
-
-      - name: Start resource monitor (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $log = Join-Path $Env:RUNNER_TEMP "resource-usage.log"
-          $script = Join-Path $PWD.Path "scripts/monitor-resources.ps1"
-          $job = Start-Job -FilePath $script -ArgumentList $log, 30
-          "RESOURCE_MONITOR_JOB_ID=$($job.Id)" | Out-File -FilePath $Env:GITHUB_ENV -Append
-          "RESOURCE_MONITOR_LOG=$log" | Out-File -FilePath $Env:GITHUB_ENV -Append
-
       - name: Free Disk Space
         if: runner.os == 'Linux'
         uses: jlumbroso/free-disk-space@main
@@ -143,9 +96,6 @@ jobs:
 
       - name: Build LLVM (install-distribution)
         shell: bash
-        env:
-          CCACHE_PROGRAM: ccache
-          CLICE_USE_CCACHE: 1
         run: |
           pixi run build-llvm --llvm-src=.llvm --mode="${{ matrix.llvm_mode }}" --lto="${{ matrix.lto }}" --build-dir=build
 
@@ -157,8 +107,6 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
             -DCLICE_ENABLE_TEST=ON \
             -DCLICE_CI_ENVIRONMENT=ON \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCLICE_ENABLE_LTO=${{ matrix.lto }} \
             -DLLVM_INSTALL_PATH=".llvm/build-install"
           cmake --build build
@@ -181,7 +129,7 @@ jobs:
           echo "LLVM_PRUNED_MANIFEST=${MANIFEST}" >> "${GITHUB_ENV}"
           python3 scripts/prune-llvm-bin.py \
             --action discover \
-            --bin-dir ".llvm/build-install/lib" \
+            --install-dir ".llvm/build-install/lib" \
             --build-dir "build" \
             --max-attempts 60 \
             --sleep-seconds 60 \
@@ -206,7 +154,7 @@ jobs:
           python3 scripts/prune-llvm-bin.py \
             --action apply \
             --manifest "${MANIFEST}" \
-            --bin-dir ".llvm/build-install/lib" \
+            --install-dir ".llvm/build-install/lib" \
             --build-dir "build" \
             --gh-run-id "${{ github.run_id }}" \
             --gh-artifact "llvm-pruned-libs-${{ matrix.os }}" \
@@ -221,17 +169,28 @@ jobs:
           if [[ "${{ matrix.llvm_mode }}" == "Debug" ]]; then
             MODE_TAG="debug"
           fi
-          LTO_TAG="off"
-          if [[ "${{ matrix.lto }}" == "ON" ]]; then
-            LTO_TAG="on"
+
+          ARCH="x64"
+          PLATFORM="linux"
+          TOOLCHAIN="gnu"
+          if [[ "${{ matrix.os }}" == windows-* ]]; then
+            PLATFORM="windows"
+            TOOLCHAIN="msvc"
+          elif [[ "${{ matrix.os }}" == macos-* ]]; then
+            ARCH="arm64"
+            PLATFORM="macos"
+            TOOLCHAIN="clang"
           fi
 
-          case "${{ matrix.os }}" in
-            windows-*) ARCHIVE="llvm-${MODE_TAG}-win-x64-msvc-lto-${LTO_TAG}.tar.xz" ;;
-            ubuntu-*)  ARCHIVE="llvm-${MODE_TAG}-linux-x64-gnu-lto-${LTO_TAG}.tar.xz" ;;
-            macos-*)   ARCHIVE="llvm-${MODE_TAG}-macos-arm64-clang-lto-${LTO_TAG}.tar.xz" ;;
-            *)         ARCHIVE="llvm-${MODE_TAG}-${{ matrix.os }}-lto-${LTO_TAG}.tar.xz" ;;
-          esac
+          SUFFIX=""
+          if [[ "${{ matrix.lto }}" == "ON" ]]; then
+            SUFFIX="-lto"
+          fi
+          if [[ "${{ matrix.llvm_mode }}" == "Debug" ]]; then
+            SUFFIX="${SUFFIX}-asan"
+          fi
+
+          ARCHIVE="${ARCH}-${PLATFORM}-${TOOLCHAIN}-${MODE_TAG}${SUFFIX}.tar.xz"
 
           set -eo pipefail
           tar -C .llvm -cf - build-install | xz -T0 -9 -c > "${ARCHIVE}"
@@ -243,25 +202,3 @@ jobs:
           name: ${{ env.LLVM_INSTALL_ARCHIVE }}
           path: ${{ env.LLVM_INSTALL_ARCHIVE }}
           if-no-files-found: error
-
-      - name: Dump resource monitor log (Linux/macOS)
-        if: always() && runner.os != 'Windows'
-        shell: bash
-        run: |
-          echo "===== Resource usage log ====="
-          if [[ -n "${RESOURCE_MONITOR_LOG:-}" && -f "${RESOURCE_MONITOR_LOG}" ]]; then
-            cat "${RESOURCE_MONITOR_LOG}"
-          else
-            echo "Resource log not found"
-          fi
-
-      - name: Dump resource monitor log (Windows)
-        if: always() && runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Write-Host "===== Resource usage log ====="
-          if ($Env:RESOURCE_MONITOR_LOG -and (Test-Path $Env:RESOURCE_MONITOR_LOG)) {
-            Get-Content $Env:RESOURCE_MONITOR_LOG
-          } else {
-            Write-Host "Resource log not found"
-          }

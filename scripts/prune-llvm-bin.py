@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
         help="discover: probe deletable files and record them; apply: delete using manifest",
     )
     parser.add_argument(
-        "--bin-dir",
+        "--install-dir",
         type=Path,
         default=Path(".llvm/build-install/lib"),
         help="Path to the LLVM install lib directory (default: .llvm/build-install/lib)",
