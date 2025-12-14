@@ -131,7 +131,7 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.9.3
         with:
           pixi-version: v0.59.0
-          environments: develop
+          environments: package
           activate-environment: true
           cache: true
           locked: true
@@ -194,10 +194,13 @@ jobs:
           name: llvm-pruned-libs-${{ matrix.os }}
           path: ${{ env.LLVM_PRUNED_MANIFEST }}
           if-no-files-found: error
+          compression-level: 0
 
       - name: Apply pruned-libs manifest (RelWithDebInfo + LTO)
         if: matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'ON'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           MANIFEST="pruned-libs-${{ matrix.os }}.json"
           python3 scripts/prune-llvm-bin.py \
@@ -224,13 +227,14 @@ jobs:
           fi
 
           case "${{ matrix.os }}" in
-            windows-*) ARCHIVE="llvm-${MODE_TAG}-win-x64-msvc-lto-${LTO_TAG}.tar.gz" ;;
-            ubuntu-*)  ARCHIVE="llvm-${MODE_TAG}-linux-x64-gnu-lto-${LTO_TAG}.tar.gz" ;;
-            macos-*)   ARCHIVE="llvm-${MODE_TAG}-macos-arm64-clang-lto-${LTO_TAG}.tar.gz" ;;
-            *)         ARCHIVE="llvm-${MODE_TAG}-${{ matrix.os }}-lto-${LTO_TAG}.tar.gz" ;;
+            windows-*) ARCHIVE="llvm-${MODE_TAG}-win-x64-msvc-lto-${LTO_TAG}.tar.xz" ;;
+            ubuntu-*)  ARCHIVE="llvm-${MODE_TAG}-linux-x64-gnu-lto-${LTO_TAG}.tar.xz" ;;
+            macos-*)   ARCHIVE="llvm-${MODE_TAG}-macos-arm64-clang-lto-${LTO_TAG}.tar.xz" ;;
+            *)         ARCHIVE="llvm-${MODE_TAG}-${{ matrix.os }}-lto-${LTO_TAG}.tar.xz" ;;
           esac
 
-          python scripts/package_llvm_install.py --install-dir .llvm/build-install --output "${ARCHIVE}" --compresslevel 6
+          set -eo pipefail
+          tar -C .llvm -cf - build-install | xz -T0 -9 -c > "${ARCHIVE}"
           echo "LLVM_INSTALL_ARCHIVE=${ARCHIVE}" >> "${GITHUB_ENV}"
 
       - name: Upload LLVM install artifact

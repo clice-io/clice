@@ -33,9 +33,13 @@ scripts = ["scripts/activate_linux.sh"]
 [feature.test.dependencies]
 uv = "*"
 
+[feature.package.dependencies]
+xz = ">=5.8.1,<6"
+
 [environments]
 default = []
 develop = ["test"]
+package = ["test", "package"]
 
 [tasks.build-llvm]
 cmd = ["python3", "scripts/build-llvm.py"]
