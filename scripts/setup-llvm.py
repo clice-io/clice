@@ -51,12 +51,12 @@ def pick_artifact(
             continue
         if entry.get("build_type") != build_type:
             continue
-        if bool(entry.get("is_lto")) != is_lto:
+        if bool(entry.get("lto")) != is_lto:
             continue
         return entry
     raise RuntimeError(
         f"No matching LLVM artifact in manifest for version={base_version}, platform={platform}, "
-        f"build_type={build_type}, is_lto={is_lto}"
+        f"build_type={build_type}, lto={is_lto}"
     )
 
 
