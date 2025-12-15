@@ -54,7 +54,7 @@ cmd = ["python3", "scripts/build-llvm.py"]
 args = [
     "workflow_id",
     "llvm_version",
-    { "name" = "branch", default = "main" },
+    { "arg" = "branch", default = "main" },
 ]
 cmd = [
     "gh", "workflow", "run", "upload-llvm.yml",

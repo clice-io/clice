@@ -33,7 +33,7 @@ jobs:
 
       - name: Recreate release with artifacts
         env:
-          GH_TOKEN: ${{ github.token }}
-          # GH_TOKEN: ${{ secrets.LLVM_UPLOAD }}
+          # GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.LLVM_UPLOAD }}
           TARGET_REPO: clice-io/clice-llvm
         run: python3 scripts/upload-llvm.py "${{ inputs.version }}" "${TARGET_REPO}" "${{ inputs.workflow_id }}"
