@@ -9,7 +9,7 @@ function(setup_llvm LLVM_VERSION)
         "--version" "${LLVM_VERSION}"
         "--build-type" "${CMAKE_BUILD_TYPE}"
         "--binary-dir" "${CMAKE_CURRENT_BINARY_DIR}"
-        "--manifest" "${PROJECT_SOURCE_DIR}/config/llvm-mainfist.json"
+        "--manifest" "${PROJECT_SOURCE_DIR}/config/llvm-manifest.json"
         "--output" "${LLVM_SETUP_OUTPUT}"
     )
 
