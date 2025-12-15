@@ -9,8 +9,9 @@ on:
       - "src/**"
       - "tests/**"
       - "CMakeLists.txt"
+
   pull_request:
-    branches: [main-test]
+    branches: [main]
     paths:
       - ".github/workflows/cmake.yml"
       - "include/**"
@@ -52,10 +53,9 @@ jobs:
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCLICE_DEV_ENV=ON \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
             -DCLICE_ENABLE_TEST=ON \
             -DCLICE_CI_ENVIRONMENT=ON
-
           cmake --build build
 
       - name: Run tests

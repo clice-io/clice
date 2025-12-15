@@ -9,8 +9,9 @@ on:
       - "src/**"
       - "tests/**"
       - "xmake.lua"
+
   pull_request:
-    branches: [main]
+    branches: [main-test]
     paths:
       - ".github/workflows/xmake.yml"
       - "include/**"

@@ -29,6 +29,8 @@ if(CLICE_ENABLE_LTO)
     string(APPEND CMAKE_MODULE_LINKER_FLAGS " -flto=thin")
 endif()
 
+
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-fsanitize=address)
 
@@ -59,8 +61,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     endif()
 endif()
 
-
-
 if(APPLE)
     # https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
     string(APPEND CMAKE_CXX_FLAGS " -D_LIBCPP_DISABLE_AVAILABILITY=1")
@@ -76,6 +76,10 @@ endif()
 
 if(CLICE_CI_ENVIRONMENT)
     target_compile_definitions(clice_options INTERFACE CLICE_CI_ENVIRONMENT=1)
+endif()
+
+if(WIN32)
+    target_link_libraries(clice_options INTERFACE version ntdll)
 endif()
 
 if(WIN32)
