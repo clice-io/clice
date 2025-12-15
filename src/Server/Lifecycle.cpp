@@ -1,6 +1,32 @@
+#include <system_error>
+
 #include "Server/Server.h"
+#include "Support/FileSystem.h"
+
+#include <llvm/ADT/StringRef.h>
+#include <llvm/Support/FileSystem.h>
 
 namespace clice {
+
+static std::vector<std::string> find_compile_commands(llvm::StringRef workspace) {
+    std::vector<std::string> found;
+    /// Check root directory first, then check immediate subdirectories.
+    /// Note: depth is 1 here.
+    auto root_candidate = path::join(workspace, "compile_commands.json");
+    if(fs::exists(root_candidate)) {
+        found.push_back(root_candidate);
+    }
+    std::error_code ec;
+    for(fs::directory_iterator it(workspace, ec), end; it != end && !ec; it.increment(ec)) {
+        if(it->type() == fs::file_type::directory_file) {
+            auto candidate = path::join(it->path(), "compile_commands.json");
+            if(fs::exists(candidate)) {
+                found.push_back(candidate);
+            }
+        }
+    }
+    return found;
+}
 
 async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
     LOG_INFO("Initialize from client: {}, version: {}",
@@ -36,8 +62,15 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
     opening_files.set_capability(config.project.max_active_file);
 
     /// Load compile commands.json
-    for(auto& dir: config.project.compile_commands_dirs) {
-        database.load_compile_database(path::join(dir, "compile_commands.json"));
+    if(config.project.compile_commands_dirs.empty()) {
+        /// Auto-discover compile_commands.json in workspace.
+        for(auto& path: find_compile_commands(workspace)) {
+            database.load_compile_database(path);
+        }
+    } else {
+        for(auto& dir: config.project.compile_commands_dirs) {
+            database.load_compile_database(path::join(dir, "compile_commands.json"));
+        }
     }
 
     /// Load cache info.
