@@ -86,7 +86,8 @@ if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
     target_link_options(clice_options INTERFACE
         -fuse-ld=lld-link
-        -Wl,/OPT:REF,/OPT:NOICF
+        -Wl,/OPT:REF
+        #,/OPT:NOICF
     )
 elseif(APPLE)
     target_link_options(clice_options INTERFACE
@@ -101,7 +102,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
 endif()
 
-if (MSVC)
+if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
+            CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
     target_compile_options(clice_options INTERFACE
         /GR-
         /EHsc-
