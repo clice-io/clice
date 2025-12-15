@@ -58,7 +58,7 @@ args = [
 ]
 cmd = [
     "gh", "workflow", "run", "upload-llvm.yml",
-    "--ref", "introduce-pixi",
+    "--ref", "{{ branch }}",
     "--field", "workflow_id={{workflow_id}}",
     "--field", "version={{llvm_version}}",
 ]
