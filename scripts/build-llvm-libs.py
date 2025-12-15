@@ -216,7 +216,9 @@ def main():
         print("Usage: python build-llvm-libs.py <command> [options]")
         print("Commands:")
         print("  build <build_type>")
-        print("  copy")
+        print(
+            "  copy <build_type> [--source_dir <source_dir>] [--install_dir <install_dir>]"
+        )
         sys.exit(1)
     command = sys.argv[1]
     if command == "build":
