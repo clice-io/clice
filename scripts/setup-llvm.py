@@ -20,16 +20,13 @@ PRIVATE_CLANG_FILES = [
 ]
 
 
+def log(message: str) -> None:
+    print(f"[setup-llvm] {message}", flush=True)
+
+
 def read_manifest(path: Path) -> list[dict]:
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
-
-
-def normalize_build_type(name: str) -> str:
-    lowered = name.lower()
-    if "debug" in lowered:
-        return "Debug"
-    return "Release"
 
 
 def detect_platform() -> str:
@@ -72,6 +69,7 @@ def sha256sum(path: Path) -> str:
 
 
 def download(url: str, dest: Path, token: str | None) -> None:
+    log(f"Start download: {url} -> {dest}")
     dest.parent.mkdir(parents=True, exist_ok=True)
     headers = {"User-Agent": "clice-setup-llvm"}
     if token:
@@ -79,7 +77,38 @@ def download(url: str, dest: Path, token: str | None) -> None:
     request = Request(url, headers=headers)
     try:
         with urlopen(request) as response, dest.open("wb") as handle:
-            shutil.copyfileobj(response, handle)
+            total_bytes = response.length
+            if total_bytes is None:
+                header_len = response.getheader("Content-Length")
+                if header_len and header_len.isdigit():
+                    total_bytes = int(header_len)
+            downloaded = 0
+            next_percent = 10
+            next_unknown_mark = 10 * 1024 * 1024  # 10MB steps when size is unknown
+            while True:
+                chunk = response.read(1024 * 512)
+                if not chunk:
+                    break
+                handle.write(chunk)
+                downloaded += len(chunk)
+                if total_bytes:
+                    percent = int(downloaded * 100 / total_bytes)
+                    while percent >= next_percent and next_percent <= 100:
+                        log(
+                            f"Download progress: {next_percent}% "
+                            f"({downloaded / 1024 / 1024:.1f}MB/"
+                            f"{total_bytes / 1024 / 1024:.1f}MB)"
+                        )
+                        next_percent += 10
+                else:
+                    if downloaded >= next_unknown_mark:
+                        log(
+                            f"Downloaded {downloaded / 1024 / 1024:.1f}MB (size unknown)"
+                        )
+                        next_unknown_mark += 10 * 1024 * 1024
+            if total_bytes and next_percent <= 100:
+                log("Download progress: 100% (size verified by server)")
+            log(f"Finished download: {dest} ({downloaded / 1024 / 1024:.1f}MB)")
     except HTTPError as err:
         raise RuntimeError(f"HTTP error {err.code} while downloading {url}") from err
     except URLError as err:
@@ -104,19 +133,33 @@ def ensure_download(
 
 
 def extract_archive(archive: Path, dest_dir: Path) -> None:
+    log(f"Extracting {archive.name} to {dest_dir}")
     dest_dir.mkdir(parents=True, exist_ok=True)
     name = archive.name.lower()
     if name.endswith(".tar.xz") or name.endswith(".tar.gz") or name.endswith(".tar"):
         with tarfile.open(archive, "r:*") as tar:
             tar.extractall(path=dest_dir)
-        return
-    if name.endswith(".7z"):
-        seven_z = shutil.which("7z") or shutil.which("7zz")
-        if not seven_z:
-            raise RuntimeError("7z/7zz not found; required to extract .7z archives")
-        subprocess.run([seven_z, "x", "-y", str(archive), f"-o{dest_dir}"], check=True)
+        log("Extraction complete")
         return
     raise RuntimeError(f"Unsupported archive format: {archive}")
+
+
+def flatten_install_dir(dest_dir: Path) -> None:
+    # Some archives add an extra root directory (llvm-install, build-install, etc.).
+    for name in ("llvm-install", "build-install"):
+        nested = dest_dir / name
+        if not nested.is_dir():
+            continue
+        log(f"Flattening nested install directory: {nested}")
+        for entry in nested.iterdir():
+            target = dest_dir / entry.name
+            if target.exists():
+                raise RuntimeError(
+                    f"Cannot flatten {nested}: target already exists: {target}"
+                )
+            shutil.move(str(entry), str(target))
+        nested.rmdir()
+        break
 
 
 def parse_version_tuple(text: str) -> tuple[int, ...]:
@@ -208,6 +251,7 @@ def ensure_private_headers(
         dest = work_dir / "include" / "clang" / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         url = f"https://raw.githubusercontent.com/llvm/llvm-project/{commit}/clang/lib/{rel}"
+        log(f"Fetching private header: {url}")
         download(url, dest, token)
 
 
@@ -223,43 +267,71 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
+    log(
+        "Args: "
+        f"version={args.version}, build_type={args.build_type}, "
+        f"binary_dir={args.binary_dir}, install_path={args.install_path or '(auto)'}, "
+        f"enable_lto={args.enable_lto}, offline={args.offline}"
+    )
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    build_type = normalize_build_type(args.build_type)
+    build_type = args.build_type
     platform_name = detect_platform()
+    log(f"Platform detected: {platform_name}, normalized build type: {build_type}")
     manifest = read_manifest(Path(args.manifest))
-
-    install_path: Path | None = None
-    if args.install_path:
-        candidate = Path(args.install_path)
-        if candidate.exists():
-            install_path = candidate
-        else:
-            raise RuntimeError(
-                f"Provided LLVM_INSTALL_PATH does not exist: {candidate}"
-            )
-
-    if install_path is None:
-        detected = system_llvm_ok(args.version, build_type)
-        if detected:
-            install_path = detected
 
     binary_dir = Path(args.binary_dir).resolve()
     install_root = binary_dir / ".llvm"
 
+    install_path: Path | None = None
+    needs_install = False
+    if args.install_path:
+        candidate = Path(args.install_path)
+        if candidate.exists():
+            log(f"Using provided LLVM install at {candidate}")
+        else:
+            log(
+                f"Provided LLVM install path does not exist; will install to {candidate}"
+            )
+            needs_install = True
+        install_path = candidate
+    else:
+        detected = system_llvm_ok(args.version, build_type)
+        if detected:
+            log(f"Found suitable system LLVM at {detected}")
+            install_path = detected
+
     artifact = None
     if install_path is None:
+        needs_install = True
         artifact = pick_artifact(
             manifest, args.version, build_type, args.enable_lto, platform_name
         )
+        log(f"Selected artifact: {artifact.get('filename')} for download")
         filename = artifact["filename"]
         url_version = args.version.replace("+", "%2B")
         url = f"https://github.com/clice-io/clice-llvm/releases/download/{url_version}/{filename}"
         download_path = binary_dir / filename
         ensure_download(url, download_path, artifact["sha256"], token)
         extract_archive(download_path, install_root)
+        flatten_install_dir(install_root)
         install_path = install_root
+    elif needs_install:
+        artifact = pick_artifact(
+            manifest, args.version, build_type, args.enable_lto, platform_name
+        )
+        log(f"Selected artifact: {artifact.get('filename')} for download")
+        filename = artifact["filename"]
+        url_version = args.version.replace("+", "%2B")
+        url = f"https://github.com/clice-io/clice-llvm/releases/download/{url_version}/{filename}"
+        download_path = binary_dir / filename
+        ensure_download(url, download_path, artifact["sha256"], token)
+        target_dir = install_path.resolve()
+        extract_archive(download_path, target_dir)
+        flatten_install_dir(target_dir)
+        install_path = target_dir
     else:
         install_path = install_path.resolve()
+        log(f"Using existing LLVM install at {install_path}")
 
     cmake_dir = install_path / "lib" / "cmake" / "llvm"
     ensure_private_headers(install_path, binary_dir, args.version, token, args.offline)
