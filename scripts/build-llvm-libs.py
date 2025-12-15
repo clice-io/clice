@@ -11,6 +11,7 @@ def get_build_config(build_type):
     configs = {
         "debug": {
             "build_dir": "build-debug",
+            "source_dir": ".",
             "install_dir": "./build-debug-install",
             "build_type": "Debug",
             "sanitizer": "Address",
@@ -18,6 +19,7 @@ def get_build_config(build_type):
         },
         "thread": {
             "build_dir": "build-thread",
+            "source_dir": ".",
             "install_dir": "./build-thread-install",
             "build_type": "Debug",
             "sanitizer": "Thread",
@@ -25,6 +27,7 @@ def get_build_config(build_type):
         },
         "release": {
             "build_dir": "build-release",
+            "source_dir": ".",
             "install_dir": "./build-release-install",
             "build_type": "Release",
             "sanitizer": None,
@@ -93,7 +96,7 @@ def copy_header_files(config):
     """Copy header files to installation directory"""
     print("Copying header files...")
 
-    src = "./clang/lib/Sema/"
+    src = os.path.join(config["source_dir"], "./clang/lib/Sema/")
     dst = os.path.join(config["install_dir"], "include/clang/Sema/")
     files = ["CoroutineStmtBuilder.h", "TypeLocBuilder.h", "TreeTransform.h"]
 
@@ -111,7 +114,7 @@ def copy_header_files(config):
             print(f"Warning: Source file does not exist {src_file}")
 
 
-def main():
+def build():
     parser = argparse.ArgumentParser(
         description="Build LLVM libraries with different build configurations",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -122,9 +125,9 @@ Build type descriptions:
   release  - Release mode without sanitizer, builds static libraries
 
 Examples:
-  python build-llvm-libs.py debug
-  python build-llvm-libs.py thread
-  python build-llvm-libs.py release
+  python build-llvm-libs.py build debug
+  python build-llvm-libs.py build thread
+  python build-llvm-libs.py build release
         """,
     )
 
@@ -138,7 +141,7 @@ Examples:
         "--skip-copy", action="store_true", help="Skip header file copying step"
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(args=sys.argv[2:])
 
     # Get build configuration
     config = get_build_config(args.build_type)
@@ -162,6 +165,67 @@ Examples:
 
     print(f"\n✅ LLVM {args.build_type} build completed!")
     print(f"Install directory: {config['install_dir']}")
+
+
+def copy():
+    parser = argparse.ArgumentParser(
+        description="Copy header files to installation directory",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Build type descriptions:
+  debug    - Debug mode with Address Sanitizer, builds shared libraries
+  thread   - Debug mode with Thread Sanitizer, builds shared libraries
+  release  - Release mode without sanitizer, builds static libraries
+Optional arguments:
+  --source_dir - Source directory
+  --install_dir - Install directory
+
+Examples:
+  python build-llvm-libs.py copy debug
+  python build-llvm-libs.py copy thread
+  python build-llvm-libs.py copy release
+        """,
+    )
+    parser.add_argument(
+        "build_type",
+        choices=["debug", "thread", "release"],
+        help="Build type (debug/thread/release)",
+    )
+    parser.add_argument(
+        "--source_dir",
+        help="Source directory",
+    )
+    parser.add_argument(
+        "--install_dir",
+        help="Install directory",
+    )
+    args = parser.parse_args(args=sys.argv[2:])
+
+    # Get build configuration
+    config = get_build_config(args.build_type)
+    if args.source_dir:
+        config["source_dir"] = args.source_dir
+    if args.install_dir:
+        config["install_dir"] = args.install_dir
+
+    copy_header_files(config)
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python build-llvm-libs.py <command> [options]")
+        print("Commands:")
+        print("  build <build_type>")
+        print("  copy")
+        sys.exit(1)
+    command = sys.argv[1]
+    if command == "build":
+        build()
+    elif command == "copy":
+        copy()
+    else:
+        print(f"Unknown command: {command}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
