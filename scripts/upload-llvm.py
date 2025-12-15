@@ -37,12 +37,13 @@ def parse_build_type(name: str) -> str:
 def build_metadata_entry(path: Path, version: str) -> dict:
     filename = path.name
     return {
+        "version": version,
+        "filename": filename,
+        "sha256": sha256sum(path),
+        "lto": "-lto" in filename.lower(),
+        "asan": "-asan" in filename.lower(),
         "platform": parse_platform(filename),
         "build_type": parse_build_type(filename),
-        "is_lto": "-lto" in filename.lower(),
-        "filename": filename,
-        "version": version,
-        "sha256": sha256sum(path),
     }
 
 
@@ -75,7 +76,7 @@ def main() -> None:
         build_metadata_entry(path, version_without_prefix) for path in artifact_files
     ]
 
-    json_path = artifacts_dir / "prebuilt-llvm.json"
+    json_path = artifacts_dir / "llvm-manifest.json"
     with json_path.open("w", encoding="utf-8") as handle:
         json.dump(metadata, handle, indent=2)
         handle.write("\n")
