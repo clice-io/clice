@@ -108,7 +108,7 @@ def main() -> None:
         "gh", "release", "create", tag, *assets,
         "--repo", target_repo,
         "--title", tag,
-        "--notes", f"Artifacts from workflow run {workflow_id}",
+        "--notes", f"Artifacts build from workflow run https://github.com/clice-io/clice/actions/runs/{workflow_id}",
         "--latest",
     ]
     # fmt: on
