@@ -19,38 +19,15 @@ jobs:
   upload:
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download artifacts from workflow
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p artifacts
-          gh run download "${{ inputs.workflow_id }}" --dir artifacts
-          echo "Downloaded artifacts:"
-          find artifacts -maxdepth 4 -type f -print
+        run: scripts/download-llvm.sh "${{ inputs.workflow_id }}"
 
       - name: Recreate release with artifacts
         env:
           GH_TOKEN: ${{ secrets.LLVM_UPLOAD }}
           TARGET_REPO: clice-io/clice-llvm
-        run: |
-          set -euo pipefail
-          TAG="${{ inputs.version }}"
-          REPO="${TARGET_REPO}"
-
-          if gh release view "${TAG}" --repo "${REPO}" >/dev/null 2>&1; then
-            echo "Deleting existing release ${TAG} in ${REPO}..."
-            gh release delete "${TAG}" --repo "${REPO}" -y
-          fi
-
-          mapfile -d '' ASSETS < <(find artifacts -type f -print0)
-          if [[ ${#ASSETS[@]} -eq 0 ]]; then
-            echo "No artifacts found to upload." >&2
-            exit 1
-          fi
-
-          echo "Creating release ${TAG} in ${REPO} with ${#ASSETS[@]} assets..."
-          gh release create "${TAG}" "${ASSETS[@]}" \
-            --repo "${REPO}" \
-            --title "${TAG}" \
-            --notes "Artifacts from workflow run ${{ inputs.workflow_id }}" \
-            --latest
+        run: python3 scripts/upload-llvm.py "${{ inputs.version }}" "${TARGET_REPO}" "${{ inputs.workflow_id }}"
