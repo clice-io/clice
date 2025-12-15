@@ -2,7 +2,10 @@
 name = "clice"
 version = "0.1.0"
 description = "A next-generation C++ language server for modern C++"
-authors = ["ykiko <ykikoykikoykiko@gmail.com>"]
+authors = [
+  "ykiko <ykikoykikoykiko@gmail.com>",
+  "clice contributors <clice@clice.io>",
+]
 
 license = "Apache-2.0"
 license-file = "LICENSE"
@@ -48,7 +51,11 @@ package = ["test", "package"]
 cmd = ["python3", "scripts/build-llvm.py"]
 
 [tasks.upload-llvm]
-args = ["workflow_id", "llvm_version"]
+args = [
+    "workflow_id",
+    "llvm_version",
+    { "name" = "branch", default = "main" },
+]
 cmd = [
     "gh", "workflow", "run", "upload-llvm.yml",
     "--ref", "introduce-pixi",
