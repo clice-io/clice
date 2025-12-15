@@ -4,6 +4,11 @@ permissions:
   contents: write
 
 on:
+  pull_request:
+    # if you want to run this workflow, change the branch name to main,
+    # if you want to turn off it, change it to non existent branch.
+    branches: [main-turn-off]
+
   workflow_dispatch:
     inputs:
       workflow_id:

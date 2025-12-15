@@ -6,7 +6,7 @@ authors = ["ykiko <ykikoykikoykiko@gmail.com>"]
 
 license = "Apache-2.0"
 license-file = "LICENSE"
-readme = "README"
+readme = "README.md"
 documentation = "https://clice.io"
 repository = "https://github.com/clice-io/clice"
 
@@ -50,8 +50,8 @@ cmd = ["python3", "scripts/build-llvm.py"]
 [tasks.upload-llvm]
 args = ["workflow_id", "llvm_version"]
 cmd = [
-    "gh", "workflow", "run", "upload-llvm",
-    "--ref", "main",
+    "gh", "workflow", "run", "upload-llvm.yml",
+    "--ref", "introduce-pixi",
     "--field", "workflow_id={{workflow_id}}",
     "--field", "version={{llvm_version}}",
 ]

@@ -5,16 +5,6 @@ on:
     # if you want to run this workflow, change the branch name to main,
     # if you want to turn off it, change it to non existent branch.
     branches: [main-turn-off]
-    paths:
-      - ".github/workflows/llvm.yml"
-      - "cmake/build-llvm.cmake"
-      - "scripts/build-llvm.py"
-      - "scripts/**"
-      - "CMakeLists.txt"
-      - "cmake/**"
-      - "src/**"
-      - "include/**"
-      - "tests/**"
 
 jobs:
   build:
