@@ -19,7 +19,7 @@ else()
     set(CMAKE_MODULE_LINKER_FLAGS "-fuse-ld=lld" CACHE STRING "Module linker flags")
 endif()
 
-find_program(LLVM_AR_PATH AR_PROGRAM_NAME)
+find_program(LLVM_AR_PATH ${AR_PROGRAM_NAME})
 if(LLVM_AR_PATH)
     set(CMAKE_AR "${LLVM_AR_PATH}" CACHE FILEPATH "Archiver")
     set(CMAKE_C_COMPILER_AR "${LLVM_AR_PATH}" CACHE FILEPATH "C archiver")
