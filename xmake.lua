@@ -47,7 +47,7 @@ if is_plat("macosx") then
 	add_ldflags("-fuse-ld=lld")
 	add_shflags("-fuse-ld=lld")
 
-	add_requireconfs("**|cmake|toml++", {configs = {
+	add_requireconfs("**|cmake", {configs = {
 		ldflags = "-fuse-ld=lld",
 		shflags = "-fuse-ld=lld",
 		cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1",
