@@ -48,22 +48,10 @@ jobs:
           cache: true
           locked: true
 
-      - name: Build clice
-        shell: bash
+      - name: Build
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-            -DCLICE_ENABLE_TEST=ON \
-            -DCLICE_CI_ENVIRONMENT=ON
-          cmake --build build
+          pixi run ci-cmake-build ${{ matrix.build_type }}
 
-      - name: Run tests
-        shell: bash
+      - name: Test
         run: |
-          EXE_EXT=""
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            EXE_EXT=".exe"
-          fi
-          ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
-          uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
+          pixi run ci-cmake-test

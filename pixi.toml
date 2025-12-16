@@ -17,6 +17,7 @@ channels = ["conda-forge"]
 platforms = ["win-64", "linux-64", "osx-arm64"]
 
 [dependencies]
+python = ">=3.13"
 cmake = ">=3.30"
 ninja = "*"
 clang = "==20.1.8"
@@ -36,16 +37,47 @@ scripts = ["scripts/activate_asan.bat"]
 [target.linux-64.activation]
 scripts = ["scripts/activate_linux.sh"]
 
-[feature.test.dependencies]
-uv = "*"
+[feature.test.pypi-dependencies]
+pytest = "*"
+pytest-asyncio = ">=1.1.0"
+pre-commit = ">=4.3.0"
 
 [feature.package.dependencies]
 xz = ">=5.8.1,<6"
 
 [environments]
 default = []
-develop = ["test"]
+develop = ["test", "develop"]
 package = ["test", "package"]
+
+[tasks.ci-cmake-configure]
+args = ["build_type"]
+cmd = ["cmake", "-B", "build", "-G", "Ninja",
+    "-DCMAKE_BUILD_TYPE={{ build_type }}",
+    "-DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake",
+    "-DCLICE_ENABLE_TEST=ON",
+    "-DCLICE_CI_ENVIRONMENT=ON",
+]
+
+[tasks.cmake-build]
+cmd = "cmake --build build"
+
+[feature.develop.tasks]
+unit-test = './build/bin/unit_tests --test-dir="./tests/data"'
+integration-test = 'pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice{% if pixi.is_win %}.exe{% endif %}'
+
+[tasks.ci-cmake-build]
+args = ["build_type"]
+depends-on = [
+    { task = "ci-cmake-configure", args = ["{{ build_type }}"] },
+    { task = "cmake-build" },
+]
+
+[tasks.ci-cmake-test]
+depends-on = [
+    { task = "unit-test" },
+    { task = "integration-test" },
+]
 
 [tasks.build-llvm]
 cmd = ["python3", "scripts/build-llvm.py"]
