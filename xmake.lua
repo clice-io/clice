@@ -41,6 +41,22 @@ if has_config("release") then
 	includes("@builtin/xpack")
 end
 
+if is_plat("macosx") then
+    -- https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
+    add_defines("_LIBCPP_DISABLE_AVAILABILITY=1")
+    add_ldflags("-fuse-ld=lld")
+    add_shflags("-fuse-ld=lld")
+
+    local opt = {configs = {
+        ldflags = "-fuse-ld=lld",
+        shflags = "-fuse-ld=lld",
+        cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1"
+    }}
+    add_requireconfs("quickjs-ng", opt)
+    add_requireconfs("libuv", opt)
+    add_requireconfs("spdlog", opt)
+end
+
 add_defines("TOML_EXCEPTIONS=0")
 add_requires(
 	"spdlog",
