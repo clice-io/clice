@@ -91,7 +91,7 @@ cmd = "xmake build --verbose --diagnosis --all"
 [tasks.ci-xmake-build]
 args = ["build_type"]
 depends-on = [
-    { task = "xmake-configure", args = ["{{ build_type }}"] },
+    { task = "ci-xmake-configure", args = ["{{ build_type }}"] },
     { task = "xmake-build" },
 ]
 
