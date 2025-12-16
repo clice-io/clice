@@ -42,16 +42,19 @@ if has_config("release") then
 end
 
 if is_plat("macosx") then
-    -- https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
-    add_defines("_LIBCPP_DISABLE_AVAILABILITY=1")
-    add_ldflags("-fuse-ld=lld")
-    add_shflags("-fuse-ld=lld")
+	-- https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
+	add_defines("_LIBCPP_DISABLE_AVAILABILITY=1")
+	add_ldflags("-fuse-ld=lld")
+	add_shflags("-fuse-ld=lld")
 
-    add_requireconfs("*", {configs = {
-        ldflags = "-fuse-ld=lld",
-        shflags = "-fuse-ld=lld",
-        cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1",
-    }})
+	add_requireconfs("**|cmake|toml++", {configs = {
+		ldflags = "-fuse-ld=lld",
+		shflags = "-fuse-ld=lld",
+		cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1",
+	}})
+elseif is_plat("linux") then
+	-- don't fetch system package
+	set_policy("package.install_only", true)
 end
 
 add_defines("TOML_EXCEPTIONS=0")
