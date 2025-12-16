@@ -47,11 +47,13 @@ if is_plat("macosx") then
 	add_ldflags("-fuse-ld=lld")
 	add_shflags("-fuse-ld=lld")
 
-	add_requireconfs("**|cmake", {configs = {
-		ldflags = "-fuse-ld=lld",
-		shflags = "-fuse-ld=lld",
-		cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1",
-	}})
+	add_requireconfs("**|cmake", {
+		configs = {
+			ldflags = "-fuse-ld=lld",
+			shflags = "-fuse-ld=lld",
+			cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1",
+		},
+	})
 elseif is_plat("linux") then
 	-- don't fetch system package
 	set_policy("package.install_only", true)
@@ -246,7 +248,7 @@ rule("clice_build_config", function()
 		elseif target:is_plat("linux") then
 			target:add("ldflags", "-fuse-ld=lld", "-static-libstdc++", "-Wl,--gc-sections")
 		elseif target:is_plat("macosx") then
-			target:add("ldflags", "-fuse-ld=lld", "-static-libc++", "-Wl,-dead_strip,-object_path_lto,clice.lto.o")
+			target:add("ldflags", "-fuse-ld=lld", "-Wl,-dead_strip,-object_path_lto,clice.lto.o", { force = true })
 		end
 
 		if has_config("ci") then
@@ -310,7 +312,7 @@ package("clice-llvm", function()
 	else
 		on_source(function(package)
 			import("core.base.json")
-			
+
 			local build_type = {
 				Debug = "debug",
 				Release = "release",
