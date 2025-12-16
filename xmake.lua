@@ -174,19 +174,14 @@ target("integration_tests", function()
 	on_test(function(target, opt)
 		import("lib.detect.find_tool")
 
-		local uv = assert(find_tool("uv"), "uv not found!")
 		local argv = {
-			"run",
-			"--project",
-			"tests",
-			"pytest",
 			"--log-cli-level=INFO",
 			"-s",
 			"tests/integration",
 			"--executable=" .. target:dep("clice"):targetfile(),
 		}
 		local run_opt = { curdir = os.projectdir() }
-		os.vrunv(uv.program, argv, run_opt)
+		os.vrunv("pytest", argv, run_opt)
 
 		return true
 	end)
@@ -299,15 +294,21 @@ package("clice-llvm", function()
 	else
 		on_source(function(package)
 			import("core.base.json")
-			local info = json.loadfile("./config/prebuilt-llvm.json")
+			
+			local build_type = {
+				Debug = "debug",
+				Release = "release",
+				RelWithDebInfo = "releasedbg",
+			}
+			local info = json.loadfile("./config/llvm-manifest.json")
 			for _, info in ipairs(info) do
 				local current_plat = get_config("plat")
 				local current_mode = get_config("mode")
 				local info_plat = info.platform:lower()
-				local info_mode = info.build_type:lower()
+				local info_mode = build_type[info.build_type]
 				local mode_match = (info_mode == current_mode)
-					or (info_mode == "release" and current_mode == "releasedbg")
-				if info_plat == current_plat and mode_match and (info.is_lto == has_config("release")) then
+					or (info_mode == "releasedbg" and current_mode == "release")
+				if info_plat == current_plat and mode_match and (info.lto == has_config("release")) then
 					package:add(
 						"urls",
 						format(
@@ -340,7 +341,7 @@ package("clice-llvm", function()
 			package:add("defines", "CLANG_BUILD_STATIC")
 		end
 
-		os.vcp("bin", package:installdir())
+		os.trycp("bin", package:installdir())
 		os.vcp("lib", package:installdir())
 		os.vcp("include", package:installdir())
 	end)

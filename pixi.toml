@@ -66,6 +66,7 @@ cmd = "cmake --build build"
 unit-test = './build/bin/unit_tests --test-dir="./tests/data"'
 integration-test = 'pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice{% if pixi.is_win %}.exe{% endif %}'
 ci-check = "pre-commit run --all-files"
+xmake-test = "xmake test --verbose"
 
 [tasks.ci-cmake-build]
 args = ["build_type"]
@@ -78,6 +79,20 @@ depends-on = [
 depends-on = [
     { task = "unit-test" },
     { task = "integration-test" },
+]
+
+[tasks.ci-xmake-configure]
+args = ["build_type"]
+cmd = "xmake config --clean --yes --mode={{ build_type }} --toolchain=clang --ci=y"
+
+[tasks.xmake-build]
+cmd = "xmake build --verbose --diagnosis --all"
+
+[tasks.ci-xmake-build]
+args = ["build_type"]
+depends-on = [
+    { task = "xmake-configure", args = ["{{ build_type }}"] },
+    { task = "xmake-build" },
 ]
 
 [tasks.build-llvm]
