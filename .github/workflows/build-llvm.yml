@@ -12,7 +12,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Windows
           - os: windows-2025
             llvm_mode: Debug
             lto: OFF
@@ -22,7 +21,7 @@ jobs:
           - os: windows-2025
             llvm_mode: RelWithDebInfo
             lto: ON
-          # Linux
+
           - os: ubuntu-24.04
             llvm_mode: Debug
             lto: OFF
@@ -32,7 +31,7 @@ jobs:
           - os: ubuntu-24.04
             llvm_mode: RelWithDebInfo
             lto: ON
-          # macOS
+
           - os: macos-15
             llvm_mode: Debug
             lto: OFF

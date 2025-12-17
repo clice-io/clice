@@ -249,7 +249,7 @@ rule("clice_build_config", function()
 			target:add("ldflags", "-fuse-ld=lld", "-Wl,-dead_strip,-object_path_lto,clice.lto.o", { force = true })
 			-- dsymutil so slow, disable it in daily ci
 			if not has_config("release") and is_mode("releasedbg") and has_config("ci") then
-				target:set("strip", nil)
+				target:rule_enable("utils.symbols.extract", false)
 			end
 		end
 
