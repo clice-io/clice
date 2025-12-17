@@ -190,8 +190,6 @@ target("integration_tests", function()
 	add_tests("default")
 
 	on_test(function(target, opt)
-		import("lib.detect.find_tool")
-
 		local argv = {
 			"--log-cli-level=INFO",
 			"-s",
@@ -249,6 +247,10 @@ rule("clice_build_config", function()
 			target:add("ldflags", "-fuse-ld=lld", "-static-libstdc++", "-Wl,--gc-sections")
 		elseif target:is_plat("macosx") then
 			target:add("ldflags", "-fuse-ld=lld", "-Wl,-dead_strip,-object_path_lto,clice.lto.o", { force = true })
+			-- dsymutil so slow, disable it in daily ci
+			if not has_config("release") and is_mode("releasedbg") and has_config("ci") then
+				target:set("strip", nil)
+			end
 		end
 
 		if has_config("ci") then
