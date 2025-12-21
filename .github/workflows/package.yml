@@ -65,10 +65,14 @@ jobs:
           cache: true
           locked: true
 
-      - name: Configure and Package
+      - name: Remove ci llvm toolchain on Windows
+        if: runner.os == 'Windows'
         run: |
           # @see https://github.com/xmake-io/xmake/issues/7158
           xmake lua os.rmdir "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/Llvm"
+
+      - name: Package
+        run: |
           pixi run package
 
       - name: Upload Main Package to Release
