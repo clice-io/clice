@@ -117,4 +117,4 @@ args = ["file_name"]
 cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]
 
 [tasks.package]
-cmd = "xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg && xmake pack --verbose"
+cmd = "xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=clang && xmake pack --verbose"
