@@ -35,7 +35,7 @@ if has_config("release") then
 	set_policy("package.install_only", true) -- Don't fetch system package
 
 	if is_plat("windows") then
-		set_runtimes("MT")
+		set_runtimes("MD")
 		-- workaround cmake
 		libuv_require = "libuv[toolchains=clang-cl]"
 	end
