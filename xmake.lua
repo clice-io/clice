@@ -43,17 +43,24 @@ if has_config("release") then
 	includes("@builtin/xpack")
 end
 
-if is_plat("macosx") then
-	-- https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
-	add_defines("_LIBCPP_DISABLE_AVAILABILITY=1")
-	add_ldflags("-fuse-ld=lld")
-	add_shflags("-fuse-ld=lld")
+if is_plat("macosx", "linux") then
+	local cxflags
+	if is_plat("macosx") then
+		-- https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
+		cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1"
+	end
+	local ldflags = "-fuse-ld=lld"
+	local shflags = "-fuse-ld=lld",
+
+	add_cxflags(cxflags)
+	add_ldflags(ldflags)
+	add_shflags(shflags)
 
 	add_requireconfs("**|cmake", {
 		configs = {
-			ldflags = "-fuse-ld=lld",
-			shflags = "-fuse-ld=lld",
-			cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1",
+			cxflags = cxflags,
+			ldflags = ldflags,
+			shflags = shflags,
 		},
 	})
 end
