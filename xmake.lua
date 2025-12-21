@@ -253,14 +253,15 @@ rule("clice_build_config", function()
 			target:add("ldflags", "-fuse-ld=lld", "-static-libstdc++", "-Wl,--gc-sections")
 		elseif target:is_plat("macosx") then
 			target:add("ldflags", "-fuse-ld=lld", "-Wl,-dead_strip,-object_path_lto,clice.lto.o", { force = true })
-			if has_config("release") then
-				-- pixi clang failed to add lto flags because it need `-fuse-ld=lld`
-				target:add("ldflags", "-flto=thin", { force = true })
-			end
 			-- dsymutil so slow, disable it in dev ci
 			if not has_config("release") and is_mode("releasedbg") and has_config("ci") then
 				target:rule_enable("utils.symbols.extract", false)
 			end
+		end
+
+		if has_config("release") then
+			-- pixi clang failed to add lto flags because it need `-fuse-ld=lld`
+			target:add("ldflags", "-flto=thin", { force = true })
 		end
 
 		if has_config("ci") then
