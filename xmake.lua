@@ -12,6 +12,7 @@ option("ci", { default = false })
 
 if has_config("dev") then
 	set_policy("build.ccache", true)
+	set_policy("package.install_only", true) -- Don't fetch system package
 	if is_plat("windows") then
 		set_runtimes("MD")
 		if is_mode("debug") then
@@ -31,8 +32,7 @@ local libuv_require = "libuv"
 if has_config("release") then
 	set_policy("build.optimization.lto", true)
 	set_policy("package.cmake_generator.ninja", true)
-	-- Don't fetch system package
-	set_policy("package.install_only", true)
+	set_policy("package.install_only", true) -- Don't fetch system package
 
 	if is_plat("windows") then
 		set_runtimes("MT")
@@ -257,7 +257,7 @@ rule("clice_build_config", function()
 				-- pixi clang failed to add lto flags because it need `-fuse-ld=lld`
 				target:add("ldflags", "-flto=thin", { force = true })
 			end
-			-- dsymutil so slow, disable it in daily ci
+			-- dsymutil so slow, disable it in dev ci
 			if not has_config("release") and is_mode("releasedbg") and has_config("ci") then
 				target:rule_enable("utils.symbols.extract", false)
 			end
