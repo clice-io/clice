@@ -50,7 +50,7 @@ if is_plat("macosx", "linux") then
 		cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1"
 	end
 	local ldflags = "-fuse-ld=lld"
-	local shflags = "-fuse-ld=lld",
+	local shflags = "-fuse-ld=lld"
 
 	add_cxflags(cxflags)
 	add_ldflags(ldflags)
