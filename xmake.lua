@@ -31,6 +31,8 @@ local libuv_require = "libuv"
 if has_config("release") then
 	set_policy("build.optimization.lto", true)
 	set_policy("package.cmake_generator.ninja", true)
+	-- Don't fetch system package
+	set_policy("package.install_only", true)
 
 	if is_plat("windows") then
 		set_runtimes("MT")
@@ -54,9 +56,6 @@ if is_plat("macosx") then
 			cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1",
 		},
 	})
-elseif is_plat("linux") then
-	-- don't fetch system package
-	set_policy("package.install_only", true)
 end
 
 add_defines("TOML_EXCEPTIONS=0")
