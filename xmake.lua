@@ -12,6 +12,7 @@ option("ci", { default = false })
 
 if has_config("dev") then
 	set_policy("build.ccache", true)
+	set_policy("package.install_only", true) -- Don't fetch system package
 	if is_plat("windows") then
 		set_runtimes("MD")
 		if is_mode("debug") then
@@ -31,14 +32,37 @@ local libuv_require = "libuv"
 if has_config("release") then
 	set_policy("build.optimization.lto", true)
 	set_policy("package.cmake_generator.ninja", true)
+	set_policy("package.install_only", true) -- Don't fetch system package
 
 	if is_plat("windows") then
-		set_runtimes("MT")
+		set_runtimes("MD")
 		-- workaround cmake
 		libuv_require = "libuv[toolchains=clang-cl]"
 	end
 
 	includes("@builtin/xpack")
+end
+
+if is_plat("macosx", "linux") then
+	local cxflags
+	if is_plat("macosx") then
+		-- https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
+		cxflags = "-D_LIBCPP_DISABLE_AVAILABILITY=1"
+	end
+	local ldflags = "-fuse-ld=lld"
+	local shflags = "-fuse-ld=lld"
+
+	add_cxflags(cxflags)
+	add_ldflags(ldflags)
+	add_shflags(shflags)
+
+	add_requireconfs("**|cmake", {
+		configs = {
+			cxflags = cxflags,
+			ldflags = ldflags,
+			shflags = shflags,
+		},
+	})
 end
 
 add_defines("TOML_EXCEPTIONS=0")
@@ -172,21 +196,14 @@ target("integration_tests", function()
 	add_tests("default")
 
 	on_test(function(target, opt)
-		import("lib.detect.find_tool")
-
-		local uv = assert(find_tool("uv"), "uv not found!")
 		local argv = {
-			"run",
-			"--project",
-			"tests",
-			"pytest",
 			"--log-cli-level=INFO",
 			"-s",
 			"tests/integration",
 			"--executable=" .. target:dep("clice"):targetfile(),
 		}
 		local run_opt = { curdir = os.projectdir() }
-		os.vrunv(uv.program, argv, run_opt)
+		os.vrunv("pytest", argv, run_opt)
 
 		return true
 	end)
@@ -235,7 +252,16 @@ rule("clice_build_config", function()
 		elseif target:is_plat("linux") then
 			target:add("ldflags", "-fuse-ld=lld", "-static-libstdc++", "-Wl,--gc-sections")
 		elseif target:is_plat("macosx") then
-			target:add("ldflags", "-fuse-ld=lld", "-static-libc++", "-Wl,-dead_strip,-object_path_lto,clice.lto.o")
+			target:add("ldflags", "-fuse-ld=lld", "-Wl,-dead_strip,-object_path_lto,clice.lto.o", { force = true })
+			-- dsymutil so slow, disable it in dev ci
+			if not has_config("release") and is_mode("releasedbg") and has_config("ci") then
+				target:rule_enable("utils.symbols.extract", false)
+			end
+		end
+
+		if has_config("release") then
+			-- pixi clang failed to add lto flags because it need `-fuse-ld=lld`
+			target:add("ldflags", "-flto=thin", { force = true })
 		end
 
 		if has_config("ci") then
@@ -299,15 +325,21 @@ package("clice-llvm", function()
 	else
 		on_source(function(package)
 			import("core.base.json")
-			local info = json.loadfile("./config/prebuilt-llvm.json")
+
+			local build_type = {
+				Debug = "debug",
+				Release = "release",
+				RelWithDebInfo = "releasedbg",
+			}
+			local info = json.loadfile("./config/llvm-manifest.json")
 			for _, info in ipairs(info) do
 				local current_plat = get_config("plat")
 				local current_mode = get_config("mode")
 				local info_plat = info.platform:lower()
-				local info_mode = info.build_type:lower()
+				local info_mode = build_type[info.build_type]
 				local mode_match = (info_mode == current_mode)
-					or (info_mode == "release" and current_mode == "releasedbg")
-				if info_plat == current_plat and mode_match and (info.is_lto == has_config("release")) then
+					or (info_mode == "releasedbg" and current_mode == "release")
+				if info_plat == current_plat and mode_match and (info.lto == has_config("release")) then
 					package:add(
 						"urls",
 						format(
@@ -340,7 +372,7 @@ package("clice-llvm", function()
 			package:add("defines", "CLANG_BUILD_STATIC")
 		end
 
-		os.vcp("bin", package:installdir())
+		os.trycp("bin", package:installdir())
 		os.vcp("lib", package:installdir())
 		os.vcp("include", package:installdir())
 	end)

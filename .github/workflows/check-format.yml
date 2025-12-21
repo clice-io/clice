@@ -15,15 +15,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.3
+        with:
+          pixi-version: v0.61.0
+          environments: develop
+          activate-environment: true
+          cache: true
+          locked: true
 
       - name: Run check
         id: precommit
         run: |
-          uv venv
-          uv pip install pre-commit
-          uv run pre-commit run --all-files
+          pixi run ci-check
         continue-on-error: true
 
       - name: Show diff on failure

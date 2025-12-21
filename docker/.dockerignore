@@ -1,9 +1,0 @@
-build/
-out/
-.cache
-
-.clice/
-.llvm*/
-.xmake/
-.vscode/
-.vs/

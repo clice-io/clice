@@ -1,81 +1,11 @@
 include_guard()
 
-include(${CMAKE_CURRENT_LIST_DIR}/llvm_setup.cmake)
-
-setup_llvm("21.1.4")
-
-get_filename_component(LLVM_INSTALL_PATH "${LLVM_INSTALL_PATH}" ABSOLUTE)
-
-if(NOT EXISTS "${LLVM_INSTALL_PATH}")
-    message(FATAL_ERROR "Error: The specified LLVM_INSTALL_PATH does not exist: ${LLVM_INSTALL_PATH}")
-endif()
-
-# set llvm include and lib path
-add_library(llvm-libs INTERFACE IMPORTED)
-
-# add to include directories
-target_include_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/include")
-
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_link_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/lib")
-    target_link_libraries(llvm-libs INTERFACE
-        LLVMSupport
-        LLVMFrontendOpenMP
-        LLVMOption
-        LLVMTargetParser
-        clangAST
-        clangASTMatchers
-        clangBasic
-        clangDriver
-        clangFormat
-        clangFrontend
-        clangLex
-        clangSema
-        clangSerialization
-        clangTidy
-        clangTidyUtils
-        # ALL_CLANG_TIDY_CHECKS
-        clangTidyAndroidModule
-        clangTidyAbseilModule
-        clangTidyAlteraModule
-        clangTidyBoostModule
-        clangTidyBugproneModule
-        clangTidyCERTModule
-        clangTidyConcurrencyModule
-        clangTidyCppCoreGuidelinesModule
-        clangTidyDarwinModule
-        clangTidyFuchsiaModule
-        clangTidyGoogleModule
-        clangTidyHICPPModule
-        clangTidyLinuxKernelModule
-        clangTidyLLVMModule
-        clangTidyLLVMLibcModule
-        clangTidyMiscModule
-        clangTidyModernizeModule
-        clangTidyObjCModule
-        clangTidyOpenMPModule
-        clangTidyPerformanceModule
-        clangTidyPortabilityModule
-        clangTidyReadabilityModule
-        clangTidyZirconModule
-        clangTooling
-        clangToolingCore
-        clangToolingInclusions
-        clangToolingInclusionsStdlib
-        clangToolingSyntax
-    )
-else()
-    file(GLOB LLVM_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/*${CMAKE_STATIC_LIBRARY_SUFFIX}")
-    target_link_libraries(llvm-libs INTERFACE ${LLVM_LIBRARIES})
-    target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)
-endif()
-
-if(WIN32)
-    target_link_libraries(llvm-libs INTERFACE version ntdll)
-endif()
+include(${CMAKE_CURRENT_LIST_DIR}/llvm.cmake)
+setup_llvm("21.1.4+r1")
 
 # install dependencies
 include(FetchContent)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
 if(WIN32)
     set(NULL_DEVICE NUL)
@@ -88,6 +18,8 @@ FetchContent_Declare(
     libuv
     GIT_REPOSITORY https://github.com/libuv/libuv.git
     GIT_TAG v1.x
+    GIT_SHALLOW    TRUE
+
 )
 
 if(NOT WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -101,13 +33,16 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
-    GIT_TAG v1.15.3
+    GIT_TAG        v1.15.3
+    GIT_SHALLOW    TRUE
 )
 
 # tomlplusplus
 FetchContent_Declare(
     tomlplusplus
     GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
+    GIT_TAG        v3.4.0
+    GIT_SHALLOW    TRUE
 )
 
 # croaring
@@ -115,6 +50,7 @@ FetchContent_Declare(
     croaring
     GIT_REPOSITORY https://github.com/RoaringBitmap/CRoaring.git
     GIT_TAG        v4.4.2
+    GIT_SHALLOW    TRUE
 )
 set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "" FORCE)
 set(ENABLE_ROARING_MICROBENCHMARKS OFF CACHE INTERNAL "" FORCE)
@@ -124,6 +60,7 @@ FetchContent_Declare(
     flatbuffers
     GIT_REPOSITORY https://github.com/google/flatbuffers.git
     GIT_TAG        v25.9.23
+    GIT_SHALLOW    TRUE
 )
 set(FLATBUFFERS_BUILD_GRPC OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -134,7 +71,9 @@ FetchContent_Declare(
     cpptrace
     GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
     GIT_TAG        v1.0.4
+    GIT_SHALLOW    TRUE
 )
+set(CPPTRACE_DISABLE_CXX_20_MODULES ON CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring flatbuffers cpptrace)
 
