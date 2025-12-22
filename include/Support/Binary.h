@@ -1,14 +1,14 @@
 #pragma once
 
-#include <vector>
 #include <cstdint>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
+#include <vector>
 
 #include "Enum.h"
-#include "Struct.h"
-#include "Format.h"
 #include "FixedString.h"
+#include "Format.h"
+#include "Struct.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -263,7 +263,7 @@ struct Proxy {
         };
     }
 
-    auto operator[] (std::size_t index) const {
+    auto operator[](std::size_t index) const {
         return Proxy<typename T::value_type>{base, &as_array()[index]};
     }
 

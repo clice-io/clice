@@ -1,10 +1,10 @@
 #pragma once
 
 #include <array>
-#include <string>
-#include <vector>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace clice::proto {
 
@@ -59,7 +59,7 @@ struct Position {
     /// `PositionEncodingKind`.
     uinteger character;
 
-    constexpr friend bool operator== (const Position&, const Position&) = default;
+    constexpr friend bool operator==(const Position&, const Position&) = default;
 };
 
 struct Range {
@@ -69,7 +69,7 @@ struct Range {
     /// The range's end position.
     Position end;
 
-    constexpr friend bool operator== (const Range&, const Range&) = default;
+    constexpr friend bool operator==(const Range&, const Range&) = default;
 };
 
 struct Location {

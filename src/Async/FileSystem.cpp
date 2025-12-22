@@ -1,4 +1,5 @@
 #include "Async/FileSystem.h"
+
 #include "Support/Logging.h"
 
 namespace clice::async::awaiter {}
@@ -122,7 +123,7 @@ handle::~handle() {
     uv_fs_t request;
     int error = uv_fs_close(async::loop, &request, file, nullptr);
     if(error < 0) {
-        LOGGING_WARN("Failed to close file: {}", uv_strerror(error));
+        LOG_WARN("Failed to close file: {}", uv_strerror(error));
     }
     uv_fs_req_cleanup(&request);
 }

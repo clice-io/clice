@@ -48,6 +48,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Support/FuzzyMatcher.h"
+
 #include "llvm/Support/Format.h"
 
 namespace clice {

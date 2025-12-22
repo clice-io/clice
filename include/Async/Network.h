@@ -1,12 +1,11 @@
 #pragma once
 
-#include "libuv.h"
-
 #include "Task.h"
+#include "libuv.h"
 #include "Support/JSON.h"
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/FunctionExtras.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace clice::async::net {
 

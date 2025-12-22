@@ -1,6 +1,6 @@
-#include <format>
-
 #include "Support/GlobPattern.h"
+
+#include <format>
 
 namespace clice {
 
@@ -363,7 +363,6 @@ bool GlobPattern::SubGlobPattern::match(llvm::StringRef str) const {
         };
 
     while(current_glob_seg < seg_num) {
-
         if(s == s_end) {
             // Return true if all pattern characters are processed or only
             // '*' or '/' characters remain

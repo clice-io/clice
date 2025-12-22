@@ -1,4 +1,5 @@
 #include "Async/Network.h"
+
 #include "Support/Logging.h"
 
 namespace clice::async::net {
@@ -30,7 +31,7 @@ void on_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
 
     /// If an error occurred while reading, we can't continue.
     if(nread < 0) [[unlikely]] {
-        LOGGING_FATAL("An error occurred while reading: {0}", uv_strerror(nread));
+        LOG_FATAL("An error occurred while reading: {0}", uv_strerror(nread));
     }
 
     /// We have at most one connection and use default event loop. So there is no data race
@@ -57,7 +58,7 @@ void on_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
             task.dispose();
         } else {
             /// If the message is invalid, we can't continue.
-            LOGGING_FATAL("Unexpected JSON input: {0}", result);
+            LOG_FATAL("Unexpected JSON input: {0}", result);
         }
 
         /// Remove the processed message from the buffer.
@@ -130,7 +131,7 @@ struct write {
 
         uv_write(&req, writer, buf, 2, [](uv_write_t* req, int status) {
             if(status < 0) {
-                LOGGING_FATAL("An error occurred while writing: {0}", uv_strerror(status));
+                LOG_FATAL("An error occurred while writing: {0}", uv_strerror(status));
             }
 
             auto& awaiter = uv_cast<struct write>(req);

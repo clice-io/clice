@@ -1,4 +1,5 @@
 #include "Feature/Diagnostic.h"
+
 #include "Compiler/CompilationUnit.h"
 #include "Server/Convert.h"
 #include "Support/Logging.h"
@@ -32,9 +33,9 @@ json::Value diagnostics(PositionEncodingKind kind, PathMapping mapping, Compilat
         if(level == DiagnosticLevel::Note || level == DiagnosticLevel::Remark) {
             /// FIXME: figure out why it may be invalid.
             if(fid.isInvalid()) {
-                LOGGING_INFO("code: {}, message: {}",
-                             raw_diagnostic.id.diagnostic_code(),
-                             raw_diagnostic.message);
+                LOG_INFO("code: {}, message: {}",
+                         raw_diagnostic.id.diagnostic_code(),
+                         raw_diagnostic.message);
                 continue;
             }
 

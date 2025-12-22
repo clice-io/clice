@@ -1,0 +1,38 @@
+name: upload-llvm
+
+permissions:
+  contents: write
+
+on:
+  pull_request:
+    # if you want to run this workflow, change the branch name to main,
+    # if you want to turn off it, change it to non existent branch.
+    branches: [main-turn-off]
+
+  workflow_dispatch:
+    inputs:
+      workflow_id:
+        description: "Workflow run ID to pull artifacts from"
+        required: true
+        type: string
+      version:
+        description: "Release version/tag to publish (e.g., v1.2.3)"
+        required: true
+        type: string
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts from workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/download-llvm.sh "${{ inputs.workflow_id }}"
+
+      - name: Recreate release with artifacts
+        env:
+          GH_TOKEN: ${{ secrets.UPLOAD_LLVM }}
+          TARGET_REPO: clice-io/clice-llvm
+        run: python3 scripts/upload-llvm.py "${{ inputs.version }}" "${TARGET_REPO}" "${{ inputs.workflow_id }}"

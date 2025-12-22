@@ -1,15 +1,16 @@
-
-#include "TidyImpl.h"
-
-#include "AST/Utility.h"
-#include "CompilationUnitImpl.h"
-#include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
+
+#include "CompilationUnitImpl.h"
+#include "TidyImpl.h"
+#include "AST/Utility.h"
+#include "Compiler/Command.h"
 #include "Compiler/Diagnostic.h"
 #include "Compiler/Tidy.h"
-#include "clang/Lex/PreprocessorOptions.h"
-#include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "Support/Logging.h"
+
 #include "clang/Frontend/MultiplexConsumer.h"
+#include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "clang/Lex/PreprocessorOptions.h"
 
 namespace clice {
 
@@ -99,20 +100,40 @@ private:
 auto create_invocation(CompilationParams& params,
                        llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine>& diagnostic_engine)
     -> std::unique_ptr<clang::CompilerInvocation> {
+    if(params.arguments.empty()) {
+        LOG_ERROR_RET(nullptr, "Fail to create invocation: empty argument list from database");
+    }
 
-    /// Create clang invocation.
-    clang::CreateInvocationOptions options = {
-        .Diags = diagnostic_engine,
-        .VFS = params.vfs,
+    std::unique_ptr<clang::CompilerInvocation> invocation;
 
-        /// Avoid replacing -include with -include-pch, also
-        /// see https://github.com/clangd/clangd/issues/856.
-        .ProbePrecompiled = false,
-    };
+    /// Arguments from compilation database are already cc1
+    if(params.arguments_from_database) {
+        invocation = std::make_unique<clang::CompilerInvocation>();
+        if(!clang::CompilerInvocation::CreateFromArgs(*invocation,
+                                                      llvm::ArrayRef(params.arguments).drop_front(),
+                                                      *diagnostic_engine,
+                                                      params.arguments[0])) {
+            LOG_ERROR_RET(nullptr,
+                          " Fail to create invocation, arguments list is: {}",
+                          print_argv(params.arguments));
+        }
+    } else {
+        /// Create clang invocation.
+        clang::CreateInvocationOptions options = {
+            .Diags = diagnostic_engine,
+            .VFS = params.vfs,
 
-    auto invocation = clang::createInvocation(params.arguments, options);
-    if(!invocation) {
-        return nullptr;
+            /// Avoid replacing -include with -include-pch, also
+            /// see https://github.com/clangd/clangd/issues/856.
+            .ProbePrecompiled = false,
+        };
+
+        invocation = clang::createInvocation(params.arguments, options);
+        if(!invocation) {
+            LOG_ERROR_RET(nullptr,
+                          " Fail to create invocation, arguments list is: {}",
+                          print_argv(params.arguments));
+        }
     }
 
     auto& pp_opts = invocation->getPreprocessorOpts();
@@ -336,7 +357,10 @@ CompilationResult preprocess(CompilationParams& params) {
 }
 
 CompilationResult compile(CompilationParams& params) {
-    return run_clang<clang::SyntaxOnlyAction>(params);
+    return run_clang<clang::SyntaxOnlyAction>(params, [](clang::CompilerInstance& instance) {
+        /// Make sure the output file is empty.
+        instance.getFrontendOpts().OutputFile.clear();
+    });
 }
 
 CompilationResult compile(CompilationParams& params, PCHInfo& out) {

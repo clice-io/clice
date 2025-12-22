@@ -1,6 +1,6 @@
+#include "Server/Indexer.h"
 
 #include "Compiler/Compilation.h"
-#include "Server/Indexer.h"
 #include "Server/Convert.h"
 #include "Support/Compare.h"
 #include "Support/Logging.h"
@@ -10,12 +10,13 @@ namespace clice {
 async::Task<> Indexer::index(llvm::StringRef path) {
     CompilationParams params;
     params.kind = CompilationUnit::Indexing;
+    params.arguments_from_database = true;
     params.arguments = database.lookup(path).arguments;
 
     auto path_id = project_index.path_pool.path_id(path);
     auto& merged_index = get_index(path_id);
     if(!merged_index.need_update(project_index.path_pool.paths)) {
-        LOGGING_INFO("Check update for {}, not need to update", path);
+        LOG_INFO("Check update for {}, not need to update", path);
         co_return;
     }
 
@@ -25,7 +26,7 @@ async::Task<> Indexer::index(llvm::StringRef path) {
     auto tu_index = co_await async::submit([&]() -> std::optional<index::TUIndex> {
         auto unit = compile(params);
         if(!unit) {
-            LOGGING_INFO("Fail to index for {}, because: {}", path, unit.error());
+            LOG_INFO("Fail to index for {}, because: {}", path, unit.error());
             return std::nullopt;
         }
 
@@ -55,7 +56,7 @@ async::Task<> Indexer::index(llvm::StringRef path) {
                 std::move(tu_index->graph.locations),
                 tu_index->main_file_index);
 
-    LOGGING_INFO("Successfully index {}", path);
+    LOG_INFO("Successfully index {}", path);
 }
 
 async::Task<> Indexer::schedule_next() {
@@ -107,9 +108,9 @@ void Indexer::load_from_disk() {
     if(auto content = fs::read(output_path); content && !content->empty()) {
         /// FIXME: from should return a expected ...
         project_index = index::ProjectIndex::from(content->data());
-        LOGGING_INFO("Load project index form {} successfully", output_path);
+        LOG_INFO("Load project index form {} successfully", output_path);
     } else {
-        LOGGING_INFO("Fail to load project index form {}", output_path);
+        LOG_INFO("Fail to load project index form {}", output_path);
     }
 
     /// FIXME: check indices update ....
@@ -117,9 +118,7 @@ void Indexer::load_from_disk() {
 
 void Indexer::save_to_disk() {
     if(auto err = fs::create_directories(config.project.index_dir)) {
-        LOGGING_WARN("Fail to create index output dir: {}, because: {}",
-                     config.project.index_dir,
-                     err);
+        LOG_WARN("Fail to create index output dir: {}, because: {}", config.project.index_dir, err);
         return;
     }
 
@@ -139,7 +138,7 @@ void Indexer::save_to_disk() {
             std::error_code err;
             llvm::raw_fd_ostream os(output_path, err, fs::CreationDisposition::CD_CreateAlways);
             if(err) {
-                LOGGING_INFO("Fail to create output index file: {}, because: {}", output_path, err);
+                LOG_INFO("Fail to create output index file: {}, because: {}", output_path, err);
                 continue;
             }
 
@@ -147,7 +146,7 @@ void Indexer::save_to_disk() {
 
             auto opath_id = project_index.path_pool.path_id(output_path);
             project_index.indices.try_emplace(path_id, opath_id);
-            LOGGING_INFO("Successfully save index for {} to {}", path, output_path);
+            LOG_INFO("Successfully save index for {} to {}", path, output_path);
         }
     }
 
@@ -156,12 +155,12 @@ void Indexer::save_to_disk() {
     std::error_code err;
     llvm::raw_fd_ostream os(output_path, err, fs::CreationDisposition::CD_CreateAlways);
     if(err) {
-        LOGGING_INFO("Fail to create output index file: {}, because: {}", output_path, err);
+        LOG_INFO("Fail to create output index file: {}, because: {}", output_path, err);
         return;
     }
 
     project_index.serialize(os);
-    LOGGING_INFO("Successfully save project index to {}", output_path);
+    LOG_INFO("Successfully save project index to {}", output_path);
 }
 
 auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind kind) -> Result {

@@ -1,13 +1,14 @@
 #include "Compiler/Diagnostic.h"
-#include "Support/Format.h"
-#include "TidyImpl.h"
 
-#include "clang/AST/Type.h"
+#include "TidyImpl.h"
+#include "Support/Format.h"
+
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/Type.h"
+#include "clang/Basic/AllDiagnostics.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticIDs.h"
-#include "clang/Basic/AllDiagnostics.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Preprocessor.h"
 
@@ -212,7 +213,6 @@ public:
 
     void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
                           const clang::Diagnostic& raw_diagnostic) override {
-
         auto& diagnostic = diagnostics->emplace_back();
         diagnostic.id.value = raw_diagnostic.getID();
 

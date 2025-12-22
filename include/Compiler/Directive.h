@@ -1,8 +1,9 @@
 #pragma once
 
 #include "AST/SourceCode.h"
-#include "clang/Lex/MacroInfo.h"
+
 #include "llvm/ADT/DenseMap.h"
+#include "clang/Lex/MacroInfo.h"
 
 namespace clice {
 

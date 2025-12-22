@@ -5,16 +5,15 @@
 #include "Compiler/Diagnostic.h"
 #include "Compiler/Tidy.h"
 
+#include "clang-tidy/ClangTidyCheck.h"
 #include "clang-tidy/ClangTidyModuleRegistry.h"
 #include "clang-tidy/ClangTidyOptions.h"
-#include "clang-tidy/ClangTidyCheck.h"
 
 namespace clice::tidy {
 
 using namespace clang::tidy;
 
 class ClangTidyChecker {
-
 public:
     /// The context of the clang-tidy checker.
     ClangTidyContext context;

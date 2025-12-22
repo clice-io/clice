@@ -1,14 +1,14 @@
 #pragma once
 
 #include <array>
-#include <vector>
 #include <ranges>
 #include <string_view>
+#include <vector>
 
-#include "Ranges.h"
-#include "TypeTraits.h"
 #include "Enum.h"
+#include "Ranges.h"
 #include "Struct.h"
+#include "TypeTraits.h"
 
 #include "llvm/Support/JSON.h"
 

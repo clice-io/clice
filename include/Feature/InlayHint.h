@@ -1,7 +1,7 @@
 #pragma once
 
-#include "AST/SymbolID.h"
 #include "AST/SourceCode.h"
+#include "AST/SymbolID.h"
 #include "Index/Shared.h"
 #include "Support/JSON.h"
 

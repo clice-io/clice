@@ -1,8 +1,9 @@
 #include "Server/Convert.h"
+
 #include "Protocol/Protocol.h"
-#include "Support/Ranges.h"
-#include "Support/JSON.h"
 #include "Support/Format.h"
+#include "Support/JSON.h"
+#include "Support/Ranges.h"
 
 namespace clice::proto {
 

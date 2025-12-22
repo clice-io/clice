@@ -5,7 +5,6 @@
 
 #include "Config.h"
 #include "Convert.h"
-
 #include "Async/Async.h"
 #include "Compiler/Command.h"
 #include "Index/MergedIndex.h"

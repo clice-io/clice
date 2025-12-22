@@ -1,11 +1,11 @@
 #pragma once
 
-#include <string>
 #include <memory>
+#include <string>
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace clice {
 

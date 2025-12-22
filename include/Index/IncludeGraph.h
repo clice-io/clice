@@ -1,11 +1,15 @@
 #pragma once
 
 #include <vector>
+
 #include "AST/SourceCode.h"
+
 #include "llvm/ADT/DenseMap.h"
 
 namespace clice {
+
 class CompilationUnit;
+
 }
 
 namespace clice::index {
@@ -20,7 +24,7 @@ struct IncludeLocation {
     /// The include location that introduces this file.
     std::uint32_t include = -1;
 
-    friend bool operator== (const IncludeLocation&, const IncludeLocation&) = default;
+    friend bool operator==(const IncludeLocation&, const IncludeLocation&) = default;
 };
 
 struct IncludeGraph {

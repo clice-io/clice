@@ -1,10 +1,11 @@
 #pragma once
 
-#include <vector>
 #include <cstdint>
+#include <vector>
+
+#include "Protocol/Feature/SignatureHelp.h"
 
 #include "llvm/ADT/StringRef.h"
-#include "Protocol/Feature/SignatureHelp.h"
 
 namespace clice {
 

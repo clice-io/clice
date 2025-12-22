@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Basic.h"
-#include "TextDocument.h"
 #include "Notebook.h"
+#include "TextDocument.h"
 #include "Workspace.h"
 
 /// clice currently ignores all `dynamicRegistration` field in LSP specification.

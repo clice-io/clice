@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Task.h"
+
 #include "llvm/ADT/ArrayRef.h"
 
 namespace clice::async {

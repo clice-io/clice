@@ -73,7 +73,7 @@ SpaceBeforeParensOptions:
   AfterFunctionDeclarationName: false
   AfterFunctionDefinitionName: false
   AfterIfMacros: false
-  AfterOverloadedOperator: true
+  AfterOverloadedOperator: false
   AfterRequiresInClause: true
   AfterRequiresInExpression: false
   BeforeNonEmptyParentheses: false
@@ -93,11 +93,50 @@ SpacesInParensOptions:
 
 SpacesInSquareBrackets: false
 
+WrapNamespaceBodyWithEmptyLines: Always
 # Order
 QualifierAlignment: Custom
 QualifierOrder: ["constexpr", "const", "inline", "static", "type"]
-SortIncludes: Never
+SortIncludes: true
 SortUsingDeclarations: Never
-IncludeBlocks: Merge
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^["<](spdlog|toml\+\+|coraing|cpptrace|flatbuffers)/'
+    Priority: 30
+    SortPriority: 31
+
+  - Regex: '^["<](llvm)/'
+    Priority: 30
+    SortPriority: 32
+
+  - Regex: '^["<](clang)/'
+    Priority: 30
+    SortPriority: 33
+
+  - Regex: '^["<](clang-tidy)/'
+    Priority: 30
+    SortPriority: 34
+
+  - Regex: '^["<](Test)/'
+    Priority: 20
+    SortPriority: 22
+
+  - Regex: "^<.*"
+    Priority: 10
+    SortPriority: 10
+
+  - Regex: '^".*/.*"'
+    Priority: 20
+    SortPriority: 23
+
+  - Regex: ".*"
+    Priority: 20
+    SortPriority: 21
 
 ForEachMacros: ["REFLECTABLE_RECORD"]
+NamespaceMacros: [TEST_SUITE]
+
+KeepEmptyLines:
+  AtEndOfFile: false
+  AtStartOfBlock: false
+  AtStartOfFile: false

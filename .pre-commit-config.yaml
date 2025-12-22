@@ -23,3 +23,9 @@ repos:
     hooks:
       - id: clang-format
         types_or: [c++, c]
+
+  - repo: https://github.com/JohnnyMorganz/StyLua
+    rev: v2.1.0
+    hooks:
+      - id: stylua-github # or stylua-system / stylua-github
+        files: '(^xmake\.lua$|^editors/nvim/(lua|plugin|test)/.*\.lua$)'

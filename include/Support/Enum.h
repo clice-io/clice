@@ -1,12 +1,12 @@
 #pragma once
 
-#include <bit>
 #include <array>
-#include <string>
-#include <cstdint>
+#include <bit>
 #include <cassert>
-#include <string_view>
+#include <cstdint>
 #include <source_location>
+#include <string>
+#include <string_view>
 
 #include "Support/TypeTraits.h"
 
@@ -81,7 +81,7 @@ public:
 
     constexpr Enum(const Enum&) = default;
 
-    constexpr Enum& operator= (const Enum&) = default;
+    constexpr Enum& operator=(const Enum&) = default;
 
     /// Get the underlying value of the enum.
     constexpr underlying value() const {
@@ -108,7 +108,7 @@ public:
         return m_Value != invalid();
     }
 
-    constexpr friend bool operator== (Enum lhs, Enum rhs) = default;
+    constexpr friend bool operator==(Enum lhs, Enum rhs) = default;
 
     constexpr static auto& all() {
         return enum_table<typename Derived::Kind, end() - begin()>::table;
@@ -165,7 +165,7 @@ public:
 
     constexpr Enum(const Enum&) = default;
 
-    constexpr Enum& operator= (const Enum&) = default;
+    constexpr Enum& operator=(const Enum&) = default;
 
     /// Get the underlying value of the enum.
     constexpr underlying value() const {
@@ -203,30 +203,30 @@ public:
         return m_Value != 0;
     }
 
-    constexpr friend bool operator== (Enum lhs, Enum rhs) = default;
+    constexpr friend bool operator==(Enum lhs, Enum rhs) = default;
 
     template <std::same_as<typename Derived::Kind> Kind>
-    constexpr Enum operator| (Kind kind) const {
+    constexpr Enum operator|(Kind kind) const {
         return Enum(m_Value | (1 << underlying_value(kind)));
     }
 
     template <std::same_as<typename Derived::Kind> Kind>
-    constexpr Enum operator& (Kind kind) const {
+    constexpr Enum operator&(Kind kind) const {
         return Enum(m_Value & (1 << underlying_value(kind)));
     }
 
-    constexpr Enum operator& (Enum e) const {
+    constexpr Enum operator&(Enum e) const {
         return Enum(m_Value & e.value());
     }
 
     template <std::same_as<typename Derived::Kind> Kind>
-    constexpr Enum& operator|= (Kind kind) {
+    constexpr Enum& operator|=(Kind kind) {
         m_Value |= (1 << underlying_value(kind));
         return *this;
     }
 
     template <std::same_as<typename Derived::Kind> Kind>
-    constexpr Enum& operator&= (Kind kind) {
+    constexpr Enum& operator&=(Kind kind) {
         m_Value &= (1 << underlying_value(kind));
         return *this;
     }
@@ -282,7 +282,7 @@ public:
 
     constexpr Enum(const Enum&) = default;
 
-    constexpr friend bool operator== (Enum lhs, Enum rhs) = default;
+    constexpr friend bool operator==(Enum lhs, Enum rhs) = default;
 
     constexpr underlying value() const {
         return m_Value;

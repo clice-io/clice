@@ -1,51 +1,49 @@
 #pragma once
 
-#include <expected>
-#include "Support/Enum.h"
-#include "Support/Format.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice::toolchain {
 
-struct QueryDriverError {
-    struct ErrorKind : refl::Enum<ErrorKind> {
-        enum Kind : std::uint8_t {
-            NotFoundInPATH,
-            NotImplemented,
-            FailToCreateTempFile,
-            InvokeDriverFail,
-            OutputFileNotReadable,
-            InvalidOutputFormat,
-        };
-
-        using Enum::Enum;
-    };
-
-    ErrorKind kind;
-    std::string detail;
+enum class CompilerFamily {
+    Unknown,
+    GCC,      // Covers gcc, g++, cc, c++, and versioned/arch variants
+    Clang,    // Covers clang, clang++, and versioned variants (excluding clang-cl)
+    MSVC,     // Covers cl
+    ClangCL,  // Covers clang-cl explicitly
+    NVCC,     // Covers nvcc
+    Intel,    // Covers icc, icpc, icx, dpcpp
+    Zig,      // Covers zig cc / zig c++ (assumed GCC/Clang compatible for query)
 };
 
-struct QueryResult {
-    std::string target;
-    llvm::SmallVector<std::string, 8> includes;
+struct QueryParams {
+    llvm::StringRef file;
+    llvm::StringRef directory;
+    llvm::ArrayRef<const char*> arguments;
+    llvm::function_ref<const char*(const char*)> callback;
 };
 
-enum class Kind {};
+/// Query the toolchain info and return the full arguments, the returned arguments should be
+/// converted to `clang::CompilerInvocation::CreateFromArgs` directly.
+std::vector<const char*> query_toolchain(const QueryParams& params);
 
-struct Toolchain {};
+CompilerFamily driver_family(llvm::StringRef driver);
 
-/// Query toolchain info according to the original compilation arguments.
-Toolchain query_toolchain(llvm::ArrayRef<const char*> arguments);
+/// Query g++ or mingw toolchain info. We detect the target and corresponding
+/// gcc toolchain install path as default behavior.
+std::vector<const char*> query_gcc_toolchain(const QueryParams& params);
 
-auto query_driver(llvm::StringRef driver) -> std::expected<QueryResult, QueryDriverError>;
+/// Query clang++ or any clang based toolchain, e.g. zig cc/c++. We query
+/// the full cc1 command of clang toolchain as default.
+/// TODO: Is armclang also compatible?
+std::vector<const char*> query_clang_toolchain(const QueryParams& params);
+
+/// Query the msvc or clang-cl toolchain, default behavior only adds the
+/// target and includes info.
+std::vector<const char*> query_msvc_toolchain(const QueryParams& params);
+
+/// FIXME: To be implemented
+std::vector<const char*> query_nvcc_toolchain(const QueryParams& params);
 
 }  // namespace clice::toolchain
-
-template <>
-struct std::formatter<clice::toolchain::QueryDriverError> : std::formatter<std::string_view> {
-    template <typename FormatContext>
-    auto format(const clice::toolchain::QueryDriverError& e, FormatContext& ctx) const {
-        return std::format_to(ctx.out(), "{} {}", e.kind.name(), e.detail);
-    }
-};

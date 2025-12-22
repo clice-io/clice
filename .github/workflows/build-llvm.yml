@@ -1,0 +1,195 @@
+name: build llvm
+
+on:
+  pull_request:
+    # if you want to run this workflow, change the branch name to main,
+    # if you want to turn off it, change it to non existent branch.
+    branches: [main-turn-off]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            llvm_mode: Debug
+            lto: OFF
+          - os: windows-2025
+            llvm_mode: RelWithDebInfo
+            lto: OFF
+          - os: windows-2025
+            llvm_mode: RelWithDebInfo
+            lto: ON
+
+          - os: ubuntu-24.04
+            llvm_mode: Debug
+            lto: OFF
+          - os: ubuntu-24.04
+            llvm_mode: RelWithDebInfo
+            lto: OFF
+          - os: ubuntu-24.04
+            llvm_mode: RelWithDebInfo
+            lto: ON
+
+          - os: macos-15
+            llvm_mode: Debug
+            lto: OFF
+          - os: macos-15
+            llvm_mode: RelWithDebInfo
+            lto: OFF
+          - os: macos-15
+            llvm_mode: RelWithDebInfo
+            lto: ON
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@main
+
+      - name: Increase Swap Space
+        if: runner.os == 'Linux'
+        run: |
+          echo "===== Initial Status ====="
+          sudo swapon --show
+          free -h
+
+          echo "===== Creating Swap File ====="
+          sudo swapoff -a
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+
+          echo "===== Final Status ====="
+          sudo swapon --show
+          free -h
+          df -h
+
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.3
+        with:
+          pixi-version: v0.59.0
+          environments: package
+          activate-environment: true
+          cache: true
+          locked: true
+
+      - name: Clone llvm-project (21.1.4)
+        shell: bash
+        run: |
+          git clone --branch llvmorg-21.1.4 --depth 1 https://github.com/llvm/llvm-project.git .llvm
+
+      - name: Build LLVM (install-distribution)
+        shell: bash
+        run: |
+          pixi run build-llvm --llvm-src=.llvm --mode="${{ matrix.llvm_mode }}" --lto="${{ matrix.lto }}" --build-dir=build
+
+      - name: Build clice using installed LLVM
+        shell: bash
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.llvm_mode }} \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
+            -DCLICE_ENABLE_TEST=ON \
+            -DCLICE_CI_ENVIRONMENT=ON \
+            -DCLICE_ENABLE_LTO=${{ matrix.lto }} \
+            -DLLVM_INSTALL_PATH=".llvm/build-install"
+          cmake --build build
+
+      - name: Run tests
+        shell: bash
+        run: |
+          EXE_EXT=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            EXE_EXT=".exe"
+          fi
+          ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
+          uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
+
+      - name: Prune LLVM static libraries (Debug/RelWithDebInfo no LTO)
+        if: matrix.llvm_mode == 'Debug' || (matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF')
+        shell: bash
+        run: |
+          MANIFEST="pruned-libs-${{ matrix.os }}.json"
+          echo "LLVM_PRUNED_MANIFEST=${MANIFEST}" >> "${GITHUB_ENV}"
+          python3 scripts/prune-llvm-bin.py \
+            --action discover \
+            --install-dir ".llvm/build-install/lib" \
+            --build-dir "build" \
+            --max-attempts 60 \
+            --sleep-seconds 60 \
+            --manifest "${MANIFEST}"
+
+      - name: Upload pruned-libs manifest
+        if: matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'
+        uses: actions/upload-artifact@v4
+        with:
+          name: llvm-pruned-libs-${{ matrix.os }}
+          path: ${{ env.LLVM_PRUNED_MANIFEST }}
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Apply pruned-libs manifest (RelWithDebInfo + LTO)
+        if: matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'ON'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MANIFEST="pruned-libs-${{ matrix.os }}.json"
+          python3 scripts/prune-llvm-bin.py \
+            --action apply \
+            --manifest "${MANIFEST}" \
+            --install-dir ".llvm/build-install/lib" \
+            --build-dir "build" \
+            --gh-run-id "${{ github.run_id }}" \
+            --gh-artifact "llvm-pruned-libs-${{ matrix.os }}" \
+            --gh-download-dir "artifacts" \
+            --max-attempts 60 \
+            --sleep-seconds 60
+
+      - name: Package LLVM install directory
+        shell: bash
+        run: |
+          MODE_TAG="releasedbg"
+          if [[ "${{ matrix.llvm_mode }}" == "Debug" ]]; then
+            MODE_TAG="debug"
+          fi
+
+          ARCH="x64"
+          PLATFORM="linux"
+          TOOLCHAIN="gnu"
+          if [[ "${{ matrix.os }}" == windows-* ]]; then
+            PLATFORM="windows"
+            TOOLCHAIN="msvc"
+          elif [[ "${{ matrix.os }}" == macos-* ]]; then
+            ARCH="arm64"
+            PLATFORM="macos"
+            TOOLCHAIN="clang"
+          fi
+
+          SUFFIX=""
+          if [[ "${{ matrix.lto }}" == "ON" ]]; then
+            SUFFIX="-lto"
+          fi
+          if [[ "${{ matrix.llvm_mode }}" == "Debug" ]]; then
+            SUFFIX="${SUFFIX}-asan"
+          fi
+
+          ARCHIVE="${ARCH}-${PLATFORM}-${TOOLCHAIN}-${MODE_TAG}${SUFFIX}.tar.xz"
+
+          set -eo pipefail
+          tar -C .llvm -cf - build-install | xz -T0 -9 -c > "${ARCHIVE}"
+          echo "LLVM_INSTALL_ARCHIVE=${ARCHIVE}" >> "${GITHUB_ENV}"
+
+      - name: Upload LLVM install artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LLVM_INSTALL_ARCHIVE }}
+          path: ${{ env.LLVM_INSTALL_ARCHIVE }}
+          if-no-files-found: error

@@ -1,12 +1,14 @@
-#include "AST/Utility.h"
-#include "AST/SymbolKind.h"
-#include "Compiler/Compilation.h"
 #include "Feature/CodeCompletion.h"
+
+#include "AST/SymbolKind.h"
+#include "AST/Utility.h"
+#include "Compiler/Compilation.h"
 #include "Support/FuzzyMatcher.h"
+
 #include "clang/Basic/CharInfo.h"
-#include "clang/Sema/Sema.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
+#include "clang/Sema/Sema.h"
 
 namespace clice::feature {
 

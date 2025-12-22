@@ -10,21 +10,23 @@
 /// https://github.com/llvm/llvm-project//blob/0865ecc5150b9a55ba1f9e30b6d463a66ac362a6/clang-tools-extra/clangd/ParsedAST.cpp#L547
 /// https://github.com/llvm/llvm-project//blob/0865ecc5150b9a55ba1f9e30b6d463a66ac362a6/clang-tools-extra/clangd/TidyProvider.cpp
 
+#include "Compiler/Tidy.h"
+
 #include "TidyImpl.h"
 #include "AST/Utility.h"
 #include "Compiler/Diagnostic.h"
-#include "Compiler/Tidy.h"
 #include "Support/Logging.h"
-#include "llvm/ADT/StringSet.h"
+
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/StringSaver.h"
 #include "clang/Frontend/CompilerInstance.h"
-#include "clang-tidy/ClangTidyOptions.h"
 #include "clang-tidy/ClangTidyCheck.h"
-#include "clang-tidy/ClangTidyModuleRegistry.h"
 #include "clang-tidy/ClangTidyDiagnosticConsumer.h"
+#include "clang-tidy/ClangTidyModuleRegistry.h"
+#include "clang-tidy/ClangTidyOptions.h"
 #define CLANG_TIDY_DISABLE_STATIC_ANALYZER_CHECKS
 #include "clang-tidy/ClangTidyForceLinker.h"
 
@@ -201,7 +203,7 @@ public:
         }
     }
 
-    bool operator() (clang::diag::Group group_id) const {
+    bool operator()(clang::diag::Group group_id) const {
         return exceptions.contains(static_cast<unsigned>(group_id)) ? !default_enable
                                                                     : default_enable;
     }
@@ -334,11 +336,11 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         return nullptr;
     }
     auto file_name = input.getFile();
-    LOGGING_INFO("Tidy configure file: {}", file_name);
+    LOG_INFO("Tidy configure file: {}", file_name);
 
     tidy::ClangTidyOptions opts = create_options();
     if(opts.Checks) {
-        LOGGING_INFO("Tidy configure checks: {}", *opts.Checks);
+        LOG_INFO("Tidy configure checks: {}", *opts.Checks);
     }
 
     {
@@ -391,7 +393,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     checker->context.setCurrentFile(file_name);
     checker->context.setSelfContainedDiags(true);
     checker->checks = factories.createChecksForLanguage(&checker->context);
-    LOGGING_INFO("Tidy configure checks: {}", checker->checks.size());
+    LOG_INFO("Tidy configure checks: {}", checker->checks.size());
     clang::Preprocessor* pp = &instance.getPreprocessor();
     for(const auto& check: checker->checks) {
         check->registerPPCallbacks(instance.getSourceManager(), pp, pp);

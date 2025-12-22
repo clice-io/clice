@@ -1,3 +1,5 @@
+#include "Feature/Hover.h"
+
 #include "AST/Selection.h"
 #include "AST/Semantic.h"
 #include "AST/Utility.h"
@@ -5,7 +7,6 @@
 #include "Index/Shared.h"
 #include "Support/Compare.h"
 #include "Support/Ranges.h"
-#include "Feature/Hover.h"
 
 namespace clice::feature {
 

@@ -1,7 +1,8 @@
-#include "Compiler/CompilationUnit.h"
 #include "Feature/DocumentLink.h"
-#include "Support/Ranges.h"
+
+#include "Compiler/CompilationUnit.h"
 #include "Support/Compare.h"
+#include "Support/Ranges.h"
 
 namespace clice::feature {
 

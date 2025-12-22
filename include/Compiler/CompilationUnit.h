@@ -3,10 +3,11 @@
 #include <chrono>
 
 #include "Directive.h"
-#include "Compiler/Diagnostic.h"
-#include "AST/SymbolID.h"
-#include "AST/SourceCode.h"
 #include "AST/Resolver.h"
+#include "AST/SourceCode.h"
+#include "AST/SymbolID.h"
+#include "Compiler/Diagnostic.h"
+
 #include "clang/Tooling/Syntax/Tokens.h"
 
 namespace clice {

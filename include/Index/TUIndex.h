@@ -1,10 +1,11 @@
 #pragma once
 
 #include <chrono>
+
 #include "IncludeGraph.h"
+#include "AST/RelationKind.h"
 #include "AST/SourceCode.h"
 #include "AST/SymbolKind.h"
-#include "AST/RelationKind.h"
 #include "Support/Bitmap.h"
 
 namespace clice::index {
@@ -37,7 +38,7 @@ struct Occurrence {
     ///
     SymbolHash target;
 
-    friend bool operator== (const Occurrence&, const Occurrence&) = default;
+    friend bool operator==(const Occurrence&, const Occurrence&) = default;
 };
 
 struct FileIndex {
@@ -56,7 +57,7 @@ struct Symbol {
     /// All files that referenced this symbol.
     Bitmap reference_files;
 
-    friend bool operator== (const Symbol&, const Symbol&) = default;
+    friend bool operator==(const Symbol&, const Symbol&) = default;
 };
 
 using SymbolTable = llvm::DenseMap<SymbolHash, Symbol>;

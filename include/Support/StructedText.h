@@ -76,7 +76,7 @@ public:
 
     StructedText(StructedText&&) = default;
 
-    StructedText& operator= (const StructedText& other) {
+    StructedText& operator=(const StructedText& other) {
         blocks.clear();
         for(auto& b: other.blocks) {
             blocks.push_back(b->clone());
@@ -84,7 +84,7 @@ public:
         return *this;
     }
 
-    StructedText& operator= (StructedText&&) = default;
+    StructedText& operator=(StructedText&&) = default;
 
     void append(StructedText& doc);
 

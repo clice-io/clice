@@ -1,6 +1,6 @@
 #include "CompilationUnitImpl.h"
-#include "Index/USR.h"
 #include "AST/Utility.h"
+#include "Index/USR.h"
 
 namespace clice {
 

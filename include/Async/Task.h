@@ -1,10 +1,10 @@
 #pragma once
 
 #include <cassert>
+#include <coroutine>
 #include <cstdint>
 #include <cstdlib>
 #include <optional>
-#include <coroutine>
 #include <source_location>
 
 #include "Support/Format.h"
@@ -247,9 +247,9 @@ public:
         other.core = nullptr;
     }
 
-    Task& operator= (const Task&) = delete;
+    Task& operator=(const Task&) = delete;
 
-    Task& operator= (Task&& other) noexcept {
+    Task& operator=(Task&& other) noexcept {
         if(core) {
             core.destroy();
         }

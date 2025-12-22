@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Utility.h"
+#include "FilterASTVisitor.h"
+#include "RelationKind.h"
 #include "Resolver.h"
 #include "SymbolKind.h"
-#include "RelationKind.h"
-#include "FilterASTVisitor.h"
+#include "Utility.h"
 
 namespace clice {
 
@@ -637,7 +637,6 @@ public:
     }
 
     bool VisitAttr(clang::Attr* attr) {
-
         getDerived().handleAttrOccurrence(attr, attr->getRange());
         return true;
     }

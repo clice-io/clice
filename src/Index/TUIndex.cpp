@@ -1,6 +1,8 @@
-#include "AST/Semantic.h"
 #include "Index/TUIndex.h"
+
+#include "AST/Semantic.h"
 #include "Support/Compare.h"
+
 #include "llvm/Support/SHA256.h"
 
 namespace clice::index {

@@ -1,7 +1,9 @@
+#include "Index/MergedIndex.h"
+
 #include "Serialization.h"
 #include "Support/Compare.h"
 #include "Support/FileSystem.h"
-#include "Index/MergedIndex.h"
+
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_os_ostream.h"
 
@@ -67,6 +69,7 @@ struct DenseMapInfo<clice::index::Relation> {
                lhs.target_symbol == rhs.target_symbol;
     }
 };
+
 }  // namespace llvm
 
 namespace clice::index {
@@ -76,7 +79,7 @@ struct IncludeContext {
 
     std::uint32_t canonical_id;
 
-    friend bool operator== (const IncludeContext&, const IncludeContext&) = default;
+    friend bool operator==(const IncludeContext&, const IncludeContext&) = default;
 };
 
 struct HeaderContext {
@@ -84,7 +87,7 @@ struct HeaderContext {
 
     llvm::SmallVector<IncludeContext> includes;
 
-    friend bool operator== (const HeaderContext&, const HeaderContext&) = default;
+    friend bool operator==(const HeaderContext&, const HeaderContext&) = default;
 };
 
 struct CompilationContext {
@@ -96,7 +99,7 @@ struct CompilationContext {
 
     std::vector<IncludeLocation> include_locations;
 
-    friend bool operator== (const CompilationContext&, const CompilationContext&) = default;
+    friend bool operator==(const CompilationContext&, const CompilationContext&) = default;
 };
 
 struct MergedIndex::Impl {
@@ -164,7 +167,7 @@ struct MergedIndex::Impl {
         self.max_canonical_id += 1;
     }
 
-    friend bool operator== (const Impl&, const Impl&) = default;
+    friend bool operator==(const Impl&, const Impl&) = default;
 };
 
 MergedIndex::MergedIndex(std::unique_ptr<llvm::MemoryBuffer> buffer, std::unique_ptr<Impl> impl) :
@@ -177,7 +180,7 @@ MergedIndex::MergedIndex(llvm::StringRef data) :
 
 MergedIndex::MergedIndex(MergedIndex&& other) = default;
 
-MergedIndex& MergedIndex::operator= (MergedIndex&& other) = default;
+MergedIndex& MergedIndex::operator=(MergedIndex&& other) = default;
 
 MergedIndex::~MergedIndex() = default;
 
@@ -398,7 +401,6 @@ void MergedIndex::lookup(this const Self& self,
                          SymbolHash symbol,
                          RelationKind kind,
                          llvm::function_ref<bool(const Relation&)> callback) {
-
     if(self.impl) {
         auto it = self.impl->relations.find(symbol);
         if(it == self.impl->relations.end()) [[unlikely]] {
@@ -533,7 +535,7 @@ void MergedIndex::merge(this Self& self,
     });
 }
 
-bool operator== (MergedIndex& lhs, MergedIndex& rhs) {
+bool operator==(MergedIndex& lhs, MergedIndex& rhs) {
     lhs.load_in_memory();
     rhs.load_in_memory();
     return *lhs.impl == *rhs.impl;

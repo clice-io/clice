@@ -1,8 +1,10 @@
 #include "AST/Resolver.h"
+
 #include "Support/Format.h"
+
 #include "clang/Sema/Template.h"
-#include "clang/Sema/TreeTransform.h"
 #include "clang/Sema/TemplateDeduction.h"
+#include "clang/Sema/TreeTransform.h"
 
 namespace clice {
 
@@ -626,10 +628,14 @@ public:
 
                 /// SomeAllocator<U, Args> -> SomeAllocator<T, Args>
                 if(auto TST = Alloc->getAs<clang::TemplateSpecializationType>()) {
-                    llvm::SmallVector<clang::TemplateArgument, 4> replaceArguments = {T};
+                    llvm::SmallVector<clang::TemplateArgument, 1> replaceArguments = {T};
+                    llvm::SmallVector<clang::TemplateArgument, 1> canonicalArguments;
+                    for(auto& arg: replaceArguments) {
+                        canonicalArguments.emplace_back(context.getCanonicalTemplateArgument(arg));
+                    }
                     return context.getTemplateSpecializationType(TST->getTemplateName(),
                                                                  replaceArguments,
-                                                                 replaceArguments);
+                                                                 canonicalArguments);
                 }
             }
         }

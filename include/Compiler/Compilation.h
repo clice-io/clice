@@ -1,12 +1,14 @@
 #pragma once
 
+#include "CompilationUnit.h"
 #include "Module.h"
 #include "Preamble.h"
-#include "CompilationUnit.h"
 #include "Support/FileSystem.h"
 
 namespace clang {
+
 class CodeCompleteConsumer;
+
 }
 
 namespace clice {
@@ -22,6 +24,8 @@ struct CompilationParams {
     llvm::SmallString<128> output_file;
 
     std::string directory;
+
+    bool arguments_from_database = false;
 
     /// Responsible for storing the arguments.
     std::vector<const char*> arguments;

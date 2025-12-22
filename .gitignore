@@ -16,10 +16,6 @@
 *.dylib
 *.dll
 
-# Fortran module files
-*.mod
-*.smod
-
 # Compiled Static libraries
 *.lai
 *.la
@@ -31,28 +27,41 @@
 *.out
 *.app
 
-# Evil things
-.claude
+# Fortran module files
+*.mod
+*.smod
 
-# LSP & IDE
-compile_commands.json
-.vscode/
-.vs/
-.idea/
-
-temp/
+# Build & Toolchain
 *build*/
+temp/
 .cache/
-.clice/
-.llvm*/
 .xmake/
-__pycache__/
-.pytest_cache/
-tests/unit/Local/
+.llvm*/
+.clice/
+compile_commands.json
 perf.data
 flamegraph.svg
 
+# Nodejs & Web
+*.vsix
+dist/
+out/
+cache/
+node_modules/
+.vscode-test/
 
-**/node_modules
-docs/.vitepress/dist
-docs/.vitepress/cache
+# Python & Testing
+__pycache__/
+.pytest_cache/
+tests/unit/Local/
+
+# IDEs & Editors
+/.vscode/
+.vs/
+.idea/
+.claude
+
+# pixi environments
+.env
+.pixi/*
+!.pixi/config.toml

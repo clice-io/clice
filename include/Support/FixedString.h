@@ -15,6 +15,13 @@ struct fixed_string : std::array<char, N + 1> {
         this->data()[N] = '\0';
     }
 
+    constexpr fixed_string(const char* str) {
+        for(std::size_t i = 0; i < N; ++i) {
+            this->data()[i] = str[i];
+        }
+        this->data()[N] = '\0';
+    }
+
     constexpr auto size() const {
         return N;
     }

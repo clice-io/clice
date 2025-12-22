@@ -1,9 +1,10 @@
+#include "Feature/DocumentSymbol.h"
+
 #include "AST/FilterASTVisitor.h"
 #include "AST/Utility.h"
 #include "Compiler/Compilation.h"
-#include "Feature/DocumentSymbol.h"
-#include "Support/Ranges.h"
 #include "Support/Compare.h"
+#include "Support/Ranges.h"
 
 namespace clice::feature {
 
@@ -46,7 +47,6 @@ std::string symbol_detail(clang::ASTContext& Ctx, const clang::NamedDecl& ND) {
 
 /// Use DFS to traverse the AST and collect document symbols.
 class DocumentSymbolCollector : public FilteredASTVisitor<DocumentSymbolCollector> {
-
 public:
     using Base = FilteredASTVisitor<DocumentSymbolCollector>;
 

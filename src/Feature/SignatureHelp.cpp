@@ -1,7 +1,9 @@
-#include "Compiler/Compilation.h"
 #include "Feature/SignatureHelp.h"
-#include "clang/Sema/Sema.h"
+
+#include "Compiler/Compilation.h"
+
 #include "clang/Sema/CodeCompleteConsumer.h"
+#include "clang/Sema/Sema.h"
 
 namespace clice::feature {
 

@@ -9,7 +9,9 @@
 #include "clang/Basic/Diagnostic.h"
 
 namespace clang {
+
 class DiagnosticConsumer;
+
 }
 
 namespace clice {

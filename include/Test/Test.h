@@ -1,179 +1,130 @@
 #pragma once
 
-#include "TExpr.h"
+#include <print>
+#include <source_location>
+#include <string>
+#include <vector>
+
 #include "Platform.h"
-#include "LocationChain.h"
-#include "Support/JSON.h"
-#include "Support/Format.h"
+#include "Runner.h"
 #include "Support/Compare.h"
 #include "Support/FileSystem.h"
 #include "Support/FixedString.h"
+
+#include "cpptrace/cpptrace.hpp"
 #include "llvm/ADT/FunctionExtras.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace clice::testing {
 
-struct may_failure;
+template <fixed_string TestName, typename Derived>
+struct TestSuiteDef {
+private:
+    TestState state = TestState::Passed;
 
-class Runner {
 public:
-    static Runner& instance();
+    using Self = Derived;
 
-    using Suite = void (*)();
-    using Test = llvm::unique_function<void()>;
-
-    void add_suite(std::string_view name, Suite suite);
-
-    void on_test(std::string_view name, Test test, bool skipped);
-
-    /// Current test is failed, continue to execute the next test in the suite.
-    void fail(const may_failure& failure);
-
-    bool fatal_error_occured() {
-        return curr_fatal;
+    void failure() {
+        state = TestState::Failed;
     }
 
-    /// Run all test suites.
-    int run_tests();
-
-private:
-    Runner() = default;
-    Runner(const Runner&) = delete;
-    Runner(Runner&&) = delete;
-
-private:
-    bool curr_failed = false;
-    bool skipped = false;
-    bool curr_fatal = false;
-
-    /// Whether all tests in this test suite are skipped.
-    bool all_skipped = true;
-
-    std::string curr_suite_name;
-    std::uint32_t curr_tests_count = 0;
-    std::uint32_t curr_failed_tests_count = 0;
-    std::uint32_t total_tests_count = 0;
-    std::uint32_t total_suites_count = 0;
-    std::uint32_t total_failed_tests_count = 0;
-    std::chrono::milliseconds curr_test_duration;
-    std::chrono::milliseconds total_test_duration;
-    std::unordered_map<std::string_view, std::vector<Suite>> suites;
-};
-
-template <fixed_string suite_name>
-struct suite {
-    template <typename Suite>
-    suite(Suite suite) {
-        static_assert(std::convertible_to<Suite, Runner::Suite>, "Suite must be stateless!");
-        Runner::instance().add_suite(suite_name, suite);
-    }
-};
-
-struct test {
-    test(std::string_view name) : name(name) {}
-
-    template <typename Test>
-    void operator= (Test&& test) {
-        Runner::instance().on_test(name, std::forward<Test>(test), skipped);
+    void pass() {
+        state = TestState::Passed;
     }
 
-    bool skipped = false;
-    std::string name;
-};
-
-struct may_failure {
-    bool failed = false;
-    bool fatal = false;
-    std::string expression;
-    std::source_location location;
-    std::string message;
-
-    may_failure& operator<< (std::string message) {
-        this->message += std::move(message);
-        return *this;
+    void skip() {
+        state = TestState::Skipped;
     }
 
-    ~may_failure() {
-        Runner::instance().fail(*this);
+    constexpr inline static auto& test_cases() {
+        static std::vector<TestCase> instance;
+        return instance;
     }
-};
 
-constexpr inline struct {
-    template <typename TExpr>
-    may_failure operator() (const TExpr& expr,
-                            std::source_location location = std::source_location::current()) const {
-        bool failed = false;
-        std::string expression = "false";
-        std::string message;
+    constexpr inline static auto suites() {
+        return std::move(test_cases());
+    }
 
-        if constexpr(is_expr_v<TExpr>) {
-            auto result = expr();
-            if(!static_cast<bool>(result)) {
-                failed = true;
+    template <typename T = void>
+    inline static bool _register_suites = [] {
+        Runner2::instance().add_suite(TestName.data(), &suites);
+        return true;
+    }();
 
-                /// TODO: use pretty print, if the expression is too long.
-                expression = std::format("{}", expr);
+    template <fixed_string case_name,
+              auto test_body,
+              fixed_string path,
+              std::size_t line,
+              TestAttrs attrs = {}>
+    inline static bool _register_test_case = [] {
+        auto run_test = +[] -> TestState {
+            Derived test;
+            if constexpr(requires { test.setup(); }) {
+                test.setup();
             }
-        } else {
-            if(!static_cast<bool>(expr)) {
-                failed = true;
 
-                if constexpr(requires { expr.error(); }) {
-                    message = std::format("{}", expr.error());
-                }
+            (test.*test_body)();
+
+            if constexpr(requires { test.teardown(); }) {
+                test.teardown();
             }
-        }
 
-        return may_failure{
-            failed,
-            false,
-            std::move(expression),
-            location,
-            std::move(message),
+            return test.state;
         };
-    }
-} expect;
 
-constexpr inline struct {
-    test&& operator/ (test&& test) const {
-        test.skipped = true;
-        return std::move(test);
-    }
-} skip;
-
-struct skip_if {
-    bool condition;
-
-    test&& operator/ (test&& test) const {
-        test.skipped = condition;
-        return std::move(test);
-    }
+        test_cases().emplace_back(case_name.data(), path.data(), line, attrs, run_test);
+        return true;
+    }();
 };
 
-struct skip_unless {
-    bool condition;
+inline void print_trace(cpptrace::stacktrace& trace, std::source_location location) {
+    auto& frames = trace.frames;
+    auto it = std::ranges::find_if(frames, [&](cpptrace::stacktrace_frame& frame) {
+        return frame.filename != location.file_name();
+    });
+    frames.erase(it, frames.end());
+    trace.print();
+}
 
-    test&& operator/ (test&& test) const {
-        test.skipped = !condition;
-        return std::move(test);
-    }
-};
+#define TEST_SUITE(name) struct name##TEST : TestSuiteDef<#name, name##TEST>
 
-constexpr inline struct {
-    may_failure&& operator/ (may_failure&& failure) const {
-        if(failure.failed) {
-            failure.fatal = true;
-        }
-        return std::move(failure);
-    }
-} fatal;
+#define TEST_CASE(name, ...)                                                                       \
+    void _register_##name() {                                                                      \
+        constexpr auto file_name = std::source_location::current().file_name();                    \
+        constexpr auto file_len = std::string_view(file_name).size();                              \
+        (void)_register_suites<>;                                                                  \
+        (void)_register_test_case<#name,                                                           \
+                                  &Self::test_##name,                                              \
+                                  fixed_string<file_len>(file_name),                               \
+                                  std::source_location::current().line() __VA_OPT__(, )            \
+                                      __VA_ARGS__>;                                                \
+    }                                                                                              \
+    void test_##name()
 
-struct that_t {
-    template <typename TExpr>
-    constexpr decltype(auto) operator% (const TExpr& expr) const {
-        return expr;
-    }
-};
+#define CLICE_CHECK_IMPL(condition, return_action)                                                 \
+    do {                                                                                           \
+        if(condition) [[unlikely]] {                                                               \
+            auto trace = cpptrace::generate_trace();                                               \
+            clice::testing::print_trace(trace, std::source_location::current());                   \
+            failure();                                                                             \
+            return_action;                                                                         \
+        }                                                                                          \
+    } while(0)
 
-inline that_t that;
+#define EXPECT_TRUE(expr) CLICE_CHECK_IMPL(!(expr), (void)0)
+#define EXPECT_FALSE(expr) CLICE_CHECK_IMPL((expr), (void)0)
+#define EXPECT_EQ(lhs, rhs) CLICE_CHECK_IMPL((lhs) != (rhs), (void)0)
+#define EXPECT_NE(lhs, rhs) CLICE_CHECK_IMPL((lhs) == (rhs), (void)0)
+
+#define ASSERT_TRUE(expr) CLICE_CHECK_IMPL(!(expr), return)
+#define ASSERT_FALSE(expr) CLICE_CHECK_IMPL((expr), return)
+#define ASSERT_EQ(lhs, rhs) CLICE_CHECK_IMPL((lhs) != (rhs), return)
+#define ASSERT_NE(lhs, rhs) CLICE_CHECK_IMPL((lhs) == (rhs), return)
+
+#define CO_ASSERT_TRUE(expr) CLICE_CHECK_IMPL(!(expr), co_return)
+#define CO_ASSERT_FALSE(expr) CLICE_CHECK_IMPL((expr), co_return)
+#define CO_ASSERT_EQ(lhs, rhs) CLICE_CHECK_IMPL((lhs) != (rhs), co_return)
+#define CO_ASSERT_NE(lhs, rhs) CLICE_CHECK_IMPL((lhs) == (rhs), co_return)
 
 }  // namespace clice::testing

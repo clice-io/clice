@@ -1,0 +1,83 @@
+[
+	{
+		"version": "21.1.4+r1",
+		"filename": "arm64-macos-clang-debug-asan.tar.xz",
+		"sha256": "7da4b7d63edefecaf11773e7e701c575140d1a07329bbbb038673b6ee4516ff5",
+		"lto": false,
+		"asan": true,
+		"platform": "macosx",
+		"build_type": "Debug"
+	},
+	{
+		"version": "21.1.4+r1",
+		"filename": "arm64-macos-clang-releasedbg-lto.tar.xz",
+		"sha256": "300455b169448f9f01ae95e3bc269f489558a4ca3955e3032171cc75feca0e30",
+		"lto": true,
+		"asan": false,
+		"platform": "macosx",
+		"build_type": "RelWithDebInfo"
+	},
+	{
+		"version": "21.1.4+r1",
+		"filename": "arm64-macos-clang-releasedbg.tar.xz",
+		"sha256": "9abfc6cd65b957d734ffb97610a634fb4a66d3fbe0fcfb5a1c9124ef693c1495",
+		"lto": false,
+		"asan": false,
+		"platform": "macosx",
+		"build_type": "RelWithDebInfo"
+	},
+	{
+		"version": "21.1.4+r1",
+		"filename": "x64-linux-gnu-debug-asan.tar.xz",
+		"sha256": "c1ad3ec476911596a842ac67dd9c9c9475ce9f0a77b81101d3c801840292e7bc",
+		"lto": false,
+		"asan": true,
+		"platform": "linux",
+		"build_type": "Debug"
+	},
+	{
+		"version": "21.1.4+r1",
+		"filename": "x64-linux-gnu-releasedbg-lto.tar.xz",
+		"sha256": "8a869c2184d139dbba704e2d712e7a68336458ad2d70622b3eb906c3e3511e54",
+		"lto": true,
+		"asan": false,
+		"platform": "linux",
+		"build_type": "RelWithDebInfo"
+	},
+	{
+		"version": "21.1.4+r1",
+		"filename": "x64-linux-gnu-releasedbg.tar.xz",
+		"sha256": "552bab86f715d4f2c027f07eaaf5b3d6b8e430af0b74b470142f3f00da4feec6",
+		"lto": false,
+		"asan": false,
+		"platform": "linux",
+		"build_type": "RelWithDebInfo"
+	},
+	{
+		"version": "21.1.4+r1",
+		"filename": "x64-windows-msvc-debug-asan.tar.xz",
+		"sha256": "093667a493d336c22ff3c604c5f1fea2a7d2c927c1179cec44e9a03726906ac1",
+		"lto": false,
+		"asan": true,
+		"platform": "windows",
+		"build_type": "Debug"
+	},
+	{
+		"version": "21.1.4+r1",
+		"filename": "x64-windows-msvc-releasedbg-lto.tar.xz",
+		"sha256": "010539e85621dc3c6ecf359d899feb4075aeca5d0bba6625cdbec0e570e79129",
+		"lto": true,
+		"asan": false,
+		"platform": "windows",
+		"build_type": "RelWithDebInfo"
+	},
+	{
+		"version": "21.1.4+r1",
+		"filename": "x64-windows-msvc-releasedbg.tar.xz",
+		"sha256": "f473c09fbea10053fac00be409d75dc228d4a38bcbc5e4aeb58b56a4b0dde78e",
+		"lto": false,
+		"asan": false,
+		"platform": "windows",
+		"build_type": "RelWithDebInfo"
+	}
+]

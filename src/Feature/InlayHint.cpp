@@ -1,10 +1,12 @@
-#include "AST/Utility.h"
-#include "AST/FilterASTVisitor.h"
 #include "Feature/InlayHint.h"
+
+#include "AST/FilterASTVisitor.h"
+#include "AST/Utility.h"
 #include "Support/Compare.h"
 #include "Support/Format.h"
-#include "clang/Lex/Lexer.h"
+
 #include "llvm/ADT/StringExtras.h"
+#include "clang/Lex/Lexer.h"
 
 namespace clice::feature {
 

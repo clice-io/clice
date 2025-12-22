@@ -1,12 +1,12 @@
-#include "Server/Version.h"
 #include "Server/Server.h"
-#include "Support/Logging.h"
+#include "Server/Version.h"
 #include "Support/Format.h"
+#include "Support/Logging.h"
 
-#include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Process.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/Process.h"
 
 namespace cl = llvm::cl;
 using namespace clice;
@@ -94,11 +94,11 @@ int main(int argc, const char** argv) {
     logging::stderr_logger("clice", logging::options);
 
     if(auto result = fs::init_resource_dir(argv[0]); !result) {
-        LOGGING_FATAL("Cannot find default resource directory, because {}", result.error());
+        LOG_FATAL("Cannot find default resource directory, because {}", result.error());
     }
 
     for(int i = 0; i < argc; ++i) {
-        LOGGING_INFO("argv[{}] = {}", i, argv[i]);
+        LOG_INFO("argv[{}] = {}", i, argv[i]);
     }
 
     async::init();
@@ -112,13 +112,13 @@ int main(int argc, const char** argv) {
     switch(mode) {
         case Mode::Pipe: {
             async::net::listen(loop);
-            LOGGING_INFO("Server starts listening on stdin/stdout");
+            LOG_INFO("Server starts listening on stdin/stdout");
             break;
         }
 
         case Mode::Socket: {
             async::net::listen(host.c_str(), port, loop);
-            LOGGING_INFO("Server starts listening on {}:{}", host.getValue(), port.getValue());
+            LOG_INFO("Server starts listening on {}:{}", host.getValue(), port.getValue());
             break;
         }
 
@@ -130,7 +130,7 @@ int main(int argc, const char** argv) {
 
     async::run();
 
-    LOGGING_INFO("clice exit normally!");
+    LOG_INFO("clice exit normally!");
 
     return 0;
 }

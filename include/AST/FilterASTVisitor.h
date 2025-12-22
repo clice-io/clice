@@ -2,6 +2,7 @@
 
 #include "AST/SourceCode.h"
 #include "Compiler/CompilationUnit.h"
+
 #include "clang/AST/RecursiveASTVisitor.h"
 
 namespace clice {

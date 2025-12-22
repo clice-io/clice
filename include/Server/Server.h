@@ -5,8 +5,8 @@
 #include "Indexer.h"
 #include "Async/Async.h"
 #include "Compiler/Command.h"
-#include "Compiler/Preamble.h"
 #include "Compiler/Diagnostic.h"
+#include "Compiler/Preamble.h"
 #include "Feature/DocumentLink.h"
 #include "Protocol/Protocol.h"
 
@@ -61,7 +61,7 @@ public:
     ActiveFileManager() : capability(DefaultMaxActiveFileNum) {}
 
     ActiveFileManager(const ActiveFileManager&) = delete;
-    ActiveFileManager& operator= (const ActiveFileManager&) = delete;
+    ActiveFileManager& operator=(const ActiveFileManager&) = delete;
 
     /// Set the maximum active file count and it will be clamped to [1, UnlimitedActiveFileNum].
     void set_capability(size_t size) {

@@ -1,4 +1,5 @@
 #include "Compiler/Preamble.h"
+
 #include "AST/SourceCode.h"
 #include "Support/Format.h"
 #include "Support/Logging.h"
