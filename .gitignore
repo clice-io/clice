@@ -60,3 +60,8 @@ tests/unit/Local/
 .vs/
 .idea/
 .claude
+
+# pixi environments
+.env
+.pixi/*
+!.pixi/config.toml

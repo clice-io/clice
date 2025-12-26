@@ -43,58 +43,13 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Free disk space (Linux)
-        if: runner.os == 'Linux'
-        uses: jlumbroso/free-disk-space@main
-
-      - name: Increase swap file size (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          echo "===== Initial Status ====="
-          sudo swapon --show
-          free -h
-
-          echo "===== Creating Swap File ====="
-          sudo swapoff -a
-          sudo fallocate -l 16G /mnt/swapfile
-          sudo chmod 600 /mnt/swapfile
-          sudo mkswap /mnt/swapfile
-          sudo swapon /mnt/swapfile
-
-          echo "===== Final Status ====="
-          sudo swapon --show
-          free -h
-          df -h
-
-      - name: Setup dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt update
-          sudo apt install -y gcc-14 g++-14 libstdc++-14-dev cmake ninja-build
-
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
-          sudo update-alternatives --set gcc /usr/bin/gcc-14
-          sudo update-alternatives --set g++ /usr/bin/g++-14
-
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 20 all
-
-      - name: Setup dependencies (MacOS)
-        if: runner.os == 'macOS'
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: 1
-        run: |
-          brew install llvm@20 lld@20
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
-          xmake-version: 3.0.4
+          xmake-version: 3.0.5
           actions-cache-folder: ".xmake-cache"
           actions-cache-key: ${{ matrix.os }}
           package-cache: true
@@ -102,19 +57,24 @@ jobs:
           build-cache: true
           build-cache-key: ${{ matrix.os }}-build-release-v1
 
-      - name: Configure and Package
-        shell: bash
-        run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }} -p windows
-          elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }}
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            export PATH="/opt/homebrew/opt/llvm@20/bin:/opt/homebrew/opt/lld@20/bin:$PATH"
-            xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=${{ matrix.toolchain }} --sdk=/opt/homebrew/opt/llvm@20
-          fi
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.3
+        with:
+          pixi-version: v0.61.0
+          activate-environment: true
+          cache: true
+          locked: true
 
-          xmake pack -v
+      - name: Remove ci llvm toolchain on Windows
+        if: runner.os == 'Windows'
+        run: |
+          # @see https://github.com/xmake-io/xmake/issues/7158
+          xmake lua os.rmdir "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/Llvm"
+          xmake lua os.rmdir "C:/Program Files/LLVM"
+
+      - name: Package
+        run: |
+          pixi run package
 
       - name: Upload Main Package to Release
         if: github.event_name == 'push'
