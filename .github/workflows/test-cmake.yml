@@ -37,9 +37,7 @@ jobs:
             build_type: Debug
           - os: macos-15
             build_type: Debug
-
     runs-on: ${{ matrix.os }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

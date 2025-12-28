@@ -1,4 +1,4 @@
-name: package
+name: clice
 
 permissions:
   contents: write
@@ -10,10 +10,10 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - ".github/workflows/package.yml"
+      - ".github/workflows/publish-clice.yml"
 
 jobs:
-  package:
+  publish-clice:
     strategy:
       fail-fast: false
       matrix:
@@ -23,21 +23,18 @@ jobs:
             asset_name: clice-x64-windows-msvc.zip
             symbol_artifact_name: clice-symbol.zip
             symbol_asset_name: clice-x64-windows-msvc-symbol.zip
-            toolchain: clang-cl
 
           - os: ubuntu-24.04
             artifact_name: clice.tar.gz
             asset_name: clice-x86_64-linux-gnu.tar.gz
             symbol_artifact_name: clice-symbol.tar.gz
             symbol_asset_name: clice-x86_64-linux-gnu-symbol.tar.gz
-            toolchain: clang-20
 
           - os: macos-15
             artifact_name: clice.tar.gz
             asset_name: clice-arm64-macos-darwin.tar.gz
             symbol_artifact_name: clice-symbol.tar.gz
             symbol_asset_name: clice-arm64-macos-darwin-symbol.tar.gz
-            toolchain: clang
 
     runs-on: ${{ matrix.os }}
 

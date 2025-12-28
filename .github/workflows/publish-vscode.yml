@@ -13,14 +13,11 @@ on:
 jobs:
   publish-vscode:
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
-
     defaults:
       run:
         working-directory: editors/vscode
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
