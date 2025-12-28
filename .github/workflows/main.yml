@@ -1,4 +1,4 @@
-name: CI Dispatcher
+name: main
 
 on:
   push:
@@ -8,11 +8,11 @@ on:
     branches: [main]
 
 jobs:
-  check-changes:
-    # if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  changes:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
-    # permissions:
-    #   pull-requests: read
+    permissions:
+      pull-requests: read
     outputs:
       format: ${{ steps.filter.outputs.format }}
       docs: ${{ steps.filter.outputs.docs }}
@@ -55,35 +55,35 @@ jobs:
               - '.github/workflows/test-xmake.yml'
 
   call-format:
-    needs: check-changes
-    if: ${{ needs.check-changes.outputs.format == 'true' }}
-    uses: ./.github/workflows/format.yml
+    needs: changes
+    if: ${{ needs.changes.outputs.format == 'true' }}
+    uses: ./.github/workflows/check-format.yml
 
   call-deploy-docs:
-    needs: check-changes
-    if: ${{ needs.check-changes.outputs.docs == 'true' }}
+    needs: changes
+    if: ${{ needs.changes.outputs.docs == 'true' }}
     permissions:
       contents: write
     uses: ./.github/workflows/deploy-docs.yml
 
   call-clice-check:
-    needs: check-changes
-    if: ${{ needs.check-changes.outputs.clice == 'true' }}
+    needs: changes
+    if: ${{ needs.changes.outputs.clice == 'true' }}
     uses: ./.github/workflows/publish-clice.yml
 
   call-vscode-check:
-    needs: check-changes
-    if: ${{ needs.check-changes.outputs.vscode == 'true' }}
+    needs: changes
+    if: ${{ needs.changes.outputs.vscode == 'true' }}
     uses: ./.github/workflows/publish-vscode.yml
 
   call-cmake-test:
-    needs: check-changes
-    if: ${{ needs.check-changes.outputs.cmake == 'true' }}
+    needs: changes
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
     uses: ./.github/workflows/test-cmake.yml
 
   call-xmake-test:
-    needs: check-changes
-    if: ${{ needs.check-changes.outputs.xmake == 'true' }}
+    needs: changes
+    if: ${{ needs.changes.outputs.xmake == 'true' }}
     uses: ./.github/workflows/test-xmake.yml
 
   release-clice:
