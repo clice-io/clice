@@ -3,12 +3,6 @@ name: format
 on:
   workflow_call:
 
-permissions:
-  contents: read
-  pull-requests: write
-  checks: write
-  issues: write
-
 jobs:
   check-format:
     runs-on: ubuntu-latest

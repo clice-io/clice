@@ -1,8 +1,5 @@
 name: clice
 
-permissions:
-  contents: write
-
 on:
   workflow_call:
 
