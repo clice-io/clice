@@ -18,10 +18,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: develop
-
       - name: Setup xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
@@ -32,6 +28,10 @@ jobs:
           package-cache-key: ${{ matrix.os }}-pixi
           build-cache: true
           build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: develop
 
       - name: Build
         run: pixi run ci-xmake-build ${{ matrix.build_type }}
