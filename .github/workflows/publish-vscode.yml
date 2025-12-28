@@ -1,17 +1,19 @@
-name: CI/CD VS Code Extension
+name: vscode
 
 on:
   push:
     tags: ["v*"]
     branches: ["main"]
     paths: ["editors/vscode/**"]
+
   pull_request:
     branches: ["main"]
     paths: ["editors/vscode/**"]
 
 jobs:
-  publish:
+  publish-vscode:
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
 
@@ -23,26 +25,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.3
         with:
-          node-version: "20"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install vsce
-        run: npm install -g vsce
+          pixi-version: v0.61.0
+          environments: node
+          activate-environment: true
+          cache: true
+          locked: true
 
       - name: Publish and Package to Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           FLAG="${{ contains(github.ref_name, '-') && '--pre-release' || '' }}"
-          npm run package -- $FLAG
+          pixi run build-vscode -- $FLAG
 
           if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
-            npm run publish -- -p "$VSCE_PAT" $FLAG
+            pixi run publish-vscode -- -p "$VSCE_PAT" $FLAG
           fi
 
       - name: Upload .vsix to Release

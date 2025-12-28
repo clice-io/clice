@@ -78,25 +78,28 @@ nodejs = ">=20"
 pnpm = "*"
 
 [feature.node.tasks]
-build-docs = { cwd = "docs", cmd = "npm run docs:build", depends-on = ["install-docs"] }
-preview-docs = { cwd = "docs", cmd = "npm run docs:preview", depends-on = ["install-docs"] }
+build-docs = { cwd = "docs", cmd = "pnpm run docs:build", depends-on = ["install-docs"] }
+preview-docs = { cwd = "docs", cmd = "pnpm run docs:preview", depends-on = ["install-docs"] }
+build-vscode = { cwd = "editors/vscode", cmd = "pnpm run package", depends-on = ["install-vscode"] }
+publish-vscode = { cwd = "editors/vscode", cmd = "pnpm run publish", depends-on = ["install-vscode"] }
 
 [feature.node.tasks.install-docs]
 cwd = "docs"
-cmd = "pnpm install && echo 1 > node_modules/.install-stamp"
+cmd = "pnpm install"
 inputs = ["docs/package.json", "docs/pnpm-lock.yaml"]
-outputs = ["docs/node_modules/.install-stamp"]
+outputs = ["docs/node_modules/.modules.yaml"]
 
 [feature.node.tasks.install-vscode]
 cwd = "editors/vscode"
-cmd = "pnpm install && echo 1 > node_modules/.install-stamp"
+cmd = "pnpm install"
 inputs = ["editors/vscode/package.json", "editors/vscode/pnpm-lock.yaml"]
-outputs = ["editors/vscode/node_modules/.install-stamp"]
+outputs = ["editors/vscode/node_modules/.modules.yaml"]
 
 [feature.develop.tasks]
 unit-test = './build/bin/unit_tests --test-dir="./tests/data"'
 integration-test = 'pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice{% if pixi.is_win %}.exe{% endif %}'
 xmake-test = "xmake test --verbose"
+hello = "echo Hello"
 
 [environments]
 default = []

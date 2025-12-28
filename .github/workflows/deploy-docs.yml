@@ -34,7 +34,7 @@ jobs:
           locked: true
 
       - name: Build docs
-        run: build-docs
+        run: pixi run build-docs
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main'

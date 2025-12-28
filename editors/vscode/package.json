@@ -141,13 +141,13 @@
     "compile": "webpack",
     "watch": "webpack --watch",
     "vscode:prepublish": "webpack --mode production --devtool hidden-source-map",
-    "package": "vsce package --baseImagesUrl https://raw.githubusercontent.com/clice-project/clice-vscode/main/",
-    "publish": "vsce publish --baseImagesUrl https://raw.githubusercontent.com/clice-project/clice-vscode/main/",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
+    "package": "vsce package --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
+    "publish": "vsce publish --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
+    "pretest": "pnpm run compile && pnpm run lint",
+    "lint": "eslint src",
     "test": "vscode-test",
-    "release:patch": "npm version patch -m \"release: v%s\" && git push --follow-tags",
-    "release:minor": "npm version minor -m \"release: v%s\" && git push --follow-tags"
+    "release:patch": "pnpm version patch -m \"release: v%s\" && git push --follow-tags",
+    "release:minor": "pnpm version minor -m \"release: v%s\" && git push --follow-tags"
   },
   "devDependencies": {
     "@types/decompress": "^4.2.7",
@@ -158,6 +158,7 @@
     "@typescript-eslint/parser": "^7.11.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^3.7.1",
     "eslint": "^8.57.0",
     "ts-loader": "^9.5.1",
     "typescript": "^5.4.5",
@@ -170,5 +171,11 @@
   },
   "overrides": {
     "glob": "^11.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@vscode/vsce-sign",
+      "keytar"
+    ]
   }
 }
