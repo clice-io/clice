@@ -2,12 +2,12 @@
 name = "zed_clice"
 version = "0.1.0"
 edition = "2021"
-publish = false
 license = "MIT"
+publish = false
 
 [lib]
-path = "src/clice.rs"
 crate-type = ["cdylib"]
+path = "src/clice.rs"
 
 [dependencies]
 zed_extension_api = "0.1.0"

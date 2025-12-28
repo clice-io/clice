@@ -54,7 +54,6 @@ xmake build --all
 | --enable_test | false  | 是否构建 clice 的单元测试               |
 | --ci          | false  | 是否打开 `CLICE_CI_ENVIRONMENT`         |
 
-
 ## A Note on LLVM Libs
 
 由于 C++ 的语法太过复杂，自己编写一个新的 parser 是不现实的。clice 调用 clang 的 API 来 parse C++ 源文件获取 AST，这意味它需要链接 llvm/clang libs。由于 clice 使用了 clang 的私有头文件，这些私有头文件在 llvm 发布的 binary release 中是没有的，所以不能直接使用系统的 llvm package。

@@ -1,5 +1,4 @@
 # clang-format configuration
-# compatible with clang-format 18
 
 UseTab: Never
 ColumnLimit: 100

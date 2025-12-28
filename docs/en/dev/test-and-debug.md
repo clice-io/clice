@@ -53,24 +53,24 @@ You can also connect to a running clice service by configuring the clice-vscode 
 
     ```jsonc
     {
-        // Point this to the clice binary you downloaded.
-        "clice.executable": "/path/to/your/clice/executable",
+      // Point this to the clice binary you downloaded.
+      "clice.executable": "/path/to/your/clice/executable",
 
-        // Enable socket mode.
-        "clice.mode": "socket",
-        "clice.port": 50051,
+      // Enable socket mode.
+      "clice.mode": "socket",
+      "clice.port": 50051,
 
-        // Optional: Set this to an empty string to turn off the clangd.
-        "clangd.path": "",
+      // Optional: Set this to an empty string to turn off the clangd.
+      "clangd.path": "",
     }
     ```
 
 3.  Reload Window: After modifying the configuration, execute the `Developer: Reload Window` command in VS Code for the settings to take effect. The extension will automatically connect to the clice instance listening on port 50051.
 
-
 If you need to modify or debug the clice-vscode extension itself, follow these steps:
 
 1.  Clone and install dependencies:
+
     ```shell
     $ git clone https://github.com/clice-io/clice-vscode
     $ cd clice-vscode

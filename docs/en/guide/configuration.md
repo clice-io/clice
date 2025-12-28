@@ -35,7 +35,7 @@ Glob patterns for matching file paths, following LSP's [standard](https://micros
 - `{}`: Used for grouping conditions (e.g., `**/*.{ts,js}` matches all TypeScript and JavaScript files).
 - `[]`: Declares a character range to match in a path segment (e.g., `example.[0-9]` matches `example.0`, `example.1`, etc.).
 - `[!...]`: Excludes a character range to match in a path segment (e.g., `example.[!0-9]` matches `example.a`, `example.b`, but not `example.0`).
-<br>
+  <br>
 
 | Name             | Type                | Default |
 | ---------------- | ------------------- | ------- |

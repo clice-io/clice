@@ -1,0 +1,23 @@
+# .prettierrc.yaml
+
+printWidth: 100
+tabWidth: 4
+useTabs: false
+semi: true
+singleQuote: false
+jsxSingleQuote: false
+quoteProps: "as-needed"
+trailingComma: "all"
+bracketSpacing: true
+arrowParens: "always"
+endOfLine: "lf"
+
+overrides:
+  - files: "*.md"
+    options:
+      proseWrap: "preserve"
+      tabWidth: 2
+
+  - files: ["*.json", "*.yaml", "*.yml", ".clang-format", ".clang-tidy"]
+    options:
+      tabWidth: 2

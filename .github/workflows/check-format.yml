@@ -1,4 +1,4 @@
-name: format
+name: check-format
 
 on:
   push:
@@ -6,6 +6,10 @@ on:
 
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   check:
@@ -26,27 +30,17 @@ jobs:
 
       - name: Run check
         id: precommit
-        run: |
-          pixi run ci-check
+        run: pixi run format
         continue-on-error: true
-
-      - name: Show diff on failure
-        if: steps.precommit.outcome == 'failure'
-        run: |
-          echo "❌ pre-commit found issues that it auto-fixed."
-          echo "   Please run 'pre-commit run --all-files' locally,"
-          echo "   commit the changes, and push again."
-          echo ""
-          echo "👇 The required changes are shown below:"
-          git diff
-
-      - name: Fail the job if pre-commit failed
-        if: steps.precommit.outcome == 'failure'
-        run: |
-          echo "pre-commit checks failed."
-          exit 1
 
       - name: Auto correct
         uses: huacnlee/autocorrect-action@main
         with:
           args: --lint ./docs
+        continue-on-error: true
+
+      - name: Suggest changes
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: "fmt"
+          fail_on_error: true

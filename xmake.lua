@@ -147,7 +147,7 @@ end)
 
 target("clice", function()
 	set_kind("binary")
-	add_files("bin/clice.cc")
+	add_files("src/clice.cc")
 	add_deps("clice-core")
 
 	-- workaround
@@ -173,7 +173,7 @@ end)
 target("unit_tests", function()
 	set_default(false)
 	set_kind("binary")
-	add_files("bin/unit_tests.cc", "tests/unit/**.cpp")
+	add_files("tests/unit/unit_tests.cc", "tests/unit/**.cpp")
 	add_includedirs(".", { public = true })
 
 	add_packages("cpptrace")

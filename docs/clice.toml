@@ -1,4 +1,4 @@
-### clice configuration
+## # clice configuration
 
 # This section outlines the supported built-in variables for clice.
 # These variables can be referenced in strings using the syntax `${var}`.
@@ -9,47 +9,39 @@
 # - `${workspace}`:       The workspace directory provided by the client.
 
 [project]
-    # Enable experimental clang-tidy diagnostics.
-    # This feature is tracked in https://github.com/clice-project/clice/issues/90.
-    clang_tidy = false
-
-    # Maximum number of active files to keep in memory. If the number of active files
-    # exceeds this limit, the least recently used files will be removed.
-    # The default value is 8. Whatever the number you set, the minimum is 1, the maximum is 512.
-    max_active_file = 8
-
-    # Directory for storing PCH and PCM files.
-    cache_dir = "${workspace}/.clice/cache"
-
-    # Directory for storing index files.
-    index_dir = "${workspace}/.clice/index"
-
-    logging_dir = "${workspace}/.clice/logging"
-
-    # Compile commands directories to search for compile_commands.json files.
-    compile_commands_dirs = ["${workspace}/build"]
-
+# Enable experimental clang-tidy diagnostics.
+# This feature is tracked in https://github.com/clice-project/clice/issues/90.
+clang_tidy = false
+# Maximum number of active files to keep in memory. If the number of active files
+# exceeds this limit, the least recently used files will be removed.
+# The default value is 8. Whatever the number you set, the minimum is 1, the maximum is 512.
+max_active_file = 8
+# Directory for storing PCH and PCM files.
+cache_dir = "${workspace}/.clice/cache"
+# Directory for storing index files.
+index_dir = "${workspace}/.clice/index"
+logging_dir = "${workspace}/.clice/logging"
+# Compile commands directories to search for compile_commands.json files.
+compile_commands_dirs = ["${workspace}/build"]
 
 # Control the behavior for specific files. Note that Clice matches rules
 # in order. If you want to add your own rules, either delete this rule
 # or insert your rule before it.
 [[rules]]
-    # Files matching the specified pattern will have this rule applied.
-    #
-    # Patterns can use the following syntax:
-    # - `*`: Matches one or more characters in a path segment.
-    # - `?`: Matches a single character in a path segment.
-    # - `**`: Matches any number of path segments, including none.
-    # - `{}`: Groups conditions (e.g., `**/*.{ts,js}` matches all TypeScript
-    #   and JavaScript files).
-    # - `[]`: Declares a range of characters to match in a path segment
-    #   (e.g., `example.[0-9]` matches `example.0`, `example.1`, etc.).
-    # - `[!...]`: Negates a range of characters to match in a path segment
-    #   (e.g., `example.[!0-9]` matches `example.a`, `example.b`, but not `example.0`).
-    patterns = ["**/*"]
-
-    # Commands to append to the original command list (e.g., ["-std=c++17"]).
-    append = []
-
-    # Commands to remove from the original command list.
-    remove = []
+# Files matching the specified pattern will have this rule applied.
+#
+# Patterns can use the following syntax:
+# - `*`: Matches one or more characters in a path segment.
+# - `?`: Matches a single character in a path segment.
+# - `**`: Matches any number of path segments, including none.
+# - `{}`: Groups conditions (e.g., `**/*.{ts,js}` matches all TypeScript
+#   and JavaScript files).
+# - `[]`: Declares a range of characters to match in a path segment
+#   (e.g., `example.[0-9]` matches `example.0`, `example.1`, etc.).
+# - `[!...]`: Negates a range of characters to match in a path segment
+#   (e.g., `example.[!0-9]` matches `example.a`, `example.b`, but not `example.0`).
+patterns = ["**/*"]
+# Commands to append to the original command list (e.g., ["-std=c++17"]).
+append = []
+# Commands to remove from the original command list.
+remove = []

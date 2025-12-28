@@ -51,31 +51,31 @@ $ pytest -s --log-cli-level=INFO tests/integration/test_file_operation.py::test_
 
 2. 配置 `settings.json`: 在你的项目根目录下创建 `.vscode/settings.json` 文件，并填入以下内容：
 
-    ```jsonc
-    {
-        // Point this to the clice binary you downloaded.
-        "clice.executable": "/path/to/your/clice/executable",
+   ```jsonc
+   {
+     // Point this to the clice binary you downloaded.
+     "clice.executable": "/path/to/your/clice/executable",
 
-        // Enable socket mode.
-        "clice.mode": "socket",
-        "clice.port": 50051,
+     // Enable socket mode.
+     "clice.mode": "socket",
+     "clice.port": 50051,
 
-        // Optional: Set this to an empty string to turn off the clangd.
-        "clangd.path": "",
-    }
-    ```
+     // Optional: Set this to an empty string to turn off the clangd.
+     "clangd.path": "",
+   }
+   ```
 
 3. 重新加载窗口：修改配置后，在 vscode 中执行 Developer: Reload Window 命令使配置生效。插件会自动连接到正在 50051 端口监听的 clice。
-
 
 如果你需要修改或调试 clice-vscode 插件本身，可以按以下步骤操作：
 
 1. 克隆并安装依赖：
-    ```shell
-    $ git clone https://github.com/clice-io/clice-vscode
-    $ cd clice-vscode
-    $ npm install
-    ```
+
+   ```shell
+   $ git clone https://github.com/clice-io/clice-vscode
+   $ cd clice-vscode
+   $ npm install
+   ```
 
 2. 使用 vscode 打开插件项目：用一个新的 vscode 窗口打开 clice-vscode 文件夹
 

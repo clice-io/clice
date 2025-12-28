@@ -22,11 +22,11 @@ Download the latest `clice` binary from the [releases page](https://github.com/c
 
 ```jsonc
 {
-    // Optional: Set this to an empty string to turn off the clangd.
-    "clangd.path": "",
+  // Optional: Set this to an empty string to turn off the clangd.
+  "clangd.path": "",
 
-    // Point this to the clice binary you downloaded.
-    "clice.executable": "/path/to/your/clice/executable",
+  // Point this to the clice binary you downloaded.
+  "clice.executable": "/path/to/your/clice/executable",
 }
 ```
 

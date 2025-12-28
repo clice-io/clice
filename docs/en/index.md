@@ -16,8 +16,8 @@ hero:
       text: Contribution
       link: /dev/contribution
   image:
-      src: /image.png
-      alt: clice
+    src: /image.png
+    alt: clice
 
 features:
   - icon: T

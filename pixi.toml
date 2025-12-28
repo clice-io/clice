@@ -3,16 +3,14 @@ name = "clice"
 version = "0.1.0"
 description = "A next-generation C++ language server for modern C++"
 authors = [
-  "ykiko <ykikoykikoykiko@gmail.com>",
-  "clice contributors <clice@clice.io>",
+    "ykiko <ykikoykikoykiko@gmail.com>",
+    "clice contributors <clice@clice.io>",
 ]
-
 license = "Apache-2.0"
 license-file = "LICENSE"
 readme = "README.md"
 documentation = "https://clice.io"
 repository = "https://github.com/clice-io/clice"
-
 channels = ["conda-forge"]
 platforms = ["win-64", "linux-64", "osx-arm64"]
 
@@ -31,28 +29,69 @@ sysroot_linux-64 = "==2.17"
 gcc = "==14.2.0"
 gxx = "==14.2.0"
 
-[target.win-64.activation]
-scripts = ["scripts/activate_asan.bat"]
-
 [target.linux-64.activation]
 scripts = ["scripts/activate_linux.sh"]
+
+[target.win-64.activation]
+scripts = ["scripts/activate_asan.bat"]
 
 [feature.test.pypi-dependencies]
 pytest = "*"
 pytest-asyncio = ">=1.1.0"
-pre-commit = ">=4.3.0"
 
 [feature.package.dependencies]
 xz = ">=5.8.1,<6"
+
+[feature.format.dependencies]
+ruff = "*"
+tombi = "*"
+stylua = "*"
+fd-find = "*"
+prettier = "*"
+clang-format = "==21.1.7"
+
+[feature.format.tasks]
+format-cpp = "fd -H -e cpp -e h -e cc -e hpp -x clang-format -i"
+format-python = "ruff format ."
+format-lua = "stylua ."
+format-web = "fd -H -e js -e ts -e css -x prettier --write"
+format-markdown = "fd -H -e md -x prettier --write"
+format-json = "fd -H -e json -E package-lock.json -x prettier --write"
+format-toml = "fd -H -e toml -x tombi format"
+format-yaml = """
+fd -H -e yaml -e yml -x prettier --write && \
+fd -H "^\\.clang-(format|tidy)$" -x prettier --write --parser yaml
+"""
+format = { depends-on = [
+    "format-cpp",
+    "format-python",
+    "format-lua",
+    "format-web",
+    "format-markdown",
+    "format-json",
+    "format-toml",
+    "format-yaml"
+] }
+
+[feature.develop.tasks]
+unit-test = './build/bin/unit_tests --test-dir="./tests/data"'
+integration-test = 'pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice{% if pixi.is_win %}.exe{% endif %}'
+xmake-test = "xmake test --verbose"
 
 [environments]
 default = []
 develop = ["test", "develop"]
 package = ["test", "package"]
+format = ["format"]
 
 [tasks.ci-cmake-configure]
 args = ["build_type"]
-cmd = ["cmake", "-B", "build", "-G", "Ninja",
+cmd = [
+    "cmake",
+    "-B",
+    "build",
+    "-G",
+    "Ninja",
     "-DCMAKE_BUILD_TYPE={{ build_type }}",
     "-DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake",
     "-DCLICE_ENABLE_TEST=ON",
@@ -62,12 +101,6 @@ cmd = ["cmake", "-B", "build", "-G", "Ninja",
 [tasks.cmake-build]
 cmd = "cmake --build build"
 
-[feature.develop.tasks]
-unit-test = './build/bin/unit_tests --test-dir="./tests/data"'
-integration-test = 'pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice{% if pixi.is_win %}.exe{% endif %}'
-ci-check = "pre-commit run --all-files"
-xmake-test = "xmake test --verbose"
-
 [tasks.ci-cmake-build]
 args = ["build_type"]
 depends-on = [
@@ -76,10 +109,7 @@ depends-on = [
 ]
 
 [tasks.ci-cmake-test]
-depends-on = [
-    { task = "unit-test" },
-    { task = "integration-test" },
-]
+depends-on = [{ task = "unit-test" }, { task = "integration-test" }]
 
 [tasks.ci-xmake-configure]
 args = ["build_type"]
@@ -91,7 +121,9 @@ cmd = "xmake build --verbose --diagnosis --all"
 [tasks.ci-xmake-build]
 args = ["build_type"]
 depends-on = [
-    { task = "ci-xmake-configure", args = ["{{ build_type }}"] },
+    { task = "ci-xmake-configure", args = [
+        "{{ build_type }}",
+    ] },
     { task = "xmake-build" },
 ]
 
@@ -99,16 +131,18 @@ depends-on = [
 cmd = ["python3", "scripts/build-llvm.py"]
 
 [tasks.upload-llvm]
-args = [
-    "workflow_id",
-    "llvm_version",
-    { "arg" = "branch", default = "main" },
-]
+args = ["workflow_id", "llvm_version", { "arg" = "branch", default = "main" }]
 cmd = [
-    "gh", "workflow", "run", "upload-llvm.yml",
-    "--ref", "{{ branch }}",
-    "--field", "workflow_id={{workflow_id}}",
-    "--field", "version={{llvm_version}}",
+    "gh",
+    "workflow",
+    "run",
+    "upload-llvm.yml",
+    "--ref",
+    "{{ branch }}",
+    "--field",
+    "workflow_id={{workflow_id}}",
+    "--field",
+    "version={{llvm_version}}",
 ]
 
 [tasks.delete-artifacts]

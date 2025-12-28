@@ -7,5 +7,6 @@ Please refer to [build](./build.md) to build clice, refer to [test and debug](./
 ## Code Style
 
 Naming:
+
 - Variable names: lowercase with underscores
 - Class names, enum names: PascalCase
