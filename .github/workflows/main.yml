@@ -56,6 +56,11 @@ jobs:
 
   call-format:
     needs: changes
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+      pull-requests: write
     if: ${{ needs.changes.outputs.format == 'true' }}
     uses: ./.github/workflows/check-format.yml
 
