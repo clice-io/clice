@@ -105,7 +105,7 @@ jobs:
     uses: ./.github/workflows/publish-vscode.yml
     secrets: inherit
 
-  ci-passed:
+  checks-passed:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     needs:
       - format
