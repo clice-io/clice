@@ -15,7 +15,7 @@ jobs:
             build_type: debug
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: ./.github/actions/setup-clice.yml
+      - uses: ./.github/actions/setup-clice
         with:
           environments: develop
 

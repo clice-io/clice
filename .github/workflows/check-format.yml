@@ -10,7 +10,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-clice.yml
+      - uses: ./.github/actions/setup-clice
         with:
           environments: format
 

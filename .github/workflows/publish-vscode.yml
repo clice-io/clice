@@ -10,7 +10,7 @@ jobs:
       run:
         working-directory: editors/vscode
     steps:
-      - uses: ./.github/actions/setup-clice.yml
+      - uses: ./.github/actions/setup-clice
         with:
           environments: node
 
