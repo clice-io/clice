@@ -7,8 +7,14 @@ on:
       - "docs/**"
       - ".github/workflows/deploy.yml"
 
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/deploy.yml"
+
 jobs:
-  deploy:
+  deploy-docs:
     runs-on: ubuntu-latest
 
     permissions:
@@ -18,24 +24,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.3
         with:
-          node-version: 20
-          cache: "npm"
-          cache-dependency-path: docs/package-lock.json
-
-      - name: Install dependencies in docs
-        run: |
-          cd docs
-          npm install
+          pixi-version: v0.61.0
+          environments: node
+          activate-environment: true
+          cache: true
+          locked: true
 
       - name: Build docs
-        run: |
-          cd docs
-          npm run docs:build
+        run: build-docs
 
       - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
