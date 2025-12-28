@@ -54,7 +54,7 @@ jobs:
               - 'config/**'
               - '.github/workflows/test-xmake.yml'
 
-  call-format:
+  format:
     needs: changes
     permissions:
       contents: read
@@ -64,29 +64,29 @@ jobs:
     if: ${{ needs.changes.outputs.format == 'true' }}
     uses: ./.github/workflows/check-format.yml
 
-  call-deploy-docs:
+  deploy:
     needs: changes
     if: ${{ needs.changes.outputs.docs == 'true' }}
     permissions:
       contents: write
     uses: ./.github/workflows/deploy-docs.yml
 
-  call-clice-check:
+  clice:
     needs: changes
     if: ${{ needs.changes.outputs.clice == 'true' }}
     uses: ./.github/workflows/publish-clice.yml
 
-  call-vscode-check:
+  vscode:
     needs: changes
     if: ${{ needs.changes.outputs.vscode == 'true' }}
     uses: ./.github/workflows/publish-vscode.yml
 
-  call-cmake-test:
+  cmake:
     needs: changes
     if: ${{ needs.changes.outputs.cmake == 'true' }}
     uses: ./.github/workflows/test-cmake.yml
 
-  call-xmake-test:
+  xmake:
     needs: changes
     if: ${{ needs.changes.outputs.xmake == 'true' }}
     uses: ./.github/workflows/test-xmake.yml
@@ -108,12 +108,12 @@ jobs:
   ci-passed:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     needs:
-      - call-format
-      - call-deploy-docs
-      - call-clice-check
-      - call-vscode-check
-      - call-cmake-test
-      - call-xmake-test
+      - format
+      - deploy
+      - clice
+      - vscode
+      - cmake
+      - xmake
     runs-on: ubuntu-latest
     steps:
       - name: Check results
