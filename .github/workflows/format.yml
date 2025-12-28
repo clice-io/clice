@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 jobs:
-  changes:
+  check-changes:
     # if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     # permissions:
@@ -55,35 +55,35 @@ jobs:
               - '.github/workflows/test-xmake.yml'
 
   call-format:
-    needs: changes
-    if: ${{ needs.changes.outputs.format == 'true' }}
+    needs: check-changes
+    if: ${{ needs.check-changes.outputs.format == 'true' }}
     uses: ./.github/workflows/format.yml
 
   call-deploy-docs:
-    needs: changes
-    if: ${{ needs.changes.outputs.docs == 'true' }}
+    needs: check-changes
+    if: ${{ needs.check-changes.outputs.docs == 'true' }}
     permissions:
       contents: write
     uses: ./.github/workflows/deploy-docs.yml
 
   call-clice-check:
-    needs: changes
-    if: ${{ needs.changes.outputs.clice == 'true' }}
+    needs: check-changes
+    if: ${{ needs.check-changes.outputs.clice == 'true' }}
     uses: ./.github/workflows/publish-clice.yml
 
   call-vscode-check:
-    needs: changes
-    if: ${{ needs.changes.outputs.vscode == 'true' }}
+    needs: check-changes
+    if: ${{ needs.check-changes.outputs.vscode == 'true' }}
     uses: ./.github/workflows/publish-vscode.yml
 
   call-cmake-test:
-    needs: changes
-    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    needs: check-changes
+    if: ${{ needs.check-changes.outputs.cmake == 'true' }}
     uses: ./.github/workflows/test-cmake.yml
 
   call-xmake-test:
-    needs: changes
-    if: ${{ needs.changes.outputs.xmake == 'true' }}
+    needs: check-changes
+    if: ${{ needs.check-changes.outputs.xmake == 'true' }}
     uses: ./.github/workflows/test-xmake.yml
 
   release-clice:
