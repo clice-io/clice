@@ -1,7 +1,10 @@
 name: format
 
 on:
-  workflow_call:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
