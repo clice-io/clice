@@ -10,7 +10,10 @@ jobs:
       run:
         working-directory: editors/vscode
     steps:
-      - uses: ./.github/actions/setup-clice
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
         with:
           environments: node
 

@@ -1,5 +1,5 @@
-name: "Setup Clice Environment"
-description: "Checkout and setup pixi"
+name: "Setup Pixi"
+description: "setup pixi"
 
 inputs:
   environments:
@@ -10,9 +10,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
     - name: Setup Pixi
       uses: prefix-dev/setup-pixi@v0.9.3
       with:
