@@ -3,25 +3,31 @@ name: cmake
 on:
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/cmake.yml"
-      - "include/**"
-      - "src/**"
-      - "tests/**"
-      - "CMakeLists.txt"
 
   pull_request:
     branches: [main]
-    paths:
-      - ".github/workflows/cmake.yml"
-      - "include/**"
-      - "src/**"
-      - "tests/**"
-      - "config/**"
-      - "CMakeLists.txt"
 
 jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      cpp: ${{ steps.filter.outputs.cpp }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            cpp:
+              - ".github/workflows/cmake.yml"
+              - "include/**"
+              - "src/**"
+              - "tests/**"
+              - "config/**"
+              - "CMakeLists.txt"
+
   build:
+    needs: check-changes
+    if: ${{ needs.check-changes.outputs.cpp == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -49,9 +55,25 @@ jobs:
           locked: true
 
       - name: Build
-        run: |
-          pixi run ci-cmake-build ${{ matrix.build_type }}
+        run: pixi run ci-cmake-build ${{ matrix.build_type }}
 
       - name: Test
+        run: pixi run ci-cmake-test
+
+  check-passed:
+    if: always()
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide status
         run: |
-          pixi run ci-cmake-test
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ]; then
+            echo "❌ Build failed."
+            exit 1
+          fi
+          if [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "🛑 Build cancelled."
+            exit 1
+          fi
+          echo "✅ All builds passed or skipped (nothing to build)."
+          exit 0

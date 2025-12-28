@@ -4,11 +4,12 @@ on:
   push:
     tags: ["v*"]
     branches: ["main"]
-    paths: ["editors/vscode/**"]
 
   pull_request:
     branches: ["main"]
-    paths: ["editors/vscode/**"]
+    paths:
+      - "editors/vscode/**"
+      - .github/workflows/publish-vscode.yml
 
 jobs:
   publish-vscode:
@@ -39,10 +40,10 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           FLAG="${{ contains(github.ref_name, '-') && '--pre-release' || '' }}"
-          pixi run build-vscode -- $FLAG
+          pixi run build-vscode $FLAG
 
           if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
-            pixi run publish-vscode -- -p "$VSCE_PAT" $FLAG
+            pixi run publish-vscode -p "$VSCE_PAT" $FLAG
           fi
 
       - name: Upload .vsix to Release
