@@ -44,3 +44,4 @@ jobs:
         with:
           tool_name: "fmt"
           fail_level: any
+          filter_mode: nofilter
