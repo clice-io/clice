@@ -1,20 +1,20 @@
-name: check-format
+name: format
 
 on:
   push:
     branches: [main]
-
   pull_request:
     branches: [main]
 
 permissions:
   contents: read
   pull-requests: write
+  checks: write
+  issues: write
 
 jobs:
-  check:
+  check-format:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,19 +28,19 @@ jobs:
           cache: true
           locked: true
 
-      - name: Run check
-        id: precommit
+      - name: Run formatter
         run: pixi run format
         continue-on-error: true
 
       - name: Auto correct
-        uses: huacnlee/autocorrect-action@main
+        uses: huacnlee/autocorrect-action@v2
         with:
           args: --lint ./docs
         continue-on-error: true
 
       - name: Suggest changes
-        uses: reviewdog/action-suggester@v1
+        if: github.event_name == 'pull_request'
+        uses: reviewdog/action-suggester@v1.24.0
         with:
           tool_name: "fmt"
-          fail_on_error: true
+          fail_level: any
