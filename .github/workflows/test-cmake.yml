@@ -1,32 +1,10 @@
 name: cmake
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_call:
 
 jobs:
-  check-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      cpp: ${{ steps.filter.outputs.cpp }}
-    steps:
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            cpp:
-              - ".github/workflows/test-cmake.yml"
-              - "include/**"
-              - "src/**"
-              - "tests/**"
-              - "config/**"
-              - "CMakeLists.txt"
-
   build:
-    needs: check-changes
-    if: ${{ needs.check-changes.outputs.cpp == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -56,21 +34,3 @@ jobs:
 
       - name: Test
         run: pixi run ci-cmake-test
-
-  check-passed:
-    if: always()
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Decide status
-        run: |
-          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ]; then
-            echo "❌ Build failed."
-            exit 1
-          fi
-          if [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
-            echo "🛑 Build cancelled."
-            exit 1
-          fi
-          echo "✅ All builds passed or skipped (nothing to build)."
-          exit 0

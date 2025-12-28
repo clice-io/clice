@@ -234,7 +234,7 @@ void expect_load(llvm::StringRef content,
 };
 
 /// TODO: add windows path testcase
-// skip_unless(Linux || MacOS) / test("LoadAbsoluteUnixStyle") = [expect_load] {
+// skip_unless(Linux || macOS) / test("LoadAbsoluteUnixStyle") = [expect_load] {
 //     constexpr const char* cmake = R"([
 //     {
 //         "directory": "/home/developer/clice/build",
@@ -271,7 +271,7 @@ void expect_load(llvm::StringRef content,
 //                 });
 // };
 
-// skip_unless(Linux || MacOS) / test("LoadRelativeUnixStyle") = [expect_load] {
+// skip_unless(Linux || macOS) / test("LoadRelativeUnixStyle") = [expect_load] {
 //     constexpr const char* xmake = R"([
 //     {
 //         "directory": "/home/developer/clice",

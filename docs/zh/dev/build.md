@@ -4,7 +4,7 @@
 
 - Windows
 - Linux
-- MacOS
+- macOS
 
 ## Prerequisite
 
@@ -66,7 +66,7 @@ xmake build --all
 >
 > - Windows 暂时没有 debug 构建的 llvm libs，因为它不支持将 clang 构建为动态库，相关的进展在 [这里](https://github.com/clice-io/clice/issues/42) 跟踪
 > - Linux 使用 clang20
-> - MacOS 使用 homebrew llvm@20，**不要使用 apple clang**
+> - macOS 使用 homebrew llvm@20，**不要使用 apple clang**
 >
 > 可以参考 CI 中的 [cmake](https://github.com/clice-io/clice/blob/main/.github/workflows/cmake.yml) 和 [xmake](https://github.com/clice-io/clice/blob/main/.github/workflows/xmake.yml) 文件作为参考，它们与预编译 llvm libs 的环境保持严格一致。
 

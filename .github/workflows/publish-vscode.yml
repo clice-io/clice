@@ -1,14 +1,7 @@
 name: vscode
 
 on:
-  push:
-    tags: ["v*"]
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
-    paths:
-      - "editors/vscode/**"
-      - .github/workflows/publish-vscode.yml
+  workflow_call:
 
 jobs:
   publish-vscode:
