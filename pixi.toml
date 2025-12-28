@@ -11,6 +11,7 @@ license-file = "LICENSE"
 readme = "README.md"
 documentation = "https://clice.io"
 repository = "https://github.com/clice-io/clice"
+
 channels = ["conda-forge"]
 platforms = ["win-64", "linux-64", "osx-arm64"]
 
