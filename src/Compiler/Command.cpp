@@ -690,8 +690,11 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
     if(info) {
         directory = self->strings.get(info->directory);
         arguments = self->mangle_command(file, *info, options);
-    } else {
+        // TODO: other c++ suffixes
+    } else if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
         arguments = {"clang++", "-std=c++20"};
+    } else {
+        arguments = {"clang"};
     }
 
     auto append_arg = [&](llvm::StringRef s) {
