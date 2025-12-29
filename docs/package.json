@@ -13,7 +13,7 @@
   },
   "pnpm": {
     "overrides": {
-      "esbuild": ">=0.25.0"
+      "esbuild": "~0.25.0"
     },
     "ignoredBuiltDependencies": [
       "esbuild"
