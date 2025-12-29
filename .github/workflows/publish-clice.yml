@@ -56,11 +56,10 @@ jobs:
           xmake lua os.rmdir "C:/Program Files/LLVM"
 
       - name: Package
-        run: |
-          pixi run package
+        run: pixi run package
 
       - name: Upload Main Package to Release
-        if: github.event_name == 'push'
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -70,7 +69,7 @@ jobs:
           overwrite: true
 
       - name: Upload Symbol Package to Release
-        if: github.event_name == 'push'
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}

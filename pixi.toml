@@ -99,7 +99,6 @@ outputs = ["editors/vscode/node_modules/.modules.yaml"]
 unit-test = './build/bin/unit_tests --test-dir="./tests/data"'
 integration-test = 'pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice{% if pixi.is_win %}.exe{% endif %}'
 xmake-test = "xmake test --verbose"
-hello = "echo Hello"
 
 [environments]
 default = []
