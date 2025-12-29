@@ -36,6 +36,9 @@ void on_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
 
     /// We have at most one connection and use default event loop. So there is no data race
     /// risk. It is safe to use a static buffer here.
+    /// TODO: There might be a performance issue about this buffer if the client sends big requests.
+    /// A known case is that when the user opens a big file, the client emits a didOpen notification
+    /// containing the entire content of the big file.
     static llvm::SmallString<4096> buffer;
     buffer.insert(buffer.end(), buf->base, buf->base + nread);
 
@@ -44,8 +47,9 @@ void on_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
     std::size_t length = 0;
 
     /// FIXME: Handle Content-Type If any.
-    if(message.consume_front("Content-Length: ") && !message.consumeInteger(10, length) &&
-       message.consume_front("\r\n\r\n") && message.size() >= length) {
+    while(message.consume_front("Content-Length: ") && !message.consumeInteger(10, length) &&
+          message.consume_front("\r\n\r\n") && message.size() >= length) {
+        /// Take message from the buffer.
         auto result = message.substr(0, length);
 
         if(auto input = llvm::json::parse(result)) {
@@ -64,6 +68,7 @@ void on_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
         /// Remove the processed message from the buffer.
         auto pos = result.end() - buffer.begin();
         buffer.erase(buffer.begin(), buffer.begin() + pos);
+        message = buffer;
     }
 }
 
