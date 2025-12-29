@@ -177,7 +177,7 @@ target_link_libraries(clice-core PUBLIC
     llvm-libs
 )
 
-add_executable(clice "${PROJECT_SOURCE_DIR}/bin/clice.cc")
+add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
 target_link_libraries(clice PRIVATE clice-core)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -196,7 +196,7 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/tests/unit/*/*.cpp")
     add_executable(unit_tests
         "${CLICE_TEST_SOURCES}"
-        "${PROJECT_SOURCE_DIR}/bin/unit_tests.cc"
+        "${PROJECT_SOURCE_DIR}/tests/unit/unit_tests.cc"
     )
     target_include_directories(unit_tests PUBLIC "${PROJECT_SOURCE_DIR}")
     target_link_libraries(unit_tests PRIVATE clice-core cpptrace::cpptrace)

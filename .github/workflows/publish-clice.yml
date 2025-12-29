@@ -1,20 +1,10 @@
-name: package
-
-permissions:
-  contents: write
+name: clice
 
 on:
-  push:
-    tags:
-      - "v*"
-
-  pull_request:
-    branches: [main]
-    paths:
-      - ".github/workflows/package.yml"
+  workflow_call:
 
 jobs:
-  package:
+  publish-clice:
     strategy:
       fail-fast: false
       matrix:
@@ -24,21 +14,18 @@ jobs:
             asset_name: clice-x64-windows-msvc.zip
             symbol_artifact_name: clice-symbol.zip
             symbol_asset_name: clice-x64-windows-msvc-symbol.zip
-            toolchain: clang-cl
 
           - os: ubuntu-24.04
             artifact_name: clice.tar.gz
             asset_name: clice-x86_64-linux-gnu.tar.gz
             symbol_artifact_name: clice-symbol.tar.gz
             symbol_asset_name: clice-x86_64-linux-gnu-symbol.tar.gz
-            toolchain: clang-20
 
           - os: macos-15
             artifact_name: clice.tar.gz
             asset_name: clice-arm64-macos-darwin.tar.gz
             symbol_artifact_name: clice-symbol.tar.gz
             symbol_asset_name: clice-arm64-macos-darwin-symbol.tar.gz
-            toolchain: clang
 
     runs-on: ${{ matrix.os }}
 
@@ -57,13 +44,9 @@ jobs:
           build-cache: true
           build-cache-key: ${{ matrix.os }}-build-release-v1
 
-      - name: Setup Pixi
-        uses: prefix-dev/setup-pixi@v0.9.3
+      - uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.61.0
-          activate-environment: true
-          cache: true
-          locked: true
+          environments: develop
 
       - name: Remove ci llvm toolchain on Windows
         if: runner.os == 'Windows'
@@ -73,11 +56,10 @@ jobs:
           xmake lua os.rmdir "C:/Program Files/LLVM"
 
       - name: Package
-        run: |
-          pixi run package
+        run: pixi run package
 
       - name: Upload Main Package to Release
-        if: github.event_name == 'push'
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -87,7 +69,7 @@ jobs:
           overwrite: true
 
       - name: Upload Symbol Package to Release
-        if: github.event_name == 'push'
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}

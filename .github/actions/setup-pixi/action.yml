@@ -1,0 +1,20 @@
+name: "Setup Pixi"
+description: "setup pixi"
+
+inputs:
+  environments:
+    description: "The pixi environments to install (e.g. default, docs, test)"
+    required: false
+    default: "default"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Pixi
+      uses: prefix-dev/setup-pixi@v0.9.3
+      with:
+        pixi-version: v0.62.0
+        environments: ${{ inputs.environments }}
+        activate-environment: true
+        cache: true
+        locked: true

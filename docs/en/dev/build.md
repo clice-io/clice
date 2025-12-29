@@ -4,7 +4,7 @@
 
 - Windows
 - Linux
-- MacOS
+- macOS
 
 ## Prerequisite
 
@@ -68,7 +68,7 @@ Due to the complexity of C++ syntax, writing a new parser from scratch is unreal
 >
 > - Windows does not currently have debug builds for llvm libs, as it does not support building clang as a dynamic library. Related progress is tracked [here](https://github.com/clice-io/clice/issues/42).
 > - Linux uses clang20
-> - MacOS uses homebrew llvm@20. **Do not use apple clang**.
+> - macOS uses homebrew llvm@20. **Do not use apple clang**.
 >
 > You can refer to the [cmake](https://github.com/clice-io/clice/blob/main/.github/workflows/cmake.yml) and [xmake](https://github.com/clice-io/clice/blob/main/.github/workflows/xmake.yml) files in our CI as a reference, as they maintain an environment strictly consistent with the pre-compiled llvm libs.
 

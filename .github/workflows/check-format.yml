@@ -1,52 +1,33 @@
 name: format
 
 on:
-  push:
-    branches: [main]
-
-  pull_request:
-    branches: [main]
+  workflow_call:
 
 jobs:
-  check:
+  check-format:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Pixi
-        uses: prefix-dev/setup-pixi@v0.9.3
+      - uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.61.0
-          environments: develop
-          activate-environment: true
-          cache: true
-          locked: true
+          environments: format
 
-      - name: Run check
-        id: precommit
-        run: |
-          pixi run ci-check
+      - name: Run formatter
+        run: pixi run format
         continue-on-error: true
 
-      - name: Show diff on failure
-        if: steps.precommit.outcome == 'failure'
-        run: |
-          echo "❌ pre-commit found issues that it auto-fixed."
-          echo "   Please run 'pre-commit run --all-files' locally,"
-          echo "   commit the changes, and push again."
-          echo ""
-          echo "👇 The required changes are shown below:"
-          git diff
-
-      - name: Fail the job if pre-commit failed
-        if: steps.precommit.outcome == 'failure'
-        run: |
-          echo "pre-commit checks failed."
-          exit 1
-
       - name: Auto correct
-        uses: huacnlee/autocorrect-action@main
+        uses: huacnlee/autocorrect-action@v2
         with:
           args: --lint ./docs
+        continue-on-error: true
+
+      - name: Suggest changes
+        if: github.event_name == 'pull_request'
+        uses: reviewdog/action-suggester@v1.24.0
+        with:
+          tool_name: "fmt"
+          fail_level: any
+          filter_mode: nofilter

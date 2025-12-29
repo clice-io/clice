@@ -21,7 +21,6 @@ jobs:
           - os: windows-2025
             llvm_mode: RelWithDebInfo
             lto: ON
-
           - os: ubuntu-24.04
             llvm_mode: Debug
             lto: OFF
@@ -31,7 +30,6 @@ jobs:
           - os: ubuntu-24.04
             llvm_mode: RelWithDebInfo
             lto: ON
-
           - os: macos-15
             llvm_mode: Debug
             lto: OFF
@@ -41,9 +39,7 @@ jobs:
           - os: macos-15
             llvm_mode: RelWithDebInfo
             lto: ON
-
     runs-on: ${{ matrix.os }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

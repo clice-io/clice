@@ -4,7 +4,7 @@
 
 - Windows
 - Linux
-- MacOS
+- macOS
 
 ## Prerequisite
 
@@ -54,7 +54,6 @@ xmake build --all
 | --enable_test | false  | 是否构建 clice 的单元测试               |
 | --ci          | false  | 是否打开 `CLICE_CI_ENVIRONMENT`         |
 
-
 ## A Note on LLVM Libs
 
 由于 C++ 的语法太过复杂，自己编写一个新的 parser 是不现实的。clice 调用 clang 的 API 来 parse C++ 源文件获取 AST，这意味它需要链接 llvm/clang libs。由于 clice 使用了 clang 的私有头文件，这些私有头文件在 llvm 发布的 binary release 中是没有的，所以不能直接使用系统的 llvm package。
@@ -67,7 +66,7 @@ xmake build --all
 >
 > - Windows 暂时没有 debug 构建的 llvm libs，因为它不支持将 clang 构建为动态库，相关的进展在 [这里](https://github.com/clice-io/clice/issues/42) 跟踪
 > - Linux 使用 clang20
-> - MacOS 使用 homebrew llvm@20，**不要使用 apple clang**
+> - macOS 使用 homebrew llvm@20，**不要使用 apple clang**
 >
 > 可以参考 CI 中的 [cmake](https://github.com/clice-io/clice/blob/main/.github/workflows/cmake.yml) 和 [xmake](https://github.com/clice-io/clice/blob/main/.github/workflows/xmake.yml) 文件作为参考，它们与预编译 llvm libs 的环境保持严格一致。
 

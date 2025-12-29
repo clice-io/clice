@@ -1,24 +1,7 @@
 name: xmake
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/xmake.yml"
-      - "include/**"
-      - "src/**"
-      - "tests/**"
-      - "xmake.lua"
-
-  pull_request:
-    branches: [main]
-    paths:
-      - ".github/workflows/xmake.yml"
-      - "include/**"
-      - "src/**"
-      - "tests/**"
-      - "config/**"
-      - "xmake.lua"
+  workflow_call:
 
 jobs:
   build:
@@ -30,9 +13,7 @@ jobs:
         exclude:
           - os: windows-2025
             build_type: debug
-
     runs-on: ${{ matrix.os }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,24 +29,16 @@ jobs:
           build-cache: true
           build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
 
-      - name: Setup Pixi
-        uses: prefix-dev/setup-pixi@v0.9.3
+      - uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.61.0
           environments: develop
-          activate-environment: true
-          cache: true
-          locked: true
 
       - name: Build
-        run: |
-          pixi run ci-xmake-build ${{ matrix.build_type }}
+        run: pixi run ci-xmake-build ${{ matrix.build_type }}
 
       - name: Test
-        run: |
-          pixi run xmake-test
+        run: pixi run xmake-test
 
-      # Clean up llvm package to reduce cache size
       - name: Remove llvm package (Linux)
         if: runner.os == 'Linux'
         run: xmake require --uninstall clice-llvm

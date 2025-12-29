@@ -9,9 +9,9 @@ constexpr inline bool Windows = false;
 
 /// True if the target platform is macOS or other Apple OS.
 #ifdef __APPLE__
-constexpr inline bool MacOS = true;
+constexpr inline bool macOS = true;
 #else
-constexpr inline bool MacOS = false;
+constexpr inline bool macOS = false;
 #endif
 
 /// True if the target platform is Linux. Note: This may also be true on Android.

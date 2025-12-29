@@ -1,28 +1,28 @@
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
 
-const rainbowColors = [
-    "#56B6C2",
-    "#61AFEF",
-    "#C678DD",
-    "#E06C75",
-    "#98C379",
-    "#D19A66",
-    "#E5C07B"
-];
+const rainbowColors = ["#56B6C2", "#61AFEF", "#C678DD", "#E06C75", "#98C379", "#D19A66", "#E5C07B"];
 
 const textEditorDecorationTypes = rainbowColors.map((color) => {
     return vscode.window.createTextEditorDecorationType({
-        color: color
+        color: color,
     });
 });
 
-export function highlightDocument(document: vscode.TextDocument, legend: vscode.SemanticTokensLegend, semanticTokens: vscode.SemanticTokens) {
+export function highlightDocument(
+    document: vscode.TextDocument,
+    legend: vscode.SemanticTokensLegend,
+    semanticTokens: vscode.SemanticTokens,
+) {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document !== document) { return; }
-    const angleIndex = legend?.tokenTypes.indexOf('angle');
-    const leftIndex = legend?.tokenModifiers.indexOf('left');
-    const rightIndex = legend?.tokenModifiers.indexOf('right');
-    if (leftIndex === undefined || rightIndex === undefined || angleIndex === undefined) { return; }
+    if (!editor || editor.document !== document) {
+        return;
+    }
+    const angleIndex = legend?.tokenTypes.indexOf("angle");
+    const leftIndex = legend?.tokenModifiers.indexOf("left");
+    const rightIndex = legend?.tokenModifiers.indexOf("right");
+    if (leftIndex === undefined || rightIndex === undefined || angleIndex === undefined) {
+        return;
+    }
 
     const decorations = new Map<number, vscode.Range[]>();
     let level = 0;
@@ -32,7 +32,8 @@ export function highlightDocument(document: vscode.TextDocument, legend: vscode.
 
     // [line, startCharacter, length, tokenType, tokenModifiers]
     for (let i = 0; i < semanticTokens.data.length; i += 5) {
-        const [lineDelta, startDelta, length, tokenType, tokenModifiers] = semanticTokens.data.slice(i, i + 5);
+        const [lineDelta, startDelta, length, tokenType, tokenModifiers] =
+            semanticTokens.data.slice(i, i + 5);
 
         lastLine += lineDelta;
         lastStart = lineDelta === 0 ? lastStart + startDelta : startDelta;
@@ -52,15 +53,11 @@ export function highlightDocument(document: vscode.TextDocument, legend: vscode.
 
             if (tokenModifiers & (1 << leftIndex)) {
                 level += 1;
-
             }
         }
     }
 
     for (const [level, ranges] of decorations) {
-        editor.setDecorations(
-            textEditorDecorationTypes[level],
-            ranges
-        );
+        editor.setDecorations(textEditorDecorationTypes[level], ranges);
     }
 }

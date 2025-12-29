@@ -1,0 +1,122 @@
+name: main
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  changes:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      format: ${{ steps.filter.outputs.format }}
+      docs: ${{ steps.filter.outputs.docs }}
+      clice: ${{ steps.filter.outputs.clice }}
+      vscode: ${{ steps.filter.outputs.vscode }}
+      cmake: ${{ steps.filter.outputs.cmake }}
+      xmake: ${{ steps.filter.outputs.xmake }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            format:
+              - '**/*.{h,c,cpp,hpp,ts,js,lua,md,yml,yaml}'
+            docs:
+              - 'docs/**'
+              - '.github/workflows/deploy-docs.yml'
+            clice:
+              - 'src/**'
+              - 'include/**'
+              - 'CMakeLists.txt'
+              - '.github/workflows/publish-clice.yml'
+            vscode:
+              - 'editors/vscode/**'
+              - '.github/workflows/publish-vscode.yml'
+            cmake:
+              - 'CMakeLists.txt'
+              - 'src/**'
+              - 'include/**'
+              - 'tests/**'
+              - 'config/**'
+              - '.github/workflows/test-cmake.yml'
+            xmake:
+              - 'xmake.lua'
+              - 'src/**'
+              - 'include/**'
+              - 'tests/**'
+              - 'config/**'
+              - '.github/workflows/test-xmake.yml'
+
+  format:
+    needs: changes
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+      pull-requests: write
+    if: ${{ needs.changes.outputs.format == 'true' }}
+    uses: ./.github/workflows/check-format.yml
+
+  deploy:
+    needs: changes
+    if: ${{ needs.changes.outputs.docs == 'true' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/deploy-docs.yml
+
+  clice:
+    needs: changes
+    if: ${{ needs.changes.outputs.clice == 'true' }}
+    uses: ./.github/workflows/publish-clice.yml
+
+  vscode:
+    needs: changes
+    if: ${{ needs.changes.outputs.vscode == 'true' }}
+    uses: ./.github/workflows/publish-vscode.yml
+
+  cmake:
+    needs: changes
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    uses: ./.github/workflows/test-cmake.yml
+
+  xmake:
+    needs: changes
+    if: ${{ needs.changes.outputs.xmake == 'true' }}
+    uses: ./.github/workflows/test-xmake.yml
+
+  release-clice:
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/publish-clice.yml
+    secrets: inherit
+
+  release-vscode:
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/publish-vscode.yml
+    secrets: inherit
+
+  checks-passed:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    needs:
+      - format
+      - deploy
+      - clice
+      - vscode
+      - cmake
+      - xmake
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        uses: re-actors/alls-green@release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}

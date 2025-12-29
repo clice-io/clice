@@ -3,20 +3,12 @@ name = "clice"
 version = "0.1.0"
 description = "clice is a language server for C/C++"
 readme = "README.md"
-authors = [
-    { name = "clice developers" }
-]
 requires-python = ">=3.13"
+authors = [{ name = "clice developers" }]
 dependencies = []
 
 [dependency-groups]
-dev = [
-    "pre-commit>=4.3.0",
-    "pytest",
-    "pytest-asyncio>=1.1.0",
-]
+dev = ["pre-commit>=4.3.0", "pytest", "pytest-asyncio>=1.1.0"]
 
 [tool.pytest.ini_options]
-markers = [
-    "asyncio",
-]
+markers = ["asyncio"]

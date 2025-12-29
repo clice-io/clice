@@ -1,35 +1,37 @@
-import * as vscode from 'vscode';
-import { DocumentUri } from 'vscode-languageclient/node';
+import * as vscode from "vscode";
+import { DocumentUri } from "vscode-languageclient/node";
 
 let provider: HeaderContextProvider | undefined = undefined;
 
 export type HeaderContext = {
-    file: string,
-    index: number,
-    include: number
+    file: string;
+    index: number;
+    include: number;
 };
 
 export type HeaderContextSwitchParams = {
-    header: DocumentUri,
-    context: HeaderContext,
+    header: DocumentUri;
+    context: HeaderContext;
 };
 
 export type IncludeLocation = {
-    line: number,
-    filename: string
+    line: number;
+    filename: string;
 };
 
 export class TreeItem extends vscode.TreeItem {
-    children: Array<TreeItem> = []
+    children: Array<TreeItem> = [];
     context: HeaderContext | undefined = undefined;
-};
+}
 
 export class HeaderContextProvider implements vscode.TreeDataProvider<TreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | void> = new vscode.EventEmitter<TreeItem | undefined | void>();
-    readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | void> = this._onDidChangeTreeData.event;
+    private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | void> =
+        new vscode.EventEmitter<TreeItem | undefined | void>();
+    readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | void> =
+        this._onDidChangeTreeData.event;
 
-    header: string = ""
-    items: Array<TreeItem> = []
+    header: string = "";
+    items: Array<TreeItem> = [];
 
     update(contexts: Array<Array<HeaderContext>>) {
         /// Create groups
@@ -60,11 +62,11 @@ export class HeaderContextProvider implements vscode.TreeDataProvider<TreeItem> 
     getChildren(element?: TreeItem) {
         return element ? element.children : this.items;
     }
-};
-
-
+}
 
 export function registerHeaderContextView() {
     provider = new HeaderContextProvider();
-    let treeView = vscode.window.createTreeView("header-contexts", { treeDataProvider: provider });
+    let treeView = vscode.window.createTreeView("header-contexts", {
+        treeDataProvider: provider,
+    });
 }

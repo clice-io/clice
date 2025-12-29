@@ -26,7 +26,6 @@ clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-
 
 自己从源码编译 clice，具体的步骤参考 [build](../dev/build.md)。
 
-
 ## Project Setup
 
 为了让 clice 能正确理解你的代码（例如找到头文件的位置），需要为 clice 提供一份 `compile_commands.json` 文件，也就说所谓的 [编译数据库](https://clang.llvm.org/docs/JSONCompilationDatabase.html)。编译数据库中提供了每个源文件的编译选项。
