@@ -43,12 +43,12 @@ def executable(request) -> Path | None:
     if not executable:
         return None
 
+    path = Path(executable)
     if sys.platform.startswith("win") and path.suffix.lower() != ".exe":
         path_exe = path.with_name(path.name + ".exe")
         if path_exe.exists() or not path.exists():
             path = path_exe
 
-    path = Path(executable)
     if not path.exists():
         pytest.exit(
             f"Error: 'clice' executable not found at '{executable}'. "
