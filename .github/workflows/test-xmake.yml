@@ -34,7 +34,7 @@ jobs:
           environments: develop
 
       - name: Build
-        run: pixi run ci-xmake-build ${{ matrix.build_type }}
+        run: pixi run xmake ${{ matrix.build_type }}
 
       - name: Test
         run: pixi run xmake-test

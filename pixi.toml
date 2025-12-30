@@ -14,7 +14,33 @@ repository = "https://github.com/clice-io/clice"
 channels = ["conda-forge"]
 platforms = ["win-64", "linux-64", "osx-arm64"]
 
-[dependencies]
+[environments]
+default = ["build"]
+develop = ["build", "test"]
+package = ["build", "test", "package"]
+format = ["format"]
+node = ["node"]
+
+[tasks.build-llvm]
+cmd = ["python3", "scripts/build-llvm.py"]
+
+[tasks.upload-llvm]
+args = ["workflow_id", "llvm_version", { "arg" = "branch", default = "main" }]
+cmd = """
+gh workflow run upload-llvm.yml \
+    --ref {{ branch }} \
+    --field workflow_id={{workflow_id}} \
+    --field version={{llvm_version}}
+"""
+
+[tasks.delete-artifacts]
+args = ["file_name"]
+cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]
+
+# ==============================================================================#
+#                             BUILD ENVIRONMENT                                 #
+# ==============================================================================#
+[feature.build.dependencies]
 python = ">=3.13"
 cmake = ">=3.30"
 ninja = "*"
@@ -24,16 +50,92 @@ lld = "==20.1.8"
 llvm-tools = "==20.1.8"
 compiler-rt = "==20.1.8"
 
-[target.linux-64.dependencies]
+[feature.build.target.linux-64.dependencies]
 sysroot_linux-64 = "==2.17"
 gcc = "==14.2.0"
 gxx = "==14.2.0"
 
-[target.linux-64.activation]
+[feature.build.target.linux-64.activation]
 scripts = ["scripts/activate_linux.sh"]
 
-[target.win-64.activation]
+[feature.build.target.win-64.activation]
 scripts = ["scripts/activate_asan.bat"]
+
+[feature.build.tasks]
+xmake-test = "xmake test --verbose"
+
+# ==============================================================================#
+#                                   CMAKE                                       #
+# ==============================================================================#
+[feature.build.tasks.cmake-config]
+args = [
+    { arg = "type", default = "Debug" },
+    { arg = "ci", default = "OFF" },
+    { arg = "extra", default = "" },
+]
+cmd = """
+cmake -B build/{{ type }} -G Ninja \
+    -DCMAKE_BUILD_TYPE={{ type }} \
+    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
+    -DCLICE_ENABLE_TEST=ON \
+    -DCLICE_CI_ENVIRONMENT={{ ci }} {{extra}} \
+"""
+
+[feature.build.tasks.cmake-build]
+args = [{ arg = "type", default = "Debug" }]
+cmd = "cmake --build build/{{ type }}"
+
+[feature.build.tasks.build]
+args = [
+    { arg = "type", default = "Debug" },
+    { arg = "ci", default = "OFF" },
+    { arg = "extra", default = "" },
+]
+depends-on = [
+    { task = "cmake-config", args = ["{{ type }}", "{{ ci }}", "{{extra}}"] },
+    { task = "cmake-build", args = ["{{ type }}"] },
+]
+
+[feature.build.tasks.unit-test]
+args = [{ arg = "type", default = "Debug" }]
+cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data"'
+
+[feature.build.tasks.integration-test]
+args = [{ arg = "type", default = "Debug" }]
+cmd = """
+pytest -s --log-cli-level=INFO tests/integration \
+    --executable=./build/{{ type }}/bin/clice
+"""
+
+[feature.build.tasks.test]
+args = [{ arg = "type", default = "Debug" }]
+depends-on = [
+    { task = "unit-test", args = ["{{ type }}"] },
+    { task = "integration-test", args = ["{{ type }}"] },
+]
+
+# ==============================================================================#
+#                                   XMAKE                                       #
+# ==============================================================================#
+[feature.build.tasks.xmake-config]
+args = [
+    { arg = "type", default = "releasedbg" },
+    { arg = "ci", default = "n" },
+]
+cmd = "xmake config --yes --mode={{ type }} --toolchain=clang --ci={{ ci }}"
+
+[feature.build.tasks.xmake-build]
+cmd = "xmake build --verbose --diagnosis --all"
+
+[feature.build.tasks.xmake]
+args = [
+    { arg = "type", default = "releasedbg" },
+    { arg = "ci", default = "n" },
+]
+depends-on = [
+    { task = "xmake-config", args = ["{{ type }}", "{{ ci }}"] },
+    { task = "xmake-build" },
+]
 
 [feature.test.pypi-dependencies]
 pytest = "*"
@@ -42,6 +144,37 @@ pytest-asyncio = ">=1.1.0"
 [feature.package.dependencies]
 xz = ">=5.8.1,<6"
 
+[feature.package.tasks.package]
+cmd = "xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=clang && xmake pack --verbose"
+
+# ==============================================================================#
+#                             DOCS & VSCODE EXTENSION                           #
+# ==============================================================================#
+[feature.node.dependencies]
+nodejs = ">=20"
+pnpm = "*"
+
+[feature.node.tasks]
+build-docs = { cwd = "docs", cmd = "pnpm run docs:build", depends-on = ["install-docs"] }
+preview-docs = { cwd = "docs", cmd = "pnpm run docs:preview", depends-on = ["install-docs"] }
+build-vscode = { cwd = "editors/vscode", cmd = "pnpm run package", depends-on = ["install-vscode"] }
+publish-vscode = { cwd = "editors/vscode", cmd = "pnpm run publish", depends-on = ["install-vscode"] }
+
+[feature.node.tasks.install-docs]
+cwd = "docs"
+cmd = "pnpm install"
+inputs = ["docs/package.json", "docs/pnpm-lock.yaml"]
+outputs = ["docs/node_modules/.modules.yaml"]
+
+[feature.node.tasks.install-vscode]
+cwd = "editors/vscode"
+cmd = "pnpm install"
+inputs = ["editors/vscode/package.json", "editors/vscode/pnpm-lock.yaml"]
+outputs = ["editors/vscode/node_modules/.modules.yaml"]
+
+# ==============================================================================#
+#                                    FORMAT                                     #
+# ==============================================================================#
 [feature.format.dependencies]
 ruff = "*"
 tombi = "*"
@@ -72,106 +205,3 @@ format = { depends-on = [
     "format-toml",
     "format-yaml"
 ] }
-
-[feature.node.dependencies]
-nodejs = ">=20"
-pnpm = "*"
-
-[feature.node.tasks]
-build-docs = { cwd = "docs", cmd = "pnpm run docs:build", depends-on = ["install-docs"] }
-preview-docs = { cwd = "docs", cmd = "pnpm run docs:preview", depends-on = ["install-docs"] }
-build-vscode = { cwd = "editors/vscode", cmd = "pnpm run package", depends-on = ["install-vscode"] }
-publish-vscode = { cwd = "editors/vscode", cmd = "pnpm run publish", depends-on = ["install-vscode"] }
-
-[feature.node.tasks.install-docs]
-cwd = "docs"
-cmd = "pnpm install"
-inputs = ["docs/package.json", "docs/pnpm-lock.yaml"]
-outputs = ["docs/node_modules/.modules.yaml"]
-
-[feature.node.tasks.install-vscode]
-cwd = "editors/vscode"
-cmd = "pnpm install"
-inputs = ["editors/vscode/package.json", "editors/vscode/pnpm-lock.yaml"]
-outputs = ["editors/vscode/node_modules/.modules.yaml"]
-
-[feature.develop.tasks]
-unit-test = './build/bin/unit_tests --test-dir="./tests/data"'
-integration-test = 'pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice{% if pixi.is_win %}.exe{% endif %}'
-xmake-test = "xmake test --verbose"
-
-[environments]
-default = []
-develop = ["test", "develop"]
-package = ["test", "package"]
-format = ["format"]
-node = ["node"]
-
-[tasks.ci-cmake-configure]
-args = ["build_type"]
-cmd = [
-    "cmake",
-    "-B",
-    "build",
-    "-G",
-    "Ninja",
-    "-DCMAKE_BUILD_TYPE={{ build_type }}",
-    "-DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake",
-    "-DCLICE_ENABLE_TEST=ON",
-    "-DCLICE_CI_ENVIRONMENT=ON",
-]
-
-[tasks.cmake-build]
-cmd = "cmake --build build"
-
-[tasks.ci-cmake-build]
-args = ["build_type"]
-depends-on = [
-    { task = "ci-cmake-configure", args = ["{{ build_type }}"] },
-    { task = "cmake-build" },
-]
-
-[tasks.ci-cmake-test]
-depends-on = [{ task = "unit-test" }, { task = "integration-test" }]
-
-[tasks.ci-xmake-configure]
-args = ["build_type"]
-cmd = "xmake config --clean --yes --mode={{ build_type }} --toolchain=clang --ci=y"
-
-[tasks.xmake-build]
-cmd = "xmake build --verbose --diagnosis --all"
-
-[tasks.ci-xmake-build]
-args = ["build_type"]
-depends-on = [
-    { task = "ci-xmake-configure", args = [
-        "{{ build_type }}",
-    ] },
-    { task = "xmake-build" },
-]
-
-[tasks.build-llvm]
-cmd = ["python3", "scripts/build-llvm.py"]
-
-[tasks.upload-llvm]
-args = ["workflow_id", "llvm_version", { "arg" = "branch", default = "main" }]
-cmd = [
-    "gh",
-    "workflow",
-    "run",
-    "upload-llvm.yml",
-    "--ref",
-    "{{ branch }}",
-    "--field",
-    "workflow_id={{workflow_id}}",
-    "--field",
-    "version={{llvm_version}}",
-]
-
-[tasks.delete-artifacts]
-# delete all workflows generated by "file_name"
-args = ["file_name"]
-cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]
-
-[tasks.package]
-cmd = "xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=clang && xmake pack --verbose"

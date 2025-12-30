@@ -1,4 +1,5 @@
 import os
+import sys
 import pytest
 import pytest_asyncio
 from pathlib import Path
@@ -41,6 +42,11 @@ def executable(request) -> Path | None:
     executable = request.config.getoption("--executable")
     if not executable:
         return None
+
+    if sys.platform.startswith("win") and path.suffix.lower() != ".exe":
+        path_exe = path.with_name(path.name + ".exe")
+        if path_exe.exists() or not path.exists():
+            path = path_exe
 
     path = Path(executable)
     if not path.exists():

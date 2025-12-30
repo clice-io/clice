@@ -25,7 +25,7 @@ jobs:
           environments: develop
 
       - name: Build
-        run: pixi run ci-cmake-build ${{ matrix.build_type }}
+        run: pixi run build ${{ matrix.build_type }} ON
 
       - name: Test
-        run: pixi run ci-cmake-test
+        run: pixi run test
