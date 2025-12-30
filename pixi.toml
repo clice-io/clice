@@ -61,9 +61,6 @@ scripts = ["scripts/activate_linux.sh"]
 [feature.build.target.win-64.activation]
 scripts = ["scripts/activate_asan.bat"]
 
-[feature.build.tasks]
-xmake-test = "xmake test --verbose"
-
 # ==============================================================================#
 #                                   CMAKE                                       #
 # ==============================================================================#
@@ -136,6 +133,9 @@ depends-on = [
     { task = "xmake-config", args = ["{{ type }}", "{{ ci }}"] },
     { task = "xmake-build" },
 ]
+
+[feature.build.tasks.xmake-test]
+cmd = "xmake test --verbose"
 
 [feature.test.pypi-dependencies]
 pytest = "*"
