@@ -2,7 +2,7 @@
 
 This section covers development and release workflows for the editor extensions (VSCode / Neovim / Zed).
 
-## 🌐 VSCode
+## VSCode
 
 The VSCode extension uses the Node/PNPM/VSCE toolchain. Work inside the pixi `node` environment for consistent versions.
 
@@ -46,7 +46,7 @@ pnpm install
 pnpm run package
 ```
 
-## 🧩 Neovim
+## Neovim
 
 The Neovim extension lives in `editors/nvim` and is written in Lua. It is still evolving.
 
@@ -56,7 +56,7 @@ The Neovim extension lives in `editors/nvim` and is written in Lua. It is still 
 
 Dev tips: the codebase is small—load it directly in Neovim and watch `:messages`/LSP logs; format with `stylua` (config included).
 
-## 🪶 Zed
+## Zed
 
 The Zed extension lives in `editors/zed` and uses Rust plus `zed_extension_api`.
 

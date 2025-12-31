@@ -1,12 +1,12 @@
 # Build from Source
 
-clice depends on C++23 features and requires a modern C++ toolchain. We also need to link against LLVM/Clang to parse ASTs. To speed up builds, the default configuration downloads our published [clice-llvm](https://github.com/clice-io/clice-llvm) prebuilt package. This assumes your local environment matches the prebuild environment closely (especially when enabling Address Sanitizer or LTO).
+clice depends on C++23 features and requires a modern C++ toolchain. We also need to link against LLVM/Clang to parse ASTs. To speed up builds, the default configuration downloads our published [clice-llvm](https://github.com/clice-io/clice-llvm) prebuilt package. This assumes your local environment matches the prebuilt environment closely (especially when enabling Address Sanitizer or LTO).
 
 To simplify setup and keep builds reproducible, we **strongly recommend** [pixi](https://pixi.prefix.dev/latest) to manage the development environment. Dependency versions are pinned in `pixi.toml`.
 
 If you prefer not to use pixi, see [Manual Build](#manual-build) below.
 
-## 🚀 Quick Start
+## Quick Start
 
 Install pixi following the [official guide](https://pixi.prefix.dev/latest/installation).
 
@@ -44,7 +44,7 @@ pixi run xmake
 pixi run xmake-test
 ```
 
-## 🛠️ Manual Build
+## Manual Build
 
 If you plan to build manually, first ensure your toolchain matches the versions defined in `pixi.toml`.
 
@@ -87,9 +87,9 @@ Optional build options:
 | --enable_test | false   | Build clice unit tests                   |
 | --ci          | false   | Enable `CLICE_CI_ENVIRONMENT`            |
 
-## 📦 About LLVM
+## About LLVM
 
-clice calls Clang APIs to parse C++ code, so it must link LLVM/Clang. Because clice uses Clang private headers (usually absent from distro packages), the system LLVM package cannot be used directly.
+clice calls Clang APIs to parse C++ code, so it must link against LLVM/Clang. Because clice uses Clang's private headers (usually absent from distro packages), the system LLVM package cannot be used directly.
 
 Two ways to satisfy this dependency:
 

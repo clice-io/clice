@@ -2,7 +2,7 @@
 
 本节汇总各编辑器插件的开发与发布流程。目前包含 VSCode / Neovim / Zed。
 
-## 🌐 VSCode
+## VSCode
 
 VSCode 插件使用 Node/PNPM/VSCE 链路。推荐在 pixi 的 `node` 环境下操作以获得一致的工具链版本。
 
@@ -46,7 +46,7 @@ pnpm install
 pnpm run package
 ```
 
-## 🧩 Neovim
+## Neovim
 
 Neovim 插件位于 `editors/nvim`，使用 Lua 编写。目前功能仍在演进中。
 
@@ -56,7 +56,7 @@ Neovim 插件位于 `editors/nvim`，使用 Lua 编写。目前功能仍在演�
 
 开发提示：代码量较小，可直接在 Neovim 中加载并通过 `:messages`/LSP 日志观察效果；格式化可使用 `stylua`（仓库中已提供 `stylua.toml`）。
 
-## 🪶 Zed
+## Zed
 
 Zed 插件位于 `editors/zed`，使用 Rust 和 `zed_extension_api`。
 

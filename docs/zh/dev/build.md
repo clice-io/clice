@@ -6,7 +6,7 @@ clice 依赖 C++23 特性，需要使用高版本的 C++ 编译器。同时，�
 
 如果你不想使用 pixi，请参考下方的 [Manual Build](#manual-build) 章节。
 
-## 🚀 Quick Start
+## Quick Start
 
 请参考 [pixi](https://pixi.prefix.dev/latest/installation) 官方指南安装 pixi。
 
@@ -44,7 +44,7 @@ pixi run xmake
 pixi run xmake-test
 ```
 
-## 🛠️ Manual Build
+## Manual Build
 
 如果你打算手动构建，请务必先确认你的工具链满足 pixi.toml 中定义的版本要求。
 
@@ -87,7 +87,7 @@ xmake build --all
 | --enable_test | false  | 是否构建 clice 的单元测试            |
 | --ci          | false  | 是否打开 `CLICE_CI_ENVIRONMENT`      |
 
-## 📦 About LLVM
+## About LLVM
 
 clice 调用 Clang API 来解析 C++ 代码，因此必须链接 LLVM/Clang 库。由于 clice 使用了 Clang 的私有头文件（这些文件通常不包含在发行版中），不能直接使用系统安装的 LLVM 包。
 
