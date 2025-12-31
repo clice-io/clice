@@ -37,9 +37,9 @@ gh workflow run upload-llvm.yml \
 args = ["file_name"]
 cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]
 
-# ==============================================================================#
-#                             BUILD ENVIRONMENT                                 #
-# ==============================================================================#
+# ============================================================================== #
+#                             BUILD ENVIRONMENT                                  #
+# ============================================================================== #
 [feature.build.dependencies]
 python = ">=3.13"
 cmake = ">=3.30"
@@ -61,12 +61,12 @@ scripts = ["scripts/activate_linux.sh"]
 [feature.build.target.win-64.activation]
 scripts = ["scripts/activate_asan.bat"]
 
-# ==============================================================================#
-#                                   CMAKE                                       #
-# ==============================================================================#
+# ============================================================================== #
+#                                   CMAKE                                        #
+# ============================================================================== #
 [feature.build.tasks.cmake-config]
 args = [
-    { arg = "type", default = "Debug" },
+    { arg = "type", default = "RelWithDebInfo" },
     { arg = "ci", default = "OFF" },
     { arg = "extra", default = "" },
 ]
@@ -79,12 +79,12 @@ cmake -B build/{{ type }} -G Ninja \
 """
 
 [feature.build.tasks.cmake-build]
-args = [{ arg = "type", default = "Debug" }]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = "cmake --build build/{{ type }}"
 
 [feature.build.tasks.build]
 args = [
-    { arg = "type", default = "Debug" },
+    { arg = "type", default = "RelWithDebInfo" },
     { arg = "ci", default = "OFF" },
     { arg = "extra", default = "" },
 ]
@@ -94,26 +94,26 @@ depends-on = [
 ]
 
 [feature.build.tasks.unit-test]
-args = [{ arg = "type", default = "Debug" }]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data"'
 
 [feature.build.tasks.integration-test]
-args = [{ arg = "type", default = "Debug" }]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
 pytest -s --log-cli-level=INFO tests/integration \
     --executable=./build/{{ type }}/bin/clice
 """
 
 [feature.build.tasks.test]
-args = [{ arg = "type", default = "Debug" }]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
 depends-on = [
     { task = "unit-test", args = ["{{ type }}"] },
     { task = "integration-test", args = ["{{ type }}"] },
 ]
 
-# ==============================================================================#
-#                                   XMAKE                                       #
-# ==============================================================================#
+# ============================================================================== #
+#                                   XMAKE                                        #
+# ============================================================================== #
 [feature.build.tasks.xmake-config]
 args = [
     { arg = "type", default = "releasedbg" },
@@ -145,11 +145,15 @@ pytest-asyncio = ">=1.1.0"
 xz = ">=5.8.1,<6"
 
 [feature.package.tasks.package]
-cmd = "xmake config --yes --enable_test=n --dev=n --release=y --mode=releasedbg --toolchain=clang && xmake pack --verbose"
+cmd = """
+xmake config --yes --toolchain=clang --mode=releasedbg \
+    --enable_test=n --dev=n --release=y && \
+xmake pack --verbose
+"""
 
-# ==============================================================================#
-#                             DOCS & VSCODE EXTENSION                           #
-# ==============================================================================#
+# ============================================================================== #
+#                             DOCS & VSCODE EXTENSION                            #
+# ============================================================================== #
 [feature.node.dependencies]
 nodejs = ">=20"
 pnpm = "*"
@@ -172,9 +176,9 @@ cmd = "pnpm install"
 inputs = ["editors/vscode/package.json", "editors/vscode/pnpm-lock.yaml"]
 outputs = ["editors/vscode/node_modules/.modules.yaml"]
 
-# ==============================================================================#
-#                                    FORMAT                                     #
-# ==============================================================================#
+# ============================================================================== #
+#                                    FORMAT                                      #
+# ============================================================================== #
 [feature.format.dependencies]
 ruff = "*"
 tombi = "*"

@@ -1,45 +1,78 @@
 # Build from Source
 
-## Supported Platforms
+clice 依赖 C++23 特性，需要使用高版本的 C++ 编译器。同时，我们需要链接 LLVM/Clang 库来解析 AST。为了加快构建速度，默认配置会下载我们发布的 [clice-llvm](https://github.com/clice-io/clice-llvm) 预编译包。这要求你的本地环境与预编译环境保持较高的一致性（尤其是开启 Address Sanitizer 或 LTO 时）。
 
-- Windows
-- Linux
-- macOS
+为了简化环境设置并保证可复现性，我们**强烈推荐**使用 [pixi](https://pixi.prefix.dev/latest) 来管理开发环境。所有的依赖版本均严格定义在 `pixi.toml` 中。
 
-## Prerequisite
+如果你不想使用 pixi，请参考下方的 [Manual Build](#manual-build) 章节。
 
-- cmake/xmake
-- clang, lld >= 20
-- c++23 **compatible** standard library
-  - MSVC STL >= 19.44(VS 2022 17.4)
-  - GCC libstdc++ >= 14
-  - Clang libc++ >= 20
+## 🚀 Quick Start
 
-clice 使用 C++23 作为语言标准，请确保有可用的 clang 20 以及以上的编译器，以及兼容 C++23 的标准库。clice 依赖 lld 作为链接器。请确保你的 clang 工具链可以找到它（通常 clang 发行版会自带 lld，或者你需要单独安装 lld-20 包）。
+请参考 [pixi](https://pixi.prefix.dev/latest/installation) 官方指南安装 pixi。
 
-> clice 目前只保证能使用 clang 编译（CI 测试保证）。对于 gcc 和 msvc 的兼容，我们尽力而为，但不会在 CI 中添加对应的测试。如果遇到任何问题，欢迎贡献。
-
-## CMake
-
-使用如下的命令构建 clice
+我们内置了一系列任务，以下命令可直接完成编译并运行测试：
 
 ```shell
-cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-cmake --build build
+# configure && build (default RelWithDebInfo)
+pixi run build
+
+# unit && integration
+pixi run test
 ```
+
+细粒度任务：上述命令由多个子任务组成，你也可以单独运行它们，并支持通过第一个参数指定构建类型：
+
+```shell
+pixi run cmake-config Debug
+pixi run cmake-build Debug
+pixi run unit-test Debug
+pixi run integration-test Debug
+```
+
+> [!TIP]
+> 如果你想直接使用 `cmake`, `ninja`, `clang++` 等命令进行开发，请运行 `pixi shell -e develop` 进入已配置好环境变量的终端
+
+### XMake
+
+我们同样支持使用 XMake 构建：
+
+```shell
+# config & build (default releasedbg)
+pixi run xmake
+
+# unit & integration
+pixi run xmake-test
+```
+
+## 🛠️ Manual Build
+
+如果你打算手动构建，请务必先确认你的工具链满足 pixi.toml 中定义的版本要求。
+
+> 兼容性说明：理论上 clice 不依赖特定编译器的扩展，可以使用主流编译器（GCC/Clang/MSVC）编译。但我们仅在 CI 中保证特定版本的 Clang 能通过测试。对于其他编译器或版本，我们提供**尽力而为 (Best Effort)** 的支持。如果遇到问题，欢迎提交 Issue 或 PR
+
+### CMake
+
+```shell
+cmake -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
+    -DCLICE_ENABLE_TEST=ON
+```
+
+> 注意：`CMAKE_TOOLCHAIN_FILE` 是可选的。如果你使用的工具链与我们完全一致，可以使用预定义的 `cmake/toolchain.cmake`，否则请移除该选项
 
 可选的构建选项：
 
-| 选项                 | 默认值 | 效果                                                                                                  |
-| -------------------- | ------ | ----------------------------------------------------------------------------------------------------- |
-| LLVM_INSTALL_PATH    | ""     | 使用自定义路径的 llvm libs 来构建 clice                                                               |
-| CLICE_ENABLE_TEST    | OFF    | 是否构建 clice 的单元测试                                                                             |
-| CLICE_USE_LIBCXX     | OFF    | 是否使用 libc++ 来构建 clice（添加 `-std=libc++`），如果开启，请确保 llvm libs 也是使用 libc++ 编译的 |
-| CLICE_CI_ENVIRONMENT | OFF    | 是否打开 `CLICE_CI_ENVIRONMENT` 这个宏，有些测试在 CI 环境才会执行                                    |
+| 选项                 | 默认值 | 效果                                                                                               |
+| -------------------- | ------ | -------------------------------------------------------------------------------------------------- |
+| LLVM_INSTALL_PATH    | ""     | 使用自定义路径的 LLVM 库来构建 clice                                                               |
+| CLICE_ENABLE_TEST    | OFF    | 是否构建 clice 的单元测试                                                                          |
+| CLICE_USE_LIBCXX     | OFF    | 是否使用 libc++ 来构建 clice（添加 `-std=libc++`），如果开启，请确保 LLVM 库也是使用 libc++ 编译的 |
+| CLICE_CI_ENVIRONMENT | OFF    | 是否打开 `CLICE_CI_ENVIRONMENT` 这个宏，有些测试在 CI 环境才会执行                                 |
 
-## XMake
+### XMake
 
-使用如下的命令即可构建 clice
+使用如下命令即可构建 clice：
 
 ```bash
 xmake f -c --mode=releasedbg --toolchain=clang
@@ -48,33 +81,22 @@ xmake build --all
 
 可选的构建选项：
 
-| 选项          | 默认值 | 效果                                    |
-| ------------- | ------ | --------------------------------------- |
-| --llvm        | ""     | 使用自定义路径的 llvm libs 来构建 clice |
-| --enable_test | false  | 是否构建 clice 的单元测试               |
-| --ci          | false  | 是否打开 `CLICE_CI_ENVIRONMENT`         |
+| 选项          | 默认值 | 效果                                 |
+| ------------- | ------ | ------------------------------------ |
+| --llvm        | ""     | 使用自定义路径的 LLVM 库来构建 clice |
+| --enable_test | false  | 是否构建 clice 的单元测试            |
+| --ci          | false  | 是否打开 `CLICE_CI_ENVIRONMENT`      |
 
-## A Note on LLVM Libs
+## 📦 About LLVM
 
-由于 C++ 的语法太过复杂，自己编写一个新的 parser 是不现实的。clice 调用 clang 的 API 来 parse C++ 源文件获取 AST，这意味它需要链接 llvm/clang libs。由于 clice 使用了 clang 的私有头文件，这些私有头文件在 llvm 发布的 binary release 中是没有的，所以不能直接使用系统的 llvm package。
+clice 调用 Clang API 来解析 C++ 代码，因此必须链接 LLVM/Clang 库。由于 clice 使用了 Clang 的私有头文件（这些文件通常不包含在发行版中），不能直接使用系统安装的 LLVM 包。
 
-1. 我们在 [clice-llvm](https://github.com/clice-io/clice-llvm/releases) 上会发布使用的 llvm 版本的预编译二进制，用于 CI 或者 release 构建。在构建时 cmake 和 xmake 默认会从此处下载 llvm libs 然后使用，
+主要有两种方式解决这个依赖问题：
+
+1. 我们在 [clice-llvm](https://github.com/clice-io/clice-llvm/releases) 上会发布使用的 LLVM 版本的预编译二进制，用于 CI 或者 release 构建。在构建时 cmake 和 xmake 默认会从此处下载 LLVM 库然后使用。
 
 > [!IMPORTANT]
 >
-> 对于 debug 版本的 llvm libs，构建的时候我们开启了 address sanitizer，而 address sanitizer 依赖于 compiler rt，它对编译器版本十分敏感。所以如果使用 debug 版本，请确保你的 clang 的 compiler rt 版本和我们构建的时候**严格一致**。
->
-> - Windows 暂时没有 debug 构建的 llvm libs，因为它不支持将 clang 构建为动态库，相关的进展在 [这里](https://github.com/clice-io/clice/issues/42) 跟踪
-> - Linux 使用 clang20
-> - macOS 使用 homebrew llvm@20，**不要使用 apple clang**
->
-> 可以参考 CI 中的 [cmake](https://github.com/clice-io/clice/blob/main/.github/workflows/cmake.yml) 和 [xmake](https://github.com/clice-io/clice/blob/main/.github/workflows/xmake.yml) 文件作为参考，它们与预编译 llvm libs 的环境保持严格一致。
+> 对于 debug 版本的 LLVM 库，构建的时候我们开启了 address sanitizer，而 address sanitizer 依赖于 compiler rt，它对编译器版本十分敏感。所以如果使用 debug 版本，请确保你的 clang 的 compiler rt 版本与 `pixi.toml` 中的定义严格一致。
 
-2. 自己重新一个与当前环境一致的 llvm/clang。如果默认的预编译二进制文件（方法 1）在你的系统上因 ABI 或库版本（如 glibc）不兼容而运行失败，或者你需要一个自定义的 Debug 版本，那么我们推荐你使用此方法从头编译 llvm libs。我们提供了一个脚本，用于构建 clice 所需要的 llvm libs：[build-llvm-libs.py](https://github.com/clice-io/clice/blob/main/scripts/build-llvm-libs.py)。
-
-```bash
-cd llvm-project
-python3 <clice>/scripts/build-llvm-libs.py debug
-```
-
-也可以参考 llvm 的官方构建教程 [Building LLVM with CMake](https://llvm.org/docs/CMake.html)。
+2. 自行构建一套与当前环境一致的 LLVM/Clang。如果默认的预编译二进制文件在你的系统上因 ABI 或库版本不兼容而运行失败，或者你需要一个自定义的 Debug 版本，那么我们推荐你使用此方法从头编译 LLVM 库。我们提供了一个脚本 `scripts/build-llvm.py` 用于构建所需要的 LLVM 库，也可以参考 LLVM 的官方构建教程 [Building LLVM with CMake](https://llvm.org/docs/CMake.html)。
