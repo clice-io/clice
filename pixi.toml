@@ -1,3 +1,5 @@
+# tombi: format.rules.table-keys-order.disabled = true
+
 [workspace]
 name = "clice"
 version = "0.1.0"
@@ -18,27 +20,11 @@ platforms = ["win-64", "linux-64", "osx-arm64"]
 default = ["build"]
 develop = ["build", "test"]
 package = ["build", "test", "package"]
-format = ["format"]
 node = ["node"]
-
-[tasks.build-llvm]
-cmd = ["python3", "scripts/build-llvm.py"]
-
-[tasks.upload-llvm]
-args = ["workflow_id", "llvm_version", { "arg" = "branch", default = "main" }]
-cmd = """
-gh workflow run upload-llvm.yml \
-    --ref {{ branch }} \
-    --field workflow_id={{workflow_id}} \
-    --field version={{llvm_version}}
-"""
-
-[tasks.delete-artifacts]
-args = ["file_name"]
-cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]
+format = ["format"]
 
 # ============================================================================== #
-#                             BUILD ENVIRONMENT                                  #
+#                                  DEPENDENCIES                                  #
 # ============================================================================== #
 [feature.build.dependencies]
 python = ">=3.13"
@@ -60,6 +46,13 @@ scripts = ["scripts/activate_linux.sh"]
 
 [feature.build.target.win-64.activation]
 scripts = ["scripts/activate_asan.bat"]
+
+[feature.test.pypi-dependencies]
+pytest = "*"
+pytest-asyncio = ">=1.1.0"
+
+[feature.package.dependencies]
+xz = ">=5.8.1,<6"
 
 # ============================================================================== #
 #                                   CMAKE                                        #
@@ -97,14 +90,14 @@ depends-on = [
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data"'
 
-[feature.build.tasks.integration-test]
+[feature.test.tasks.integration-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
 pytest -s --log-cli-level=INFO tests/integration \
     --executable=./build/{{ type }}/bin/clice
 """
 
-[feature.build.tasks.test]
+[feature.test.tasks.test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 depends-on = [
     { task = "unit-test", args = ["{{ type }}"] },
@@ -134,15 +127,8 @@ depends-on = [
     { task = "xmake-build" },
 ]
 
-[feature.build.tasks.xmake-test]
+[feature.test.tasks.xmake-test]
 cmd = "xmake test --verbose"
-
-[feature.test.pypi-dependencies]
-pytest = "*"
-pytest-asyncio = ">=1.1.0"
-
-[feature.package.dependencies]
-xz = ">=5.8.1,<6"
 
 [feature.package.tasks.package]
 cmd = """
@@ -150,6 +136,25 @@ xmake config --yes --toolchain=clang --mode=releasedbg \
     --enable_test=n --dev=n --release=y && \
 xmake pack --verbose
 """
+
+# ============================================================================== #
+#                                  HELPER TASKS                                  #
+# ============================================================================== #
+[tasks.build-llvm]
+cmd = ["python3", "scripts/build-llvm.py"]
+
+[tasks.upload-llvm]
+args = ["workflow_id", "llvm_version", { "arg" = "branch", default = "main" }]
+cmd = """
+gh workflow run upload-llvm.yml \
+    --ref {{ branch }} \
+    --field workflow_id={{workflow_id}} \
+    --field version={{llvm_version}}
+"""
+
+[tasks.delete-artifacts]
+args = ["file_name"]
+cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]
 
 # ============================================================================== #
 #                             DOCS & VSCODE EXTENSION                            #
