@@ -1,6 +1,6 @@
 #include "Compiler/Diagnostic.h"
 
-#include "TidyImpl.h"
+#include "Implement.h"
 #include "Support/Format.h"
 
 #include "clang/AST/Decl.h"
@@ -203,8 +203,7 @@ auto diagnostic_range(const clang::Diagnostic& diagnostic, const clang::LangOpti
 
 class DiagnosticCollectorImpl : public DiagnosticCollector {
 public:
-    DiagnosticCollectorImpl(std::shared_ptr<std::vector<Diagnostic>> diagnostics) :
-        diagnostics(diagnostics) {}
+    DiagnosticCollectorImpl(CompilationUnitRef unit) : unit(unit) {}
 
     void BeginSourceFile(const clang::LangOptions& opts, const clang::Preprocessor* pp) override {
         options = &opts;
@@ -213,7 +212,7 @@ public:
 
     void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
                           const clang::Diagnostic& raw_diagnostic) override {
-        auto& diagnostic = diagnostics->emplace_back();
+        auto& diagnostic = unit.diagnostics().emplace_back();
         diagnostic.id.value = raw_diagnostic.getID();
 
         if(!is_note(level)) {
@@ -252,14 +251,13 @@ public:
     void EndSourceFile() override {}
 
 private:
-    std::shared_ptr<std::vector<Diagnostic>> diagnostics;
+    CompilationUnitRef unit;
     const clang::LangOptions* options;
     clang::SourceManager* src_mgr;
 };
 
-std::unique_ptr<DiagnosticCollector>
-    Diagnostic::create(std::shared_ptr<std::vector<Diagnostic>> diagnostics) {
-    return std::make_unique<DiagnosticCollectorImpl>(std::move(diagnostics));
+std::unique_ptr<DiagnosticCollector> create_diagnostic(CompilationUnitRef unit) {
+    return std::make_unique<DiagnosticCollectorImpl>(unit);
 }
 
 }  // namespace clice

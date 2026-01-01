@@ -1,46 +1,46 @@
-#include "CompilationUnitImpl.h"
+#include "Implement.h"
 #include "AST/Utility.h"
 #include "Index/USR.h"
 
 namespace clice {
 
 CompilationUnit::~CompilationUnit() {
-    if(impl && impl->action) {
-        auto instance = impl->instance.get();
+    if(self && self->action) {
+        auto instance = self->instance.get();
         // We already notified the pp of end-of-file earlier, so detach it first.
         // We must keep it alive until after EndSourceFile(), Sema relies on this.
         std::shared_ptr<clang::Preprocessor> pp = instance->getPreprocessorPtr();
         instance->setPreprocessor(nullptr);  // Detach so we don't send EOF again
-        impl->action->EndSourceFile();
+        self->action->EndSourceFile();
     }
 
-    delete impl;
+    delete self;
 }
 
-bool CompilationUnit::success() {
-    return impl->instance != nullptr;
+bool CompilationUnitRef::success() {
+    return self->instance != nullptr;
 }
 
-std::string CompilationUnit::error() {
-    return impl->error_message;
+std::string CompilationUnitRef::error() {
+    return self->error_message;
 }
 
-auto CompilationUnit::file_id(llvm::StringRef file) -> clang::FileID {
-    auto entry = impl->src_mgr->getFileManager().getFileRef(file);
+auto CompilationUnitRef::file_id(llvm::StringRef file) -> clang::FileID {
+    auto entry = self->src_mgr->getFileManager().getFileRef(file);
     if(entry) {
-        return impl->src_mgr->translateFile(*entry);
+        return self->src_mgr->translateFile(*entry);
     }
 
     return clang::FileID();
 }
 
-auto CompilationUnit::decompose_location(clang::SourceLocation location)
+auto CompilationUnitRef::decompose_location(clang::SourceLocation location)
     -> std::pair<clang::FileID, std::uint32_t> {
     assert(location.isFileID() && "Decompose macro location is meaningless!");
-    return impl->src_mgr->getDecomposedLoc(location);
+    return self->src_mgr->getDecomposedLoc(location);
 }
 
-auto CompilationUnit::decompose_range(clang::SourceRange range)
+auto CompilationUnitRef::decompose_range(clang::SourceRange range)
     -> std::pair<clang::FileID, LocalSourceRange> {
     auto [begin, end] = range;
     assert(begin.isValid() && end.isValid() && "Invalid source range");
@@ -70,7 +70,7 @@ auto CompilationUnit::decompose_range(clang::SourceRange range)
     }
 }
 
-auto CompilationUnit::decompose_expansion_range(clang::SourceRange range)
+auto CompilationUnitRef::decompose_expansion_range(clang::SourceRange range)
     -> std::pair<clang::FileID, LocalSourceRange> {
     auto [begin, end] = range;
     if(begin == end) {
@@ -81,21 +81,21 @@ auto CompilationUnit::decompose_expansion_range(clang::SourceRange range)
     }
 }
 
-auto CompilationUnit::file_id(clang::SourceLocation location) -> clang::FileID {
-    return impl->src_mgr->getFileID(location);
+auto CompilationUnitRef::file_id(clang::SourceLocation location) -> clang::FileID {
+    return self->src_mgr->getFileID(location);
 }
 
-auto CompilationUnit::file_offset(clang::SourceLocation location) -> std::uint32_t {
-    return impl->src_mgr->getFileOffset(location);
+auto CompilationUnitRef::file_offset(clang::SourceLocation location) -> std::uint32_t {
+    return self->src_mgr->getFileOffset(location);
 }
 
-auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
+auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
     assert(fid.isValid() && "Invalid fid");
-    if(auto it = impl->path_cache.find(fid); it != impl->path_cache.end()) {
+    if(auto it = self->path_cache.find(fid); it != self->path_cache.end()) {
         return it->second;
     }
 
-    auto entry = impl->src_mgr->getFileEntryRefForID(fid);
+    auto entry = self->src_mgr->getFileEntryRefForID(fid);
     assert(entry && "Invalid file entry");
 
     llvm::SmallString<128> path;
@@ -110,31 +110,31 @@ auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
 
     /// Allocate the path in the storage.
     auto size = path.size();
-    auto data = impl->path_storage.Allocate<char>(size + 1);
+    auto data = self->path_storage.Allocate<char>(size + 1);
     memcpy(data, path.data(), size);
     data[size] = '\0';
 
-    auto [it, inserted] = impl->path_cache.try_emplace(fid, llvm::StringRef(data, size));
+    auto [it, inserted] = self->path_cache.try_emplace(fid, llvm::StringRef(data, size));
     assert(inserted && "File path already exists");
     return it->second;
 }
 
-auto CompilationUnit::file_content(clang::FileID fid) -> llvm::StringRef {
-    return impl->src_mgr->getBufferData(fid);
+auto CompilationUnitRef::file_content(clang::FileID fid) -> llvm::StringRef {
+    return self->src_mgr->getBufferData(fid);
 }
 
-auto CompilationUnit::interested_file() -> clang::FileID {
-    return impl->interested;
+auto CompilationUnitRef::interested_file() -> clang::FileID {
+    return self->interested;
 }
 
-auto CompilationUnit::interested_content() -> llvm::StringRef {
-    return file_content(impl->interested);
+auto CompilationUnitRef::interested_content() -> llvm::StringRef {
+    return file_content(self->interested);
 }
 
-bool CompilationUnit::is_builtin_file(clang::FileID fid) {
+bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {
     // No FileEntryRef => built-in/command line/scratch.
-    if(!impl->src_mgr->getFileEntryRefForID(fid)) {
-        if(auto buffer = impl->src_mgr->getBufferOrNone(fid)) {
+    if(!self->src_mgr->getFileEntryRefForID(fid)) {
+        if(auto buffer = self->src_mgr->getBufferOrNone(fid)) {
             auto name = buffer->getBufferIdentifier();
             return name == "<built-in>" || name == "<command line>" || name == "<scratch space>";
         }
@@ -143,45 +143,46 @@ bool CompilationUnit::is_builtin_file(clang::FileID fid) {
     return false;
 }
 
-auto CompilationUnit::start_location(clang::FileID fid) -> clang::SourceLocation {
-    return impl->src_mgr->getLocForStartOfFile(fid);
+auto CompilationUnitRef::start_location(clang::FileID fid) -> clang::SourceLocation {
+    return self->src_mgr->getLocForStartOfFile(fid);
 }
 
-auto CompilationUnit::end_location(clang::FileID fid) -> clang::SourceLocation {
-    return impl->src_mgr->getLocForEndOfFile(fid);
+auto CompilationUnitRef::end_location(clang::FileID fid) -> clang::SourceLocation {
+    return self->src_mgr->getLocForEndOfFile(fid);
 }
 
-auto CompilationUnit::spelling_location(clang::SourceLocation loc) -> clang::SourceLocation {
-    return impl->src_mgr->getSpellingLoc(loc);
+auto CompilationUnitRef::spelling_location(clang::SourceLocation loc) -> clang::SourceLocation {
+    return self->src_mgr->getSpellingLoc(loc);
 }
 
-auto CompilationUnit::expansion_location(clang::SourceLocation location) -> clang::SourceLocation {
-    return impl->src_mgr->getExpansionLoc(location);
-}
-
-auto CompilationUnit::file_location(clang::SourceLocation location) -> clang::SourceLocation {
-    return impl->src_mgr->getFileLoc(location);
-}
-
-auto CompilationUnit::include_location(clang::FileID fid) -> clang::SourceLocation {
-    return impl->src_mgr->getIncludeLoc(fid);
-}
-
-auto CompilationUnit::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
-    return impl->src_mgr->getPresumedLoc(location, false);
-}
-
-auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
+auto CompilationUnitRef::expansion_location(clang::SourceLocation location)
     -> clang::SourceLocation {
-    return impl->src_mgr->getComposedLoc(fid, offset);
+    return self->src_mgr->getExpansionLoc(location);
 }
 
-auto CompilationUnit::spelled_tokens(clang::FileID fid) -> TokenRange {
-    return impl->buffer->spelledTokens(fid);
+auto CompilationUnitRef::file_location(clang::SourceLocation location) -> clang::SourceLocation {
+    return self->src_mgr->getFileLoc(location);
 }
 
-auto CompilationUnit::spelled_tokens(clang::SourceRange range) -> TokenRange {
-    auto tokens = impl->buffer->spelledForExpanded(impl->buffer->expandedTokens(range));
+auto CompilationUnitRef::include_location(clang::FileID fid) -> clang::SourceLocation {
+    return self->src_mgr->getIncludeLoc(fid);
+}
+
+auto CompilationUnitRef::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
+    return self->src_mgr->getPresumedLoc(location, false);
+}
+
+auto CompilationUnitRef::create_location(clang::FileID fid, std::uint32_t offset)
+    -> clang::SourceLocation {
+    return self->src_mgr->getComposedLoc(fid, offset);
+}
+
+auto CompilationUnitRef::spelled_tokens(clang::FileID fid) -> TokenRange {
+    return self->buffer->spelledTokens(fid);
+}
+
+auto CompilationUnitRef::spelled_tokens(clang::SourceRange range) -> TokenRange {
+    auto tokens = self->buffer->spelledForExpanded(self->buffer->expandedTokens(range));
     if(!tokens) {
         return {};
     }
@@ -189,62 +190,62 @@ auto CompilationUnit::spelled_tokens(clang::SourceRange range) -> TokenRange {
     return *tokens;
 }
 
-auto CompilationUnit::spelled_tokens_touch(clang::SourceLocation location) -> TokenRange {
-    return clang::syntax::spelledTokensTouching(location, *impl->buffer);
+auto CompilationUnitRef::spelled_tokens_touch(clang::SourceLocation location) -> TokenRange {
+    return clang::syntax::spelledTokensTouching(location, *self->buffer);
 }
 
-auto CompilationUnit::expanded_tokens() -> TokenRange {
-    return impl->buffer->expandedTokens();
+auto CompilationUnitRef::expanded_tokens() -> TokenRange {
+    return self->buffer->expandedTokens();
 }
 
-auto CompilationUnit::expanded_tokens(clang::SourceRange range) -> TokenRange {
-    return impl->buffer->expandedTokens(range);
+auto CompilationUnitRef::expanded_tokens(clang::SourceRange range) -> TokenRange {
+    return self->buffer->expandedTokens(range);
 }
 
-auto CompilationUnit::expansions_overlapping(TokenRange spelled_tokens)
+auto CompilationUnitRef::expansions_overlapping(TokenRange spelled_tokens)
     -> std::vector<clang::syntax::TokenBuffer::Expansion> {
-    return impl->buffer->expansionsOverlapping(spelled_tokens);
+    return self->buffer->expansionsOverlapping(spelled_tokens);
 }
 
-auto CompilationUnit::token_length(clang::SourceLocation location) -> std::uint32_t {
+auto CompilationUnitRef::token_length(clang::SourceLocation location) -> std::uint32_t {
     return clang::Lexer::MeasureTokenLength(location,
-                                            *impl->src_mgr,
-                                            impl->instance->getLangOpts());
+                                            *self->src_mgr,
+                                            self->instance->getLangOpts());
 }
 
-auto CompilationUnit::token_spelling(clang::SourceLocation location) -> llvm::StringRef {
-    return llvm::StringRef(impl->src_mgr->getCharacterData(location), token_length(location));
+auto CompilationUnitRef::token_spelling(clang::SourceLocation location) -> llvm::StringRef {
+    return llvm::StringRef(self->src_mgr->getCharacterData(location), token_length(location));
 }
 
-auto CompilationUnit::module_name() -> llvm::StringRef {
-    return impl->instance->getPreprocessor().getNamedModuleName();
+auto CompilationUnitRef::module_name() -> llvm::StringRef {
+    return self->instance->getPreprocessor().getNamedModuleName();
 }
 
-bool CompilationUnit::is_module_interface_unit() {
-    return impl->instance->getPreprocessor().isInNamedInterfaceUnit();
+bool CompilationUnitRef::is_module_interface_unit() {
+    return self->instance->getPreprocessor().isInNamedInterfaceUnit();
 }
 
-auto CompilationUnit::diagnostics() -> llvm::ArrayRef<Diagnostic> {
-    return *impl->diagnostics;
+auto CompilationUnitRef::diagnostics() -> std::vector<Diagnostic>& {
+    return self->diagnostics;
 }
 
-auto CompilationUnit::top_level_decls() -> llvm::ArrayRef<clang::Decl*> {
-    return impl->top_level_decls;
+auto CompilationUnitRef::top_level_decls() -> llvm::ArrayRef<clang::Decl*> {
+    return self->top_level_decls;
 }
 
-std::chrono::milliseconds CompilationUnit::build_at() {
-    return impl->build_at;
+std::chrono::milliseconds CompilationUnitRef::build_at() {
+    return self->build_at;
 }
 
-std::chrono::milliseconds CompilationUnit::build_duration() {
-    return impl->build_duration;
+std::chrono::milliseconds CompilationUnitRef::build_duration() {
+    return self->build_duration;
 }
 
-clang::LangOptions& CompilationUnit::lang_options() {
-    return impl->instance->getLangOpts();
+clang::LangOptions& CompilationUnitRef::lang_options() {
+    return self->instance->getLangOpts();
 }
 
-std::vector<std::string> CompilationUnit::deps() {
+std::vector<std::string> CompilationUnitRef::deps() {
     llvm::StringSet<> deps;
 
     /// FIXME: consider `#embed` and `__has_embed`.
@@ -272,69 +273,69 @@ std::vector<std::string> CompilationUnit::deps() {
     return result;
 }
 
-index::SymbolID CompilationUnit::getSymbolID(const clang::NamedDecl* decl) {
+index::SymbolID CompilationUnitRef::getSymbolID(const clang::NamedDecl* decl) {
     uint64_t hash;
-    auto iter = impl->symbol_hash_cache.find(decl);
-    if(iter != impl->symbol_hash_cache.end()) {
+    auto iter = self->symbol_hash_cache.find(decl);
+    if(iter != self->symbol_hash_cache.end()) {
         hash = iter->second;
     } else {
         llvm::SmallString<128> usr;
         index::generateUSRForDecl(decl, usr);
         hash = llvm::xxh3_64bits(usr);
-        impl->symbol_hash_cache.try_emplace(decl, hash);
+        self->symbol_hash_cache.try_emplace(decl, hash);
     }
     return index::SymbolID{hash, ast::name_of(decl)};
 }
 
-index::SymbolID CompilationUnit::getSymbolID(const clang::MacroInfo* macro) {
+index::SymbolID CompilationUnitRef::getSymbolID(const clang::MacroInfo* macro) {
     std::uint64_t hash;
     auto name = token_spelling(macro->getDefinitionLoc());
-    auto iter = impl->symbol_hash_cache.find(macro);
-    if(iter != impl->symbol_hash_cache.end()) {
+    auto iter = self->symbol_hash_cache.find(macro);
+    if(iter != self->symbol_hash_cache.end()) {
         hash = iter->second;
     } else {
         llvm::SmallString<128> usr;
-        index::generateUSRForMacro(name, macro->getDefinitionLoc(), *impl->src_mgr, usr);
+        index::generateUSRForMacro(name, macro->getDefinitionLoc(), *self->src_mgr, usr);
         hash = llvm::xxh3_64bits(usr);
-        impl->symbol_hash_cache.try_emplace(macro, hash);
+        self->symbol_hash_cache.try_emplace(macro, hash);
     }
     return index::SymbolID{hash, name.str()};
 }
 
-const llvm::DenseSet<clang::FileID>& CompilationUnit::files() {
-    if(impl->all_files.empty()) {
+const llvm::DenseSet<clang::FileID>& CompilationUnitRef::files() {
+    if(self->all_files.empty()) {
         /// FIXME: handle preamble and embed file id.
         for(auto& [fid, diretive]: directives()) {
             for(auto& include: diretive.includes) {
                 if(!include.skipped && include.fid.isValid()) {
-                    impl->all_files.insert(include.fid);
+                    self->all_files.insert(include.fid);
                 }
             }
         }
-        impl->all_files.insert(impl->src_mgr->getMainFileID());
+        self->all_files.insert(self->src_mgr->getMainFileID());
     }
-    return impl->all_files;
+    return self->all_files;
 }
 
-clang::TranslationUnitDecl* CompilationUnit::tu() {
-    return impl->instance->getASTContext().getTranslationUnitDecl();
+clang::TranslationUnitDecl* CompilationUnitRef::tu() {
+    return self->instance->getASTContext().getTranslationUnitDecl();
 }
 
-llvm::DenseMap<clang::FileID, Directive>& CompilationUnit::directives() {
-    return impl->directives;
+llvm::DenseMap<clang::FileID, Directive>& CompilationUnitRef::directives() {
+    return self->directives;
 }
 
-TemplateResolver& CompilationUnit::resolver() {
-    assert(impl->resolver && "Template resolver is not available");
-    return *impl->resolver;
+TemplateResolver& CompilationUnitRef::resolver() {
+    assert(self->resolver && "Template resolver is not available");
+    return *self->resolver;
 }
 
-clang::ASTContext& CompilationUnit::context() {
-    return impl->instance->getASTContext();
+clang::ASTContext& CompilationUnitRef::context() {
+    return self->instance->getASTContext();
 }
 
-clang::syntax::TokenBuffer& CompilationUnit::token_buffer() {
-    return *impl->buffer;
+clang::syntax::TokenBuffer& CompilationUnitRef::token_buffer() {
+    return *self->buffer;
 }
 
 }  // namespace clice

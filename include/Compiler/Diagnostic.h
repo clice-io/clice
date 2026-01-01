@@ -4,17 +4,12 @@
 #include <string>
 
 #include "AST/SourceCode.h"
-#include "Compiler/Tidy.h"
 
 #include "clang/Basic/Diagnostic.h"
 
-namespace clang {
-
-class DiagnosticConsumer;
-
-}
-
 namespace clice {
+
+class CompilationUnit;
 
 enum class DiagnosticLevel : std::uint8_t {
     Ignored,
@@ -58,11 +53,6 @@ struct DiagnosticID {
     bool is_unused() const;
 };
 
-class DiagnosticCollector : public clang::DiagnosticConsumer {
-public:
-    tidy::ClangTidyChecker* checker = nullptr;
-};
-
 struct Diagnostic {
     /// The diagnostic id.
     DiagnosticID id;
@@ -76,9 +66,6 @@ struct Diagnostic {
 
     /// The error message of this diagnostic.
     std::string message;
-
-    static std::unique_ptr<DiagnosticCollector>
-        create(std::shared_ptr<std::vector<Diagnostic>> diagnostics);
 };
 
 }  // namespace clice

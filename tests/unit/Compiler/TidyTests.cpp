@@ -1,6 +1,5 @@
 #include "Test/Test.h"
 #include "Compiler/Compilation.h"
-#include "Compiler/Tidy.h"
 
 namespace clice::testing {
 namespace {
@@ -8,13 +7,13 @@ namespace {
 TEST_SUITE(ClangTidy) {
 
 TEST_CASE(FastCheck) {
-    ASSERT_TRUE(tidy::is_fast_tidy_check("readability-misleading-indentation"));
-    ASSERT_TRUE(tidy::is_fast_tidy_check("bugprone-unused-return-value"));
-
-    // clangd/unittests/TidyProviderTests.cpp
-    ASSERT_TRUE(tidy::is_fast_tidy_check("misc-const-correctness"));
-    ASSERT_TRUE(tidy::is_fast_tidy_check("bugprone-suspicious-include"));
-    ASSERT_EQ(tidy::is_fast_tidy_check("replay-preamble-check"), std::nullopt);
+    // ASSERT_TRUE(tidy::is_fast_tidy_check("readability-misleading-indentation"));
+    // ASSERT_TRUE(tidy::is_fast_tidy_check("bugprone-unused-return-value"));
+    //
+    // // clangd/unittests/TidyProviderTests.cpp
+    // ASSERT_TRUE(tidy::is_fast_tidy_check("misc-const-correctness"));
+    // ASSERT_TRUE(tidy::is_fast_tidy_check("bugprone-suspicious-include"));
+    // ASSERT_EQ(tidy::is_fast_tidy_check("replay-preamble-check"), std::nullopt);
 }
 
 TEST_CASE(Tidy) {

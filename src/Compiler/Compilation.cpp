@@ -1,11 +1,9 @@
 #include "Compiler/Compilation.h"
 
-#include "CompilationUnitImpl.h"
-#include "TidyImpl.h"
+#include "Implement.h"
 #include "AST/Utility.h"
 #include "Compiler/Command.h"
 #include "Compiler/Diagnostic.h"
-#include "Compiler/Tidy.h"
 #include "Support/Logging.h"
 
 #include "clang/Frontend/MultiplexConsumer.h"
@@ -204,8 +202,10 @@ CompilationUnit run_clang(CompilationParams& params,
     auto build_at = chrono::system_clock::now().time_since_epoch();
     auto build_start = chrono::steady_clock::now().time_since_epoch();
 
-    auto diagnostics = std::make_shared<std::vector<Diagnostic>>();
-    auto diagnostic_consumer = Diagnostic::create(diagnostics);
+    auto self = new CompilationUnitRef::Self();
+    CompilationUnit unit(params.kind, self);
+
+    auto diagnostic_consumer = create_diagnostic(self);
 
     /// Temporary diagnostic engine, only used for command line parsing.
     /// For compilation, we need to create a new diagnostic engine. See also
@@ -216,14 +216,9 @@ CompilationUnit run_clang(CompilationParams& params,
                                                                         diagnostic_consumer.get(),
                                                                         false);
 
-    auto impl = new CompilationUnit::Impl();
-    impl->diagnostics = diagnostics;
-
-    CompilationUnit unit(params.kind, impl);
-
     auto invocation = create_invocation(params, diagnostic_engine);
     if(!invocation) {
-        impl->error_message = "Fail to create compilation invocation!";
+        self->error_message = "Fail to create compilation invocation!";
         return unit;
     }
 
@@ -237,7 +232,7 @@ CompilationUnit run_clang(CompilationParams& params,
     }
 
     if(!instance->createTarget()) {
-        impl->error_message = "Fail to create target!";
+        self->error_message = "Fail to create target!";
         return unit;
     }
 
@@ -250,12 +245,12 @@ CompilationUnit run_clang(CompilationParams& params,
     auto action = std::make_unique<ProxyAction>(
         std::make_unique<Action>(),
         /// We only collect top level declarations for parse main file.
-        (params.clang_tidy || params.kind == CompilationUnit::Content) ? &impl->top_level_decls
+        (params.clang_tidy || params.kind == CompilationUnit::Content) ? &self->top_level_decls
                                                                        : nullptr,
         params.stop);
 
     if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
-        impl->error_message = "Fail to begin source file";
+        self->error_message = "Fail to begin source file";
         return unit;
     }
 
@@ -273,7 +268,7 @@ CompilationUnit run_clang(CompilationParams& params,
 
     /// `BeginSourceFile` may create new preprocessor, so all operations related to preprocessor
     /// should be done after `BeginSourceFile`.
-    Directive::attach(pp, impl->directives);
+    Directive::attach(pp, self->directives);
 
     /// It is not necessary to collect tokens if we are running code completion.
     /// And in fact will cause assertion failure.
@@ -282,7 +277,7 @@ CompilationUnit run_clang(CompilationParams& params,
     }
 
     if(auto error = action->Execute()) {
-        impl->error_message = std::format("Failed to execute action, because {} ", error);
+        self->error_message = std::format("Failed to execute action, because {} ", error);
         return unit;
     }
 
@@ -293,7 +288,7 @@ CompilationUnit run_clang(CompilationParams& params,
     if(!instance->getFrontendOpts().OutputFile.empty() &&
        instance->getDiagnostics().hasErrorOccurred()) {
         action->EndSourceFile();
-        impl->error_message = "Fail to build PCH or PCM, error occurs in compilation.";
+        self->error_message = "Fail to build PCH or PCM, error occurs in compilation.";
         return unit;
     }
 
@@ -301,19 +296,19 @@ CompilationUnit run_clang(CompilationParams& params,
     /// it is an error.
     if(params.stop && params.stop->load()) {
         action->EndSourceFile();
-        impl->error_message = "Compilation is canceled.";
+        self->error_message = "Compilation is canceled.";
         return unit;
     }
 
     if(token_collector) {
-        impl->buffer = std::move(*token_collector).consume();
+        self->buffer = std::move(*token_collector).consume();
     }
 
     // Must be called before EndSourceFile because the ast context can be destroyed later.
     if(checker) {
         // AST traversals should exclude the preamble, to avoid performance cliffs.
         // TODO: is it okay to affect the unit-level traversal scope here?
-        instance->getASTContext().setTraversalScope(impl->top_level_decls);
+        instance->getASTContext().setTraversalScope(self->top_level_decls);
         checker->finder.matchAST(instance->getASTContext());
     }
 
@@ -326,7 +321,7 @@ CompilationUnit run_clang(CompilationParams& params,
     /// extra copy. It would be great to avoid this copy.
 
     if(instance->hasSema()) {
-        impl->resolver.emplace(instance->getSema());
+        self->resolver.emplace(instance->getSema());
     }
 
     if(checker) {
@@ -335,13 +330,13 @@ CompilationUnit run_clang(CompilationParams& params,
     }
 
     auto build_end = chrono::steady_clock::now().time_since_epoch();
-    impl->build_at = chrono::duration_cast<chrono::milliseconds>(build_at);
-    impl->build_duration = chrono::duration_cast<chrono::milliseconds>(build_end - build_start);
+    self->build_at = chrono::duration_cast<chrono::milliseconds>(build_at);
+    self->build_duration = chrono::duration_cast<chrono::milliseconds>(build_end - build_start);
 
-    impl->interested = instance->getSourceManager().getMainFileID();
-    impl->src_mgr = &instance->getSourceManager();
-    impl->action = std::move(action);
-    impl->instance = std::move(instance);
+    self->interested = instance->getSourceManager().getMainFileID();
+    self->src_mgr = &instance->getSourceManager();
+    self->action = std::move(action);
+    self->instance = std::move(instance);
 
     after_execute(unit);
     return unit;

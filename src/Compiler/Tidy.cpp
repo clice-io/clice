@@ -1,18 +1,4 @@
-//===--- Run clang-tidy ---------------------------------------------------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-/// Partial code is copied from clangd. See:
-/// https://github.com/llvm/llvm-project//blob/0865ecc5150b9a55ba1f9e30b6d463a66ac362a6/clang-tools-extra/clangd/ParsedAST.cpp#L547
-/// https://github.com/llvm/llvm-project//blob/0865ecc5150b9a55ba1f9e30b6d463a66ac362a6/clang-tools-extra/clangd/TidyProvider.cpp
-
-#include "Compiler/Tidy.h"
-
-#include "TidyImpl.h"
+#include "Implement.h"
 #include "AST/Utility.h"
 #include "Compiler/Diagnostic.h"
 #include "Support/Logging.h"

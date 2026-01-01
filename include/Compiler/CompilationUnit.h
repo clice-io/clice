@@ -12,8 +12,7 @@
 
 namespace clice {
 
-/// All AST related information needed for language server.
-class CompilationUnit {
+class CompilationUnitRef {
 public:
     /// The kind describes how we preprocess this source file
     /// to get this compilation unit.
@@ -38,19 +37,6 @@ public:
         /// From running code completion for the source file(preamble is applied).
         Completion,
     };
-
-    using enum Kind;
-    struct Impl;
-
-    CompilationUnit(Kind kind, Impl* impl) : kind(kind), impl(impl) {}
-
-    CompilationUnit(const CompilationUnit&) = delete;
-
-    CompilationUnit(CompilationUnit&& other) : kind(other.kind), impl(other.impl) {
-        other.impl = nullptr;
-    }
-
-    ~CompilationUnit();
 
 public:
     bool success();
@@ -170,7 +156,7 @@ public:
     bool is_module_interface_unit();
 
     /// Return all diagnostics in the process of compilation.
-    auto diagnostics() -> llvm::ArrayRef<Diagnostic>;
+    auto diagnostics() -> std::vector<Diagnostic>&;
 
     auto top_level_decls() -> llvm::ArrayRef<clang::Decl*>;
 
@@ -201,10 +187,32 @@ public:
     /// Get symbol ID for given marco.
     index::SymbolID getSymbolID(const clang::MacroInfo* macro);
 
+    struct Self;
+
+public:
+    CompilationUnitRef(Self* self) : self(self) {}
+
+protected:
+    Self* self;
+};
+
+/// All AST related information needed for language server.
+class CompilationUnit : public CompilationUnitRef {
+public:
+    using enum Kind;
+
+    CompilationUnit(Kind kind, Self* impl) : kind(kind), CompilationUnitRef(impl) {}
+
+    CompilationUnit(const CompilationUnit&) = delete;
+
+    CompilationUnit(CompilationUnit&& other) : kind(other.kind), CompilationUnitRef(other.self) {
+        other.self = nullptr;
+    }
+
+    ~CompilationUnit();
+
 private:
     Kind kind;
-
-    Impl* impl;
 };
 
 }  // namespace clice
