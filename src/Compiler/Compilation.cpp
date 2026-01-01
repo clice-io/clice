@@ -245,7 +245,7 @@ CompilationUnit run_clang(CompilationParams& params,
     auto action = std::make_unique<ProxyAction>(
         std::make_unique<Action>(),
         /// We only collect top level declarations for parse main file.
-        (params.clang_tidy || params.kind == CompilationUnit::Content) ? &self->top_level_decls
+        (params.clang_tidy || params.kind == CompilationKind::Content) ? &self->top_level_decls
                                                                        : nullptr,
         params.stop);
 

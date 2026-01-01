@@ -12,32 +12,31 @@
 
 namespace clice {
 
+enum class CompilationKind : std::uint8_t {
+    /// From preprocessing the source file. Therefore directives
+    /// are available but AST nodes are not.
+    Preprocess,
+
+    /// From indexing the static source file.
+    Indexing,
+
+    /// From building preamble for the source file.
+    Preamble,
+
+    /// From building precompiled module for the module interface unit.
+    ModuleInterface,
+
+    /// From building normal AST for source file(except preamble), interested file and top level
+    /// declarations are available.
+    Content,
+
+    /// From running code completion for the source file(preamble is applied).
+    Completion,
+};
+
+enum class CompilationStatus : std::uint8_t {};
+
 class CompilationUnitRef {
-public:
-    /// The kind describes how we preprocess this source file
-    /// to get this compilation unit.
-    enum class Kind : std::uint8_t {
-        /// From preprocessing the source file. Therefore directives
-        /// are available but AST nodes are not.
-        Preprocess,
-
-        /// From indexing the static source file.
-        Indexing,
-
-        /// From building preamble for the source file.
-        Preamble,
-
-        /// From building precompiled module for the module interface unit.
-        ModuleInterface,
-
-        /// From building normal AST for source file(except preamble), interested file and top level
-        /// declarations are available.
-        Content,
-
-        /// From running code completion for the source file(preamble is applied).
-        Completion,
-    };
-
 public:
     bool success();
 
@@ -199,9 +198,7 @@ protected:
 /// All AST related information needed for language server.
 class CompilationUnit : public CompilationUnitRef {
 public:
-    using enum Kind;
-
-    CompilationUnit(Kind kind, Self* impl) : kind(kind), CompilationUnitRef(impl) {}
+    CompilationUnit(CompilationKind kind, Self* impl) : kind(kind), CompilationUnitRef(impl) {}
 
     CompilationUnit(const CompilationUnit&) = delete;
 
@@ -212,7 +209,7 @@ public:
     ~CompilationUnit();
 
 private:
-    Kind kind;
+    CompilationKind kind;
 };
 
 }  // namespace clice

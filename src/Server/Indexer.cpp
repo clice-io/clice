@@ -9,7 +9,7 @@ namespace clice {
 
 async::Task<> Indexer::index(llvm::StringRef path) {
     CompilationParams params;
-    params.kind = CompilationUnit::Indexing;
+    params.kind = CompilationKind::Indexing;
     params.arguments_from_database = true;
     params.arguments = database.lookup(path, {.query_toolchain = true}).arguments;
 

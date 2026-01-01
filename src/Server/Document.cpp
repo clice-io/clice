@@ -186,7 +186,7 @@ async::Task<bool> build_pch_task(CompilationContext& info,
     }
 
     CompilationParams params;
-    params.kind = CompilationUnit::Preamble;
+    params.kind = CompilationKind::Preamble;
     params.output_file = path::join(cache_dir, path::filename(path) + ".pch");
     params.arguments_from_database = true;
     params.arguments = std::move(info.arguments);
@@ -309,7 +309,7 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
     options.query_toolchain = true;
 
     CompilationParams params;
-    params.kind = CompilationUnit::Content;
+    params.kind = CompilationKind::Content;
     params.arguments_from_database = true;
     params.arguments = database.lookup(path, options).arguments;
     params.add_remapped_file(path, content);

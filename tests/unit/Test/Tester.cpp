@@ -6,7 +6,7 @@ void Tester::prepare(llvm::StringRef standard) {
     auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
 
     database.add_command("fake", src_path, command);
-    params.kind = CompilationUnit::Content;
+    params.kind = CompilationKind::Content;
 
     CommandOptions options;
     options.resource_dir = true;
@@ -47,7 +47,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
 
     database.add_command("fake", src_path, command);
-    params.kind = CompilationUnit::Preamble;
+    params.kind = CompilationKind::Preamble;
 
     CommandOptions options;
     options.resource_dir = true;
@@ -90,7 +90,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
 
     /// Build AST
     params.output_file.clear();
-    params.kind = CompilationUnit::Content;
+    params.kind = CompilationKind::Content;
     params.pch = {info.path, info.preamble.size()};
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {

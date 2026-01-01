@@ -5,11 +5,7 @@
 
 #include "AST/SourceCode.h"
 
-#include "clang/Basic/Diagnostic.h"
-
 namespace clice {
-
-class CompilationUnit;
 
 enum class DiagnosticLevel : std::uint8_t {
     Ignored,

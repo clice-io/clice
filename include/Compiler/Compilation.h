@@ -15,7 +15,7 @@ namespace clice {
 
 struct CompilationParams {
     /// The kind of this compilation.
-    CompilationUnit::Kind kind;
+    CompilationKind kind;
 
     /// Whether to run clang-tidy.
     bool clang_tidy = false;
