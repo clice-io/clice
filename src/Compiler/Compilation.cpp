@@ -204,8 +204,7 @@ CompilationUnit run_clang(CompilationParams& params,
     auto build_at = chrono::system_clock::now().time_since_epoch();
     auto build_start = chrono::steady_clock::now().time_since_epoch();
 
-    auto diagnostics =
-        params.diagnostics ? params.diagnostics : std::make_shared<std::vector<Diagnostic>>();
+    auto diagnostics = std::make_shared<std::vector<Diagnostic>>();
     auto diagnostic_consumer = Diagnostic::create(diagnostics);
 
     /// Temporary diagnostic engine, only used for command line parsing.

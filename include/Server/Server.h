@@ -30,10 +30,6 @@ struct OpenFile {
     async::Task<> ast_build_task;
     async::Lock ast_built_lock;
 
-    /// Collect all diagnostics in the compilation.
-    std::shared_ptr<std::vector<Diagnostic>> diagnostics =
-        std::make_unique<std::vector<Diagnostic>>();
-
     /// For header with context, it may have multiple ASTs, use
     /// an chain to store them.
     std::unique_ptr<OpenFile> next;

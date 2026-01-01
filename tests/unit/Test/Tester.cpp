@@ -33,7 +33,7 @@ bool Tester::compile(llvm::StringRef standard) {
     auto unit = clice::compile(params);
     if(!unit.success()) {
         LOG_ERROR("{}", unit.error());
-        for(auto& diag: *params.diagnostics) {
+        for(auto& diag: unit.diagnostics()) {
             LOG_ERROR("{}", diag.message);
         }
         return false;
@@ -44,7 +44,6 @@ bool Tester::compile(llvm::StringRef standard) {
 }
 
 bool Tester::compile_with_pch(llvm::StringRef standard) {
-    params.diagnostics = std::make_shared<std::vector<Diagnostic>>();
     auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
 
     database.add_command("fake", src_path, command);
@@ -82,7 +81,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
         auto unit = clice::compile(params, info);
         if(!unit.success()) {
             LOG_ERROR("{}", unit.error());
-            for(auto& diag: *params.diagnostics) {
+            for(auto& diag: unit.diagnostics()) {
                 LOG_ERROR("{}", diag.message);
             }
             return false;
@@ -106,7 +105,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     auto unit = clice::compile(params);
     if(!unit.success()) {
         LOG_ERROR("{}", unit.error());
-        for(auto& diag: *params.diagnostics) {
+        for(auto& diag: unit.diagnostics()) {
             LOG_ERROR("{}", diag.message);
         }
         return false;

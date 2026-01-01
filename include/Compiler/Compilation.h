@@ -48,9 +48,6 @@ struct CompilationParams {
     /// to cancel old compilation task.
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
 
-    /// Store all compilation errors in the process.
-    std::shared_ptr<std::vector<Diagnostic>> diagnostics;
-
     void add_remapped_file(llvm::StringRef path,
                            llvm::StringRef content,
                            std::uint32_t bound = -1) {

@@ -176,8 +176,7 @@ async::Task<bool> build_pch_task(CompilationContext& info,
                                  std::shared_ptr<OpenFile> open_file,
                                  std::string path,
                                  std::uint32_t bound,
-                                 std::string content,
-                                 std::shared_ptr<std::vector<Diagnostic>> diagnostics) {
+                                 std::string content) {
     if(!fs::exists(cache_dir)) {
         auto error = fs::create_directories(cache_dir);
         if(error) {
@@ -186,15 +185,11 @@ async::Task<bool> build_pch_task(CompilationContext& info,
         }
     }
 
-    /// Everytime we build a new pch, the old diagnostics should be discarded.
-    diagnostics->clear();
-
     CompilationParams params;
     params.kind = CompilationUnit::Preamble;
     params.output_file = path::join(cache_dir, path::filename(path) + ".pch");
     params.arguments_from_database = true;
     params.arguments = std::move(info.arguments);
-    params.diagnostics = diagnostics;
     params.add_remapped_file(path, content, bound);
 
     std::string command;
@@ -210,11 +205,18 @@ async::Task<bool> build_pch_task(CompilationContext& info,
     std::string message = std::move(command);  // reuse buffer
     std::vector<feature::DocumentLink> links;
 
-    bool success = co_await async::submit([&params, &pch, &message, &links] -> bool {
+    bool success = co_await async::submit([&params, &pch, &message, &links, &path] -> bool {
         /// PCH file is written until destructing, Add a single block for it.
         auto unit = compile(params, pch);
         if(!unit.success()) {
             message = std::move(unit.error());
+
+            /// FIXME: use `feature::diagnostic` to flush diagnostic for reporting.
+            LOG_WARN("Building PCH fails for {}, Because: {}", path, message);
+            for(auto& diagnostic: unit.diagnostics()) {
+                LOG_WARN("{}", diagnostic.message);
+            }
+
             return false;
         }
 
@@ -224,10 +226,6 @@ async::Task<bool> build_pch_task(CompilationContext& info,
     });
 
     if(!success) {
-        LOG_WARN("Building PCH fails for {}, Because: {}", path, message);
-        for(auto& diagnostic: *diagnostics) {
-            LOG_WARN("{}", diagnostic.message);
-        }
         co_return false;
     }
 
@@ -276,13 +274,8 @@ async::Task<bool> Server::build_pch(std::string file, std::string content) {
     }
 
     /// Schedule the new building task.
-    task = build_pch_task(info,
-                          config.project.cache_dir,
-                          open_file,
-                          file,
-                          bound,
-                          std::move(content),
-                          open_file->diagnostics);
+    task =
+        build_pch_task(info, config.project.cache_dir, open_file, file, bound, std::move(content));
     if(co_await task) {
         /// FIXME: At this point, task has already been finished, destroy it directly.
         task.release().destroy();
@@ -321,16 +314,14 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
     params.arguments = database.lookup(path, options).arguments;
     params.add_remapped_file(path, content);
     params.pch = {pch->path, pch->preamble.size()};
-    file->diagnostics->clear();
-    params.diagnostics = file->diagnostics;
     params.clang_tidy = config.project.clang_tidy;
 
     /// Check result
-    auto ast = co_await async::submit([&] { return compile(params); });
-    if(!ast.success()) {
+    auto unit = co_await async::submit([&] { return compile(params); });
+    if(!unit.success()) {
         /// FIXME: Fails needs cancel waiting tasks.
-        LOG_ERROR("Building AST fails for {}, Beacuse: {}", path, ast.error());
-        for(auto& diagnostic: *file->diagnostics) {
+        LOG_ERROR("Building AST fails for {}, Beacuse: {}", path, unit.error());
+        for(auto& diagnostic: unit.diagnostics()) {
             LOG_ERROR("{}", diagnostic.message);
         }
         co_return;
@@ -338,7 +329,7 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
 
     /// Send diagnostics
     auto diagnostics = co_await async::submit(
-        [&, kind = this->kind] { return feature::diagnostics(kind, mapping, ast); });
+        [&, kind = this->kind] { return feature::diagnostics(kind, mapping, unit); });
     co_await notify("textDocument/publishDiagnostics",
                     json::Object{
                         {"uri",         mapping.to_uri(path)  },
@@ -349,7 +340,7 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
     /// co_await indexer.index(*ast);
 
     /// Update built AST info.
-    file->ast = std::make_shared<CompilationUnit>(std::move(ast));
+    file->ast = std::make_shared<CompilationUnit>(std::move(unit));
 
     /// Dispose the task so that it will destroyed when task complete.
     file->ast_build_task.dispose();
