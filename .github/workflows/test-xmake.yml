@@ -30,8 +30,6 @@ jobs:
           build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
 
       - uses: ./.github/actions/setup-pixi
-        with:
-          environments: develop
 
       - name: Build
         run: pixi run xmake ${{ matrix.build_type }}

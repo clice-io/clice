@@ -21,8 +21,6 @@ jobs:
         uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-pixi
-        with:
-          environments: develop
 
       - name: Build
         run: pixi run build ${{ matrix.build_type }} ON
