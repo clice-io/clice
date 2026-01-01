@@ -17,10 +17,18 @@ CompilationUnit::~CompilationUnit() {
     delete impl;
 }
 
+bool CompilationUnit::success() {
+    return impl->instance != nullptr;
+}
+
+std::string CompilationUnit::error() {
+    return impl->error_message;
+}
+
 auto CompilationUnit::file_id(llvm::StringRef file) -> clang::FileID {
-    auto entry = impl->src_mgr.getFileManager().getFileRef(file);
+    auto entry = impl->src_mgr->getFileManager().getFileRef(file);
     if(entry) {
-        return impl->src_mgr.translateFile(*entry);
+        return impl->src_mgr->translateFile(*entry);
     }
 
     return clang::FileID();
@@ -29,7 +37,7 @@ auto CompilationUnit::file_id(llvm::StringRef file) -> clang::FileID {
 auto CompilationUnit::decompose_location(clang::SourceLocation location)
     -> std::pair<clang::FileID, std::uint32_t> {
     assert(location.isFileID() && "Decompose macro location is meaningless!");
-    return impl->src_mgr.getDecomposedLoc(location);
+    return impl->src_mgr->getDecomposedLoc(location);
 }
 
 auto CompilationUnit::decompose_range(clang::SourceRange range)
@@ -74,11 +82,11 @@ auto CompilationUnit::decompose_expansion_range(clang::SourceRange range)
 }
 
 auto CompilationUnit::file_id(clang::SourceLocation location) -> clang::FileID {
-    return impl->src_mgr.getFileID(location);
+    return impl->src_mgr->getFileID(location);
 }
 
 auto CompilationUnit::file_offset(clang::SourceLocation location) -> std::uint32_t {
-    return impl->src_mgr.getFileOffset(location);
+    return impl->src_mgr->getFileOffset(location);
 }
 
 auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
@@ -87,7 +95,7 @@ auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
         return it->second;
     }
 
-    auto entry = impl->src_mgr.getFileEntryRefForID(fid);
+    auto entry = impl->src_mgr->getFileEntryRefForID(fid);
     assert(entry && "Invalid file entry");
 
     llvm::SmallString<128> path;
@@ -112,7 +120,7 @@ auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
 }
 
 auto CompilationUnit::file_content(clang::FileID fid) -> llvm::StringRef {
-    return impl->src_mgr.getBufferData(fid);
+    return impl->src_mgr->getBufferData(fid);
 }
 
 auto CompilationUnit::interested_file() -> clang::FileID {
@@ -125,8 +133,8 @@ auto CompilationUnit::interested_content() -> llvm::StringRef {
 
 bool CompilationUnit::is_builtin_file(clang::FileID fid) {
     // No FileEntryRef => built-in/command line/scratch.
-    if(!impl->src_mgr.getFileEntryRefForID(fid)) {
-        if(auto buffer = impl->src_mgr.getBufferOrNone(fid)) {
+    if(!impl->src_mgr->getFileEntryRefForID(fid)) {
+        if(auto buffer = impl->src_mgr->getBufferOrNone(fid)) {
             auto name = buffer->getBufferIdentifier();
             return name == "<built-in>" || name == "<command line>" || name == "<scratch space>";
         }
@@ -136,36 +144,36 @@ bool CompilationUnit::is_builtin_file(clang::FileID fid) {
 }
 
 auto CompilationUnit::start_location(clang::FileID fid) -> clang::SourceLocation {
-    return impl->src_mgr.getLocForStartOfFile(fid);
+    return impl->src_mgr->getLocForStartOfFile(fid);
 }
 
 auto CompilationUnit::end_location(clang::FileID fid) -> clang::SourceLocation {
-    return impl->src_mgr.getLocForEndOfFile(fid);
+    return impl->src_mgr->getLocForEndOfFile(fid);
 }
 
 auto CompilationUnit::spelling_location(clang::SourceLocation loc) -> clang::SourceLocation {
-    return impl->src_mgr.getSpellingLoc(loc);
+    return impl->src_mgr->getSpellingLoc(loc);
 }
 
 auto CompilationUnit::expansion_location(clang::SourceLocation location) -> clang::SourceLocation {
-    return impl->src_mgr.getExpansionLoc(location);
+    return impl->src_mgr->getExpansionLoc(location);
 }
 
 auto CompilationUnit::file_location(clang::SourceLocation location) -> clang::SourceLocation {
-    return impl->src_mgr.getFileLoc(location);
+    return impl->src_mgr->getFileLoc(location);
 }
 
 auto CompilationUnit::include_location(clang::FileID fid) -> clang::SourceLocation {
-    return impl->src_mgr.getIncludeLoc(fid);
+    return impl->src_mgr->getIncludeLoc(fid);
 }
 
 auto CompilationUnit::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
-    return impl->src_mgr.getPresumedLoc(location, false);
+    return impl->src_mgr->getPresumedLoc(location, false);
 }
 
 auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
     -> clang::SourceLocation {
-    return impl->src_mgr.getComposedLoc(fid, offset);
+    return impl->src_mgr->getComposedLoc(fid, offset);
 }
 
 auto CompilationUnit::spelled_tokens(clang::FileID fid) -> TokenRange {
@@ -199,11 +207,13 @@ auto CompilationUnit::expansions_overlapping(TokenRange spelled_tokens)
 }
 
 auto CompilationUnit::token_length(clang::SourceLocation location) -> std::uint32_t {
-    return clang::Lexer::MeasureTokenLength(location, impl->src_mgr, impl->instance->getLangOpts());
+    return clang::Lexer::MeasureTokenLength(location,
+                                            *impl->src_mgr,
+                                            impl->instance->getLangOpts());
 }
 
 auto CompilationUnit::token_spelling(clang::SourceLocation location) -> llvm::StringRef {
-    return llvm::StringRef(impl->src_mgr.getCharacterData(location), token_length(location));
+    return llvm::StringRef(impl->src_mgr->getCharacterData(location), token_length(location));
 }
 
 auto CompilationUnit::module_name() -> llvm::StringRef {
@@ -284,7 +294,7 @@ index::SymbolID CompilationUnit::getSymbolID(const clang::MacroInfo* macro) {
         hash = iter->second;
     } else {
         llvm::SmallString<128> usr;
-        index::generateUSRForMacro(name, macro->getDefinitionLoc(), impl->src_mgr, usr);
+        index::generateUSRForMacro(name, macro->getDefinitionLoc(), *impl->src_mgr, usr);
         hash = llvm::xxh3_64bits(usr);
         impl->symbol_hash_cache.try_emplace(macro, hash);
     }
@@ -296,12 +306,12 @@ const llvm::DenseSet<clang::FileID>& CompilationUnit::files() {
         /// FIXME: handle preamble and embed file id.
         for(auto& [fid, diretive]: directives()) {
             for(auto& include: diretive.includes) {
-                if(!include.skipped) {
+                if(!include.skipped && include.fid.isValid()) {
                     impl->all_files.insert(include.fid);
                 }
             }
         }
-        impl->all_files.insert(impl->src_mgr.getMainFileID());
+        impl->all_files.insert(impl->src_mgr->getMainFileID());
     }
     return impl->all_files;
 }

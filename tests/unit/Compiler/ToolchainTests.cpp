@@ -73,8 +73,8 @@ TEST_CASE(GCC, {.skip = !(CIEnvironment && (Windows || Linux))}) {
         )");
 
     auto unit = compile(params);
-    ASSERT_TRUE(unit.has_value());
-    ASSERT_TRUE(unit->diagnostics().empty());
+    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.diagnostics().empty());
 };
 
 TEST_CASE(MSVC, {.skip = !CIEnvironment}) {
@@ -112,8 +112,8 @@ TEST_CASE(Clang, {.skip = !CIEnvironment}) {
         )");
 
     auto unit = compile(params);
-    ASSERT_TRUE(unit.has_value());
-    ASSERT_TRUE(unit->diagnostics().empty());
+    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.diagnostics().empty());
 };
 
 TEST_CASE(Zig, {.skip = !CIEnvironment}) {

@@ -197,9 +197,9 @@ constexpr static auto no_hook = [](auto& /*ignore*/) {
 template <typename Action,
           typename BeforeExecute = decltype(no_hook),
           typename AfterExecute = decltype(no_hook)>
-CompilationResult run_clang(CompilationParams& params,
-                            const BeforeExecute& before_execute = no_hook,
-                            const AfterExecute& after_execute = no_hook) {
+CompilationUnit run_clang(CompilationParams& params,
+                          const BeforeExecute& before_execute = no_hook,
+                          const AfterExecute& after_execute = no_hook) {
     namespace chrono = std::chrono;
     auto build_at = chrono::system_clock::now().time_since_epoch();
     auto build_start = chrono::steady_clock::now().time_since_epoch();
@@ -217,9 +217,15 @@ CompilationResult run_clang(CompilationParams& params,
                                                                         diagnostic_consumer.get(),
                                                                         false);
 
+    auto impl = new CompilationUnit::Impl();
+    impl->diagnostics = diagnostics;
+
+    CompilationUnit unit(params.kind, impl);
+
     auto invocation = create_invocation(params, diagnostic_engine);
     if(!invocation) {
-        return std::unexpected("Fail to create compilation invocation!");
+        impl->error_message = "Fail to create compilation invocation!";
+        return unit;
     }
 
     auto instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
@@ -232,25 +238,26 @@ CompilationResult run_clang(CompilationParams& params,
     }
 
     if(!instance->createTarget()) {
-        return std::unexpected("Fail to create target!");
+        impl->error_message = "Fail to create target!";
+        return unit;
     }
 
     /// Adjust the compiler instance, for example, set preamble or modules.
     before_execute(*instance);
 
     /// Frontend information ...
-    std::vector<clang::Decl*> top_level_decls;
-    llvm::DenseMap<clang::FileID, Directive> directives;
     std::optional<clang::syntax::TokenCollector> token_collector;
 
     auto action = std::make_unique<ProxyAction>(
         std::make_unique<Action>(),
         /// We only collect top level declarations for parse main file.
-        (params.clang_tidy || params.kind == CompilationUnit::Content) ? &top_level_decls : nullptr,
+        (params.clang_tidy || params.kind == CompilationUnit::Content) ? &impl->top_level_decls
+                                                                       : nullptr,
         params.stop);
 
     if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
-        return std::unexpected("Fail to begin source file");
+        impl->error_message = "Fail to begin source file";
+        return unit;
     }
 
     auto& pp = instance->getPreprocessor();
@@ -267,7 +274,7 @@ CompilationResult run_clang(CompilationParams& params,
 
     /// `BeginSourceFile` may create new preprocessor, so all operations related to preprocessor
     /// should be done after `BeginSourceFile`.
-    Directive::attach(pp, directives);
+    Directive::attach(pp, impl->directives);
 
     /// It is not necessary to collect tokens if we are running code completion.
     /// And in fact will cause assertion failure.
@@ -276,7 +283,8 @@ CompilationResult run_clang(CompilationParams& params,
     }
 
     if(auto error = action->Execute()) {
-        return std::unexpected(std::format("Failed to execute action, because {} ", error));
+        impl->error_message = std::format("Failed to execute action, because {} ", error);
+        return unit;
     }
 
     /// If the output file is not empty, it represents that we are
@@ -286,26 +294,27 @@ CompilationResult run_clang(CompilationParams& params,
     if(!instance->getFrontendOpts().OutputFile.empty() &&
        instance->getDiagnostics().hasErrorOccurred()) {
         action->EndSourceFile();
-        return std::unexpected("Fail to build PCH or PCM, error occurs in compilation.");
+        impl->error_message = "Fail to build PCH or PCM, error occurs in compilation.";
+        return unit;
     }
 
     /// Check whether the compilation is canceled, if so we think
     /// it is an error.
     if(params.stop && params.stop->load()) {
         action->EndSourceFile();
-        return std::unexpected("Compilation is canceled.");
+        impl->error_message = "Compilation is canceled.";
+        return unit;
     }
 
-    std::optional<clang::syntax::TokenBuffer> token_buffer;
     if(token_collector) {
-        token_buffer = std::move(*token_collector).consume();
+        impl->buffer = std::move(*token_collector).consume();
     }
 
     // Must be called before EndSourceFile because the ast context can be destroyed later.
     if(checker) {
         // AST traversals should exclude the preamble, to avoid performance cliffs.
         // TODO: is it okay to affect the unit-level traversal scope here?
-        instance->getASTContext().setTraversalScope(top_level_decls);
+        instance->getASTContext().setTraversalScope(impl->top_level_decls);
         checker->finder.matchAST(instance->getASTContext());
     }
 
@@ -317,9 +326,8 @@ CompilationResult run_clang(CompilationParams& params,
     /// FIXME: getDependencies currently return ArrayRef<std::string>, which actually results in
     /// extra copy. It would be great to avoid this copy.
 
-    std::optional<TemplateResolver> resolver;
     if(instance->hasSema()) {
-        resolver.emplace(instance->getSema());
+        impl->resolver.emplace(instance->getSema());
     }
 
     if(checker) {
@@ -328,42 +336,32 @@ CompilationResult run_clang(CompilationParams& params,
     }
 
     auto build_end = chrono::steady_clock::now().time_since_epoch();
+    impl->build_at = chrono::duration_cast<chrono::milliseconds>(build_at);
+    impl->build_duration = chrono::duration_cast<chrono::milliseconds>(build_end - build_start);
 
-    auto impl = new CompilationUnit::Impl{
-        .interested = instance->getSourceManager().getMainFileID(),
-        .src_mgr = instance->getSourceManager(),
-        .action = std::move(action),
-        .instance = std::move(instance),
-        .resolver = std::move(resolver),
-        .buffer = std::move(token_buffer),
-        .directives = std::move(directives),
-        .path_cache = llvm::DenseMap<clang::FileID, llvm::StringRef>(),
-        .symbol_hash_cache = llvm::DenseMap<const void*, std::uint64_t>(),
-        .diagnostics = std::move(diagnostics),
-        .top_level_decls = std::move(top_level_decls),
-        .build_at = chrono::duration_cast<chrono::milliseconds>(build_at),
-        .build_duration = chrono::duration_cast<chrono::milliseconds>(build_end - build_start),
-    };
+    impl->interested = instance->getSourceManager().getMainFileID();
+    impl->src_mgr = &instance->getSourceManager();
+    impl->action = std::move(action);
+    impl->instance = std::move(instance);
 
-    CompilationUnit unit(params.kind, impl);
     after_execute(unit);
     return unit;
 }
 
 }  // namespace
 
-CompilationResult preprocess(CompilationParams& params) {
+CompilationUnit preprocess(CompilationParams& params) {
     return run_clang<clang::PreprocessOnlyAction>(params);
 }
 
-CompilationResult compile(CompilationParams& params) {
+CompilationUnit compile(CompilationParams& params) {
     return run_clang<clang::SyntaxOnlyAction>(params, [](clang::CompilerInstance& instance) {
         /// Make sure the output file is empty.
         instance.getFrontendOpts().OutputFile.clear();
     });
 }
 
-CompilationResult compile(CompilationParams& params, PCHInfo& out) {
+CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
     assert(!params.output_file.empty() && "PCH file path cannot be empty");
 
     /// Record the begin time of PCH building.
@@ -392,7 +390,7 @@ CompilationResult compile(CompilationParams& params, PCHInfo& out) {
         });
 }
 
-CompilationResult compile(CompilationParams& params, PCMInfo& out) {
+CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
     assert(!params.output_file.empty() && "PCM file path cannot be empty");
 
     return run_clang<clang::GenerateReducedModuleInterfaceAction>(
@@ -414,7 +412,7 @@ CompilationResult compile(CompilationParams& params, PCMInfo& out) {
         });
 }
 
-CompilationResult complete(CompilationParams& params, clang::CodeCompleteConsumer* consumer) {
+CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer* consumer) {
     auto& [file, offset] = params.completion;
 
     /// The location of clang is 1-1 based.

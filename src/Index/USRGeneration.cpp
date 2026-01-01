@@ -785,7 +785,10 @@ void USRGenerator::VisitTemplateParameterList(const TemplateParameterList* Param
             if(p->isParameterPack())
                 Out << 'p';
             Out << 'T';
-            if(p->hasTypeConstraint()) {
+
+            /// FIXME: workaround figure out why `p->hasTypeConstraint()` is true but
+            /// `p->getTypeConstraint() is empty`.
+            if(p->hasTypeConstraint() && p->getTypeConstraint()) {
                 Out << ":TC";
                 AppendExprODRHash(p->getTypeConstraint()->getImmediatelyDeclaredConstraint(), Out);
             }

@@ -31,7 +31,7 @@ bool Tester::compile(llvm::StringRef standard) {
     prepare(standard);
 
     auto unit = clice::compile(params);
-    if(!unit) {
+    if(!unit.success()) {
         LOG_ERROR("{}", unit.error());
         for(auto& diag: *params.diagnostics) {
             LOG_ERROR("{}", diag.message);
@@ -39,7 +39,7 @@ bool Tester::compile(llvm::StringRef standard) {
         return false;
     }
 
-    this->unit.emplace(std::move(*unit));
+    this->unit.emplace(std::move(unit));
     return true;
 }
 
@@ -80,7 +80,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     PCHInfo info;
     {
         auto unit = clice::compile(params, info);
-        if(!unit) {
+        if(!unit.success()) {
             LOG_ERROR("{}", unit.error());
             for(auto& diag: *params.diagnostics) {
                 LOG_ERROR("{}", diag.message);
@@ -104,7 +104,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     }
 
     auto unit = clice::compile(params);
-    if(!unit) {
+    if(!unit.success()) {
         LOG_ERROR("{}", unit.error());
         for(auto& diag: *params.diagnostics) {
             LOG_ERROR("{}", diag.message);
@@ -112,7 +112,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
         return false;
     }
 
-    this->unit.emplace(std::move(*unit));
+    this->unit.emplace(std::move(unit));
     return true;
 }
 

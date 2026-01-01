@@ -86,7 +86,7 @@ TEST_CASE(CommandError) {
     params.arguments = {"clang++"};
     params.add_remapped_file("main.cpp", "int main() { return 0; }");
     auto unit = compile(params);
-    ASSERT_FALSE(unit.has_value());
+    ASSERT_FALSE(unit.success());
 }
 
 TEST_CASE(Error) {
@@ -94,8 +94,8 @@ TEST_CASE(Error) {
     params.arguments = {"clang++", "main.cpp"};
     params.add_remapped_file("main.cpp", "int main() { return 0 }");
     auto unit = compile(params);
-    ASSERT_TRUE(unit.has_value());
-    ASSERT_FALSE(unit->diagnostics().empty());
+    ASSERT_TRUE(unit.success());
+    ASSERT_FALSE(unit.diagnostics().empty());
 
     /// for(auto& diag: unit->diagnostics()) {
     ///     std::println("{}", diag.message);
@@ -114,7 +114,7 @@ void foo() {}
 
     PCHInfo info;
     auto unit = compile(params, info);
-    ASSERT_FALSE(unit.has_value());
+    ASSERT_FALSE(unit.success());
 }
 
 TEST_CASE(ASTError) {
@@ -128,7 +128,7 @@ void foo() {}
 
     PCHInfo info;
     auto unit = compile(params);
-    ASSERT_TRUE(unit.has_value());
+    ASSERT_TRUE(unit.success());
 }
 
 };  // TEST_SUITE(Diagnostic)

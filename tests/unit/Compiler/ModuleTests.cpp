@@ -27,7 +27,7 @@ auto buildPCM = [](llvm::StringRef file, llvm::StringRef code) {
     params.add_remapped_file("./test.h", "export int foo2();");
 
     PCMInfo pcm;
-    if(!compile(params, pcm)) {
+    if(!compile(params, pcm).success()) {
         llvm::errs() << "Failed to build PCM\n";
         std::abort();
     }

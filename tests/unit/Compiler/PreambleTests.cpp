@@ -68,7 +68,7 @@ void expect_build_pch(llvm::StringRef main_file,
     {
         /// NOTE: PCH file is written when CompilerInstance is destructed.
         auto unit = compile(params, info);
-        ASSERT_TRUE(unit.has_value());
+        ASSERT_TRUE(unit.success());
 
         ASSERT_EQ(info.path, output_path);
         /// expect(that % info.command == params.arguments);
@@ -83,7 +83,7 @@ void expect_build_pch(llvm::StringRef main_file,
     params.add_remapped_file(main_file, content);
     params.pch = {info.path, info.preamble.size()};
     auto unit = compile(params);
-    ASSERT_TRUE(unit.has_value());
+    ASSERT_TRUE(unit.success());
 };
 
 TEST_CASE(Bounds) {
@@ -184,16 +184,16 @@ int foo();
         }
 
         auto unit = preprocess(params);
-        ASSERT_TRUE(unit.has_value());
+        ASSERT_TRUE(unit.success());
 
         auto path = path::join(".", "test1.h");
-        auto fid = unit->file_id(path);
+        auto fid = unit.file_id(path);
         ASSERT_TRUE(fid.isValid());
 
         while(fid.isValid()) {
-            auto location = unit->include_location(fid);
-            auto [fid2, offset] = unit->decompose_location(location);
-            auto content = unit->file_content(fid2).substr(0, offset);
+            auto location = unit.include_location(fid);
+            auto [fid2, offset] = unit.decompose_location(location);
+            auto content = unit.file_content(fid2).substr(0, offset);
 
             /// Remove incomplete include.
             content = content.substr(0, content.rfind("\n"));
@@ -253,7 +253,7 @@ int y = foo();
 
         {
             auto unit = compile(params, info);
-            ASSERT_TRUE(unit.has_value());
+            ASSERT_TRUE(unit.success());
 
             ASSERT_EQ(info.path, outPath);
             /// expect(that % info.command == params.arguments);
@@ -268,7 +268,7 @@ int y = foo();
     params.add_remapped_file("main.cpp", content);
     params.pch = {info.path, last_bound};
     auto unit = compile(params);
-    ASSERT_TRUE(unit.has_value());
+    ASSERT_TRUE(unit.success());
 };
 
 TEST_CASE(Scan) {

@@ -23,8 +23,8 @@ TEST_CASE(Tidy) {
     params.arguments = {"clang++", "main.cpp"};
     params.add_remapped_file("main.cpp", "int main() { return 0 }");
     auto unit = compile(params);
-    ASSERT_TRUE(unit.has_value());
-    ASSERT_FALSE(unit->diagnostics().empty());
+    ASSERT_TRUE(unit.success());
+    ASSERT_FALSE(unit.diagnostics().empty());
 }
 
 };  // TEST_SUITE(ClangTidy)

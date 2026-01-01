@@ -53,6 +53,11 @@ public:
     ~CompilationUnit();
 
 public:
+    bool success();
+
+    std::string error();
+
+public:
     /// Get the file id for given file. If such file doesn't exist, the result
     /// will be invalid file id. If the the content of the file doesn't have
     /// `#pragma once` or guard macro, each inclusion of the file will generate

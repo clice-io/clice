@@ -75,24 +75,29 @@ public:
                         RelationKind kind,
                         const clang::NamedDecl* target,
                         clang::SourceRange range) {
-        auto [fid, relationRange] = unit.decompose_expansion_range(range);
+        auto [fid, relation_range] = unit.decompose_expansion_range(range);
 
         Relation relation{.kind = kind};
 
         if(kind.isDeclOrDef()) {
-            auto [fid2, definition_range] = unit.decompose_expansion_range(decl->getSourceRange());
-            assert(fid == fid2 && "Invalid definition location");
-            relation.range = relationRange;
-            relation.set_definition_range(definition_range);
+            relation.range = relation_range;
+            /// FIXME: why definition or declaration has invalid source range? implicit node?
+            auto source_range = decl->getSourceRange();
+            if(source_range.isValid()) {
+                auto [fid2, definition_range] =
+                    unit.decompose_expansion_range(decl->getSourceRange());
+                assert(fid == fid2 && "Invalid definition location");
+                relation.set_definition_range(definition_range);
+            }
         } else if(kind.isReference()) {
-            relation.range = relationRange;
+            relation.range = relation_range;
             relation.target_symbol = 0;
         } else if(kind.isBetweenSymbol()) {
             auto symbol_id = unit.getSymbolID(ast::normalize(target));
             relation.target_symbol = symbol_id.hash;
         } else if(kind.isCall()) {
             auto symbol_id = unit.getSymbolID(ast::normalize(target));
-            relation.range = relationRange;
+            relation.range = relation_range;
             relation.target_symbol = symbol_id.hash;
         } else {
             std::unreachable();

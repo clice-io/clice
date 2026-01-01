@@ -213,12 +213,12 @@ async::Task<bool> build_pch_task(CompilationContext& info,
     bool success = co_await async::submit([&params, &pch, &message, &links] -> bool {
         /// PCH file is written until destructing, Add a single block for it.
         auto unit = compile(params, pch);
-        if(!unit) {
+        if(!unit.success()) {
             message = std::move(unit.error());
             return false;
         }
 
-        links = feature::document_links(*unit);
+        links = feature::document_links(unit);
         /// TODO: index PCH file, etc
         return true;
     });
@@ -327,7 +327,7 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
 
     /// Check result
     auto ast = co_await async::submit([&] { return compile(params); });
-    if(!ast) {
+    if(!ast.success()) {
         /// FIXME: Fails needs cancel waiting tasks.
         LOG_ERROR("Building AST fails for {}, Beacuse: {}", path, ast.error());
         for(auto& diagnostic: *file->diagnostics) {
@@ -338,7 +338,7 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
 
     /// Send diagnostics
     auto diagnostics = co_await async::submit(
-        [&, kind = this->kind] { return feature::diagnostics(kind, mapping, *ast); });
+        [&, kind = this->kind] { return feature::diagnostics(kind, mapping, ast); });
     co_await notify("textDocument/publishDiagnostics",
                     json::Object{
                         {"uri",         mapping.to_uri(path)  },
@@ -349,7 +349,7 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
     /// co_await indexer.index(*ast);
 
     /// Update built AST info.
-    file->ast = std::make_shared<CompilationUnit>(std::move(*ast));
+    file->ast = std::make_shared<CompilationUnit>(std::move(ast));
 
     /// Dispose the task so that it will destroyed when task complete.
     file->ast_build_task.dispose();

@@ -203,7 +203,8 @@ proto::SignatureHelp signature_help(CompilationParams& params,
     complete_options.IncludeFixIts = false;
 
     auto consumer = new Collector(help, complete_options);
-    if(auto info = complete(params, consumer)) {
+    auto unit = complete(params, consumer);
+    if(!unit.success()) {
         /// FIXME: do something.
     }
     return help;

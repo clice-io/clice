@@ -432,7 +432,8 @@ std::vector<CompletionItem> code_complete(CompilationParams& params,
     auto& [file, offset] = params.completion;
     auto consumer = new CodeCompletionCollector(offset, items, option);
 
-    if(auto info = complete(params, consumer)) {
+    auto unit = complete(params, consumer);
+    if(!unit.success()) {
         /// TODO: Handle error here.
     }
 
