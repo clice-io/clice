@@ -30,7 +30,7 @@ pixi run integration-test Debug
 ```
 
 > [!TIP]
-> If you want to develop directly with `cmake`, `ninja`, `clang++`, etc., run `pixi shell -e develop` to enter a shell with all env vars configured.
+> If you want to develop directly with `cmake`, `ninja`, `clang++`, etc., run `pixi shell` to enter a shell with all env vars configured.
 
 ### XMake
 

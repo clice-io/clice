@@ -30,7 +30,7 @@ pixi run integration-test Debug
 ```
 
 > [!TIP]
-> 如果你想直接使用 `cmake`, `ninja`, `clang++` 等命令进行开发，请运行 `pixi shell -e develop` 进入已配置好环境变量的终端
+> 如果你想直接使用 `cmake`, `ninja`, `clang++` 等命令进行开发，请运行 `pixi shell` 进入已配置好环境变量的终端
 
 ### XMake
 
