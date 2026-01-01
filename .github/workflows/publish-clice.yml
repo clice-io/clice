@@ -45,6 +45,8 @@ jobs:
           build-cache-key: ${{ matrix.os }}-build-release-v1
 
       - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
 
       - name: Remove ci llvm toolchain on Windows
         if: runner.os == 'Windows'
