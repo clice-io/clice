@@ -64,14 +64,7 @@ enum class BuildStatus {
 };
 
 struct CompilationUnitRef::Self {
-    /// The interested file ID.
-    clang::FileID interested;
-
-    std::string error_message;
-
     BuildStatus status;
-
-    clang::SourceManager* src_mgr;
 
     /// The frontend action used to build the unit.
     std::unique_ptr<clang::FrontendAction> action;
@@ -97,6 +90,8 @@ struct CompilationUnitRef::Self {
     /// Cache for symbol id.
     llvm::DenseMap<const void*, std::uint64_t> symbol_hash_cache;
 
+    llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> remapped_buffers;
+
     llvm::BumpPtrAllocator path_storage;
 
     std::vector<Diagnostic> diagnostics;
@@ -106,6 +101,10 @@ struct CompilationUnitRef::Self {
     std::chrono::milliseconds build_at;
 
     std::chrono::milliseconds build_duration;
+
+    auto& SM() {
+        return instance->getSourceManager();
+    }
 };
 
 class DiagnosticCollector : public clang::DiagnosticConsumer {

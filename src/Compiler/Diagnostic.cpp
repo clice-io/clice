@@ -150,65 +150,59 @@ static DiagnosticLevel diagnostic_level(clang::DiagnosticsEngine::Level level) {
     }
 }
 
-/// Get the range for given diagnostic.
-/// FIXME: I would like to use `CompilationUnit`.
-auto diagnostic_range(const clang::Diagnostic& diagnostic, const clang::LangOptions& options)
-    -> std::optional<std::pair<clang::FileID, LocalSourceRange>> {
-    /// If location is invalid, it represents the diagnostic is
-    /// from the command line.
-    auto location = diagnostic.getLocation();
-    if(location.isInvalid()) {
-        return std::nullopt;
-    }
-
-    /// If the location is valid, the `SourceManager` is valid too.
-    auto& src_mgr = diagnostic.getDiags()->getSourceManager();
-
-    /// Make sure the location is file location.
-    location = src_mgr.getFileLoc(location);
-    assert(location.isFileID());
-
-    auto [fid, offset] = src_mgr.getDecomposedLoc(location);
-
-    /// Select a proper range for the diagnostic.
-    for(auto range: diagnostic.getRanges()) {
-        range = clang::Lexer::makeFileCharRange(range, src_mgr, options);
-
-        auto [begin, end] = range.getAsRange();
-        auto [begin_fid, begin_offset] = src_mgr.getDecomposedLoc(begin);
-        if(begin_fid != fid || begin_offset <= offset) {
-            continue;
-        }
-
-        auto [end_fid, end_offset] = src_mgr.getDecomposedLoc(end);
-        if(range.isTokenRange()) {
-            end_offset += clang::Lexer::MeasureTokenLength(end, src_mgr, options);
-        }
-
-        if(end_fid == fid && end_offset >= offset) {
-            return std::pair{
-                fid,
-                LocalSourceRange{begin_offset, end_offset}
-            };
-        }
-    }
-
-    /// Use token range.
-    auto end_offset = offset + clang::Lexer::MeasureTokenLength(location, src_mgr, options);
-    return std::pair{
-        fid,
-        LocalSourceRange{offset, end_offset}
-    };
-}
-
 class DiagnosticCollectorImpl : public DiagnosticCollector {
 public:
     DiagnosticCollectorImpl(CompilationUnitRef unit) : unit(unit) {}
 
-    void BeginSourceFile(const clang::LangOptions& opts, const clang::Preprocessor* pp) override {
-        options = &opts;
-        src_mgr = &pp->getSourceManager();
+    auto diagnostic_range(const clang::Diagnostic& diagnostic)
+        -> std::optional<std::pair<clang::FileID, LocalSourceRange>> {
+        /// If location is invalid, it represents the diagnostic is
+        /// from the command line.
+        auto location = diagnostic.getLocation();
+        if(location.isInvalid()) {
+            return std::nullopt;
+        }
+
+        /// Make sure the location is file location.
+        location = unit.file_location(location);
+        assert(location.isFileID());
+
+        auto [fid, offset] = unit.decompose_location(location);
+
+        /// Select a proper range for the diagnostic.
+        for(auto range: diagnostic.getRanges()) {
+            range = clang::Lexer::makeFileCharRange(range,
+                                                    unit.context().getSourceManager(),
+                                                    unit.lang_options());
+
+            auto [begin, end] = range.getAsRange();
+            auto [begin_fid, begin_offset] = unit.decompose_location(begin);
+            if(begin_fid != fid || begin_offset <= offset) {
+                continue;
+            }
+
+            auto [end_fid, end_offset] = unit.decompose_location(end);
+            if(range.isTokenRange()) {
+                end_offset += unit.token_length(end);
+            }
+
+            if(end_fid == fid && end_offset >= offset) {
+                return std::pair{
+                    fid,
+                    LocalSourceRange{begin_offset, end_offset}
+                };
+            }
+        }
+
+        /// Use token range.
+        auto end_offset = offset + unit.token_length(location);
+        return std::pair{
+            fid,
+            LocalSourceRange{offset, end_offset}
+        };
     }
+
+    void BeginSourceFile(const clang::LangOptions&, const clang::Preprocessor*) override {}
 
     void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
                           const clang::Diagnostic& raw_diagnostic) override {
@@ -221,6 +215,7 @@ public:
             }
         }
         diagnostic.id.level = diagnostic_level(level);
+        diagnostic.id.source = DiagnosticSource::Clang;
 
         /// TODO:
         // use DiagnosticEngine::SetArgToStringFn to set a custom function to convert arguments to
@@ -234,7 +229,7 @@ public:
         raw_diagnostic.FormatDiagnostic(message);
         diagnostic.message = message.str();
 
-        if(auto pair = diagnostic_range(raw_diagnostic, *options)) {
+        if(auto pair = diagnostic_range(raw_diagnostic)) {
             auto [fid, range] = *pair;
             diagnostic.fid = fid;
             diagnostic.range = range;
@@ -252,8 +247,6 @@ public:
 
 private:
     CompilationUnitRef unit;
-    const clang::LangOptions* options;
-    clang::SourceManager* src_mgr;
 };
 
 std::unique_ptr<DiagnosticCollector> create_diagnostic(CompilationUnitRef unit) {

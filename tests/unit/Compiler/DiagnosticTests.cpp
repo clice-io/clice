@@ -80,27 +80,58 @@ using namespace clice;
 
 TEST_SUITE(Diagnostic) {
 
-TEST_CASE(CommandError) {
+TEST_CASE(TargetError) {
     CompilationParams params;
-    /// miss input file.
-    params.arguments = {"clang++"};
-    params.add_remapped_file("main.cpp", "int main() { return 0; }");
+    params.arguments = {"clang++", "-target", "aa-bb-cc", "main.cpp"};
+    params.add_remapped_file("main.cpp", "");
+
     auto unit = compile(params);
-    ASSERT_FALSE(unit.success());
+    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.diagnostics().size() == 1);
+
+    auto& diag = unit.diagnostics()[0];
+    EXPECT_EQ(diag.id.diagnostic_code(), "err_target_unknown_triple");
+    EXPECT_EQ(diag.id.level, DiagnosticLevel::Error);
+    EXPECT_EQ(diag.id.source, DiagnosticSource::Clang);
+    EXPECT_TRUE(diag.fid.isInvalid());
+    EXPECT_TRUE(!diag.range.valid());
+    EXPECT_EQ(diag.message, "unknown target triple 'aa-bb-cc'");
 }
 
 TEST_CASE(Error) {
     CompilationParams params;
     params.arguments = {"clang++", "main.cpp"};
     params.add_remapped_file("main.cpp", "int main() { return 0 }");
+
     auto unit = compile(params);
     ASSERT_TRUE(unit.success());
-    ASSERT_FALSE(unit.diagnostics().empty());
+    ASSERT_TRUE(unit.diagnostics().size() == 1);
 
-    /// for(auto& diag: unit->diagnostics()) {
-    ///     std::println("{}", diag.message);
-    /// }
+    auto& diag = unit.diagnostics()[0];
+    EXPECT_EQ(diag.id.diagnostic_code(), "err_expected_semi_after_stmt");
+    EXPECT_EQ(diag.id.level, DiagnosticLevel::Error);
+    EXPECT_EQ(diag.id.source, DiagnosticSource::Clang);
+    EXPECT_EQ(diag.fid, unit.interested_file());
+    EXPECT_TRUE(diag.range.valid());
+    EXPECT_EQ(diag.message, "expected ';' after return statement");
 };
+
+TEST_CASE(Warning) {
+    CompilationParams params;
+    params.arguments = {"clang++", "-Wall", "-Wunused-variable", "main.cpp"};
+    params.add_remapped_file("main.cpp", "int main() { int x; return 0; }");
+
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.success());
+    ASSERT_EQ(unit.diagnostics().size(), 1);
+
+    auto& diag = unit.diagnostics()[0];
+    EXPECT_EQ(diag.id.diagnostic_code(), "warn_unused_variable");
+    EXPECT_EQ(diag.id.level, DiagnosticLevel::Warning);
+    EXPECT_EQ(diag.id.source, DiagnosticSource::Clang);
+    EXPECT_TRUE(diag.range.valid());
+    EXPECT_TRUE(diag.message.find("unused variable") != std::string::npos);
+}
 
 TEST_CASE(PCHError) {
     /// Any error in compilation will result in failure on generating PCH or PCM.
@@ -114,7 +145,7 @@ void foo() {}
 
     PCHInfo info;
     auto unit = compile(params, info);
-    ASSERT_FALSE(unit.success());
+    ASSERT_TRUE(unit.success());
 }
 
 TEST_CASE(ASTError) {

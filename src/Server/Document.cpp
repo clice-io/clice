@@ -209,10 +209,8 @@ async::Task<bool> build_pch_task(CompilationContext& info,
         /// PCH file is written until destructing, Add a single block for it.
         auto unit = compile(params, pch);
         if(!unit.success()) {
-            message = std::move(unit.error());
-
             /// FIXME: use `feature::diagnostic` to flush diagnostic for reporting.
-            LOG_WARN("Building PCH fails for {}, Because: {}", path, message);
+            /// LOG_WARN("Building PCH fails for {}, Because: {}", path, message);
             for(auto& diagnostic: unit.diagnostics()) {
                 LOG_WARN("{}", diagnostic.message);
             }
@@ -320,10 +318,10 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
     auto unit = co_await async::submit([&] { return compile(params); });
     if(!unit.success()) {
         /// FIXME: Fails needs cancel waiting tasks.
-        LOG_ERROR("Building AST fails for {}, Beacuse: {}", path, unit.error());
-        for(auto& diagnostic: unit.diagnostics()) {
-            LOG_ERROR("{}", diagnostic.message);
-        }
+        /// LOG_ERROR("Building AST fails for {}, Beacuse: {}", path, unit.error());
+        /// for(auto& diagnostic: unit.diagnostics()) {
+        ///     LOG_ERROR("{}", diagnostic.message);
+        /// }
         co_return;
     }
 

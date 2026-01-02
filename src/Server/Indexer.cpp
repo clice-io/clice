@@ -26,7 +26,7 @@ async::Task<> Indexer::index(llvm::StringRef path) {
     auto tu_index = co_await async::submit([&]() -> std::optional<index::TUIndex> {
         auto unit = compile(params);
         if(!unit.success()) {
-            LOG_INFO("Fail to index for {}, because: {}", path, unit.error());
+            /// LOG_INFO("Fail to index for {}, because: {}", path, unit.error());
             return std::nullopt;
         }
 

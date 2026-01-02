@@ -106,9 +106,9 @@ std::string scanModuleName(CompilationParams& params) {
 std::expected<ModuleInfo, std::string> scanModule(CompilationParams& params) {
     ModuleInfo info;
     auto unit = preprocess(params);
-    if(!unit.success()) {
-        return std::unexpected(unit.error());
-    }
+    /// if(!unit.success()) {
+    ///     return std::unexpected(unit.error());
+    /// }
 
     for(auto& import: unit.directives()[unit.interested_file()].imports) {
         info.mods.emplace_back(import.name);

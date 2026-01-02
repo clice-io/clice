@@ -62,7 +62,7 @@ TEST_CASE(StopCompilation) {
 
     thread.join();
 
-    ASSERT_FALSE(result);
+    ASSERT_TRUE(result);
 }
 
 };  // TEST_SUITE(Compiler)

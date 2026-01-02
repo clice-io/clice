@@ -4,31 +4,14 @@
 
 namespace clice {
 
-CompilationUnit::~CompilationUnit() {
-    if(self && self->action) {
-        auto instance = self->instance.get();
-        // We already notified the pp of end-of-file earlier, so detach it first.
-        // We must keep it alive until after EndSourceFile(), Sema relies on this.
-        std::shared_ptr<clang::Preprocessor> pp = instance->getPreprocessorPtr();
-        instance->setPreprocessor(nullptr);  // Detach so we don't send EOF again
-        self->action->EndSourceFile();
-    }
-
-    delete self;
-}
-
 bool CompilationUnitRef::success() {
     return self->instance != nullptr;
 }
 
-std::string CompilationUnitRef::error() {
-    return self->error_message;
-}
-
 auto CompilationUnitRef::file_id(llvm::StringRef file) -> clang::FileID {
-    auto entry = self->src_mgr->getFileManager().getFileRef(file);
+    auto entry = self->SM().getFileManager().getFileRef(file);
     if(entry) {
-        return self->src_mgr->translateFile(*entry);
+        return self->SM().translateFile(*entry);
     }
 
     return clang::FileID();
@@ -37,7 +20,7 @@ auto CompilationUnitRef::file_id(llvm::StringRef file) -> clang::FileID {
 auto CompilationUnitRef::decompose_location(clang::SourceLocation location)
     -> std::pair<clang::FileID, std::uint32_t> {
     assert(location.isFileID() && "Decompose macro location is meaningless!");
-    return self->src_mgr->getDecomposedLoc(location);
+    return self->SM().getDecomposedLoc(location);
 }
 
 auto CompilationUnitRef::decompose_range(clang::SourceRange range)
@@ -82,11 +65,11 @@ auto CompilationUnitRef::decompose_expansion_range(clang::SourceRange range)
 }
 
 auto CompilationUnitRef::file_id(clang::SourceLocation location) -> clang::FileID {
-    return self->src_mgr->getFileID(location);
+    return self->SM().getFileID(location);
 }
 
 auto CompilationUnitRef::file_offset(clang::SourceLocation location) -> std::uint32_t {
-    return self->src_mgr->getFileOffset(location);
+    return self->SM().getFileOffset(location);
 }
 
 auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
@@ -95,7 +78,7 @@ auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
         return it->second;
     }
 
-    auto entry = self->src_mgr->getFileEntryRefForID(fid);
+    auto entry = self->SM().getFileEntryRefForID(fid);
     assert(entry && "Invalid file entry");
 
     llvm::SmallString<128> path;
@@ -120,21 +103,21 @@ auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
 }
 
 auto CompilationUnitRef::file_content(clang::FileID fid) -> llvm::StringRef {
-    return self->src_mgr->getBufferData(fid);
+    return self->SM().getBufferData(fid);
 }
 
 auto CompilationUnitRef::interested_file() -> clang::FileID {
-    return self->interested;
+    return self->SM().getMainFileID();
 }
 
 auto CompilationUnitRef::interested_content() -> llvm::StringRef {
-    return file_content(self->interested);
+    return file_content(interested_file());
 }
 
 bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {
     // No FileEntryRef => built-in/command line/scratch.
-    if(!self->src_mgr->getFileEntryRefForID(fid)) {
-        if(auto buffer = self->src_mgr->getBufferOrNone(fid)) {
+    if(!self->SM().getFileEntryRefForID(fid)) {
+        if(auto buffer = self->SM().getBufferOrNone(fid)) {
             auto name = buffer->getBufferIdentifier();
             return name == "<built-in>" || name == "<command line>" || name == "<scratch space>";
         }
@@ -144,37 +127,37 @@ bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {
 }
 
 auto CompilationUnitRef::start_location(clang::FileID fid) -> clang::SourceLocation {
-    return self->src_mgr->getLocForStartOfFile(fid);
+    return self->SM().getLocForStartOfFile(fid);
 }
 
 auto CompilationUnitRef::end_location(clang::FileID fid) -> clang::SourceLocation {
-    return self->src_mgr->getLocForEndOfFile(fid);
+    return self->SM().getLocForEndOfFile(fid);
 }
 
 auto CompilationUnitRef::spelling_location(clang::SourceLocation loc) -> clang::SourceLocation {
-    return self->src_mgr->getSpellingLoc(loc);
+    return self->SM().getSpellingLoc(loc);
 }
 
 auto CompilationUnitRef::expansion_location(clang::SourceLocation location)
     -> clang::SourceLocation {
-    return self->src_mgr->getExpansionLoc(location);
+    return self->SM().getExpansionLoc(location);
 }
 
 auto CompilationUnitRef::file_location(clang::SourceLocation location) -> clang::SourceLocation {
-    return self->src_mgr->getFileLoc(location);
+    return self->SM().getFileLoc(location);
 }
 
 auto CompilationUnitRef::include_location(clang::FileID fid) -> clang::SourceLocation {
-    return self->src_mgr->getIncludeLoc(fid);
+    return self->SM().getIncludeLoc(fid);
 }
 
 auto CompilationUnitRef::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
-    return self->src_mgr->getPresumedLoc(location, false);
+    return self->SM().getPresumedLoc(location, false);
 }
 
 auto CompilationUnitRef::create_location(clang::FileID fid, std::uint32_t offset)
     -> clang::SourceLocation {
-    return self->src_mgr->getComposedLoc(fid, offset);
+    return self->SM().getComposedLoc(fid, offset);
 }
 
 auto CompilationUnitRef::spelled_tokens(clang::FileID fid) -> TokenRange {
@@ -208,13 +191,11 @@ auto CompilationUnitRef::expansions_overlapping(TokenRange spelled_tokens)
 }
 
 auto CompilationUnitRef::token_length(clang::SourceLocation location) -> std::uint32_t {
-    return clang::Lexer::MeasureTokenLength(location,
-                                            *self->src_mgr,
-                                            self->instance->getLangOpts());
+    return clang::Lexer::MeasureTokenLength(location, self->SM(), self->instance->getLangOpts());
 }
 
 auto CompilationUnitRef::token_spelling(clang::SourceLocation location) -> llvm::StringRef {
-    return llvm::StringRef(self->src_mgr->getCharacterData(location), token_length(location));
+    return llvm::StringRef(self->SM().getCharacterData(location), token_length(location));
 }
 
 auto CompilationUnitRef::module_name() -> llvm::StringRef {
@@ -295,7 +276,7 @@ index::SymbolID CompilationUnitRef::getSymbolID(const clang::MacroInfo* macro) {
         hash = iter->second;
     } else {
         llvm::SmallString<128> usr;
-        index::generateUSRForMacro(name, macro->getDefinitionLoc(), *self->src_mgr, usr);
+        index::generateUSRForMacro(name, macro->getDefinitionLoc(), self->SM(), usr);
         hash = llvm::xxh3_64bits(usr);
         self->symbol_hash_cache.try_emplace(macro, hash);
     }
@@ -312,7 +293,7 @@ const llvm::DenseSet<clang::FileID>& CompilationUnitRef::files() {
                 }
             }
         }
-        self->all_files.insert(self->src_mgr->getMainFileID());
+        self->all_files.insert(self->SM().getMainFileID());
     }
     return self->all_files;
 }
@@ -336,6 +317,19 @@ clang::ASTContext& CompilationUnitRef::context() {
 
 clang::syntax::TokenBuffer& CompilationUnitRef::token_buffer() {
     return *self->buffer;
+}
+
+CompilationUnit::~CompilationUnit() {
+    if(self && self->action) {
+        auto instance = self->instance.get();
+        // We already notified the pp of end-of-file earlier, so detach it first.
+        // We must keep it alive until after EndSourceFile(), Sema relies on this.
+        std::shared_ptr<clang::Preprocessor> pp = instance->getPreprocessorPtr();
+        instance->setPreprocessor(nullptr);  // Detach so we don't send EOF again
+        self->action->EndSourceFile();
+    }
+
+    delete self;
 }
 
 }  // namespace clice
