@@ -12,7 +12,7 @@ namespace clice::feature {
 
 namespace {
 
-std::vector<HoverItem> getHoverItems(CompilationUnit& unit, const clang::NamedDecl* decl) {
+std::vector<HoverItem> getHoverItems(CompilationUnitRef unit, const clang::NamedDecl* decl) {
     clang::ASTContext& Ctx = unit.context();
     std::vector<HoverItem> items;
 
@@ -35,7 +35,7 @@ std::vector<HoverItem> getHoverItems(CompilationUnit& unit, const clang::NamedDe
     return items;
 }
 
-std::string getDocument(CompilationUnit& unit, const clang::NamedDecl* decl) {
+std::string getDocument(CompilationUnitRef unit, const clang::NamedDecl* decl) {
     clang::ASTContext& Ctx = unit.context();
     const clang::RawComment* comment = Ctx.getRawCommentForAnyRedecl(decl);
     if(!comment) {
@@ -45,14 +45,14 @@ std::string getDocument(CompilationUnit& unit, const clang::NamedDecl* decl) {
     return comment->getRawText(Ctx.getSourceManager()).str();
 }
 
-std::string getQualifier(CompilationUnit& unit, const clang::NamedDecl* decl) {
+std::string getQualifier(CompilationUnitRef unit, const clang::NamedDecl* decl) {
     std::string result;
     llvm::raw_string_ostream os(result);
     decl->printNestedNameSpecifier(os);
     return result;
 }
 
-std::string getSourceCode(CompilationUnit& unit, const clang::NamedDecl* decl) {
+std::string getSourceCode(CompilationUnitRef unit, const clang::NamedDecl* decl) {
     clang::SourceRange range = decl->getSourceRange();
     // auto& TB = unit.tokBuf();
     // auto& SM = unit.srcMgr();
@@ -63,7 +63,7 @@ std::string getSourceCode(CompilationUnit& unit, const clang::NamedDecl* decl) {
 
 }  // namespace
 
-Hover hover(CompilationUnit& unit, const clang::NamedDecl* decl) {
+Hover hover(CompilationUnitRef unit, const clang::NamedDecl* decl) {
     return Hover{
         .kind = SymbolKind::from(decl),
         .name = ast::name_of(decl),
@@ -74,7 +74,7 @@ Hover hover(CompilationUnit& unit, const clang::NamedDecl* decl) {
     };
 }
 
-Hover hover(CompilationUnit& unit, std::uint32_t offset) {
+Hover hover(CompilationUnitRef unit, std::uint32_t offset) {
     Hover info;
 
     auto tree = SelectionTree::create_right(unit, {offset, offset});

@@ -21,9 +21,9 @@ struct SemanticToken {
 using SemanticTokens = std::vector<SemanticToken>;
 
 /// Generate semantic tokens for the interested file only.
-SemanticTokens semantic_tokens(CompilationUnit& unit);
+SemanticTokens semantic_tokens(CompilationUnitRef unit);
 
 /// Generate semantic tokens for all files.
-index::Shared<SemanticTokens> index_semantic_token(CompilationUnit& unit);
+index::Shared<SemanticTokens> index_semantic_token(CompilationUnitRef unit);
 
 }  // namespace clice::feature

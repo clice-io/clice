@@ -286,7 +286,7 @@ bool is_first_expansion(clang::FileID target,
 class SelectionTester {
 public:
     // The selection is offsets [SelBegin, SelEnd) in SelFile.
-    SelectionTester(CompilationUnit& unit,
+    SelectionTester(CompilationUnitRef unit,
                     clang::FileID selected_file_id,
                     LocalSourceRange selected_range,
                     const clang::SourceManager& source_manager) :
@@ -712,7 +712,7 @@ class SelectionVisitor : public clang::RecursiveASTVisitor<SelectionVisitor> {
 public:
     // Runs the visitor to gather selected nodes and their ancestors.
     // If there is any selection, the root (TUDecl) is the first node.
-    static std::deque<Node> collect(CompilationUnit& unit,
+    static std::deque<Node> collect(CompilationUnitRef unit,
                                     const clang::PrintingPolicy& printing_policy,
                                     LocalSourceRange range,
                                     clang::FileID fid) {
@@ -871,7 +871,7 @@ public:
 private:
     using Base = RecursiveASTVisitor<SelectionVisitor>;
 
-    SelectionVisitor(CompilationUnit& unit,
+    SelectionVisitor(CompilationUnitRef unit,
                      const clang::PrintingPolicy& printing_policy,
                      LocalSourceRange range,
                      clang::FileID selected_file) :
@@ -1135,7 +1135,7 @@ private:
     clang::SourceManager& SM;
     const clang::LangOptions& lang_opts;
     const clang::PrintingPolicy& print_policy;
-    CompilationUnit& unit;
+    CompilationUnitRef unit;
     std::stack<Node*> stack;
     SelectionTester checker;
     IntervalSet unclaimed_expanded_tokens;
@@ -1186,7 +1186,7 @@ std::string SelectionTree::Node::kind() const {
     return std::move(OS.str());
 }
 
-bool SelectionTree::create_each(CompilationUnit& unit,
+bool SelectionTree::create_each(CompilationUnitRef unit,
                                 LocalSourceRange range,
                                 llvm::function_ref<bool(SelectionTree)> callback) {
     auto [begin, end] = range;
@@ -1227,7 +1227,7 @@ bool SelectionTree::create_each(CompilationUnit& unit,
     return false;
 }
 
-SelectionTree SelectionTree::create_right(CompilationUnit& unit, LocalSourceRange range) {
+SelectionTree SelectionTree::create_right(CompilationUnitRef unit, LocalSourceRange range) {
     std::optional<SelectionTree> result;
     create_each(unit, range, [&](SelectionTree T) {
         result = std::move(T);
@@ -1236,7 +1236,7 @@ SelectionTree SelectionTree::create_right(CompilationUnit& unit, LocalSourceRang
     return std::move(*result);
 }
 
-SelectionTree::SelectionTree(CompilationUnit& unit, LocalSourceRange range) :
+SelectionTree::SelectionTree(CompilationUnitRef unit, LocalSourceRange range) :
     print_policy(unit.context().getLangOpts()) {
     // No fundamental reason the selection needs to be in the main file,
     // but that's all clice has needed so far.

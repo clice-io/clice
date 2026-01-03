@@ -50,7 +50,7 @@ class DocumentSymbolCollector : public FilteredASTVisitor<DocumentSymbolCollecto
 public:
     using Base = FilteredASTVisitor<DocumentSymbolCollector>;
 
-    DocumentSymbolCollector(CompilationUnit& unit, bool interested_only) :
+    DocumentSymbolCollector(CompilationUnitRef unit, bool interested_only) :
         Base(unit, interested_only) {}
 
     bool is_interested(clang::Decl* decl) {
@@ -126,7 +126,7 @@ public:
 
 }  // namespace
 
-DocumentSymbols document_symbols(CompilationUnit& unit) {
+DocumentSymbols document_symbols(CompilationUnitRef unit) {
     DocumentSymbolCollector collector(unit, true);
     collector.TraverseDecl(unit.tu());
 
@@ -135,7 +135,7 @@ DocumentSymbols document_symbols(CompilationUnit& unit) {
     return std::move(frame.symbols);
 }
 
-index::Shared<DocumentSymbols> index_document_symbol(CompilationUnit& unit) {
+index::Shared<DocumentSymbols> index_document_symbol(CompilationUnitRef unit) {
     DocumentSymbolCollector collector(unit, true);
     collector.TraverseDecl(unit.tu());
 

@@ -14,7 +14,7 @@ class FilteredASTVisitor : public clang::RecursiveASTVisitor<Derived> {
 public:
     using Base = clang::RecursiveASTVisitor<Derived>;
 
-    FilteredASTVisitor(CompilationUnit& unit, bool interested_only) :
+    FilteredASTVisitor(CompilationUnitRef unit, bool interested_only) :
         unit(unit), interested_only(interested_only) {}
 
 #define CHECK_DERIVED_IMPL(func)                                                                   \
@@ -181,7 +181,7 @@ public:
 #undef CHECK_DERIVED_IMPL
 
 protected:
-    CompilationUnit& unit;
+    CompilationUnitRef unit;
     bool interested_only;
 };
 

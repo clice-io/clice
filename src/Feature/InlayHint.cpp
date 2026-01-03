@@ -97,7 +97,7 @@ struct Callee {
 class Builder {
 public:
     Builder(std::vector<InlayHint>& result,
-            CompilationUnit& unit,
+            CompilationUnitRef unit,
             LocalSourceRange restrict_range,
             const config::InlayHintsOptions& options) :
         result(result), unit(unit), restrict_range(restrict_range), options(options),
@@ -523,7 +523,7 @@ public:
 
 private:
     std::vector<InlayHint>& result;
-    CompilationUnit& unit;
+    CompilationUnitRef unit;
     LocalSourceRange restrict_range;
     const config::InlayHintsOptions& options;
     clang::PrintingPolicy policy;
@@ -534,7 +534,7 @@ public:
     using Base = FilteredASTVisitor<Visitor>;
 
     Visitor(Builder& builder,
-            CompilationUnit& unit,
+            CompilationUnitRef unit,
             std::optional<LocalSourceRange> restrict_range,
             const config::InlayHintsOptions& options) :
         Base(unit, true), builder(builder), unit(unit), options(options) {}
@@ -867,7 +867,7 @@ public:
 
 private:
     Builder& builder;
-    CompilationUnit& unit;
+    CompilationUnitRef unit;
     const config::InlayHintsOptions& options;
 
     // If/else chains are tricky.
@@ -881,7 +881,7 @@ private:
 
 }  // namespace
 
-auto inlay_hints(CompilationUnit& unit,
+auto inlay_hints(CompilationUnitRef unit,
                  LocalSourceRange target,
                  const config::InlayHintsOptions& options) -> std::vector<InlayHint> {
     std::vector<InlayHint> hints;

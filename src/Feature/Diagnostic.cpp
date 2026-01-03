@@ -6,7 +6,7 @@
 
 namespace clice::feature {
 
-json::Value diagnostics(PositionEncodingKind kind, PathMapping mapping, CompilationUnit& unit) {
+json::Value diagnostics(PositionEncodingKind kind, PathMapping mapping, CompilationUnitRef unit) {
     json::Array result;
 
     std::optional<proto::Diagnostic> diagnostic;

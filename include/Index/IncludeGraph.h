@@ -8,7 +8,7 @@
 
 namespace clice {
 
-class CompilationUnit;
+class CompilationUnitRef;
 
 }
 
@@ -41,7 +41,7 @@ struct IncludeGraph {
     /// context. A map between FileID and its include location.
     llvm::DenseMap<clang::FileID, std::uint32_t> file_table;
 
-    static IncludeGraph from(CompilationUnit& unit);
+    static IncludeGraph from(CompilationUnitRef unit);
 
     llvm::StringRef path(std::uint32_t path_ref) const {
         assert(path_ref < paths.size());

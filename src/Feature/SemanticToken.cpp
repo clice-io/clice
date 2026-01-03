@@ -246,7 +246,7 @@ public:
 
 }  // namespace
 
-SemanticTokens semantic_tokens(CompilationUnit& unit) {
+SemanticTokens semantic_tokens(CompilationUnitRef unit) {
     SemanticTokensCollector collector(unit, true);
     collector.highlight(unit.interested_file());
     collector.run();
@@ -254,7 +254,7 @@ SemanticTokens semantic_tokens(CompilationUnit& unit) {
     return std::move(collector.result);
 }
 
-index::Shared<SemanticTokens> index_semantic_token(CompilationUnit& unit) {
+index::Shared<SemanticTokens> index_semantic_token(CompilationUnitRef unit) {
     SemanticTokensCollector collector(unit, false);
     for(auto fid: unit.files()) {
         collector.highlight(fid);

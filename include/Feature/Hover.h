@@ -66,9 +66,9 @@ struct Hover {
 };
 
 /// Generate the hover information for the given declaration(for test).
-Hover hover(CompilationUnit& unit, const clang::NamedDecl* decl);
+Hover hover(CompilationUnitRef unit, const clang::NamedDecl* decl);
 
 /// Generate the hover information for the symbol at the given offset.
-Hover hover(CompilationUnit& unit, std::uint32_t offset);
+Hover hover(CompilationUnitRef unit, std::uint32_t offset);
 
 }  // namespace clice::feature

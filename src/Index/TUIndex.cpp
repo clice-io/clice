@@ -11,7 +11,7 @@ namespace {
 
 class Builder : public SemanticVisitor<Builder> {
 public:
-    Builder(TUIndex& result, CompilationUnit& unit) :
+    Builder(TUIndex& result, CompilationUnitRef unit) :
         SemanticVisitor<Builder>(unit, false), result(result) {
         result.graph = IncludeGraph::from(unit);
     }
@@ -166,7 +166,7 @@ std::array<std::uint8_t, 32> FileIndex::hash() {
     return hasher.final();
 }
 
-TUIndex TUIndex::build(CompilationUnit& unit) {
+TUIndex TUIndex::build(CompilationUnitRef unit) {
     TUIndex index;
     index.built_at = unit.build_at();
 

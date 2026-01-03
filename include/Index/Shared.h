@@ -5,7 +5,7 @@
 
 namespace clice {
 
-class CompilationUnit;
+class CompilationUnitRef;
 
 }
 

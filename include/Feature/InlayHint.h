@@ -50,7 +50,7 @@ struct InlayHint {
     std::vector<index::SymbolID> parts;
 };
 
-auto inlay_hints(CompilationUnit& unit,
+auto inlay_hints(CompilationUnitRef unit,
                  LocalSourceRange target,
                  const config::InlayHintsOptions& options) -> std::vector<InlayHint>;
 

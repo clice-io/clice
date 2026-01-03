@@ -29,9 +29,9 @@ struct DocumentSymbol {
 using DocumentSymbols = std::vector<DocumentSymbol>;
 
 /// Generate document symbols for only interested file.
-DocumentSymbols document_symbols(CompilationUnit& unit);
+DocumentSymbols document_symbols(CompilationUnitRef unit);
 
 /// Generate document symbols for all file in unit.
-index::Shared<DocumentSymbols> index_document_symbol(CompilationUnit& unit);
+index::Shared<DocumentSymbols> index_document_symbol(CompilationUnitRef unit);
 
 }  // namespace clice::feature

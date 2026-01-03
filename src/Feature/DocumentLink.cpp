@@ -8,7 +8,7 @@ namespace clice::feature {
 
 namespace {}
 
-DocumentLinks document_links(CompilationUnit& unit) {
+DocumentLinks document_links(CompilationUnitRef unit) {
     DocumentLinks links;
 
     auto& interested_diretive = unit.directives()[unit.interested_file()];
@@ -39,7 +39,7 @@ DocumentLinks document_links(CompilationUnit& unit) {
     return links;
 }
 
-index::Shared<DocumentLinks> index_document_link(CompilationUnit& unit) {
+index::Shared<DocumentLinks> index_document_link(CompilationUnitRef unit) {
     index::Shared<DocumentLinks> result;
 
     for(auto& [fid, diretives]: unit.directives()) {

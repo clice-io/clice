@@ -75,7 +75,7 @@ struct TUIndex {
 
     FileIndex main_file_index;
 
-    static TUIndex build(CompilationUnit& unit);
+    static TUIndex build(CompilationUnitRef unit);
 };
 
 }  // namespace clice::index

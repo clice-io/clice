@@ -13,7 +13,7 @@ class SemanticVisitor : public FilteredASTVisitor<SemanticVisitor<Derived>> {
 public:
     using Base = FilteredASTVisitor<SemanticVisitor>;
 
-    SemanticVisitor(CompilationUnit& unit, bool interested_only) :
+    SemanticVisitor(CompilationUnitRef unit, bool interested_only) :
         Base(unit, interested_only), unit(unit), resolver(unit.resolver()) {}
 
 public:
@@ -725,7 +725,7 @@ public:
     }
 
 protected:
-    CompilationUnit& unit;
+    CompilationUnitRef unit;
     TemplateResolver& resolver;
     llvm::SmallVector<clang::Decl*> decls;
 };

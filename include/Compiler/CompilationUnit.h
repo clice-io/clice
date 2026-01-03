@@ -229,18 +229,15 @@ protected:
 /// All AST related information needed for language server.
 class CompilationUnit : public CompilationUnitRef {
 public:
-    CompilationUnit(CompilationKind kind, Self* impl) : kind(kind), CompilationUnitRef(impl) {}
+    explicit CompilationUnit(Self* impl) : CompilationUnitRef(impl) {}
 
     CompilationUnit(const CompilationUnit&) = delete;
 
-    CompilationUnit(CompilationUnit&& other) : kind(other.kind), CompilationUnitRef(other.self) {
+    CompilationUnit(CompilationUnit&& other) : CompilationUnitRef(other.self) {
         other.self = nullptr;
     }
 
     ~CompilationUnit();
-
-private:
-    CompilationKind kind;
 };
 
 }  // namespace clice

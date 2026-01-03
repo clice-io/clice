@@ -11,7 +11,7 @@
 
 namespace clice {
 
-class CompilationUnit;
+class CompilationUnitRef;
 
 /// A selection can partially or completely cover several AST nodes.
 /// The SelectionTree contains nodes that are covered, and their parents.
@@ -47,7 +47,7 @@ public:
     /// - Func should return true on success (stop) and false on failure (continue)
     ///
     /// Always yields at least one tree. If no tokens are touched, it is empty.
-    static bool create_each(CompilationUnit& unit,
+    static bool create_each(CompilationUnitRef unit,
                             LocalSourceRange range,
                             llvm::function_ref<bool(SelectionTree)> callback);
 
@@ -55,7 +55,7 @@ public:
     ///
     /// Where ambiguous (range is empty and borders two tokens), prefer the token
     /// on the right.
-    static SelectionTree create_right(CompilationUnit& unit, LocalSourceRange range);
+    static SelectionTree create_right(CompilationUnitRef unit, LocalSourceRange range);
 
     /// Copies are no good - contain pointers to other nodes.
     SelectionTree(const SelectionTree&) = delete;
@@ -139,7 +139,7 @@ public:
 private:
     // Creates a selection tree for the given range in the main file.
     // The range includes bytes [Start, End).
-    SelectionTree(CompilationUnit& unit, LocalSourceRange range);
+    SelectionTree(CompilationUnitRef unit, LocalSourceRange range);
 
     // Stable-pointer storage, FIXME: use memory pool instead?
     std::deque<Node> nodes;

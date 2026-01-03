@@ -10,7 +10,7 @@ namespace {
 
 class FoldingRangeCollector : public FilteredASTVisitor<FoldingRangeCollector> {
 public:
-    FoldingRangeCollector(CompilationUnit& unit, bool interested_only) :
+    FoldingRangeCollector(CompilationUnitRef unit, bool interested_only) :
         FilteredASTVisitor(unit, interested_only) {}
 
     constexpr static auto LastColOfLine = std::numeric_limits<unsigned>::max();
@@ -145,14 +145,14 @@ public:
         return true;
     }
 
-    auto build_for_file(CompilationUnit& unit) {
+    auto build_for_file(CompilationUnitRef unit) {
         TraverseDecl(unit.tu());
         collect_drectives(unit.directives()[unit.interested_file()]);
         std::ranges::sort(result, refl::less);
         return std::move(result);
     }
 
-    auto build_for_index(CompilationUnit& unit) {
+    auto build_for_index(CompilationUnitRef unit) {
         TraverseDecl(unit.tu());
         for(auto& [fid, directive]: unit.directives()) {
             collect_drectives(directive);
@@ -326,11 +326,11 @@ private:
 
 }  // namespace
 
-FoldingRanges folding_ranges(CompilationUnit& unit) {
+FoldingRanges folding_ranges(CompilationUnitRef unit) {
     return FoldingRangeCollector(unit, true).build_for_file(unit);
 }
 
-index::Shared<FoldingRanges> index_folding_range(CompilationUnit& unit) {
+index::Shared<FoldingRanges> index_folding_range(CompilationUnitRef unit) {
     return FoldingRangeCollector(unit, false).build_for_index(unit);
 }  // namespace feature
 

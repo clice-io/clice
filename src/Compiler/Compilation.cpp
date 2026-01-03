@@ -333,7 +333,7 @@ CompilationUnit run_clang(CompilationParams& params,
         after_execute(self);
     }
 
-    return CompilationUnit(params.kind, self);
+    return CompilationUnit(self);
 }
 
 }  // namespace

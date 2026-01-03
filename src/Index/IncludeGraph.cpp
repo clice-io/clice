@@ -4,7 +4,7 @@
 
 namespace clice::index {
 
-static std::uint32_t addIncludeChain(CompilationUnit& unit,
+static std::uint32_t addIncludeChain(CompilationUnitRef unit,
                                      clang::FileID fid,
                                      IncludeGraph& graph,
                                      llvm::StringMap<std::uint32_t>& path_table) {
@@ -45,7 +45,7 @@ static std::uint32_t addIncludeChain(CompilationUnit& unit,
     return index;
 }
 
-IncludeGraph IncludeGraph::from(CompilationUnit& unit) {
+IncludeGraph IncludeGraph::from(CompilationUnitRef unit) {
     llvm::StringMap<std::uint32_t> path_table;
     IncludeGraph graph;
     for(auto fid: unit.files()) {
