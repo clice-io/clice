@@ -1,3 +1,5 @@
+#include <fstream>
+
 #include "Test/Test.h"
 #include "Compiler/Command.h"
 #include "Compiler/Compilation.h"
@@ -5,6 +7,7 @@
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Program.h"
+#include <llvm/Support/FileSystem.h>
 #include "clang/Driver/Driver.h"
 
 namespace clice::testing {
@@ -231,6 +234,42 @@ void expect_load(llvm::StringRef content,
         llvm::StringRef expect_arg = arguments[i];
         ASSERT_EQ(arg, expect_arg);
     }
+};
+
+TEST_CASE(AutoDiscoveryIntegration) {
+    using namespace std::literals;
+
+    std::string temp_workspace = "/tmp/clice_autodiscovery_test";
+    fs::create_directories(temp_workspace);
+
+    std::string compile_commands_path = path::join(temp_workspace, "compile_commands.json");
+    std::ofstream file(compile_commands_path);
+    file << R"([
+    {
+        "directory": ")"
+         << temp_workspace << R"(",
+        "command": "clang++ -std=c++20 main.cpp",
+        "file": "main.cpp"
+    }
+    ])";
+    file.close();
+
+    CompilationDatabase database;
+    auto updates = database.load_compile_database(compile_commands_path);
+
+    ASSERT_FALSE(updates.empty());
+
+    CommandOptions options;
+    options.suppress_logging = true;
+    auto info = database.lookup("main.cpp", options);
+
+    ASSERT_EQ(info.arguments.size(), 3U);
+    ASSERT_EQ(info.arguments[0], "clang++"sv);
+    ASSERT_EQ(info.arguments[1], "-std=c++20"sv);
+    ASSERT_EQ(info.arguments[2], "main.cpp"sv);
+
+    fs::remove(compile_commands_path);
+    fs::remove(temp_workspace);
 };
 
 /// TODO: add windows path testcase
