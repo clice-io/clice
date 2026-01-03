@@ -289,8 +289,6 @@ CompilationStatus run_clang(CompilationUnitRef::Self& self,
     /// in crash frequently. So forbidden it here and return as error.
     if(!instance.getFrontendOpts().OutputFile.empty() &&
        instance.getDiagnostics().hasErrorOccurred()) {
-        self.action->EndSourceFile();
-        self.action.reset();
         return CompilationStatus::FatalError;
     }
 
