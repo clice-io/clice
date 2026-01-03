@@ -72,7 +72,7 @@ struct CompilationUnitRef::Self {
     /// Token information collected during the preprocessing.
     std::optional<clang::syntax::TokenBuffer> buffer;
 
-    /// All diretive information collected during the preprocessing.
+    /// All directive information collected during the preprocessing.
     llvm::DenseMap<clang::FileID, Directive> directives;
 
     llvm::DenseSet<clang::FileID> all_files;

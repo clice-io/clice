@@ -46,10 +46,10 @@ std::string scanModuleName(CompilationParams& params) {
 
         if(token.is(clang::tok::hash)) {
             lexer.LexFromRawLexer(token);
-            auto diretive = token.getRawIdentifier();
-            if(diretive == "if" || diretive == "ifdef" || diretive == "ifndef") {
+            auto directive = token.getRawIdentifier();
+            if(directive == "if" || directive == "ifdef" || directive == "ifndef") {
                 is_in_directive = true;
-            } else if(diretive == "endif") {
+            } else if(directive == "endif") {
                 is_in_directive = false;
             }
         } else if(token.is(clang::tok::raw_identifier)) {

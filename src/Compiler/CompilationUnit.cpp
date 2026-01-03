@@ -235,14 +235,14 @@ std::vector<std::string> CompilationUnitRef::deps() {
 
     /// FIXME: consider `#embed` and `__has_embed`.
 
-    for(auto& [fid, diretive]: directives()) {
-        for(auto& include: diretive.includes) {
+    for(auto& [fid, directive]: directives()) {
+        for(auto& include: directive.includes) {
             if(!include.skipped) {
                 deps.try_emplace(file_path(include.fid));
             }
         }
 
-        for(auto& has_include: diretive.has_includes) {
+        for(auto& has_include: directive.has_includes) {
             if(has_include.fid.isValid()) {
                 deps.try_emplace(file_path(has_include.fid));
             }
@@ -290,8 +290,8 @@ index::SymbolID CompilationUnitRef::getSymbolID(const clang::MacroInfo* macro) {
 const llvm::DenseSet<clang::FileID>& CompilationUnitRef::files() {
     if(self->all_files.empty()) {
         /// FIXME: handle preamble and embed file id.
-        for(auto& [fid, diretive]: directives()) {
-            for(auto& include: diretive.includes) {
+        for(auto& [fid, directive]: directives()) {
+            for(auto& include: directive.includes) {
                 if(!include.skipped && include.fid.isValid()) {
                     self->all_files.insert(include.fid);
                 }

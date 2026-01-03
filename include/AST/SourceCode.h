@@ -110,7 +110,7 @@ struct Token {
         return is_at_start_of_line && kind == clang::tok::hash;
     }
 
-    /// The tokens after the include diretive are regarded as
+    /// The tokens after the include directive are regarded as
     /// a whole token, whose kind is `header_name`. For example
     /// `<iostream>` and `"test.h"` are both header name.
     bool is_header_name() const {
