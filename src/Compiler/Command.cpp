@@ -703,7 +703,7 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         append_arg(fs::resource_dir);
     }
 
-    if(options.query_toolchain) {
+    if(info && options.query_toolchain) {
         auto callback = [&](const char* s) {
             return save_string(s).data();
         };
