@@ -204,7 +204,7 @@ proto::SignatureHelp signature_help(CompilationParams& params,
 
     auto consumer = new Collector(help, complete_options);
     auto unit = complete(params, consumer);
-    if(!unit.success()) {
+    if(!unit.completed()) {
         /// FIXME: do something.
     }
     return help;

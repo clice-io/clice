@@ -6,6 +6,7 @@
 #include "Compiler/Diagnostic.h"
 #include "Support/Logging.h"
 
+#include "llvm/Support/Error.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Lex/PreprocessorOptions.h"
@@ -204,10 +205,10 @@ auto create_invocation(CompilationUnitRef::Self& self,
     return invocation;
 }
 
-bool run_clang(CompilationUnitRef::Self& self,
-               CompilationParams& params,
-               std::unique_ptr<clang::FrontendAction> action,
-               llvm::function_ref<void(clang::CompilerInstance&)> before_execute) {
+CompilationStatus run_clang(CompilationUnitRef::Self& self,
+                            CompilationParams& params,
+                            std::unique_ptr<clang::FrontendAction> action,
+                            llvm::function_ref<void(clang::CompilerInstance&)> before_execute) {
     std::unique_ptr diagnostic_consumer = create_diagnostic(&self);
 
     /// Temporary diagnostic engine, only used for command line parsing.
@@ -220,12 +221,12 @@ bool run_clang(CompilationUnitRef::Self& self,
                                                    diagnostic_consumer.get(),
                                                    false);
     if(!diagnostic_engine) {
-        return false;
+        return CompilationStatus::SetupFail;
     }
 
     std::unique_ptr invocation = create_invocation(self, params, diagnostic_engine);
     if(!invocation) {
-        return false;
+        return CompilationStatus::SetupFail;
     }
 
     self.instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
@@ -239,7 +240,7 @@ bool run_clang(CompilationUnitRef::Self& self,
     }
 
     if(!instance.createTarget()) {
-        return false;
+        return CompilationStatus::SetupFail;
     }
 
     if(before_execute) {
@@ -255,7 +256,7 @@ bool run_clang(CompilationUnitRef::Self& self,
 
     if(!self.action->BeginSourceFile(instance, instance.getFrontendOpts().Inputs[0])) {
         self.action.reset();
-        return false;
+        return CompilationStatus::SetupFail;
     }
 
     /// FIXME: include-fixer, etc?
@@ -275,7 +276,11 @@ bool run_clang(CompilationUnitRef::Self& self,
     }
 
     if(auto error = self.action->Execute()) {
-        return false;
+        // Upstream FrontendAction::Execute() always returns success (errors go through
+        // diagnostics); log here only as a guard in case a custom action ever returns
+        // an unexpected llvm::Error.
+        LOG_ERROR("FrontendAction::Execute failed: {}", error);
+        return CompilationStatus::FatalError;
     }
 
     /// If the output file is not empty, it represents that we are
@@ -286,7 +291,7 @@ bool run_clang(CompilationUnitRef::Self& self,
        instance.getDiagnostics().hasErrorOccurred()) {
         self.action->EndSourceFile();
         self.action.reset();
-        return false;
+        return CompilationStatus::FatalError;
     }
 
     /// Check whether the compilation is canceled, if so we think
@@ -294,7 +299,7 @@ bool run_clang(CompilationUnitRef::Self& self,
     if(params.stop && params.stop->load()) {
         self.action->EndSourceFile();
         self.action.reset();
-        return false;
+        return CompilationStatus::Cancelled;
     }
 
     if(token_collector) {
@@ -307,7 +312,7 @@ bool run_clang(CompilationUnitRef::Self& self,
         self.resolver.emplace(instance.getSema());
     }
 
-    return true;
+    return CompilationStatus::Completed;
 }
 
 CompilationUnit run_clang(CompilationParams& params,
@@ -315,17 +320,18 @@ CompilationUnit run_clang(CompilationParams& params,
                           llvm::function_ref<void(clang::CompilerInstance&)> before_execute = {},
                           llvm::function_ref<void(CompilationUnitRef)> after_execute = {}) {
     auto self = new CompilationUnitRef::Self();
+    self->kind = params.kind;
 
     using namespace std::chrono;
     self->build_at = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
     auto build_start = steady_clock::now().time_since_epoch();
 
-    bool success = run_clang(*self, params, std::move(action), before_execute);
+    self->status = run_clang(*self, params, std::move(action), before_execute);
 
     auto build_end = steady_clock::now().time_since_epoch();
     self->build_duration = duration_cast<milliseconds>(build_end - build_start);
 
-    if(success && after_execute) {
+    if(self->status == CompilationStatus::Completed && after_execute) {
         after_execute(self);
     }
 

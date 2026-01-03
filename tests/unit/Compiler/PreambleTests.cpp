@@ -68,7 +68,7 @@ void expect_build_pch(llvm::StringRef main_file,
     {
         /// NOTE: PCH file is written when CompilerInstance is destructed.
         auto unit = compile(params, info);
-        ASSERT_TRUE(unit.success());
+        ASSERT_TRUE(unit.completed());
 
         ASSERT_EQ(info.path, output_path);
         /// expect(that % info.command == params.arguments);
@@ -83,7 +83,7 @@ void expect_build_pch(llvm::StringRef main_file,
     params.add_remapped_file(main_file, content);
     params.pch = {info.path, info.preamble.size()};
     auto unit = compile(params);
-    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.completed());
 };
 
 TEST_CASE(Bounds) {
@@ -184,7 +184,7 @@ int foo();
         }
 
         auto unit = preprocess(params);
-        ASSERT_TRUE(unit.success());
+        ASSERT_TRUE(unit.completed());
 
         auto path = path::join(".", "test1.h");
         auto fid = unit.file_id(path);
@@ -253,7 +253,7 @@ int y = foo();
 
         {
             auto unit = compile(params, info);
-            ASSERT_TRUE(unit.success());
+            ASSERT_TRUE(unit.completed());
 
             ASSERT_EQ(info.path, outPath);
             /// expect(that % info.command == params.arguments);
@@ -268,7 +268,7 @@ int y = foo();
     params.add_remapped_file("main.cpp", content);
     params.pch = {info.path, last_bound};
     auto unit = compile(params);
-    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.completed());
 };
 
 TEST_CASE(Scan) {

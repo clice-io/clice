@@ -86,7 +86,7 @@ TEST_CASE(TargetError) {
     params.add_remapped_file("main.cpp", "");
 
     auto unit = compile(params);
-    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.setup_fail());
     ASSERT_TRUE(unit.diagnostics().size() == 1);
 
     auto& diag = unit.diagnostics()[0];
@@ -104,7 +104,7 @@ TEST_CASE(Error) {
     params.add_remapped_file("main.cpp", "int main() { return 0 }");
 
     auto unit = compile(params);
-    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.completed());
     ASSERT_TRUE(unit.diagnostics().size() == 1);
 
     auto& diag = unit.diagnostics()[0];
@@ -122,7 +122,7 @@ TEST_CASE(Warning) {
     params.add_remapped_file("main.cpp", "int main() { int x; return 0; }");
 
     auto unit = compile(params);
-    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.completed());
     ASSERT_EQ(unit.diagnostics().size(), 1);
 
     auto& diag = unit.diagnostics()[0];
@@ -145,7 +145,7 @@ void foo() {}
 
     PCHInfo info;
     auto unit = compile(params, info);
-    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.fatal_error());
 }
 
 TEST_CASE(ASTError) {
@@ -159,7 +159,7 @@ void foo() {}
 
     PCHInfo info;
     auto unit = compile(params);
-    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.completed());
 }
 
 };  // TEST_SUITE(Diagnostic)

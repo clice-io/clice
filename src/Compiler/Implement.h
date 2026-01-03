@@ -53,6 +53,10 @@ constexpr static auto no_hook = [](auto& /*ignore*/) {
 struct CompilationParams;
 
 struct CompilationUnitRef::Self {
+    CompilationKind kind;
+
+    CompilationStatus status;
+
     llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> remapped_buffers;
 
     /// The frontend action used to build the unit.

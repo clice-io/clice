@@ -4,8 +4,12 @@
 
 namespace clice {
 
-bool CompilationUnitRef::success() {
-    return self->instance != nullptr;
+CompilationKind CompilationUnitRef::kind() {
+    return self->kind;
+}
+
+CompilationStatus CompilationUnitRef::status() {
+    return self->status;
 }
 
 auto CompilationUnitRef::file_id(llvm::StringRef file) -> clang::FileID {

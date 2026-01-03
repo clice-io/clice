@@ -73,7 +73,7 @@ TEST_CASE(GCC, {.skip = !(CIEnvironment && (Windows || Linux))}) {
         )");
 
     auto unit = compile(params);
-    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.completed());
     ASSERT_TRUE(unit.diagnostics().empty());
 };
 
@@ -112,7 +112,7 @@ TEST_CASE(Clang, {.skip = !CIEnvironment}) {
         )");
 
     auto unit = compile(params);
-    ASSERT_TRUE(unit.success());
+    ASSERT_TRUE(unit.completed());
     ASSERT_TRUE(unit.diagnostics().empty());
 };
 

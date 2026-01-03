@@ -34,7 +34,12 @@ enum class CompilationKind : std::uint8_t {
     Completion,
 };
 
-enum class CompilationStatus : std::uint8_t {};
+enum class CompilationStatus : std::uint8_t {
+    Completed,
+    Cancelled,
+    SetupFail,
+    FatalError,
+};
 
 class CompilationUnitRef {
 public:
@@ -46,8 +51,34 @@ public:
         return self;
     }
 
-    bool success();
+public:
+    CompilationKind kind();
 
+    CompilationStatus status();
+
+    /// Parse finished; ASTContext is usable but diagnostics may still contain errors.
+    bool completed() {
+        return status() == CompilationStatus::Completed;
+    }
+
+    /// Compilation was cancelled; consumers should not touch any state.
+    bool cancelled() {
+        return status() == CompilationStatus::Cancelled;
+    }
+
+    /// Failed during initial setup; diagnostics exist (location-free), ASTContext
+    /// is unavailable.
+    bool setup_fail() {
+        return status() == CompilationStatus::SetupFail;
+    }
+
+    /// Hit an unrecoverable error; diagnostics and decoded source locations
+    /// are usable, other states are not unavailable.
+    bool fatal_error() {
+        return status() == CompilationStatus::FatalError;
+    }
+
+public:
     /// Get the file id for given file. If such file doesn't exist, the result
     /// will be invalid file id. If the the content of the file doesn't have
     /// `#pragma once` or guard macro, each inclusion of the file will generate
