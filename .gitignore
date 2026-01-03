@@ -60,6 +60,7 @@ tests/unit/Local/
 .vs/
 .idea/
 .claude
+.clangd
 
 # pixi environments
 .env

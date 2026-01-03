@@ -320,15 +320,6 @@ clang::syntax::TokenBuffer& CompilationUnitRef::token_buffer() {
 }
 
 CompilationUnit::~CompilationUnit() {
-    if(self && self->action) {
-        auto instance = self->instance.get();
-        // We already notified the pp of end-of-file earlier, so detach it first.
-        // We must keep it alive until after EndSourceFile(), Sema relies on this.
-        std::shared_ptr<clang::Preprocessor> pp = instance->getPreprocessorPtr();
-        instance->setPreprocessor(nullptr);  // Detach so we don't send EOF again
-        self->action->EndSourceFile();
-    }
-
     delete self;
 }
 

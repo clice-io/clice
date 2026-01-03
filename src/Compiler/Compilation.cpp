@@ -158,12 +158,23 @@ auto create_invocation(CompilationUnitRef::Self& self,
     pp_opts.WriteCommentListToPCH = false;
 
     auto& header_search_opts = invocation->getHeaderSearchOpts();
+    header_search_opts.Verbose = false;
     for(auto& [name, path]: params.pcms) {
         header_search_opts.PrebuiltModuleFiles.try_emplace(name.str(), std::move(path));
     }
 
     auto& front_opts = invocation->getFrontendOpts();
     front_opts.DisableFree = false;
+    front_opts.ShowHelp = false;
+    front_opts.ShowStats = false;
+    front_opts.ShowVersion = false;
+    front_opts.StatsFile = "";
+    front_opts.TimeTracePath = "";
+    front_opts.TimeTraceVerbose = false;
+    front_opts.TimeTraceGranularity = false;
+    front_opts.PrintSupportedCPUs = false;
+    front_opts.PrintEnabledExtensions = false;
+    front_opts.PrintSupportedExtensions = false;
 
     /// Compiler flags (like gcc/clang's -M, -MD, -MMD, -H, or msvc's /showIncludes)
     /// can generate dependency files or print included headers to stdout/stderr.
@@ -243,30 +254,24 @@ bool run_clang(CompilationUnitRef::Self& self,
         params.stop);
 
     if(!self.action->BeginSourceFile(instance, instance.getFrontendOpts().Inputs[0])) {
+        self.action.reset();
         return false;
     }
 
-    auto& pp = instance.getPreprocessor();
-
     /// FIXME: include-fixer, etc?
 
-    /// `BeginSourceFile` may create new preprocessor, so all operations related to preprocessor
-    /// should be done after `BeginSourceFile`.
-    Directive::attach(pp, self.directives);
+    /// Add PPCallbacks to collect preprocessing information.
+    self.collect_directives();
 
-    std::unique_ptr<tidy::ClangTidyChecker> checker;
     if(params.clang_tidy) {
-        tidy::TidyParams tidy_params;
-        checker = tidy::configure(instance, tidy_params);
-        /// TODO: We should make the lifetime of diagnostic consumer more explicit.
-        static_cast<DiagnosticCollector&>(instance.getDiagnosticClient()).checker = checker.get();
+        self.configure_tidy({});
     }
 
     std::optional<clang::syntax::TokenCollector> token_collector;
     if(!instance.hasCodeCompletionConsumer()) {
         /// It is not necessary to collect tokens if we are running code completion.
         /// And in fact will cause assertion failure.
-        token_collector.emplace(pp);
+        token_collector.emplace(instance.getPreprocessor());
     }
 
     if(auto error = self.action->Execute()) {
@@ -296,18 +301,7 @@ bool run_clang(CompilationUnitRef::Self& self,
         self.buffer = std::move(*token_collector).consume();
     }
 
-    // Must be called before EndSourceFile because the ast context can be destroyed later.
-    if(checker) {
-        // AST traversals should exclude the preamble, to avoid performance cliffs.
-        // TODO: is it okay to affect the unit-level traversal scope here?
-        instance.getASTContext().setTraversalScope(self.top_level_decls);
-        checker->finder.matchAST(instance.getASTContext());
-    }
-
-    /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
-    /// However Action->EndSourceFile() would destroy the ASTContext!
-    /// So just inform the preprocessor of EOF, while keeping everything alive.
-    pp.EndSourceFile();
+    self.run_tidy();
 
     if(instance.hasSema()) {
         self.resolver.emplace(instance.getSema());

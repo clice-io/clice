@@ -1,5 +1,7 @@
 #include "Compiler/Directive.h"
 
+#include "Implement.h"
+
 #include "clang/Lex/MacroArgs.h"
 #include "clang/Lex/MacroInfo.h"
 #include "clang/Lex/Preprocessor.h"
@@ -262,8 +264,8 @@ private:
 
 }  // namespace
 
-void Directive::attach(clang::Preprocessor& pp,
-                       llvm::DenseMap<clang::FileID, Directive>& directives) {
+void CompilationUnitRef::Self::collect_directives() {
+    auto& pp = instance->getPreprocessor();
     pp.addPPCallbacks(std::make_unique<DirectiveCollector>(pp, directives));
 }
 

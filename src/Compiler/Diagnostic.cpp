@@ -150,9 +150,9 @@ static DiagnosticLevel diagnostic_level(clang::DiagnosticsEngine::Level level) {
     }
 }
 
-class DiagnosticCollectorImpl : public DiagnosticCollector {
+class DiagnosticCollector : public clang::DiagnosticConsumer {
 public:
-    DiagnosticCollectorImpl(CompilationUnitRef unit) : unit(unit) {}
+    DiagnosticCollector(CompilationUnitRef unit) : unit(unit) {}
 
     auto diagnostic_range(const clang::Diagnostic& diagnostic)
         -> std::optional<std::pair<clang::FileID, LocalSourceRange>> {
@@ -210,8 +210,8 @@ public:
         diagnostic.id.value = raw_diagnostic.getID();
 
         if(!is_note(level)) {
-            if(checker) {
-                level = checker->adjust_level(level, raw_diagnostic);
+            if(unit->checker) {
+                level = unit->checker->adjust_level(level, raw_diagnostic);
             }
         }
         diagnostic.id.level = diagnostic_level(level);
@@ -235,8 +235,8 @@ public:
             diagnostic.range = range;
         }
 
-        if(checker) {
-            checker->adjust_diag(diagnostic);
+        if(unit->checker) {
+            unit->checker->adjust_diag(diagnostic);
         }
 
         /// TODO: handle FixIts
@@ -249,8 +249,8 @@ private:
     CompilationUnitRef unit;
 };
 
-std::unique_ptr<DiagnosticCollector> create_diagnostic(CompilationUnitRef unit) {
-    return std::make_unique<DiagnosticCollectorImpl>(unit);
+std::unique_ptr<clang::DiagnosticConsumer> create_diagnostic(CompilationUnitRef unit) {
+    return std::make_unique<DiagnosticCollector>(unit);
 }
 
 }  // namespace clice

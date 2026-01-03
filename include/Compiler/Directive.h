@@ -135,10 +135,6 @@ struct Directive {
     std::vector<MacroRef> macros;
     std::vector<Pragma> pragmas;
     std::vector<Import> imports;
-
-    /// Tell preprocessor to collect directives information and store them in `directives`.
-    static void attach(clang::Preprocessor& pp,
-                       llvm::DenseMap<clang::FileID, Directive>& directives);
 };
 
 }  // namespace clice

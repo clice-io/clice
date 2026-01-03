@@ -14,6 +14,7 @@ namespace clice::tidy {
 using namespace clang::tidy;
 
 bool is_registered_tidy_check(llvm::StringRef check);
+
 std::optional<bool> is_fast_tidy_check(llvm::StringRef check);
 
 struct TidyParams {};
@@ -28,8 +29,10 @@ class ClangTidyChecker {
 public:
     /// The context of the clang-tidy checker.
     ClangTidyContext context;
+
     /// The instances of checks that are enabled for the current Language.
     std::vector<std::unique_ptr<ClangTidyCheck>> checks;
+
     /// The match finder to run clang-tidy on ASTs.
     clang::ast_matchers::MatchFinder finder;
 
@@ -49,22 +52,8 @@ constexpr static auto no_hook = [](auto& /*ignore*/) {
 
 struct CompilationParams;
 
-enum class BuildStatus {
-    Success,
-
-    FailToCreateCompilationInvocation,
-
-    FailToCreateTarget,
-
-    FailToBeginSource,
-
-    FailToExecuteAction,
-
-    Cancelled,
-};
-
 struct CompilationUnitRef::Self {
-    BuildStatus status;
+    llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> remapped_buffers;
 
     /// The frontend action used to build the unit.
     std::unique_ptr<clang::FrontendAction> action;
@@ -90,28 +79,55 @@ struct CompilationUnitRef::Self {
     /// Cache for symbol id.
     llvm::DenseMap<const void*, std::uint64_t> symbol_hash_cache;
 
-    llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> remapped_buffers;
-
     llvm::BumpPtrAllocator path_storage;
 
     std::vector<Diagnostic> diagnostics;
 
     std::vector<clang::Decl*> top_level_decls;
 
-    std::chrono::milliseconds build_at;
+    std::unique_ptr<tidy::ClangTidyChecker> checker;
 
+    std::chrono::milliseconds build_at;
     std::chrono::milliseconds build_duration;
 
     auto& SM() {
         return instance->getSourceManager();
     }
+
+    void collect_directives();
+
+    void configure_tidy(tidy::TidyParams tidy_params) {
+        checker = tidy::configure(*instance, tidy_params);
+    }
+
+    // Must be called before EndSourceFile because the ast context can be destroyed later.
+    void run_tidy() {
+        if(checker) {
+            // AST traversals should exclude the preamble, to avoid performance cliffs.
+            // TODO: is it okay to affect the unit-level traversal scope here?
+            auto& Ctx = instance->getASTContext();
+            Ctx.setTraversalScope(top_level_decls);
+            checker->finder.matchAST(Ctx);
+
+            /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
+            /// However Action->EndSourceFile() would destroy the ASTContext!
+            /// So just inform the preprocessor of EOF, while keeping everything alive.
+            instance->getPreprocessor().EndSourceFile();
+        }
+    }
+
+    ~Self() {
+        if(action) {
+            // We already notified the pp of end-of-file earlier, so detach it first.
+            // We must keep it alive until after EndSourceFile(), Sema relies on this.
+            std::shared_ptr<clang::Preprocessor> pp = instance->getPreprocessorPtr();
+            // Detach so we don't send EOF again
+            instance->setPreprocessor(nullptr);
+            action->EndSourceFile();
+        }
+    }
 };
 
-class DiagnosticCollector : public clang::DiagnosticConsumer {
-public:
-    tidy::ClangTidyChecker* checker = nullptr;
-};
-
-std::unique_ptr<DiagnosticCollector> create_diagnostic(CompilationUnitRef unit);
+std::unique_ptr<clang::DiagnosticConsumer> create_diagnostic(CompilationUnitRef unit);
 
 }  // namespace clice
