@@ -101,11 +101,13 @@ function(setup_llvm LLVM_VERSION)
             clangToolingSyntax
         )
     else()
-        file(GLOB LLVM_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/libLLVM[a-zA-Z]*${CMAKE_STATIC_LIBRARY_SUFFIX}")
-        file(GLOB CLANG_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/libclang[a-zA-Z]*${CMAKE_STATIC_LIBRARY_SUFFIX}")
-        set(OTHER_REQUIRED_LIBS
-            "${LLVM_INSTALL_PATH}/lib/libz${CMAKE_STATIC_LIBRARY_SUFFIX}"
-            "${LLVM_INSTALL_PATH}/lib/libzstd${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        file(GLOB LLVM_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}LLVM[a-zA-Z]*${CMAKE_STATIC_LIBRARY_SUFFIX}")
+        file(GLOB CLANG_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}clang[a-zA-Z]*${CMAKE_STATIC_LIBRARY_SUFFIX}")
+        # TODO: find a better way to find out whether zlib and zstd are needed
+        # Currently link if present in the LLVM lib directory
+        file(GLOB OTHER_REQUIRED_LIBS CONFIGURE_DEPENDS
+            "${LLVM_INSTALL_PATH}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}z${CMAKE_STATIC_LIBRARY_SUFFIX}"
+            "${LLVM_INSTALL_PATH}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}zstd${CMAKE_STATIC_LIBRARY_SUFFIX}"
         )
         target_link_libraries(llvm-libs INTERFACE ${LLVM_LIBRARIES} ${CLANG_LIBRARIES} ${OTHER_REQUIRED_LIBS})
         target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)
