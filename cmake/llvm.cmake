@@ -101,8 +101,13 @@ function(setup_llvm LLVM_VERSION)
             clangToolingSyntax
         )
     else()
-        file(GLOB LLVM_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/*${CMAKE_STATIC_LIBRARY_SUFFIX}")
-        target_link_libraries(llvm-libs INTERFACE ${LLVM_LIBRARIES})
+        file(GLOB LLVM_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/libLLVM[a-zA-Z]*${CMAKE_STATIC_LIBRARY_SUFFIX}")
+        file(GLOB CLANG_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/libclang[a-zA-Z]*${CMAKE_STATIC_LIBRARY_SUFFIX}")
+        set(OTHER_REQUIRED_LIBS
+            "${LLVM_INSTALL_PATH}/lib/libz${CMAKE_STATIC_LIBRARY_SUFFIX}"
+            "${LLVM_INSTALL_PATH}/lib/libzstd${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        )
+        target_link_libraries(llvm-libs INTERFACE ${LLVM_LIBRARIES} ${CLANG_LIBRARIES} ${OTHER_REQUIRED_LIBS})
         target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)
     endif()
 endfunction()
