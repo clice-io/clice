@@ -24,7 +24,7 @@ clice_get_server_plugin_info() {
 
 ## 编译插件
 
-插件必须使用与 clice 一致的依赖和编译器选项来编译，否则会导致 undefined behavior。[config/llvm-manifest.json](config/llvm-manifest.json) 中定义了 clice 使用的构建信息。
+插件必须使用与 clice 一致的依赖和编译器选项来编译，否则会导致 undefined behavior。[config/llvm-manifest.json](/config/llvm-manifest.json) 中定义了 clice 使用的构建信息。
 
 ## 加载插件
 
