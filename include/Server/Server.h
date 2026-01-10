@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "Convert.h"
 #include "Indexer.h"
+#include "Plugin.h"
 #include "Async/Async.h"
 #include "Compiler/Command.h"
 #include "Compiler/Diagnostic.h"
@@ -113,7 +114,7 @@ private:
 
 class Server {
 public:
-    Server();
+    Server(std::vector<Plugin>&& plugins);
 
     using Self = Server;
 
@@ -241,6 +242,9 @@ private:
     config::Config config;
 
     Indexer indexer;
+
+    /// All loaded server plugins.
+    std::vector<Plugin> plugins;
 };
 
 }  // namespace clice
