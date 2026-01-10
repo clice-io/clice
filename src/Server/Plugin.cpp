@@ -101,6 +101,24 @@ void ServerPluginBuilder::on_initialize(void* plugin_data, lifecycle_hook_t call
         [=]() -> async::Task<> { co_await callback(server, plugin_data); });
 }
 
+void ServerPluginBuilder::on_initialized(void* plugin_data, lifecycle_hook_t callback) {
+    auto server = server_ref;
+    server_ref.server().initialized_hooks.push_back(
+        [=]() -> async::Task<> { co_await callback(server, plugin_data); });
+}
+
+void ServerPluginBuilder::on_shutdown(void* plugin_data, lifecycle_hook_t callback) {
+    auto server = server_ref;
+    server_ref.server().shutdown_hooks.push_back(
+        [=]() -> async::Task<> { co_await callback(server, plugin_data); });
+}
+
+void ServerPluginBuilder::on_exit(void* plugin_data, lifecycle_hook_t callback) {
+    auto server = server_ref;
+    server_ref.server().exit_hooks.push_back(
+        [=]() -> async::Task<> { co_await callback(server, plugin_data); });
+}
+
 void ServerPluginBuilder::on_did_change_configuration(void* plugin_data,
                                                       lifecycle_hook_t callback) {
     auto server = server_ref;

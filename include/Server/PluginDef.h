@@ -69,6 +69,9 @@ CliceServerPluginAPI(get_server_ref, ServerRef& server);
 using lifecycle_hook_t = async::Task<> (*)(ServerRef server, void* plugin_data);
 
 CliceServerPluginAPI(on_initialize, lifecycle_hook_t callback);
+CliceServerPluginAPI(on_initialized, lifecycle_hook_t callback);
+CliceServerPluginAPI(on_shutdown, lifecycle_hook_t callback);
+CliceServerPluginAPI(on_exit, lifecycle_hook_t callback);
 CliceServerPluginAPI(on_did_change_configuration, lifecycle_hook_t callback);
 using command_handler_t =
     async::Task<llvm::json::Value> (*)(ServerRef server,

@@ -252,6 +252,9 @@ private:
         llvm::ArrayRef<llvm::StringRef> arguments)>;
 
     std::vector<lifecycle_hook_t> initialize_hooks;
+    std::vector<lifecycle_hook_t> initialized_hooks;
+    std::vector<lifecycle_hook_t> shutdown_hooks;
+    std::vector<lifecycle_hook_t> exit_hooks;
     std::vector<lifecycle_hook_t> did_change_configuration_hooks;
     llvm::StringMap<command_handler_t> command_handlers;
     std::vector<Plugin> plugins;
