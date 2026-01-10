@@ -730,7 +730,11 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
             }
         }
 
-        arguments.pop_back();
+        if(arguments.empty()) {
+            LOG_WARN("failed to query toolchain: {}", file);
+        } else {
+            arguments.pop_back();
+        }
     }
 
     arguments.emplace_back(file.data());
