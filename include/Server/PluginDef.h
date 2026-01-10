@@ -28,7 +28,7 @@ extern "C" {
         void (*register_server_callbacks)(ServerPluginBuilder& builder);
     };
 
-    /// The public entry point for a pass plugin.
+    /// The public entry point for a server plugin.
     ///
     /// When a plugin is loaded by the server, it will call this entry point to
     /// obtain information about this plugin and about how to register its customization points.
