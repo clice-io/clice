@@ -166,6 +166,7 @@ add_dependencies(clice-core generate_flatbuffers_schema generate_config)
 target_include_directories(clice-core PUBLIC
     "${PROJECT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    "${CMAKE_CURRENT_BINARY_DIR}/include"
 )
 target_link_libraries(clice-core PUBLIC
     clice_options
