@@ -4,7 +4,7 @@
 
 当你使用 `clice` 作为 LLM 代理的 LSP 后端时，比如 claude code，你可以添加插件来提供一些额外功能。
 
-## 编写一个插件
+## 编写插件
 
 当一个插件被服务器加载时，它会调用 `clice_get_server_plugin_info` 来获取关于这个插件的信息以及如何注册它的定制点。
 
@@ -21,6 +21,20 @@ clice_get_server_plugin_info() {
 ```
 
 请参考 [PluginDef.h](/include/Server/PluginDef.h) 了解更多细节。
+
+## 编译插件
+
+插件必须使用与 clice 一致的依赖和编译器选项来编译，否则会导致 undefined behavior。[config/llvm-manifest.json](config/llvm-manifest.json) 中定义了 clice 使用的构建信息。
+
+## 加载插件
+
+为了安全考虑，clice 不允许通过配置文件来加载插件，而必须通过命令行选项来指定插件的路径。
+
+在 `clice` 启动时，它会加载所有在命令行中指定的插件。你可以通过 `--plugin-path` 选项来指定插件的路径。
+
+```shell
+$ clice --plugin-path /path/to/my-plugin.so
+```
 
 ## 获取 `CLICE_PLUGIN_DEF_HASH` 的内容
 
