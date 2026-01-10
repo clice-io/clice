@@ -61,7 +61,10 @@ protected:
 };
 
 struct ServerPluginBuilder {
-#define CliceServerPluginAPI(METHOD, ...) void METHOD(__VA_ARGS__)
+public:
+    ServerPluginBuilder(ServerRef server_ref) : server_ref(server_ref) {}
+
+#define CliceServerPluginAPI(METHOD, ...) void METHOD(void* plugin_data, __VA_ARGS__)
 
 #include "PluginDef.h"
 #undef CliceServerPluginAPI
