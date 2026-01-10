@@ -195,6 +195,8 @@ private:
 private:
     using Result = async::Task<json::Value>;
 
+    auto on_execute_command(proto::ExecuteCommandParams params) -> Result;
+
     auto on_completion(proto::CompletionParams params) -> Result;
 
     auto on_hover(proto::HoverParams params) -> Result;
