@@ -96,28 +96,26 @@ void ServerPluginBuilder::get_server_ref(void* plugin_data, ServerRef& server) {
 }
 
 void ServerPluginBuilder::on_initialize(void* plugin_data, lifecycle_hook_t callback) {
-    server_ref.server().initialize_hooks.push_back([server_ref = server_ref,
-                                                    callback = callback,
-                                                    plugin_data = plugin_data]() -> async::Task<> {
-        co_await callback(server_ref, plugin_data);
-    });
+    auto server = server_ref;
+    server_ref.server().initialize_hooks.push_back(
+        [=]() -> async::Task<> { co_await callback(server, plugin_data); });
 }
 
 void ServerPluginBuilder::on_did_change_configuration(void* plugin_data,
                                                       lifecycle_hook_t callback) {
+    auto server = server_ref;
     server_ref.server().did_change_configuration_hooks.push_back(
-        [server_ref = server_ref, callback = callback, plugin_data = plugin_data]()
-            -> async::Task<> { co_await callback(server_ref, plugin_data); });
+        [=]() -> async::Task<> { co_await callback(server, plugin_data); });
 }
 
 void ServerPluginBuilder::register_commmand_handler(void* plugin_data,
                                                     llvm::StringRef command,
                                                     command_handler_t callback) {
+    auto server = server_ref;
     auto [_, inserted] = server_ref.server().command_handlers.try_emplace(
         command,
-        [server_ref = server_ref, callback = callback, plugin_data = plugin_data](
-            llvm::ArrayRef<llvm::StringRef> arguments) -> async::Task<llvm::json::Value> {
-            co_return callback(server_ref, plugin_data, arguments);
+        [=](llvm::ArrayRef<llvm::StringRef> arguments) -> async::Task<llvm::json::Value> {
+            co_return callback(server, plugin_data, arguments);
         });
     if(!inserted) {
         LOG_ERROR("Command handler already registered for command '{}'.", command);
