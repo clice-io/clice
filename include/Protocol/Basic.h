@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "llvm/Support/JSON.h"
+
 namespace clice::proto {
 
 using integer = std::int32_t;
