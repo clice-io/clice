@@ -102,6 +102,8 @@ Server::Server() : indexer(database, config, kind) {
     register_callback<&Server::on_shutdown>("shutdown");
     register_callback<&Server::on_exit>("exit");
 
+    register_callback<&Server::on_execute_command>("workspace/executeCommand");
+
     register_callback<&Server::on_did_open>("textDocument/didOpen");
     register_callback<&Server::on_did_change>("textDocument/didChange");
     register_callback<&Server::on_did_save>("textDocument/didSave");
@@ -182,6 +184,10 @@ async::Task<> Server::on_receive(json::Value value) {
     }
 
     co_return;
+}
+
+async::Task<json::Value> Server::on_execute_command(proto::ExecuteCommandParams params) {
+    co_return json::Value{};
 }
 
 }  // namespace clice
