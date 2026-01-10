@@ -11,6 +11,7 @@
 #include "Feature/DocumentHighlight.h"
 #include "Feature/DocumentLink.h"
 #include "Feature/DocumentSymbol.h"
+#include "Feature/ExecuteCommand.h"
 #include "Feature/FoldingRange.h"
 #include "Feature/Formatting.h"
 #include "Feature/Hover.h"
