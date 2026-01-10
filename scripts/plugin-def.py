@@ -1,12 +1,7 @@
-# read include/Server/PluginDef.h and substitute CLICE_PLUGIN_DEF_HASH in include/Server/Plugin.h
-# hash is in `sha256:<hash>` format.
-
 import hashlib
 import re
 from pathlib import Path
 import sys
-
-#
 
 clice_apis = []
 
