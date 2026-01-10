@@ -1,5 +1,7 @@
 #include "Server/Server.h"
 
+#include <llvm/Support/FileSystem.h>
+
 namespace clice {
 
 async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
@@ -36,8 +38,12 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
     opening_files.set_capability(config.project.max_active_file);
 
     /// Load compile commands.json
-    for(auto& dir: config.project.compile_commands_dirs) {
-        database.load_compile_database(path::join(dir, "compile_commands.json"));
+    for(auto& dir_or_file: config.project.compile_commands_paths) {
+        if(fs::is_directory(dir_or_file)) {
+            database.load_compile_database(path::join(dir_or_file, "compile_commands.json"));
+        } else {
+            database.load_compile_database(dir_or_file);
+        }
     }
 
     /// Load cache info.

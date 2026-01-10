@@ -21,7 +21,7 @@ struct ProjectOptions {
 
     std::string logging_dir = "${workspace}/.clice/logging";
 
-    std::vector<std::string> compile_commands_dirs = {"${workspace}/build"};
+    std::vector<std::string> compile_commands_paths = {"${workspace}/build"};
 };
 
 struct Rule {

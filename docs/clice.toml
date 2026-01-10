@@ -21,8 +21,8 @@ cache_dir = "${workspace}/.clice/cache"
 # Directory for storing index files.
 index_dir = "${workspace}/.clice/index"
 logging_dir = "${workspace}/.clice/logging"
-# Compile commands directories to search for compile_commands.json files.
-compile_commands_dirs = ["${workspace}/build"]
+# Compile commands files or directories to search for compile_commands.json files.
+compile_commands_paths = ["${workspace}/build"]
 
 # Control the behavior for specific files. Note that Clice matches rules
 # in order. If you want to add your own rules, either delete this rule
