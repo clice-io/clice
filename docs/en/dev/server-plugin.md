@@ -24,7 +24,7 @@ See [PluginDef.h](/include/Server/PluginDef.h) for more details.
 
 ## Compiling a plugin
 
-The plugin must be compiled with the same dependencies and compiler options as clice, otherwise it will cause undefined behavior. [config/llvm-manifest.json](config/llvm-manifest.json) defines the build information used by clice.
+The plugin must be compiled with the same dependencies and compiler options as clice, otherwise it will cause undefined behavior. [config/llvm-manifest.json](/config/llvm-manifest.json) defines the build information used by clice.
 
 ## Loading plugins
 
