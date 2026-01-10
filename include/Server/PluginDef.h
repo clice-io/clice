@@ -58,9 +58,6 @@ public:
 
     Server& server() const;
 
-    /// Gets the configuration for the given section.
-    std::expected<llvm::json::Value, std::string> get_configuration(llvm::StringRef section);
-
 protected:
     Self* self;
 };
@@ -69,12 +66,14 @@ protected:
 /// Defines the library APIs to register callbacks for a plugin.
 #ifdef CliceServerPluginAPI
 CliceServerPluginAPI(get_server_ref, ServerRef& server);
-using configuration_handler_t = async::Task<> (*)(ServerRef server, void* plugin_data);
-CliceServerPluginAPI(on_did_change_configuration, configuration_handler_t callback);
+using lifecycle_hook_t = async::Task<> (*)(ServerRef server, void* plugin_data);
+
+CliceServerPluginAPI(on_initialize, lifecycle_hook_t callback);
+CliceServerPluginAPI(on_did_change_configuration, lifecycle_hook_t callback);
 using command_handler_t =
     async::Task<llvm::json::Value> (*)(ServerRef server,
                                        void* plugin_data,
-                                       const llvm::ArrayRef<llvm::StringRef>& arguments);
+                                       llvm::ArrayRef<llvm::StringRef> arguments);
 CliceServerPluginAPI(register_commmand_handler,
                      llvm::StringRef command,
                      command_handler_t callback);

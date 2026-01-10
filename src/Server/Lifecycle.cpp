@@ -47,6 +47,11 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
         }
     }
 
+    /// Run initialize hooks.
+    for(auto& hook: initialize_hooks) {
+        co_await hook();
+    }
+
     /// Load cache info.
     load_cache_info();
 

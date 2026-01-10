@@ -11,6 +11,8 @@
 #include "Feature/DocumentLink.h"
 #include "Protocol/Protocol.h"
 
+#include <llvm/ADT/FunctionExtras.h>
+
 namespace clice {
 
 struct OpenFile {
@@ -114,7 +116,7 @@ private:
 
 class Server {
 public:
-    Server(std::vector<Plugin>&& plugins);
+    Server();
 
     using Self = Server;
 
@@ -243,7 +245,15 @@ private:
 
     Indexer indexer;
 
-    /// All loaded server plugins.
+private:
+    friend struct ServerPluginBuilder;
+    using lifecycle_hook_t = llvm::unique_function<async::Task<>()>;
+    using command_handler_t = llvm::unique_function<async::Task<llvm::json::Value>(
+        llvm::ArrayRef<llvm::StringRef> arguments)>;
+
+    std::vector<lifecycle_hook_t> initialize_hooks;
+    std::vector<lifecycle_hook_t> did_change_configuration_hooks;
+    llvm::StringMap<command_handler_t> command_handlers;
     std::vector<Plugin> plugins;
 };
 

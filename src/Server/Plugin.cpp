@@ -1,16 +1,14 @@
 #include "Server/Plugin.h"
 
+#include "Implement.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/DynamicLibrary.h"
 
 namespace clice {
 
-struct ServerRef::Self {
-    Server* server;
-};
-
 Server& ServerRef::server() const {
-    return *self->server;
+    return self->server();
 }
 
 struct Plugin::Self {
@@ -93,19 +91,37 @@ using command_handler_t =
     async::Task<llvm::json::Value> (*)(ServerRef server,
                                        const llvm::ArrayRef<llvm::StringRef>& arguments);
 
-void ServerPluginBuilder::get_server_ref(ServerRef& server) {
+void ServerPluginBuilder::get_server_ref(void* plugin_data, ServerRef& server) {
     server = server_ref;
 }
 
-void ServerPluginBuilder::on_did_change_configuration(configuration_handler_t callback) {
-    std::println(stderr, "on_changed_configuration");
-    abort();
+void ServerPluginBuilder::on_initialize(void* plugin_data, lifecycle_hook_t callback) {
+    server_ref.server().initialize_hooks.push_back([server_ref = server_ref,
+                                                    callback = callback,
+                                                    plugin_data = plugin_data]() -> async::Task<> {
+        co_await callback(server_ref, plugin_data);
+    });
 }
 
-void ServerPluginBuilder::register_commmand_handler(llvm::StringRef command,
+void ServerPluginBuilder::on_did_change_configuration(void* plugin_data,
+                                                      lifecycle_hook_t callback) {
+    server_ref.server().did_change_configuration_hooks.push_back(
+        [server_ref = server_ref, callback = callback, plugin_data = plugin_data]()
+            -> async::Task<> { co_await callback(server_ref, plugin_data); });
+}
+
+void ServerPluginBuilder::register_commmand_handler(void* plugin_data,
+                                                    llvm::StringRef command,
                                                     command_handler_t callback) {
-    std::println(stderr, "register_commmand_handler: {}", command);
-    abort();
+    auto [_, inserted] = server_ref.server().command_handlers.try_emplace(
+        command,
+        [server_ref = server_ref, callback = callback, plugin_data = plugin_data](
+            llvm::ArrayRef<llvm::StringRef> arguments) -> async::Task<llvm::json::Value> {
+            co_return callback(server_ref, plugin_data, arguments);
+        });
+    if(!inserted) {
+        LOG_ERROR("Command handler already registered for command '{}'.", command);
+    }
 }
 
 }  // namespace clice
