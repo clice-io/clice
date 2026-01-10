@@ -120,8 +120,13 @@ async::Task<> Server::on_initialized(proto::InitializedParams) {
     }
 
     indexer.load_from_disk();
-    co_await indexer.index_all();
-
+    if(indexer.empty()) {
+        LOG_INFO("project_index is empty, index all");
+        co_await indexer.index_all();
+    } else {
+        LOG_INFO("project_index is not empty");
+    }
+    std::println(stderr, "project_index indexed");
     co_return;
 }
 

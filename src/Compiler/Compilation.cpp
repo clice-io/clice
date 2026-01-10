@@ -3,13 +3,13 @@
 #include "Implement.h"
 #include "AST/Utility.h"
 #include "Compiler/Command.h"
-#include "Compiler/Diagnostic.h"
 #include "Support/Logging.h"
 
-#include "llvm/Support/Error.h"
+#include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Lex/PreprocessorOptions.h"
+#include "clang-tidy/ClangTidyModuleRegistry.h"
 
 namespace clice {
 
@@ -114,7 +114,7 @@ auto create_invocation(CompilationUnitRef::Self& self,
                                                       *diagnostic_engine,
                                                       params.arguments[0])) {
             LOG_ERROR_RET(nullptr,
-                          " Fail to create invocation, arguments list is: {}",
+                          " Fail to create invocation from database, arguments list is: {}",
                           print_argv(params.arguments));
         }
     } else {
