@@ -17,6 +17,8 @@ using decimal = double;
 
 using string = std::string;
 
+using any = llvm::json::Value;
+
 template <typename T>
 using array = std::vector<T>;
 

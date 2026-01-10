@@ -6,7 +6,7 @@ namespace clice::proto {
 
 struct ExecuteCommandParams {
     string command;
-    array<llvm::json::Value> arguments;
+    array<any> arguments;
 };
 
 struct TextDocumentParams {
