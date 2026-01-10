@@ -1,3 +1,4 @@
+#include "Server/Plugin.h"
 #include "Server/Server.h"
 #include "Server/Version.h"
 #include "Support/Format.h"
@@ -73,6 +74,15 @@ cl::opt<logging::Level> log_level{
     cl::desc("The log level, default is info"),
 };
 
+cl::opt<std::vector<std::string>> plugin_paths{
+    "plugin-path",
+    cl::cat(category),
+    cl::value_desc("string"),
+    cl::init(std::vector<std::string>{}),
+    cl::desc("The server plugins to load"),
+    cl::CommaSeparated,
+};
+
 }  // namespace
 
 int main(int argc, const char** argv) {
@@ -103,8 +113,17 @@ int main(int argc, const char** argv) {
 
     async::init();
 
+    std::vector<Plugin> plugins;
+    for(auto& plugin_path: plugin_paths) {
+        auto plugin_instance = Plugin::load(plugin_path);
+        if(!plugin_instance) {
+            LOG_FATAL("Failed to load plugin {}: {}", plugin_path, plugin_instance.error());
+        }
+        plugins.push_back(std::move(plugin_instance.value()));
+    }
+
     /// The global server instance.
-    static Server instance;
+    static Server instance(std::move(plugins));
     auto loop = [&](json::Value value) -> async::Task<> {
         co_await instance.on_receive(value);
     };

@@ -1,3 +1,4 @@
+#include "Server/Plugin.h"
 #include "Server/Server.h"
 
 #include <llvm/Support/FileSystem.h>
