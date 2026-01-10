@@ -22,6 +22,20 @@ clice_get_server_plugin_info() {
 
 See [PluginDef.h](/include/Server/PluginDef.h) for more details.
 
+## Compiling a plugin
+
+The plugin must be compiled with the same dependencies and compiler options as clice, otherwise it will cause undefined behavior. [config/llvm-manifest.json](config/llvm-manifest.json) defines the build information used by clice.
+
+## Loading plugins
+
+For security reasons, clice does not allow loading plugins through configuration files, but must specify the plugin path through command line options.
+
+When `clice` starts, it will load all plugins specified in the command line. You can specify the plugin path through the `--plugin-path` option.
+
+```shell
+$ clice --plugin-path /path/to/my-plugin.so
+```
+
 ## Getting content of `CLICE_PLUGIN_DEF_HASH`
 
 There are two values to return in the `clice_get_server_plugin_info` function.
