@@ -2,7 +2,7 @@ You can implement a clice server plugin to extend clice's functionality.
 
 ## Use case
 
-When you use `clice` as lsp backend of LLM agents, e.g. claude code, you can add plugin to provide some extra features.
+When you use `clice` as LSP backend of LLM agents, e.g. claude code, you can add plugin to provide some extra features.
 
 ## Writing a plugin
 
