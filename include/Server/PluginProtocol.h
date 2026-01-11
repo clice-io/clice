@@ -1,14 +1,12 @@
+#pragma once
+
 /// The API version of the clice plugin.
 /// Update this version when you change:
 /// - The definition of struct `PluginInfo`.
 /// - The definition of function `clice_get_server_plugin_info`.
 /// Note: you don't have to update this version if you only change other APIs, which is guaranteed
 /// by the `PluginInfo::definition_hash`.
-#ifndef CLICE_PLUGIN_API_VERSION
 #define CLICE_PLUGIN_API_VERSION 1
-#elif CLICE_PLUGIN_API_VERSION != 1
-#error "CLICE_PLUGIN_API_VERSION must be 1, but got " CLICE_PLUGIN_API_VERSION
-#endif
 
 #include <cstdint>
 
