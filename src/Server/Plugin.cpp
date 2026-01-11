@@ -1,6 +1,7 @@
 #include "Server/Plugin.h"
 
 #include "Implement.h"
+#include "Server/Utility.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/DynamicLibrary.h"
@@ -28,44 +29,62 @@ std::expected<Plugin, std::string> Plugin::load(const std::string& file_path) {
     std::string err;
     auto library = llvm::sys::DynamicLibrary::getPermanentLibrary(file_path.c_str(), &err);
     if(!library.isValid()) {
-        return std::unexpected("Could not load library '" + file_path + "': " + err);
+        return bail("Could not load library '{}': {}", file_path, err);
     }
 
     Plugin P{
+        /// We currently never destroy plugins, so this is not a memory leak.
         new Self{file_path, library}
     };
 
     /// `clice_get_server_plugin_info` should be resolved to the definition from the plugin
     /// we are currently loading.
     intptr_t get_details_fn = (intptr_t)library.getAddressOfSymbol("clice_get_server_plugin_info");
-
     if(!get_details_fn) {
-        /// If the symbol isn't found, this is probably a legacy plugin, which is an
-        /// error.
-        return std::unexpected("Plugin entry point not found in '" + file_path +
-                               "'. Is this a clice server plugin?");
+        return bail(
+            "The symbol `clice_get_server_plugin_info` is not found in '{}'. Is this a clice server plugin?",
+            file_path);
     }
 
     auto info = reinterpret_cast<decltype(clice_get_server_plugin_info)*>(get_details_fn)();
 
     /// First, we check whether the plugin is compatible with the clice plugin API.
     if(info.api_version != CLICE_PLUGIN_API_VERSION) {
-        return std::unexpected("Wrong API version on plugin '" + file_path + "'. Got version " +
-                               std::to_string(info.api_version) + ", supported version is " +
-                               std::to_string(CLICE_PLUGIN_API_VERSION) + ".");
+        return bail("Wrong API version on plugin '{}'. Got version {}. Supported version is {}.",
+                    file_path,
+                    info.api_version,
+                    CLICE_PLUGIN_API_VERSION);
     }
 
     /// Then, we safely get definition hash from the plugin, and check if it is consistent with
-    /// the expected hash. This ensures that the plugin has consistent declarations with the server.
+    /// the expected hash. This ensures that the plugin has consistent declarations with the
+    /// server.
     std::string definition_hash = info.definition_hash;
-    if(definition_hash != CLICE_PLUGIN_DEF_HASH) {
-        return std::unexpected("Wrong definition hash on plugin '" + file_path + "'. Got '" +
-                               definition_hash + "', expected '" + CLICE_PLUGIN_DEF_HASH + "'.");
+    if(plugin_definition_hash.size() != definition_hash.size()) {
+        return bail("Wrong definition hash size on plugin '{}'. Got {}, expected {} ({}).",
+                    file_path,
+                    definition_hash.size(),
+                    plugin_definition_hash.size(),
+                    plugin_definition_hash);
     }
 
+    /// If there is any non-printable character in the definition hash, this is likely a bug in the
+    /// plugin. We cannot even print the `definition_hash` in this case.
+    if(std::ranges::any_of(definition_hash, [](char c) { return !std::isprint(c); })) {
+        return bail("Corrupt definition hash on plugin '{}'. This is likely a bug in the plugin.",
+                    file_path);
+    }
+
+    if(definition_hash != CLICE_PLUGIN_DEF_HASH) {
+        return bail("Wrong definition hash on plugin '{}'. Got '{}', expected '{}'.",
+                    file_path,
+                    definition_hash,
+                    CLICE_PLUGIN_DEF_HASH);
+    }
+
+    /// A plugin must implement the `register_server_callbacks` function.
     if(!info.register_server_callbacks) {
-        return std::unexpected("Empty `register_server_callbacks` function in plugin '" +
-                               file_path + "'.");
+        return bail("Empty `register_server_callbacks` function in plugin '{}'.", file_path);
     }
 
     P->name = info.name;
@@ -90,10 +109,6 @@ llvm::StringRef Plugin::version() const {
 using command_handler_t =
     async::Task<llvm::json::Value> (*)(ServerRef server,
                                        const llvm::ArrayRef<llvm::StringRef>& arguments);
-
-void ServerPluginBuilder::get_server_ref(void* plugin_data, ServerRef& server) {
-    server = server_ref;
-}
 
 void ServerPluginBuilder::on_initialize(void* plugin_data, lifecycle_hook_t callback) {
     auto server = server_ref;

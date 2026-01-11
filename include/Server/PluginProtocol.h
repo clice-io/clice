@@ -10,14 +10,23 @@
 #error "CLICE_PLUGIN_API_VERSION must be 1, but got " CLICE_PLUGIN_API_VERSION
 #endif
 
-/// Defines the library APIs that loads a plugin.
-#ifdef CLICE_PLUGIN_PROTOCOL
+#include <cstdint>
+
+#include "Async/Async.h"
+
+#include "llvm/Support/Compiler.h"
+
+namespace clice {
+
+class Server;
+
 struct ServerPluginBuilder;
+/// Defines the library APIs that loads a plugin.
 extern "C" {
     /// A C-compatible struct that contains information about the plugin.
     struct PluginInfo {
         /// The clice API version of the plugin.
-        std::uint32_t api_version;
+        uint32_t api_version;
         /// The name of the plugin.
         const char* name;
         /// The version of the plugin.
@@ -61,23 +70,43 @@ public:
 protected:
     Self* self;
 };
-#endif
 
 /// Defines the library APIs to register callbacks for a plugin.
-#ifdef CliceServerPluginAPI
-CliceServerPluginAPI(get_server_ref, ServerRef& server);
-using lifecycle_hook_t = async::Task<> (*)(ServerRef server, void* plugin_data);
+struct ServerPluginBuilder {
+public:
+    ServerPluginBuilder(ServerRef server_ref) : server_ref(server_ref) {}
 
-CliceServerPluginAPI(on_initialize, lifecycle_hook_t callback);
-CliceServerPluginAPI(on_initialized, lifecycle_hook_t callback);
-CliceServerPluginAPI(on_shutdown, lifecycle_hook_t callback);
-CliceServerPluginAPI(on_exit, lifecycle_hook_t callback);
-CliceServerPluginAPI(on_did_change_configuration, lifecycle_hook_t callback);
-using command_handler_t =
-    async::Task<llvm::json::Value> (*)(ServerRef server,
-                                       void* plugin_data,
-                                       llvm::ArrayRef<llvm::StringRef> arguments);
-CliceServerPluginAPI(register_commmand_handler,
-                     llvm::StringRef command,
-                     command_handler_t callback);
-#endif
+    /// Gets a reference to the server.
+    auto get_server_ref() const -> ServerRef {
+        return server_ref;
+    }
+
+#define CliceServerPluginAPI(METHOD, ...) void METHOD(void* plugin_data, __VA_ARGS__)
+
+    using lifecycle_hook_t = async::Task<> (*)(ServerRef server, void* plugin_data);
+
+    /// Registers a callback to be called when the server is initialized.
+    CliceServerPluginAPI(on_initialize, lifecycle_hook_t callback);
+    /// Registers a callback to be called when the server is initialized.
+    CliceServerPluginAPI(on_initialized, lifecycle_hook_t callback);
+    /// Registers a callback to be called when the server is shutdown.
+    CliceServerPluginAPI(on_shutdown, lifecycle_hook_t callback);
+    /// Registers a callback to be called when the server is exiting.
+    CliceServerPluginAPI(on_exit, lifecycle_hook_t callback);
+    /// Registers a callback to be called when the server's configuration is changed.
+    CliceServerPluginAPI(on_did_change_configuration, lifecycle_hook_t callback);
+    using command_handler_t =
+        async::Task<llvm::json::Value> (*)(ServerRef server,
+                                           void* plugin_data,
+                                           llvm::ArrayRef<llvm::StringRef> arguments);
+    /// Registers a callback to be called when a command is received from the LSP client.
+    CliceServerPluginAPI(register_commmand_handler,
+                         llvm::StringRef command,
+                         command_handler_t callback);
+#undef CliceServerPluginAPI
+
+protected:
+    ServerRef server_ref;
+};
+
+}  // namespace clice
