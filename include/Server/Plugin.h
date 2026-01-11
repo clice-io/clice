@@ -1,6 +1,7 @@
 #pragma once
 #include <expected>
 
+#include "PluginProtocol.h"
 #include "Async/Async.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -9,17 +10,15 @@
 
 // clang-format off
 /// Run `python scripts/plugin-def.py update` to update the hash.
-#define CLICE_PLUGIN_DEF_HASH "sha256:e35ff1adfbc385f7bae605e82ca4e7e70cfbf0f933bb8d57169d0d29abe5b6f7"
+#define CLICE_PLUGIN_DEF_HASH "sha256:c46f7edfda0455327c65d40b9315ad5dc39153326c8cc63f1d8de2e2d0e7735a"
 // clang-format on
 
 namespace clice {
 
+/// The hash of the definitions exposed to server plugins.
+constexpr std::string_view plugin_definition_hash = CLICE_PLUGIN_DEF_HASH;
+
 class Server;
-
-#define CLICE_PLUGIN_PROTOCOL
-
-#include "PluginDef.h"
-#undef CLICE_PLUGIN_PROTOCOL
 
 struct ServerPluginBuilder;
 
@@ -27,15 +26,6 @@ struct ServerPluginBuilder;
 ///
 /// An instance of this class wraps a loaded server plugin and gives access to its interface.
 class Plugin {
-public:
-    struct Self;
-
-    Plugin(Self* self) : self(self) {}
-
-    Self* operator->() {
-        return self;
-    }
-
 public:
     /// Attempts to load a server plugin from a given file.
     ///
@@ -56,21 +46,17 @@ public:
     /// Registers the server callbacks for the loaded plugin.
     void register_server_callbacks(ServerPluginBuilder& builder) const;
 
+public:
+    struct Self;
+
+    Plugin(Self* self) : self(self) {}
+
+    Self* operator->() {
+        return self;
+    }
+
 protected:
     Self* self;
-};
-
-struct ServerPluginBuilder {
-public:
-    ServerPluginBuilder(ServerRef server_ref) : server_ref(server_ref) {}
-
-#define CliceServerPluginAPI(METHOD, ...) void METHOD(void* plugin_data, __VA_ARGS__)
-
-#include "PluginDef.h"
-#undef CliceServerPluginAPI
-
-protected:
-    ServerRef server_ref;
 };
 
 }  // namespace clice
