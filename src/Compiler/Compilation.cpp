@@ -261,8 +261,9 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     self.action = std::make_unique<ProxyAction>(std::move(action), &self);
 
     if(!self.action->BeginSourceFile(instance, instance.getFrontendOpts().Inputs[0])) {
-        /// If the action is not empty, we will call `EndSourceFile`. But if we fail to
-        /// `BeginSourceFile` we don't need to call `EndSourceFile`. So just reset it.
+        /// If the action is not empty, we will call `EndSourceFile` at the destructor of `Self`.
+        /// But if we fail to `BeginSourceFile` we don't need to call `EndSourceFile`. So just
+        /// reset it.
         self.action.reset();
         return CompilationStatus::SetupFail;
     }
