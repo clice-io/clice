@@ -2,15 +2,12 @@
 #include <expected>
 
 #include "PluginProtocol.h"
-#include "Async/Async.h"
 
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/JSON.h"
 
 // clang-format off
 /// Run `python scripts/plugin-def.py update` to update the hash.
-#define CLICE_PLUGIN_DEF_HASH "sha256:c46f7edfda0455327c65d40b9315ad5dc39153326c8cc63f1d8de2e2d0e7735a"
+#define CLICE_PLUGIN_DEF_HASH "sha256:e7f911c923f9cdcec6c0edea328292bd48771f7139d4489ed694a72e9af33fc1"
 // clang-format on
 
 namespace clice {
