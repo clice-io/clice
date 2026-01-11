@@ -1,3 +1,5 @@
+#include "Server/Implement.h"
+#include "Server/Plugin.h"
 #include "Server/Server.h"
 #include "Server/Version.h"
 #include "Support/Format.h"
@@ -73,6 +75,32 @@ cl::opt<logging::Level> log_level{
     cl::desc("The log level, default is info"),
 };
 
+cl::opt<std::vector<std::string>> plugin_paths{
+    "plugin-path",
+    cl::cat(category),
+    cl::value_desc("string"),
+    cl::init(std::vector<std::string>{}),
+    cl::desc("The server plugins to load"),
+    cl::CommaSeparated,
+};
+
+/// Loads plugins intermediatly.
+std::vector<Plugin> load_plugins(Server& instance) {
+    auto ref = ServerRef::Self{&instance};
+    ServerPluginBuilder builder{ServerRef{&ref}};
+    std::vector<Plugin> plugins;
+    for(auto& plugin_path: plugin_paths) {
+        auto plugin_instance = Plugin::load(plugin_path);
+        if(!plugin_instance) {
+            LOG_FATAL("Failed to load plugin {}: {}", plugin_path, plugin_instance.error());
+        }
+        plugin_instance->register_server_callbacks(builder);
+        plugins.push_back(std::move(plugin_instance.value()));
+    }
+    // The llvm::sys::DynamicLibrary will be unloaded when the program exits.
+    return plugins;
+}
+
 }  // namespace
 
 int main(int argc, const char** argv) {
@@ -105,6 +133,10 @@ int main(int argc, const char** argv) {
 
     /// The global server instance.
     static Server instance;
+
+    /// Loads plugins intermediatly before the server starts.
+    static auto plugins = load_plugins(instance);
+
     auto loop = [&](json::Value value) -> async::Task<> {
         co_await instance.on_receive(value);
     };

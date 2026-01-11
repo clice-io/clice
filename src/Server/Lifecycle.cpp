@@ -1,3 +1,4 @@
+#include "Server/Plugin.h"
 #include "Server/Server.h"
 
 #include <llvm/Support/FileSystem.h>
@@ -44,6 +45,11 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
         } else {
             database.load_compile_database(dir_or_file);
         }
+    }
+
+    /// Run initialize hooks.
+    for(auto& hook: initialize_hooks) {
+        co_await hook();
     }
 
     /// Load cache info.
@@ -108,18 +114,35 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
 }
 
 async::Task<> Server::on_initialized(proto::InitializedParams) {
+    /// Run initialized hooks.
+    for(auto& hook: initialized_hooks) {
+        co_await hook();
+    }
+
     indexer.load_from_disk();
     co_await indexer.index_all();
+
     co_return;
 }
 
 async::Task<json::Value> Server::on_shutdown(proto::ShutdownParams params) {
+    /// Run shutdown hooks.
+    for(auto& hook: shutdown_hooks) {
+        co_await hook();
+    }
+
     co_return json::Value(nullptr);
 }
 
 async::Task<> Server::on_exit(proto::ExitParams params) {
+    /// Run exit hooks.
+    for(auto& hook: exit_hooks) {
+        co_await hook();
+    }
+
     save_cache_info();
     indexer.save_to_disk();
+
     async::stop();
     co_return;
 }
