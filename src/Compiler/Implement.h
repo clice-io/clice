@@ -57,6 +57,8 @@ struct CompilationUnitRef::Self {
 
     CompilationStatus status;
 
+    std::shared_ptr<std::atomic_bool> stop;
+
     llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> remapped_buffers;
 
     /// The frontend action used to build the unit.
@@ -98,40 +100,29 @@ struct CompilationUnitRef::Self {
         return instance->getSourceManager();
     }
 
+public:
+    ~Self();
+
+    std::unique_ptr<clang::DiagnosticConsumer> create_diagnostic();
+
+    /// create a `clang::CompilerInvocation` for compilation, it set and reset
+    /// all necessary arguments and flags for clice compilation.
+    std::unique_ptr<clang::CompilerInvocation>
+        create_invocation(this Self& self,
+                          CompilationParams& params,
+                          clang::DiagnosticConsumer* consumer);
+
     void collect_directives();
 
-    void configure_tidy(tidy::TidyParams tidy_params) {
-        checker = tidy::configure(*instance, tidy_params);
-    }
+    void configure_tidy(tidy::TidyParams tidy_params);
 
     // Must be called before EndSourceFile because the ast context can be destroyed later.
-    void run_tidy() {
-        if(checker) {
-            // AST traversals should exclude the preamble, to avoid performance cliffs.
-            // TODO: is it okay to affect the unit-level traversal scope here?
-            auto& Ctx = instance->getASTContext();
-            Ctx.setTraversalScope(top_level_decls);
-            checker->finder.matchAST(Ctx);
+    void run_tidy();
 
-            /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
-            /// However Action->EndSourceFile() would destroy the ASTContext!
-            /// So just inform the preprocessor of EOF, while keeping everything alive.
-            instance->getPreprocessor().EndSourceFile();
-        }
-    }
-
-    ~Self() {
-        if(action) {
-            // We already notified the pp of end-of-file earlier, so detach it first.
-            // We must keep it alive until after EndSourceFile(), Sema relies on this.
-            std::shared_ptr<clang::Preprocessor> pp = instance->getPreprocessorPtr();
-            // Detach so we don't send EOF again
-            instance->setPreprocessor(nullptr);
-            action->EndSourceFile();
-        }
-    }
+    CompilationStatus run_clang(this Self& self,
+                                CompilationParams& params,
+                                std::unique_ptr<clang::FrontendAction> action,
+                                llvm::function_ref<void(clang::CompilerInstance&)> before_execute);
 };
-
-std::unique_ptr<clang::DiagnosticConsumer> create_diagnostic(CompilationUnitRef unit);
 
 }  // namespace clice

@@ -83,6 +83,8 @@ public:
     /// will be invalid file id. If the the content of the file doesn't have
     /// `#pragma once` or guard macro, each inclusion of the file will generate
     /// a new file id, return the first one.
+    auto file_id(clang::FileEntryRef file) -> clang::FileID;
+
     auto file_id(llvm::StringRef file) -> clang::FileID;
 
     /// If the location represents file location, it is composed of a file id
@@ -229,12 +231,19 @@ protected:
 /// All AST related information needed for language server.
 class CompilationUnit : public CompilationUnitRef {
 public:
-    explicit CompilationUnit(Self* impl) : CompilationUnitRef(impl) {}
+    explicit CompilationUnit(Self* self) : CompilationUnitRef(self) {}
 
     CompilationUnit(const CompilationUnit&) = delete;
 
     CompilationUnit(CompilationUnit&& other) : CompilationUnitRef(other.self) {
         other.self = nullptr;
+    }
+
+    CompilationUnit& operator=(const CompilationUnit&) = delete;
+
+    CompilationUnit& operator=(CompilationUnit&& other) {
+        std::swap(self, other.self);
+        return *this;
     }
 
     ~CompilationUnit();

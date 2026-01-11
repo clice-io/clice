@@ -249,8 +249,8 @@ private:
     CompilationUnitRef unit;
 };
 
-std::unique_ptr<clang::DiagnosticConsumer> create_diagnostic(CompilationUnitRef unit) {
-    return std::make_unique<DiagnosticCollector>(unit);
+std::unique_ptr<clang::DiagnosticConsumer> CompilationUnitRef::Self::create_diagnostic() {
+    return std::make_unique<DiagnosticCollector>(this);
 }
 
 }  // namespace clice

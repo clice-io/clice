@@ -13,95 +13,33 @@
 
 namespace clice {
 
-namespace {
-
-/// A wrapper ast consumer, so that we can cancel the ast parse
-class ProxyASTConsumer final : public clang::MultiplexConsumer {
-public:
-    ProxyASTConsumer(std::unique_ptr<clang::ASTConsumer> consumer,
-                     clang::CompilerInstance& instance,
-                     std::vector<clang::Decl*>* top_level_decls,
-                     std::shared_ptr<std::atomic_bool> stop) :
-        clang::MultiplexConsumer(std::move(consumer)), instance(instance),
-        src_mgr(instance.getSourceManager()), top_level_decls(top_level_decls), stop(stop) {}
-
-    void collect_decl(clang::Decl* decl) {
-        if(!(ast::is_inside_main_file(decl->getLocation(), src_mgr))) {
-            return;
-        }
-
-        if(const clang::NamedDecl* named_decl = dyn_cast<clang::NamedDecl>(decl)) {
-            if(ast::is_implicit_template_instantiation(named_decl)) {
-                return;
-            }
-        }
-
-        top_level_decls->push_back(decl);
+CompilationUnitRef::Self::~Self() {
+    if(action) {
+        // We already notified the pp of end-of-file earlier, so detach it first.
+        // We must keep it alive until after EndSourceFile(), Sema relies on this.
+        std::shared_ptr<clang::Preprocessor> pp = instance->getPreprocessorPtr();
+        // Detach so we don't send EOF again
+        instance->setPreprocessor(nullptr);
+        action->EndSourceFile();
     }
+}
 
-    auto HandleTopLevelDecl(clang::DeclGroupRef group) -> bool final {
-        if(top_level_decls) {
-            if(group.isDeclGroup()) {
-                for(auto decl: group) {
-                    collect_decl(decl);
-                }
-            } else {
-                collect_decl(group.getSingleDecl());
-            }
-        }
-
-        /// TODO: check atomic variable after the parse of each declaration
-        /// may result in performance issue, benchmark in the future.
-        if(stop && stop->load()) {
-            return false;
-        }
-
-        return clang::MultiplexConsumer::HandleTopLevelDecl(group);
-    }
-
-private:
-    clang::CompilerInstance& instance;
-    clang::SourceManager& src_mgr;
-
-    /// Non-nullptr if we need collect the top level declarations.
-    std::vector<clang::Decl*>* top_level_decls;
-
-    std::shared_ptr<std::atomic_bool> stop;
-};
-
-class ProxyAction final : public clang::WrapperFrontendAction {
-public:
-    ProxyAction(std::unique_ptr<clang::FrontendAction> action,
-                std::vector<clang::Decl*>* top_level_decls,
-                std::shared_ptr<std::atomic_bool> stop) :
-        clang::WrapperFrontendAction(std::move(action)), top_level_decls(top_level_decls),
-        stop(std::move(stop)) {}
-
-    auto CreateASTConsumer(clang::CompilerInstance& instance, llvm::StringRef file)
-        -> std::unique_ptr<clang::ASTConsumer> final {
-        return std::make_unique<ProxyASTConsumer>(
-            WrapperFrontendAction::CreateASTConsumer(instance, file),
-            instance,
-            top_level_decls,
-            std::move(stop));
-    }
-
-    /// Make this public.
-    using clang::WrapperFrontendAction::EndSourceFile;
-
-private:
-    std::vector<clang::Decl*>* top_level_decls;
-    std::shared_ptr<std::atomic_bool> stop;
-};
-
-/// create a `clang::CompilerInvocation` for compilation, it set and reset
-/// all necessary arguments and flags for clice compilation.
-auto create_invocation(CompilationUnitRef::Self& self,
-                       CompilationParams& params,
-                       llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine>& diagnostic_engine)
-    -> std::unique_ptr<clang::CompilerInvocation> {
+std::unique_ptr<clang::CompilerInvocation>
+    CompilationUnitRef::Self::create_invocation(this Self& self,
+                                                CompilationParams& params,
+                                                clang::DiagnosticConsumer* consumer) {
     if(params.arguments.empty()) {
         LOG_ERROR_RET(nullptr, "Fail to create invocation: empty argument list from database");
+    }
+
+    /// Temporary diagnostic engine, only used for command line parsing.
+    /// For compilation, we need to create a new diagnostic engine. See also
+    /// https://github.com/llvm/llvm-project/pull/139584#issuecomment-2920704282.
+    clang::DiagnosticOptions options;
+    llvm::IntrusiveRefCntPtr diagnostic_engine =
+        clang::CompilerInstance::createDiagnostics(*params.vfs, options, consumer, false);
+    if(!diagnostic_engine) {
+        LOG_ERROR_RET(nullptr, "Fail to create diagnostics engine");
     }
 
     std::unique_ptr<clang::CompilerInvocation> invocation;
@@ -172,7 +110,7 @@ auto create_invocation(CompilationUnitRef::Self& self,
     front_opts.StatsFile = "";
     front_opts.TimeTracePath = "";
     front_opts.TimeTraceVerbose = false;
-    front_opts.TimeTraceGranularity = false;
+    front_opts.TimeTraceGranularity = 0;
     front_opts.PrintSupportedCPUs = false;
     front_opts.PrintEnabledExtensions = false;
     front_opts.PrintSupportedExtensions = false;
@@ -205,26 +143,99 @@ auto create_invocation(CompilationUnitRef::Self& self,
     return invocation;
 }
 
-CompilationStatus run_clang(CompilationUnitRef::Self& self,
-                            CompilationParams& params,
-                            std::unique_ptr<clang::FrontendAction> action,
-                            llvm::function_ref<void(clang::CompilerInstance&)> before_execute) {
-    std::unique_ptr diagnostic_consumer = create_diagnostic(&self);
+void CompilationUnitRef::Self::configure_tidy(tidy::TidyParams tidy_params) {
+    checker = tidy::configure(*instance, tidy_params);
+}
 
-    /// Temporary diagnostic engine, only used for command line parsing.
-    /// For compilation, we need to create a new diagnostic engine. See also
-    /// https://github.com/llvm/llvm-project/pull/139584#issuecomment-2920704282.
-    clang::DiagnosticOptions options;
-    llvm::IntrusiveRefCntPtr diagnostic_engine =
-        clang::CompilerInstance::createDiagnostics(*params.vfs,
-                                                   options,
-                                                   diagnostic_consumer.get(),
-                                                   false);
-    if(!diagnostic_engine) {
-        return CompilationStatus::SetupFail;
+void CompilationUnitRef::Self::run_tidy() {
+    if(checker) {
+        // AST traversals should exclude the preamble, to avoid performance cliffs.
+        // TODO: is it okay to affect the unit-level traversal scope here?
+        auto& Ctx = instance->getASTContext();
+        Ctx.setTraversalScope(top_level_decls);
+        checker->finder.matchAST(Ctx);
+
+        /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
+        /// However Action->EndSourceFile() would destroy the ASTContext!
+        /// So just inform the preprocessor of EOF, while keeping everything alive.
+        instance->getPreprocessor().EndSourceFile();
+    }
+}
+
+namespace {
+
+/// A wrapper ast consumer, so that we can cancel the ast parse
+class ProxyASTConsumer final : public clang::MultiplexConsumer {
+public:
+    ProxyASTConsumer(std::unique_ptr<clang::ASTConsumer> consumer, CompilationUnitRef unit) :
+        clang::MultiplexConsumer(std::move(consumer)), unit(unit) {}
+
+    void collect_decl(clang::Decl* decl) {
+        if(unit.file_id(unit.expansion_location(decl->getLocation())) != unit.interested_file()) {
+            return;
+        }
+
+        if(const clang::NamedDecl* named_decl = dyn_cast<clang::NamedDecl>(decl)) {
+            if(ast::is_implicit_template_instantiation(named_decl)) {
+                return;
+            }
+        }
+
+        unit->top_level_decls.push_back(decl);
     }
 
-    std::unique_ptr invocation = create_invocation(self, params, diagnostic_engine);
+    auto HandleTopLevelDecl(clang::DeclGroupRef group) -> bool final {
+        if(unit->kind == CompilationKind::Content) {
+            if(group.isDeclGroup()) {
+                for(auto decl: group) {
+                    collect_decl(decl);
+                }
+            } else {
+                collect_decl(group.getSingleDecl());
+            }
+        }
+
+        /// TODO: check atomic variable after the parse of each declaration
+        /// may result in performance issue, benchmark in the future.
+        if(unit->stop && unit->stop->load()) {
+            return false;
+        }
+
+        return clang::MultiplexConsumer::HandleTopLevelDecl(group);
+    }
+
+private:
+    CompilationUnitRef unit;
+};
+
+class ProxyAction final : public clang::WrapperFrontendAction {
+public:
+    ProxyAction(std::unique_ptr<clang::FrontendAction> action, CompilationUnitRef unit) :
+        clang::WrapperFrontendAction(std::move(action)), unit(unit) {}
+
+    auto CreateASTConsumer(clang::CompilerInstance& instance, llvm::StringRef file)
+        -> std::unique_ptr<clang::ASTConsumer> final {
+        return std::make_unique<ProxyASTConsumer>(
+            WrapperFrontendAction::CreateASTConsumer(instance, file),
+            unit);
+    }
+
+    /// Make this public.
+    using clang::WrapperFrontendAction::EndSourceFile;
+
+private:
+    CompilationUnitRef unit;
+};
+
+}  // namespace
+
+CompilationStatus CompilationUnitRef::Self::run_clang(
+    this Self& self,
+    CompilationParams& params,
+    std::unique_ptr<clang::FrontendAction> action,
+    llvm::function_ref<void(clang::CompilerInstance&)> before_execute) {
+    std::unique_ptr diagnostic_consumer = self.create_diagnostic();
+    std::unique_ptr invocation = self.create_invocation(params, diagnostic_consumer.get());
     if(!invocation) {
         return CompilationStatus::SetupFail;
     }
@@ -247,14 +258,11 @@ CompilationStatus run_clang(CompilationUnitRef::Self& self,
         before_execute(instance);
     }
 
-    self.action = std::make_unique<ProxyAction>(
-        std::move(action),
-        /// We only collect top level declarations for parse main file.
-        (params.clang_tidy || params.kind == CompilationKind::Content) ? &self.top_level_decls
-                                                                       : nullptr,
-        params.stop);
+    self.action = std::make_unique<ProxyAction>(std::move(action), &self);
 
     if(!self.action->BeginSourceFile(instance, instance.getFrontendOpts().Inputs[0])) {
+        /// If the action is not empty, we will call `EndSourceFile`. But if we fail to
+        /// `BeginSourceFile` we don't need to call `EndSourceFile`. So just reset it.
         self.action.reset();
         return CompilationStatus::SetupFail;
     }
@@ -294,9 +302,7 @@ CompilationStatus run_clang(CompilationUnitRef::Self& self,
 
     /// Check whether the compilation is canceled, if so we think
     /// it is an error.
-    if(params.stop && params.stop->load()) {
-        self.action->EndSourceFile();
-        self.action.reset();
+    if(self.stop && self.stop->load()) {
         return CompilationStatus::Cancelled;
     }
 
@@ -319,12 +325,13 @@ CompilationUnit run_clang(CompilationParams& params,
                           llvm::function_ref<void(CompilationUnitRef)> after_execute = {}) {
     auto self = new CompilationUnitRef::Self();
     self->kind = params.kind;
+    self->stop = std::move(params.stop);
 
     using namespace std::chrono;
     self->build_at = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
     auto build_start = steady_clock::now().time_since_epoch();
 
-    self->status = run_clang(*self, params, std::move(action), before_execute);
+    self->status = self->run_clang(params, std::move(action), before_execute);
 
     auto build_end = steady_clock::now().time_since_epoch();
     self->build_duration = duration_cast<milliseconds>(build_end - build_start);
@@ -335,8 +342,6 @@ CompilationUnit run_clang(CompilationParams& params,
 
     return CompilationUnit(self);
 }
-
-}  // namespace
 
 CompilationUnit preprocess(CompilationParams& params) {
     return run_clang(params, std::make_unique<clang::PreprocessOnlyAction>());

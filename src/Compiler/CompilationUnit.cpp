@@ -12,10 +12,14 @@ CompilationStatus CompilationUnitRef::status() {
     return self->status;
 }
 
+auto CompilationUnitRef::file_id(clang::FileEntryRef entry) -> clang::FileID {
+    return self->SM().translateFile(entry);
+}
+
 auto CompilationUnitRef::file_id(llvm::StringRef file) -> clang::FileID {
     auto entry = self->SM().getFileManager().getFileRef(file);
     if(entry) {
-        return self->SM().translateFile(*entry);
+        return file_id(*entry);
     }
 
     return clang::FileID();

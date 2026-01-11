@@ -12,16 +12,14 @@ namespace {
 
 class DirectiveCollector : public clang::PPCallbacks {
 public:
-    DirectiveCollector(clang::Preprocessor& pp,
-                       llvm::DenseMap<clang::FileID, Directive>& directives) :
-        pp(pp), sm(pp.getSourceManager()), directives(directives) {}
+    DirectiveCollector(CompilationUnitRef unit) : unit(unit) {}
 
 private:
     void add_condition(clang::SourceLocation location,
                        Condition::BranchKind kind,
                        Condition::ConditionValue value,
                        clang::SourceRange cond_range) {
-        auto& directive = directives[sm.getFileID(location)];
+        auto& directive = unit->directives[unit.file_id(location)];
         directive.conditions.emplace_back(kind, value, location, cond_range);
     }
 
@@ -54,12 +52,11 @@ private:
             return;
         }
 
-        if(sm.isWrittenInBuiltinFile(loc) || sm.isWrittenInCommandLineFile(loc) ||
-           sm.isWrittenInScratchSpace(loc)) {
+        if(unit.is_builtin_file(unit.file_id(loc))) {
             return;
         }
 
-        auto& directive = directives[sm.getFileID(loc)];
+        auto& directive = unit->directives[unit.file_id(loc)];
         directive.macros.emplace_back(MacroRef{def, kind, loc});
     }
 
@@ -79,11 +76,11 @@ public:
                             const clang::Module*,
                             bool,
                             clang::SrcMgr::CharacteristicKind) override {
-        prev_fid = sm.getFileID(hash_loc);
+        prev_fid = unit.file_id(hash_loc);
 
         /// An `IncludeDirective` call is always followed by either a `LexedFileChanged`
         /// or a `FileSkipped`. so we cannot get the file id of included file here.
-        directives[prev_fid].includes.emplace_back(Include{
+        unit->directives[prev_fid].includes.emplace_back(Include{
             .fid = {},
             .location = include_tok.getLocation(),
             .filename_range = filename_range.getAsRange(),
@@ -99,7 +96,7 @@ public:
            this->prev_fid.isValid() && prev_fid == this->prev_fid) {
             /// Once the file has changed, it means that the last include is not skipped.
             /// Therefore, we initialize its file id with the current file id.
-            auto& include = directives[prev_fid].includes.back();
+            auto& include = unit->directives[prev_fid].includes.back();
             include.skipped = false;
             include.fid = curr_fid;
         }
@@ -111,20 +108,20 @@ public:
         if(prev_fid.isValid()) {
             /// File with guard will have only one file id in `SourceManager`, use
             /// `translateFile` to find it.
-            auto& include = directives[prev_fid].includes.back();
+            auto& include = unit->directives[prev_fid].includes.back();
             include.skipped = true;
 
             /// Get the FileID for the given file. If the source file is included multiple
             /// times, the FileID will be the first inclusion.
-            include.fid = sm.translateFile(file);
+            include.fid = unit.file_id(file);
         }
     }
 
     void moduleImport(clang::SourceLocation import_location,
                       clang::ModuleIdPath names,
                       const clang::Module*) override {
-        auto fid = sm.getFileID(sm.getExpansionLoc(import_location));
-        auto& import = directives[fid].imports.emplace_back();
+        auto fid = unit.file_id(unit.expansion_location(import_location));
+        auto& import = unit->directives[fid].imports.emplace_back();
         import.location = import_location;
         for(auto name: names) {
             import.name += name.getIdentifierInfo()->getName();
@@ -139,10 +136,10 @@ public:
                     clang::SrcMgr::CharacteristicKind) override {
         clang::FileID fid;
         if(file) {
-            fid = sm.translateFile(*file);
+            fid = unit.file_id(*file);
         }
 
-        directives[sm.getFileID(location)].has_includes.emplace_back(fid, location);
+        unit->directives[unit.file_id(location)].has_includes.emplace_back(fid, location);
     }
 
     void PragmaDirective(clang::SourceLocation loc,
@@ -151,16 +148,16 @@ public:
         if(introducer != clang::PragmaIntroducerKind::PIK_HashPragma)
             return;
 
-        clang::FileID fid = sm.getFileID(loc);
+        clang::FileID fid = unit.file_id(loc);
 
-        llvm::StringRef text_to_end = sm.getBufferData(fid).substr(sm.getFileOffset(loc));
+        llvm::StringRef text_to_end = unit.file_content(fid).substr(unit.file_offset(loc));
         llvm::StringRef that_line = text_to_end.take_until([](char ch) { return ch == '\n'; });
 
         Pragma::Kind kind = that_line.contains("endregion") ? Pragma::EndRegion
                             : that_line.contains("region")  ? Pragma::Region
                                                             : Pragma::Other;
 
-        auto& directive = directives[fid];
+        auto& directive = unit->directives[fid];
         directive.pragmas.emplace_back(Pragma{
             that_line,
             kind,
@@ -256,17 +253,14 @@ public:
 
 private:
     clang::FileID prev_fid;
-    clang::Preprocessor& pp;
-    clang::SourceManager& sm;
-    llvm::DenseMap<clang::FileID, Directive>& directives;
+    CompilationUnitRef unit;
     llvm::DenseMap<clang::MacroInfo*, std::size_t> macro_cache;
 };
 
 }  // namespace
 
 void CompilationUnitRef::Self::collect_directives() {
-    auto& pp = instance->getPreprocessor();
-    pp.addPPCallbacks(std::make_unique<DirectiveCollector>(pp, directives));
+    instance->getPreprocessor().addPPCallbacks(std::make_unique<DirectiveCollector>(this));
 }
 
 }  // namespace clice
