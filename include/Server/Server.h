@@ -3,12 +3,15 @@
 #include "Config.h"
 #include "Convert.h"
 #include "Indexer.h"
+#include "Plugin.h"
 #include "Async/Async.h"
 #include "Compiler/Command.h"
 #include "Compiler/Diagnostic.h"
 #include "Compiler/Preamble.h"
 #include "Feature/DocumentLink.h"
 #include "Protocol/Protocol.h"
+
+#include <llvm/ADT/FunctionExtras.h>
 
 namespace clice {
 
@@ -192,6 +195,8 @@ private:
 private:
     using Result = async::Task<json::Value>;
 
+    auto on_execute_command(proto::ExecuteCommandParams params) -> Result;
+
     auto on_completion(proto::CompletionParams params) -> Result;
 
     auto on_hover(proto::HoverParams params) -> Result;
@@ -241,6 +246,20 @@ private:
     config::Config config;
 
     Indexer indexer;
+
+private:
+    friend struct ServerPluginBuilder;
+    using lifecycle_hook_t = llvm::unique_function<async::Task<>()>;
+    using command_handler_t = llvm::unique_function<async::Task<llvm::json::Value>(
+        llvm::ArrayRef<llvm::StringRef> arguments)>;
+
+    std::vector<lifecycle_hook_t> initialize_hooks;
+    std::vector<lifecycle_hook_t> initialized_hooks;
+    std::vector<lifecycle_hook_t> shutdown_hooks;
+    std::vector<lifecycle_hook_t> exit_hooks;
+    std::vector<lifecycle_hook_t> did_change_configuration_hooks;
+    llvm::StringMap<command_handler_t> command_handlers;
+    std::vector<Plugin> plugins;
 };
 
 }  // namespace clice

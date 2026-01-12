@@ -44,6 +44,11 @@ public:
         if(it2 != project_index.indices.end()) {
             auto path = project_index.path_pool.path(it2->second);
             it->second = index::MergedIndex::load(path);
+        } else {
+            std::println(stderr,
+                         "failed to load project index for path_id: {} {}",
+                         path_id,
+                         project_index.indices.size());
         }
 
         return it->second;
@@ -66,6 +71,14 @@ public:
     /// TODO: Calls ...
 
     /// TODO: Types ...
+
+    bool empty() const {
+        return project_index.indices.empty();
+    }
+
+    size_t size() const {
+        return project_index.indices.size();
+    }
 
 private:
     CompilationDatabase& database;

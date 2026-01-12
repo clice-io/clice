@@ -96,7 +96,8 @@ static void parse_toml(Object& object, auto&& value, Config& config) {
 auto Config::parse(llvm::StringRef workspace) -> std::expected<void, std::string> {
     this->workspace = workspace;
 
-    auto path = path::join(workspace, "clice.toml");
+    // auto path = path::join(workspace, "clice.toml");
+    auto path = "/mnt/sda2/tfuzz/packages/tfuzz/src/clice.toml";
 
     std::string error_message;
     if(fs::exists(path)) {

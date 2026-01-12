@@ -34,6 +34,7 @@ async::Task<> Indexer::index(llvm::StringRef path) {
     });
 
     if(!tu_index) {
+        std::println(stderr, "Fail to index for {}, because of compile errors", path);
         co_return;
     }
 
@@ -108,9 +109,15 @@ void Indexer::load_from_disk() {
     if(auto content = fs::read(output_path); content && !content->empty()) {
         /// FIXME: from should return a expected ...
         project_index = index::ProjectIndex::from(content->data());
-        LOG_INFO("Load project index form {} successfully", output_path);
+        std::println(stderr,
+                     "Load project index form {} successfully, indices: {}",
+                     output_path,
+                     project_index.indices.size());
+        for(auto& [path_id, index]: project_index.indices) {
+            std::println(stderr, "path_id: {} {}", path_id, project_index.path_pool.path(path_id));
+        }
     } else {
-        LOG_INFO("Fail to load project index form {}", output_path);
+        std::println(stderr, "Fail to load project index form {}", output_path);
     }
 
     /// FIXME: check indices update ....
@@ -122,8 +129,10 @@ void Indexer::save_to_disk() {
         return;
     }
 
+    auto not_saved = 0;
     for(auto& [path_id, index]: in_memory_indices) {
         if(index.need_rewrite()) {
+            LOG_INFO("save index: {} {}", path_id, project_index.path_pool.path(path_id));
             auto path = project_index.path_pool.path(path_id);
 
             std::string output_path;
@@ -147,8 +156,12 @@ void Indexer::save_to_disk() {
             auto opath_id = project_index.path_pool.path_id(output_path);
             project_index.indices.try_emplace(path_id, opath_id);
             LOG_INFO("Successfully save index for {} to {}", path, output_path);
+        } else {
+            LOG_INFO("not save index: {} {}", path_id, project_index.path_pool.path(path_id));
+            not_saved += 1;
         }
     }
+    LOG_INFO("not save index: {}", not_saved);
 
     std::string output_path = path::join(config.project.index_dir, "project.idx");
 
@@ -167,6 +180,7 @@ auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind ki
     std::vector<proto::Location> locations;
 
     auto path_id = project_index.path_pool.path_id(path);
+    std::println(stderr, "path_id: {}", path_id);
     auto& index = get_index(path_id);
 
     llvm::SmallVector<index::Occurrence> occurrences;
@@ -174,6 +188,7 @@ auto Indexer::lookup(llvm::StringRef path, std::uint32_t offset, RelationKind ki
         occurrences.emplace_back(o);
         return true;
     });
+    std::println(stderr, "occurrences: {}", occurrences.size());
     if(occurrences.empty()) {
         co_return locations;
     }

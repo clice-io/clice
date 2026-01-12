@@ -66,16 +66,20 @@ set(FLATBUFFERS_BUILD_GRPC OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "" FORCE)
 
-# cpptrace
-FetchContent_Declare(
-    cpptrace
-    GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
-    GIT_TAG        v1.0.4
-    GIT_SHALLOW    TRUE
-)
-set(CPPTRACE_DISABLE_CXX_20_MODULES ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring flatbuffers)
 
-FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring flatbuffers cpptrace)
+if(CLICE_ENABLE_TEST)
+    # cpptrace
+    FetchContent_Declare(
+        cpptrace
+        GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
+        GIT_TAG        v1.0.4
+        GIT_SHALLOW    TRUE
+    )
+    set(CPPTRACE_DISABLE_CXX_20_MODULES ON CACHE BOOL "" FORCE)
+
+    FetchContent_MakeAvailable(cpptrace)
+endif()
 
 if(WIN32)
     target_compile_definitions(uv_a PRIVATE _CRT_SECURE_NO_WARNINGS)

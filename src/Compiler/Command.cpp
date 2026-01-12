@@ -643,10 +643,23 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
             llvm::BumpPtrAllocator local;
             llvm::StringSaver saver(local);
             llvm::SmallVector<const char*, 32> agrs;
+            auto hasCC1 = false;
             for(auto& argument: *arguments) {
                 if(argument.kind() == json::Value::String) {
                     agrs.emplace_back(saver.save(*argument.getAsString()).data());
+                    if(argument.getAsString() == "-cc1") {
+                        hasCC1 = true;
+                        break;
+                    }
                 }
+            }
+            if(hasCC1) {
+                std::println(stderr, "cannot handle arguments: {}", *file);
+                for(auto& arg: *arguments) {
+                    std::print(stderr, "{} ", arg);
+                }
+                std::println(stderr, "");
+                continue;
             }
             item.info = self->save_compilation_info(*file, *directory, agrs);
         } else if(command) {
