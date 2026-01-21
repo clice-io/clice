@@ -9,4 +9,4 @@ Veuillez vous référer à [construction](./build.md) pour construire clice, et 
 Nommage :
 
 - Noms de variables : minuscules avec underscores (`snake_case`)
-- Noms de classes, noms d'enums : `PascalCase`
+- Noms de classes, noms d’enums : `PascalCase`

@@ -15,12 +15,12 @@ Dossier pour stocker les caches PCH et PCM.
 | ------------------- | -------- | ----------------------------- |
 | `project.index_dir` | `string` | `"${workspace}/.clice/index"` |
 
-Dossier pour stocker les fichiers d'index.
+Dossier pour stocker les fichiers d’index.
 <br>
 
 ## Règle
 
-`[[rules]]` représente un tableau d'objets, où chaque objet possède les propriétés suivantes :
+`[[rules]]` représente un tableau d’objets, où chaque objet possède les propriétés suivantes :
 <br>
 
 | Nom                | Type                 |
@@ -31,7 +31,7 @@ Modèles glob pour faire correspondre les chemins de fichiers, suivant le [stand
 
 - `*` : Correspond à un ou plusieurs caractères dans un segment de chemin.
 - `?` : Correspond à un seul caractère dans un segment de chemin.
-- `**` : Correspond à n'importe quel nombre de segments de chemin, y compris zéro.
+- `**` : Correspond à n’importe quel nombre de segments de chemin, y compris zéro.
 - `{}` : Utilisé pour grouper des conditions (par exemple, `**/*.{ts,js}` correspond à tous les fichiers TypeScript et JavaScript).
 - `[]` : Déclare une plage de caractères à faire correspondre dans un segment de chemin (par exemple, `exemple.[0-9]` correspond à `exemple.0`, `exemple.1`, etc.).
 - `[!...]` : Exclut une plage de caractères à faire correspondre dans un segment de chemin (par exemple, `exemple.[!0-9]` correspond à `exemple.a`, `exemple.b`, mais pas à `exemple.0`).
