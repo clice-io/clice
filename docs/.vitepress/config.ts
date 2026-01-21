@@ -13,6 +13,7 @@ export default defineConfig({
     locales: {
         root: { label: "English" },
         zh: { label: "简体中文" },
+        fr: { label: "Français" },
     },
     themeConfig: {
         // https://vitepress.dev/reference/default-theme-config
@@ -22,6 +23,11 @@ export default defineConfig({
                 genSidebar("zh", "design", { title: "Design" }),
                 genSidebar("zh", "dev", { title: "Development" }),
                 genSidebar("zh", "guide", { title: "Guide" }),
+            ],
+            "/fr/": [
+                genSidebar("fr", "design", { title: "Design" }),
+                genSidebar("fr", "dev", { title: "Développement" }),
+                genSidebar("fr", "guide", { title: "Guide" }),
             ],
             "/": [
                 genSidebar("en", "design", { title: "Design" }),
