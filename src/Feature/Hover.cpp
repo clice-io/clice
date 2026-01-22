@@ -97,7 +97,6 @@ static std::string print_type(const clang::TemplateTemplateParmDecl* TTP,
 }
 
 static std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
->>>>>>> 7c3c815 (Refactor ut, misc patch on type deducing)
                                               const clang::NamedDecl* decl,
                                               const config::HoverOptions& opt) {
     clang::ASTContext& ctx = unit.context();
@@ -181,19 +180,6 @@ static std::string get_qualifier(CompilationUnitRef unit,
     llvm::raw_string_ostream os(result);
     decl->printNestedNameSpecifier(os);
     return result;
-}
-
-// Get all source code
-static std::string get_source_code(CompilationUnitRef unit, clang::SourceRange range) {
-    clang::LangOptions lo;
-    auto& sm = unit.context().getSourceManager();
-    auto start_loc = sm.getSpellingLoc(range.getBegin());
-    auto last_token_loc = sm.getSpellingLoc(range.getEnd());
-    auto end_loc = clang::Lexer::getLocForEndOfToken(last_token_loc, 0, sm, lo);
-    return std::string{clang::Lexer::getSourceText(
-        clang::CharSourceRange::getCharRange(clang::SourceRange{start_loc, end_loc}),
-        sm,
-        lo)};
 }
 
 // Get all source code
@@ -409,19 +395,6 @@ static std::optional<clang::QualType> getDeducedType(clang::ASTContext& ASTCtx,
         return std::nullopt;
     }
     return V.DeducedType;
-}
-
-// Get all source code
-static std::string get_source_code(CompilationUnitRef unit, clang::SourceRange range) {
-    clang::LangOptions lo;
-    auto& sm = unit.context().getSourceManager();
-    auto start_loc = sm.getSpellingLoc(range.getBegin());
-    auto last_token_loc = sm.getSpellingLoc(range.getEnd());
-    auto end_loc = clang::Lexer::getLocForEndOfToken(last_token_loc, 0, sm, lo);
-    return std::string{clang::Lexer::getSourceText(
-        clang::CharSourceRange::getCharRange(clang::SourceRange{start_loc, end_loc}),
-        sm,
-        lo)};
 }
 
 // TODO: How does clangd put together decl, name, scope and sometimes initialized value?
