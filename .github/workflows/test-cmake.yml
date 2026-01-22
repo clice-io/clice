@@ -16,9 +16,16 @@ jobs:
           - os: macos-15
             build_type: Debug
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup MSVC Developer Environment (Windows)
+        if: matrix.os == 'windows-2025'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - uses: ./.github/actions/setup-pixi
 
