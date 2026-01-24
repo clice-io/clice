@@ -75,11 +75,10 @@ cl::opt<logging::Level> log_level{
     cl::desc("The log level, default is info"),
 };
 
-cl::opt<std::vector<std::string>> plugin_paths{
+cl::list<std::string> plugin_paths{
     "plugin-path",
     cl::cat(category),
-    cl::value_desc("string"),
-    cl::init(std::vector<std::string>{}),
+    cl::value_desc("path1,path2,path3,..."),
     cl::desc("The server plugins to load"),
     cl::CommaSeparated,
 };
