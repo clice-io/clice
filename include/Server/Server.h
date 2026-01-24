@@ -251,7 +251,7 @@ private:
     friend struct ServerPluginBuilder;
     using lifecycle_hook_t = llvm::unique_function<async::Task<>()>;
     using command_handler_t = llvm::unique_function<async::Task<llvm::json::Value>(
-        llvm::ArrayRef<llvm::StringRef> arguments)>;
+        llvm::ArrayRef<llvm::json::Value> arguments)>;
 
     std::vector<lifecycle_hook_t> initialize_hooks;
     std::vector<lifecycle_hook_t> initialized_hooks;

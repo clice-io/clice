@@ -106,9 +106,14 @@ llvm::StringRef Plugin::version() const {
     return self->version;
 }
 
+/// Registers the server callbacks for the loaded plugin.
+void Plugin::register_server_callbacks(ServerPluginBuilder& builder) const {
+    self->register_server_callbacks(builder);
+}
+
 using command_handler_t =
     async::Task<llvm::json::Value> (*)(ServerRef server,
-                                       const llvm::ArrayRef<llvm::StringRef>& arguments);
+                                       const llvm::ArrayRef<llvm::json::Value>& arguments);
 
 void ServerPluginBuilder::on_initialize(void* plugin_data, lifecycle_hook_t callback) {
     auto server = server_ref;
@@ -147,8 +152,8 @@ void ServerPluginBuilder::register_commmand_handler(void* plugin_data,
     auto server = server_ref;
     auto [_, inserted] = server_ref.server().command_handlers.try_emplace(
         command,
-        [=](llvm::ArrayRef<llvm::StringRef> arguments) -> async::Task<llvm::json::Value> {
-            co_return callback(server, plugin_data, arguments);
+        [=](llvm::ArrayRef<llvm::json::Value> arguments) -> async::Task<llvm::json::Value> {
+            return callback(server, plugin_data, arguments);
         });
     if(!inserted) {
         LOG_ERROR("Command handler already registered for command '{}'.", command);

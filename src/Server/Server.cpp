@@ -1,6 +1,11 @@
 #include "Server/Server.h"
 
+#include "Compiler/CompilationUnit.h"
+#include "Protocol/Basic.h"
+#include "Support/FileSystem.h"
 #include "Support/Logging.h"
+
+#include <clang/AST/Decl.h>
 
 namespace clice {
 
@@ -187,7 +192,17 @@ async::Task<> Server::on_receive(json::Value value) {
 }
 
 async::Task<json::Value> Server::on_execute_command(proto::ExecuteCommandParams params) {
-    co_return json::Value{};
+    auto& command = params.command;
+    auto& arguments = params.arguments;
+
+    auto it = command_handlers.find(command);
+    if(it == command_handlers.end()) {
+        LOG_ERROR("Command handler not found for command '{}'.", command);
+        co_return json::Value{};
+    }
+
+    auto& handler = it->second;
+    co_return co_await handler(arguments);
 }
 
 }  // namespace clice

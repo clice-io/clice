@@ -43,12 +43,13 @@ extern "C" {
     /// obtain information about this plugin and about how to register its customization points.
     /// This function needs to be implemented by the plugin, see the example below:
     ///
-    /// ```
+    /// ```cpp
+    /// #include "Server/Plugin.h"
     /// extern "C" ::clice::PluginInfo LLVM_ATTRIBUTE_WEAK
     /// clice_get_server_plugin_info() {
     ///   return {
-    ///     CLICE_PLUGIN_API_VERSION, "MyPlugin", "v0.1", CLICE_PLUGIN_DEF_HASH,
-    ///     [](ServerPluginBuilder builder) {  ... }
+    ///     CLICE_PLUGIN_API_VERSION, "MyPlugin", "v0.0.1", CLICE_PLUGIN_DEF_HASH,
+    ///     [](clice::ServerPluginBuilder& builder) {  ... }
     ///   };
     /// }
     /// ```
@@ -98,7 +99,7 @@ public:
     using command_handler_t =
         async::Task<llvm::json::Value> (*)(ServerRef server,
                                            void* plugin_data,
-                                           llvm::ArrayRef<llvm::StringRef> arguments);
+                                           llvm::ArrayRef<llvm::json::Value> arguments);
     /// Registers a callback to be called when a command is received from the LSP client.
     CliceServerPluginAPI(register_commmand_handler,
                          llvm::StringRef command,
