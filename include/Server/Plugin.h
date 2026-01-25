@@ -7,7 +7,7 @@
 
 // clang-format off
 /// Run `python scripts/plugin-def.py update` to update the hash.
-#define CLICE_PLUGIN_DEF_HASH "sha256:9cde70ca203004d517e81d042fae378e2bc9593e54528b8d07ff6c97f5f13a3a"
+#define CLICE_PLUGIN_DEF_HASH "sha256:332cd65741dea17d5168dd1ab564ac73ce230f14fc1e34170438d895eb11881c"
 // clang-format on
 
 namespace clice {

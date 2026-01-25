@@ -60,16 +60,16 @@ struct ServerRef {
 public:
     struct Self;
 
-    ServerRef(Self* self) : self(self) {}
+    ServerRef(Server* self) : self(self) {}
 
-    Self* operator->() const {
-        return self;
+    Server& operator->() const {
+        return *self;
     }
 
     Server& server() const;
 
 protected:
-    Self* self;
+    Server* self;
 };
 
 /// Defines the library APIs to register callbacks for a plugin.

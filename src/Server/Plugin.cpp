@@ -9,7 +9,7 @@
 namespace clice {
 
 Server& ServerRef::server() const {
-    return self->server();
+    return *self;
 }
 
 struct Plugin::Self {

@@ -85,8 +85,7 @@ cl::list<std::string> plugin_paths{
 
 /// Loads plugins intermediatly.
 std::vector<Plugin> load_plugins(Server& instance) {
-    auto ref = ServerRef::Self{&instance};
-    ServerPluginBuilder builder{ServerRef{&ref}};
+    ServerPluginBuilder builder{ServerRef{&instance}};
     std::vector<Plugin> plugins;
     for(auto& plugin_path: plugin_paths) {
         auto plugin_instance = Plugin::load(plugin_path);
