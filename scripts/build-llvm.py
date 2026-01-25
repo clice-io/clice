@@ -22,6 +22,24 @@ def normalize_mode(value: str) -> str:
     )
 
 
+def copy_headers(project_root, install_prefix):
+    print("\nCopying internal Sema headers...")
+    clang_sema_dir = project_root / "clang/lib/Sema"
+    install_sema_dir = install_prefix / "include/clang/Sema"
+    install_sema_dir.mkdir(parents=True, exist_ok=True)
+
+    headers_to_copy = ["CoroutineStmtBuilder.h", "TypeLocBuilder.h", "TreeTransform.h"]
+
+    for header in headers_to_copy:
+        src = clang_sema_dir / header
+        dst = install_sema_dir / header
+        if src.exists():
+            shutil.copy(src, dst)
+            print(f"  Copied {header}")
+        else:
+            print(f"  Warning: {header} not found in source.")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Build LLVM with specific configurations."
@@ -293,21 +311,7 @@ def main():
         print("Build failed!")
         sys.exit(1)
 
-    print("\nCopying internal Sema headers...")
-    clang_sema_dir = project_root / "clang/lib/Sema"
-    install_sema_dir = install_prefix / "include/clang/Sema"
-    install_sema_dir.mkdir(parents=True, exist_ok=True)
-
-    headers_to_copy = ["CoroutineStmtBuilder.h", "TypeLocBuilder.h", "TreeTransform.h"]
-
-    for header in headers_to_copy:
-        src = clang_sema_dir / header
-        dst = install_sema_dir / header
-        if src.exists():
-            shutil.copy(src, dst)
-            print(f"  Copied {header}")
-        else:
-            print(f"  Warning: {header} not found in source.")
+    copy_headers(project_root, install_prefix)
 
     def human_readable(num: int) -> str:
         for unit in ["B", "KB", "MB", "GB"]:
