@@ -70,6 +70,20 @@ struct Serde<std::nullopt_t> {
     }
 };
 
+template <typename T>
+struct Serde<std::optional<T>> {
+    static json::Value serialize(const std::optional<T>& v) {
+        return v ? json::serialize(*v) : json::Value(nullptr);
+    }
+
+    static std::optional<T> deserialize(const json::Value& value) {
+        if(value.kind() == json::Value::Null) {
+            return std::nullopt;
+        }
+        return json::deserialize<T>(value);
+    }
+};
+
 template <>
 struct Serde<bool> {
     static json::Value serialize(bool v) {
