@@ -79,10 +79,10 @@ public:
     }
 
     /// Try get OpenFile from manager, default construct one if not exists.
-    [[nodiscard]] ActiveFile& get_or_add(llvm::StringRef path);
+    [[nodiscard]] ActiveFile get_or_add(llvm::StringRef path);
 
     /// Add a OpenFile to the manager.
-    ActiveFile& add(llvm::StringRef path, OpenFile file);
+    ActiveFile add(llvm::StringRef path, OpenFile file);
 
     [[nodiscard]] bool contains(llvm::StringRef path) const {
         return index.contains(path);
@@ -97,7 +97,7 @@ public:
     }
 
 private:
-    ActiveFile& lru_put_impl(llvm::StringRef path, OpenFile file);
+    ActiveFile lru_put_impl(llvm::StringRef path, OpenFile file);
 
 private:
     /// The maximum size of the cache.

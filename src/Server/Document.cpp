@@ -249,7 +249,7 @@ async::Task<bool> Server::build_pch(std::string file, std::string content) {
     auto info = database.lookup(file, options);
 
     auto bound = compute_preamble_bound(content);
-    auto& open_file = opening_files.get_or_add(file);
+    auto open_file = opening_files.get_or_add(file);
 
     /// Check update ...
     if(open_file->pch && !check_pch_update(content, bound, info, *open_file->pch)) {
@@ -347,7 +347,7 @@ async::Task<> Server::build_ast(std::string path, std::string content) {
 }
 
 async::Task<std::shared_ptr<OpenFile>> Server::add_document(std::string path, std::string content) {
-    auto& openFile = opening_files.get_or_add(path);
+    auto openFile = opening_files.get_or_add(path);
     openFile->version += 1;
     openFile->content = content;
 

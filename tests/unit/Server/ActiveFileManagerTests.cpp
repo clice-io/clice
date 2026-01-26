@@ -32,12 +32,12 @@ TEST_CASE(LruAlgorithm) {
 
     ASSERT_EQ(actives.size(), 0U);
 
-    auto& first = actives.add("first", OpenFile{.version = 1});
+    auto first = actives.add("first", OpenFile{.version = 1});
     ASSERT_EQ(actives.size(), 1U);
     ASSERT_TRUE(actives.contains("first"));
     ASSERT_EQ(first->version, 1U);
 
-    auto& second = actives.add("second", OpenFile{.version = 2});
+    auto second = actives.add("second", OpenFile{.version = 2});
     ASSERT_EQ(actives.size(), 1U);
 }
 
@@ -82,7 +82,7 @@ TEST_CASE(IteratorCheck) {
         std::string fpath = std::format("{}", i);
         OpenFile object{.version = i};
 
-        auto& inseted = manager.add(fpath, std::move(object));
+        auto inseted = manager.add(fpath, std::move(object));
         std::optional new_added_entry = manager.get_or_add(fpath);
         ASSERT_TRUE(new_added_entry.has_value());
         auto new_added = std::move(new_added_entry).value();

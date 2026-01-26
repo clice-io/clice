@@ -9,8 +9,7 @@
 
 namespace clice {
 
-ActiveFileManager::ActiveFile& ActiveFileManager::lru_put_impl(llvm::StringRef path,
-                                                               OpenFile file) {
+ActiveFileManager::ActiveFile ActiveFileManager::lru_put_impl(llvm::StringRef path, OpenFile file) {
     /// If the file is not in the chain, create a new OpenFile.
     if(items.size() >= capability) {
         /// If the size exceeds the maximum size, remove the last element.
@@ -26,7 +25,7 @@ ActiveFileManager::ActiveFile& ActiveFileManager::lru_put_impl(llvm::StringRef p
     return items.front().second;
 }
 
-ActiveFileManager::ActiveFile& ActiveFileManager::get_or_add(llvm::StringRef path) {
+ActiveFileManager::ActiveFile ActiveFileManager::get_or_add(llvm::StringRef path) {
     auto iter = index.find(path);
     if(iter == index.end()) {
         return lru_put_impl(path, OpenFile{});
@@ -37,7 +36,7 @@ ActiveFileManager::ActiveFile& ActiveFileManager::get_or_add(llvm::StringRef pat
     return iter->second->second;
 }
 
-ActiveFileManager::ActiveFile& ActiveFileManager::add(llvm::StringRef path, OpenFile file) {
+ActiveFileManager::ActiveFile ActiveFileManager::add(llvm::StringRef path, OpenFile file) {
     auto iter = index.find(path);
     if(iter == index.end()) {
         return lru_put_impl(path, std::move(file));
