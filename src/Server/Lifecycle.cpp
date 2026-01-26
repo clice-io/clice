@@ -114,6 +114,9 @@ async::Task<json::Value> Server::on_initialize(proto::InitializeParams params) {
 }
 
 async::Task<> Server::on_initialized(proto::InitializedParams) {
+    // emit indexing notification
+    notify("clice/willIndex", {});
+
     /// Run initialized hooks.
     for(auto& hook: initialized_hooks) {
         co_await hook();
@@ -121,6 +124,9 @@ async::Task<> Server::on_initialized(proto::InitializedParams) {
 
     indexer.load_from_disk();
     co_await indexer.index_all();
+
+    // emit indexed notification
+    notify("clice/didIndex", {});
 
     co_return;
 }
