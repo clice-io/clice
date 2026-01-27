@@ -98,7 +98,7 @@ public:
     static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
 
     /// FIXME: bad interface design ...
-    std::vector<const char*> files();
+    std::vector<llvm::StringRef> files();
 
     /// FIXME: remove this api?
     auto save_string(llvm::StringRef string) -> llvm::StringRef;

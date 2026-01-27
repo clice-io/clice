@@ -775,10 +775,10 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
     }
 }
 
-std::vector<const char*> CompilationDatabase::files() {
-    std::vector<const char*> result;
+std::vector<llvm::StringRef> CompilationDatabase::files() {
+    std::vector<llvm::StringRef> result;
     for(auto& [file, _]: self->files) {
-        result.emplace_back(self->strings.get(file).data());
+        result.emplace_back(self->strings.get(file));
     }
     return result;
 }

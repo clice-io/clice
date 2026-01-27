@@ -37,6 +37,10 @@ public:
         }
     }
 
+    void unset() {
+        ready = false;
+    }
+
     void clear() {
         ready = false;
         awaiters.clear();

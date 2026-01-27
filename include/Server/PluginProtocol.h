@@ -62,8 +62,8 @@ public:
 
     ServerRef(Server* self) : self(self) {}
 
-    Server& operator->() const {
-        return *self;
+    Server* operator->() const {
+        return self;
     }
 
     Server& server() const;
