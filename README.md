@@ -35,4 +35,4 @@ Download the latest `clice` binary from the [releases page](https://github.com/c
 
 ## Documentation
 
-To learn more about building, installing, and configuring clice, or to dive deep into its features and architecture, please visit our official documentation at [**clice.io**](https://clice.io/).
+To learn more about building, installing, and configuring clice, or to dive deep into its features and architecture, please visit our official documentation at [**clice.io**](https://docs.clice.io/clice/).
