@@ -77,9 +77,44 @@ TEST_CASE(GCC, {.skip = !(CIEnvironment && (Windows || Linux))}) {
     ASSERT_TRUE(unit.diagnostics().empty());
 };
 
-TEST_CASE(MSVC, {.skip = !CIEnvironment}) {
-    // TODO: add MSVC toolchain test when CI provides toolchain.
-}
+TEST_CASE(MSVC, {.skip = !CIEnvironment || !Windows}) {
+    auto file = fs::createTemporaryFile("clice", "cpp");
+    if(!file) {
+        LOG_ERROR_RET(void(), "{}", file.error());
+    }
+
+    llvm::BumpPtrAllocator a;
+    llvm::StringSaver s(a);
+    auto arguments = toolchain::query_toolchain({
+        .arguments = {"cl.exe",
+                      "-std:c++23",
+                      "/EHsc",
+                      file->c_str()},
+        .callback = [&](const char* str) { return s.save(str).data(); }
+    });
+
+    ASSERT_TRUE(arguments.size() > 1);
+
+    CompilationParams params;
+    params.arguments_from_database = true;
+    params.arguments = arguments;
+    params.add_remapped_file(file->c_str(), R"(
+            #include <iostream>
+
+            #if __cplusplus < 202302L
+            #error "C++23 required"
+            #endif
+
+            int main() {
+                std::cout << "Hello world!" << std::endl;
+                return 0;
+            }
+        )");
+
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.completed());
+    ASSERT_TRUE(unit.diagnostics().empty());
+};
 
 TEST_CASE(Clang, {.skip = !CIEnvironment}) {
     auto file = fs::createTemporaryFile("clice", "cpp");
