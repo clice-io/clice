@@ -6,7 +6,7 @@ export default defineConfig({
     title: "clice",
     description: "a powerful and modern C++ language server",
     cleanUrls: true,
-    base: "/",
+    base: "/clice/",
     rewrites: {
         "en/:rest*": ":rest*",
     },
