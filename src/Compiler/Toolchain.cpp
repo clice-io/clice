@@ -287,7 +287,7 @@ CompilerFamily driver_family(llvm::StringRef driver) {
 
 std::vector<const char*> query_toolchain(const QueryParams& params) {
     auto arguments = params.arguments;
-    llvm::StringRef driver = arguments[0];
+    llvm::StringRef driver = "clang";  // arguments[0];
 
     /// Note: The name used to invoke the compiler driver affects its behavior.
     /// For example, `/usr/bin/clang++` is often a symbolic link to
