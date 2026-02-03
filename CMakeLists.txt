@@ -29,8 +29,6 @@ if(CLICE_ENABLE_LTO)
     string(APPEND CMAKE_MODULE_LINKER_FLAGS " -flto=thin")
 endif()
 
-
-
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-fsanitize=address)
 
