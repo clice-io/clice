@@ -1,0 +1,108 @@
+name: nightly
+
+on:
+  schedule:
+    # Run at 11:00 UTC every day (19:00 CST)
+    - cron: "0 11 * * *"
+
+jobs:
+  build_and_upload:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            artifact_name: clice.zip
+            asset_name: clice-x64-windows-msvc
+            symbol_artifact_name: clice-symbol.zip
+            symbol_asset_name: clice-x64-windows-msvc-symbol
+
+          - os: ubuntu-24.04
+            artifact_name: clice.tar.gz
+            asset_name: clice-x86_64-linux-gnu
+            symbol_artifact_name: clice-symbol.tar.gz
+            symbol_asset_name: clice-x86_64-linux-gnu-symbol
+
+          - os: macos-15
+            artifact_name: clice.tar.gz
+            asset_name: clice-arm64-macos-darwin
+            symbol_artifact_name: clice-symbol.tar.gz
+            symbol_asset_name: clice-arm64-macos-darwin-symbol
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: 3.0.5
+          actions-cache-folder: ".xmake-cache"
+          actions-cache-key: ${{ matrix.os }}
+          package-cache: true
+          package-cache-key: ${{ matrix.os }}-pkg-nightly-v1
+          build-cache: true
+          build-cache-key: ${{ matrix.os }}-build-nightly-v1
+
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.9.3
+        with:
+          pixi-version: v0.61.0
+          activate-environment: true
+          cache: true
+          locked: true
+
+      - name: Remove ci llvm toolchain on Windows
+        if: runner.os == 'Windows'
+        run: |
+          # @see https://github.com/xmake-io/xmake/issues/7158
+          xmake lua os.rmdir "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/Llvm"
+          xmake lua os.rmdir "C:/Program Files/LLVM"
+
+      - name: Get build identifiers
+        id: vars
+        shell: bash
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      - name: Check for new commits
+        id: check_commits
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          # Get the SHA of the last successful run of this workflow on the main branch
+          last_successful_sha=$(gh run list --workflow="nightly.yml" --branch="main" --status="success" --limit=1 --json headSha -q ".[0].headSha")
+          current_sha="${{ github.sha }}"
+
+          echo "Last successful SHA on main: ${last_successful_sha:-"None"}"
+          echo "Current SHA: $current_sha"
+
+          if [[ "$last_successful_sha" == "$current_sha" ]]; then
+            echo "No new commits since last successful run. Skipping build."
+            echo "should_skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "New commits found. Proceeding with build."
+            echo "should_skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Package
+        run: |
+          pixi run package
+
+      - name: Upload Main Package Artifact
+        if: steps.check_commits.outputs.should_skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.sha_short }}
+          path: build/xpack/clice/${{ matrix.artifact_name }}
+
+      - name: Upload Symbol Package Artifact
+        if: steps.check_commits.outputs.should_skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.symbol_asset_name }}-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.sha_short }}
+          path: build/xpack/clice/${{ matrix.symbol_artifact_name }}
