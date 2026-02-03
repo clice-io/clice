@@ -7,28 +7,6 @@ setup_llvm("21.1.4+r1")
 include(FetchContent)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
-if(WIN32)
-    set(NULL_DEVICE NUL)
-else()
-    set(NULL_DEVICE /dev/null)
-endif()
-
-# libuv
-FetchContent_Declare(
-    libuv
-    GIT_REPOSITORY https://github.com/libuv/libuv.git
-    GIT_TAG v1.x
-    GIT_SHALLOW    TRUE
-
-)
-
-if(NOT WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(ASAN ON CACHE BOOL "Enable AddressSanitizer for libuv" FORCE)
-endif()
-set(LIBUV_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-set(LIBUV_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-
 # spdlog
 FetchContent_Declare(
     spdlog
@@ -66,30 +44,16 @@ set(FLATBUFFERS_BUILD_GRPC OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "" FORCE)
 
-# cpptrace
 FetchContent_Declare(
-    cpptrace
-    GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
-    GIT_TAG        v1.0.4
+    eventide
+    GIT_REPOSITORY https://github.com/clice-io/eventide
+    GIT_TAG        main
     GIT_SHALLOW    TRUE
 )
-set(CPPTRACE_DISABLE_CXX_20_MODULES ON CACHE BOOL "" FORCE)
+set(EVENTIDE_ENABLE_ZEST ON)
+set(EVENTIDE_ENABLE_TEST OFF)
 
-FetchContent_MakeAvailable(libuv spdlog tomlplusplus croaring flatbuffers cpptrace)
-
-if(WIN32)
-    target_compile_definitions(uv_a PRIVATE _CRT_SECURE_NO_WARNINGS)
-endif()
-
-if(NOT MSVC AND TARGET uv_a)
-    target_compile_options(uv_a PRIVATE
-        "-Wno-unused-function"
-        "-Wno-unused-variable"
-        "-Wno-unused-but-set-variable"
-        "-Wno-deprecated-declarations"
-        "-Wno-missing-braces"
-    )
-endif()
+FetchContent_MakeAvailable(eventide spdlog tomlplusplus croaring flatbuffers)
 
 target_compile_definitions(spdlog PUBLIC
     SPDLOG_USE_STD_FORMAT=1
