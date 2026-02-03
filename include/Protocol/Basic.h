@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "llvm/Support/JSON.h"
+
 namespace clice::proto {
 
 using integer = std::int32_t;
@@ -14,6 +16,8 @@ using uinteger = std::uint32_t;
 using decimal = double;
 
 using string = std::string;
+
+using any = llvm::json::Value;
 
 template <typename T>
 using array = std::vector<T>;
