@@ -1,0 +1,19 @@
+# clice naive configuration file
+[project]
+cache_dir = "${workspace}/.clice/naive_cache"
+index_dir = "${workspace}/.clice/naive_index"
+
+# test string pattern
+[[rules]]
+patterns = "**/**.cc"
+append = "-std=c++114514"
+remove = "-std=c++17"
+
+# test array pattern
+[[rules]]
+patterns = ["**/**.ts", "**/**.tsx"]
+append = ["--target=es6", "--tell-agent='wtf DONT USE any ANY in my codebase!'"]
+remove = ["--target=es5", "--allow-js"]
+
+# test default
+[[rules]]
