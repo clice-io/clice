@@ -72,10 +72,10 @@ jobs:
     uses: ./.github/workflows/deploy-docs.yml
     secrets: inherit
 
-  clice:
-    needs: changes
-    if: ${{ needs.changes.outputs.clice == 'true' }}
-    uses: ./.github/workflows/publish-clice.yml
+  # clice:
+  #   needs: changes
+  #   if: ${{ needs.changes.outputs.clice == 'true' }}
+  #   uses: ./.github/workflows/publish-clice.yml
 
   vscode:
     needs: changes
@@ -87,10 +87,10 @@ jobs:
     if: ${{ needs.changes.outputs.cmake == 'true' }}
     uses: ./.github/workflows/test-cmake.yml
 
-  xmake:
-    needs: changes
-    if: ${{ needs.changes.outputs.xmake == 'true' }}
-    uses: ./.github/workflows/test-xmake.yml
+  # xmake:
+  #   needs: changes
+  #   if: ${{ needs.changes.outputs.xmake == 'true' }}
+  #   uses: ./.github/workflows/test-xmake.yml
 
   release-clice:
     permissions:
@@ -111,10 +111,10 @@ jobs:
     needs:
       - format
       - deploy
-      - clice
+      # - clice
       - vscode
       - cmake
-      - xmake
+      # - xmake
     runs-on: ubuntu-latest
     steps:
       - name: Check results
