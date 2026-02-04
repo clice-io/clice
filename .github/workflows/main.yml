@@ -72,10 +72,10 @@ jobs:
     uses: ./.github/workflows/deploy-docs.yml
     secrets: inherit
 
-  clice:
-    needs: changes
-    if: ${{ needs.changes.outputs.clice == 'true' }}
-    uses: ./.github/workflows/publish-clice.yml
+  # clice:
+  #   needs: changes
+  #   if: ${{ needs.changes.outputs.clice == 'true' }}
+  #   uses: ./.github/workflows/publish-clice.yml
 
   vscode:
     needs: changes
@@ -111,7 +111,7 @@ jobs:
     needs:
       - format
       - deploy
-      - clice
+      # - clice
       - vscode
       - cmake
       # - xmake
