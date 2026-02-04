@@ -5,5 +5,5 @@
 #include <string>
 #include <vector>
 
+#include "Platform.h"
 #include "zest/macro.h"
-#include  "Platform.h"
