@@ -197,5 +197,5 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/tests/unit/unit_tests.cc"
     )
     target_include_directories(unit_tests PUBLIC "${PROJECT_SOURCE_DIR}")
-    target_link_libraries(unit_tests PRIVATE clice-core cpptrace::cpptrace)
+    target_link_libraries(unit_tests PRIVATE clice-core zest)
 endif()

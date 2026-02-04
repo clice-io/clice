@@ -1,4 +1,5 @@
 #include "Test/Test.h"
+#include "Support/FileSystem.h"
 #include "Support/GlobPattern.h"
 #include "Support/Logging.h"
 
@@ -50,5 +51,5 @@ int main(int argc, const char* argv[]) {
     }
 
     using namespace clice::testing;
-    return Runner2::instance().run_tests(test_filter);
+    return zest::Runner::instance().run_tests(test_filter);
 }
