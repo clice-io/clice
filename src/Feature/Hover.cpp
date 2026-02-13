@@ -1,15 +1,15 @@
 #include "Feature/Hover.h"
 
 #include "AST/Selection.h"
-#include "AST/Semantic.h"
 #include "AST/Utility.h"
 #include "Compiler/CompilationUnit.h"
 #include "Index/Shared.h"
-#include "Support/Compare.h"
+#include "Support/Doxygen.h"
 #include "Support/Logging.h"
-#include "Support/Ranges.h"
+#include "Support/StructedText.h"
 
 #include "clang/AST/ASTDiagnostic.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Sema/HeuristicResolver.h"
 
@@ -26,6 +26,15 @@ static auto to_proto_range(clang::SourceManager& sm, clang::SourceRange range) -
                                sm.getSpellingColumnNumber(range_e) - 1};
     return {begin, end};
 };
+
+clang::PrintingPolicy proxy_print_policy(clang::PrintingPolicy Base) {
+    Base.AnonymousTagLocations = false;
+    Base.TerseOutput = true;
+    Base.PolishForDeclaration = true;
+    Base.ConstantsAsWritten = true;
+    Base.SuppressTemplateArgsInCXXConstructors = true;
+    return Base;
+}
 
 // Print type and optionally desuguared type
 static std::string print_type(clang::ASTContext& ctx,
@@ -100,7 +109,7 @@ static std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
                                               const clang::NamedDecl* decl,
                                               const config::HoverOptions& opt) {
     clang::ASTContext& ctx = unit.context();
-    const auto pp = ctx.getPrintingPolicy();
+    const auto pp = proxy_print_policy(ctx.getPrintingPolicy());
     std::vector<HoverItem> items;
 
     auto add_item = [&items](HoverItem::HoverKind kind, std::string&& val) {
@@ -169,8 +178,8 @@ static std::string get_document(CompilationUnitRef unit,
         return "";
     }
     auto raw_string = comment->getFormattedText(Ctx.getSourceManager(), Ctx.getDiagnostics());
-    LOG_WARN("Got comment:\n```\n{}\n```\n", raw_string);
-    return "";
+    // LOG_WARN("Got comment:\n```\n{}\n```\n", raw_string);
+    return raw_string;
 }
 
 static std::string get_qualifier(CompilationUnitRef unit,
@@ -397,28 +406,36 @@ static std::optional<clang::QualType> getDeducedType(clang::ASTContext& ASTCtx,
     return V.DeducedType;
 }
 
-// TODO: How does clangd put together decl, name, scope and sometimes initialized value?
-// ```
-// // scope
-// <Access specifier> <type> <name> <initialized value>
-// ```
-static std::string get_source_code(CompilationUnitRef unit,
-                                   const clang::NamedDecl* decl,
-                                   config::HoverOptions opt) {
-    clang::SourceRange range = decl->getSourceRange();
-    return get_source_code(unit, range);
+static std::string get_source_code(const clang::Decl* decl,
+                                   clang::PrintingPolicy pp,
+                                   const clang::syntax::TokenBuffer& tb) {
+    if(auto* vd = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        if(auto* ie = vd->getInit()) {
+            // Initializers might be huge and result in lots of memory allocations in
+            // some catostrophic cases. Such long lists are not useful in hover cards
+            // anyway.
+            if(200 < tb.expandedTokens(ie->getSourceRange()).size()) {
+                pp.SuppressInitializers = true;
+            }
+        }
+    }
+    std::string def;
+    llvm::raw_string_ostream os(def);
+    decl->print(os, pp);
+    return def;
 }
 
 static std::optional<Hover> hover(CompilationUnitRef unit,
                                   const clang::NamedDecl* decl,
                                   const config::HoverOptions& opt) {
+    auto pp = proxy_print_policy(unit.context().getPrintingPolicy());
     return Hover{
         .kind = SymbolKind::from(decl),
         .name = ast::name_of(decl),
         .items = get_hover_items(unit, decl, opt),
         .document = get_document(unit, decl, opt),
         .qualifier = get_qualifier(unit, decl, opt),
-        .source = get_source_code(unit, decl, opt),
+        .source = get_source_code(llvm::dyn_cast<const clang::Decl>(decl), pp, unit.token_buffer()),
     };
 }
 
@@ -428,7 +445,7 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
     // TODO: Hover for type
     // TODO: Add source code
     auto& ctx = unit.context();
-    auto pp = ctx.getPrintingPolicy();
+    auto pp = proxy_print_policy(ctx.getPrintingPolicy());
     return Hover{.kind = SymbolKind::Type, .name = print_type(ctx, ty, pp, opt)};
 }
 
@@ -526,12 +543,41 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
     return std::nullopt;
 }
 
+// TODO: A better way to get current unit lang? e.g. clang::InputKind
+const char* get_guessed_lang_name(CompilationUnitRef unit) {
+    const auto& langopt = unit.lang_options();
+    if(langopt.ObjC) {
+        if(langopt.CPlusPlus) {
+            return "objcpp";
+        }
+        return "objc";
+    }
+    if(langopt.CPlusPlus || langopt.HIP) {
+        return "cpp";
+    }
+    if(langopt.CUDA) {
+        return "cuda";
+    }
+    if(langopt.SYCLIsDevice || langopt.SYCLIsHost) {
+        return "sycl";
+    }
+    // Editor Support?
+    // if(langopt.OpenCL) {
+    //     return "opencl";
+    // }
+    if(langopt.HLSL) {
+        return "hlsl";
+    }
+    return "c";
+}
+
 }  // namespace
 
 std::optional<Hover> hover(CompilationUnitRef unit,
                            std::uint32_t offset,
                            const config::HoverOptions& opt) {
     auto& sm = unit.context().getSourceManager();
+    auto lang_name = get_guessed_lang_name(unit);
 
     auto src_loc_in_main_file = [&sm, &unit](uint32_t off) -> std::optional<clang::SourceLocation> {
         auto fid = sm.getMainFileID();
@@ -564,6 +610,7 @@ std::optional<Hover> hover(CompilationUnitRef unit,
             auto raw_name = get_source_code(unit, inclusion.filename_range);
             auto file_name = llvm::StringRef{raw_name}.trim("<>\"");
             Hover hi;
+            hi.lang = lang_name;
             hi.kind = SymbolKind::Directive;
             hi.name = file_name;
             auto dir = sm.getFileEntryForID(inclusion.fid)->tryGetRealPathName();
@@ -587,6 +634,7 @@ std::optional<Hover> hover(CompilationUnitRef unit,
                     auto macro_name = get_source_code(unit, name_range);
                     macro_name.pop_back();
                     Hover hi;
+                    hi.lang = lang_name;
                     hi.kind = SymbolKind::Macro;
                     hi.name = macro_name;
                     auto source = "#define " + get_source_code(unit,
@@ -620,6 +668,7 @@ std::optional<Hover> hover(CompilationUnitRef unit,
     if(auto node = tree.common_ancestor()) {
         LOG_WARN("Got node: {}", node->kind());
         if(auto info = hover(unit, node, opt)) {
+            info->lang = lang_name;
             info->hl_range = to_proto_range(sm, hl_range);
             return info;
         }
@@ -644,20 +693,43 @@ std::optional<std::string> Hover::display(config::HoverOptions opt) {
     std::string content;
     llvm::raw_string_ostream os(content);
     // TODO: generate markdown
-    os << std::format("{}: {}\n", this->kind.name(), this->name);
-    os << std::format("Contains {} items\n", this->items.size());
-    for(auto& hi: this->items) {
-        os << std::format("- {}: {}\n", clice::refl::enum_name(hi.kind), hi.value);
+    StructedText out{};
+    StructedText head_segment{};
+    head_segment.add_heading(3).append_text(std::format("{}: {}", this->kind.name(), this->name));
+    // TODO: provider
+    head_segment.add_ruler();
+    // FIX: Delete later
+    head_segment.add_paragraph()
+        .append_text(std::format("Contains {} items", this->items.size()))
+        .append_newline_char();
+    if(this->items.size()) {
+        auto& bl = head_segment.add_bullet_list();
+        for(auto& hi: this->items) {
+            bl.add_item().add_paragraph().append_text(
+                std::format("{}: {}", clice::refl::enum_name(hi.kind), hi.value));
+        }
     }
-    if(this->document) {
-        os << "---\n";
-        os << "Document:\n```text\n" << *this->document << "\n```\n";
+    out.append(head_segment);
+    if(this->document && opt.enable_doxygen_parsing) {
+        StructedText st{};
+        auto& raw = *this->document;
+        auto [di, rest_] = strip_doxygen_info(raw);
+        if(auto rest = llvm::StringRef(rest_); !rest.trim().empty()) {
+            st.add_paragraph().append_text(rest.rtrim().str());
+            st.add_ruler();
+        }
+        auto bcc = di.get_block_command_comments();
+        for(const auto [tag, content]: bcc) {
+            st.add_paragraph().append_text(tag.str(), Paragraph::Kind::Bold);
+            st.add_ruler();
+        }
+        st.add_ruler();
+        out.append(st);
     }
-    if(!this->source.empty()) {
-        os << "---\n";
-        os << "Source code:\n```cpp\n" << this->source << "\n```\n";
+    if(!source.empty()) {
+        out.add_code_block(source + '\n', lang);
     }
-    return os.str();
+    return out.as_markdown();
 }
 
 }  // namespace clice::feature

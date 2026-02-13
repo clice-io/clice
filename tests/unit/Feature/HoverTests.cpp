@@ -158,9 +158,22 @@ int main(void) {
     tester.compile();
     ASSERT_TRUE(tester.unit.has_value());
     const unsigned count = annotation.offsets.size();
-    for(unsigned i = 0; i < count; ++i) {
+    for(unsigned i = 0; i < count / 2; ++i) {
         unsigned offset = annotation.offsets[std::format("pos_{}", i)];
         auto HI = clice::feature::hover(*tester.unit, offset, {});
+        std::println("Hover at pos_{}", i);
+        if(HI.has_value()) {
+            auto msg = HI->display({});
+            std::println("```\n{}```\n", *msg);
+        } else {
+            std::println("No hover info");
+        }
+    }
+
+    for(unsigned i = 0; i < count / 2; ++i) {
+        unsigned offset = annotation.offsets[std::format("pos_{}_i", i)];
+        auto HI = clice::feature::hover(*tester.unit, offset, {});
+        std::println("Hover at pos_{}_i", i);
         if(HI.has_value()) {
             auto msg = HI->display({});
             std::println("```\n{}```\n", *msg);
@@ -236,6 +249,7 @@ int main() {
     for(unsigned i = 0; i < count; ++i) {
         unsigned offset = annotation.offsets[std::format("pos_{}", i)];
         auto HI = clice::feature::hover(*tester.unit, offset, {});
+        std::println("Hover at pos_{}", i);
         if(HI.has_value()) {
             auto msg = HI->display({});
             std::println("```\n{}```\n", *msg);
@@ -302,14 +316,16 @@ static void fu$(pos_4)nc4() {
     for(unsigned i = 0; i < count; ++i) {
         unsigned offset = annotation.offsets[std::format("pos_{}", i)];
         auto HI = clice::feature::hover(*tester.unit, offset, {});
-        // if(HI.has_value()) {
-        //     auto msg = HI->display({});
-        //     std::println("```\n{}```\n", *msg);
-        // } else {
-        //     std::println("No hover info");
-        // }
+        if(HI.has_value()) {
+            auto msg = HI->display({});
+            std::println("```\n{}```\n", *msg);
+        } else {
+            std::println("No hover info");
+        }
     }
 }
+
+TEST_CASE(Doxygen) {}
 
 TEST_CASE(Namespace) {
     run(R"cpp(

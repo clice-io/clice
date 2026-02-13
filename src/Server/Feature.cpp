@@ -70,15 +70,15 @@ auto Server::on_hover(proto::HoverParams params) -> Result {
             if(auto info = hover->display(opt)) {
                 result.contents.value = *info;
             } else {
-                clice::logging::warn("Cannot display hover info");
+                LOG_WARN("Cannot display hover info");
                 result.contents.value = "Cannot display hover info";
             }
             if(!hover->hl_range) {
-                clice::logging::warn("Not available range");
+                LOG_WARN("Not available range");
             }
             result.range = hover->hl_range;
         } else {
-            clice::logging::warn("Cannot get hover info");
+            LOG_WARN("Cannot get hover info");
             result.contents.value = "Cannot get hover info";
         }
         return json::serialize(result);

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "AST/SourceCode.h"
 #include "AST/SymbolKind.h"
 #include "Index/Shared.h"
 #include "Protocol/Basic.h"
@@ -53,6 +52,8 @@ struct Hover {
     SymbolKind kind;
 
     std::string name;
+
+    const char *lang = "cpp";
 
     /// Extra information.
     std::vector<HoverItem> items;
