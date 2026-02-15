@@ -1,8 +1,8 @@
 #pragma once
 
-#include "AST/SourceCode.h"
 #include "AST/SymbolKind.h"
 #include "Index/Shared.h"
+#include "Protocol/Basic.h"
 
 namespace clice::config {
 
@@ -21,6 +21,7 @@ struct HoverOptions {
 namespace clice::feature {
 
 struct HoverItem {
+    // NOTE: Use a set of drieved classes?
     enum class HoverKind : uint8_t {
         /// The typename of a variable or a type alias.
         Type,
@@ -34,8 +35,8 @@ struct HoverItem {
         BitWidth,
         /// The index of a field in a class/struct.
         FieldIndex,
-        /// The value of an enum item.
-        EnumValue,
+        /// The value of variable(on initialization / constant) | enum item
+        Value,
     };
 
     using enum HoverKind;
@@ -52,23 +53,31 @@ struct Hover {
 
     std::string name;
 
+    const char* lang = "cpp";
+
     /// Extra information.
     std::vector<HoverItem> items;
 
     /// Raw document in the source code.
-    std::string document;
+    std::optional<std::string> document;
 
     /// The full qualified name of the declaration.
     std::string qualifier;
 
     /// The source code of the declaration.
     std::string source;
+
+    /// Highlight range
+    std::optional<proto::Range> hl_range;
+
+    std::optional<std::string> get_item_content(HoverItem::HoverKind kind);
+
+    /// Return the markdown string of hover info
+    std::optional<std::string> display(config::HoverOptions opt);
 };
 
-/// Generate the hover information for the given declaration(for test).
-Hover hover(CompilationUnitRef unit, const clang::NamedDecl* decl);
-
-/// Generate the hover information for the symbol at the given offset.
-Hover hover(CompilationUnitRef unit, std::uint32_t offset);
+std::optional<Hover> hover(CompilationUnitRef unit,
+                           std::uint32_t offset,
+                           const config::HoverOptions& opt);
 
 }  // namespace clice::feature

@@ -58,15 +58,29 @@ auto Server::on_hover(proto::HoverParams params) -> Result {
 
     auto offset = to_offset(kind, opening_file->content, params.position);
 
-    co_return co_await async::submit([kind = this->kind, offset, &ast] {
-        auto hover = feature::hover(*ast, offset);
-        if(hover.kind == SymbolKind::Invalid) {
-            return json::Value(nullptr);
-        }
+    // NOTE: Should be initialized somewhere else
+    config::HoverOptions opt = {.enable_doxygen_parsing = true,
+                                .parse_comment_as_markdown = true,
+                                .show_aka = true};
 
+    co_return co_await async::submit([kind = this->kind, offset, &ast, &opt] {
         proto::Hover result;
         result.contents.kind = "markdown";
-        result.contents.value = std::format("{}: {}", hover.kind.name(), hover.name);
+        if(auto hover = feature::hover(*ast, offset, opt)) {
+            if(auto info = hover->display(opt)) {
+                result.contents.value = *info;
+            } else {
+                LOG_WARN("Cannot display hover info");
+                result.contents.value = "Cannot display hover info";
+            }
+            if(!hover->hl_range) {
+                LOG_WARN("Not available range");
+            }
+            result.range = hover->hl_range;
+        } else {
+            LOG_WARN("Cannot get hover info");
+            result.contents.value = "Cannot get hover info";
+        }
         return json::serialize(result);
     });
 }
