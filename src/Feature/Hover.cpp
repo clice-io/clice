@@ -17,7 +17,7 @@ namespace clice::feature {
 
 namespace {
 
-static auto to_proto_range(clang::SourceManager& sm, clang::SourceRange range) -> proto::Range {
+auto to_proto_range(clang::SourceManager& sm, clang::SourceRange range) -> proto::Range {
     auto range_b = range.getBegin();
     auto range_e = range.getEnd();
     auto begin = proto::Position{sm.getSpellingLineNumber(range_b) - 1,
@@ -37,10 +37,10 @@ clang::PrintingPolicy proxy_print_policy(clang::PrintingPolicy Base) {
 }
 
 // Print type and optionally desuguared type
-static std::string print_type(clang::ASTContext& ctx,
-                              clang::QualType qt,
-                              const clang::PrintingPolicy pp,
-                              const config::HoverOptions& opt) {
+std::string print_type(clang::ASTContext& ctx,
+                       clang::QualType qt,
+                       const clang::PrintingPolicy pp,
+                       const config::HoverOptions& opt) {
     std::string ret;
     llvm::raw_string_ostream os(ret);
     while(!qt.isNull() && qt->isDecltypeType()) {
@@ -63,7 +63,7 @@ static std::string print_type(clang::ASTContext& ctx,
     return ret;
 }
 
-static std::string print_type(const clang::TemplateTypeParmDecl* TTP) {
+std::string print_type(const clang::TemplateTypeParmDecl* TTP) {
     std::string ret = TTP->wasDeclaredWithTypename() ? "typename" : "class";
     if(TTP->isParameterPack()) {
         ret += " ...";
@@ -71,9 +71,9 @@ static std::string print_type(const clang::TemplateTypeParmDecl* TTP) {
     return ret;
 }
 
-static std::string print_type(const clang::NonTypeTemplateParmDecl* NTTP,
-                              const clang::PrintingPolicy PP,
-                              const config::HoverOptions& opt) {
+std::string print_type(const clang::NonTypeTemplateParmDecl* NTTP,
+                       const clang::PrintingPolicy PP,
+                       const config::HoverOptions& opt) {
     std::string ret = print_type(NTTP->getASTContext(), NTTP->getType(), PP, opt);
     if(NTTP->isParameterPack()) {
         ret += " ...";
@@ -81,9 +81,9 @@ static std::string print_type(const clang::NonTypeTemplateParmDecl* NTTP,
     return ret;
 }
 
-static std::string print_type(const clang::TemplateTemplateParmDecl* TTP,
-                              const clang::PrintingPolicy PP,
-                              const config::HoverOptions& opt) {
+std::string print_type(const clang::TemplateTemplateParmDecl* TTP,
+                       const clang::PrintingPolicy PP,
+                       const config::HoverOptions& opt) {
     using namespace clang;
     std::string ret;
     llvm::raw_string_ostream OS(ret);
@@ -105,9 +105,9 @@ static std::string print_type(const clang::TemplateTemplateParmDecl* TTP,
     return ret;
 }
 
-static std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
-                                              const clang::NamedDecl* decl,
-                                              const config::HoverOptions& opt) {
+std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
+                                       const clang::NamedDecl* decl,
+                                       const config::HoverOptions& opt) {
     clang::ASTContext& ctx = unit.context();
     const auto pp = proxy_print_policy(ctx.getPrintingPolicy());
     std::vector<HoverItem> items;
@@ -161,16 +161,16 @@ static std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
     return items;
 }
 
-static std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
-                                              const clang::TypeLoc* typeloc,
-                                              const config::HoverOptions& opt) {
+std::vector<HoverItem> get_hover_items(CompilationUnitRef unit,
+                                       const clang::TypeLoc* typeloc,
+                                       const config::HoverOptions& opt) {
     // TODO: Add items for typeloc
     return {};
 }
 
-static std::string get_document(CompilationUnitRef unit,
-                                const clang::NamedDecl* decl,
-                                config::HoverOptions opt) {
+std::string get_document(CompilationUnitRef unit,
+                         const clang::NamedDecl* decl,
+                         config::HoverOptions opt) {
     // TODO: Get comment and strip `/**/` and `//`
     clang::ASTContext& Ctx = unit.context();
     const clang::RawComment* comment = Ctx.getRawCommentForAnyRedecl(decl);
@@ -178,13 +178,13 @@ static std::string get_document(CompilationUnitRef unit,
         return "";
     }
     auto raw_string = comment->getFormattedText(Ctx.getSourceManager(), Ctx.getDiagnostics());
-    // LOG_WARN("Got comment:\n```\n{}\n```\n", raw_string);
+    // LOG_DEBUG("Got comment:\n```\n{}\n```\n", raw_string);
     return raw_string;
 }
 
-static std::string get_qualifier(CompilationUnitRef unit,
-                                 const clang::NamedDecl* decl,
-                                 config::HoverOptions opt) {
+std::string get_qualifier(CompilationUnitRef unit,
+                          const clang::NamedDecl* decl,
+                          config::HoverOptions opt) {
     std::string result;
     llvm::raw_string_ostream os(result);
     decl->printNestedNameSpecifier(os);
@@ -192,7 +192,7 @@ static std::string get_qualifier(CompilationUnitRef unit,
 }
 
 // Get all source code
-static std::string get_source_code(CompilationUnitRef unit, clang::SourceRange range) {
+std::string get_source_code(CompilationUnitRef unit, clang::SourceRange range) {
     clang::LangOptions lo;
     auto& sm = unit.context().getSourceManager();
     auto start_loc = sm.getSpellingLoc(range.getBegin());
@@ -204,7 +204,7 @@ static std::string get_source_code(CompilationUnitRef unit, clang::SourceRange r
         lo)};
 }
 
-static clang::TemplateTypeParmTypeLoc getContainedAutoParamType(clang::TypeLoc TL) {
+clang::TemplateTypeParmTypeLoc getContainedAutoParamType(clang::TypeLoc TL) {
     if(auto QTL = TL.getAs<clang::QualifiedTypeLoc>())
         return getContainedAutoParamType(QTL.getUnqualifiedLoc());
     if(llvm::isa<clang::PointerType, clang::ReferenceType, clang::ParenType>(TL.getTypePtr()))
@@ -219,7 +219,7 @@ static clang::TemplateTypeParmTypeLoc getContainedAutoParamType(clang::TypeLoc T
 }
 
 template <typename TemplateDeclTy>
-static clang::NamedDecl* getOnlyInstantiationImpl(TemplateDeclTy* TD) {
+clang::NamedDecl* getOnlyInstantiationImpl(TemplateDeclTy* TD) {
     clang::NamedDecl* Only = nullptr;
     for(auto* Spec: TD->specializations()) {
         if(Spec->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization)
@@ -231,7 +231,7 @@ static clang::NamedDecl* getOnlyInstantiationImpl(TemplateDeclTy* TD) {
     return Only;
 }
 
-static clang::NamedDecl* getOnlyInstantiation(clang::NamedDecl* TemplatedDecl) {
+clang::NamedDecl* getOnlyInstantiation(clang::NamedDecl* TemplatedDecl) {
     if(clang::TemplateDecl* TD = TemplatedDecl->getDescribedTemplate()) {
         if(auto* CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(TD))
             return getOnlyInstantiationImpl(CTD);
@@ -392,9 +392,9 @@ public:
 };
 
 // FIXME: Do as clangd a more simple way?
-static std::optional<clang::QualType> getDeducedType(clang::ASTContext& ASTCtx,
-                                                     const clang::HeuristicResolver* Resolver,
-                                                     clang::SourceLocation Loc) {
+std::optional<clang::QualType> getDeducedType(clang::ASTContext& ASTCtx,
+                                              const clang::HeuristicResolver* Resolver,
+                                              clang::SourceLocation Loc) {
     if(!Loc.isValid()) {
         return {};
     }
@@ -406,9 +406,9 @@ static std::optional<clang::QualType> getDeducedType(clang::ASTContext& ASTCtx,
     return V.DeducedType;
 }
 
-static std::string get_source_code(const clang::Decl* decl,
-                                   clang::PrintingPolicy pp,
-                                   const clang::syntax::TokenBuffer& tb) {
+std::string get_source_code(const clang::Decl* decl,
+                            clang::PrintingPolicy pp,
+                            const clang::syntax::TokenBuffer& tb) {
     if(auto* vd = llvm::dyn_cast<clang::VarDecl>(decl)) {
         if(auto* ie = vd->getInit()) {
             // Initializers might be huge and result in lots of memory allocations in
@@ -425,9 +425,9 @@ static std::string get_source_code(const clang::Decl* decl,
     return def;
 }
 
-static std::optional<Hover> hover(CompilationUnitRef unit,
-                                  const clang::NamedDecl* decl,
-                                  const config::HoverOptions& opt) {
+std::optional<Hover> hover(CompilationUnitRef unit,
+                           const clang::NamedDecl* decl,
+                           const config::HoverOptions& opt) {
     auto pp = proxy_print_policy(unit.context().getPrintingPolicy());
     return Hover{
         .kind = SymbolKind::from(decl),
@@ -439,9 +439,9 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
     };
 }
 
-static std::optional<Hover> hover(CompilationUnitRef unit,
-                                  const clang::QualType& ty,
-                                  const config::HoverOptions& opt) {
+std::optional<Hover> hover(CompilationUnitRef unit,
+                           const clang::QualType& ty,
+                           const config::HoverOptions& opt) {
     // TODO: Hover for type
     // TODO: Add source code
     auto& ctx = unit.context();
@@ -449,9 +449,9 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
     return Hover{.kind = SymbolKind::Type, .name = print_type(ctx, ty, pp, opt)};
 }
 
-static std::optional<Hover> hover(CompilationUnitRef unit,
-                                  const SelectionTree::Node* node,
-                                  const config::HoverOptions& opt) {
+std::optional<Hover> hover(CompilationUnitRef unit,
+                           const SelectionTree::Node* node,
+                           const config::HoverOptions& opt) {
     using namespace clang;
 
 #define kind_flag_def(Ty) static constexpr auto Flag##Ty = ASTNodeKind::getFromNodeKind<Ty>()
@@ -477,7 +477,6 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
 
 #define is_in_range(LHS, RHS) (!((Kind < Flag##LHS) && is(LHS)) && (Kind < Flag##RHS))
 
-    auto wanted_node = node;
     auto Kind = node->data.getNodeKind();
 
     // auto and decltype is specially processed
@@ -486,13 +485,13 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
         if(auto ty = getDeducedType(unit.context(), &resolver, node->source_range().getBegin())) {
             return hover(unit, *ty, opt);
         } else {
-            LOG_WARN("Cannot get deduced type");
+            LOG_DEBUG("Cannot get deduced type");
         }
     }
 
     if(is(NestedNameSpecifierLoc)) {
         if(auto ns_specifier_loc = node->get<NestedNameSpecifierLoc>()) {
-            LOG_WARN("Hit a `NestedNameSpecifierLoc`");
+            LOG_DEBUG("Hit a `NestedNameSpecifierLoc`");
             if(auto ns_specifier = ns_specifier_loc->getNestedNameSpecifier()) {
                 auto ns = ns_specifier->getAsNamespace();
                 assert(ns);
@@ -504,36 +503,36 @@ static std::optional<Hover> hover(CompilationUnitRef unit,
                 }
                 return Hover{.kind = SymbolKind::Namespace, .name = name};
             } else {
-                LOG_WARN("Cannot get namespace");
+                LOG_DEBUG("Cannot get namespace");
             }
         }
     } else if(is_in_range(QualType, TypeLoc)) {
         // Typeloc
-        LOG_WARN("Hit a `TypeLoc`");
+        LOG_DEBUG("Hit a `TypeLoc`");
         if(auto typeloc = node->get<TypeLoc>()) {
             return hover(unit, typeloc->getType(), opt);
         }
     } else if(is_in_range(Decl, Stmt)) {
         // Decl
-        LOG_WARN("Hit a `Decl`");
+        LOG_DEBUG("Hit a `Decl`");
         if(auto decl = node->get<clang::NamedDecl>()) {
             return hover(unit, decl, opt);
         } else {
-            LOG_WARN("Not intersted");
+            LOG_DEBUG("Not intersted");
         }
     } else if(is(DeclRefExpr)) {
-        LOG_WARN("Hit an `DeclRef`, Unhandled");
+        LOG_DEBUG("Hit an `DeclRef`, Unhandled");
         if(auto dr = node->get<DeclRefExpr>()) {
             auto vd = dr->getDecl();
             assert(vd);
             return hover(unit, llvm::dyn_cast<NamedDecl>(vd), opt);
         }
     } else if(is_in_range(Attr, ObjCProtocolLoc)) {
-        LOG_WARN("Hit an `Attr`, Unhandled");
+        LOG_DEBUG("Hit an `Attr`, Unhandled");
         // TODO: Attr?
     } else {
         // Not interested
-        LOG_WARN("Not interested");
+        LOG_DEBUG("Not interested");
     }
 
 #undef is
@@ -569,6 +568,10 @@ const char* get_guessed_lang_name(CompilationUnitRef unit) {
         return "hlsl";
     }
     return "c";
+}
+
+std::optional<std::string> get_provider() {
+    return std::nullopt;
 }
 
 }  // namespace
@@ -622,7 +625,7 @@ std::optional<Hover> hover(CompilationUnitRef unit,
 
     auto tokens_under_cursor = unit.spelled_tokens_touch(*loc);
     if(tokens_under_cursor.empty()) {
-        LOG_WARN("Cannot detect tokens");
+        LOG_DEBUG("Cannot detect tokens");
         return std::nullopt;
     }
     auto hl_range = tokens_under_cursor.back().range(sm).toCharRange(sm).getAsRange();
@@ -666,7 +669,7 @@ std::optional<Hover> hover(CompilationUnitRef unit,
 
     auto tree = SelectionTree::create_right(unit, {offset, offset});
     if(auto node = tree.common_ancestor()) {
-        LOG_WARN("Got node: {}", node->kind());
+        LOG_DEBUG("Got node: {}", node->kind());
         if(auto info = hover(unit, node, opt)) {
             info->lang = lang_name;
             info->hl_range = to_proto_range(sm, hl_range);
@@ -674,7 +677,7 @@ std::optional<Hover> hover(CompilationUnitRef unit,
         }
         return std::nullopt;
     } else {
-        LOG_WARN("Not an ast node");
+        LOG_DEBUG("Not an ast node");
     }
 
     return std::nullopt;

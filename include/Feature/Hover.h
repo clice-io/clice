@@ -53,7 +53,7 @@ struct Hover {
 
     std::string name;
 
-    const char *lang = "cpp";
+    const char* lang = "cpp";
 
     /// Extra information.
     std::vector<HoverItem> items;
