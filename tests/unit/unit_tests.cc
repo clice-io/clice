@@ -51,5 +51,5 @@ int main(int argc, const char* argv[]) {
     }
 
     using namespace clice::testing;
-    return zest::Runner::instance().run_tests(test_filter);
+    return eventide::zest::Runner::instance().run_tests(test_filter);
 }
