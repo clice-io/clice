@@ -6,5 +6,5 @@
 #include <vector>
 
 #include "test/platform.h"
-#include "support/format.h"
 #include "eventide/zest/macro.h"
+#include "support/format.h"

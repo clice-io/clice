@@ -79,8 +79,7 @@ void go_to_definition(llvm::StringRef pos,
 
     auto& relations = it->second;
     auto target = std::ranges::find_if(relations, [](const index::Relation& relation) {
-        return relation.kind.value() ==
-               static_cast<std::uint32_t>(RelationKind::Definition);
+        return relation.kind.value() == static_cast<std::uint32_t>(RelationKind::Definition);
     });
 
     ASSERT_TRUE(target != relations.end());

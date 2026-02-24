@@ -1,8 +1,8 @@
 #include "compile/preamble.h"
 
-#include "syntax/lexer.h"
 #include "support/format.h"
 #include "support/logging.h"
+#include "syntax/lexer.h"
 
 namespace clice {
 
