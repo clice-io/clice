@@ -1,9 +1,9 @@
+#include <cstdint>
+#include <type_traits>
+
 #include "schema_generated.h"
 #include "support/bitmap.h"
 #include "support/ranges.h"
-
-#include <cstdint>
-#include <type_traits>
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"

@@ -1,10 +1,10 @@
 #include "index/merged_index.h"
 
+#include <tuple>
+
 #include "index/serialization.h"
 #include "support/filesystem.h"
 #include "support/ranges.h"
-
-#include <tuple>
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_os_ostream.h"

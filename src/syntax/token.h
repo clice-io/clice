@@ -45,6 +45,7 @@ struct LocalSourceRange {
     std::uint32_t end = static_cast<std::uint32_t>(-1);
 
     constexpr LocalSourceRange() = default;
+
     constexpr LocalSourceRange(std::uint32_t begin, std::uint32_t end) : begin(begin), end(end) {}
 
     constexpr bool operator==(const LocalSourceRange& other) const = default;

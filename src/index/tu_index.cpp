@@ -1,9 +1,9 @@
 #include "index/tu_index.h"
 
+#include <tuple>
+
 #include "semantic/ast_utility.h"
 #include "semantic/semantic_visitor.h"
-
-#include <tuple>
 
 #include "llvm/Support/SHA256.h"
 
@@ -119,17 +119,16 @@ public:
                     return std::tuple(lhs.kind.value(),
                                       lhs.range.begin,
                                       lhs.range.end,
-                                      lhs.target_symbol) <
-                           std::tuple(rhs.kind.value(),
-                                      rhs.range.begin,
-                                      rhs.range.end,
-                                      rhs.target_symbol);
+                                      lhs.target_symbol) < std::tuple(rhs.kind.value(),
+                                                                      rhs.range.begin,
+                                                                      rhs.range.end,
+                                                                      rhs.target_symbol);
                 });
-                auto range = std::ranges::unique(relations, [](const Relation& lhs,
-                                                               const Relation& rhs) {
-                    return lhs.kind == rhs.kind && lhs.range == rhs.range &&
-                           lhs.target_symbol == rhs.target_symbol;
-                });
+                auto range =
+                    std::ranges::unique(relations, [](const Relation& lhs, const Relation& rhs) {
+                        return lhs.kind == rhs.kind && lhs.range == rhs.range &&
+                               lhs.target_symbol == rhs.target_symbol;
+                    });
                 relations.erase(range.begin(), range.end());
                 result.symbols[symbol_id].reference_files.add(result.graph.path_id(fid));
             }
@@ -138,11 +137,11 @@ public:
                 return std::tuple(lhs.range.begin, lhs.range.end, lhs.target) <
                        std::tuple(rhs.range.begin, rhs.range.end, rhs.target);
             });
-            auto range = std::ranges::unique(index.occurrences,
-                                             [](const Occurrence& lhs, const Occurrence& rhs) {
-                                                 return lhs.range == rhs.range &&
-                                                        lhs.target == rhs.target;
-                                             });
+            auto range =
+                std::ranges::unique(index.occurrences,
+                                    [](const Occurrence& lhs, const Occurrence& rhs) {
+                                        return lhs.range == rhs.range && lhs.target == rhs.target;
+                                    });
             index.occurrences.erase(range.begin(), range.end());
 
             if(fid == unit.interested_file()) {

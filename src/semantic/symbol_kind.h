@@ -54,6 +54,7 @@ struct SymbolKind {
     constexpr SymbolKind() = default;
 
     constexpr SymbolKind(Kind kind) : kind_value(kind) {}
+
     constexpr explicit SymbolKind(std::uint8_t kind) : kind_value(static_cast<Kind>(kind)) {}
 
     constexpr operator Kind() const {
