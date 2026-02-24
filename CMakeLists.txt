@@ -171,10 +171,10 @@ install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 if(CLICE_ENABLE_TEST)
     file(GLOB_RECURSE CLICE_TEST_SOURCES CONFIGURE_DEPENDS
         "${PROJECT_SOURCE_DIR}/tests/unit/*/*_tests.cpp"
-        "${PROJECT_SOURCE_DIR}/tests/unit/*/*Tests.cpp"
     )
     set(CLICE_TEST_SUPPORT_SOURCES
         "${PROJECT_SOURCE_DIR}/tests/unit/test/annotation.cpp"
+        "${PROJECT_SOURCE_DIR}/tests/unit/test/tester.cpp"
     )
 
     add_executable(unit_tests

@@ -1,7 +1,6 @@
 #include "index/project_index.h"
 
 #include "index/serialization.h"
-#include "support/ranges.h"
 
 namespace clice::index {
 

@@ -1,9 +1,9 @@
 #include <cstdint>
+#include <ranges>
 #include <type_traits>
 
 #include "schema_generated.h"
 #include "support/bitmap.h"
-#include "support/ranges.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -13,6 +13,13 @@ namespace clice::index {
 namespace fbs = flatbuffers;
 
 namespace {
+
+template <typename Range>
+concept sequence_range = std::ranges::input_range<Range> &&
+                         !requires { typename Range::key_type; } && requires(const Range& r) {
+                             r.data();
+                             r.size();
+                         };
 
 template <typename T>
 using Offsets = llvm::SmallVector<fbs::Offset<T>, 0>;
@@ -42,17 +49,18 @@ auto CreateVector(fbs::FlatBufferBuilder& builder, const llvm::SmallVector<char,
 
 template <typename U, sequence_range Range>
 auto CreateStructVector(fbs::FlatBufferBuilder& builder, const Range& range) {
-    using V = ranges::range_value_t<Range>;
+    using V = std::ranges::range_value_t<Range>;
+    (void)sizeof(V);
     return builder.CreateVectorOfStructs(safe_cast<U>(range.data()), range.size());
 }
 
 template <typename Range, typename Functor>
 auto transform(const Range& range, const Functor& functor) {
-    using V = ranges::range_value_t<Range>;
+    using V = std::ranges::range_value_t<Range>;
     using R = std::invoke_result_t<Functor, V>;
 
     llvm::SmallVector<R, 0> result;
-    result.resize_for_overwrite(ranges::size(range));
+    result.resize_for_overwrite(std::ranges::size(range));
 
     auto i = 0;
     for(auto&& v: range) {

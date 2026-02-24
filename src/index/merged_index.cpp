@@ -1,10 +1,10 @@
 #include "index/merged_index.h"
 
+#include <ranges>
 #include <tuple>
 
 #include "index/serialization.h"
 #include "support/filesystem.h"
-#include "support/ranges.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_os_ostream.h"
@@ -308,7 +308,7 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                              safe_cast<binary::Occurrence>(&occurrence),
                                              CreateVector(builder, buffer));
     });
-    std::ranges::sort(views::zip(occurrence_keys, occurrences), [](auto lhs, auto rhs) {
+    std::ranges::sort(std::views::zip(occurrence_keys, occurrences), [](auto lhs, auto rhs) {
         const auto& lo = *std::get<0>(lhs);
         const auto& ro = *std::get<0>(rhs);
         return std::tuple(lo.range.begin, lo.range.end, lo.target) <
@@ -333,7 +333,7 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                                   symbol_id,
                                                   CreateVector(builder, relations));
     });
-    std::ranges::sort(views::zip(relation_keys, relations), {}, [](auto e) {
+    std::ranges::sort(std::views::zip(relation_keys, relations), {}, [](auto e) {
         return std::get<0>(e);
     });
 
