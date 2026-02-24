@@ -26,4 +26,4 @@ jobs:
         run: pixi run build ${{ matrix.build_type }} ON
 
       - name: Test
-        run: pixi run test ${{ matrix.build_type }}
+        run: pixi run unit-test ${{ matrix.build_type }}

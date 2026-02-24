@@ -120,6 +120,7 @@ endif()
 
 # Temporary migration-only build graph.
 add_library(clice-core STATIC
+    "${PROJECT_SOURCE_DIR}/src/support/logging.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/semantic/resolver.cpp"
 )
@@ -131,6 +132,7 @@ target_include_directories(clice-core PUBLIC
 target_link_libraries(clice-core PUBLIC
     clice_options
     llvm-libs
+    spdlog::spdlog
     eventide::async
     eventide::language
 )

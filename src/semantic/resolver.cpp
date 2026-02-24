@@ -12,7 +12,7 @@ namespace clice {
 namespace {
 
 template <typename T>
-inline constexpr bool dependent_false = false;
+constexpr inline bool dependent_false = false;
 
 template <typename Callback>
 void visitTemplateDeclContexts(clang::Decl* decl, const Callback& callback) {
