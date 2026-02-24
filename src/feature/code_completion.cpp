@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cstdint>
 #include <format>
 #include <optional>
@@ -12,6 +11,7 @@
 
 #include "feature/feature.h"
 #include "semantic/ast_utility.h"
+#include "support/fuzzy_matcher.h"
 
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
@@ -48,49 +48,6 @@ struct CompletionPrefix {
         };
     }
 };
-
-auto to_lower(char c) -> char {
-    return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-}
-
-auto fuzzy_score(llvm::StringRef pattern, llvm::StringRef word) -> std::optional<float> {
-    if(pattern.empty()) {
-        return 1.0F;
-    }
-
-    std::size_t scan = 0;
-    float score = 0.0F;
-
-    for(std::size_t i = 0; i < pattern.size(); ++i) {
-        char p = to_lower(pattern[i]);
-
-        bool found = false;
-        for(std::size_t j = scan; j < word.size(); ++j) {
-            if(to_lower(word[j]) != p) {
-                continue;
-            }
-
-            score += (j == scan ? 2.0F : 1.0F);
-            if(j == i) {
-                score += 0.5F;
-            }
-            if(j == 0) {
-                score += 0.5F;
-            }
-
-            scan = j + 1;
-            found = true;
-            break;
-        }
-
-        if(!found) {
-            return std::nullopt;
-        }
-    }
-
-    float denominator = static_cast<float>(pattern.size()) * 3.0F;
-    return std::min(1.0F, score / denominator);
-}
 
 auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKind {
     if(llvm::isa<clang::NamespaceDecl, clang::NamespaceAliasDecl>(decl)) {
@@ -187,6 +144,7 @@ public:
         auto& source_manager = sema.getSourceManager();
         auto content = source_manager.getBufferData(source_manager.getMainFileID());
         auto prefix = CompletionPrefix::from(content, offset);
+        FuzzyMatcher matcher(prefix.spelling);
 
         PositionConverter converter(content, encoding);
         auto replace_range = protocol::Range{
@@ -209,7 +167,7 @@ public:
                 return;
             }
 
-            auto score = fuzzy_score(prefix.spelling, label);
+            auto score = matcher.match(label);
             if(!score.has_value()) {
                 return;
             }
