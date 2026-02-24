@@ -144,6 +144,15 @@ add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/support/position.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/semantic_tokens.cpp"
+    "${PROJECT_SOURCE_DIR}/src/feature/document_links.cpp"
+    "${PROJECT_SOURCE_DIR}/src/feature/document_symbols.cpp"
+    "${PROJECT_SOURCE_DIR}/src/feature/folding_ranges.cpp"
+    "${PROJECT_SOURCE_DIR}/src/feature/code_completion.cpp"
+    "${PROJECT_SOURCE_DIR}/src/feature/hover.cpp"
+    "${PROJECT_SOURCE_DIR}/src/feature/inlay_hints.cpp"
+    "${PROJECT_SOURCE_DIR}/src/feature/signature_help.cpp"
+    "${PROJECT_SOURCE_DIR}/src/feature/formatting.cpp"
+    "${PROJECT_SOURCE_DIR}/src/feature/diagnostics.cpp"
     "${PROJECT_SOURCE_DIR}/src/semantic/resolver.cpp"
     "${PROJECT_SOURCE_DIR}/src/semantic/symbol_kind.cpp"
     "${PROJECT_SOURCE_DIR}/src/semantic/ast_utility.cpp"
@@ -174,6 +183,16 @@ target_link_libraries(clice-core PUBLIC
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
 target_link_libraries(clice PRIVATE clice::core)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+message(STATUS "Copying resource directory for development build")
+file(
+    COPY "${LLVM_INSTALL_PATH}/lib/clang"
+    DESTINATION "${PROJECT_BINARY_DIR}/lib"
+)
+install(
+    DIRECTORY "${LLVM_INSTALL_PATH}/lib/clang"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+)
 
 if(CLICE_ENABLE_TEST)
     file(GLOB_RECURSE CLICE_TEST_SOURCES CONFIGURE_DEPENDS
