@@ -134,6 +134,11 @@ add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/compile/command.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/toolchain.cpp"
+    "${PROJECT_SOURCE_DIR}/src/compile/compilation.cpp"
+    "${PROJECT_SOURCE_DIR}/src/compile/compilation_unit.cpp"
+    "${PROJECT_SOURCE_DIR}/src/compile/diagnostic.cpp"
+    "${PROJECT_SOURCE_DIR}/src/compile/directive.cpp"
+    "${PROJECT_SOURCE_DIR}/src/compile/preamble.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/tidy.cpp"
     "${PROJECT_SOURCE_DIR}/src/support/logging.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cpp"

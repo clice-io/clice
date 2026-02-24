@@ -764,8 +764,8 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
         buffer += "placeholder";
     }
 
-    unsigned index = 0;
-    std::array arguments = {buffer.c_str(), "placeholder"};
+    unsigned index = 1;
+    std::array arguments = {"clang++", buffer.c_str(), "placeholder"};
     llvm::opt::InputArgList arg_list(arguments.data(), arguments.data() + arguments.size());
 
     if(auto arg = table.ParseOneArg(arg_list, index)) {

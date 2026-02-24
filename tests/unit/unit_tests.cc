@@ -1,5 +1,6 @@
 #include <string_view>
 
+#include "support/filesystem.h"
 #include "eventide/zest/runner.h"
 
 namespace {
@@ -23,5 +24,8 @@ std::string_view parse_filter(int argc, const char** argv) {
 }  // namespace
 
 int main(int argc, const char** argv) {
+    if(auto result = clice::fs::init_resource_dir(argv[0]); !result) {
+        return 1;
+    }
     return eventide::zest::Runner::instance().run_tests(parse_filter(argc, argv));
 }
