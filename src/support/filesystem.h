@@ -9,6 +9,8 @@
 #include <print>
 #include <string>
 
+#include "support/format.h"
+
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"

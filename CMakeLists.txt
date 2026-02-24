@@ -120,6 +120,8 @@ endif()
 
 # Temporary migration-only build graph.
 add_library(clice-core STATIC
+    "${PROJECT_SOURCE_DIR}/src/compile/command.cpp"
+    "${PROJECT_SOURCE_DIR}/src/compile/toolchain.cpp"
     "${PROJECT_SOURCE_DIR}/src/support/logging.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/semantic/resolver.cpp"
