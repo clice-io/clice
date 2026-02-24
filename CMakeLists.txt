@@ -119,14 +119,42 @@ else()
 endif()
 
 # Temporary migration-only build graph.
-add_library(clice-core INTERFACE)
-target_link_libraries(clice-core INTERFACE clice_options)
+add_library(clice-core STATIC
+    "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cc"
+)
+add_library(clice::core ALIAS clice-core)
+
+target_include_directories(clice-core PUBLIC
+    "${PROJECT_SOURCE_DIR}/src"
+)
+target_link_libraries(clice-core PUBLIC
+    clice_options
+    llvm-libs
+    eventide::async
+    eventide::language
+)
 
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
-target_link_libraries(clice PRIVATE clice-core)
+target_link_libraries(clice PRIVATE clice::core)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(CLICE_ENABLE_TEST)
-    add_executable(unit_tests "${PROJECT_SOURCE_DIR}/tests/unit/unit_tests.cc")
-    target_link_libraries(unit_tests PRIVATE clice-core)
+    file(GLOB_RECURSE CLICE_TEST_SOURCES CONFIGURE_DEPENDS
+        "${PROJECT_SOURCE_DIR}/tests/unit/*/*_tests.cc"
+        "${PROJECT_SOURCE_DIR}/tests/unit/*/*Tests.cpp"
+    )
+    set(CLICE_TEST_SUPPORT_SOURCES
+        "${PROJECT_SOURCE_DIR}/tests/unit/test/annotation.cc"
+    )
+
+    add_executable(unit_tests
+        "${PROJECT_SOURCE_DIR}/tests/unit/unit_tests.cc"
+        ${CLICE_TEST_SOURCES}
+        ${CLICE_TEST_SUPPORT_SOURCES}
+    )
+    target_include_directories(unit_tests PRIVATE
+        "${PROJECT_SOURCE_DIR}/src"
+        "${PROJECT_SOURCE_DIR}/tests/unit"
+    )
+    target_link_libraries(unit_tests PRIVATE clice::core eventide::zest)
 endif()

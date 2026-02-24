@@ -52,6 +52,7 @@ FetchContent_Declare(
 )
 set(EVENTIDE_ENABLE_ZEST ON)
 set(EVENTIDE_ENABLE_TEST OFF)
+set(EVENTIDE_SERDE_ENABLE_SIMDJSON ON)
 
 FetchContent_MakeAvailable(eventide spdlog tomlplusplus croaring flatbuffers)
 
