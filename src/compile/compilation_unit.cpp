@@ -1,6 +1,6 @@
-#include "AST/Utility.h"
-#include "Index/USR.h"
+#include "index/usr.h"
 #include "compile/implement.h"
+#include "semantic/ast_utility.h"
 
 namespace clice {
 

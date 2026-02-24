@@ -1,9 +1,9 @@
 #include "compile/compilation.h"
 
-#include "AST/Utility.h"
 #include "compile/command.h"
 #include "compile/diagnostic.h"
 #include "compile/implement.h"
+#include "semantic/ast_utility.h"
 #include "support/logging.h"
 
 #include "llvm/Support/Error.h"

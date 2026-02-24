@@ -118,23 +118,48 @@ else()
     )
 endif()
 
+set(FBS_SCHEMA_FILE "${PROJECT_SOURCE_DIR}/src/index/schema.fbs")
+set(GENERATED_HEADER "${PROJECT_BINARY_DIR}/generated/schema_generated.h")
+
+add_custom_command(
+    OUTPUT "${GENERATED_HEADER}"
+    COMMAND $<TARGET_FILE:flatc> --cpp -o "${PROJECT_BINARY_DIR}/generated" "${FBS_SCHEMA_FILE}"
+    DEPENDS "${FBS_SCHEMA_FILE}"
+    COMMENT "Generating C++ header from ${FBS_SCHEMA_FILE}"
+)
+
+add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
+
 # Temporary migration-only build graph.
 add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/compile/command.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/toolchain.cpp"
+    "${PROJECT_SOURCE_DIR}/src/compile/tidy.cpp"
     "${PROJECT_SOURCE_DIR}/src/support/logging.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/semantic/resolver.cpp"
+    "${PROJECT_SOURCE_DIR}/src/semantic/symbol_kind.cpp"
+    "${PROJECT_SOURCE_DIR}/src/semantic/ast_utility.cpp"
+    "${PROJECT_SOURCE_DIR}/src/semantic/selection.cpp"
+    "${PROJECT_SOURCE_DIR}/src/index/include_graph.cpp"
+    "${PROJECT_SOURCE_DIR}/src/index/tu_index.cpp"
+    "${PROJECT_SOURCE_DIR}/src/index/usr_generation.cpp"
+    "${PROJECT_SOURCE_DIR}/src/index/project_index.cpp"
+    "${PROJECT_SOURCE_DIR}/src/index/merged_index.cpp"
 )
 add_library(clice::core ALIAS clice-core)
+add_dependencies(clice-core generate_flatbuffers_schema)
 
 target_include_directories(clice-core PUBLIC
     "${PROJECT_SOURCE_DIR}/src"
+    "${PROJECT_BINARY_DIR}/generated"
 )
 target_link_libraries(clice-core PUBLIC
     clice_options
     llvm-libs
     spdlog::spdlog
+    roaring::roaring
+    flatbuffers
     eventide::async
     eventide::language
 )
