@@ -120,7 +120,8 @@ endif()
 
 # Temporary migration-only build graph.
 add_library(clice-core STATIC
-    "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cc"
+    "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/semantic/resolver.cpp"
 )
 add_library(clice::core ALIAS clice-core)
 
@@ -140,11 +141,11 @@ install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(CLICE_ENABLE_TEST)
     file(GLOB_RECURSE CLICE_TEST_SOURCES CONFIGURE_DEPENDS
-        "${PROJECT_SOURCE_DIR}/tests/unit/*/*_tests.cc"
+        "${PROJECT_SOURCE_DIR}/tests/unit/*/*_tests.cpp"
         "${PROJECT_SOURCE_DIR}/tests/unit/*/*Tests.cpp"
     )
     set(CLICE_TEST_SUPPORT_SOURCES
-        "${PROJECT_SOURCE_DIR}/tests/unit/test/annotation.cc"
+        "${PROJECT_SOURCE_DIR}/tests/unit/test/annotation.cpp"
     )
 
     add_executable(unit_tests
