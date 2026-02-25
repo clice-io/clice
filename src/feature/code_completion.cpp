@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <format>
 #include <optional>
-#include <ranges>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -18,6 +17,8 @@
 #include "clang/Basic/CharInfo.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
 #include "clang/Sema/Sema.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace clice::feature {
 
@@ -110,9 +111,10 @@ auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKi
     return protocol::CompletionItemKind::Text;
 }
 
-struct RankedItem {
+struct OverloadItem {
     protocol::CompletionItem item;
     float score = 0.0F;
+    std::uint32_t count = 0;
 };
 
 class CodeCompletionCollector final : public clang::CodeCompleteConsumer {
@@ -152,17 +154,32 @@ public:
             .end = converter.to_position(prefix.range.end),
         };
 
-        std::vector<RankedItem> ranked;
-        ranked.reserve(candidate_count);
+        std::vector<protocol::CompletionItem> collected;
+        collected.reserve(candidate_count);
 
-        std::unordered_map<std::string, std::size_t> index_by_key;
-        std::unordered_map<std::string, std::uint32_t> overload_count;
+        std::vector<OverloadItem> overloads;
+        overloads.reserve(candidate_count);
+        std::unordered_map<std::string, std::size_t> overload_index;
+
+        auto build_item =
+            [&](llvm::StringRef label, protocol::CompletionItemKind kind, llvm::StringRef insert) {
+                protocol::CompletionItem item{
+                    .label = label.str(),
+                };
+                item.kind = kind;
+
+                protocol::TextEdit edit{
+                    .range = replace_range,
+                    .new_text = insert.empty() ? label.str() : insert.str(),
+                };
+                item.text_edit = std::move(edit);
+                return item;
+            };
 
         auto try_add = [&](llvm::StringRef label,
                            protocol::CompletionItemKind kind,
                            llvm::StringRef insert_text,
-                           llvm::StringRef detail,
-                           bool aggregate_overloads) {
+                           llvm::StringRef overload_key) {
             if(label.empty()) {
                 return;
             }
@@ -172,51 +189,31 @@ public:
                 return;
             }
 
-            std::string key = aggregate_overloads
-                                  ? label.str()
-                                  : std::format("{}#{}", label, static_cast<int>(kind));
-
-            if(auto it = index_by_key.find(key); it != index_by_key.end()) {
-                auto& existing = ranked[it->second];
-                if(*score > existing.score) {
-                    existing.score = *score;
-                    existing.item.sort_text = std::format("{:010.6f}", 1.0F - *score);
-                    if(!detail.empty()) {
-                        existing.item.detail = detail.str();
+            if(!overload_key.empty()) {
+                auto [it, inserted] =
+                    overload_index.try_emplace(overload_key.str(), overloads.size());
+                if(inserted) {
+                    auto item = build_item(label, kind, insert_text);
+                    item.sort_text = std::format("{}", *score);
+                    overloads.push_back({
+                        .item = std::move(item),
+                        .score = *score,
+                        .count = 1,
+                    });
+                } else {
+                    auto& existing = overloads[it->second];
+                    existing.count += 1;
+                    if(*score > existing.score) {
+                        existing.score = *score;
+                        existing.item.sort_text = std::format("{}", *score);
                     }
-                }
-                if(aggregate_overloads) {
-                    overload_count[key] += 1;
                 }
                 return;
             }
 
-            protocol::CompletionItem item{
-                .label = label.str(),
-            };
-            item.kind = kind;
-            item.sort_text = std::format("{:010.6f}", 1.0F - *score);
-
-            if(!detail.empty()) {
-                item.detail = detail.str();
-            }
-
-            protocol::TextEdit edit{
-                .range = replace_range,
-                .new_text = insert_text.empty() ? label.str() : insert_text.str(),
-            };
-            item.text_edit = std::move(edit);
-
-            auto index = ranked.size();
-            ranked.push_back({
-                .item = std::move(item),
-                .score = *score,
-            });
-            index_by_key.emplace(std::move(key), index);
-
-            if(aggregate_overloads) {
-                overload_count[ranked[index].item.label] = 1;
-            }
+            auto item = build_item(label, kind, insert_text);
+            item.sort_text = std::format("{}", *score);
+            collected.push_back(std::move(item));
         };
 
         for(auto& candidate: llvm::make_range(candidates, candidates + candidate_count)) {
@@ -225,22 +222,20 @@ public:
                     try_add(candidate.Keyword,
                             protocol::CompletionItemKind::Keyword,
                             candidate.Keyword,
-                            "",
-                            false);
+                            "");
                     break;
 
                 case clang::CodeCompletionResult::RK_Pattern: {
                     auto text = candidate.Pattern->getAllTypedText();
-                    try_add(text, protocol::CompletionItemKind::Snippet, text, "", false);
+                    try_add(text, protocol::CompletionItemKind::Snippet, text, "");
                     break;
                 }
 
                 case clang::CodeCompletionResult::RK_Macro:
                     try_add(candidate.Macro->getName(),
-                            protocol::CompletionItemKind::Constant,
+                            protocol::CompletionItemKind::Unit,
                             candidate.Macro->getName(),
-                            "macro",
-                            false);
+                            "");
                     break;
 
                 case clang::CodeCompletionResult::RK_Declaration: {
@@ -251,46 +246,28 @@ public:
 
                     auto label = ast::name_of(declaration);
                     auto kind = completion_kind(declaration);
-                    auto detail = declaration->getDeclKindName();
 
-                    bool aggregate =
-                        options.bundle_overloads && kind == protocol::CompletionItemKind::Function;
+                    llvm::SmallString<256> qualified_name;
+                    if(options.bundle_overloads && kind == protocol::CompletionItemKind::Function) {
+                        llvm::raw_svector_ostream stream(qualified_name);
+                        declaration->printQualifiedName(stream);
+                    }
 
-                    try_add(label, kind, label, detail, aggregate);
+                    try_add(label, kind, label, qualified_name.str());
                     break;
                 }
             }
         }
 
-        for(auto& [name, count]: overload_count) {
-            if(count <= 1) {
-                continue;
+        for(auto& entry: overloads) {
+            if(entry.count > 1) {
+                entry.item.detail = "(...)";
             }
-
-            auto it = index_by_key.find(name);
-            if(it == index_by_key.end()) {
-                continue;
-            }
-
-            ranked[it->second].item.detail = "(...)";
-        }
-
-        std::ranges::sort(ranked, [](const RankedItem& lhs, const RankedItem& rhs) {
-            if(lhs.score != rhs.score) {
-                return lhs.score > rhs.score;
-            }
-            return lhs.item.label < rhs.item.label;
-        });
-
-        if(options.limit != 0 && ranked.size() > options.limit) {
-            ranked.resize(options.limit);
+            collected.push_back(std::move(entry.item));
         }
 
         output.clear();
-        output.reserve(ranked.size());
-        for(auto& item: ranked) {
-            output.push_back(std::move(item.item));
-        }
+        output.swap(collected);
     }
 
 private:

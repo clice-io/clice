@@ -17,6 +17,43 @@ namespace {
 
 namespace protocol = eventide::language::protocol;
 
+enum class FoldingKind : std::uint8_t {
+    Namespace,
+    Class,
+    Enum,
+    Struct,
+    Union,
+    LambdaCapture,
+    FunctionParams,
+    FunctionBody,
+    FunctionCall,
+    CompoundStmt,
+    AccessSpecifier,
+    ConditionDirective,
+    Initializer,
+    Region,
+};
+
+auto to_kind(FoldingKind kind) -> protocol::FoldingRangeKind {
+    switch(kind) {
+        case FoldingKind::Namespace: return "namespace";
+        case FoldingKind::Class: return "class";
+        case FoldingKind::Enum: return "enum";
+        case FoldingKind::Struct: return "struct";
+        case FoldingKind::Union: return "union";
+        case FoldingKind::LambdaCapture: return "lambdaCapture";
+        case FoldingKind::FunctionParams: return "functionParams";
+        case FoldingKind::FunctionBody: return "functionBody";
+        case FoldingKind::FunctionCall: return "functionCall";
+        case FoldingKind::CompoundStmt: return "compoundStmt";
+        case FoldingKind::AccessSpecifier: return "accessSpecifier";
+        case FoldingKind::ConditionDirective: return "conditionDirective";
+        case FoldingKind::Initializer: return "initializer";
+        case FoldingKind::Region: return protocol::FoldingRangeKind(protocol::FoldingRangeKind::region);
+    }
+    return protocol::FoldingRangeKind(protocol::FoldingRangeKind::region);
+}
+
 struct RawFoldingRange {
     LocalSourceRange range;
     std::optional<protocol::FoldingRangeKind> kind;
@@ -38,7 +75,7 @@ public:
         }
 
         add_range(clang::SourceRange(tokens.front().location(), decl->getRBraceLoc()),
-                  std::nullopt,
+                  to_kind(FoldingKind::Namespace),
                   "{...}");
         return true;
     }
@@ -48,7 +85,11 @@ public:
             return true;
         }
 
-        add_range(decl->getBraceRange(), std::nullopt, "{...}");
+        auto kind = decl->isStruct()   ? FoldingKind::Struct
+                    : decl->isClass()  ? FoldingKind::Class
+                    : decl->isUnion()  ? FoldingKind::Union
+                                       : FoldingKind::Enum;
+        add_range(decl->getBraceRange(), to_kind(kind), "{...}");
 
         auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
         if(!record || record->isLambda() || record->isImplicit()) {
@@ -65,7 +106,7 @@ public:
             if(previous) {
                 add_range(
                     clang::SourceRange(previous->getColonLoc(), access->getAccessSpecifierLoc()),
-                    std::nullopt,
+                    to_kind(FoldingKind::AccessSpecifier),
                     "");
             }
             previous = access;
@@ -73,7 +114,7 @@ public:
 
         if(previous) {
             add_range(clang::SourceRange(previous->getColonLoc(), record->getBraceRange().getEnd()),
-                      std::nullopt,
+                      to_kind(FoldingKind::AccessSpecifier),
                       "");
         }
 
@@ -87,12 +128,12 @@ public:
         }
 
         collect_parameter_list(decl->getBeginLoc(), decl->getBody()->getBeginLoc());
-        add_range(decl->getBody()->getSourceRange(), std::nullopt, "{...}");
+        add_range(decl->getBody()->getSourceRange(), to_kind(FoldingKind::FunctionBody), "{...}");
         return true;
     }
 
     bool VisitLambdaExpr(const clang::LambdaExpr* lambda) {
-        add_range(lambda->getIntroducerRange(), std::nullopt, "[...]");
+        add_range(lambda->getIntroducerRange(), to_kind(FoldingKind::LambdaCapture), "[...]");
 
         if(lambda->hasExplicitParameters()) {
             collect_parameter_list(lambda->getIntroducerRange().getEnd(),
@@ -118,7 +159,7 @@ public:
                 depth += 1;
             } else if(kind == clang::tok::l_paren && --depth == 0) {
                 add_range(clang::SourceRange(tokens.back().location(), right_paren),
-                          std::nullopt,
+                          to_kind(FoldingKind::FunctionCall),
                           "(...)");
                 break;
             }
@@ -132,7 +173,7 @@ public:
         if(auto paren_or_brace = expr->getParenOrBraceRange(); paren_or_brace.isValid()) {
             add_range(clang::SourceRange(paren_or_brace.getBegin().getLocWithOffset(1),
                                          paren_or_brace.getEnd()),
-                      std::nullopt,
+                      to_kind(FoldingKind::FunctionCall),
                       "(...)");
         }
         return true;
@@ -140,7 +181,7 @@ public:
 
     bool VisitInitListExpr(const clang::InitListExpr* expr) {
         add_range(clang::SourceRange(expr->getLBraceLoc(), expr->getRBraceLoc()),
-                  std::nullopt,
+                  to_kind(FoldingKind::Initializer),
                   "{...}");
         return true;
     }
@@ -224,7 +265,7 @@ private:
         }
 
         add_range(clang::SourceRange(left_paren.front().location(), right_paren->location()),
-                  std::nullopt,
+                  to_kind(FoldingKind::FunctionParams),
                   "(...)");
     }
 
@@ -235,7 +276,7 @@ private:
         }
 
         add_range(clang::SourceRange(compound->getLBracLoc(), compound->getRBracLoc()),
-                  std::nullopt,
+                  to_kind(FoldingKind::CompoundStmt),
                   "{...}");
 
         for(const auto* child: stmt->children()) {
@@ -264,7 +305,7 @@ private:
                         auto* previous = stack.pop_back_val();
                         add_range(
                             clang::SourceRange(previous->condition_range.getEnd(), condition.loc),
-                            std::nullopt,
+                            to_kind(FoldingKind::ConditionDirective),
                             "");
                     }
                     stack.push_back(&condition);
@@ -297,7 +338,7 @@ private:
 
             auto* previous = stack.pop_back_val();
             add_range(clang::SourceRange(previous->loc, pragma.loc),
-                      protocol::FoldingRangeKind(protocol::FoldingRangeKind::region),
+                      to_kind(FoldingKind::Region),
                       "");
         }
     }

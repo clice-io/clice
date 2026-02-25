@@ -25,17 +25,6 @@ auto to_range(const PositionConverter& converter, LocalSourceRange range) -> pro
     };
 }
 
-auto to_severity(DiagnosticLevel level) -> std::optional<protocol::DiagnosticSeverity> {
-    switch(level) {
-        case DiagnosticLevel::Warning: return protocol::DiagnosticSeverity::Warning;
-        case DiagnosticLevel::Error:
-        case DiagnosticLevel::Fatal: return protocol::DiagnosticSeverity::Error;
-        case DiagnosticLevel::Remark: return protocol::DiagnosticSeverity::Information;
-        case DiagnosticLevel::Note: return protocol::DiagnosticSeverity::Hint;
-        default: return std::nullopt;
-    }
-}
-
 void add_tag(protocol::Diagnostic& diagnostic, DiagnosticID id) {
     if(id.is_deprecated()) {
         if(!diagnostic.tags.has_value()) {
@@ -117,8 +106,10 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
             .message = raw.message,
         };
 
-        if(auto severity = to_severity(level)) {
-            diagnostic.severity = *severity;
+        if(level == DiagnosticLevel::Warning) {
+            diagnostic.severity = protocol::DiagnosticSeverity::Warning;
+        } else if(level == DiagnosticLevel::Error || level == DiagnosticLevel::Fatal) {
+            diagnostic.severity = protocol::DiagnosticSeverity::Error;
         }
 
         if(auto code = raw.id.diagnostic_code(); !code.empty()) {
@@ -129,16 +120,16 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
             diagnostic.code_description = protocol::CodeDescription{.href = std::move(*uri)};
         }
 
-        switch(raw.id.source) {
-            case DiagnosticSource::Clang: diagnostic.source = "clang"; break;
-            case DiagnosticSource::ClangTidy: diagnostic.source = "clang-tidy"; break;
-            case DiagnosticSource::Clice: diagnostic.source = "clice"; break;
-            case DiagnosticSource::Unknown: diagnostic.source = "unknown"; break;
-        }
+        // Keep legacy behavior: always report clang as source.
+        diagnostic.source = "clang";
 
         add_tag(diagnostic, raw.id);
 
-        if(raw.fid.isInvalid() || !raw.range.valid()) {
+        if(raw.fid.isInvalid()) {
+            diagnostic.range = protocol::Range{
+                .start = protocol::Position{.line = 0, .character = 0},
+                .end = protocol::Position{.line = 0, .character = 0},
+            };
             current = std::move(diagnostic);
             continue;
         }
@@ -150,23 +141,13 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         }
 
         auto include_location = unit.include_location(raw.fid);
-        while(include_location.isValid()) {
+        while(true) {
             auto parent = unit.file_id(include_location);
-            if(parent.isInvalid()) {
+            if(parent.isValid()) {
+                include_location = unit.include_location(parent);
+            } else {
                 break;
             }
-
-            auto next = unit.include_location(parent);
-            if(next.isInvalid()) {
-                break;
-            }
-
-            include_location = next;
-        }
-
-        if(include_location.isInvalid()) {
-            current = std::move(diagnostic);
-            continue;
         }
 
         auto offset = unit.file_offset(include_location);

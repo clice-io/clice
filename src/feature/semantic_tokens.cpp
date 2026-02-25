@@ -183,10 +183,11 @@ private:
     }
 
     static void resolve_conflict(RawToken& last, const RawToken& current) {
-        if(last.kind != current.kind) {
-            last.kind = SymbolKind::Conflict;
+        (void)current;
+        if(last.kind == SymbolKind::Conflict) {
+            return;
         }
-        last.modifiers |= current.modifiers;
+        last.kind = SymbolKind::Conflict;
     }
 
     void merge_tokens() {
@@ -212,8 +213,7 @@ private:
                 continue;
             }
 
-            if(last.range.end == token.range.begin && last.kind == token.kind &&
-               last.modifiers == token.modifiers) {
+            if(last.range.end == token.range.begin && last.kind == token.kind) {
                 last.range.end = token.range.end;
                 continue;
             }

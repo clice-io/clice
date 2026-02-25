@@ -1,3 +1,4 @@
+#include <format>
 #include <optional>
 #include <string>
 
@@ -8,7 +9,6 @@
 
 #include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
-#include "clang/AST/PrettyPrinter.h"
 
 namespace clice::feature {
 
@@ -37,40 +37,10 @@ auto symbol_name(SymbolKind kind) -> llvm::StringRef {
     }
 }
 
-auto hover_markdown(CompilationUnitRef unit, const clang::NamedDecl& decl) -> std::string {
-    auto policy = unit.context().getPrintingPolicy();
-    policy.SuppressScope = false;
-    policy.SuppressUnwrittenScope = true;
-    policy.AnonymousTagLocations = false;
-    policy.PolishForDeclaration = true;
-
-    std::string rendered;
-    llvm::raw_string_ostream stream(rendered);
-
+auto hover_markdown(const clang::NamedDecl& decl) -> std::string {
     auto kind = SymbolKind::from(&decl);
-    auto name = ast::display_name_of(&decl);
-
-    stream << "### " << symbol_name(kind) << " `" << name << "`\n\n";
-
-    if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(&decl)) {
-        stream << "```cpp\n";
-        value->getType().print(stream, policy);
-        stream << "\n```\n";
-    }
-
-    if(!decl.getQualifiedNameAsString().empty()) {
-        stream << "\n`" << decl.getQualifiedNameAsString() << "`\n";
-    }
-
-    if(const auto* comment = unit.context().getRawCommentForAnyRedecl(&decl)) {
-        auto text = comment->getRawText(unit.context().getSourceManager());
-        if(!text.empty()) {
-            stream << "\n---\n\n" << text;
-        }
-    }
-
-    stream.flush();
-    return rendered;
+    auto name = ast::name_of(&decl);
+    return std::format("{}: {}", symbol_name(kind), name);
 }
 
 auto hover_range(CompilationUnitRef unit,
@@ -93,7 +63,7 @@ auto build_hover(CompilationUnitRef unit, const clang::NamedDecl& decl, Position
 
     protocol::MarkupContent content{
         .kind = protocol::MarkupKind::Markdown,
-        .value = hover_markdown(unit, decl),
+        .value = hover_markdown(decl),
     };
 
     protocol::Hover result{
@@ -136,10 +106,6 @@ auto hover(CompilationUnitRef unit,
 
     if(const auto* ref = node->get<clang::DeclRefExpr>()) {
         return hover(unit, ref->getDecl(), options, encoding);
-    }
-
-    if(const auto* member = node->get<clang::MemberExpr>()) {
-        return hover(unit, member->getMemberDecl(), options, encoding);
     }
 
     return std::nullopt;
