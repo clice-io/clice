@@ -27,8 +27,15 @@ class LSPClient(LSPTransport):
         return await self.send_request("initialize", params)
 
     async def exit(self):
+        try:
+            await self.shutdown()
+        except Exception:
+            pass
         await self.send_notification("exit")
         await self.stop()
+
+    async def shutdown(self):
+        return await self.send_request("shutdown")
 
     def get_abs_path(self, relative_path: str):
         return Path(self.workspace, relative_path)
@@ -79,3 +86,60 @@ class LSPClient(LSPTransport):
         }
 
         await self.send_notification("textDocument/didChange", params)
+
+    async def did_save(self, relative_path: str, include_text: bool = False):
+        path = self.get_abs_path(relative_path)
+        if path not in self.opening_files:
+            raise RuntimeError(f"Cannot save closed file: {path}")
+
+        params = {
+            "textDocument": {"uri": path.as_uri()},
+        }
+        if include_text:
+            params["text"] = self.opening_files[path].content
+
+        await self.send_notification("textDocument/didSave", params)
+
+    async def did_close(self, relative_path: str):
+        path = self.get_abs_path(relative_path)
+        if path not in self.opening_files:
+            raise RuntimeError(f"Cannot close unopened file: {path}")
+
+        del self.opening_files[path]
+        params = {
+            "textDocument": {"uri": path.as_uri()},
+        }
+        await self.send_notification("textDocument/didClose", params)
+
+    async def hover(self, relative_path: str, line: int, character: int):
+        path = self.get_abs_path(relative_path)
+        params = {
+            "textDocument": {"uri": path.as_uri()},
+            "position": {
+                "line": line,
+                "character": character,
+            },
+        }
+        return await self.send_request("textDocument/hover", params)
+
+    async def completion(self, relative_path: str, line: int, character: int):
+        path = self.get_abs_path(relative_path)
+        params = {
+            "textDocument": {"uri": path.as_uri()},
+            "position": {
+                "line": line,
+                "character": character,
+            },
+        }
+        return await self.send_request("textDocument/completion", params)
+
+    async def signature_help(self, relative_path: str, line: int, character: int):
+        path = self.get_abs_path(relative_path)
+        params = {
+            "textDocument": {"uri": path.as_uri()},
+            "position": {
+                "line": line,
+                "character": character,
+            },
+        }
+        return await self.send_request("textDocument/signatureHelp", params)

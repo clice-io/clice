@@ -110,7 +110,6 @@ if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
 else()
     target_compile_options(clice_options INTERFACE
         -fno-rtti
-        -fno-exceptions
         -Wno-deprecated-declarations
         -Wno-undefined-inline
         -ffunction-sections
@@ -132,6 +131,8 @@ add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 
 # Temporary migration-only build graph.
 add_library(clice-core STATIC
+    "${PROJECT_SOURCE_DIR}/src/server/server.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/worker.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/command.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/toolchain.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/compilation.cpp"
@@ -185,7 +186,7 @@ target_link_libraries(clice-core PUBLIC
 )
 
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
-target_link_libraries(clice PRIVATE clice::core)
+target_link_libraries(clice PRIVATE clice::core eventide::deco)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 message(STATUS "Copying resource directory for development build")

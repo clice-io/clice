@@ -49,7 +49,8 @@ auto to_kind(FoldingKind kind) -> protocol::FoldingRangeKind {
         case FoldingKind::AccessSpecifier: return "accessSpecifier";
         case FoldingKind::ConditionDirective: return "conditionDirective";
         case FoldingKind::Initializer: return "initializer";
-        case FoldingKind::Region: return protocol::FoldingRangeKind(protocol::FoldingRangeKind::region);
+        case FoldingKind::Region:
+            return protocol::FoldingRangeKind(protocol::FoldingRangeKind::region);
     }
     return protocol::FoldingRangeKind(protocol::FoldingRangeKind::region);
 }
@@ -85,10 +86,10 @@ public:
             return true;
         }
 
-        auto kind = decl->isStruct()   ? FoldingKind::Struct
-                    : decl->isClass()  ? FoldingKind::Class
-                    : decl->isUnion()  ? FoldingKind::Union
-                                       : FoldingKind::Enum;
+        auto kind = decl->isStruct()  ? FoldingKind::Struct
+                    : decl->isClass() ? FoldingKind::Class
+                    : decl->isUnion() ? FoldingKind::Union
+                                      : FoldingKind::Enum;
         add_range(decl->getBraceRange(), to_kind(kind), "{...}");
 
         auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);

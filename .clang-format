@@ -139,3 +139,15 @@ KeepEmptyLines:
   AtEndOfFile: false
   AtStartOfBlock: false
   AtStartOfFile: false
+
+StatementMacros:
+  - DECO_CFG_START
+  - DECO_CFG
+  - DECO_CFG_END
+  - DecoKV
+  - DecoFlag
+  - DecoComma
+  - DecoInput
+  - DecoPack
+  - DecoKVStyled
+  - DecoMulti
