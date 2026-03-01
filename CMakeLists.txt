@@ -131,8 +131,14 @@ add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 
 # Temporary migration-only build graph.
 add_library(clice-core STATIC
-    "${PROJECT_SOURCE_DIR}/src/server/server.cpp"
-    "${PROJECT_SOURCE_DIR}/src/server/worker.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/config.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/compilation_service.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/worker_pool.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/master_server.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/runtimer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/worker_runtime.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/worker_stateful.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/worker_stateless.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/command.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/toolchain.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/compilation.cpp"
@@ -178,6 +184,7 @@ target_link_libraries(clice-core PUBLIC
     clice_options
     llvm-libs
     spdlog::spdlog
+    tomlplusplus::tomlplusplus
     roaring::roaring
     flatbuffers
     eventide::async

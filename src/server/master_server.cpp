@@ -1,36 +1,30 @@
-#include <csignal>
-#include <cstdio>
-#include <expected>
-#include <list>
-#include <memory>
+#include "server/master_server.h"
+
+#include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "eventide/async/loop.h"
-#include "eventide/async/process.h"
-#include "eventide/async/stream.h"
-#include "eventide/jsonrpc/peer.h"
-#include "eventide/jsonrpc/transport.h"
+#include "compile/preamble.h"
 #include "eventide/language/protocol.h"
+#include "eventide/language/uri.h"
+#include "server/config.h"
 #include "server/protocol.h"
-#include "server/runtime.h"
+#include "server/worker_pool.h"
+#include "support/filesystem.h"
+#include "support/logging.h"
 
 namespace clice::server {
 
 namespace {
 
-auto print_error_message(std::string_view prefix, std::string_view message) -> void {
-    std::fprintf(stderr,
-                 "%.*s%.*s\n",
-                 static_cast<int>(prefix.size()),
-                 prefix.data(),
-                 static_cast<int>(message.size()),
-                 message.data());
-}
+namespace language = eventide::language;
+namespace fs_std = std::filesystem;
 
 auto make_initialize_result() -> rpc::InitializeResult {
     rpc::InitializeResult result;
@@ -72,348 +66,59 @@ auto make_publish_diagnostics(std::string uri,
     return payload;
 }
 
-class WorkerPool {
-public:
-    WorkerPool(et::event_loop& loop, const Options& options) : loop(loop), options(options) {}
+auto normalized_path(fs_std::path path) -> std::string {
+    std::error_code ec;
+    auto canonical = fs_std::weakly_canonical(path, ec);
+    if(!ec) {
+        return canonical.string();
+    }
+    return path.lexically_normal().string();
+}
 
-    auto start() -> std::expected<void, std::string> {
-        if(started) {
-            return {};
-        }
-        started = true;
-
-        if(options.worker_count == 0) {
-            return std::unexpected("worker_count cannot be 0");
-        }
-        if(options.self_path.empty()) {
-            return std::unexpected("worker executable path is empty");
-        }
-
-        workers.reserve(options.worker_count);
-        for(std::size_t index = 0; index < options.worker_count; ++index) {
-            auto spawned = spawn_worker();
-            if(!spawned) {
-                return std::unexpected(std::move(spawned.error()));
-            }
-            workers.push_back(std::move(*spawned));
-        }
-
-        return {};
+auto resolve_workspace_path(std::string_view uri_or_path)
+    -> std::expected<std::string, std::string> {
+    if(uri_or_path.empty()) {
+        return std::unexpected("workspace path is empty");
     }
 
-    auto compile(WorkerCompileParams params) -> et::task<jsonrpc::Result<WorkerCompileResult>> {
-        if(workers.empty()) {
-            co_return std::unexpected("worker pool is empty");
+    if(auto parsed = language::URI::parse(uri_or_path)) {
+        if(!parsed->is_file()) {
+            return std::unexpected("workspace URI must use file:// scheme");
         }
 
-        const auto worker_index = assign_worker(params.uri);
-        auto response = co_await workers[worker_index]->send_request(params);
-        if(response) {
-            co_return response;
+        auto file_path = parsed->file_path();
+        if(!file_path) {
+            return std::unexpected(file_path.error());
         }
-
-        auto restarted = restart_worker(worker_index);
-        if(!restarted) {
-            co_return std::unexpected("worker request failed: " + response.error() +
-                                      "; worker restart failed: " + restarted.error());
-        }
-
-        co_return co_await workers[worker_index]->send_request(params);
+        return normalized_path(*file_path);
     }
 
-    auto hover(WorkerHoverParams params) -> et::task<jsonrpc::Result<WorkerHoverResult>> {
-        if(workers.empty()) {
-            co_return std::unexpected("worker pool is empty");
-        }
-
-        const auto worker_index = assign_worker(params.uri);
-        auto response = co_await workers[worker_index]->send_request(params);
-        if(response) {
-            co_return response;
-        }
-
-        auto restarted = restart_worker(worker_index);
-        if(!restarted) {
-            co_return std::unexpected("worker request failed: " + response.error() +
-                                      "; worker restart failed: " + restarted.error());
-        }
-
-        co_return co_await workers[worker_index]->send_request(params);
+    fs_std::path candidate(uri_or_path);
+    if(candidate.is_absolute()) {
+        return normalized_path(std::move(candidate));
     }
 
-    auto completion(WorkerCompletionParams params)
-        -> et::task<jsonrpc::Result<WorkerCompletionResult>> {
-        if(workers.empty()) {
-            co_return std::unexpected("worker pool is empty");
-        }
+    return std::unexpected("workspace path must be absolute");
+}
 
-        const auto worker_index = assign_worker(params.uri);
-        auto response = co_await workers[worker_index]->send_request(params);
-        if(response) {
-            co_return response;
-        }
-
-        auto restarted = restart_worker(worker_index);
-        if(!restarted) {
-            co_return std::unexpected("worker request failed: " + response.error() +
-                                      "; worker restart failed: " + restarted.error());
-        }
-
-        co_return co_await workers[worker_index]->send_request(params);
+auto workspace_from_initialize_params(const rpc::InitializeParams& params)
+    -> std::expected<std::string, std::string> {
+    const auto& workspace_folders = params.workspace_folders_initialize_params.workspace_folders;
+    if(workspace_folders && *workspace_folders && !(*workspace_folders)->empty()) {
+        return resolve_workspace_path((*workspace_folders)->front().uri);
     }
 
-    auto signature_help(WorkerSignatureHelpParams params)
-        -> et::task<jsonrpc::Result<WorkerSignatureHelpResult>> {
-        if(workers.empty()) {
-            co_return std::unexpected("worker pool is empty");
-        }
-
-        const auto worker_index = assign_worker(params.uri);
-        auto response = co_await workers[worker_index]->send_request(params);
-        if(response) {
-            co_return response;
-        }
-
-        auto restarted = restart_worker(worker_index);
-        if(!restarted) {
-            co_return std::unexpected("worker request failed: " + response.error() +
-                                      "; worker restart failed: " + restarted.error());
-        }
-
-        co_return co_await workers[worker_index]->send_request(params);
+    const auto& root_uri = params.lsp__initialize_params.root_uri;
+    if(root_uri) {
+        return resolve_workspace_path(*root_uri);
     }
 
-    void release_document(std::string_view uri) {
-        auto key = std::string(uri);
-        auto owner_iter = owner.find(key);
-        if(owner_iter != owner.end()) {
-            auto worker_id = owner_iter->second;
-            auto& worker = workers[worker_id];
-            if(worker.owned_documents > 0) {
-                worker.owned_documents -= 1;
-            }
-            evict_from_worker(worker_id, key);
-            owner.erase(owner_iter);
-        }
+    return std::unexpected("initialize request is missing workspaceFolders and rootUri");
+}
 
-        auto lru_iter = owner_lru_index.find(key);
-        if(lru_iter != owner_lru_index.end()) {
-            owner_lru.erase(lru_iter->second);
-            owner_lru_index.erase(lru_iter);
-        }
-    }
+}  // namespace
 
-    auto shutdown() -> et::task<> {
-        if(!started) {
-            co_return;
-        }
-        started = false;
-
-        for(auto& worker: workers) {
-            if(worker.peer) {
-                auto status = worker.peer->close_output();
-                (void)status;
-            }
-        }
-
-        for(auto& worker: workers) {
-            auto waited = co_await worker.process.wait();
-            if(waited) {
-                continue;
-            }
-
-            auto kill_status = worker.process.kill(SIGTERM);
-            (void)kill_status;
-            auto waited_after_kill = co_await worker.process.wait();
-            (void)waited_after_kill;
-        }
-
-        workers.clear();
-        owner.clear();
-        owner_lru.clear();
-        owner_lru_index.clear();
-    }
-
-private:
-    struct WorkerClient {
-        et::process process;
-        std::shared_ptr<jsonrpc::Peer> peer;
-        std::size_t owned_documents = 0;
-
-        auto operator->() -> jsonrpc::Peer* {
-            return peer.get();
-        }
-    };
-
-    static auto run_worker_peer(std::shared_ptr<jsonrpc::Peer> peer) -> et::task<> {
-        co_await peer->run();
-    }
-
-    auto spawn_worker() -> std::expected<WorkerClient, std::string> {
-        et::process::options process_options;
-        process_options.file = options.self_path;
-        process_options.args = {
-            options.self_path,
-            std::string(k_worker_mode),
-            "--worker-doc-capacity=" + std::to_string(options.worker_document_capacity),
-        };
-        process_options.streams = {
-            et::process::stdio::pipe(true, false),
-            et::process::stdio::pipe(false, true),
-            et::process::stdio::inherit(),
-        };
-
-        auto spawned = et::process::spawn(process_options, loop);
-        if(!spawned) {
-            return std::unexpected(std::string(spawned.error().message()));
-        }
-
-        auto transport = std::make_unique<jsonrpc::StreamTransport>(std::move(spawned->stdout_pipe),
-                                                                    std::move(spawned->stdin_pipe));
-        auto peer = std::make_shared<jsonrpc::Peer>(loop, std::move(transport));
-        loop.schedule(run_worker_peer(peer));
-
-        WorkerClient client;
-        client.process = std::move(spawned->proc);
-        client.peer = std::move(peer);
-        return client;
-    }
-
-    auto restart_worker(std::size_t worker_index) -> std::expected<void, std::string> {
-        if(worker_index >= workers.size()) {
-            return std::unexpected("worker index out of range");
-        }
-
-        auto replacement = spawn_worker();
-        if(!replacement) {
-            return std::unexpected(std::move(replacement.error()));
-        }
-
-        auto old_process = std::move(workers[worker_index].process);
-        auto old_peer = std::move(workers[worker_index].peer);
-
-        if(old_peer) {
-            auto status = old_peer->close_output();
-            (void)status;
-        }
-
-        if(old_process.pid() > 0) {
-            auto kill_status = old_process.kill(SIGTERM);
-            (void)kill_status;
-            loop.schedule(reap_worker_process(std::move(old_process)));
-        }
-
-        workers[worker_index].process = std::move(replacement->process);
-        workers[worker_index].peer = std::move(replacement->peer);
-        return {};
-    }
-
-    auto reap_worker_process(et::process process) -> et::task<> {
-        auto waited = co_await process.wait();
-        (void)waited;
-    }
-
-    auto assign_worker(std::string_view uri) -> std::size_t {
-        auto key = std::string(uri);
-        auto owner_iter = owner.find(key);
-        if(owner_iter != owner.end()) {
-            touch_owner_lru(key);
-            return owner_iter->second;
-        }
-
-        shrink_owner();
-        const auto selected = pick_worker();
-        owner.emplace(key, selected);
-        workers[selected].owned_documents += 1;
-        touch_owner_lru(key);
-        return selected;
-    }
-
-    void touch_owner_lru(const std::string& key) {
-        auto lru_iter = owner_lru_index.find(key);
-        if(lru_iter != owner_lru_index.end()) {
-            owner_lru.splice(owner_lru.begin(), owner_lru, lru_iter->second);
-            lru_iter->second = owner_lru.begin();
-            return;
-        }
-
-        owner_lru.push_front(key);
-        owner_lru_index.emplace(key, owner_lru.begin());
-    }
-
-    void shrink_owner() {
-        while(owner.size() >= options.master_document_capacity && !owner_lru.empty()) {
-            auto victim = std::move(owner_lru.back());
-            owner_lru.pop_back();
-            owner_lru_index.erase(victim);
-
-            auto owner_iter = owner.find(victim);
-            if(owner_iter == owner.end()) {
-                continue;
-            }
-
-            auto& worker = workers[owner_iter->second];
-            auto worker_id = owner_iter->second;
-            if(worker.owned_documents > 0) {
-                worker.owned_documents -= 1;
-            }
-            evict_from_worker(worker_id, victim);
-            owner.erase(owner_iter);
-        }
-    }
-
-    auto pick_worker() const -> std::size_t {
-        if(workers.empty()) {
-            return 0;
-        }
-
-        std::size_t selected = 0;
-        for(std::size_t index = 1; index < workers.size(); ++index) {
-            if(workers[index].owned_documents < workers[selected].owned_documents) {
-                selected = index;
-            }
-        }
-        return selected;
-    }
-
-    void evict_from_worker(std::size_t worker_id, const std::string& uri) {
-        if(worker_id >= workers.size()) {
-            return;
-        }
-
-        auto status = workers[worker_id]->send_notification(WorkerEvictParams{
-            .uri = uri,
-        });
-        (void)status;
-    }
-
-private:
-    et::event_loop& loop;
-    const Options& options;
-    bool started = false;
-
-    std::vector<WorkerClient> workers;
-    std::unordered_map<std::string, std::size_t> owner;
-    std::list<std::string> owner_lru;
-    std::unordered_map<std::string, std::list<std::string>::iterator> owner_lru_index;
-};
-
-class MasterServer {
-public:
-    MasterServer(et::event_loop& loop, jsonrpc::Peer& peer, const Options& options) :
-        loop(loop), peer(peer), workers(loop, options) {
-        register_callbacks();
-    }
-
-    auto start() -> std::expected<void, std::string> {
-        return workers.start();
-    }
-
-    [[nodiscard]] auto exit_code() const -> int {
-        return requested_exit_code;
-    }
-
-private:
+struct MasterServer::Impl {
     struct DocumentState {
         int version = 0;
         std::string text;
@@ -433,6 +138,22 @@ private:
 
     using CompletionRequestSnapshot = HoverRequestSnapshot;
     using SignatureHelpRequestSnapshot = HoverRequestSnapshot;
+
+    struct StatelessPCHState {
+        std::string output_path;
+        std::string preamble;
+        std::uint32_t preamble_bound = 0;
+    };
+
+    struct StatelessPCHBinding {
+        std::string path;
+        std::uint32_t preamble_bound = 0;
+    };
+
+    Impl(et::event_loop& loop, jsonrpc::Peer& peer, const Options& options) :
+        loop(loop), peer(peer), workers(loop, options) {
+        register_callbacks();
+    }
 
     void register_callbacks() {
         peer.on_request(
@@ -493,13 +214,41 @@ private:
             [this](const rpc::DidCloseTextDocumentParams& params) { on_did_close(params); });
     }
 
-    auto on_initialize(jsonrpc::RequestContext&, const rpc::InitializeParams&)
+    auto on_initialize(jsonrpc::RequestContext&, const rpc::InitializeParams& params)
         -> jsonrpc::RequestResult<rpc::InitializeParams> {
         if(initialize_request) {
             co_return std::unexpected("initialize can only be requested once");
         }
         if(shutdown_request) {
             co_return std::unexpected("server is shutting down");
+        }
+
+        auto workspace = workspace_from_initialize_params(params);
+        if(!workspace) {
+            LOG_ERROR("initialize failed: {}", workspace.error());
+            co_return std::unexpected(std::move(workspace.error()));
+        }
+
+        config = ServerConfig{};
+        auto parsed = config.parse(*workspace);
+        if(parsed) {
+            LOG_INFO("config initialized from workspace: {}", config.workspace);
+        } else {
+            LOG_WARN("failed to parse config for workspace {}: {}", *workspace, parsed.error());
+            LOG_INFO("using default config for workspace: {}", config.workspace);
+        }
+
+        workers.set_compile_commands_paths(config.project.compile_commands_paths);
+
+        if(!config.project.logging_dir.empty()) {
+            if(auto error = fs::create_directories(config.project.logging_dir)) {
+                LOG_WARN("failed to create logging dir {}: {}",
+                         config.project.logging_dir,
+                         error.message());
+            } else {
+                logging::file_loggger("clice", config.project.logging_dir, logging::options);
+                LOG_INFO("server logging redirected to {}", config.project.logging_dir);
+            }
         }
 
         initialize_request = true;
@@ -677,6 +426,7 @@ private:
 
         auto uri = std::string(params.text_document.uri);
         documents.erase(uri);
+        stateless_pch.erase(uri);
         workers.release_document(uri);
 
         auto status =
@@ -707,8 +457,53 @@ private:
         co_return std::move(hover_result->result);
     }
 
+    auto ensure_stateless_pch(const HoverRequestSnapshot& snapshot)
+        -> et::task<std::optional<StatelessPCHBinding>> {
+        auto preamble_bound = compute_preamble_bound(snapshot.text);
+        if(preamble_bound == 0) {
+            stateless_pch.erase(snapshot.uri);
+            co_return std::nullopt;
+        }
+
+        auto preamble = snapshot.text.substr(0, preamble_bound);
+        auto& cache = stateless_pch[snapshot.uri];
+        const bool need_rebuild = cache.output_path.empty() ||
+                                  cache.preamble_bound != preamble_bound ||
+                                  cache.preamble != preamble;
+
+        if(need_rebuild) {
+            WorkerBuildPCHParams build_params{
+                .uri = snapshot.uri,
+                .text = snapshot.text,
+                .output_path = cache.output_path,
+            };
+            auto built = co_await workers.build_pch(std::move(build_params));
+            if(!built || !built->built || built->output_path.empty()) {
+                stateless_pch.erase(snapshot.uri);
+                co_return std::nullopt;
+            }
+
+            cache.output_path = std::move(built->output_path);
+            cache.preamble = std::move(preamble);
+            cache.preamble_bound = preamble_bound;
+        }
+
+        co_return StatelessPCHBinding{
+            .path = cache.output_path,
+            .preamble_bound = cache.preamble_bound,
+        };
+    }
+
     auto run_completion(CompletionRequestSnapshot snapshot)
         -> jsonrpc::RequestResult<rpc::CompletionParams> {
+        auto pch = co_await ensure_stateless_pch(snapshot);
+
+        auto latest_iter = documents.find(snapshot.uri);
+        if(latest_iter == documents.end() ||
+           latest_iter->second.generation != snapshot.generation) {
+            co_return nullptr;
+        }
+
         WorkerCompletionParams params{
             .uri = snapshot.uri,
             .version = snapshot.version,
@@ -716,13 +511,17 @@ private:
             .line = snapshot.line,
             .character = snapshot.character,
         };
+        if(pch) {
+            params.pch_path = std::move(pch->path);
+            params.pch_preamble_bound = pch->preamble_bound;
+        }
 
         auto completion_result = co_await workers.completion(std::move(params));
         if(!completion_result) {
-            co_return nullptr;
+            co_return std::unexpected(std::move(completion_result.error()));
         }
 
-        auto latest_iter = documents.find(snapshot.uri);
+        latest_iter = documents.find(snapshot.uri);
         if(latest_iter == documents.end() ||
            latest_iter->second.generation != snapshot.generation) {
             co_return nullptr;
@@ -733,6 +532,14 @@ private:
 
     auto run_signature_help(SignatureHelpRequestSnapshot snapshot)
         -> jsonrpc::RequestResult<rpc::SignatureHelpParams> {
+        auto pch = co_await ensure_stateless_pch(snapshot);
+
+        auto latest_iter = documents.find(snapshot.uri);
+        if(latest_iter == documents.end() ||
+           latest_iter->second.generation != snapshot.generation) {
+            co_return std::nullopt;
+        }
+
         WorkerSignatureHelpParams params{
             .uri = snapshot.uri,
             .version = snapshot.version,
@@ -740,13 +547,17 @@ private:
             .line = snapshot.line,
             .character = snapshot.character,
         };
+        if(pch) {
+            params.pch_path = std::move(pch->path);
+            params.pch_preamble_bound = pch->preamble_bound;
+        }
 
         auto signature_help_result = co_await workers.signature_help(std::move(params));
         if(!signature_help_result) {
-            co_return std::nullopt;
+            co_return std::unexpected(std::move(signature_help_result.error()));
         }
 
-        auto latest_iter = documents.find(snapshot.uri);
+        latest_iter = documents.find(snapshot.uri);
         if(latest_iter == documents.end() ||
            latest_iter->second.generation != snapshot.generation) {
             co_return std::nullopt;
@@ -828,7 +639,14 @@ private:
         loop.stop();
     }
 
-private:
+    auto start() -> std::expected<void, std::string> {
+        return workers.start();
+    }
+
+    [[nodiscard]] auto exit_code() const -> int {
+        return requested_exit_code;
+    }
+
     et::event_loop& loop;
     jsonrpc::Peer& peer;
     WorkerPool workers;
@@ -841,74 +659,25 @@ private:
     int requested_exit_code = 0;
 
     std::unordered_map<std::string, DocumentState> documents;
+    std::unordered_map<std::string, StatelessPCHState> stateless_pch;
+    ServerConfig config;
 };
 
-auto run_master_session(et::event_loop& loop,
-                        std::unique_ptr<jsonrpc::Transport> transport,
-                        const Options& options) -> int {
-    jsonrpc::Peer peer(loop, std::move(transport));
-    MasterServer server(loop, peer, options);
+MasterServer::MasterServer(et::event_loop& loop, jsonrpc::Peer& peer, const Options& options) :
+    impl(std::make_unique<Impl>(loop, peer, options)) {}
 
-    auto started = server.start();
-    if(!started) {
-        std::fprintf(stderr, "failed to start worker pool: %s\n", started.error().c_str());
-        return 1;
-    }
+MasterServer::~MasterServer() = default;
 
-    loop.schedule(peer.run());
-    auto loop_status = loop.run();
-    if(loop_status != 0) {
-        return loop_status;
-    }
-    return server.exit_code();
+MasterServer::MasterServer(MasterServer&&) noexcept = default;
+
+MasterServer& MasterServer::operator=(MasterServer&&) noexcept = default;
+
+auto MasterServer::start() -> std::expected<void, std::string> {
+    return impl->start();
 }
 
-}  // namespace
-
-auto run_pipe_mode(const Options& options) -> int {
-    et::event_loop loop;
-    auto stdio = jsonrpc::StreamTransport::open_stdio(loop);
-    if(!stdio) {
-        std::fprintf(stderr, "failed to open stdio transport: %s\n", stdio.error().c_str());
-        return 1;
-    }
-
-    std::unique_ptr<jsonrpc::Transport> transport = std::move(*stdio);
-    return run_master_session(loop, std::move(transport), options);
-}
-
-auto run_socket_mode(const Options& options) -> int {
-    et::event_loop loop;
-
-    auto listener_result = et::tcp_socket::listen(options.host, options.port, {}, loop);
-    if(!listener_result) {
-        print_error_message("failed to listen: ", listener_result.error().message());
-        return 1;
-    }
-
-    auto listener = std::move(*listener_result);
-    auto accept_task = listener.accept();
-    loop.schedule(accept_task);
-    auto loop_status = loop.run();
-    if(loop_status != 0) {
-        return loop_status;
-    }
-
-    auto accepted = accept_task.value();
-    listener = {};
-    if(!accepted || !accepted->has_value()) {
-        if(accepted && !accepted->has_value()) {
-            print_error_message("failed to accept connection: ", accepted->error().message());
-        } else {
-            std::fprintf(stderr, "failed to accept connection: unknown error\n");
-        }
-        return 1;
-    }
-
-    auto socket = std::move(**accepted);
-    auto stream = et::stream(std::move(socket));
-    auto transport = std::make_unique<jsonrpc::StreamTransport>(std::move(stream));
-    return run_master_session(loop, std::move(transport), options);
+auto MasterServer::exit_code() const -> int {
+    return impl->exit_code();
 }
 
 }  // namespace clice::server

@@ -12,11 +12,13 @@
 #include "eventide/serde/config.h"
 #include "server/protocol.h"
 #include "server/runtime.h"
+#include "support/logging.h"
 
 namespace {
 
 using clice::server::Mode;
 using clice::server::Options;
+using clice::server::WorkerRole;
 
 struct ModeOption {
     Mode value = Mode::Pipe;
@@ -35,6 +37,22 @@ struct ModeOption {
             return std::nullopt;
         }
         return "invalid --mode, expected: pipe|socket|worker";
+    }
+};
+
+struct WorkerRoleOption {
+    WorkerRole value = WorkerRole::Stateful;
+
+    auto into(std::string_view text) -> std::optional<std::string_view> {
+        if(text == "stateful") {
+            value = WorkerRole::Stateful;
+            return std::nullopt;
+        }
+        if(text == "stateless") {
+            value = WorkerRole::Stateless;
+            return std::nullopt;
+        }
+        return "invalid --worker-role, expected: stateful|stateless";
     }
 };
 
@@ -71,6 +89,13 @@ struct CliOptions {
     <std::size_t> worker_count;
 
     DecoKVStyled(deco::decl::KVStyle::Joined,
+                 names = {"--stateless-worker-count=", "--stateless-worker-count"};
+                 meta_var = "N";
+                 help = "Stateless worker process count (default: 2)";
+                 required = false)
+    <std::size_t> stateless_worker_count;
+
+    DecoKVStyled(deco::decl::KVStyle::Joined,
                  names = {"--worker-doc-capacity=", "--worker-doc-capacity"};
                  meta_var = "N";
                  help = "Per-worker AST cache capacity (default: 32)";
@@ -83,6 +108,12 @@ struct CliOptions {
                  help = "Master ownership cache capacity (default: 256)";
                  required = false;)
     <std::size_t> master_document_capacity;
+
+    DecoKVStyled(deco::decl::KVStyle::Joined, names = {"--worker-role=", "--worker-role"};
+                 meta_var = "ROLE";
+                 help = "Worker role: stateful|stateless";
+                 required = false;)
+    <WorkerRoleOption> worker_role;
 
     DECO_CFG_END();
 };
@@ -126,6 +157,12 @@ auto build_options(const CliOptions& cli_options, int argc, const char** argv)
         }
         options.worker_count = *cli_options.worker_count;
     }
+    if(cli_options.stateless_worker_count.value.has_value()) {
+        if(*cli_options.stateless_worker_count == 0) {
+            return std::unexpected("--stateless-worker-count must be a positive integer");
+        }
+        options.stateless_worker_count = *cli_options.stateless_worker_count;
+    }
     if(cli_options.worker_document_capacity.value.has_value()) {
         if(*cli_options.worker_document_capacity == 0) {
             return std::unexpected("--worker-doc-capacity must be a positive integer");
@@ -137,6 +174,9 @@ auto build_options(const CliOptions& cli_options, int argc, const char** argv)
             return std::unexpected("--master-doc-capacity must be a positive integer");
         }
         options.master_document_capacity = *cli_options.master_document_capacity;
+    }
+    if(cli_options.worker_role.value.has_value()) {
+        options.worker_role = cli_options.worker_role->value;
     }
 
     return options;
@@ -160,6 +200,7 @@ auto run_with_options(const Options& options) -> int {
 
 int main(int argc, const char** argv) {
     eventide::serde::config::set_field_rename_policy<eventide::serde::rename_policy::lower_camel>();
+    clice::logging::stderr_logger("clice", clice::logging::options);
 
     auto args = deco::util::argvify(argc, argv);
     auto parsed = deco::cli::parse<CliOptions>(args);
