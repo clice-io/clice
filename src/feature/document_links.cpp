@@ -11,7 +11,7 @@ namespace {
 
 namespace protocol = eventide::language::protocol;
 
-auto to_range(const PositionConverter& converter, LocalSourceRange range) -> protocol::Range {
+auto to_range(const PositionMapper& converter, LocalSourceRange range) -> protocol::Range {
     return protocol::Range{
         .start = converter.to_position(range.begin),
         .end = converter.to_position(range.end),
@@ -31,7 +31,7 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
     }
 
     auto content = unit.interested_content();
-    PositionConverter converter(content, encoding);
+    PositionMapper converter(content, encoding);
     auto& directives = directives_it->second;
 
     links.reserve(directives.includes.size() + directives.has_includes.size());

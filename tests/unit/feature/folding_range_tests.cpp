@@ -39,7 +39,8 @@ void run(llvm::StringRef code) {
 }
 
 auto to_local_range(const protocol::FoldingRange& range) -> LocalSourceRange {
-    PositionConverter converter(tester.unit->interested_content(), feature::PositionEncoding::UTF8);
+    eventide::language::PositionMapper converter(tester.unit->interested_content(),
+                                                 feature::PositionEncoding::UTF8);
 
     auto start = protocol::Position{
         .line = range.start_line,

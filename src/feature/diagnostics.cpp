@@ -2,8 +2,8 @@
 #include <string>
 #include <vector>
 
+#include "eventide/language/uri.h"
 #include "feature/feature.h"
-#include "support/filesystem.h"
 
 namespace clice::feature {
 
@@ -12,13 +12,20 @@ namespace {
 namespace protocol = eventide::language::protocol;
 
 auto to_uri(llvm::StringRef file) -> std::string {
-    if(path::is_absolute(file)) {
-        return fs::toURI(file);
+    const auto file_view = std::string_view(file.data(), file.size());
+
+    if(auto parsed = eventide::language::URI::parse(file_view)) {
+        return parsed->str();
     }
+
+    if(auto uri = eventide::language::URI::from_file_path(file_view)) {
+        return uri->str();
+    }
+
     return file.str();
 }
 
-auto to_range(const PositionConverter& converter, LocalSourceRange range) -> protocol::Range {
+auto to_range(const PositionMapper& converter, LocalSourceRange range) -> protocol::Range {
     return protocol::Range{
         .start = converter.to_position(range.begin),
         .end = converter.to_position(range.end),
@@ -48,7 +55,7 @@ void add_related(protocol::Diagnostic& diagnostic,
     }
 
     auto content = unit.file_content(raw.fid);
-    PositionConverter converter(content, encoding);
+    PositionMapper converter(content, encoding);
 
     protocol::DiagnosticRelatedInformation related{
         .location =
@@ -79,7 +86,7 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         }
     };
 
-    PositionConverter main_converter(unit.interested_content(), encoding);
+    PositionMapper main_converter(unit.interested_content(), encoding);
 
     for(const auto& raw: unit.diagnostics()) {
         auto level = raw.id.level;

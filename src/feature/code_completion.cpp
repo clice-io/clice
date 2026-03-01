@@ -148,7 +148,7 @@ public:
         auto prefix = CompletionPrefix::from(content, offset);
         FuzzyMatcher matcher(prefix.spelling);
 
-        PositionConverter converter(content, encoding);
+        PositionMapper converter(content, encoding);
         auto replace_range = protocol::Range{
             .start = converter.to_position(prefix.range.begin),
             .end = converter.to_position(prefix.range.end),

@@ -311,7 +311,7 @@ private:
 
 private:
     llvm::StringRef content;
-    PositionConverter converter;
+    PositionMapper converter;
     protocol::SemanticTokens& output;
     std::uint32_t last_line = 0;
     std::uint32_t last_start_character = 0;

@@ -146,7 +146,6 @@ add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/support/fuzzy_matcher.cpp"
     "${PROJECT_SOURCE_DIR}/src/support/glob_pattern.cpp"
     "${PROJECT_SOURCE_DIR}/src/support/logging.cpp"
-    "${PROJECT_SOURCE_DIR}/src/support/position.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/semantic_tokens.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/document_links.cpp"

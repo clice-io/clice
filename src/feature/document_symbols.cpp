@@ -20,7 +20,7 @@ namespace {
 
 namespace protocol = eventide::language::protocol;
 
-auto to_range(const PositionConverter& converter, LocalSourceRange range) -> protocol::Range {
+auto to_range(const PositionMapper& converter, LocalSourceRange range) -> protocol::Range {
     return protocol::Range{
         .start = converter.to_position(range.begin),
         .end = converter.to_position(range.end),
@@ -196,7 +196,7 @@ void sort_symbols(std::vector<InternalSymbol>& symbols) {
     }
 }
 
-auto to_protocol_symbol(const InternalSymbol& symbol, const PositionConverter& converter)
+auto to_protocol_symbol(const InternalSymbol& symbol, const PositionMapper& converter)
     -> protocol::DocumentSymbol {
     protocol::DocumentSymbol result{
         .name = symbol.name,
@@ -229,7 +229,7 @@ auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     auto internal = DocumentSymbolCollector(unit).collect();
     sort_symbols(internal);
 
-    PositionConverter converter(unit.interested_content(), encoding);
+    PositionMapper converter(unit.interested_content(), encoding);
     std::vector<protocol::DocumentSymbol> symbols;
     symbols.reserve(internal.size());
 

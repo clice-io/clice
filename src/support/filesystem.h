@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cassert>
-#include <cctype>
 #include <cstdlib>
 #include <expected>
 #include <format>
@@ -11,7 +10,6 @@
 
 #include "support/format.h"
 
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -88,82 +86,6 @@ inline std::expected<std::string, std::error_code> read(llvm::StringRef path) {
         return std::unexpected(buffer.getError());
     }
     return buffer.get()->getBuffer().str();
-}
-
-inline std::string toURI(llvm::StringRef fspath) {
-    if(!path::is_absolute(fspath)) {
-        std::abort();
-    }
-
-    llvm::SmallString<128> path("file://");
-#if defined(_WIN32)
-    path.append("/");
-#endif
-
-    for(auto c: fspath) {
-        auto uc = static_cast<unsigned char>(c);
-        if(c == '\\') {
-            path.push_back('/');
-        } else if(std::isalnum(uc) || c == '-' || c == '_' || c == '.' || c == '/') {
-            path.push_back(c);
-        } else {
-            path.push_back('%');
-            path.push_back(llvm::hexdigit(c >> 4));
-            path.push_back(llvm::hexdigit(c & 0xF));
-        }
-    }
-
-    return path.str().str();
-}
-
-inline std::string decodePercent(llvm::StringRef content) {
-    std::string result;
-    result.reserve(content.size());
-
-    for(auto iter = content.begin(), send = content.end(); iter != send; ++iter) {
-        auto c = *iter;
-        if(c == '%' && iter + 2 < send) {
-            auto m = *(iter + 1);
-            auto n = *(iter + 2);
-            if(llvm::isHexDigit(m) && llvm::isHexDigit(n)) {
-                result += llvm::hexFromNibbles(m, n);
-                iter += 2;
-                continue;
-            }
-        }
-        result += c;
-    }
-    return result;
-}
-
-inline std::string toPath(llvm::StringRef uri) {
-    llvm::StringRef cloned = uri;
-
-#if defined(_WIN32)
-    if(cloned.starts_with("file:///")) {
-        cloned = cloned.drop_front(8);
-    } else {
-        std::abort();
-    }
-#elif defined(__unix__) || defined(__APPLE__)
-    if(cloned.starts_with("file://")) {
-        cloned = cloned.drop_front(7);
-    } else {
-        std::abort();
-    }
-#else
-#error "Unsupported platform"
-#endif
-
-    auto decoded = decodePercent(cloned);
-
-    llvm::SmallString<128> result;
-    if(auto err = fs::real_path(decoded, result)) {
-        std::println("Failed to get real path: {}, input is {}", err.message(), decoded);
-        std::abort();
-    }
-
-    return result.str().str();
 }
 
 }  // namespace fs

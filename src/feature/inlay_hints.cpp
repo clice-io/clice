@@ -940,7 +940,7 @@ auto inlay_hints(CompilationUnitRef unit,
         });
     raw_hints.erase(unique_begin.begin(), unique_begin.end());
 
-    PositionConverter converter(unit.interested_content(), encoding);
+    PositionMapper converter(unit.interested_content(), encoding);
     std::vector<protocol::InlayHint> hints;
     hints.reserve(raw_hints.size());
 

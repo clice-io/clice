@@ -55,7 +55,7 @@ auto document_format(llvm::StringRef file,
         return edits;
     }
 
-    PositionConverter converter(content, encoding);
+    PositionMapper converter(content, encoding);
 
     for(const auto& replacement: *replacements) {
         protocol::TextEdit edit;

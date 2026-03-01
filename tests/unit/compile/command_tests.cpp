@@ -3,6 +3,7 @@
 #include "compile/compilation.h"
 
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Program.h"
 #include "clang/Driver/Driver.h"

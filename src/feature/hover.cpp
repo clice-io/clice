@@ -45,7 +45,7 @@ auto hover_markdown(const clang::NamedDecl& decl) -> std::string {
 
 auto hover_range(CompilationUnitRef unit,
                  const clang::NamedDecl& decl,
-                 const PositionConverter& converter) -> std::optional<protocol::Range> {
+                 const PositionMapper& converter) -> std::optional<protocol::Range> {
     auto [fid, range] = unit.decompose_expansion_range(decl.getSourceRange());
     if(fid != unit.interested_file() || !range.valid()) {
         return std::nullopt;
@@ -59,7 +59,7 @@ auto hover_range(CompilationUnitRef unit,
 
 auto build_hover(CompilationUnitRef unit, const clang::NamedDecl& decl, PositionEncoding encoding)
     -> protocol::Hover {
-    PositionConverter converter(unit.interested_content(), encoding);
+    PositionMapper converter(unit.interested_content(), encoding);
 
     protocol::MarkupContent content{
         .kind = protocol::MarkupKind::Markdown,

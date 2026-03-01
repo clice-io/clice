@@ -353,7 +353,7 @@ private:
 auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::FoldingRange> {
     auto collected = FoldingRangeCollector(unit).collect();
-    PositionConverter converter(unit.interested_content(), encoding);
+    PositionMapper converter(unit.interested_content(), encoding);
 
     std::vector<protocol::FoldingRange> result;
     result.reserve(collected.size());
