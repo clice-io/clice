@@ -6,12 +6,10 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "eventide/async/cancellation.h"
 #include "eventide/async/loop.h"
 #include "eventide/async/process.h"
 #include "eventide/async/stream.h"
@@ -32,19 +30,6 @@ auto print_error_message(std::string_view prefix, std::string_view message) -> v
                  prefix.data(),
                  static_cast<int>(message.size()),
                  message.data());
-}
-
-auto request_id_key(const rpc::RequestID& id) -> std::string {
-    return std::visit(
-        [](const auto& value) -> std::string {
-            using value_t = std::remove_cvref_t<decltype(value)>;
-            if constexpr(std::is_same_v<value_t, rpc::integer>) {
-                return "i:" + std::to_string(value);
-            } else {
-                return "s:" + value;
-            }
-        },
-        id);
 }
 
 auto make_initialize_result() -> rpc::InitializeResult {
@@ -433,25 +418,17 @@ private:
         int version = 0;
         std::string text;
         std::uint64_t generation = 0;
-        et::cancellation_source cancel_source;
         bool build_running = false;
         bool build_requested = false;
     };
 
-    struct RequestState {
-        et::cancellation_source cancel_source;
-    };
-
     struct HoverRequestSnapshot {
-        std::string request_key;
         std::string uri;
         int version = 0;
         std::uint64_t generation = 0;
         std::string text;
         int line = 0;
         int character = 0;
-        et::cancellation_token request_token;
-        et::cancellation_token document_token;
     };
 
     using CompletionRequestSnapshot = HoverRequestSnapshot;
@@ -493,9 +470,6 @@ private:
             }
             initialized_notification = true;
         });
-
-        peer.on_notification(
-            [this](const rpc::CancelParams& params) { on_cancel_request(params); });
 
         peer.on_notification([this](const rpc::ExitParams&) {
             if(exiting) {
@@ -542,12 +516,10 @@ private:
         }
 
         shutdown_request = true;
-        cancel_all_requests();
-        cancel_all_builds();
         co_return nullptr;
     }
 
-    auto on_hover(jsonrpc::RequestContext& context, const rpc::HoverParams& params)
+    auto on_hover(jsonrpc::RequestContext&, const rpc::HoverParams& params)
         -> jsonrpc::RequestResult<rpc::HoverParams> {
         if(!initialize_request) {
             co_return std::unexpected("server is not initialized");
@@ -566,27 +538,19 @@ private:
             co_return std::nullopt;
         }
 
-        auto request_key = request_id_key(context.id);
-        auto& request = active_requests[request_key];
-        request.cancel_source.cancel();
-        request.cancel_source = et::cancellation_source{};
-
         auto snapshot = HoverRequestSnapshot{
-            .request_key = std::move(request_key),
             .uri = std::string(uri),
             .version = doc_iter->second.version,
             .generation = doc_iter->second.generation,
             .text = doc_iter->second.text,
             .line = line,
             .character = character,
-            .request_token = request.cancel_source.token(),
-            .document_token = doc_iter->second.cancel_source.token(),
         };
 
         co_return co_await run_hover(std::move(snapshot));
     }
 
-    auto on_completion(jsonrpc::RequestContext& context, const rpc::CompletionParams& params)
+    auto on_completion(jsonrpc::RequestContext&, const rpc::CompletionParams& params)
         -> jsonrpc::RequestResult<rpc::CompletionParams> {
         if(!initialize_request) {
             co_return std::unexpected("server is not initialized");
@@ -605,27 +569,19 @@ private:
             co_return nullptr;
         }
 
-        auto request_key = request_id_key(context.id);
-        auto& request = active_requests[request_key];
-        request.cancel_source.cancel();
-        request.cancel_source = et::cancellation_source{};
-
         auto snapshot = CompletionRequestSnapshot{
-            .request_key = std::move(request_key),
             .uri = std::string(uri),
             .version = doc_iter->second.version,
             .generation = doc_iter->second.generation,
             .text = doc_iter->second.text,
             .line = line,
             .character = character,
-            .request_token = request.cancel_source.token(),
-            .document_token = doc_iter->second.cancel_source.token(),
         };
 
         co_return co_await run_completion(std::move(snapshot));
     }
 
-    auto on_signature_help(jsonrpc::RequestContext& context, const rpc::SignatureHelpParams& params)
+    auto on_signature_help(jsonrpc::RequestContext&, const rpc::SignatureHelpParams& params)
         -> jsonrpc::RequestResult<rpc::SignatureHelpParams> {
         if(!initialize_request) {
             co_return std::unexpected("server is not initialized");
@@ -644,28 +600,16 @@ private:
             co_return std::nullopt;
         }
 
-        auto request_key = request_id_key(context.id);
-        auto& request = active_requests[request_key];
-        request.cancel_source.cancel();
-        request.cancel_source = et::cancellation_source{};
-
         auto snapshot = SignatureHelpRequestSnapshot{
-            .request_key = std::move(request_key),
             .uri = std::string(uri),
             .version = doc_iter->second.version,
             .generation = doc_iter->second.generation,
             .text = doc_iter->second.text,
             .line = line,
             .character = character,
-            .request_token = request.cancel_source.token(),
-            .document_token = doc_iter->second.cancel_source.token(),
         };
 
         co_return co_await run_signature_help(std::move(snapshot));
-    }
-
-    void on_cancel_request(const rpc::CancelParams& params) {
-        cancel_request(params.id);
     }
 
     void on_did_open(const rpc::DidOpenTextDocumentParams& params) {
@@ -732,11 +676,7 @@ private:
         }
 
         auto uri = std::string(params.text_document.uri);
-        auto doc_iter = documents.find(uri);
-        if(doc_iter != documents.end()) {
-            doc_iter->second.cancel_source.cancel();
-            documents.erase(doc_iter);
-        }
+        documents.erase(uri);
         workers.release_document(uri);
 
         auto status =
@@ -745,10 +685,6 @@ private:
     }
 
     auto run_hover(HoverRequestSnapshot snapshot) -> jsonrpc::RequestResult<rpc::HoverParams> {
-        auto finish = [this, request_key = snapshot.request_key]() {
-            finish_request(request_key);
-        };
-
         WorkerHoverParams params{
             .uri = snapshot.uri,
             .version = snapshot.version,
@@ -757,38 +693,22 @@ private:
             .character = snapshot.character,
         };
 
-        auto guarded_by_document =
-            et::with_token(snapshot.document_token, workers.hover(std::move(params)));
-        auto guarded =
-            co_await et::with_token(snapshot.request_token, std::move(guarded_by_document));
-        if(!guarded.has_value()) {
-            finish();
-            co_return std::nullopt;
-        }
-
-        auto hover_result = std::move(*guarded);
+        auto hover_result = co_await workers.hover(std::move(params));
         if(!hover_result) {
-            finish();
             co_return std::nullopt;
         }
 
         auto latest_iter = documents.find(snapshot.uri);
         if(latest_iter == documents.end() ||
            latest_iter->second.generation != snapshot.generation) {
-            finish();
             co_return std::nullopt;
         }
 
-        finish();
         co_return std::move(hover_result->result);
     }
 
     auto run_completion(CompletionRequestSnapshot snapshot)
         -> jsonrpc::RequestResult<rpc::CompletionParams> {
-        auto finish = [this, request_key = snapshot.request_key]() {
-            finish_request(request_key);
-        };
-
         WorkerCompletionParams params{
             .uri = snapshot.uri,
             .version = snapshot.version,
@@ -797,38 +717,22 @@ private:
             .character = snapshot.character,
         };
 
-        auto guarded_by_document =
-            et::with_token(snapshot.document_token, workers.completion(std::move(params)));
-        auto guarded =
-            co_await et::with_token(snapshot.request_token, std::move(guarded_by_document));
-        if(!guarded.has_value()) {
-            finish();
-            co_return nullptr;
-        }
-
-        auto completion_result = std::move(*guarded);
+        auto completion_result = co_await workers.completion(std::move(params));
         if(!completion_result) {
-            finish();
             co_return nullptr;
         }
 
         auto latest_iter = documents.find(snapshot.uri);
         if(latest_iter == documents.end() ||
            latest_iter->second.generation != snapshot.generation) {
-            finish();
             co_return nullptr;
         }
 
-        finish();
         co_return std::move(completion_result->result);
     }
 
     auto run_signature_help(SignatureHelpRequestSnapshot snapshot)
         -> jsonrpc::RequestResult<rpc::SignatureHelpParams> {
-        auto finish = [this, request_key = snapshot.request_key]() {
-            finish_request(request_key);
-        };
-
         WorkerSignatureHelpParams params{
             .uri = snapshot.uri,
             .version = snapshot.version,
@@ -837,48 +741,22 @@ private:
             .character = snapshot.character,
         };
 
-        auto guarded_by_document =
-            et::with_token(snapshot.document_token, workers.signature_help(std::move(params)));
-        auto guarded =
-            co_await et::with_token(snapshot.request_token, std::move(guarded_by_document));
-        if(!guarded.has_value()) {
-            finish();
-            co_return std::nullopt;
-        }
-
-        auto signature_help_result = std::move(*guarded);
+        auto signature_help_result = co_await workers.signature_help(std::move(params));
         if(!signature_help_result) {
-            finish();
             co_return std::nullopt;
         }
 
         auto latest_iter = documents.find(snapshot.uri);
         if(latest_iter == documents.end() ||
            latest_iter->second.generation != snapshot.generation) {
-            finish();
             co_return std::nullopt;
         }
 
-        finish();
         co_return std::move(signature_help_result->result);
     }
 
     [[nodiscard]] auto accept_document_notifications() const -> bool {
         return initialize_request && !shutdown_request;
-    }
-
-    void cancel_request(const rpc::RequestID& request_id) {
-        auto key = request_id_key(request_id);
-        auto request_iter = active_requests.find(key);
-        if(request_iter == active_requests.end()) {
-            return;
-        }
-
-        request_iter->second.cancel_source.cancel();
-    }
-
-    void finish_request(std::string_view request_key) {
-        active_requests.erase(std::string(request_key));
     }
 
     void schedule_build(std::string uri) {
@@ -888,8 +766,6 @@ private:
         }
 
         auto& document = doc_iter->second;
-        document.cancel_source.cancel();
-        document.cancel_source = et::cancellation_source{};
         document.build_requested = true;
 
         if(document.build_running) {
@@ -915,19 +791,13 @@ private:
 
             document.build_requested = false;
             const auto generation = document.generation;
-            const auto token = document.cancel_source.token();
             WorkerCompileParams params{
                 .uri = uri,
                 .version = document.version,
                 .text = document.text,
             };
 
-            auto guarded = co_await et::with_token(token, workers.compile(std::move(params)));
-            if(!guarded.has_value()) {
-                continue;
-            }
-
-            auto compile_result = std::move(*guarded);
+            auto compile_result = co_await workers.compile(std::move(params));
             if(!compile_result) {
                 continue;
             }
@@ -954,23 +824,8 @@ private:
         }
         stopping = true;
 
-        cancel_all_requests();
-        cancel_all_builds();
         co_await workers.shutdown();
         loop.stop();
-    }
-
-    void cancel_all_requests() {
-        for(auto& [_, request]: active_requests) {
-            request.cancel_source.cancel();
-        }
-        active_requests.clear();
-    }
-
-    void cancel_all_builds() {
-        for(auto& [_, doc]: documents) {
-            doc.cancel_source.cancel();
-        }
     }
 
 private:
@@ -986,7 +841,6 @@ private:
     int requested_exit_code = 0;
 
     std::unordered_map<std::string, DocumentState> documents;
-    std::unordered_map<std::string, RequestState> active_requests;
 };
 
 auto run_master_session(et::event_loop& loop,
