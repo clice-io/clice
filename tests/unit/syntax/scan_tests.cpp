@@ -159,7 +159,7 @@ int x = 1;
 )"));
 
     const char* args[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto results = scan_fuzzy(args, "/test", false, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, "/test", true, {}, nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -182,7 +182,7 @@ TEST_CASE(FuzzyConditionalTracking) {
     vfs->addFile("/test/after.h", 0, llvm::MemoryBuffer::getMemBuffer(""));
 
     const char* args[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto results = scan_fuzzy(args, "/test", false, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, "/test", true, {}, nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -205,7 +205,7 @@ TEST_CASE(FuzzyNotFound) {
     vfs->addFile("/test/also_exists.h", 0, llvm::MemoryBuffer::getMemBuffer(""));
 
     const char* args[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto results = scan_fuzzy(args, "/test", false, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, "/test", true, {}, nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -232,7 +232,7 @@ int b = 1;
 )"));
 
     const char* args[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto results = scan_fuzzy(args, "/test", false, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, "/test", true, {}, nullptr, vfs);
 
     // main.cpp includes a.h
     auto main_it = find_by_substr(results, "main.cpp");
@@ -261,13 +261,13 @@ int shared = 1;
     SharedScanCache cache;
 
     const char* args1[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto results1 = scan_fuzzy(args1, "/test", false, {}, &cache, vfs);
+    auto results1 = scan_fuzzy(args1, "/test", true, {}, &cache, vfs);
 
     // shared.h should be cached after first scan.
     EXPECT_FALSE(cache.entries.empty());
 
     const char* args2[] = {"clang++", "-std=c++20", "/test/other.cpp"};
-    auto results2 = scan_fuzzy(args2, "/test", false, {}, &cache, vfs);
+    auto results2 = scan_fuzzy(args2, "/test", true, {}, &cache, vfs);
 
     // Both scans should find includes.
     ASSERT_TRUE(find_by_substr(results1, "main.cpp") != results1.end());
@@ -280,7 +280,7 @@ TEST_CASE(FuzzyWithContent) {
     vfs->addFile("/test/header.h", 0, llvm::MemoryBuffer::getMemBuffer(""));
 
     const char* args[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto results = scan_fuzzy(args, "/test", false, R"(#include "header.h")", nullptr, vfs);
+    auto results = scan_fuzzy(args, "/test", true, R"(#include "header.h")", nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -302,7 +302,7 @@ int x = 1;
 )"));
 
     const char* args[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto result = scan_precise(args, "/test", false, {}, nullptr, vfs);
+    auto result = scan_precise(args, "/test", true, {}, nullptr, vfs);
 
     ASSERT_EQ(result.includes.size(), 1u);
     EXPECT_FALSE(result.includes[0].not_found);
@@ -324,7 +324,7 @@ TEST_CASE(PreciseConditionalWithDefine) {
     vfs->addFile("/test/bar.h", 0, llvm::MemoryBuffer::getMemBuffer(""));
 
     const char* args[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto result = scan_precise(args, "/test", false, {}, nullptr, vfs);
+    auto result = scan_precise(args, "/test", true, {}, nullptr, vfs);
 
     // Precise mode evaluates conditionals: only foo.h should be included.
     ASSERT_EQ(result.includes.size(), 1u);
@@ -338,7 +338,7 @@ TEST_CASE(PreciseWithContent) {
     vfs->addFile("/test/header.h", 0, llvm::MemoryBuffer::getMemBuffer(""));
 
     const char* args[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto result = scan_precise(args, "/test", false, R"(#include "header.h")", nullptr, vfs);
+    auto result = scan_precise(args, "/test", true, R"(#include "header.h")", nullptr, vfs);
 
     ASSERT_EQ(result.includes.size(), 1u);
     EXPECT_FALSE(result.includes[0].not_found);
