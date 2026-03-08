@@ -1,8 +1,8 @@
 #include "syntax/scan.h"
 
-#include "syntax/lexer.h"
-
 #include <deque>
+
+#include "syntax/lexer.h"
 
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -10,11 +10,11 @@
 #include "clang/Basic/FileEntry.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
-#include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Lex/PPCallbacks.h"
 #include "clang/Lex/Preprocessor.h"
+#include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Tooling/CompilationDatabase.h"
 
 namespace clice {
@@ -398,7 +398,9 @@ public:
         conditional_depth++;
     }
 
-    void Ifndef(clang::SourceLocation, const clang::Token&, const clang::MacroDefinition&) override {
+    void Ifndef(clang::SourceLocation,
+                const clang::Token&,
+                const clang::MacroDefinition&) override {
         conditional_depth++;
     }
 
@@ -435,11 +437,10 @@ std::unique_ptr<clang::CompilerInstance>
                          llvm::StringRef content,
                          llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     clang::DiagnosticOptions diag_opts;
-    auto diag_engine =
-        clang::CompilerInstance::createDiagnostics(*vfs,
-                                                   diag_opts,
-                                                   new clang::IgnoringDiagConsumer(),
-                                                   true);
+    auto diag_engine = clang::CompilerInstance::createDiagnostics(*vfs,
+                                                                  diag_opts,
+                                                                  new clang::IgnoringDiagConsumer(),
+                                                                  true);
 
     std::unique_ptr<clang::CompilerInvocation> invocation;
 
@@ -490,20 +491,20 @@ std::unique_ptr<clang::CompilerInstance>
 
 }  // namespace
 
-llvm::StringMap<ScanResult>
-    scan_fuzzy(llvm::ArrayRef<const char*> arguments,
-               llvm::StringRef directory,
-               bool arguments_from_database,
-               llvm::StringRef content,
-               SharedScanCache* cache,
-               llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
+llvm::StringMap<ScanResult> scan_fuzzy(llvm::ArrayRef<const char*> arguments,
+                                       llvm::StringRef directory,
+                                       bool arguments_from_database,
+                                       llvm::StringRef content,
+                                       SharedScanCache* cache,
+                                       llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     llvm::StringMap<ScanResult> results;
 
     if(!vfs) {
         vfs = llvm::vfs::createPhysicalFileSystem();
     }
 
-    auto instance = create_scan_instance(arguments, directory, arguments_from_database, content, vfs);
+    auto instance =
+        create_scan_instance(arguments, directory, arguments_from_database, content, vfs);
     if(!instance) {
         return results;
     }
@@ -552,13 +553,15 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
         vfs = llvm::vfs::createPhysicalFileSystem();
     }
 
-    auto instance = create_scan_instance(arguments, directory, arguments_from_database, content, vfs);
+    auto instance =
+        create_scan_instance(arguments, directory, arguments_from_database, content, vfs);
     if(!instance) {
         return result;
     }
 
-    auto getter =
-        std::make_unique<ScanDirectivesGetter>(ScanMode::Precise, cache, instance->getFileManager());
+    auto getter = std::make_unique<ScanDirectivesGetter>(ScanMode::Precise,
+                                                         cache,
+                                                         instance->getFileManager());
     instance->setDependencyDirectivesGetter(std::move(getter));
 
     if(!instance->createTarget()) {

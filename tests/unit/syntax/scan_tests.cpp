@@ -149,13 +149,11 @@ int main() {
 
 TEST_CASE(FuzzyBasic) {
     auto vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-    vfs->addFile("/test/main.cpp", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/main.cpp", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #include "header.h"
 int main() {}
 )"));
-    vfs->addFile("/test/header.h", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/header.h", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #pragma once
 int x = 1;
 )"));
@@ -172,8 +170,7 @@ int x = 1;
 
 TEST_CASE(FuzzyConditionalTracking) {
     auto vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-    vfs->addFile("/test/main.cpp", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/main.cpp", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #include "always.h"
 #ifdef FOO
 #include "conditional.h"
@@ -199,8 +196,7 @@ TEST_CASE(FuzzyConditionalTracking) {
 
 TEST_CASE(FuzzyNotFound) {
     auto vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-    vfs->addFile("/test/main.cpp", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/main.cpp", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #include "exists.h"
 #include "missing.h"
 #include "also_exists.h"
@@ -223,17 +219,14 @@ TEST_CASE(FuzzyNotFound) {
 
 TEST_CASE(FuzzyTransitiveIncludes) {
     auto vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-    vfs->addFile("/test/main.cpp", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/main.cpp", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #include "a.h"
 )"));
-    vfs->addFile("/test/a.h", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/a.h", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #pragma once
 #include "b.h"
 )"));
-    vfs->addFile("/test/b.h", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/b.h", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #pragma once
 int b = 1;
 )"));
@@ -254,16 +247,13 @@ int b = 1;
 
 TEST_CASE(FuzzyWithCache) {
     auto vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-    vfs->addFile("/test/main.cpp", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/main.cpp", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #include "shared.h"
 )"));
-    vfs->addFile("/test/other.cpp", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/other.cpp", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #include "shared.h"
 )"));
-    vfs->addFile("/test/shared.h", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/shared.h", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #pragma once
 int shared = 1;
 )"));
@@ -290,9 +280,7 @@ TEST_CASE(FuzzyWithContent) {
     vfs->addFile("/test/header.h", 0, llvm::MemoryBuffer::getMemBuffer(""));
 
     const char* args[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto results = scan_fuzzy(args, "/test", false,
-                              R"(#include "header.h")",
-                              nullptr, vfs);
+    auto results = scan_fuzzy(args, "/test", false, R"(#include "header.h")", nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -304,13 +292,11 @@ TEST_CASE(FuzzyWithContent) {
 
 TEST_CASE(PreciseBasic) {
     auto vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-    vfs->addFile("/test/main.cpp", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/main.cpp", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #include "header.h"
 int main() {}
 )"));
-    vfs->addFile("/test/header.h", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/header.h", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #pragma once
 int x = 1;
 )"));
@@ -325,8 +311,7 @@ int x = 1;
 
 TEST_CASE(PreciseConditionalWithDefine) {
     auto vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-    vfs->addFile("/test/main.cpp", 0,
-                 llvm::MemoryBuffer::getMemBuffer(R"(
+    vfs->addFile("/test/main.cpp", 0, llvm::MemoryBuffer::getMemBuffer(R"(
 #define USE_FOO
 #ifdef USE_FOO
 #include "foo.h"
@@ -353,9 +338,7 @@ TEST_CASE(PreciseWithContent) {
     vfs->addFile("/test/header.h", 0, llvm::MemoryBuffer::getMemBuffer(""));
 
     const char* args[] = {"clang++", "-std=c++20", "/test/main.cpp"};
-    auto result = scan_precise(args, "/test", false,
-                               R"(#include "header.h")",
-                               nullptr, vfs);
+    auto result = scan_precise(args, "/test", false, R"(#include "header.h")", nullptr, vfs);
 
     ASSERT_EQ(result.includes.size(), 1u);
     EXPECT_FALSE(result.includes[0].not_found);
@@ -374,52 +357,55 @@ TEST_CASE(NoDirectives) {
 }
 
 TEST_CASE(SingleInclude) {
-    llvm::StringRef src = "#include <vector>\nint x;";
+    llvm::StringRef src = R"(
+#include <vector>
+int x;
+)";
     auto bound = compute_preamble_bound(src);
-    // Bound should be at the end of the #include directive.
     EXPECT_TRUE(bound > 0u);
-    EXPECT_TRUE(bound <= src.find('\n') + 1);
+    EXPECT_TRUE(bound <= src.find("int"));
 }
 
 TEST_CASE(MultipleDirectives) {
-    llvm::StringRef src =
-        "#include <vector>\n"
-        "#include <string>\n"
-        "#define FOO 1\n"
-        "int x;";
+    llvm::StringRef src = R"(
+#include <vector>
+#include <string>
+#define FOO 1
+int x;
+)";
     auto bound = compute_preamble_bound(src);
-    // Bound should include all three directives.
     EXPECT_TRUE(bound > src.find("#define"));
 }
 
 TEST_CASE(GlobalModuleFragment) {
-    llvm::StringRef src =
-        "module;\n"
-        "#include <vector>\n"
-        "export module foo;";
+    llvm::StringRef src = R"(
+module;
+#include <vector>
+export module foo;
+)";
     auto bound = compute_preamble_bound(src);
-    // Bound should include module; and #include, stopping at export module.
     EXPECT_TRUE(bound > 0u);
     EXPECT_TRUE(bound < src.size());
 }
 
 TEST_CASE(BoundsVector) {
-    llvm::StringRef src =
-        "#include <a>\n"
-        "#include <b>\n"
-        "int x;";
+    llvm::StringRef src = R"(
+#include <a>
+#include <b>
+int x;
+)";
     auto bounds = compute_preamble_bounds(src);
-    // Should have two bounds, one per directive.
     ASSERT_EQ(bounds.size(), 2u);
     EXPECT_TRUE(bounds[0] < bounds[1]);
 }
 
 TEST_CASE(BoundsWithModuleFragment) {
-    llvm::StringRef src =
-        "module;\n"
-        "#include <a>\n"
-        "#include <b>\n"
-        "export module foo;";
+    llvm::StringRef src = R"(
+module;
+#include <a>
+#include <b>
+export module foo;
+)";
     auto bounds = compute_preamble_bounds(src);
     // module; + two #include = 3 bounds.
     ASSERT_EQ(bounds.size(), 3u);
@@ -428,24 +414,24 @@ TEST_CASE(BoundsWithModuleFragment) {
 }
 
 TEST_CASE(StopsAtCode) {
-    llvm::StringRef src =
-        "#include <a>\n"
-        "int x;\n"
-        "#include <b>\n";
+    llvm::StringRef src = R"(
+#include <a>
+int x;
+#include <b>
+)";
     auto bounds = compute_preamble_bounds(src);
-    // Should stop at "int x;", only one bound for #include <a>.
     ASSERT_EQ(bounds.size(), 1u);
 }
 
 TEST_CASE(ConditionalDirectives) {
-    llvm::StringRef src =
-        "#ifndef GUARD\n"
-        "#define GUARD\n"
-        "#include <a>\n"
-        "#endif\n"
-        "int x;";
+    llvm::StringRef src = R"(
+#ifndef GUARD
+#define GUARD
+#include <a>
+#endif
+int x;
+)";
     auto bound = compute_preamble_bound(src);
-    // All directives are part of preamble.
     EXPECT_TRUE(bound > src.find("#endif"));
 }
 
