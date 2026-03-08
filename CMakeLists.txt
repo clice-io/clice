@@ -131,15 +131,12 @@ add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 
 # Temporary migration-only build graph.
 add_library(clice-core STATIC
-    "${PROJECT_SOURCE_DIR}/src/server/server.cpp"
-    "${PROJECT_SOURCE_DIR}/src/server/worker.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/command.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/toolchain.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/compilation.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/compilation_unit.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/diagnostic.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/directive.cpp"
-    "${PROJECT_SOURCE_DIR}/src/compile/preamble.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/tidy.cpp"
     "${PROJECT_SOURCE_DIR}/src/support/doxygen.cpp"
     "${PROJECT_SOURCE_DIR}/src/support/structed_text.cpp"
@@ -147,6 +144,7 @@ add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/support/glob_pattern.cpp"
     "${PROJECT_SOURCE_DIR}/src/support/logging.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/syntax/scan.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/semantic_tokens.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/document_links.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/document_symbols.cpp"
@@ -185,7 +183,7 @@ target_link_libraries(clice-core PUBLIC
 )
 
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
-target_link_libraries(clice PRIVATE clice::core eventide::deco)
+target_link_libraries(clice PRIVATE clice::core)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 message(STATUS "Copying resource directory for development build")
