@@ -363,5 +363,93 @@ TEST_CASE(PreciseWithContent) {
 
 };  // TEST_SUITE(Scan)
 
+TEST_SUITE(PreambleBound) {
+
+TEST_CASE(Empty) {
+    EXPECT_EQ(compute_preamble_bound(""), 0u);
+}
+
+TEST_CASE(NoDirectives) {
+    EXPECT_EQ(compute_preamble_bound("int x = 1;"), 0u);
+}
+
+TEST_CASE(SingleInclude) {
+    llvm::StringRef src = "#include <vector>\nint x;";
+    auto bound = compute_preamble_bound(src);
+    // Bound should be at the end of the #include directive.
+    EXPECT_TRUE(bound > 0u);
+    EXPECT_TRUE(bound <= src.find('\n') + 1);
+}
+
+TEST_CASE(MultipleDirectives) {
+    llvm::StringRef src =
+        "#include <vector>\n"
+        "#include <string>\n"
+        "#define FOO 1\n"
+        "int x;";
+    auto bound = compute_preamble_bound(src);
+    // Bound should include all three directives.
+    EXPECT_TRUE(bound > src.find("#define"));
+}
+
+TEST_CASE(GlobalModuleFragment) {
+    llvm::StringRef src =
+        "module;\n"
+        "#include <vector>\n"
+        "export module foo;";
+    auto bound = compute_preamble_bound(src);
+    // Bound should include module; and #include, stopping at export module.
+    EXPECT_TRUE(bound > 0u);
+    EXPECT_TRUE(bound < src.size());
+}
+
+TEST_CASE(BoundsVector) {
+    llvm::StringRef src =
+        "#include <a>\n"
+        "#include <b>\n"
+        "int x;";
+    auto bounds = compute_preamble_bounds(src);
+    // Should have two bounds, one per directive.
+    ASSERT_EQ(bounds.size(), 2u);
+    EXPECT_TRUE(bounds[0] < bounds[1]);
+}
+
+TEST_CASE(BoundsWithModuleFragment) {
+    llvm::StringRef src =
+        "module;\n"
+        "#include <a>\n"
+        "#include <b>\n"
+        "export module foo;";
+    auto bounds = compute_preamble_bounds(src);
+    // module; + two #include = 3 bounds.
+    ASSERT_EQ(bounds.size(), 3u);
+    EXPECT_TRUE(bounds[0] < bounds[1]);
+    EXPECT_TRUE(bounds[1] < bounds[2]);
+}
+
+TEST_CASE(StopsAtCode) {
+    llvm::StringRef src =
+        "#include <a>\n"
+        "int x;\n"
+        "#include <b>\n";
+    auto bounds = compute_preamble_bounds(src);
+    // Should stop at "int x;", only one bound for #include <a>.
+    ASSERT_EQ(bounds.size(), 1u);
+}
+
+TEST_CASE(ConditionalDirectives) {
+    llvm::StringRef src =
+        "#ifndef GUARD\n"
+        "#define GUARD\n"
+        "#include <a>\n"
+        "#endif\n"
+        "int x;";
+    auto bound = compute_preamble_bound(src);
+    // All directives are part of preamble.
+    EXPECT_TRUE(bound > src.find("#endif"));
+}
+
+};  // TEST_SUITE(PreambleBound)
+
 }  // namespace
 }  // namespace clice::testing
