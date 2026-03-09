@@ -1,5 +1,7 @@
 #include "llvm/ADT/SmallString.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/VirtualFileSystem.h"
 
 namespace clice::testing {
 
@@ -45,22 +47,32 @@ constexpr inline bool CIEnvironment = true;
 constexpr inline bool CIEnvironment = false;
 #endif
 
-/// Platform-appropriate absolute root for VFS-based tests.
-/// Windows requires a drive letter for paths to be truly absolute.
-inline const char* test_root() {
-#ifdef _WIN32
-    return "C:\\clice-test";
-#else
-    return "/clice-test";
-#endif
-}
+class TestVFS : public llvm::vfs::InMemoryFileSystem {
+public:
+    TestVFS() {
+        setCurrentWorkingDirectory(root());
+    }
 
-/// Build an absolute test path from a relative component.
-/// e.g. test_path("main.cpp") → "/clice-test/main.cpp" or "C:\clice-test\main.cpp"
-inline std::string test_path(llvm::StringRef relative) {
-    llvm::SmallString<128> result;
-    llvm::sys::path::append(result, test_root(), relative);
-    return std::string(result);
-}
+    const static char* root() {
+#ifdef _WIN32
+        return "C:\\clice-test";
+#else
+        return "/clice-test";
+#endif
+    }
+
+    /// root() + relative → absolute path.
+    static std::string path(llvm::StringRef relative) {
+        llvm::SmallString<128> result;
+        llvm::sys::path::append(result, root(), relative);
+        return std::string(result);
+    }
+
+    /// Add a file with an optional content (relative path, auto-prefixed with root()).
+    void add(llvm::StringRef relative, llvm::StringRef content = {}) {
+        auto p = path(relative);
+        addFile(p, 0, llvm::MemoryBuffer::getMemBufferCopy(content, p));
+    }
+};
 
 }  // namespace clice::testing

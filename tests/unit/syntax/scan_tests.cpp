@@ -1,8 +1,6 @@
 #include "test/test.h"
 #include "syntax/scan.h"
 
-#include "llvm/Support/VirtualFileSystem.h"
-
 namespace clice::testing {
 namespace {
 
@@ -15,13 +13,6 @@ auto find_by_substr(llvm::StringMap<T>& map, llvm::StringRef substr) {
         }
     }
     return map.end();
-}
-
-/// Create an InMemoryFileSystem with CWD set to test_root().
-auto make_test_vfs() {
-    auto vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-    vfs->setCurrentWorkingDirectory(test_root());
-    return vfs;
 }
 
 TEST_SUITE(Scan) {
@@ -155,20 +146,19 @@ int main() {
 // === scan_fuzzy() tests ===
 
 TEST_CASE(FuzzyBasic) {
-    auto vfs = make_test_vfs();
-    auto main_path = test_path("main.cpp");
-    auto header_path = test_path("header.h");
-    vfs->addFile(main_path, 0, llvm::MemoryBuffer::getMemBuffer(R"(
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    vfs->add("main.cpp", R"(
 #include "header.h"
 int main() {}
-)"));
-    vfs->addFile(header_path, 0, llvm::MemoryBuffer::getMemBuffer(R"(
+)");
+    vfs->add("header.h", R"(
 #pragma once
 int x = 1;
-)"));
+)");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, test_root(), true, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, TestVFS::root(), true, {}, nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -178,21 +168,21 @@ int x = 1;
 }
 
 TEST_CASE(FuzzyConditionalTracking) {
-    auto vfs = make_test_vfs();
-    auto main_path = test_path("main.cpp");
-    vfs->addFile(main_path, 0, llvm::MemoryBuffer::getMemBuffer(R"(
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    vfs->add("main.cpp", R"(
 #include "always.h"
 #ifdef FOO
 #include "conditional.h"
 #endif
 #include "after.h"
-)"));
-    vfs->addFile(test_path("always.h"), 0, llvm::MemoryBuffer::getMemBuffer(""));
-    vfs->addFile(test_path("conditional.h"), 0, llvm::MemoryBuffer::getMemBuffer(""));
-    vfs->addFile(test_path("after.h"), 0, llvm::MemoryBuffer::getMemBuffer(""));
+)");
+    vfs->add("always.h");
+    vfs->add("conditional.h");
+    vfs->add("after.h");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, test_root(), true, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, TestVFS::root(), true, {}, nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -205,18 +195,18 @@ TEST_CASE(FuzzyConditionalTracking) {
 }
 
 TEST_CASE(FuzzyNotFound) {
-    auto vfs = make_test_vfs();
-    auto main_path = test_path("main.cpp");
-    vfs->addFile(main_path, 0, llvm::MemoryBuffer::getMemBuffer(R"(
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    vfs->add("main.cpp", R"(
 #include "exists.h"
 #include "missing.h"
 #include "also_exists.h"
-)"));
-    vfs->addFile(test_path("exists.h"), 0, llvm::MemoryBuffer::getMemBuffer(""));
-    vfs->addFile(test_path("also_exists.h"), 0, llvm::MemoryBuffer::getMemBuffer(""));
+)");
+    vfs->add("exists.h");
+    vfs->add("also_exists.h");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, test_root(), true, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, TestVFS::root(), true, {}, nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -229,22 +219,22 @@ TEST_CASE(FuzzyNotFound) {
 }
 
 TEST_CASE(FuzzyTransitiveIncludes) {
-    auto vfs = make_test_vfs();
-    auto main_path = test_path("main.cpp");
-    vfs->addFile(main_path, 0, llvm::MemoryBuffer::getMemBuffer(R"(
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    vfs->add("main.cpp", R"(
 #include "a.h"
-)"));
-    vfs->addFile(test_path("a.h"), 0, llvm::MemoryBuffer::getMemBuffer(R"(
+)");
+    vfs->add("a.h", R"(
 #pragma once
 #include "b.h"
-)"));
-    vfs->addFile(test_path("b.h"), 0, llvm::MemoryBuffer::getMemBuffer(R"(
+)");
+    vfs->add("b.h", R"(
 #pragma once
 int b = 1;
-)"));
+)");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, test_root(), true, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, TestVFS::root(), true, {}, nullptr, vfs);
 
     // main.cpp includes a.h
     auto main_it = find_by_substr(results, "main.cpp");
@@ -258,30 +248,30 @@ int b = 1;
 }
 
 TEST_CASE(FuzzyWithCache) {
-    auto vfs = make_test_vfs();
-    auto main_path = test_path("main.cpp");
-    auto other_path = test_path("other.cpp");
-    vfs->addFile(main_path, 0, llvm::MemoryBuffer::getMemBuffer(R"(
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    auto other_path = TestVFS::path("other.cpp");
+    vfs->add("main.cpp", R"(
 #include "shared.h"
-)"));
-    vfs->addFile(other_path, 0, llvm::MemoryBuffer::getMemBuffer(R"(
+)");
+    vfs->add("other.cpp", R"(
 #include "shared.h"
-)"));
-    vfs->addFile(test_path("shared.h"), 0, llvm::MemoryBuffer::getMemBuffer(R"(
+)");
+    vfs->add("shared.h", R"(
 #pragma once
 int shared = 1;
-)"));
+)");
 
     SharedScanCache cache;
 
     auto args1 = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results1 = scan_fuzzy(args1, test_root(), true, {}, &cache, vfs);
+    auto results1 = scan_fuzzy(args1, TestVFS::root(), true, {}, &cache, vfs);
 
     // shared.h should be cached after first scan.
     EXPECT_FALSE(cache.entries.empty());
 
     auto args2 = std::vector<const char*>{"clang++", "-std=c++20", other_path.c_str()};
-    auto results2 = scan_fuzzy(args2, test_root(), true, {}, &cache, vfs);
+    auto results2 = scan_fuzzy(args2, TestVFS::root(), true, {}, &cache, vfs);
 
     // Both scans should find includes.
     ASSERT_TRUE(find_by_substr(results1, "main.cpp") != results1.end());
@@ -289,13 +279,13 @@ int shared = 1;
 }
 
 TEST_CASE(FuzzyWithContent) {
-    auto vfs = make_test_vfs();
-    auto main_path = test_path("main.cpp");
-    vfs->addFile(main_path, 0, llvm::MemoryBuffer::getMemBuffer(""));
-    vfs->addFile(test_path("header.h"), 0, llvm::MemoryBuffer::getMemBuffer(""));
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    vfs->add("main.cpp");
+    vfs->add("header.h");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, test_root(), true, R"(#include "header.h")", nullptr, vfs);
+    auto results = scan_fuzzy(args, TestVFS::root(), true, R"(#include "header.h")", nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -306,19 +296,19 @@ TEST_CASE(FuzzyWithContent) {
 // === scan_precise() tests ===
 
 TEST_CASE(PreciseBasic) {
-    auto vfs = make_test_vfs();
-    auto main_path = test_path("main.cpp");
-    vfs->addFile(main_path, 0, llvm::MemoryBuffer::getMemBuffer(R"(
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    vfs->add("main.cpp", R"(
 #include "header.h"
 int main() {}
-)"));
-    vfs->addFile(test_path("header.h"), 0, llvm::MemoryBuffer::getMemBuffer(R"(
+)");
+    vfs->add("header.h", R"(
 #pragma once
 int x = 1;
-)"));
+)");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, test_root(), true, {}, nullptr, vfs);
+    auto result = scan_precise(args, TestVFS::root(), true, {}, nullptr, vfs);
 
     ASSERT_EQ(result.includes.size(), 1u);
     EXPECT_FALSE(result.includes[0].not_found);
@@ -326,9 +316,9 @@ int x = 1;
 }
 
 TEST_CASE(PreciseConditionalWithDefine) {
-    auto vfs = make_test_vfs();
-    auto main_path = test_path("main.cpp");
-    vfs->addFile(main_path, 0, llvm::MemoryBuffer::getMemBuffer(R"(
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    vfs->add("main.cpp", R"(
 #define USE_FOO
 #ifdef USE_FOO
 #include "foo.h"
@@ -336,12 +326,12 @@ TEST_CASE(PreciseConditionalWithDefine) {
 #ifndef USE_FOO
 #include "bar.h"
 #endif
-)"));
-    vfs->addFile(test_path("foo.h"), 0, llvm::MemoryBuffer::getMemBuffer(""));
-    vfs->addFile(test_path("bar.h"), 0, llvm::MemoryBuffer::getMemBuffer(""));
+)");
+    vfs->add("foo.h");
+    vfs->add("bar.h");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, test_root(), true, {}, nullptr, vfs);
+    auto result = scan_precise(args, TestVFS::root(), true, {}, nullptr, vfs);
 
     // Precise mode evaluates conditionals: only foo.h should be included.
     ASSERT_EQ(result.includes.size(), 1u);
@@ -350,13 +340,13 @@ TEST_CASE(PreciseConditionalWithDefine) {
 }
 
 TEST_CASE(PreciseWithContent) {
-    auto vfs = make_test_vfs();
-    auto main_path = test_path("main.cpp");
-    vfs->addFile(main_path, 0, llvm::MemoryBuffer::getMemBuffer(""));
-    vfs->addFile(test_path("header.h"), 0, llvm::MemoryBuffer::getMemBuffer(""));
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    vfs->add("main.cpp");
+    vfs->add("header.h");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, test_root(), true, R"(#include "header.h")", nullptr, vfs);
+    auto result = scan_precise(args, TestVFS::root(), true, R"(#include "header.h")", nullptr, vfs);
 
     ASSERT_EQ(result.includes.size(), 1u);
     EXPECT_FALSE(result.includes[0].not_found);
