@@ -24,10 +24,11 @@ jobs:
           args: --lint ./docs
         continue-on-error: true
 
-      - name: Suggest changes
-        if: github.event_name == 'pull_request'
-        uses: reviewdog/action-suggester@v1.24.0
-        with:
-          tool_name: "fmt"
-          fail_level: any
-          filter_mode: nofilter
+      - name: Check diff
+        run: |
+          if ! git diff --quiet; then
+            echo "::error::Formatting changes detected. Please run 'pixi run format' and commit the result."
+            git --no-pager diff --stat
+            git --no-pager diff
+            exit 1
+          fi

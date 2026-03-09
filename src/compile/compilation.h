@@ -10,8 +10,6 @@
 #include <vector>
 
 #include "compile/compilation_unit.h"
-#include "compile/module.h"
-#include "compile/preamble.h"
 #include "support/filesystem.h"
 
 #include "llvm/ADT/StringMap.h"
@@ -24,6 +22,46 @@ class CodeCompleteConsumer;
 }
 
 namespace clice {
+
+struct PCHInfo {
+    /// The path of the output PCH file.
+    std::string path;
+
+    /// The building time of this PCH.
+    std::int64_t mtime;
+
+    /// The content used to build this PCH.
+    std::string preamble;
+
+    /// All files involved in building this PCH.
+    std::vector<std::string> deps;
+
+    /// The command arguments used to build this PCH.
+    std::vector<const char*> arguments;
+};
+
+struct ModuleInfo {
+    /// Whether this module is an interface unit.
+    /// i.e. has export module declaration.
+    bool isInterfaceUnit = false;
+
+    /// Module name.
+    std::string name;
+
+    /// Dependent modules of this module.
+    std::vector<std::string> mods;
+};
+
+struct PCMInfo : ModuleInfo {
+    /// PCM file path.
+    std::string path;
+
+    /// Source file path.
+    std::string srcPath;
+
+    /// Files involved in building this PCM(not include module).
+    std::vector<std::string> deps;
+};
 
 struct CompilationParams {
     /// The kind of this compilation.
