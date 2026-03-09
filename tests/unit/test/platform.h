@@ -1,3 +1,6 @@
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/Path.h"
+
 namespace clice::testing {
 
 #ifdef _WIN32
@@ -41,5 +44,23 @@ constexpr inline bool CIEnvironment = true;
 #else
 constexpr inline bool CIEnvironment = false;
 #endif
+
+/// Platform-appropriate absolute root for VFS-based tests.
+/// Windows requires a drive letter for paths to be truly absolute.
+inline const char* test_root() {
+#ifdef _WIN32
+    return "C:\\clice-test";
+#else
+    return "/clice-test";
+#endif
+}
+
+/// Build an absolute test path from a relative component.
+/// e.g. test_path("main.cpp") → "/clice-test/main.cpp" or "C:\clice-test\main.cpp"
+inline std::string test_path(llvm::StringRef relative) {
+    llvm::SmallString<128> result;
+    llvm::sys::path::append(result, test_root(), relative);
+    return std::string(result);
+}
 
 }  // namespace clice::testing
