@@ -30,7 +30,7 @@ struct Relation {
         target_symbol = std::bit_cast<SymbolHash>(range);
     }
 
-    constexpr auto definition_range() {
+    constexpr auto definition_range() const {
         return std::bit_cast<LocalSourceRange>(target_symbol);
     }
 };

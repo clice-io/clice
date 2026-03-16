@@ -80,8 +80,6 @@ ScanResult scan(llvm::StringRef content) {
                     return result;
                 }
 
-                // Collect module name from tokens: skip keywords, then
-                // collect identifiers, '.', ':'.
                 std::string module_name;
                 bool seen_module_keyword = false;
                 for(auto& tok: dir.Tokens) {
@@ -105,6 +103,44 @@ ScanResult scan(llvm::StringRef content) {
 
                 result.module_name = std::move(module_name);
                 result.is_interface_unit = (dir.Kind == dds::cxx_export_module_decl);
+                break;
+            }
+            case dds::cxx_import_decl:
+            case dds::cxx_export_import_decl: {
+                std::string import_name;
+                bool seen_import_keyword = false;
+                for(auto& tok: dir.Tokens) {
+                    if(!seen_import_keyword) {
+                        if(tok.is(clang::tok::raw_identifier)) {
+                            auto spelling = content.substr(tok.Offset, tok.Length);
+                            if(spelling == "import") {
+                                seen_import_keyword = true;
+                            }
+                        }
+                        continue;
+                    }
+                    if(tok.is(clang::tok::header_name) || tok.is(clang::tok::string_literal)) {
+                        auto name = content.substr(tok.Offset, tok.Length);
+                        if(name.size() >= 2) {
+                            result.includes.push_back({
+                                std::string(name.substr(1, name.size() - 2)),
+                                conditional_depth > 0,
+                                false,
+                            });
+                        }
+                        break;
+                    }
+                    if(tok.is(clang::tok::raw_identifier)) {
+                        import_name += content.substr(tok.Offset, tok.Length);
+                    } else if(tok.is(clang::tok::period)) {
+                        import_name += '.';
+                    } else if(tok.is(clang::tok::colon)) {
+                        import_name += ':';
+                    }
+                }
+                if(!import_name.empty()) {
+                    result.modules.push_back(std::move(import_name));
+                }
                 break;
             }
             default: {

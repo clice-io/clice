@@ -143,3 +143,66 @@ class LSPClient(LSPTransport):
             },
         }
         return await self.send_request("textDocument/signatureHelp", params)
+
+    async def go_to_definition(self, relative_path: str, line: int, character: int):
+        path = self.get_abs_path(relative_path)
+        params = {
+            "textDocument": {"uri": path.as_uri()},
+            "position": {"line": line, "character": character},
+        }
+        return await self.send_request("textDocument/definition", params)
+
+    async def find_references(
+        self, relative_path: str, line: int, character: int, include_declaration: bool = True
+    ):
+        path = self.get_abs_path(relative_path)
+        params = {
+            "textDocument": {"uri": path.as_uri()},
+            "position": {"line": line, "character": character},
+            "context": {"includeDeclaration": include_declaration},
+        }
+        return await self.send_request("textDocument/references", params)
+
+    async def prepare_rename(self, relative_path: str, line: int, character: int):
+        path = self.get_abs_path(relative_path)
+        params = {
+            "textDocument": {"uri": path.as_uri()},
+            "position": {"line": line, "character": character},
+        }
+        return await self.send_request("textDocument/prepareRename", params)
+
+    async def rename(self, relative_path: str, line: int, character: int, new_name: str):
+        path = self.get_abs_path(relative_path)
+        params = {
+            "textDocument": {"uri": path.as_uri()},
+            "position": {"line": line, "character": character},
+            "newName": new_name,
+        }
+        return await self.send_request("textDocument/rename", params)
+
+    async def document_symbols(self, relative_path: str):
+        path = self.get_abs_path(relative_path)
+        params = {"textDocument": {"uri": path.as_uri()}}
+        return await self.send_request("textDocument/documentSymbol", params)
+
+    async def semantic_tokens(self, relative_path: str):
+        path = self.get_abs_path(relative_path)
+        params = {"textDocument": {"uri": path.as_uri()}}
+        return await self.send_request("textDocument/semanticTokens/full", params)
+
+    async def workspace_symbol(self, query: str):
+        return await self.send_request("workspace/symbol", {"query": query})
+
+    async def prepare_call_hierarchy(self, relative_path: str, line: int, character: int):
+        path = self.get_abs_path(relative_path)
+        params = {
+            "textDocument": {"uri": path.as_uri()},
+            "position": {"line": line, "character": character},
+        }
+        return await self.send_request("textDocument/prepareCallHierarchy", params)
+
+    async def incoming_calls(self, item: dict):
+        return await self.send_request("callHierarchy/incomingCalls", {"item": item})
+
+    async def outgoing_calls(self, item: dict):
+        return await self.send_request("callHierarchy/outgoingCalls", {"item": item})

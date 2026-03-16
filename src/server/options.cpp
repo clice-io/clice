@@ -84,6 +84,8 @@ Options Options::parse(int argc, const char** argv) {
             opts.port = std::atoi(v.data());
         } else if(auto v = extract_value("--worker-memory-limit="); !v.empty()) {
             opts.worker_memory_limit = std::stoull(std::string(v));
+        } else if(arg == "--workers") {
+            opts.enable_workers = true;
         }
     }
 

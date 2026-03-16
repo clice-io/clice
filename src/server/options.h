@@ -13,6 +13,7 @@ struct Options {
     int port = 50051;
     std::string self_path;
 
+    bool enable_workers = false;
     std::size_t stateless_worker_count = 0;
     std::size_t stateful_worker_count = 0;
     std::size_t worker_memory_limit = 0;

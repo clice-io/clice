@@ -7,12 +7,15 @@
 
 #include "compile/command.h"
 #include "compile/compilation.h"
+#include "index/merged_index.h"
+#include "index/project_index.h"
 #include "server/cache_manager.h"
 #include "server/compile_graph.h"
 #include "server/config.h"
 #include "server/fuzzy_graph.h"
 #include "server/options.h"
 #include "server/path_pool.h"
+#include "server/worker_pool.h"
 
 #include "eventide/async/async.h"
 #include "eventide/ipc/peer.h"
@@ -71,7 +74,7 @@ private:
     void on_did_save(const protocol::DidSaveTextDocumentParams& params);
     void on_did_close(const protocol::DidCloseTextDocumentParams& params);
 
-    // Feature requests
+    // Single-file features
     RequestResult<protocol::HoverParams>
     on_hover(et::ipc::JsonPeer::RequestContext& ctx,
              const protocol::HoverParams& params);
@@ -108,13 +111,65 @@ private:
     on_inlay_hints(et::ipc::JsonPeer::RequestContext& ctx,
                    const protocol::InlayHintParams& params);
 
+    // Cross-file features (index-based)
+    RequestResult<protocol::DefinitionParams>
+    on_go_to_definition(et::ipc::JsonPeer::RequestContext& ctx,
+                        const protocol::DefinitionParams& params);
+
+    RequestResult<protocol::ReferenceParams>
+    on_find_references(et::ipc::JsonPeer::RequestContext& ctx,
+                       const protocol::ReferenceParams& params);
+
+    RequestResult<protocol::RenameParams>
+    on_rename(et::ipc::JsonPeer::RequestContext& ctx,
+              const protocol::RenameParams& params);
+
+    RequestResult<protocol::PrepareRenameParams>
+    on_prepare_rename(et::ipc::JsonPeer::RequestContext& ctx,
+                      const protocol::PrepareRenameParams& params);
+
+    RequestResult<protocol::WorkspaceSymbolParams>
+    on_workspace_symbol(et::ipc::JsonPeer::RequestContext& ctx,
+                        const protocol::WorkspaceSymbolParams& params);
+
+    RequestResult<protocol::CallHierarchyPrepareParams>
+    on_prepare_call_hierarchy(et::ipc::JsonPeer::RequestContext& ctx,
+                              const protocol::CallHierarchyPrepareParams& params);
+
+    RequestResult<protocol::CallHierarchyIncomingCallsParams>
+    on_incoming_calls(et::ipc::JsonPeer::RequestContext& ctx,
+                      const protocol::CallHierarchyIncomingCallsParams& params);
+
+    RequestResult<protocol::CallHierarchyOutgoingCallsParams>
+    on_outgoing_calls(et::ipc::JsonPeer::RequestContext& ctx,
+                      const protocol::CallHierarchyOutgoingCallsParams& params);
+
+    RequestResult<protocol::TypeHierarchyPrepareParams>
+    on_prepare_type_hierarchy(et::ipc::JsonPeer::RequestContext& ctx,
+                              const protocol::TypeHierarchyPrepareParams& params);
+
+    RequestResult<protocol::TypeHierarchySubtypesParams>
+    on_subtypes(et::ipc::JsonPeer::RequestContext& ctx,
+                const protocol::TypeHierarchySubtypesParams& params);
+
+    RequestResult<protocol::TypeHierarchySupertypesParams>
+    on_supertypes(et::ipc::JsonPeer::RequestContext& ctx,
+                  const protocol::TypeHierarchySupertypesParams& params);
+
     // Build pipeline
     et::task<> run_build(std::string uri);
     void schedule_build(std::string uri);
 
+    // Indexing
+    void update_index(DocumentState& doc);
+
     // Dependency scanning
     void scan_dependencies(DocumentState& doc);
     void resolve_module_deps(std::uint32_t path_id, const ScanResult& scan);
+
+    // Index queries
+    std::optional<index::SymbolHash> symbol_at(std::uint32_t path_id, std::uint32_t offset);
+    std::string path_to_uri(llvm::StringRef path);
 
     // Helpers
     std::string uri_to_path(const std::string& uri);
@@ -142,6 +197,17 @@ private:
     CompileGraph compile_graph{path_pool};
     CacheManager cache_manager;
     FuzzyGraph fuzzy_graph{path_pool};
+
+    // Indexing
+    index::ProjectIndex project_index;
+    llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
+
+    // Module name → path_id cache (avoids O(N) scan per import)
+    llvm::StringMap<std::uint32_t> module_name_cache;
+
+    // Multi-process workers (optional)
+    std::unique_ptr<WorkerPool> workers;
+    bool use_workers() const { return workers && workers->has_workers(); }
 };
 
 int run_pipe_mode(const Options& options);
