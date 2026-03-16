@@ -1,6 +1,7 @@
 #include "server/options.h"
 #include "server/server.h"
 #include "server/stateless_worker.h"
+#include "server/stateful_worker.h"
 #include "support/logging.h"
 
 int main(int argc, const char** argv) {
@@ -18,8 +19,7 @@ int main(int argc, const char** argv) {
         case clice::Options::Mode::StatelessWorker:
             return clice::run_stateless_worker_mode(options);
         case clice::Options::Mode::StatefulWorker:
-            clice::logging::info("StatefulWorker mode not yet implemented");
-            return 1;
+            return clice::run_stateful_worker_mode(options);
     }
 
     return 0;
