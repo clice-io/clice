@@ -193,6 +193,9 @@ add_library(clice-server STATIC
     "${PROJECT_SOURCE_DIR}/src/server/cache_manager.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/fuzzy_graph.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/index_scheduler.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/memory_monitor.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/progress.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/socket_mode.cpp"
 )
 target_include_directories(clice-server PUBLIC "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(clice-server PUBLIC
