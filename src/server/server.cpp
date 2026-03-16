@@ -3,6 +3,7 @@
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "support/logging.h"
+#include "syntax/scan.h"
 
 #include "support/filesystem.h"
 
@@ -113,6 +114,67 @@ Server::on_initialize(et::ipc::JsonPeer::RequestContext& ctx,
         logging::file_loggger("clice", config.project.logging_dir, logging::options);
     }
 
+    cache_manager.initialize(config, workspace_root);
+
+    compile_graph.set_dispatcher([this](std::uint32_t path_id,
+                                        et::cancellation_token token) -> et::task<bool> {
+        auto path = path_pool.resolve(path_id);
+        LOG_INFO("CompileGraph: dispatching compilation for {}", path.str());
+
+        CommandOptions cmd_opts;
+        cmd_opts.resource_dir = true;
+        cmd_opts.query_toolchain = true;
+        auto ctx = cdb.lookup(path, cmd_opts);
+
+        CompilationParams params;
+        params.kind = CompilationKind::Content;
+        params.directory = ctx.directory.empty() ? workspace_root : ctx.directory.str();
+        params.arguments = std::move(ctx.arguments);
+        params.arguments_from_database = !ctx.directory.empty();
+
+        auto pcms_map = compile_graph.get_pcms(path_id);
+        for(auto& [name, pcm_path] : pcms_map) {
+            params.pcms.try_emplace(name, pcm_path);
+        }
+
+        if(token.cancelled()) {
+            co_return false;
+        }
+
+        auto scan_result = scan(llvm::StringRef());
+
+        auto pcm_it = std::find_if(
+            scan_result.modules.begin(), scan_result.modules.end(),
+            [](auto&) { return true; });
+        (void)pcm_it;
+
+        if(!scan_result.module_name.empty()) {
+            PCMInfo pcm_info;
+            pcm_info.name = scan_result.module_name;
+            auto pcm_path = cache_manager.pcm_path(scan_result.module_name);
+            params.output_file = pcm_path;
+
+            auto unit = compile(params, pcm_info);
+            if(!pcm_info.path.empty()) {
+                compile_graph.set_pcm_path(path_id, scan_result.module_name, pcm_info.path);
+                co_return true;
+            }
+            co_return false;
+        }
+
+        auto pch_path = cache_manager.pch_path(path);
+        params.output_file = pch_path;
+
+        PCHInfo pch_info;
+        auto unit = compile(params, pch_info);
+        if(!pch_info.path.empty()) {
+            auto preamble_bound = compute_preamble_bound(llvm::StringRef());
+            compile_graph.set_pch_path(path_id, pch_info.path, preamble_bound);
+            co_return true;
+        }
+        co_return false;
+    });
+
     state = State::Running;
 
     protocol::InitializeResult result;
@@ -174,7 +236,10 @@ void Server::on_did_open(const protocol::DidOpenTextDocumentParams& params) {
 
     LOG_INFO("didOpen: {}", path);
 
+    auto path_id = path_pool.intern(path);
+
     DocumentState doc;
+    doc.path_id = path_id;
     doc.uri = td.uri;
     doc.path = path;
     doc.version = td.version;
@@ -184,6 +249,11 @@ void Server::on_did_open(const protocol::DidOpenTextDocumentParams& params) {
     doc.build_complete = std::make_unique<et::event>(false);
 
     documents.try_emplace(td.uri, std::move(doc));
+
+    auto* doc_ptr = find_document(td.uri);
+    if(doc_ptr) {
+        scan_dependencies(*doc_ptr);
+    }
 
     schedule_build(td.uri);
 }
@@ -204,6 +274,9 @@ void Server::on_did_change(const protocol::DidChangeTextDocumentParams& params) 
             change);
     }
 
+    scan_dependencies(*doc);
+    compile_graph.update(doc->path_id);
+
     doc->build_requested = true;
     schedule_build(params.text_document.uri);
 }
@@ -216,6 +289,8 @@ void Server::on_did_save(const protocol::DidSaveTextDocumentParams& params) {
     if(params.text.has_value()) {
         doc->text = *params.text;
         doc->generation++;
+        scan_dependencies(*doc);
+        compile_graph.update(doc->path_id);
         doc->build_requested = true;
         schedule_build(params.text_document.uri);
     }
@@ -224,6 +299,12 @@ void Server::on_did_save(const protocol::DidSaveTextDocumentParams& params) {
 void Server::on_did_close(const protocol::DidCloseTextDocumentParams& params) {
     auto uri = params.text_document.uri;
     LOG_INFO("didClose: {}", uri);
+
+    auto* doc = find_document(uri);
+    if(doc) {
+        compile_graph.remove_unit(doc->path_id);
+    }
+
     documents.erase(uri);
 }
 
@@ -446,7 +527,7 @@ Server::on_inlay_hints(et::ipc::JsonPeer::RequestContext& ctx,
     co_return feature::inlay_hints(*doc->unit, LocalSourceRange{begin, end});
 }
 
-// === Build ===
+// === Build Pipeline ===
 
 et::task<> Server::run_build(std::string uri) {
     auto it = documents.find(uri);
@@ -460,28 +541,40 @@ et::task<> Server::run_build(std::string uri) {
         doc.build_requested = false;
         auto gen = doc.generation;
 
-        auto compile_params = make_compile_params(doc, CompilationKind::Content);
+        auto deps_ok = co_await compile_graph.compile_deps(doc.path_id, loop);
+        it = documents.find(uri);
+        if(it == documents.end())
+            break;
+        auto& doc2 = it->second;
+        if(doc2.generation != gen)
+            continue;
+
+        if(!deps_ok) {
+            LOG_WARN("Dependency compilation failed for {}", doc2.path);
+        }
+
+        auto compile_params = make_compile_params(doc2, CompilationKind::Content);
         compile_params.clang_tidy = config.project.clang_tidy;
 
         auto unit = compile(compile_params);
 
-        auto it2 = documents.find(uri);
-        if(it2 == documents.end())
+        auto it3 = documents.find(uri);
+        if(it3 == documents.end())
             break;
-        auto& doc2 = it2->second;
-        if(doc2.generation != gen)
+        auto& doc3 = it3->second;
+        if(doc3.generation != gen)
             continue;
 
         auto diags = feature::diagnostics(unit);
-        doc2.unit = std::make_unique<CompilationUnit>(std::move(unit));
+        doc3.unit = std::make_unique<CompilationUnit>(std::move(unit));
         publish_diagnostics(uri, diags);
     }
 
-    auto it3 = documents.find(uri);
-    if(it3 != documents.end()) {
-        it3->second.build_running = false;
-        if(it3->second.build_complete) {
-            it3->second.build_complete->set();
+    auto it4 = documents.find(uri);
+    if(it4 != documents.end()) {
+        it4->second.build_running = false;
+        if(it4->second.build_complete) {
+            it4->second.build_complete->set();
         }
     }
 }
@@ -500,6 +593,50 @@ void Server::schedule_build(std::string uri) {
         return;
 
     loop.schedule(run_build(std::move(uri)));
+}
+
+// === Dependency Scanning ===
+
+void Server::scan_dependencies(DocumentState& doc) {
+    auto scan_result = scan(doc.text);
+
+    llvm::SmallVector<std::uint32_t> include_ids;
+    for(auto& inc : scan_result.includes) {
+        if(!inc.path.empty() && !inc.not_found) {
+            auto inc_id = path_pool.intern(inc.path);
+            include_ids.push_back(inc_id);
+        }
+    }
+    fuzzy_graph.update_file(doc.path_id, include_ids);
+
+    resolve_module_deps(doc.path_id, scan_result);
+}
+
+void Server::resolve_module_deps(std::uint32_t path_id, const ScanResult& scan_result) {
+    llvm::SmallVector<std::uint32_t> dep_ids;
+
+    for(auto& mod_name : scan_result.modules) {
+        auto files = cdb.files();
+        for(auto* file : files) {
+            llvm::StringRef file_path(file);
+            auto file_content = llvm::MemoryBuffer::getFile(file_path);
+            if(!file_content)
+                continue;
+
+            auto file_scan = scan((*file_content)->getBuffer());
+            if(file_scan.module_name == mod_name && file_scan.is_interface_unit) {
+                auto mod_path_id = path_pool.intern(file_path);
+                dep_ids.push_back(mod_path_id);
+
+                if(!compile_graph.has_unit(mod_path_id)) {
+                    compile_graph.register_unit(mod_path_id, {});
+                }
+                break;
+            }
+        }
+    }
+
+    compile_graph.register_unit(path_id, dep_ids);
 }
 
 // === Helpers ===
@@ -549,6 +686,16 @@ CompilationParams Server::make_compile_params(DocumentState& doc, CompilationKin
     params.arguments_from_database = from_database;
 
     params.add_remapped_file(doc.path, doc.text);
+
+    auto pch = compile_graph.get_pch(doc.path_id);
+    if(!pch.first.empty()) {
+        params.pch = pch;
+    }
+
+    auto pcms = compile_graph.get_pcms(doc.path_id);
+    for(auto& [name, pcm_path] : pcms) {
+        params.pcms.try_emplace(name, pcm_path);
+    }
 
     return params;
 }

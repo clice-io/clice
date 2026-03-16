@@ -7,8 +7,12 @@
 
 #include "compile/command.h"
 #include "compile/compilation.h"
+#include "server/cache_manager.h"
+#include "server/compile_graph.h"
 #include "server/config.h"
+#include "server/fuzzy_graph.h"
 #include "server/options.h"
+#include "server/path_pool.h"
 
 #include "eventide/async/async.h"
 #include "eventide/ipc/peer.h"
@@ -19,11 +23,14 @@
 
 namespace clice {
 
+struct ScanResult;
+
 namespace et = eventide;
 namespace protocol = eventide::language::protocol;
 using et::ipc::RequestResult;
 
 struct DocumentState {
+    std::uint32_t path_id = 0;
     std::string uri;
     std::string path;
     int version = 0;
@@ -101,9 +108,13 @@ private:
     on_inlay_hints(et::ipc::JsonPeer::RequestContext& ctx,
                    const protocol::InlayHintParams& params);
 
-    // Build
+    // Build pipeline
     et::task<> run_build(std::string uri);
     void schedule_build(std::string uri);
+
+    // Dependency scanning
+    void scan_dependencies(DocumentState& doc);
+    void resolve_module_deps(std::uint32_t path_id, const ScanResult& scan);
 
     // Helpers
     std::string uri_to_path(const std::string& uri);
@@ -126,6 +137,11 @@ private:
     CompilationDatabase cdb;
 
     llvm::StringMap<DocumentState> documents;
+
+    ServerPathPool path_pool;
+    CompileGraph compile_graph{path_pool};
+    CacheManager cache_manager;
+    FuzzyGraph fuzzy_graph{path_pool};
 };
 
 int run_pipe_mode(const Options& options);
