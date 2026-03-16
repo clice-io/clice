@@ -189,6 +189,8 @@ add_library(clice-server STATIC
     "${PROJECT_SOURCE_DIR}/src/server/stateless_worker.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/stateful_worker.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/worker_pool.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/compile_graph.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/cache_manager.cpp"
 )
 target_include_directories(clice-server PUBLIC "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(clice-server PUBLIC
