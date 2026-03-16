@@ -3,7 +3,7 @@
 #include <cassert>
 #include <format>
 
-#include "compile/preamble.h"
+#include "syntax/scan.h"
 
 namespace clice::testing {
 
