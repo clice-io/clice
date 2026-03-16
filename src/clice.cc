@@ -1,5 +1,6 @@
 #include "server/options.h"
 #include "server/server.h"
+#include "server/stateless_worker.h"
 #include "support/logging.h"
 
 int main(int argc, const char** argv) {
@@ -15,8 +16,7 @@ int main(int argc, const char** argv) {
             clice::logging::info("Socket mode not yet implemented");
             return 1;
         case clice::Options::Mode::StatelessWorker:
-            clice::logging::info("StatelessWorker mode not yet implemented");
-            return 1;
+            return clice::run_stateless_worker_mode(options);
         case clice::Options::Mode::StatefulWorker:
             clice::logging::info("StatefulWorker mode not yet implemented");
             return 1;
