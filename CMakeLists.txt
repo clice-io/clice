@@ -182,8 +182,21 @@ target_link_libraries(clice-core PUBLIC
     eventide::language
 )
 
+add_library(clice-server STATIC
+    "${PROJECT_SOURCE_DIR}/src/server/options.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/config.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/server.cpp"
+)
+target_include_directories(clice-server PUBLIC "${PROJECT_SOURCE_DIR}/src")
+target_link_libraries(clice-server PUBLIC
+    clice::core
+    eventide::ipc
+    tomlplusplus::tomlplusplus
+)
+add_library(clice::server ALIAS clice-server)
+
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
-target_link_libraries(clice PRIVATE clice::core)
+target_link_libraries(clice PRIVATE clice::server)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 message(STATUS "Copying resource directory for development build")

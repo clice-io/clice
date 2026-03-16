@@ -61,6 +61,8 @@ tests/unit/Local/
 .idea/
 .claude
 .clangd
+.specstory/
+.cursorindexingignore
 
 # pixi environments
 .env

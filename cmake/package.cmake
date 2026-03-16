@@ -50,11 +50,12 @@ FetchContent_Declare(
     GIT_TAG        main
     GIT_SHALLOW    TRUE
 )
-set(EVENTIDE_ENABLE_ZEST ON)
-set(EVENTIDE_ENABLE_TEST OFF)
-set(EVENTIDE_SERDE_ENABLE_SIMDJSON ON)
-set(EVENTIDE_SERDE_ENABLE_YYJSON ON)
-
+set(ET_ENABLE_ZEST ON)
+set(ET_ENABLE_TEST OFF)
+set(ET_SERDE_ENABLE_SIMDJSON ON)
+set(ET_SERDE_ENABLE_YYJSON ON)
+set(ET_ENABLE_RTTI OFF)
+set(ET_ENABLE_EXCEPTIONS OFF)
 FetchContent_MakeAvailable(eventide spdlog tomlplusplus croaring flatbuffers)
 
 target_compile_definitions(spdlog PUBLIC

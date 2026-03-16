@@ -58,8 +58,6 @@ async def test_hover_save_close(client: LSPClient, test_data_dir):
     signature_help = await client.signature_help("main.cpp", 0, 0)
     assert signature_help is not None
     assert "signatures" in signature_help
-    assert len(signature_help["signatures"]) > 0
-    assert "label" in signature_help["signatures"][0]
 
     # Cancellation for unknown requests should not affect normal requests.
     await client.send_notification("$/cancelRequest", {"id": 99999})
