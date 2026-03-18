@@ -66,3 +66,7 @@ tests/unit/Local/
 .env
 .pixi/*
 !.pixi/config.toml
+
+.codex/
+.claude/
+openspec/
