@@ -59,7 +59,7 @@ void MasterServer::schedule_build(std::uint32_t path_id, const std::string& uri)
     if(!timer_ptr) {
         timer_ptr = std::make_unique<et::timer>(et::timer::create(loop));
     }
-    timer_ptr->start(std::chrono::milliseconds(200));
+    timer_ptr->start(std::chrono::milliseconds(config.debounce_ms));
 
     if(!doc.drain_scheduled) {
         doc.drain_scheduled = true;
@@ -139,13 +139,38 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
 et::task<> MasterServer::load_workspace() {
     if(workspace_root.empty()) co_return;
 
-    // Search for compile_commands.json in common locations
+    // Create cache directory if configured
+    if(!config.cache_dir.empty()) {
+        auto ec = llvm::sys::fs::create_directories(config.cache_dir);
+        if(ec) {
+            spdlog::warn("Failed to create cache directory {}: {}",
+                         config.cache_dir, ec.message());
+        } else {
+            spdlog::info("Cache directory: {}", config.cache_dir);
+        }
+    }
+
+    // Search for compile_commands.json
     std::string cdb_path;
-    for(auto* subdir : {"build", "cmake-build-debug", "cmake-build-release", "out", "."}) {
-        auto candidate = path::join(workspace_root, subdir, "compile_commands.json");
-        if(llvm::sys::fs::exists(candidate)) {
-            cdb_path = std::move(candidate);
-            break;
+
+    // If the config specifies a CDB path, use it
+    if(!config.compile_commands_path.empty()) {
+        if(llvm::sys::fs::exists(config.compile_commands_path)) {
+            cdb_path = config.compile_commands_path;
+        } else {
+            spdlog::warn("Configured compile_commands_path not found: {}",
+                         config.compile_commands_path);
+        }
+    }
+
+    // Otherwise auto-detect in common locations
+    if(cdb_path.empty()) {
+        for(auto* subdir : {"build", "cmake-build-debug", "cmake-build-release", "out", "."}) {
+            auto candidate = path::join(workspace_root, subdir, "compile_commands.json");
+            if(llvm::sys::fs::exists(candidate)) {
+                cdb_path = std::move(candidate);
+                break;
+            }
         }
     }
 
@@ -216,8 +241,8 @@ void MasterServer::reset_idle_timer() {
     if(!idle_timer) {
         idle_timer = std::make_unique<et::timer>(et::timer::create(loop));
     }
-    // Restart the 3-second idle timer
-    idle_timer->start(std::chrono::milliseconds(3000));
+    // Restart the idle timer
+    idle_timer->start(std::chrono::milliseconds(config.idle_timeout_ms));
 }
 
 void MasterServer::populate_index_queue() {
@@ -248,7 +273,7 @@ et::task<> MasterServer::run_background_indexer() {
         // Wait for idle (3 seconds of no user activity)
         if(!idle_timer) {
             idle_timer = std::make_unique<et::timer>(et::timer::create(loop));
-            idle_timer->start(std::chrono::milliseconds(3000));
+            idle_timer->start(std::chrono::milliseconds(config.idle_timeout_ms));
         }
         co_await idle_timer->wait();
 
@@ -382,13 +407,21 @@ void MasterServer::register_handlers() {
     // === initialized ===
     peer.on_notification([this](const protocol::InitializedParams& params) {
         lifecycle = ServerLifecycle::Ready;
-        spdlog::info("Server ready");
+
+        // Load configuration from workspace
+        config = CliceConfig::load_from_workspace(workspace_root);
+
+        spdlog::info("Server ready (stateful={}, stateless={}, debounce={}ms, idle={}ms)",
+                     config.stateful_worker_count, config.stateless_worker_count,
+                     config.debounce_ms, config.idle_timeout_ms);
 
         // Load CDB and build include graph in background
         loop.schedule(load_workspace());
 
-        // Start background indexer coroutine
-        loop.schedule(run_background_indexer());
+        // Start background indexer coroutine if enabled
+        if(config.enable_indexing) {
+            loop.schedule(run_background_indexer());
+        }
     });
 
     // === shutdown ===

@@ -3,6 +3,7 @@
 #include "compile/command.h"
 #include "syntax/scan.h"
 #include "server/compile_graph.h"
+#include "server/config.h"
 #include "server/worker_pool.h"
 
 #include "eventide/async/io/loop.h"
@@ -80,6 +81,7 @@ private:
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
 
     std::string workspace_root;
+    CliceConfig config;
 
     CompilationDatabase cdb;
     SharedScanCache scan_cache;
