@@ -165,6 +165,7 @@ add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/index/project_index.cpp"
     "${PROJECT_SOURCE_DIR}/src/index/merged_index.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/stateless_worker.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/stateful_worker.cpp"
 )
 add_library(clice::core ALIAS clice-core)
 add_dependencies(clice-core generate_flatbuffers_schema)
