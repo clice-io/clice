@@ -3,8 +3,15 @@
 #include <print>
 #include <string>
 
+#include "server/master_server.h"
+#include "server/stateless_worker.h"
+#include "server/stateful_worker.h"
+
+#include "eventide/async/io/loop.h"
 #include "eventide/deco/macro.h"
 #include "eventide/deco/runtime.h"
+#include "eventide/ipc/peer.h"
+#include "eventide/ipc/transport.h"
 
 namespace clice {
 
@@ -68,6 +75,35 @@ int main(int argc, const char** argv) {
         return 1;
     }
 
-    std::println("mode: {}", *opts.mode);
-    return 0;
+    auto& mode = *opts.mode;
+
+    if(mode == "stateless-worker") {
+        return clice::run_stateless_worker_mode();
+    }
+
+    if(mode == "stateful-worker") {
+        auto mem_limit = opts.worker_memory_limit.value_or(4ULL * 1024 * 1024 * 1024);
+        return clice::run_stateful_worker_mode(mem_limit);
+    }
+
+    if(mode == "pipe") {
+        namespace et = eventide;
+        et::event_loop loop;
+
+        auto transport = et::ipc::StreamTransport::open_stdio(loop);
+        if(!transport) {
+            std::println(stderr, "error: failed to open stdio transport");
+            return 1;
+        }
+
+        et::ipc::JsonPeer peer(loop, std::move(*transport));
+        clice::MasterServer server(loop, peer);
+        server.register_handlers();
+
+        loop.schedule(peer.run());
+        return loop.run();
+    }
+
+    std::println(stderr, "error: unknown mode '{}'", mode);
+    return 1;
 }
