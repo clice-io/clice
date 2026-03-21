@@ -11,24 +11,18 @@ set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 FetchContent_Declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
-    GIT_TAG        v1.15.3
-    GIT_SHALLOW    TRUE
+    GIT_TAG v1.15.3
+    GIT_SHALLOW TRUE
 )
-
-# tomlplusplus
-FetchContent_Declare(
-    tomlplusplus
-    GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
-    GIT_TAG        v3.4.0
-    GIT_SHALLOW    TRUE
-)
+set(SPDLOG_USE_STD_FORMAT ON CACHE BOOL "" FORCE)
+set(SPDLOG_NO_EXCEPTIONS ON CACHE BOOL "" FORCE)
 
 # croaring
 FetchContent_Declare(
     croaring
     GIT_REPOSITORY https://github.com/RoaringBitmap/CRoaring.git
-    GIT_TAG        v4.4.2
-    GIT_SHALLOW    TRUE
+    GIT_TAG v4.4.2
+    GIT_SHALLOW TRUE
 )
 set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "" FORCE)
 set(ENABLE_ROARING_MICROBENCHMARKS OFF CACHE INTERNAL "" FORCE)
@@ -37,8 +31,8 @@ set(ENABLE_ROARING_MICROBENCHMARKS OFF CACHE INTERNAL "" FORCE)
 FetchContent_Declare(
     flatbuffers
     GIT_REPOSITORY https://github.com/google/flatbuffers.git
-    GIT_TAG        v25.9.23
-    GIT_SHALLOW    TRUE
+    GIT_TAG v25.9.23
+    GIT_SHALLOW TRUE
 )
 set(FLATBUFFERS_BUILD_GRPC OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -47,17 +41,16 @@ set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     eventide
     GIT_REPOSITORY https://github.com/clice-io/eventide
-    GIT_TAG        main
-    GIT_SHALLOW    TRUE
+    GIT_TAG main
+    GIT_SHALLOW TRUE
 )
-set(EVENTIDE_ENABLE_ZEST ON)
-set(EVENTIDE_ENABLE_TEST OFF)
-set(EVENTIDE_SERDE_ENABLE_SIMDJSON ON)
-set(EVENTIDE_SERDE_ENABLE_YYJSON ON)
 
-FetchContent_MakeAvailable(eventide spdlog tomlplusplus croaring flatbuffers)
+set(ETD_ENABLE_ZEST ON)
+set(ETD_ENABLE_TEST OFF)
+set(ETD_SERDE_ENABLE_SIMDJSON ON)
+set(ETD_SERDE_ENABLE_YYJSON ON)
+set(ETD_SERDE_ENABLE_TOML ON)
+set(ETD_ENABLE_EXCEPTIONS OFF)
+set(ETD_ENABLE_RTTI OFF)
 
-target_compile_definitions(spdlog PUBLIC
-    SPDLOG_USE_STD_FORMAT=1
-    SPDLOG_NO_EXCEPTIONS=1
-)
+FetchContent_MakeAvailable(eventide spdlog croaring flatbuffers)

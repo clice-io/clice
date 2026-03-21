@@ -7,8 +7,8 @@
 
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
-#include "eventide/language/position.h"
-#include "eventide/language/protocol.h"
+#include "eventide/ipc/lsp/position.h"
+#include "eventide/ipc/lsp/protocol.h"
 
 namespace clang {
 
@@ -18,11 +18,18 @@ class NamedDecl;
 
 namespace clice::feature {
 
-namespace protocol = eventide::language::protocol;
+namespace protocol = eventide::ipc::protocol;
 
-using eventide::language::PositionEncoding;
-using eventide::language::PositionMapper;
-using eventide::language::parse_position_encoding;
+using eventide::ipc::lsp::PositionEncoding;
+using eventide::ipc::lsp::PositionMapper;
+using eventide::ipc::lsp::parse_position_encoding;
+
+inline auto to_range(const PositionMapper& converter, LocalSourceRange range) -> protocol::Range {
+    return protocol::Range{
+        .start = converter.to_position(range.begin),
+        .end = converter.to_position(range.end),
+    };
+}
 
 struct CodeCompletionOptions {
     bool enable_keyword_snippet = false;

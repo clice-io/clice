@@ -9,7 +9,7 @@ namespace clice::testing {
 
 namespace {
 
-namespace protocol = eventide::language::protocol;
+namespace protocol = eventide::ipc::protocol;
 
 TEST_SUITE(CodeCompletion) {
 

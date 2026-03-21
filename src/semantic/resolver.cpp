@@ -397,6 +397,8 @@ public:
                 std::abort();
             }
         }
+
+        return lookup_result();
     }
 
     /// Look up the name in the bases of the given class. Keep stack unchanged.

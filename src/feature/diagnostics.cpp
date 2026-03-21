@@ -2,34 +2,27 @@
 #include <string>
 #include <vector>
 
-#include "eventide/language/uri.h"
+#include "eventide/ipc/lsp/uri.h"
 #include "feature/feature.h"
 
 namespace clice::feature {
 
 namespace {
 
-namespace protocol = eventide::language::protocol;
+namespace lsp = eventide::ipc::lsp;
 
 auto to_uri(llvm::StringRef file) -> std::string {
     const auto file_view = std::string_view(file.data(), file.size());
 
-    if(auto parsed = eventide::language::URI::parse(file_view)) {
+    if(auto parsed = lsp::URI::parse(file_view)) {
         return parsed->str();
     }
 
-    if(auto uri = eventide::language::URI::from_file_path(file_view)) {
+    if(auto uri = lsp::URI::from_file_path(file_view)) {
         return uri->str();
     }
 
     return file.str();
-}
-
-auto to_range(const PositionMapper& converter, LocalSourceRange range) -> protocol::Range {
-    return protocol::Range{
-        .start = converter.to_position(range.begin),
-        .end = converter.to_position(range.end),
-    };
 }
 
 void add_tag(protocol::Diagnostic& diagnostic, DiagnosticID id) {

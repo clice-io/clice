@@ -74,6 +74,8 @@ std::optional<std::string> DiagnosticID::diagnostic_document_uri() const {
             return std::nullopt;
         }
     }
+
+    return std::nullopt;
 }
 
 bool DiagnosticID::is_deprecated() const {

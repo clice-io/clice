@@ -1,25 +1,17 @@
+#include <string>
 #include <string_view>
 
-#include "eventide/zest/runner.h"
+#include "eventide/deco/macro.h"
+#include "eventide/deco/runtime.h"
+#include "eventide/zest/zest.h"
 #include "support/filesystem.h"
 
 namespace {
 
-std::string_view parse_filter(int argc, const char** argv) {
-    constexpr std::string_view prefix = "--test-filter=";
-    for(int i = 1; i < argc; ++i) {
-        std::string_view arg = argv[i];
-        if(arg.starts_with(prefix)) {
-            return arg.substr(prefix.size());
-        }
-
-        if(arg == "--test-filter" && i + 1 < argc) {
-            return argv[i + 1];
-        }
-    }
-
-    return {};
-}
+struct TestOptions {
+    DecoKV(names = {"--test-filter"}; help = "Filter tests by name"; required = false;)
+    <std::string> test_filter;
+};
 
 }  // namespace
 
@@ -27,5 +19,14 @@ int main(int argc, const char** argv) {
     if(auto result = clice::fs::init_resource_dir(argv[0]); !result) {
         return 1;
     }
-    return eventide::zest::Runner::instance().run_tests(parse_filter(argc, argv));
+
+    auto args = deco::util::argvify(argc, argv);
+    auto parsed = deco::cli::parse<TestOptions>(args);
+
+    std::string_view filter = {};
+    if(parsed.has_value() && parsed->options.test_filter.has_value()) {
+        filter = *parsed->options.test_filter;
+    }
+
+    return eventide::zest::Runner::instance().run_tests(filter);
 }

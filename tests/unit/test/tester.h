@@ -7,7 +7,7 @@
 #include "test/test.h"
 #include "compile/command.h"
 #include "compile/compilation.h"
-#include "eventide/language/protocol.h"
+#include "eventide/ipc/lsp/protocol.h"
 #include "support/logging.h"
 
 namespace clice::testing {

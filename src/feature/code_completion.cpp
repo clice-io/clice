@@ -24,8 +24,6 @@ namespace clice::feature {
 
 namespace {
 
-namespace protocol = eventide::language::protocol;
-
 struct CompletionPrefix {
     LocalSourceRange range;
     llvm::StringRef spelling;

@@ -18,15 +18,6 @@ namespace clice::feature {
 
 namespace {
 
-namespace protocol = eventide::language::protocol;
-
-auto to_range(const PositionMapper& converter, LocalSourceRange range) -> protocol::Range {
-    return protocol::Range{
-        .start = converter.to_position(range.begin),
-        .end = converter.to_position(range.end),
-    };
-}
-
 auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
     using enum protocol::SymbolKind;
 

@@ -20,8 +20,6 @@ namespace clice::feature {
 
 namespace {
 
-namespace protocol = eventide::language::protocol;
-
 using llvm::dyn_cast;
 using llvm::dyn_cast_or_null;
 

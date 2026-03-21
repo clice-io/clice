@@ -11,8 +11,6 @@
 namespace clice::feature {
 
 namespace {
-
-namespace protocol = eventide::language::protocol;
 namespace tooling = clang::tooling;
 
 auto format_content(llvm::StringRef file, llvm::StringRef content, tooling::Range range)

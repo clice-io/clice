@@ -17,8 +17,6 @@ namespace clice::feature {
 
 namespace {
 
-namespace protocol = eventide::language::protocol;
-
 struct RawToken {
     LocalSourceRange range;
     SymbolKind kind = SymbolKind::Invalid;

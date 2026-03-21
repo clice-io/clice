@@ -14,8 +14,6 @@ namespace clice::feature {
 
 namespace {
 
-namespace protocol = eventide::language::protocol;
-
 auto symbol_name(SymbolKind kind) -> llvm::StringRef {
     switch(kind) {
         case SymbolKind::Module: return "module";

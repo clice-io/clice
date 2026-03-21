@@ -15,8 +15,6 @@ namespace clice::feature {
 
 namespace {
 
-namespace protocol = eventide::language::protocol;
-
 enum class FoldingKind : std::uint8_t {
     Namespace,
     Class,

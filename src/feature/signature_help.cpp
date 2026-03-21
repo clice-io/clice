@@ -7,8 +7,6 @@ namespace clice::feature {
 
 namespace {
 
-namespace protocol = eventide::language::protocol;
-
 class SignatureCollector final : public clang::CodeCompleteConsumer {
 public:
     SignatureCollector(protocol::SignatureHelp& help, clang::CodeCompleteOptions complete_options) :
