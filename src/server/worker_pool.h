@@ -10,12 +10,16 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <list>
 #include <memory>
 
 namespace clice {
+
+/// Default timeout for IPC requests to worker processes.
+inline constexpr auto kWorkerRequestTimeout = std::chrono::milliseconds(30000);
 
 namespace et = eventide;
 using et::ipc::RequestResult;
@@ -90,6 +94,9 @@ private:
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id, const Params& params,
                                                  et::ipc::request_options opts) {
+    if(!opts.timeout.has_value()) {
+        opts.timeout = kWorkerRequestTimeout;
+    }
     auto idx = assign_worker(path_id);
     return stateful_workers[idx].peer->send_request(params, opts);
 }
@@ -97,6 +104,9 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id, const Par
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                   et::ipc::request_options opts) {
+    if(!opts.timeout.has_value()) {
+        opts.timeout = kWorkerRequestTimeout;
+    }
     auto idx = next_stateless;
     next_stateless = (next_stateless + 1) % stateless_workers.size();
     return stateless_workers[idx].peer->send_request(params, opts);

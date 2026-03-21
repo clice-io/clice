@@ -84,7 +84,20 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
         auto gen = doc.generation;
 
         // Ensure PCM/PCH dependencies are ready
-        co_await compile_graph.compile_deps(path_id, loop);
+        auto deps_ok = co_await compile_graph.compile_deps(path_id, loop);
+        if(!deps_ok) {
+            spdlog::warn("Dependency compilation failed for {}, skipping build", uri);
+            clear_diagnostics(uri);
+            doc_it = documents.find(path_id);
+            if(doc_it == documents.end()) co_return;
+            auto& doc_after_deps = doc_it->second;
+            if(!doc_after_deps.build_requested) {
+                doc_after_deps.build_running = false;
+                doc_after_deps.drain_scheduled = false;
+                co_return;
+            }
+            continue;
+        }
 
         // Send compile request to stateful worker
         worker::CompileParams params;
@@ -109,6 +122,8 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
             }
         } else {
             spdlog::warn("Compile failed for {}: {}", uri, result.error().message);
+            // Publish empty diagnostics so stale errors don't linger
+            clear_diagnostics(uri);
         }
 
         // Check if more builds were requested while compiling
@@ -252,7 +267,12 @@ et::task<> MasterServer::run_background_indexer() {
             spdlog::debug("Indexing: {}", path.str());
 
             // Ensure dependencies are compiled first
-            co_await compile_graph.compile_deps(path_id, loop);
+            auto deps_ok = co_await compile_graph.compile_deps(path_id, loop);
+            if(!deps_ok) {
+                spdlog::warn("Index skipped for {} (dependency compilation failed)",
+                             path.str());
+                continue;
+            }
 
             // Build IndexParams
             worker::IndexParams params;
@@ -384,8 +404,12 @@ void MasterServer::register_handlers() {
         lifecycle = ServerLifecycle::Exited;
         spdlog::info("Exit notification received");
 
-        // TODO: Graceful shutdown (stop WorkerPool, save index, etc.)
-        loop.stop();
+        // Graceful shutdown: cancel compilations, stop workers, then stop loop
+        loop.schedule([this]() -> et::task<> {
+            compile_graph.cancel_all();
+            co_await pool.stop();
+            loop.stop();
+        }());
     });
 
     // === textDocument/didOpen ===

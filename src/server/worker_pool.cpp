@@ -2,7 +2,49 @@
 
 #include "spdlog/spdlog.h"
 
+#include <csignal>
+#include <string>
+
 namespace clice {
+
+namespace {
+
+/// Coroutine that reads lines from a worker's stderr pipe and logs them
+/// with a prefix like [SL-0] or [SF-1].
+et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
+    std::string buffer;
+    while(true) {
+        auto result = co_await stderr_pipe.read();
+        if(!result.has_value()) {
+            // EOF or error — worker has exited
+            break;
+        }
+        auto& chunk = result.value();
+        if(chunk.empty()) break;
+
+        buffer += chunk;
+
+        // Log complete lines
+        std::size_t pos = 0;
+        while(true) {
+            auto nl = buffer.find('\n', pos);
+            if(nl == std::string::npos) break;
+            auto line = buffer.substr(pos, nl - pos);
+            if(!line.empty()) {
+                spdlog::info("{} {}", prefix, line);
+            }
+            pos = nl + 1;
+        }
+        buffer.erase(0, pos);
+    }
+
+    // Flush any remaining partial line
+    if(!buffer.empty()) {
+        spdlog::info("{} {}", prefix, buffer);
+    }
+}
+
+}  // namespace
 
 bool WorkerPool::spawn_worker(const std::string& self_path, bool stateful,
                                std::uint64_t memory_limit) {
@@ -38,6 +80,14 @@ bool WorkerPool::spawn_worker(const std::string& self_path, bool stateful,
     auto peer = std::make_unique<et::ipc::BincodePeer>(loop, std::move(transport));
 
     auto& workers = stateful ? stateful_workers : stateless_workers;
+    auto worker_index = workers.size();
+
+    // Build log prefix: [SF-0] for stateful, [SL-0] for stateless
+    std::string prefix = std::string("[") + (stateful ? "SF-" : "SL-")
+                         + std::to_string(worker_index) + "]";
+
+    // Schedule stderr log collection
+    loop.schedule(drain_stderr(std::move(spawn.stderr_pipe), prefix));
 
     workers.push_back(WorkerProcess{
         .proc = std::move(spawn.proc),
@@ -81,12 +131,22 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
 }
 
 et::task<> WorkerPool::stop() {
-    // Close output pipes to signal workers to exit
+    spdlog::info("WorkerPool stopping...");
+
+    // Close output pipes to signal workers to exit gracefully
     for(auto& w : stateless_workers) {
         w.peer->close_output();
     }
     for(auto& w : stateful_workers) {
         w.peer->close_output();
+    }
+
+    // Send SIGTERM to all workers
+    for(auto& w : stateless_workers) {
+        w.proc.kill(SIGTERM);
+    }
+    for(auto& w : stateful_workers) {
+        w.proc.kill(SIGTERM);
     }
 
     // Wait for all worker processes to exit
@@ -96,6 +156,8 @@ et::task<> WorkerPool::stop() {
     for(auto& w : stateful_workers) {
         co_await w.proc.wait();
     }
+
+    spdlog::info("WorkerPool stopped");
 }
 
 std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {

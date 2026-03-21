@@ -144,4 +144,13 @@ et::task<> CompileGraph::compile_impl(std::uint32_t path_id, et::event_loop& loo
     final_unit.completion->set();
 }
 
+void CompileGraph::cancel_all() {
+    for(auto& [id, unit] : units) {
+        if(unit.compiling) {
+            unit.source->cancel();
+            unit.source = std::make_unique<et::cancellation_source>();
+        }
+    }
+}
+
 }  // namespace clice

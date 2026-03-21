@@ -47,6 +47,9 @@ public:
     /// Returns true if all deps are ready, false otherwise.
     et::task<bool> compile_deps(std::uint32_t path_id, et::event_loop& loop);
 
+    /// Cancel all ongoing compilations across all units.
+    void cancel_all();
+
 private:
     WorkerPool& pool;
     llvm::DenseMap<std::uint32_t, CompileUnit> units;
