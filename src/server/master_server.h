@@ -1,8 +1,10 @@
 #pragma once
 
+#include "server/compile_graph.h"
 #include "server/worker_pool.h"
 
 #include "eventide/async/io/loop.h"
+#include "eventide/async/io/watcher.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/lsp/protocol.h"
 
@@ -13,6 +15,7 @@
 #include "llvm/ADT/StringRef.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace clice {
@@ -46,6 +49,7 @@ struct DocumentState {
     std::uint64_t generation = 0;
     bool build_running = false;
     bool build_requested = false;
+    bool drain_scheduled = false;
 };
 
 enum class ServerLifecycle : std::uint8_t {
@@ -66,6 +70,7 @@ private:
     et::event_loop& loop;
     et::ipc::JsonPeer& peer;
     WorkerPool pool;
+    CompileGraph compile_graph;
     ServerPathPool path_pool;
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
 
@@ -74,6 +79,9 @@ private:
     // Document state: path_id -> DocumentState
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
 
+    // Per-document debounce timers
+    llvm::DenseMap<std::uint32_t, std::unique_ptr<et::timer>> debounce_timers;
+
     // Helper: convert URI to file path
     std::string uri_to_path(const std::string& uri);
 
@@ -81,6 +89,15 @@ private:
     void publish_diagnostics(const std::string& uri, int version,
                              std::vector<protocol::Diagnostic> diagnostics);
     void clear_diagnostics(const std::string& uri);
+
+    // Schedule a build after debounce
+    void schedule_build(std::uint32_t path_id, const std::string& uri);
+
+    // Build drain coroutine: waits for debounce, then runs compile loop
+    et::task<> run_build_drain(std::uint32_t path_id, std::string uri);
+
+    // Ensure a file has been compiled before servicing feature requests
+    et::task<bool> ensure_compiled(std::uint32_t path_id, const std::string& uri);
 };
 
 }  // namespace clice
