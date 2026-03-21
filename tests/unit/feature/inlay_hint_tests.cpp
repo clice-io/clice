@@ -25,8 +25,8 @@ void run(llvm::StringRef code, std::source_location location = std::source_locat
     hints = feature::inlay_hints(*tester.unit, range, {}, feature::PositionEncoding::UTF8);
 
     hints_map.clear();
-    eventide::language::PositionMapper converter(tester.unit->interested_content(),
-                                                 feature::PositionEncoding::UTF8);
+    feature::PositionMapper converter(tester.unit->interested_content(),
+                                      feature::PositionEncoding::UTF8);
     for(auto& hint: hints) {
         hints_map[converter.to_offset(hint.position)] = hint;
     }
