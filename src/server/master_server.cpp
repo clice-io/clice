@@ -1,5 +1,6 @@
 #include "server/master_server.h"
 #include "server/protocol.h"
+#include "support/filesystem.h"
 
 #include "eventide/serde/serde/raw_value.h"
 
@@ -90,7 +91,7 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
         params.uri = uri;
         params.version = doc.version;
         params.text = doc.text;
-        // TODO: fill directory and arguments from CDB
+        fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments);
 
         auto result = co_await pool.send_stateful<worker::CompileParams>(path_id, params);
 
@@ -117,6 +118,78 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
             co_return;
         }
         // Loop continues for the next build
+    }
+}
+
+et::task<> MasterServer::load_workspace() {
+    if(workspace_root.empty()) co_return;
+
+    // Search for compile_commands.json in common locations
+    std::string cdb_path;
+    for(auto* subdir : {"build", "cmake-build-debug", "cmake-build-release", "out", "."}) {
+        auto candidate = path::join(workspace_root, subdir, "compile_commands.json");
+        if(llvm::sys::fs::exists(candidate)) {
+            cdb_path = std::move(candidate);
+            break;
+        }
+    }
+
+    if(cdb_path.empty()) {
+        spdlog::warn("No compile_commands.json found in workspace {}", workspace_root);
+        co_return;
+    }
+
+    auto updates = cdb.load_compile_database(cdb_path);
+    spdlog::info("Loaded CDB from {} with {} entries", cdb_path, updates.size());
+
+    // Scan all source files from CDB to build include graph
+    auto all_files = cdb.files();
+    for(auto* file : all_files) {
+        auto path_id = path_pool.intern(file);
+        scan_file(path_id, file);
+    }
+
+    spdlog::info("Initial scan complete, {} files in include graph", include_forward.size());
+}
+
+void MasterServer::scan_file(std::uint32_t path_id, llvm::StringRef path) {
+    auto ctx = cdb.lookup(path);
+    if(ctx.arguments.empty()) return;
+
+    auto results = scan_fuzzy(ctx.arguments, ctx.directory,
+                              /*arguments_from_database=*/true,
+                              /*content=*/{}, &scan_cache);
+
+    // Clear old forward edges for this file
+    auto old_it = include_forward.find(path_id);
+    if(old_it != include_forward.end()) {
+        for(auto dep_id : old_it->second) {
+            auto back_it = include_backward.find(dep_id);
+            if(back_it != include_backward.end()) {
+                back_it->second.erase(path_id);
+            }
+        }
+        old_it->second.clear();
+    }
+
+    // Build new forward/backward edges from scan results
+    for(auto& [included_path, scan_result] : results) {
+        for(auto& inc : scan_result.includes) {
+            if(inc.not_found) continue;
+            auto included_id = path_pool.intern(inc.path);
+            include_forward[path_id].insert(included_id);
+            include_backward[included_id].insert(path_id);
+        }
+    }
+}
+
+void MasterServer::fill_compile_args(llvm::StringRef path, std::string& directory,
+                                      std::vector<std::string>& arguments) {
+    auto ctx = cdb.lookup(path);
+    directory = ctx.directory.str();
+    arguments.clear();
+    for(auto* arg : ctx.arguments) {
+        arguments.emplace_back(arg);
     }
 }
 
@@ -189,7 +262,8 @@ void MasterServer::register_handlers() {
         lifecycle = ServerLifecycle::Ready;
         spdlog::info("Server ready");
 
-        // TODO: Start WorkerPool, load CDB, start FuzzyGraph scan
+        // Load CDB and build include graph in background
+        loop.schedule(load_workspace());
     });
 
     // === shutdown ===
@@ -224,7 +298,19 @@ void MasterServer::register_handlers() {
 
         spdlog::debug("didOpen: {} (v{})", path, td.version);
 
-        // TODO: Query CDB, register compile unit
+        // Scan includes and register compile unit
+        scan_file(path_id, path);
+
+        // Get dependency path_ids from the forward graph
+        llvm::SmallVector<std::uint32_t> deps;
+        auto fwd_it = include_forward.find(path_id);
+        if(fwd_it != include_forward.end()) {
+            for(auto dep_id : fwd_it->second) {
+                deps.push_back(dep_id);
+            }
+        }
+        compile_graph.register_unit(path_id, deps);
+
         schedule_build(path_id, td.uri);
     });
 
@@ -274,6 +360,9 @@ void MasterServer::register_handlers() {
         }
 
         doc.generation++;
+
+        // Rescan the file to update include graph
+        scan_file(path_id, path);
 
         compile_graph.update(path_id);
         schedule_build(path_id, params.text_document.uri);
@@ -517,7 +606,7 @@ void MasterServer::register_handlers() {
             wp.uri = uri;
             wp.version = doc.version;
             wp.text = doc.text;
-            // TODO: fill directory, arguments, pch, pcms from CDB
+            fill_compile_args(path, wp.directory, wp.arguments);
             wp.line = params.text_document_position_params.position.line;
             wp.character = params.text_document_position_params.position.character;
 
@@ -547,7 +636,7 @@ void MasterServer::register_handlers() {
             wp.uri = uri;
             wp.version = doc.version;
             wp.text = doc.text;
-            // TODO: fill directory, arguments, pch, pcms from CDB
+            fill_compile_args(path, wp.directory, wp.arguments);
             wp.line = params.text_document_position_params.position.line;
             wp.character = params.text_document_position_params.position.character;
 

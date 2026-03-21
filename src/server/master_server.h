@@ -1,5 +1,7 @@
 #pragma once
 
+#include "compile/command.h"
+#include "syntax/scan.h"
 #include "server/compile_graph.h"
 #include "server/worker_pool.h"
 
@@ -8,11 +10,12 @@
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/lsp/protocol.h"
 
-#include "llvm/Support/Allocator.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Allocator.h"
 
 #include <cstdint>
 #include <memory>
@@ -76,6 +79,14 @@ private:
 
     std::string workspace_root;
 
+    CompilationDatabase cdb;
+    SharedScanCache scan_cache;
+
+    // Forward include graph: path_id -> set of included path_ids
+    llvm::DenseMap<std::uint32_t, llvm::DenseSet<std::uint32_t>> include_forward;
+    // Backward include graph: path_id -> set of includer path_ids
+    llvm::DenseMap<std::uint32_t, llvm::DenseSet<std::uint32_t>> include_backward;
+
     // Document state: path_id -> DocumentState
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
 
@@ -98,6 +109,16 @@ private:
 
     // Ensure a file has been compiled before servicing feature requests
     et::task<bool> ensure_compiled(std::uint32_t path_id, const std::string& uri);
+
+    // Load CDB and build initial include graph
+    et::task<> load_workspace();
+
+    // Scan a file and update the include graph
+    void scan_file(std::uint32_t path_id, llvm::StringRef path);
+
+    // Helper: fill compile arguments from CDB into worker params
+    void fill_compile_args(llvm::StringRef path, std::string& directory,
+                           std::vector<std::string>& arguments);
 };
 
 }  // namespace clice
