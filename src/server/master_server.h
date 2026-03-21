@@ -7,6 +7,7 @@
 
 #include "eventide/async/io/loop.h"
 #include "eventide/async/io/watcher.h"
+#include "eventide/async/runtime/sync.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/lsp/protocol.h"
 
@@ -18,6 +19,7 @@
 #include "llvm/Support/Allocator.h"
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <string>
 
@@ -93,6 +95,24 @@ private:
     // Per-document debounce timers
     llvm::DenseMap<std::uint32_t, std::unique_ptr<et::timer>> debounce_timers;
 
+    // === Index system ===
+
+    // Queue of path_ids that need background indexing
+    std::deque<std::uint32_t> index_queue;
+
+    // Idle timer: fires after 3 seconds of no user activity
+    std::unique_ptr<et::timer> idle_timer;
+
+    // Event to wake the background indexer when new work is queued
+    et::event index_event{false};
+
+    // Whether background indexing is currently active
+    bool indexing_active = false;
+
+    // Number of files indexed so far (for progress reporting)
+    std::uint32_t index_progress = 0;
+    std::uint32_t index_total = 0;
+
     // Helper: convert URI to file path
     std::string uri_to_path(const std::string& uri);
 
@@ -119,6 +139,17 @@ private:
     // Helper: fill compile arguments from CDB into worker params
     void fill_compile_args(llvm::StringRef path, std::string& directory,
                            std::vector<std::string>& arguments);
+
+    // === Index system ===
+
+    // Reset the idle timer on user activity (didOpen, didChange, feature requests)
+    void reset_idle_timer();
+
+    // Background indexer coroutine: waits for idle, processes index queue
+    et::task<> run_background_indexer();
+
+    // Populate the index queue with all CDB files
+    void populate_index_queue();
 };
 
 }  // namespace clice

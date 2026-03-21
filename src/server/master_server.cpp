@@ -150,6 +150,10 @@ et::task<> MasterServer::load_workspace() {
     }
 
     spdlog::info("Initial scan complete, {} files in include graph", include_forward.size());
+
+    // Populate the index queue with all CDB files for background indexing
+    populate_index_queue();
+    spdlog::info("Index queue populated with {} files", index_queue.size());
 }
 
 void MasterServer::scan_file(std::uint32_t path_id, llvm::StringRef path) {
@@ -190,6 +194,104 @@ void MasterServer::fill_compile_args(llvm::StringRef path, std::string& director
     arguments.clear();
     for(auto* arg : ctx.arguments) {
         arguments.emplace_back(arg);
+    }
+}
+
+void MasterServer::reset_idle_timer() {
+    if(!idle_timer) {
+        idle_timer = std::make_unique<et::timer>(et::timer::create(loop));
+    }
+    // Restart the 3-second idle timer
+    idle_timer->start(std::chrono::milliseconds(3000));
+}
+
+void MasterServer::populate_index_queue() {
+    auto all_files = cdb.files();
+    index_queue.clear();
+    for(auto* file : all_files) {
+        auto path_id = path_pool.intern(file);
+        index_queue.push_back(path_id);
+    }
+    index_total = static_cast<std::uint32_t>(index_queue.size());
+    index_progress = 0;
+
+    if(!index_queue.empty()) {
+        index_event.set();
+    }
+}
+
+et::task<> MasterServer::run_background_indexer() {
+    while(lifecycle != ServerLifecycle::ShuttingDown &&
+          lifecycle != ServerLifecycle::Exited) {
+        // Wait until there is work in the index queue
+        if(index_queue.empty()) {
+            index_event.reset();
+            co_await index_event.wait();
+            continue;
+        }
+
+        // Wait for idle (3 seconds of no user activity)
+        if(!idle_timer) {
+            idle_timer = std::make_unique<et::timer>(et::timer::create(loop));
+            idle_timer->start(std::chrono::milliseconds(3000));
+        }
+        co_await idle_timer->wait();
+
+        if(index_queue.empty()) continue;
+
+        indexing_active = true;
+        spdlog::info("Background indexing started, {} files queued", index_queue.size());
+
+        // Process files from the queue while idle
+        while(!index_queue.empty() &&
+              lifecycle != ServerLifecycle::ShuttingDown) {
+            auto path_id = index_queue.front();
+            index_queue.pop_front();
+
+            auto path = path_pool.resolve(path_id);
+            spdlog::debug("Indexing: {}", path.str());
+
+            // Ensure dependencies are compiled first
+            co_await compile_graph.compile_deps(path_id, loop);
+
+            // Build IndexParams
+            worker::IndexParams params;
+            params.file = path.str();
+            fill_compile_args(path, params.directory, params.arguments);
+            // TODO: Fill params.pcms from CompileGraph's compiled PCM paths
+
+            // Send to a stateless worker
+            auto result = co_await pool.send_stateless<worker::IndexParams>(params);
+
+            if(result.has_value()) {
+                auto& idx_result = result.value();
+                if(idx_result.success) {
+                    index_progress++;
+                    spdlog::debug("Indexed {}/{}: {}",
+                                  index_progress, index_total, path.str());
+
+                    // TODO (Phase 9.2): Deserialize tu_index_data (FlatBuffers)
+                    //   into TUIndex, perform path mapping, and merge into
+                    //   ProjectIndex/MergedIndex.
+                    //
+                    // Sketch:
+                    //   auto tu_index = TUIndex::deserialize(idx_result.tu_index_data);
+                    //   project_index.merge(tu_index);
+                    //   merged_index.merge(...);
+                } else {
+                    spdlog::warn("Index failed for {}: {}", path.str(), idx_result.error);
+                }
+            } else {
+                spdlog::warn("Index request failed for {}: {}",
+                             path.str(), result.error().message);
+            }
+        }
+
+        indexing_active = false;
+        if(index_queue.empty()) {
+            spdlog::info("Background indexing complete: {}/{} files indexed",
+                         index_progress, index_total);
+        }
     }
 }
 
@@ -264,6 +366,9 @@ void MasterServer::register_handlers() {
 
         // Load CDB and build include graph in background
         loop.schedule(load_workspace());
+
+        // Start background indexer coroutine
+        loop.schedule(run_background_indexer());
     });
 
     // === shutdown ===
@@ -297,6 +402,9 @@ void MasterServer::register_handlers() {
         doc.generation++;
 
         spdlog::debug("didOpen: {} (v{})", path, td.version);
+
+        // Reset idle timer on user activity
+        reset_idle_timer();
 
         // Scan includes and register compile unit
         scan_file(path_id, path);
@@ -360,6 +468,9 @@ void MasterServer::register_handlers() {
         }
 
         doc.generation++;
+
+        // Reset idle timer on user activity
+        reset_idle_timer();
 
         // Rescan the file to update include graph
         scan_file(path_id, path);
