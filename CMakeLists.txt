@@ -168,6 +168,7 @@ add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/server/stateful_worker.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/worker_pool.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/master_server.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/compile_graph.cpp"
 )
 add_library(clice::core ALIAS clice-core)
 add_dependencies(clice-core generate_flatbuffers_schema)
