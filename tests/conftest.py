@@ -1,35 +1,47 @@
+"""Fixtures for clice LSP integration tests using pygls LanguageClient."""
+
 import json
-import os
+import asyncio
 import sys
+from pathlib import Path
+
 import pytest
 import pytest_asyncio
-from pathlib import Path
-from .fixtures.client import LSPClient
+from lsprotocol.types import (
+    PROGRESS,
+    TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS,
+    WINDOW_WORK_DONE_PROGRESS_CREATE,
+    ClientCapabilities,
+    Diagnostic,
+    InitializeParams,
+    InitializedParams,
+    ProgressParams,
+    PublishDiagnosticsParams,
+    WorkDoneProgressCreateParams,
+    WorkspaceFolder,
+)
+from pygls.lsp.client import BaseLanguageClient
 
 
 def pytest_addoption(parser: pytest.Parser):
     parser.addoption(
         "--executable",
         required=False,
-        help="Path to the of the clice executable.",
+        help="Path to the clice executable.",
     )
-
-    CONNECTION_MODES = ["pipe", "socket"]
     parser.addoption(
         "--mode",
         type=str,
-        choices=CONNECTION_MODES,
+        choices=["pipe", "socket"],
         default="pipe",
-        help=f"The connection mode to use. Must be one of: {', '.join(CONNECTION_MODES)})",
+        help="The connection mode to use.",
     )
-
     parser.addoption(
         "--host",
         type=str,
         default="127.0.0.1",
         help="The host to connect to (default: 127.0.0.1)",
     )
-
     parser.addoption(
         "--port",
         type=int,
@@ -38,13 +50,49 @@ def pytest_addoption(parser: pytest.Parser):
     )
 
 
-@pytest.fixture(scope="session")
-def executable(request) -> Path | None:
-    executable = request.config.getoption("--executable")
-    if not executable:
-        return None
+class CliceClient(BaseLanguageClient):
+    """Language client that tracks server-sent notifications."""
 
-    path = Path(executable)
+    def __init__(self):
+        super().__init__("clice-test-client", "0.1.0")
+        self.diagnostics: dict[str, list[Diagnostic]] = {}
+        self.diagnostics_events: dict[str, asyncio.Event] = {}
+        self.progress_tokens: list[str] = []
+        self.progress_events: list[dict] = []
+
+        @self.feature(TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
+        def on_diagnostics(params: PublishDiagnosticsParams):
+            self.diagnostics[params.uri] = list(params.diagnostics)
+            if params.uri in self.diagnostics_events:
+                self.diagnostics_events[params.uri].set()
+
+        @self.feature(WINDOW_WORK_DONE_PROGRESS_CREATE)
+        def on_create_progress(params: WorkDoneProgressCreateParams):
+            token = str(params.token) if isinstance(params.token, int) else params.token
+            self.progress_tokens.append(token)
+            return None
+
+        @self.feature(PROGRESS)
+        def on_progress(params: ProgressParams):
+            token = str(params.token) if isinstance(params.token, int) else params.token
+            self.progress_events.append({"token": token, "value": params.value})
+
+    def wait_for_diagnostics(self, uri: str) -> asyncio.Event:
+        """Get or create an event that fires when diagnostics arrive for uri."""
+        if uri not in self.diagnostics_events:
+            self.diagnostics_events[uri] = asyncio.Event()
+        else:
+            self.diagnostics_events[uri].clear()
+        return self.diagnostics_events[uri]
+
+
+@pytest.fixture(scope="session")
+def executable(request) -> Path:
+    exe = request.config.getoption("--executable")
+    if not exe:
+        pytest.skip("--executable not provided")
+
+    path = Path(exe)
     if sys.platform.startswith("win") and path.suffix.lower() != ".exe":
         path_exe = path.with_name(path.name + ".exe")
         if path_exe.exists() or not path.exists():
@@ -52,20 +100,19 @@ def executable(request) -> Path | None:
 
     if not path.exists():
         pytest.exit(
-            f"Error: 'clice' executable not found at '{executable}'. "
-            "Please ensure the path is correct and the file exists.",
+            f"Error: clice executable not found at '{exe}'. "
+            "Please ensure the path is correct.",
             returncode=64,
         )
-
     return path.resolve()
 
 
 @pytest.fixture(scope="session")
-def test_data_dir(request):
-    path = os.path.join(os.path.dirname(__file__), "data")
-    data_dir = Path(path).resolve()
+def test_data_dir():
+    path = Path(__file__).parent / "data"
+    data_dir = path.resolve()
 
-    # Generate compile_commands.json for hello_world so the server actually compiles
+    # Generate compile_commands.json for hello_world
     hw_dir = data_dir / "hello_world"
     main_cpp = hw_dir / "main.cpp"
     cdb_path = hw_dir / "compile_commands.json"
@@ -82,30 +129,43 @@ def test_data_dir(request):
     return data_dir
 
 
-@pytest_asyncio.fixture(scope="function")
-async def client(request, executable: Path | None, test_data_dir: Path):
+@pytest_asyncio.fixture
+async def client(request, executable: Path, test_data_dir: Path):
+    """Spawn clice server, yield pygls client, then shutdown+exit."""
     config = request.config
     mode = config.getoption("--mode")
 
-    host = config.getoption("--host")
-    port = config.getoption("--port")
-
-    cmd = [
-        str(executable),
-        "--mode",
-        mode,
-    ]
-
+    cmd = [str(executable), "--mode", mode]
     if mode == "socket":
+        host = config.getoption("--host")
+        port = config.getoption("--port")
         cmd += ["--host", host, "--port", str(port)]
 
-    client = LSPClient(
-        cmd,
-        mode,
-        host,
-        port,
-    )
+    c = CliceClient()
+    await c.start_io(*cmd)
 
-    await client.start()
-    yield client
-    await client.exit()
+    yield c
+
+    # Graceful shutdown
+    try:
+        await asyncio.wait_for(c.shutdown_async(None), timeout=3.0)
+    except Exception:
+        pass
+    try:
+        c.exit(None)
+    except Exception:
+        pass
+
+    # Wait briefly, then force-kill if still running
+    await asyncio.sleep(0.3)
+    if hasattr(c, "_server") and c._server is not None and c._server.returncode is None:
+        c._server.kill()
+
+    # Stop pygls client (with timeout to avoid hanging)
+    try:
+        c._stop_event.set()
+        for task in c._async_tasks:
+            task.cancel()
+        await asyncio.sleep(0.1)
+    except Exception:
+        pass

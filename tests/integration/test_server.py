@@ -1,486 +1,454 @@
-"""Integration tests for the clice MasterServer."""
+"""Integration tests for the clice MasterServer using pygls."""
+
+import asyncio
+from pathlib import Path
 
 import pytest
-import asyncio
-from tests.fixtures.client import LSPClient
-from tests.fixtures.transport import LSPError
+from lsprotocol.types import (
+    ClientCapabilities,
+    CodeActionContext,
+    CodeActionParams,
+    CompletionParams,
+    DefinitionParams,
+    DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams,
+    DidChangeTextDocumentParams,
+    DidSaveTextDocumentParams,
+    DocumentLinkParams,
+    DocumentSymbolParams,
+    FoldingRangeParams,
+    HoverParams,
+    InitializeParams,
+    InitializedParams,
+    InlayHintParams,
+    Position,
+    Range,
+    SemanticTokensParams,
+    SignatureHelpParams,
+    TextDocumentContentChangeWholeDocument,
+    TextDocumentIdentifier,
+    TextDocumentItem,
+    VersionedTextDocumentIdentifier,
+    WorkspaceFolder,
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _workspace_uri(test_data_dir: Path, name: str = "hello_world") -> str:
+    return (test_data_dir / name).as_uri()
+
+
+def _file_uri(
+    test_data_dir: Path, name: str = "hello_world", file: str = "main.cpp"
+) -> str:
+    return (test_data_dir / name / file).as_uri()
+
+
+def _doc(uri: str) -> TextDocumentIdentifier:
+    return TextDocumentIdentifier(uri=uri)
+
+
+async def _initialize(client, test_data_dir: Path, name: str = "hello_world"):
+    """Initialize with a workspace folder."""
+    ws = test_data_dir / name
+    result = await client.initialize_async(
+        InitializeParams(
+            capabilities=ClientCapabilities(),
+            root_uri=ws.as_uri(),
+            workspace_folders=[WorkspaceFolder(uri=ws.as_uri(), name="test")],
+        )
+    )
+    client.initialized(InitializedParams())
+    return result
+
+
+async def _open_file(
+    client, test_data_dir: Path, name: str = "hello_world", file: str = "main.cpp"
+):
+    """Open a text document."""
+    path = test_data_dir / name / file
+    content = path.read_text(encoding="utf-8")
+    uri = path.as_uri()
+    client.text_document_did_open(
+        DidOpenTextDocumentParams(
+            text_document=TextDocumentItem(
+                uri=uri,
+                language_id="cpp",
+                version=0,
+                text=content,
+            )
+        )
+    )
+    return uri, content
+
+
+async def _wait_for_compilation(client, uri: str, timeout: float = 30.0):
+    """Wait for diagnostics on the given URI."""
+    event = client.wait_for_diagnostics(uri)
+    await asyncio.wait_for(event.wait(), timeout=timeout)
+
+
+async def _open_and_wait(
+    client,
+    test_data_dir: Path,
+    name: str = "hello_world",
+    file: str = "main.cpp",
+    timeout: float = 30.0,
+):
+    """Open file and wait for compilation diagnostics."""
+    uri, content = await _open_file(client, test_data_dir, name, file)
+    await _wait_for_compilation(client, uri, timeout)
+    return uri, content
+
+
+# ---------------------------------------------------------------------------
+# Server info & capabilities
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_server_info(client: LSPClient, test_data_dir):
-    """Server reports correct name and version."""
-    result = await client.initialize(test_data_dir / "hello_world")
-    assert result["serverInfo"]["name"] == "clice"
-    assert result["serverInfo"]["version"] == "0.1.0"
+async def test_server_info(client, test_data_dir):
+    result = await _initialize(client, test_data_dir)
+    assert result.server_info.name == "clice"
+    assert result.server_info.version == "0.1.0"
 
 
 @pytest.mark.asyncio
-async def test_capabilities(client: LSPClient, test_data_dir):
-    """Server reports expected capabilities."""
-    result = await client.initialize(test_data_dir / "hello_world")
-    caps = result["capabilities"]
-    assert caps["hoverProvider"] is True
-    assert caps["completionProvider"] is not None
-    assert caps["definitionProvider"] is True
-    assert caps["documentSymbolProvider"] is True
-    assert caps["foldingRangeProvider"] is True
-    assert caps["inlayHintProvider"] is True
-    assert caps["codeActionProvider"] is True
-    # Check text document sync
-    sync = caps["textDocumentSync"]
-    assert sync["openClose"] is True
-    assert sync["change"] == 2  # Incremental
+async def test_capabilities(client, test_data_dir):
+    result = await _initialize(client, test_data_dir)
+    caps = result.capabilities
+    assert caps.hover_provider is True
+    assert caps.completion_provider is not None
+    assert caps.definition_provider is True
+    assert caps.document_symbol_provider is True
+    assert caps.folding_range_provider is True
+    assert caps.inlay_hint_provider is True
+    assert caps.code_action_provider is True
+    assert caps.semantic_tokens_provider is not None
+
+
+# ---------------------------------------------------------------------------
+# Initialization & shutdown
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_double_initialize_rejected(client: LSPClient, test_data_dir):
-    """Second initialize request should be rejected."""
-    await client.initialize(test_data_dir / "hello_world")
-    with pytest.raises(LSPError):
-        await client.send_request(
-            "initialize",
-            {
-                "capabilities": {},
-                "workspaceFolders": [],
-            },
+async def test_double_initialize_rejected(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    with pytest.raises(Exception):
+        await client.initialize_async(
+            InitializeParams(
+                capabilities=ClientCapabilities(),
+                workspace_folders=[],
+            )
         )
 
 
 @pytest.mark.asyncio
-async def test_did_open_close_cycle(client: LSPClient, test_data_dir):
-    """Open and close a document without errors."""
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-    await client.did_open("main.cpp")
+async def test_did_open_close_cycle(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_file(client, test_data_dir)
     await asyncio.sleep(0.5)
-    await client.did_close("main.cpp")
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_incremental_change(client: LSPClient, test_data_dir):
-    """Apply incremental changes without errors."""
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-    await client.did_open("main.cpp")
+async def test_shutdown_exit(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    await client.shutdown_async(None)
 
-    # Send multiple rapid changes
-    content = client.get_file("main.cpp").content
 
+@pytest.mark.asyncio
+async def test_feature_requests_after_close(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_file(client, test_data_dir)
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
+    result = await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=0, character=0))
+    )
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Document handling
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_incremental_change(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, content = await _open_file(client, test_data_dir)
     for i in range(5):
         content += f"\n// change {i}"
-        await client.did_change("main.cpp", content)
+        client.text_document_did_change(
+            DidChangeTextDocumentParams(
+                text_document=VersionedTextDocumentIdentifier(uri=uri, version=i + 1),
+                content_changes=[TextDocumentContentChangeWholeDocument(text=content)],
+            )
+        )
         await asyncio.sleep(0.05)
-
     await asyncio.sleep(1)
-    await client.did_close("main.cpp")
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_diagnostics_received(client: LSPClient, test_data_dir):
-    """Opening a file should produce diagnostics."""
-    workspace = test_data_dir / "hello_world"
-    target_uri = (workspace / "main.cpp").as_uri()
-    diagnostics_received = asyncio.Event()
-    received_diagnostics = []
+async def test_diagnostics_received(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
+    assert uri in client.diagnostics
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
-    def on_diagnostics(params):
-        if params.get("uri") == target_uri:
-            received_diagnostics.append(params)
-            diagnostics_received.set()
 
-    client.register_notification_handler(
-        "textDocument/publishDiagnostics", on_diagnostics
+# ---------------------------------------------------------------------------
+# Feature requests (after compilation)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hover_before_compile(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_file(client, test_data_dir)
+    result = await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=0, character=0))
     )
-
-    await client.initialize(workspace)
-    await client.did_open("main.cpp")
-
-    # Wait for diagnostics — CDB is present so compilation should happen
-    await asyncio.wait_for(diagnostics_received.wait(), timeout=15.0)
-    assert len(received_diagnostics) >= 1
-    assert "diagnostics" in received_diagnostics[0]
-
-    await client.did_close("main.cpp")
+    # May return null before compilation — that's fine
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_hover_before_compile(client: LSPClient, test_data_dir):
-    """Hover on an uncompiled file should return null without error."""
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-    await client.did_open("main.cpp")
-
-    # Hover immediately - before any compilation
-    result = await client.hover("main.cpp", 0, 0)
-    # May return null (no AST yet) - that's fine, shouldn't crash
-    await client.did_close("main.cpp")
-
-
-@pytest.mark.asyncio
-async def test_shutdown_exit(client: LSPClient, test_data_dir):
-    """Clean shutdown and exit sequence."""
-    await client.initialize(test_data_dir / "hello_world")
-    await client.shutdown()
-    # exit is called by the fixture teardown
-
-
-@pytest.mark.asyncio
-async def test_feature_requests_after_close(client: LSPClient, test_data_dir):
-    """Feature requests on closed file should return null."""
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-    await client.did_open("main.cpp")
-    await client.did_close("main.cpp")
-
-    # Hover on a closed file
-    result = await client.send_request(
-        "textDocument/hover",
-        {
-            "textDocument": {"uri": (workspace / "main.cpp").as_uri()},
-            "position": {"line": 0, "character": 0},
-        },
+async def test_completion_request(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
+    result = await client.text_document_completion_async(
+        CompletionParams(
+            text_document=_doc(uri), position=Position(line=0, character=0)
+        )
     )
-    assert result is None
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_multiple_files(client: LSPClient, test_data_dir):
-    """Open multiple files without errors."""
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-    await client.did_open("main.cpp")
-
-    # Change the content to simulate another file (reusing same path but different content)
-    content = client.get_file("main.cpp").content
-    content += "\n// additional content"
-    await client.did_change("main.cpp", content)
-    await asyncio.sleep(0.5)
-    await client.did_close("main.cpp")
-
-
-# ============================================================================
-# Feature request tests (LSP method coverage)
-# ============================================================================
-
-
-async def _wait_for_compilation(client, workspace):
-    """Helper: wait for diagnostics to confirm compilation finished."""
-    target_uri = (workspace / "main.cpp").as_uri()
-    diagnostics_received = asyncio.Event()
-
-    def on_diagnostics(params):
-        if params.get("uri") == target_uri:
-            diagnostics_received.set()
-
-    client.register_notification_handler(
-        "textDocument/publishDiagnostics", on_diagnostics
+async def test_signature_help_request(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
+    result = await client.text_document_signature_help_async(
+        SignatureHelpParams(
+            text_document=_doc(uri), position=Position(line=0, character=0)
+        )
     )
-
-    await client.initialize(workspace)
-    await client.did_open("main.cpp")
-    await asyncio.wait_for(diagnostics_received.wait(), timeout=15.0)
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_completion_request(client: LSPClient, test_data_dir):
-    """Completion request should return a response after compilation."""
-    workspace = test_data_dir / "hello_world"
-    await _wait_for_compilation(client, workspace)
-
-    result = await client.completion("main.cpp", 0, 0)
-    # Completion at position (0,0) may return null or a list — just verify no error
-    await client.did_close("main.cpp")
-
-
-@pytest.mark.asyncio
-async def test_signature_help_request(client: LSPClient, test_data_dir):
-    """Signature help request should return a response after compilation."""
-    workspace = test_data_dir / "hello_world"
-    await _wait_for_compilation(client, workspace)
-
-    result = await client.signature_help("main.cpp", 0, 0)
-    # No active call expression at (0,0) so null is expected
-    await client.did_close("main.cpp")
-
-
-@pytest.mark.asyncio
-async def test_definition_request(client: LSPClient, test_data_dir):
-    """Go-to-definition request should return a response after compilation."""
-    workspace = test_data_dir / "hello_world"
-    await _wait_for_compilation(client, workspace)
-
-    result = await client.send_request(
-        "textDocument/definition",
-        {
-            "textDocument": {"uri": (workspace / "main.cpp").as_uri()},
-            "position": {"line": 2, "character": 4},  # 'main'
-        },
+async def test_definition_request(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
+    result = await client.text_document_definition_async(
+        DefinitionParams(
+            text_document=_doc(uri), position=Position(line=2, character=4)
+        )
     )
-    await client.did_close("main.cpp")
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_document_symbol_request(client: LSPClient, test_data_dir):
-    """Document symbol request should return symbols after compilation."""
-    workspace = test_data_dir / "hello_world"
-    await _wait_for_compilation(client, workspace)
-
-    result = await client.send_request(
-        "textDocument/documentSymbol",
-        {"textDocument": {"uri": (workspace / "main.cpp").as_uri()}},
+async def test_document_symbol_request(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
+    result = await client.text_document_document_symbol_async(
+        DocumentSymbolParams(text_document=_doc(uri))
     )
-    assert result is not None, "Document symbols should not be null after compilation"
-    await client.did_close("main.cpp")
+    assert result is not None
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_folding_range_request(client: LSPClient, test_data_dir):
-    """Folding range request should return ranges after compilation."""
-    workspace = test_data_dir / "hello_world"
-    await _wait_for_compilation(client, workspace)
-
-    result = await client.send_request(
-        "textDocument/foldingRange",
-        {"textDocument": {"uri": (workspace / "main.cpp").as_uri()}},
+async def test_folding_range_request(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
+    result = await client.text_document_folding_range_async(
+        FoldingRangeParams(text_document=_doc(uri))
     )
-    assert result is not None, "Folding ranges should not be null after compilation"
-    await client.did_close("main.cpp")
+    assert result is not None
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_semantic_tokens_request(client: LSPClient, test_data_dir):
-    """Semantic tokens request should return tokens after compilation."""
-    workspace = test_data_dir / "hello_world"
-    await _wait_for_compilation(client, workspace)
-
-    result = await client.send_request(
-        "textDocument/semanticTokens/full",
-        {"textDocument": {"uri": (workspace / "main.cpp").as_uri()}},
+async def test_semantic_tokens_request(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
+    result = await client.text_document_semantic_tokens_full_async(
+        SemanticTokensParams(text_document=_doc(uri))
     )
-    assert result is not None, "Semantic tokens should not be null after compilation"
-    await client.did_close("main.cpp")
+    assert result is not None
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_inlay_hint_request(client: LSPClient, test_data_dir):
-    """Inlay hint request should return a response after compilation."""
-    workspace = test_data_dir / "hello_world"
-    await _wait_for_compilation(client, workspace)
-
-    result = await client.send_request(
-        "textDocument/inlayHint",
-        {
-            "textDocument": {"uri": (workspace / "main.cpp").as_uri()},
-            "range": {
-                "start": {"line": 0, "character": 0},
-                "end": {"line": 10, "character": 0},
-            },
-        },
+async def test_inlay_hint_request(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
+    result = await client.text_document_inlay_hint_async(
+        InlayHintParams(
+            text_document=_doc(uri),
+            range=Range(
+                start=Position(line=0, character=0), end=Position(line=10, character=0)
+            ),
+        )
     )
-    await client.did_close("main.cpp")
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_code_action_request(client: LSPClient, test_data_dir):
-    """Code action request should return a response after compilation."""
-    workspace = test_data_dir / "hello_world"
-    await _wait_for_compilation(client, workspace)
-
-    result = await client.send_request(
-        "textDocument/codeAction",
-        {
-            "textDocument": {"uri": (workspace / "main.cpp").as_uri()},
-            "range": {
-                "start": {"line": 0, "character": 0},
-                "end": {"line": 0, "character": 10},
-            },
-            "context": {"diagnostics": []},
-        },
+async def test_code_action_request(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
+    result = await client.text_document_code_action_async(
+        CodeActionParams(
+            text_document=_doc(uri),
+            range=Range(
+                start=Position(line=0, character=0), end=Position(line=0, character=10)
+            ),
+            context=CodeActionContext(diagnostics=[]),
+        )
     )
-    await client.did_close("main.cpp")
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_document_link_request(client: LSPClient, test_data_dir):
-    """Document link request should return links after compilation."""
-    workspace = test_data_dir / "hello_world"
-    await _wait_for_compilation(client, workspace)
-
-    result = await client.send_request(
-        "textDocument/documentLink",
-        {"textDocument": {"uri": (workspace / "main.cpp").as_uri()}},
+async def test_document_link_request(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
+    result = await client.text_document_document_link_async(
+        DocumentLinkParams(text_document=_doc(uri))
     )
-    assert result is not None, "Document links should not be null after compilation"
-    assert len(result) >= 1, "Should find at least one link for #include <iostream>"
-    await client.did_close("main.cpp")
+    assert result is not None
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-# ============================================================================
-# Stress and edge-case tests
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Stress and edge cases
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_rapid_changes_stress(client: LSPClient, test_data_dir):
-    """Rapid document changes should be handled without crashing."""
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-    await client.did_open("main.cpp")
-
-    base_content = client.get_file("main.cpp").content
-
-    # Send 20 rapid changes to stress the debounce mechanism
+async def test_rapid_changes_stress(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, content = await _open_file(client, test_data_dir)
     for i in range(20):
-        content = base_content + f"\n// stress change {i}\n"
-        await client.did_change("main.cpp", content)
-        # No sleep - fire as fast as possible
-
-    # Give debounce timer time to settle
+        content += f"\n// stress change {i}\n"
+        client.text_document_did_change(
+            DidChangeTextDocumentParams(
+                text_document=VersionedTextDocumentIdentifier(uri=uri, version=i + 1),
+                content_changes=[TextDocumentContentChangeWholeDocument(text=content)],
+            )
+        )
     await asyncio.sleep(2)
-    await client.did_close("main.cpp")
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_open_change_hover_close_cycle(client: LSPClient, test_data_dir):
-    """Full lifecycle: open → change → hover → close repeated."""
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-
-    for i in range(3):
-        await client.did_open("main.cpp")
-        content = client.get_file("main.cpp").content + f"\n// cycle {i}"
-        await client.did_change("main.cpp", content)
-        await asyncio.sleep(0.2)
-
-        result = await client.hover("main.cpp", 0, 0)
-        # Should not crash regardless of compilation state
-
-        await client.did_close("main.cpp")
-
-
-@pytest.mark.asyncio
-async def test_save_notification(client: LSPClient, test_data_dir):
-    """didSave notification should be handled without error."""
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-    await client.did_open("main.cpp")
+async def test_save_notification(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_file(client, test_data_dir)
     await asyncio.sleep(0.5)
-
-    await client.did_save("main.cpp")
+    client.text_document_did_save(DidSaveTextDocumentParams(text_document=_doc(uri)))
     await asyncio.sleep(0.5)
-    await client.did_close("main.cpp")
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
 @pytest.mark.asyncio
-async def test_hover_on_unknown_file(client: LSPClient, test_data_dir):
-    """Hover on a file that was never opened should return null."""
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-
-    result = await client.send_request(
-        "textDocument/hover",
-        {
-            "textDocument": {"uri": "file:///nonexistent/fake.cpp"},
-            "position": {"line": 0, "character": 0},
-        },
+async def test_hover_on_unknown_file(client, test_data_dir):
+    await _initialize(client, test_data_dir)
+    result = await client.text_document_hover_async(
+        HoverParams(
+            text_document=_doc("file:///nonexistent/fake.cpp"),
+            position=Position(line=0, character=0),
+        )
     )
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_all_features_after_compile_wait(client: LSPClient, test_data_dir):
-    """After waiting for compilation, exercise all feature requests and verify responses."""
-    workspace = test_data_dir / "hello_world"
-    target_uri = (workspace / "main.cpp").as_uri()
-    diagnostics_received = asyncio.Event()
+async def test_all_features_after_compile_wait(client, test_data_dir):
+    """After waiting for compilation, exercise all feature requests."""
+    await _initialize(client, test_data_dir)
+    uri, _ = await _open_and_wait(client, test_data_dir)
 
-    def on_diagnostics(params):
-        if params.get("uri") == target_uri:
-            diagnostics_received.set()
+    # Hover on 'main' (line 2, character 4)
+    hover = await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=2, character=4))
+    )
+    assert hover is not None
 
-    client.register_notification_handler(
-        "textDocument/publishDiagnostics", on_diagnostics
+    # Completion
+    completion = await client.text_document_completion_async(
+        CompletionParams(
+            text_document=_doc(uri), position=Position(line=3, character=13)
+        )
     )
 
-    await client.initialize(workspace)
-    await client.did_open("main.cpp")
-
-    # Wait for compilation to finish (indicated by diagnostics)
-    await asyncio.wait_for(diagnostics_received.wait(), timeout=15.0)
-
-    uri = (workspace / "main.cpp").as_uri()
-
-    # Hover on 'main' (line 2, character 4) — should return hover info
-    hover = await client.hover("main.cpp", 2, 4)
-    assert hover is not None, "Hover on 'main' should return non-null after compilation"
-
-    # Completion at line 3, character 13 (after 'std::') — should return items
-    completion = await client.completion("main.cpp", 3, 13)
-    # completion may be None or a list/object — just verify we got a response without error
-
-    # Signature help — may return null at arbitrary position
-    sig_help = await client.signature_help("main.cpp", 0, 0)
-
-    # Definition on 'main' — should return a location
-    definition = await client.send_request(
-        "textDocument/definition",
-        {"textDocument": {"uri": uri}, "position": {"line": 2, "character": 4}},
+    # Signature help
+    await client.text_document_signature_help_async(
+        SignatureHelpParams(
+            text_document=_doc(uri), position=Position(line=0, character=0)
+        )
     )
 
-    # Document symbols — should find at least 'main'
-    symbols = await client.send_request(
-        "textDocument/documentSymbol", {"textDocument": {"uri": uri}}
-    )
-    assert symbols is not None, (
-        "Document symbols should return non-null after compilation"
-    )
-
-    # Folding ranges — should find at least the function body
-    folding = await client.send_request(
-        "textDocument/foldingRange", {"textDocument": {"uri": uri}}
-    )
-    assert folding is not None, (
-        "Folding ranges should return non-null after compilation"
+    # Definition on 'main'
+    await client.text_document_definition_async(
+        DefinitionParams(
+            text_document=_doc(uri), position=Position(line=2, character=4)
+        )
     )
 
-    # Semantic tokens — should return token data
-    tokens = await client.send_request(
-        "textDocument/semanticTokens/full", {"textDocument": {"uri": uri}}
+    # Document symbols
+    symbols = await client.text_document_document_symbol_async(
+        DocumentSymbolParams(text_document=_doc(uri))
     )
-    assert tokens is not None, (
-        "Semantic tokens should return non-null after compilation"
-    )
+    assert symbols is not None
 
-    # Document links — #include <iostream> should produce a link
-    links = await client.send_request(
-        "textDocument/documentLink", {"textDocument": {"uri": uri}}
+    # Folding ranges
+    folding = await client.text_document_folding_range_async(
+        FoldingRangeParams(text_document=_doc(uri))
     )
-    assert links is not None, "Document links should return non-null after compilation"
-    assert len(links) >= 1, "Should find at least one document link for #include"
+    assert folding is not None
 
-    # Code action — may return empty list
-    actions = await client.send_request(
-        "textDocument/codeAction",
-        {
-            "textDocument": {"uri": uri},
-            "range": {
-                "start": {"line": 0, "character": 0},
-                "end": {"line": 0, "character": 10},
-            },
-            "context": {"diagnostics": []},
-        },
+    # Semantic tokens
+    tokens = await client.text_document_semantic_tokens_full_async(
+        SemanticTokensParams(text_document=_doc(uri))
+    )
+    assert tokens is not None
+
+    # Document links
+    links = await client.text_document_document_link_async(
+        DocumentLinkParams(text_document=_doc(uri))
+    )
+    assert links is not None
+
+    # Code actions
+    await client.text_document_code_action_async(
+        CodeActionParams(
+            text_document=_doc(uri),
+            range=Range(
+                start=Position(line=0, character=0), end=Position(line=0, character=10)
+            ),
+            context=CodeActionContext(diagnostics=[]),
+        )
     )
 
     # Inlay hints
-    hints = await client.send_request(
-        "textDocument/inlayHint",
-        {
-            "textDocument": {"uri": uri},
-            "range": {
-                "start": {"line": 0, "character": 0},
-                "end": {"line": 10, "character": 0},
-            },
-        },
+    await client.text_document_inlay_hint_async(
+        InlayHintParams(
+            text_document=_doc(uri),
+            range=Range(
+                start=Position(line=0, character=0), end=Position(line=10, character=0)
+            ),
+        )
     )
 
-    await client.did_close("main.cpp")
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))

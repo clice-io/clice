@@ -8,8 +8,10 @@
 
 #include "eventide/ipc/lsp/position.h"
 #include "eventide/ipc/lsp/uri.h"
+#include "eventide/reflection/enum.h"
 #include "eventide/serde/json/json.h"
 #include "eventide/serde/serde/raw_value.h"
+#include "semantic/symbol_kind.h"
 #include "server/protocol.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -21,7 +23,7 @@ using et::ipc::RequestResult;
 using RequestContext = et::ipc::JsonPeer::RequestContext;
 
 MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path) :
-    loop(loop), peer(peer), pool(loop), compile_graph(pool), self_path(std::move(self_path)) {}
+    loop(loop), peer(peer), pool(loop), self_path(std::move(self_path)) {}
 
 std::string MasterServer::uri_to_path(const std::string& uri) {
     namespace lsp = eventide::ipc::lsp;
@@ -100,31 +102,17 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
         doc_it->second.build_requested = false;
         auto gen = doc_it->second.generation;
 
-        // Ensure PCM/PCH dependencies are ready
-        auto deps_ok = co_await compile_graph.compile_deps(path_id, loop);
-
-        // Re-lookup after co_await (map may have changed)
-        doc_it = documents.find(path_id);
-        if(doc_it == documents.end())
-            co_return;
-
-        if(!deps_ok) {
-            LOG_WARN("Dependency compilation failed for {}, skipping build", uri);
-            clear_diagnostics(uri);
-            if(!doc_it->second.build_requested) {
-                doc_it->second.build_running = false;
-                doc_it->second.drain_scheduled = false;
-                co_return;
-            }
-            continue;
-        }
-
         // Send compile request to stateful worker
         worker::CompileParams params;
         params.path = std::string(path_pool.resolve(path_id));
         params.version = doc_it->second.version;
         params.text = doc_it->second.text;
         fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments);
+
+        LOG_DEBUG("Sending compile: path={}, args={}, gen={}",
+                  params.path,
+                  params.arguments.size(),
+                  gen);
 
         auto result = co_await pool.send_stateful<worker::CompileParams>(path_id, params);
 
@@ -139,6 +127,11 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
             // Only publish diagnostics if the generation hasn't changed
             if(doc2.generation == gen) {
                 publish_diagnostics(uri, doc2.version, result.value().diagnostics);
+            } else {
+                LOG_DEBUG("Generation mismatch ({} vs {}), dropping diagnostics for {}",
+                          doc2.generation,
+                          gen,
+                          uri);
             }
         } else {
             LOG_WARN("Compile failed for {}: {}", uri, result.error().message);
@@ -201,164 +194,16 @@ et::task<> MasterServer::load_workspace() {
 
     auto updates = cdb.load_compile_database(cdb_path);
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, updates.size());
-
-    // Scan all source files from CDB to build include graph
-    auto all_files = cdb.files();
-    for(auto* file: all_files) {
-        auto path_id = path_pool.intern(file);
-        scan_file(path_id, file);
-    }
-
-    LOG_INFO("Initial scan complete, {} files in include graph", include_forward.size());
-
-    // Populate the index queue with all CDB files for background indexing
-    populate_index_queue();
-    LOG_INFO("Index queue populated with {} files", index_queue.size());
-}
-
-void MasterServer::scan_file(std::uint32_t path_id, llvm::StringRef path) {
-    auto ctx = cdb.lookup(path);
-    if(ctx.arguments.empty())
-        return;
-
-    auto results = scan_fuzzy(ctx.arguments,
-                              ctx.directory,
-                              /*arguments_from_database=*/true,
-                              /*content=*/{},
-                              &scan_cache);
-
-    // Clear old forward edges for this file
-    auto old_it = include_forward.find(path_id);
-    if(old_it != include_forward.end()) {
-        for(auto dep_id: old_it->second) {
-            auto back_it = include_backward.find(dep_id);
-            if(back_it != include_backward.end()) {
-                back_it->second.erase(path_id);
-            }
-        }
-        old_it->second.clear();
-    }
-
-    // Build new forward/backward edges from scan results
-    for(auto& [included_path, scan_result]: results) {
-        for(auto& inc: scan_result.includes) {
-            if(inc.not_found)
-                continue;
-            auto included_id = path_pool.intern(inc.path);
-            include_forward[path_id].insert(included_id);
-            include_backward[included_id].insert(path_id);
-        }
-    }
 }
 
 void MasterServer::fill_compile_args(llvm::StringRef path,
                                      std::string& directory,
                                      std::vector<std::string>& arguments) {
-    auto ctx = cdb.lookup(path);
+    auto ctx = cdb.lookup(path, {.resource_dir = true, .query_toolchain = true});
     directory = ctx.directory.str();
     arguments.clear();
     for(auto* arg: ctx.arguments) {
         arguments.emplace_back(arg);
-    }
-}
-
-void MasterServer::reset_idle_timer() {
-    if(!idle_timer) {
-        idle_timer = std::make_unique<et::timer>(et::timer::create(loop));
-    }
-    // Restart the idle timer
-    idle_timer->start(std::chrono::milliseconds(config.idle_timeout_ms));
-}
-
-void MasterServer::populate_index_queue() {
-    auto all_files = cdb.files();
-    index_queue.clear();
-    for(auto* file: all_files) {
-        auto path_id = path_pool.intern(file);
-        index_queue.push_back(path_id);
-    }
-    index_total = static_cast<std::uint32_t>(index_queue.size());
-    index_progress = 0;
-
-    if(!index_queue.empty()) {
-        index_event.set();
-    }
-}
-
-et::task<> MasterServer::run_background_indexer() {
-    while(lifecycle != ServerLifecycle::ShuttingDown && lifecycle != ServerLifecycle::Exited) {
-        // Wait until there is work in the index queue
-        if(index_queue.empty()) {
-            index_event.reset();
-            co_await index_event.wait();
-            continue;
-        }
-
-        // Wait for idle (3 seconds of no user activity)
-        if(!idle_timer) {
-            idle_timer = std::make_unique<et::timer>(et::timer::create(loop));
-            idle_timer->start(std::chrono::milliseconds(config.idle_timeout_ms));
-        }
-        co_await idle_timer->wait();
-
-        if(index_queue.empty())
-            continue;
-
-        indexing_active = true;
-        LOG_INFO("Background indexing started, {} files queued", index_queue.size());
-
-        // Process files from the queue while idle
-        while(!index_queue.empty() && lifecycle != ServerLifecycle::ShuttingDown) {
-            auto path_id = index_queue.front();
-            index_queue.pop_front();
-
-            auto path = path_pool.resolve(path_id);
-            LOG_DEBUG("Indexing: {}", path.str());
-
-            // Ensure dependencies are compiled first
-            auto deps_ok = co_await compile_graph.compile_deps(path_id, loop);
-            if(!deps_ok) {
-                LOG_WARN("Index skipped for {} (dependency compilation failed)", path.str());
-                continue;
-            }
-
-            // Build IndexParams
-            worker::IndexParams params;
-            params.file = path.str();
-            fill_compile_args(path, params.directory, params.arguments);
-            // TODO: Fill params.pcms from CompileGraph's compiled PCM paths
-
-            // Send to a stateless worker
-            auto result = co_await pool.send_stateless<worker::IndexParams>(params);
-
-            if(result.has_value()) {
-                auto& idx_result = result.value();
-                if(idx_result.success) {
-                    index_progress++;
-                    LOG_DEBUG("Indexed {}/{}: {}", index_progress, index_total, path.str());
-
-                    // TODO (Phase 9.2): Deserialize tu_index_data (FlatBuffers)
-                    //   into TUIndex, perform path mapping, and merge into
-                    //   ProjectIndex/MergedIndex.
-                    //
-                    // Sketch:
-                    //   auto tu_index = TUIndex::deserialize(idx_result.tu_index_data);
-                    //   project_index.merge(tu_index);
-                    //   merged_index.merge(...);
-                } else {
-                    LOG_WARN("Index failed for {}: {}", path.str(), idx_result.error);
-                }
-            } else {
-                LOG_WARN("Index request failed for {}: {}", path.str(), result.error().message);
-            }
-        }
-
-        indexing_active = false;
-        if(index_queue.empty()) {
-            LOG_INFO("Background indexing complete: {}/{} files indexed",
-                     index_progress,
-                     index_total);
-        }
     }
 }
 
@@ -414,7 +259,32 @@ void MasterServer::register_handlers() {
 
         // Semantic tokens
         protocol::SemanticTokensOptions sem_opts;
-        sem_opts.legend = protocol::SemanticTokensLegend{{}, {}};
+        {
+            auto lower_first = [](std::string_view name) -> std::string {
+                std::string s(name);
+                if(!s.empty()) {
+                    s[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(s[0])));
+                }
+                return s;
+            };
+
+            std::vector<std::string> token_types;
+            using SymbolKindRefl = eventide::refl::reflection<SymbolKind::Kind>;
+            for(std::size_t i = 0; i < SymbolKindRefl::member_count; ++i) {
+                token_types.push_back(lower_first(SymbolKindRefl::member_names[i]));
+            }
+
+            std::vector<std::string> token_modifiers;
+            using SymbolModRefl = eventide::refl::reflection<SymbolModifiers::Kind>;
+            for(std::size_t i = 0; i < SymbolModRefl::member_count; ++i) {
+                token_modifiers.push_back(lower_first(SymbolModRefl::member_names[i]));
+            }
+
+            sem_opts.legend = protocol::SemanticTokensLegend{
+                std::move(token_types),
+                std::move(token_modifiers),
+            };
+        }
         sem_opts.full =
             protocol::variant<protocol::boolean, protocol::SemanticTokensFullDelta>{true};
         result.capabilities.semantic_tokens_provider = std::move(sem_opts);
@@ -452,13 +322,8 @@ void MasterServer::register_handlers() {
 
         lifecycle = ServerLifecycle::Ready;
 
-        // Load CDB and build include graph in background
+        // Load CDB in background
         loop.schedule(load_workspace());
-
-        // Start background indexer coroutine if enabled
-        if(config.enable_indexing) {
-            loop.schedule(run_background_indexer());
-        }
     });
 
     // === shutdown ===
@@ -477,7 +342,6 @@ void MasterServer::register_handlers() {
 
         // Graceful shutdown: cancel compilations, stop workers, then stop loop
         loop.schedule([this]() -> et::task<> {
-            compile_graph.cancel_all();
             co_await pool.stop();
             loop.stop();
         }());
@@ -498,22 +362,6 @@ void MasterServer::register_handlers() {
         doc.generation++;
 
         LOG_DEBUG("didOpen: {} (v{})", path, td.version);
-
-        // Reset idle timer on user activity
-        reset_idle_timer();
-
-        // Scan includes and register compile unit
-        scan_file(path_id, path);
-
-        // Get dependency path_ids from the forward graph
-        llvm::SmallVector<std::uint32_t> deps;
-        auto fwd_it = include_forward.find(path_id);
-        if(fwd_it != include_forward.end()) {
-            for(auto dep_id: fwd_it->second) {
-                deps.push_back(dep_id);
-            }
-        }
-        compile_graph.register_unit(path_id, deps);
 
         schedule_build(path_id, td.uri);
     });
@@ -567,13 +415,6 @@ void MasterServer::register_handlers() {
         update.text = doc.text;
         pool.notify_stateful(path_id, update);
 
-        // Reset idle timer on user activity
-        reset_idle_timer();
-
-        // Rescan the file to update include graph
-        scan_file(path_id, path);
-
-        compile_graph.update(path_id);
         schedule_build(path_id, params.text_document.uri);
     });
 

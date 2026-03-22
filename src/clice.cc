@@ -78,6 +78,11 @@ int main(int argc, const char** argv) {
         return 1;
     }
 
+    std::string self_path = llvm::sys::fs::getMainExecutable(argv[0], (void*)main);
+    if(!clice::fs::init_resource_dir(self_path)) {
+        LOG_ERROR("Cannot find the resource dir: {}", self_path);
+    }
+
     auto& mode = *opts.mode;
 
     if(mode == "stateless-worker") {
@@ -90,6 +95,8 @@ int main(int argc, const char** argv) {
     }
 
     if(mode == "pipe") {
+        clice::logging::stderr_logger("master", clice::logging::options);
+
         namespace et = eventide;
         et::event_loop loop;
 
@@ -98,8 +105,6 @@ int main(int argc, const char** argv) {
             LOG_ERROR("failed to open stdio transport");
             return 1;
         }
-
-        std::string self_path = llvm::sys::fs::getMainExecutable(argv[0], (void*)main);
 
         et::ipc::JsonPeer peer(loop, std::move(*transport));
         clice::MasterServer server(loop, peer, std::move(self_path));
@@ -110,6 +115,8 @@ int main(int argc, const char** argv) {
     }
 
     if(mode == "socket") {
+        clice::logging::stderr_logger("master", clice::logging::options);
+
         namespace et = eventide;
         et::event_loop loop;
 
@@ -123,8 +130,6 @@ int main(int argc, const char** argv) {
         }
 
         LOG_INFO("Listening on {}:{} ...", host, port);
-
-        std::string self_path = llvm::sys::fs::getMainExecutable(argv[0], (void*)main);
 
         auto task = [&]() -> et::task<> {
             auto client = co_await acceptor->accept();
@@ -142,6 +147,7 @@ int main(int argc, const char** argv) {
             server.register_handlers();
 
             co_await peer.run();
+            peer.close();
             loop.stop();
         };
 

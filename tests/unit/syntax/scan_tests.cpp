@@ -158,7 +158,7 @@ int x = 1;
 )");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, TestVFS::root(), true, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, TestVFS::root(), {}, nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -182,7 +182,7 @@ TEST_CASE(FuzzyConditionalTracking) {
     vfs->add("after.h");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, TestVFS::root(), true, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, TestVFS::root(), {}, nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -206,7 +206,7 @@ TEST_CASE(FuzzyNotFound) {
     vfs->add("also_exists.h");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, TestVFS::root(), true, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, TestVFS::root(), {}, nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -234,7 +234,7 @@ int b = 1;
 )");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, TestVFS::root(), true, {}, nullptr, vfs);
+    auto results = scan_fuzzy(args, TestVFS::root(), {}, nullptr, vfs);
 
     // main.cpp includes a.h
     auto main_it = find_by_substr(results, "main.cpp");
@@ -265,13 +265,13 @@ int shared = 1;
     SharedScanCache cache;
 
     auto args1 = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results1 = scan_fuzzy(args1, TestVFS::root(), true, {}, &cache, vfs);
+    auto results1 = scan_fuzzy(args1, TestVFS::root(), {}, &cache, vfs);
 
     // shared.h should be cached after first scan.
     EXPECT_FALSE(cache.entries.empty());
 
     auto args2 = std::vector<const char*>{"clang++", "-std=c++20", other_path.c_str()};
-    auto results2 = scan_fuzzy(args2, TestVFS::root(), true, {}, &cache, vfs);
+    auto results2 = scan_fuzzy(args2, TestVFS::root(), {}, &cache, vfs);
 
     // Both scans should find includes.
     ASSERT_TRUE(find_by_substr(results1, "main.cpp") != results1.end());
@@ -285,7 +285,7 @@ TEST_CASE(FuzzyWithContent) {
     vfs->add("header.h");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, TestVFS::root(), true, R"(#include "header.h")", nullptr, vfs);
+    auto results = scan_fuzzy(args, TestVFS::root(), R"(#include "header.h")", nullptr, vfs);
 
     auto main_it = find_by_substr(results, "main.cpp");
     ASSERT_TRUE(main_it != results.end());
@@ -308,7 +308,7 @@ int x = 1;
 )");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), true, {}, nullptr, vfs);
+    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
 
     ASSERT_EQ(result.includes.size(), 1u);
     EXPECT_FALSE(result.includes[0].not_found);
@@ -331,7 +331,7 @@ TEST_CASE(PreciseConditionalWithDefine) {
     vfs->add("bar.h");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), true, {}, nullptr, vfs);
+    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
 
     // Precise mode evaluates conditionals: only foo.h should be included.
     ASSERT_EQ(result.includes.size(), 1u);
@@ -346,7 +346,7 @@ TEST_CASE(PreciseWithContent) {
     vfs->add("header.h");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), true, R"(#include "header.h")", nullptr, vfs);
+    auto result = scan_precise(args, TestVFS::root(), R"(#include "header.h")", nullptr, vfs);
 
     ASSERT_EQ(result.includes.size(), 1u);
     EXPECT_FALSE(result.includes[0].not_found);

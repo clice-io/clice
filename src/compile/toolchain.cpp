@@ -382,6 +382,7 @@ std::vector<const char*> query_toolchain(const QueryParams& params) {
             query_driver(params_copy.arguments,
                          [&](const char* driver, llvm::ArrayRef<const char*> cc1_args) {
                              result.emplace_back(params.callback(driver));
+                             result.emplace_back(params.callback("-cc1"));
                              for(auto arg: cc1_args) {
                                  result.emplace_back(params.callback(arg));
                              }
@@ -435,6 +436,7 @@ std::vector<const char*> query_gcc_toolchain(const QueryParams& params) {
     std::vector<const char*> result;
     query_driver(query_arguments, [&](const char* driver, llvm::ArrayRef<const char*> cc1_args) {
         result.emplace_back(params.callback(driver));
+        result.emplace_back(params.callback("-cc1"));
         for(auto arg: cc1_args) {
             result.emplace_back(params.callback(arg));
         }

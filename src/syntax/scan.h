@@ -77,7 +77,6 @@ ScanResult scan(llvm::StringRef content);
 llvm::StringMap<ScanResult>
     scan_fuzzy(llvm::ArrayRef<const char*> arguments,
                llvm::StringRef directory,
-               bool arguments_from_database,
                llvm::StringRef content = {},
                SharedScanCache* cache = nullptr,
                llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
@@ -86,7 +85,6 @@ llvm::StringMap<ScanResult>
 /// and conditionals. Used for lazy module dependency resolution.
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
-                        bool arguments_from_database,
                         llvm::StringRef content = {},
                         SharedScanCache* cache = nullptr,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);

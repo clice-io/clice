@@ -44,13 +44,17 @@ std::unique_ptr<clang::CompilerInvocation>
 
     std::unique_ptr<clang::CompilerInvocation> invocation;
 
-    /// Arguments from compilation database are already cc1
-    if(params.arguments_from_database) {
+    /// If the second argument is "-cc1", the arguments are already expanded
+    /// (e.g. from compilation database + query_toolchain). Skip driver and "-cc1"
+    /// and create invocation directly from the cc1 args.
+    bool is_cc1 = params.arguments.size() >= 2 && llvm::StringRef(params.arguments[1]) == "-cc1";
+    if(is_cc1) {
         invocation = std::make_unique<clang::CompilerInvocation>();
-        if(!clang::CompilerInvocation::CreateFromArgs(*invocation,
-                                                      llvm::ArrayRef(params.arguments).drop_front(),
-                                                      *diagnostic_engine,
-                                                      params.arguments[0])) {
+        if(!clang::CompilerInvocation::CreateFromArgs(
+               *invocation,
+               llvm::ArrayRef(params.arguments).drop_front(2),
+               *diagnostic_engine,
+               params.arguments[0])) {
             LOG_ERROR_RET(nullptr,
                           " Fail to create invocation, arguments list is: {}",
                           print_argv(params.arguments));

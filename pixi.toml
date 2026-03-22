@@ -49,6 +49,8 @@ scripts = ["scripts/activate_asan.bat"]
 [feature.test.pypi-dependencies]
 pytest = "*"
 pytest-asyncio = ">=1.1.0"
+pygls = ">=2.0.0"
+lsprotocol = ">=2024.0.0"
 
 [feature.package.dependencies]
 xz = ">=5.8.1,<6"

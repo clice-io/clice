@@ -18,7 +18,6 @@ void Tester::prepare(llvm::StringRef standard) {
     options.query_toolchain = true;
     options.suppress_logging = true;
 
-    params.arguments_from_database = true;
     params.arguments = database.lookup(src_path, options).arguments;
 
     for(auto& [file, source]: sources.all_files) {
@@ -57,7 +56,6 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     options.query_toolchain = true;
     options.suppress_logging = true;
 
-    params.arguments_from_database = true;
     params.arguments = database.lookup(src_path, options).arguments;
 
     auto pch_path = fs::createTemporaryFile("clice", "pch");

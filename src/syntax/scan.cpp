@@ -221,6 +221,8 @@ public:
     }
 
 private:
+    using DirectiveVec = llvm::SmallVector<clang::dependency_directives_scan::Directive>;
+
     llvm::ArrayRef<clang::dependency_directives_scan::Directive>
         get_directives(SharedScanCache::CachedEntry& entry) {
         if(mode == ScanMode::Precise) {
@@ -229,10 +231,12 @@ private:
 
         // Fuzzy mode: strip #define/#undef and ALL conditional directives,
         // so every #include is processed unconditionally by the preprocessor.
-        auto& filtered = filtered_directives[&entry];
-        if(!filtered.empty()) {
-            return filtered;
+        auto& slot = filtered_directives[&entry];
+        if(slot && !slot->empty()) {
+            return *slot;
         }
+
+        slot = std::make_unique<DirectiveVec>();
 
         using namespace clang::dependency_directives_scan;
         for(auto& dir: entry.directives) {
@@ -252,21 +256,20 @@ private:
                     break;
                 }
                 default: {
-                    filtered.push_back(dir);
+                    slot->push_back(dir);
                     break;
                 }
             }
         }
 
-        return filtered;
+        return *slot;
     }
 
     ScanMode mode;
     SharedScanCache* cache;
     clang::FileManager* file_mgr;
     std::deque<SharedScanCache::CachedEntry> local_entries;
-    llvm::DenseMap<SharedScanCache::CachedEntry*,
-                   llvm::SmallVector<clang::dependency_directives_scan::Directive>>
+    llvm::DenseMap<SharedScanCache::CachedEntry*, std::unique_ptr<DirectiveVec>>
         filtered_directives;
 };
 
@@ -433,7 +436,6 @@ private:
 std::unique_ptr<clang::CompilerInstance>
     create_scan_instance(llvm::ArrayRef<const char*> arguments,
                          llvm::StringRef directory,
-                         bool arguments_from_database,
                          llvm::StringRef content,
                          llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     clang::DiagnosticOptions diag_opts;
@@ -444,10 +446,11 @@ std::unique_ptr<clang::CompilerInstance>
 
     std::unique_ptr<clang::CompilerInvocation> invocation;
 
-    if(arguments_from_database) {
+    bool is_cc1 = arguments.size() >= 2 && llvm::StringRef(arguments[1]) == "-cc1";
+    if(is_cc1) {
         invocation = std::make_unique<clang::CompilerInvocation>();
         if(!clang::CompilerInvocation::CreateFromArgs(*invocation,
-                                                      llvm::ArrayRef(arguments).drop_front(),
+                                                      llvm::ArrayRef(arguments).drop_front(2),
                                                       *diag_engine,
                                                       arguments[0])) {
             return nullptr;
@@ -493,7 +496,6 @@ std::unique_ptr<clang::CompilerInstance>
 
 llvm::StringMap<ScanResult> scan_fuzzy(llvm::ArrayRef<const char*> arguments,
                                        llvm::StringRef directory,
-                                       bool arguments_from_database,
                                        llvm::StringRef content,
                                        SharedScanCache* cache,
                                        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
@@ -503,8 +505,7 @@ llvm::StringMap<ScanResult> scan_fuzzy(llvm::ArrayRef<const char*> arguments,
         vfs = llvm::vfs::createPhysicalFileSystem();
     }
 
-    auto instance =
-        create_scan_instance(arguments, directory, arguments_from_database, content, vfs);
+    auto instance = create_scan_instance(arguments, directory, content, vfs);
     if(!instance) {
         return results;
     }
@@ -543,7 +544,6 @@ llvm::StringMap<ScanResult> scan_fuzzy(llvm::ArrayRef<const char*> arguments,
 
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
-                        bool arguments_from_database,
                         llvm::StringRef content,
                         SharedScanCache* cache,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
@@ -553,8 +553,7 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
         vfs = llvm::vfs::createPhysicalFileSystem();
     }
 
-    auto instance =
-        create_scan_instance(arguments, directory, arguments_from_database, content, vfs);
+    auto instance = create_scan_instance(arguments, directory, content, vfs);
     if(!instance) {
         return result;
     }

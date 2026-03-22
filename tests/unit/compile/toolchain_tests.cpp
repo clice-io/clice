@@ -62,7 +62,7 @@ TEST_CASE(GCC, {.skip = !(CIEnvironment && (Windows || Linux))}) {
     ASSERT_EQ(arguments[1], "-cc1"sv);
 
     CompilationParams params;
-    params.arguments_from_database = true;
+
     params.arguments = arguments;
     params.add_remapped_file(file->c_str(), R"(
             #include <print>
@@ -101,7 +101,7 @@ TEST_CASE(Clang, {.skip = !CIEnvironment}) {
     ASSERT_EQ(arguments[1], "-cc1"sv);
 
     CompilationParams params;
-    params.arguments_from_database = true;
+
     params.arguments = arguments;
     params.add_remapped_file(file->c_str(), R"(
             #include <print>
