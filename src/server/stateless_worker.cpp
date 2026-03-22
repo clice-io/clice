@@ -9,8 +9,7 @@
 #include "eventide/serde/serde/raw_value.h"
 #include "feature/feature.h"
 #include "server/protocol.h"
-
-#include "spdlog/spdlog.h"
+#include "support/logging.h"
 
 namespace clice {
 
@@ -23,7 +22,7 @@ int run_stateless_worker_mode() {
 
     auto transport_result = et::ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {
-        spdlog::error("Failed to open stdio transport");
+        LOG_ERROR("Failed to open stdio transport");
         return 1;
     }
 

@@ -5,8 +5,7 @@
 
 #include "eventide/serde/toml.h"
 #include "support/filesystem.h"
-
-#include "spdlog/spdlog.h"
+#include "support/logging.h"
 
 namespace clice {
 
@@ -52,14 +51,14 @@ std::optional<CliceConfig> CliceConfig::load(const std::string& path,
 
     auto result = eventide::serde::toml::parse<CliceConfig>(*content);
     if(!result) {
-        spdlog::warn("Failed to parse config file {}", path);
+        LOG_WARN("Failed to parse config file {}", path);
         return std::nullopt;
     }
 
     auto config = std::move(*result);
     config.apply_defaults(workspace_root);
 
-    spdlog::info("Loaded config from {}", path);
+    LOG_INFO("Loaded config from {}", path);
     return config;
 }
 
@@ -79,7 +78,7 @@ CliceConfig CliceConfig::load_from_workspace(const std::string& workspace_root) 
     // No config file found; use defaults
     CliceConfig config;
     config.apply_defaults(workspace_root);
-    spdlog::info(
+    LOG_INFO(
         "No clice.toml found, using default configuration " "(stateful={}, stateless={}, memory_limit={}MB)",
         config.stateful_worker_count,
         config.stateless_worker_count,

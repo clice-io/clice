@@ -17,8 +17,8 @@
 #include "eventide/serde/serde/raw_value.h"
 #include "feature/feature.h"
 #include "server/protocol.h"
+#include "support/logging.h"
 
-#include "spdlog/spdlog.h"
 #include "llvm/ADT/StringMap.h"
 
 namespace clice {
@@ -407,7 +407,7 @@ int run_stateful_worker_mode(std::uint64_t memory_limit) {
 
     auto transport_result = et::ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {
-        spdlog::error("Failed to open stdio transport");
+        LOG_ERROR("Failed to open stdio transport");
         return 1;
     }
 

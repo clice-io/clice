@@ -3,7 +3,7 @@
 #include <csignal>
 #include <string>
 
-#include "spdlog/spdlog.h"
+#include "support/logging.h"
 
 namespace clice {
 
@@ -33,7 +33,7 @@ et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
                 break;
             auto line = buffer.substr(pos, nl - pos);
             if(!line.empty()) {
-                spdlog::info("{} {}", prefix, line);
+                LOG_INFO("{} {}", prefix, line);
             }
             pos = nl + 1;
         }
@@ -42,7 +42,7 @@ et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
 
     // Flush any remaining partial line
     if(!buffer.empty()) {
-        spdlog::info("{} {}", prefix, buffer);
+        LOG_INFO("{} {}", prefix, buffer);
     }
 }
 
@@ -70,9 +70,9 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
 
     auto result = et::process::spawn(opts, loop);
     if(!result) {
-        spdlog::error("Failed to spawn {} worker: {}",
-                      stateful ? "stateful" : "stateless",
-                      result.error().message());
+        LOG_ERROR("Failed to spawn {} worker: {}",
+                  stateful ? "stateful" : "stateless",
+                  result.error().message());
         return false;
     }
 
@@ -129,14 +129,14 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
         });
     }
 
-    spdlog::info("WorkerPool started: {} stateless, {} stateful workers",
-                 stateless_workers.size(),
-                 stateful_workers.size());
+    LOG_INFO("WorkerPool started: {} stateless, {} stateful workers",
+             stateless_workers.size(),
+             stateful_workers.size());
     return true;
 }
 
 et::task<> WorkerPool::stop() {
-    spdlog::info("WorkerPool stopping...");
+    LOG_INFO("WorkerPool stopping...");
 
     // Close output pipes to signal workers to exit gracefully
     for(auto& w: stateless_workers) {
@@ -162,7 +162,7 @@ et::task<> WorkerPool::stop() {
         co_await w.proc.wait();
     }
 
-    spdlog::info("WorkerPool stopped");
+    LOG_INFO("WorkerPool stopped");
 }
 
 std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {

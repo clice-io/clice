@@ -1,6 +1,6 @@
 #include "server/compile_graph.h"
 
-#include "spdlog/spdlog.h"
+#include "support/logging.h"
 
 namespace clice {
 
@@ -144,7 +144,7 @@ et::task<> CompileGraph::compile_impl(std::uint32_t path_id, et::event_loop& loo
     // The real compilation dispatch (BuildPCH/BuildPCM requests) will be
     // wired up when the MasterServer integration is complete. For now,
     // mark the unit as clean once dependencies are satisfied.
-    spdlog::info("compile_graph: unit {} dependencies satisfied", path_id);
+    LOG_INFO("compile_graph: unit {} dependencies satisfied", path_id);
 
     auto& final_unit = units.find(path_id)->second;
     final_unit.dirty = false;

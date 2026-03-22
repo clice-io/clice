@@ -11,8 +11,7 @@
 #include "eventide/serde/serde/raw_value.h"
 #include "server/protocol.h"
 #include "support/filesystem.h"
-
-#include "spdlog/spdlog.h"
+#include "support/logging.h"
 
 namespace clice {
 
@@ -42,7 +41,7 @@ void MasterServer::publish_diagnostics(const std::string& uri,
     if(!diagnostics_json.empty()) {
         auto status = et::serde::json::from_json(diagnostics_json.data, diagnostics);
         if(!status) {
-            spdlog::warn("Failed to deserialize diagnostics JSON for {}", uri);
+            LOG_WARN("Failed to deserialize diagnostics JSON for {}", uri);
         }
     }
     protocol::PublishDiagnosticsParams params;
@@ -104,7 +103,7 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
         // Ensure PCM/PCH dependencies are ready
         auto deps_ok = co_await compile_graph.compile_deps(path_id, loop);
         if(!deps_ok) {
-            spdlog::warn("Dependency compilation failed for {}, skipping build", uri);
+            LOG_WARN("Dependency compilation failed for {}, skipping build", uri);
             clear_diagnostics(uri);
             doc_it = documents.find(path_id);
             if(doc_it == documents.end())
@@ -140,7 +139,7 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
                 publish_diagnostics(uri, doc2.version, result.value().diagnostics);
             }
         } else {
-            spdlog::warn("Compile failed for {}: {}", uri, result.error().message);
+            LOG_WARN("Compile failed for {}: {}", uri, result.error().message);
             // Publish empty diagnostics so stale errors don't linger
             clear_diagnostics(uri);
         }
@@ -163,9 +162,9 @@ et::task<> MasterServer::load_workspace() {
     if(!config.cache_dir.empty()) {
         auto ec = llvm::sys::fs::create_directories(config.cache_dir);
         if(ec) {
-            spdlog::warn("Failed to create cache directory {}: {}", config.cache_dir, ec.message());
+            LOG_WARN("Failed to create cache directory {}: {}", config.cache_dir, ec.message());
         } else {
-            spdlog::info("Cache directory: {}", config.cache_dir);
+            LOG_INFO("Cache directory: {}", config.cache_dir);
         }
     }
 
@@ -177,8 +176,8 @@ et::task<> MasterServer::load_workspace() {
         if(llvm::sys::fs::exists(config.compile_commands_path)) {
             cdb_path = config.compile_commands_path;
         } else {
-            spdlog::warn("Configured compile_commands_path not found: {}",
-                         config.compile_commands_path);
+            LOG_WARN("Configured compile_commands_path not found: {}",
+                     config.compile_commands_path);
         }
     }
 
@@ -194,12 +193,12 @@ et::task<> MasterServer::load_workspace() {
     }
 
     if(cdb_path.empty()) {
-        spdlog::warn("No compile_commands.json found in workspace {}", workspace_root);
+        LOG_WARN("No compile_commands.json found in workspace {}", workspace_root);
         co_return;
     }
 
     auto updates = cdb.load_compile_database(cdb_path);
-    spdlog::info("Loaded CDB from {} with {} entries", cdb_path, updates.size());
+    LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, updates.size());
 
     // Scan all source files from CDB to build include graph
     auto all_files = cdb.files();
@@ -208,11 +207,11 @@ et::task<> MasterServer::load_workspace() {
         scan_file(path_id, file);
     }
 
-    spdlog::info("Initial scan complete, {} files in include graph", include_forward.size());
+    LOG_INFO("Initial scan complete, {} files in include graph", include_forward.size());
 
     // Populate the index queue with all CDB files for background indexing
     populate_index_queue();
-    spdlog::info("Index queue populated with {} files", index_queue.size());
+    LOG_INFO("Index queue populated with {} files", index_queue.size());
 }
 
 void MasterServer::scan_file(std::uint32_t path_id, llvm::StringRef path) {
@@ -304,7 +303,7 @@ et::task<> MasterServer::run_background_indexer() {
             continue;
 
         indexing_active = true;
-        spdlog::info("Background indexing started, {} files queued", index_queue.size());
+        LOG_INFO("Background indexing started, {} files queued", index_queue.size());
 
         // Process files from the queue while idle
         while(!index_queue.empty() && lifecycle != ServerLifecycle::ShuttingDown) {
@@ -312,12 +311,12 @@ et::task<> MasterServer::run_background_indexer() {
             index_queue.pop_front();
 
             auto path = path_pool.resolve(path_id);
-            spdlog::debug("Indexing: {}", path.str());
+            LOG_DEBUG("Indexing: {}", path.str());
 
             // Ensure dependencies are compiled first
             auto deps_ok = co_await compile_graph.compile_deps(path_id, loop);
             if(!deps_ok) {
-                spdlog::warn("Index skipped for {} (dependency compilation failed)", path.str());
+                LOG_WARN("Index skipped for {} (dependency compilation failed)", path.str());
                 continue;
             }
 
@@ -334,7 +333,7 @@ et::task<> MasterServer::run_background_indexer() {
                 auto& idx_result = result.value();
                 if(idx_result.success) {
                     index_progress++;
-                    spdlog::debug("Indexed {}/{}: {}", index_progress, index_total, path.str());
+                    LOG_DEBUG("Indexed {}/{}: {}", index_progress, index_total, path.str());
 
                     // TODO (Phase 9.2): Deserialize tu_index_data (FlatBuffers)
                     //   into TUIndex, perform path mapping, and merge into
@@ -345,18 +344,18 @@ et::task<> MasterServer::run_background_indexer() {
                     //   project_index.merge(tu_index);
                     //   merged_index.merge(...);
                 } else {
-                    spdlog::warn("Index failed for {}: {}", path.str(), idx_result.error);
+                    LOG_WARN("Index failed for {}: {}", path.str(), idx_result.error);
                 }
             } else {
-                spdlog::warn("Index request failed for {}: {}", path.str(), result.error().message);
+                LOG_WARN("Index request failed for {}: {}", path.str(), result.error().message);
             }
         }
 
         indexing_active = false;
         if(index_queue.empty()) {
-            spdlog::info("Background indexing complete: {}/{} files indexed",
-                         index_progress,
-                         index_total);
+            LOG_INFO("Background indexing complete: {}/{} files indexed",
+                     index_progress,
+                     index_total);
         }
     }
 }
@@ -388,7 +387,7 @@ void MasterServer::register_handlers() {
 
         lifecycle = ServerLifecycle::Initialized;
 
-        spdlog::info("Initialized with workspace: {}", workspace_root);
+        LOG_INFO("Initialized with workspace: {}", workspace_root);
 
         // Build capabilities
         protocol::InitializeResult result;
@@ -434,11 +433,11 @@ void MasterServer::register_handlers() {
         // Load configuration from workspace
         config = CliceConfig::load_from_workspace(workspace_root);
 
-        spdlog::info("Server ready (stateful={}, stateless={}, debounce={}ms, idle={}ms)",
-                     config.stateful_worker_count,
-                     config.stateless_worker_count,
-                     config.debounce_ms,
-                     config.idle_timeout_ms);
+        LOG_INFO("Server ready (stateful={}, stateless={}, debounce={}ms, idle={}ms)",
+                 config.stateful_worker_count,
+                 config.stateless_worker_count,
+                 config.debounce_ms,
+                 config.idle_timeout_ms);
 
         // Start worker pool
         WorkerPoolOptions pool_opts;
@@ -446,7 +445,7 @@ void MasterServer::register_handlers() {
         pool_opts.stateful_count = config.stateful_worker_count;
         pool_opts.stateless_count = config.stateless_worker_count;
         if(!pool.start(pool_opts)) {
-            spdlog::error("Failed to start worker pool");
+            LOG_ERROR("Failed to start worker pool");
         }
 
         // Load CDB and build include graph in background
@@ -463,14 +462,14 @@ void MasterServer::register_handlers() {
         [this](RequestContext& ctx,
                const protocol::ShutdownParams& params) -> RequestResult<protocol::ShutdownParams> {
             lifecycle = ServerLifecycle::ShuttingDown;
-            spdlog::info("Shutdown requested");
+            LOG_INFO("Shutdown requested");
             co_return nullptr;
         });
 
     // === exit ===
     peer.on_notification([this](const protocol::ExitParams& params) {
         lifecycle = ServerLifecycle::Exited;
-        spdlog::info("Exit notification received");
+        LOG_INFO("Exit notification received");
 
         // Graceful shutdown: cancel compilations, stop workers, then stop loop
         loop.schedule([this]() -> et::task<> {
@@ -494,7 +493,7 @@ void MasterServer::register_handlers() {
         doc.text = td.text;
         doc.generation++;
 
-        spdlog::debug("didOpen: {} (v{})", path, td.version);
+        LOG_DEBUG("didOpen: {} (v{})", path, td.version);
 
         // Reset idle timer on user activity
         reset_idle_timer();
@@ -592,7 +591,7 @@ void MasterServer::register_handlers() {
         // Clear diagnostics for closed file
         clear_diagnostics(params.text_document.uri);
 
-        spdlog::debug("didClose: {}", path);
+        LOG_DEBUG("didClose: {}", path);
     });
 
     // === textDocument/didSave ===
@@ -601,7 +600,7 @@ void MasterServer::register_handlers() {
             return;
 
         // TODO: Trigger dependent file rebuilds
-        spdlog::debug("didSave: {}", params.text_document.uri);
+        LOG_DEBUG("didSave: {}", params.text_document.uri);
     });
 
     // =========================================================================

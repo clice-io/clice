@@ -31,6 +31,7 @@ The server progresses through these states:
 5. **Exited** — `exit` received, stopping the event loop
 
 On `initialized`, the master:
+
 - Loads configuration from `clice.toml` (or uses defaults)
 - Starts the worker pool (spawns stateful + stateless processes)
 - Loads `compile_commands.json` and builds an include graph
@@ -39,11 +40,13 @@ On `initialized`, the master:
 ### Document Management
 
 Each open document is tracked in a `DocumentState` with:
+
 - Current `version` and `text` (kept in sync via `didOpen`/`didChange`)
 - A `generation` counter to detect stale compile results
 - Build state flags (`build_running`, `build_requested`, `drain_scheduled`)
 
 When a document is opened or changed:
+
 1. The include graph is re-scanned (via dependency directives)
 2. The compile unit is registered/updated in the `CompileGraph`
 3. A debounced build is scheduled
@@ -65,6 +68,7 @@ This ensures rapid typing doesn't trigger a compile per keystroke.
 Feature requests are split between two worker types:
 
 **Stateful workers** (affinity-routed by file path):
+
 - `textDocument/hover`
 - `textDocument/semanticTokens/full`
 - `textDocument/inlayHint`
@@ -75,6 +79,7 @@ Feature requests are split between two worker types:
 - `textDocument/definition`
 
 **Stateless workers** (round-robin):
+
 - `textDocument/completion`
 - `textDocument/signatureHelp`
 
@@ -133,16 +138,16 @@ The compile graph (`src/server/compile_graph.cpp`) tracks compilation unit depen
 
 The server reads configuration from `clice.toml` (or `.clice/config.toml`) in the workspace root. If no config file exists, sensible defaults are computed from system resources:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `stateful_worker_count` | CPU cores / 4 | Number of stateful worker processes |
-| `stateless_worker_count` | CPU cores / 4 | Number of stateless worker processes |
-| `worker_memory_limit` | 4 GB | Memory limit per stateful worker |
-| `compile_commands_path` | auto-detect | Path to `compile_commands.json` |
-| `cache_dir` | `<workspace>/.clice/` | Cache directory for PCH/PCM files |
-| `debounce_ms` | 200 | Debounce interval for recompilation |
-| `enable_indexing` | true | Enable background indexing |
-| `idle_timeout_ms` | 3000 | Idle time before background indexing starts |
+| Setting                  | Default               | Description                                 |
+| ------------------------ | --------------------- | ------------------------------------------- |
+| `stateful_worker_count`  | CPU cores / 4         | Number of stateful worker processes         |
+| `stateless_worker_count` | CPU cores / 4         | Number of stateless worker processes        |
+| `worker_memory_limit`    | 4 GB                  | Memory limit per stateful worker            |
+| `compile_commands_path`  | auto-detect           | Path to `compile_commands.json`             |
+| `cache_dir`              | `<workspace>/.clice/` | Cache directory for PCH/PCM files           |
+| `debounce_ms`            | 200                   | Debounce interval for recompilation         |
+| `enable_indexing`        | true                  | Enable background indexing                  |
+| `idle_timeout_ms`        | 3000                  | Idle time before background indexing starts |
 
 String values support `${workspace}` substitution.
 
@@ -152,27 +157,27 @@ The master and workers communicate using custom RPC messages defined in `src/ser
 
 ### Stateful Worker Messages
 
-| Method | Direction | Purpose |
-|--------|-----------|---------|
-| `clice/worker/compile` | Request | Compile source and return diagnostics |
-| `clice/worker/hover` | Request | Get hover info at position |
-| `clice/worker/semanticTokens` | Request | Get semantic tokens for file |
-| `clice/worker/inlayHints` | Request | Get inlay hints for range |
-| `clice/worker/foldingRange` | Request | Get folding ranges |
-| `clice/worker/documentSymbol` | Request | Get document symbols |
-| `clice/worker/documentLink` | Request | Get document links |
-| `clice/worker/codeAction` | Request | Get code actions for range |
-| `clice/worker/goToDefinition` | Request | Go to definition at position |
-| `clice/worker/documentUpdate` | Notification | Update document text (marks dirty) |
-| `clice/worker/evict` | Notification | Master → Worker: evict a document |
-| `clice/worker/evicted` | Notification | Worker → Master: document was evicted |
+| Method                        | Direction    | Purpose                               |
+| ----------------------------- | ------------ | ------------------------------------- |
+| `clice/worker/compile`        | Request      | Compile source and return diagnostics |
+| `clice/worker/hover`          | Request      | Get hover info at position            |
+| `clice/worker/semanticTokens` | Request      | Get semantic tokens for file          |
+| `clice/worker/inlayHints`     | Request      | Get inlay hints for range             |
+| `clice/worker/foldingRange`   | Request      | Get folding ranges                    |
+| `clice/worker/documentSymbol` | Request      | Get document symbols                  |
+| `clice/worker/documentLink`   | Request      | Get document links                    |
+| `clice/worker/codeAction`     | Request      | Get code actions for range            |
+| `clice/worker/goToDefinition` | Request      | Go to definition at position          |
+| `clice/worker/documentUpdate` | Notification | Update document text (marks dirty)    |
+| `clice/worker/evict`          | Notification | Master → Worker: evict a document     |
+| `clice/worker/evicted`        | Notification | Worker → Master: document was evicted |
 
 ### Stateless Worker Messages
 
-| Method | Direction | Purpose |
-|--------|-----------|---------|
-| `clice/worker/completion` | Request | Code completion at position |
-| `clice/worker/signatureHelp` | Request | Signature help at position |
-| `clice/worker/buildPCH` | Request | Build precompiled header |
-| `clice/worker/buildPCM` | Request | Build C++20 module interface |
-| `clice/worker/index` | Request | Index a translation unit |
+| Method                       | Direction | Purpose                      |
+| ---------------------------- | --------- | ---------------------------- |
+| `clice/worker/completion`    | Request   | Code completion at position  |
+| `clice/worker/signatureHelp` | Request   | Signature help at position   |
+| `clice/worker/buildPCH`      | Request   | Build precompiled header     |
+| `clice/worker/buildPCM`      | Request   | Build C++20 module interface |
+| `clice/worker/index`         | Request   | Index a translation unit     |
