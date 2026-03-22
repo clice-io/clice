@@ -218,6 +218,86 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id, const std::s
     co_return true;
 }
 
+// =========================================================================
+// Forwarding helpers
+// =========================================================================
+
+using serde_raw = eventide::serde::RawValue;
+
+template <typename WorkerParams>
+MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri) {
+    auto path = uri_to_path(uri);
+    auto path_id = path_pool.intern(path);
+
+    if(!co_await ensure_compiled(path_id, uri))
+        co_return serde_raw{"null"};
+
+    WorkerParams wp;
+    wp.path = path;
+
+    auto result = co_await pool.send_stateful(path_id, wp);
+    if(!result.has_value())
+        co_return serde_raw{};
+    co_return std::move(result.value());
+}
+
+template <typename WorkerParams>
+MasterServer::RawResult
+    MasterServer::forward_stateful(const std::string& uri,
+                                   const eventide::ipc::protocol::Position& position) {
+    auto path = uri_to_path(uri);
+    auto path_id = path_pool.intern(path);
+
+    if(!co_await ensure_compiled(path_id, uri))
+        co_return serde_raw{"null"};
+
+    WorkerParams wp;
+    wp.path = path;
+
+    auto doc_it = documents.find(path_id);
+    if(doc_it != documents.end()) {
+        using eventide::ipc::lsp::PositionEncoding;
+        using eventide::ipc::lsp::PositionMapper;
+        PositionMapper mapper(doc_it->second.text, PositionEncoding::UTF16);
+        wp.offset = mapper.to_offset(position);
+    }
+
+    auto result = co_await pool.send_stateful(path_id, wp);
+    if(!result.has_value())
+        co_return serde_raw{};
+    co_return std::move(result.value());
+}
+
+template <typename WorkerParams>
+MasterServer::RawResult
+    MasterServer::forward_stateless(const std::string& uri,
+                                    const eventide::ipc::protocol::Position& position) {
+    auto path = uri_to_path(uri);
+    auto path_id = path_pool.intern(path);
+
+    auto doc_it = documents.find(path_id);
+    if(doc_it == documents.end())
+        co_return serde_raw{};
+
+    auto& doc = doc_it->second;
+
+    using eventide::ipc::lsp::PositionEncoding;
+    using eventide::ipc::lsp::PositionMapper;
+    PositionMapper mapper(doc.text, PositionEncoding::UTF16);
+
+    WorkerParams wp;
+    wp.path = path;
+    wp.version = doc.version;
+    wp.text = doc.text;
+    fill_compile_args(path, wp.directory, wp.arguments);
+    wp.offset = mapper.to_offset(position);
+
+    auto result = co_await pool.send_stateless(wp);
+    if(!result.has_value())
+        co_return serde_raw{};
+    co_return std::move(result.value());
+}
+
 void MasterServer::register_handlers() {
     // === initialize ===
     peer.on_request([this](RequestContext& ctx, const protocol::InitializeParams& params)
@@ -448,168 +528,55 @@ void MasterServer::register_handlers() {
     // Feature requests routed to stateful workers (RawValue passthrough)
     // =========================================================================
 
-    using serde_raw = eventide::serde::RawValue;
-    using RawResult = et::task<serde_raw, et::ipc::Error>;
-
     // --- textDocument/hover ---
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
-        auto path = uri_to_path(params.text_document_position_params.text_document.uri);
-        auto path_id = path_pool.intern(path);
-
-        if(!co_await ensure_compiled(path_id,
-                                     params.text_document_position_params.text_document.uri))
-            co_return serde_raw{"null"};
-
-        worker::HoverParams wp;
-        wp.path = path;
-
-        auto doc_it = documents.find(path_id);
-        if(doc_it != documents.end()) {
-            using eventide::ipc::lsp::PositionMapper;
-            using eventide::ipc::lsp::PositionEncoding;
-            PositionMapper mapper(doc_it->second.text, PositionEncoding::UTF16);
-            wp.offset = mapper.to_offset(params.text_document_position_params.position);
-        }
-
-        auto result = co_await pool.send_stateful(path_id, wp);
-        if(!result.has_value())
-            co_return serde_raw{};  // null
-        co_return std::move(result.value());
+        co_return co_await forward_stateful<worker::HoverParams>(
+            params.text_document_position_params.text_document.uri,
+            params.text_document_position_params.position);
     });
 
     // --- textDocument/semanticTokens/full ---
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document.uri);
-            auto path_id = path_pool.intern(path);
-
-            if(!co_await ensure_compiled(path_id, params.text_document.uri))
-                co_return serde_raw{"null"};
-
-            worker::SemanticTokensParams wp;
-            wp.path = path;
-
-            auto result = co_await pool.send_stateful(path_id, wp);
-            if(!result.has_value())
-                co_return serde_raw{};
-            co_return std::move(result.value());
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::SemanticTokensParams& params) -> RawResult {
+        co_return co_await forward_stateful<worker::SemanticTokensParams>(params.text_document.uri);
+    });
 
     // --- textDocument/inlayHint ---
     peer.on_request(
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document.uri);
-            auto path_id = path_pool.intern(path);
-
-            if(!co_await ensure_compiled(path_id, params.text_document.uri))
-                co_return serde_raw{"null"};
-
-            worker::InlayHintsParams wp;
-            wp.path = path;
-
-            auto result = co_await pool.send_stateful(path_id, wp);
-            if(!result.has_value())
-                co_return serde_raw{};
-            co_return std::move(result.value());
+            co_return co_await forward_stateful<worker::InlayHintsParams>(params.text_document.uri);
         });
 
     // --- textDocument/foldingRange ---
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document.uri);
-            auto path_id = path_pool.intern(path);
-
-            if(!co_await ensure_compiled(path_id, params.text_document.uri))
-                co_return serde_raw{"null"};
-
-            worker::FoldingRangeParams wp;
-            wp.path = path;
-
-            auto result = co_await pool.send_stateful(path_id, wp);
-            if(!result.has_value())
-                co_return serde_raw{};
-            co_return std::move(result.value());
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::FoldingRangeParams& params) -> RawResult {
+        co_return co_await forward_stateful<worker::FoldingRangeParams>(params.text_document.uri);
+    });
 
     // --- textDocument/documentSymbol ---
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document.uri);
-            auto path_id = path_pool.intern(path);
-
-            if(!co_await ensure_compiled(path_id, params.text_document.uri))
-                co_return serde_raw{"null"};
-
-            worker::DocumentSymbolParams wp;
-            wp.path = path;
-
-            auto result = co_await pool.send_stateful(path_id, wp);
-            if(!result.has_value())
-                co_return serde_raw{};
-            co_return std::move(result.value());
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentSymbolParams& params) -> RawResult {
+        co_return co_await forward_stateful<worker::DocumentSymbolParams>(params.text_document.uri);
+    });
 
     // --- textDocument/documentLink ---
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document.uri);
-            auto path_id = path_pool.intern(path);
-
-            if(!co_await ensure_compiled(path_id, params.text_document.uri))
-                co_return serde_raw{"null"};
-
-            worker::DocumentLinkParams wp;
-            wp.path = path;
-
-            auto result = co_await pool.send_stateful(path_id, wp);
-            if(!result.has_value())
-                co_return serde_raw{};
-            co_return std::move(result.value());
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentLinkParams& params) -> RawResult {
+        co_return co_await forward_stateful<worker::DocumentLinkParams>(params.text_document.uri);
+    });
 
     // --- textDocument/codeAction ---
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document.uri);
-            auto path_id = path_pool.intern(path);
-
-            if(!co_await ensure_compiled(path_id, params.text_document.uri))
-                co_return serde_raw{"null"};
-
-            worker::CodeActionParams wp;
-            wp.path = path;
-
-            auto result = co_await pool.send_stateful(path_id, wp);
-            if(!result.has_value())
-                co_return serde_raw{};
-            co_return std::move(result.value());
+            co_return co_await forward_stateful<worker::CodeActionParams>(params.text_document.uri);
         });
 
     // --- textDocument/definition ---
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
-            auto path_id = path_pool.intern(path);
-
-            if(!co_await ensure_compiled(path_id,
-                                         params.text_document_position_params.text_document.uri))
-                co_return serde_raw{"null"};
-
-            worker::GoToDefinitionParams wp;
-            wp.path = path;
-
-            auto doc_it = documents.find(path_id);
-            if(doc_it != documents.end()) {
-                using eventide::ipc::lsp::PositionMapper;
-                using eventide::ipc::lsp::PositionEncoding;
-                PositionMapper mapper(doc_it->second.text, PositionEncoding::UTF16);
-                wp.offset = mapper.to_offset(params.text_document_position_params.position);
-            }
-
-            auto result = co_await pool.send_stateful(path_id, wp);
-            if(!result.has_value())
-                co_return serde_raw{};
-            co_return std::move(result.value());
+            co_return co_await forward_stateful<worker::GoToDefinitionParams>(
+                params.text_document_position_params.text_document.uri,
+                params.text_document_position_params.position);
         });
 
     // =========================================================================
@@ -619,59 +586,17 @@ void MasterServer::register_handlers() {
     // --- textDocument/completion ---
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
-            auto path_id = path_pool.intern(path);
-
-            auto doc_it = documents.find(path_id);
-            if(doc_it == documents.end())
-                co_return serde_raw{};  // null
-
-            auto& doc = doc_it->second;
-
-            using eventide::ipc::lsp::PositionMapper;
-            using eventide::ipc::lsp::PositionEncoding;
-            PositionMapper mapper(doc.text, PositionEncoding::UTF16);
-
-            worker::CompletionParams wp;
-            wp.path = path;
-            wp.version = doc.version;
-            wp.text = doc.text;
-            fill_compile_args(path, wp.directory, wp.arguments);
-            wp.offset = mapper.to_offset(params.text_document_position_params.position);
-
-            auto result = co_await pool.send_stateless(wp);
-            if(!result.has_value())
-                co_return serde_raw{};
-            co_return std::move(result.value());
+            co_return co_await forward_stateless<worker::CompletionParams>(
+                params.text_document_position_params.text_document.uri,
+                params.text_document_position_params.position);
         });
 
     // --- textDocument/signatureHelp ---
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
-            auto path_id = path_pool.intern(path);
-
-            auto doc_it = documents.find(path_id);
-            if(doc_it == documents.end())
-                co_return serde_raw{};
-
-            auto& doc = doc_it->second;
-
-            using eventide::ipc::lsp::PositionMapper;
-            using eventide::ipc::lsp::PositionEncoding;
-            PositionMapper mapper(doc.text, PositionEncoding::UTF16);
-
-            worker::SignatureHelpParams wp;
-            wp.path = path;
-            wp.version = doc.version;
-            wp.text = doc.text;
-            fill_compile_args(path, wp.directory, wp.arguments);
-            wp.offset = mapper.to_offset(params.text_document_position_params.position);
-
-            auto result = co_await pool.send_stateless(wp);
-            if(!result.has_value())
-                co_return serde_raw{};
-            co_return std::move(result.value());
+            co_return co_await forward_stateless<worker::SignatureHelpParams>(
+                params.text_document_position_params.text_document.uri,
+                params.text_document_position_params.position);
         });
 }
 

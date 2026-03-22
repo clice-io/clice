@@ -109,6 +109,23 @@ private:
     void fill_compile_args(llvm::StringRef path,
                            std::string& directory,
                            std::vector<std::string>& arguments);
+
+    // Forwarding helpers for feature requests (RawValue passthrough)
+    using RawResult = et::task<eventide::serde::RawValue, et::ipc::Error>;
+
+    /// Forward a simple stateful request (path-only worker params).
+    template <typename WorkerParams>
+    RawResult forward_stateful(const std::string& uri);
+
+    /// Forward a stateful request with position-to-offset conversion.
+    template <typename WorkerParams>
+    RawResult forward_stateful(const std::string& uri,
+                               const eventide::ipc::protocol::Position& position);
+
+    /// Forward a stateless request with document content and compile args.
+    template <typename WorkerParams>
+    RawResult forward_stateless(const std::string& uri,
+                                const eventide::ipc::protocol::Position& position);
 };
 
 }  // namespace clice
