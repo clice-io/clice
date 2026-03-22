@@ -18,6 +18,8 @@
 namespace clice {
 
 namespace protocol = eventide::ipc::protocol;
+namespace lsp = eventide::ipc::lsp;
+namespace refl = eventide::refl;
 using et::ipc::RequestResult;
 using RequestContext = et::ipc::JsonPeer::RequestContext;
 
@@ -25,7 +27,6 @@ MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::s
     loop(loop), peer(peer), pool(loop), self_path(std::move(self_path)) {}
 
 std::string MasterServer::uri_to_path(const std::string& uri) {
-    namespace lsp = eventide::ipc::lsp;
     auto parsed = lsp::URI::parse(uri);
     if(parsed.has_value()) {
         auto path = parsed->file_path();
@@ -221,7 +222,7 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id, const std::s
 // Forwarding helpers
 // =========================================================================
 
-using serde_raw = eventide::serde::RawValue;
+using serde_raw = et::serde::RawValue;
 
 template <typename WorkerParams>
 MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri) {
@@ -241,9 +242,8 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri) {
 }
 
 template <typename WorkerParams>
-MasterServer::RawResult
-    MasterServer::forward_stateful(const std::string& uri,
-                                   const eventide::ipc::protocol::Position& position) {
+MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri,
+                                                       const protocol::Position& position) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
@@ -255,9 +255,7 @@ MasterServer::RawResult
 
     auto doc_it = documents.find(path_id);
     if(doc_it != documents.end()) {
-        using eventide::ipc::lsp::PositionEncoding;
-        using eventide::ipc::lsp::PositionMapper;
-        PositionMapper mapper(doc_it->second.text, PositionEncoding::UTF16);
+        lsp::PositionMapper mapper(doc_it->second.text, lsp::PositionEncoding::UTF16);
         wp.offset = mapper.to_offset(position);
     }
 
@@ -268,9 +266,8 @@ MasterServer::RawResult
 }
 
 template <typename WorkerParams>
-MasterServer::RawResult
-    MasterServer::forward_stateless(const std::string& uri,
-                                    const eventide::ipc::protocol::Position& position) {
+MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
+                                                        const protocol::Position& position) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
@@ -280,9 +277,7 @@ MasterServer::RawResult
 
     auto& doc = doc_it->second;
 
-    using eventide::ipc::lsp::PositionEncoding;
-    using eventide::ipc::lsp::PositionMapper;
-    PositionMapper mapper(doc.text, PositionEncoding::UTF16);
+    lsp::PositionMapper mapper(doc.text, lsp::PositionEncoding::UTF16);
 
     WorkerParams wp;
     wp.path = path;
@@ -347,18 +342,16 @@ void MasterServer::register_handlers() {
                 return s;
             };
 
-            namespace views = std::ranges::views;
             auto to_names = [&](auto names) {
-                return names | views::transform(lower_first) | std::ranges::to<std::vector>();
+                return std::ranges::to<std::vector>(names | std::views::transform(lower_first));
             };
 
             sem_opts.legend = protocol::SemanticTokensLegend{
-                to_names(eventide::refl::reflection<SymbolKind::Kind>::member_names),
-                to_names(eventide::refl::reflection<SymbolModifiers::Kind>::member_names),
+                to_names(refl::reflection<SymbolKind::Kind>::member_names),
+                to_names(refl::reflection<SymbolModifiers::Kind>::member_names),
             };
         }
-        sem_opts.full =
-            protocol::variant<protocol::boolean, protocol::SemanticTokensFullDelta>{true};
+        sem_opts.full = true;
         result.capabilities.semantic_tokens_provider = std::move(sem_opts);
 
         // Server info
@@ -465,9 +458,7 @@ void MasterServer::register_handlers() {
                         // Incremental change: replace range
                         auto& range = c.range;
 
-                        using eventide::ipc::lsp::PositionMapper;
-                        using eventide::ipc::lsp::PositionEncoding;
-                        PositionMapper mapper(doc.text, PositionEncoding::UTF16);
+                        lsp::PositionMapper mapper(doc.text, lsp::PositionEncoding::UTF16);
                         auto start = mapper.to_offset(range.start);
                         auto end = mapper.to_offset(range.end);
                         if(start <= doc.text.size() && end <= doc.text.size() && start <= end) {

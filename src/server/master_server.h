@@ -21,6 +21,7 @@
 namespace clice {
 
 namespace et = eventide;
+namespace protocol = et::ipc::protocol;
 
 /// Global path interning pool. Maps file paths to uint32_t IDs.
 struct ServerPathPool {
@@ -111,7 +112,7 @@ private:
                            std::vector<std::string>& arguments);
 
     // Forwarding helpers for feature requests (RawValue passthrough)
-    using RawResult = et::task<eventide::serde::RawValue, et::ipc::Error>;
+    using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
 
     /// Forward a simple stateful request (path-only worker params).
     template <typename WorkerParams>
@@ -119,13 +120,11 @@ private:
 
     /// Forward a stateful request with position-to-offset conversion.
     template <typename WorkerParams>
-    RawResult forward_stateful(const std::string& uri,
-                               const eventide::ipc::protocol::Position& position);
+    RawResult forward_stateful(const std::string& uri, const protocol::Position& position);
 
     /// Forward a stateless request with document content and compile args.
     template <typename WorkerParams>
-    RawResult forward_stateless(const std::string& uri,
-                                const eventide::ipc::protocol::Position& position);
+    RawResult forward_stateless(const std::string& uri, const protocol::Position& position);
 };
 
 }  // namespace clice
