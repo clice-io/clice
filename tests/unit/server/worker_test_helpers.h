@@ -1,13 +1,16 @@
 #pragma once
 
 #include <csignal>
-#include <fcntl.h>
 #include <fstream>
 #include <memory>
 #include <string>
 
-#include "eventide/async/io/loop.h"
-#include "eventide/async/io/process.h"
+#ifndef _WIN32
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
+#include "eventide/async/async.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/transport.h"
 #include "server/protocol.h"
@@ -20,7 +23,9 @@ namespace {
 /// Ignore SIGPIPE so broken pipes from exited workers don't kill the test binary.
 struct SigpipeGuard {
     SigpipeGuard() {
+#ifndef _WIN32
         std::signal(SIGPIPE, SIG_IGN);
+#endif
     }
 };
 
@@ -45,7 +50,10 @@ struct TempFile {
     std::string path;
 
     TempFile(const std::string& name, const std::string& content) {
-        path = "/tmp/clice_test_" + name;
+        llvm::SmallString<256> tmp_dir;
+        llvm::sys::path::system_temp_directory(true, tmp_dir);
+        llvm::sys::path::append(tmp_dir, "clice_test_" + name);
+        path = std::string(tmp_dir);
         std::ofstream ofs(path);
         ofs << content;
     }
@@ -84,9 +92,11 @@ struct WorkerHandle {
     bool spawn(const std::string& mode, std::uint64_t memory_limit = 0) {
         auto binary = clice_binary();
 
+#ifndef _WIN32
         // Redirect worker stderr to a temp file for debugging.
         std::string stderr_path = "/tmp/clice_worker_stderr_" + mode + ".log";
         stderr_fd = ::open(stderr_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+#endif
 
         et::process::options opts;
         opts.file = binary;
@@ -110,8 +120,10 @@ struct WorkerHandle {
                                                                std::move(spawn.stdin_pipe));
         peer = std::make_unique<et::ipc::BincodePeer>(loop, std::move(transport));
         proc = std::move(spawn.proc);
+#ifndef _WIN32
         if(stderr_fd >= 0)
             ::close(stderr_fd);
+#endif
         return true;
     }
 
