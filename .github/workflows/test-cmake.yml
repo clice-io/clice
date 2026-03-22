@@ -20,5 +20,8 @@ jobs:
       - name: Build
         run: pixi run build ${{ matrix.build_type }} ON
 
-      - name: Test
+      - name: Unit Test
         run: pixi run unit-test ${{ matrix.build_type }}
+
+      - name: Integration Test
+        run: pixi run integration-test ${{ matrix.build_type }}
