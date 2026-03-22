@@ -79,12 +79,14 @@ async def test_incremental_change(client: LSPClient, test_data_dir):
 async def test_diagnostics_received(client: LSPClient, test_data_dir):
     """Opening a file should produce diagnostics."""
     workspace = test_data_dir / "hello_world"
+    target_uri = (workspace / "main.cpp").as_uri()
     diagnostics_received = asyncio.Event()
     received_diagnostics = []
 
     def on_diagnostics(params):
-        received_diagnostics.append(params)
-        diagnostics_received.set()
+        if params.get("uri") == target_uri:
+            received_diagnostics.append(params)
+            diagnostics_received.set()
 
     client.register_notification_handler(
         "textDocument/publishDiagnostics", on_diagnostics
@@ -163,10 +165,12 @@ async def test_multiple_files(client: LSPClient, test_data_dir):
 
 async def _wait_for_compilation(client, workspace):
     """Helper: wait for diagnostics to confirm compilation finished."""
+    target_uri = (workspace / "main.cpp").as_uri()
     diagnostics_received = asyncio.Event()
 
     def on_diagnostics(params):
-        diagnostics_received.set()
+        if params.get("uri") == target_uri:
+            diagnostics_received.set()
 
     client.register_notification_handler(
         "textDocument/publishDiagnostics", on_diagnostics
@@ -387,10 +391,12 @@ async def test_hover_on_unknown_file(client: LSPClient, test_data_dir):
 async def test_all_features_after_compile_wait(client: LSPClient, test_data_dir):
     """After waiting for compilation, exercise all feature requests and verify responses."""
     workspace = test_data_dir / "hello_world"
+    target_uri = (workspace / "main.cpp").as_uri()
     diagnostics_received = asyncio.Event()
 
     def on_diagnostics(params):
-        diagnostics_received.set()
+        if params.get("uri") == target_uri:
+            diagnostics_received.set()
 
     client.register_notification_handler(
         "textDocument/publishDiagnostics", on_diagnostics

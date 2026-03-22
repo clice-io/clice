@@ -95,23 +95,24 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
         if(doc_it == documents.end())
             co_return;
 
-        auto& doc = doc_it->second;
-        doc.build_running = true;
-        doc.build_requested = false;
-        auto gen = doc.generation;
+        doc_it->second.build_running = true;
+        doc_it->second.build_requested = false;
+        auto gen = doc_it->second.generation;
 
         // Ensure PCM/PCH dependencies are ready
         auto deps_ok = co_await compile_graph.compile_deps(path_id, loop);
+
+        // Re-lookup after co_await (map may have changed)
+        doc_it = documents.find(path_id);
+        if(doc_it == documents.end())
+            co_return;
+
         if(!deps_ok) {
             LOG_WARN("Dependency compilation failed for {}, skipping build", uri);
             clear_diagnostics(uri);
-            doc_it = documents.find(path_id);
-            if(doc_it == documents.end())
-                co_return;
-            auto& doc_after_deps = doc_it->second;
-            if(!doc_after_deps.build_requested) {
-                doc_after_deps.build_running = false;
-                doc_after_deps.drain_scheduled = false;
+            if(!doc_it->second.build_requested) {
+                doc_it->second.build_running = false;
+                doc_it->second.drain_scheduled = false;
                 co_return;
             }
             continue;
@@ -120,8 +121,8 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
         // Send compile request to stateful worker
         worker::CompileParams params;
         params.uri = uri;
-        params.version = doc.version;
-        params.text = doc.text;
+        params.version = doc_it->second.version;
+        params.text = doc_it->second.text;
         fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments);
 
         auto result = co_await pool.send_stateful<worker::CompileParams>(path_id, params);
@@ -428,8 +429,6 @@ void MasterServer::register_handlers() {
 
     // === initialized ===
     peer.on_notification([this](const protocol::InitializedParams& params) {
-        lifecycle = ServerLifecycle::Ready;
-
         // Load configuration from workspace
         config = CliceConfig::load_from_workspace(workspace_root);
 
@@ -444,9 +443,13 @@ void MasterServer::register_handlers() {
         pool_opts.self_path = self_path;
         pool_opts.stateful_count = config.stateful_worker_count;
         pool_opts.stateless_count = config.stateless_worker_count;
+        pool_opts.worker_memory_limit = config.worker_memory_limit;
         if(!pool.start(pool_opts)) {
             LOG_ERROR("Failed to start worker pool");
+            return;
         }
+
+        lifecycle = ServerLifecycle::Ready;
 
         // Load CDB and build include graph in background
         loop.schedule(load_workspace());
@@ -566,6 +569,13 @@ void MasterServer::register_handlers() {
         }
 
         doc.generation++;
+
+        // Notify the owning stateful worker so it marks the document dirty
+        worker::DocumentUpdateParams update;
+        update.uri = params.text_document.uri;
+        update.version = doc.version;
+        update.text = doc.text;
+        pool.notify_stateful(path_id, update);
 
         // Reset idle timer on user activity
         reset_idle_timer();

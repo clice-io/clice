@@ -48,16 +48,16 @@ class StatefulWorker {
 
     llvm::StringMap<std::unique_ptr<DocumentEntry>> documents;
 
-    // LRU tracking
-    std::list<llvm::StringRef> lru;
-    llvm::StringMap<std::list<llvm::StringRef>::iterator> lru_index;
+    // LRU tracking — owns keys so they don't dangle after request handler returns
+    std::list<std::string> lru;
+    llvm::StringMap<std::list<std::string>::iterator> lru_index;
 
     void touch_lru(llvm::StringRef uri) {
         auto it = lru_index.find(uri);
         if(it != lru_index.end()) {
             lru.erase(it->second);
         }
-        lru.push_front(uri);
+        lru.emplace_front(uri.str());
         lru_index[uri] = lru.begin();
     }
 

@@ -7,6 +7,16 @@ namespace clice {
 void CompileGraph::register_unit(std::uint32_t path_id, llvm::ArrayRef<std::uint32_t> deps) {
     auto& unit = units[path_id];
     unit.path_id = path_id;
+
+    // Remove this unit from old dependencies' dependents lists
+    for(auto old_dep: unit.dependencies) {
+        auto it = units.find(old_dep);
+        if(it != units.end()) {
+            auto& dep_list = it->second.dependents;
+            dep_list.erase(std::remove(dep_list.begin(), dep_list.end(), path_id), dep_list.end());
+        }
+    }
+
     unit.dependencies.assign(deps.begin(), deps.end());
     for(auto dep_id: deps) {
         units[dep_id].dependents.push_back(path_id);

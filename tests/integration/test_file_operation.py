@@ -36,10 +36,12 @@ async def test_clang_tidy(client: LSPClient, test_data_dir):
 @pytest.mark.asyncio
 async def test_hover_save_close(client: LSPClient, test_data_dir):
     workspace = test_data_dir / "hello_world"
+    target_uri = (workspace / "main.cpp").as_uri()
     diagnostics_received = asyncio.Event()
 
     def on_diagnostics(params):
-        diagnostics_received.set()
+        if params.get("uri") == target_uri:
+            diagnostics_received.set()
 
     client.register_notification_handler(
         "textDocument/publishDiagnostics", on_diagnostics
@@ -51,12 +53,12 @@ async def test_hover_save_close(client: LSPClient, test_data_dir):
     # Wait for initial compilation to finish
     await asyncio.wait_for(diagnostics_received.wait(), timeout=15.0)
 
+    diagnostics_received.clear()
     content = client.get_file("main.cpp").content + "\nint saved = 1;\n"
     await client.did_change("main.cpp", content)
     await client.did_save("main.cpp", include_text=True)
 
     # Wait for recompilation after change
-    diagnostics_received.clear()
     await asyncio.wait_for(diagnostics_received.wait(), timeout=15.0)
 
     hover = await client.hover("main.cpp", 2, 4)  # hover on 'main'
