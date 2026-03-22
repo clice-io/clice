@@ -1,9 +1,9 @@
 #include "server/worker_pool.h"
 
-#include "spdlog/spdlog.h"
-
 #include <csignal>
 #include <string>
+
+#include "spdlog/spdlog.h"
 
 namespace clice {
 
@@ -20,7 +20,8 @@ et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
             break;
         }
         auto& chunk = result.value();
-        if(chunk.empty()) break;
+        if(chunk.empty())
+            break;
 
         buffer += chunk;
 
@@ -28,7 +29,8 @@ et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
         std::size_t pos = 0;
         while(true) {
             auto nl = buffer.find('\n', pos);
-            if(nl == std::string::npos) break;
+            if(nl == std::string::npos)
+                break;
             auto line = buffer.substr(pos, nl - pos);
             if(!line.empty()) {
                 spdlog::info("{} {}", prefix, line);
@@ -46,20 +48,24 @@ et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
 
 }  // namespace
 
-bool WorkerPool::spawn_worker(const std::string& self_path, bool stateful,
-                               std::uint64_t memory_limit) {
+bool WorkerPool::spawn_worker(const std::string& self_path,
+                              bool stateful,
+                              std::uint64_t memory_limit) {
     et::process::options opts;
     opts.file = self_path;
     if(stateful) {
-        opts.args = {self_path, "--mode=stateful-worker",
-                     "--worker-memory-limit=" + std::to_string(memory_limit)};
+        opts.args = {self_path,
+                     "--mode",
+                     "stateful-worker",
+                     "--worker-memory-limit",
+                     std::to_string(memory_limit)};
     } else {
-        opts.args = {self_path, "--mode=stateless-worker"};
+        opts.args = {self_path, "--mode", "stateless-worker"};
     }
     opts.streams = {
-        et::process::stdio::pipe(true, false),   // stdin: child reads
-        et::process::stdio::pipe(false, true),    // stdout: child writes
-        et::process::stdio::pipe(false, true),    // stderr: child writes
+        et::process::stdio::pipe(true, false),  // stdin: child reads
+        et::process::stdio::pipe(false, true),  // stdout: child writes
+        et::process::stdio::pipe(false, true),  // stderr: child writes
     };
 
     auto result = et::process::spawn(opts, loop);
@@ -72,19 +78,18 @@ bool WorkerPool::spawn_worker(const std::string& self_path, bool stateful,
 
     auto& spawn = *result;
 
-    // StreamTransport: input = child's stdout (parent reads), output = child's stdin (parent writes)
-    auto transport = std::make_unique<et::ipc::StreamTransport>(
-        std::move(spawn.stdout_pipe),
-        std::move(spawn.stdin_pipe)
-    );
+    // StreamTransport: input = child's stdout (parent reads), output = child's stdin (parent
+    // writes)
+    auto transport = std::make_unique<et::ipc::StreamTransport>(std::move(spawn.stdout_pipe),
+                                                                std::move(spawn.stdin_pipe));
     auto peer = std::make_unique<et::ipc::BincodePeer>(loop, std::move(transport));
 
     auto& workers = stateful ? stateful_workers : stateless_workers;
     auto worker_index = workers.size();
 
     // Build log prefix: [SF-0] for stateful, [SL-0] for stateless
-    std::string prefix = std::string("[") + (stateful ? "SF-" : "SL-")
-                         + std::to_string(worker_index) + "]";
+    std::string prefix =
+        std::string("[") + (stateful ? "SF-" : "SL-") + std::to_string(worker_index) + "]";
 
     // Schedule stderr log collection
     loop.schedule(drain_stderr(std::move(spawn.stderr_pipe), prefix));
@@ -117,16 +122,16 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
 
     // Register evicted notification handler for each stateful worker
     for(std::size_t i = 0; i < stateful_workers.size(); ++i) {
-        stateful_workers[i].peer->on_notification(
-            [this](const worker::EvictedParams& params) {
-                if(on_evicted) {
-                    on_evicted(params.uri);
-                }
-            });
+        stateful_workers[i].peer->on_notification([this](const worker::EvictedParams& params) {
+            if(on_evicted) {
+                on_evicted(params.uri);
+            }
+        });
     }
 
     spdlog::info("WorkerPool started: {} stateless, {} stateful workers",
-                 stateless_workers.size(), stateful_workers.size());
+                 stateless_workers.size(),
+                 stateful_workers.size());
     return true;
 }
 
@@ -134,26 +139,26 @@ et::task<> WorkerPool::stop() {
     spdlog::info("WorkerPool stopping...");
 
     // Close output pipes to signal workers to exit gracefully
-    for(auto& w : stateless_workers) {
+    for(auto& w: stateless_workers) {
         w.peer->close_output();
     }
-    for(auto& w : stateful_workers) {
+    for(auto& w: stateful_workers) {
         w.peer->close_output();
     }
 
     // Send SIGTERM to all workers
-    for(auto& w : stateless_workers) {
+    for(auto& w: stateless_workers) {
         w.proc.kill(SIGTERM);
     }
-    for(auto& w : stateful_workers) {
+    for(auto& w: stateful_workers) {
         w.proc.kill(SIGTERM);
     }
 
     // Wait for all worker processes to exit
-    for(auto& w : stateless_workers) {
+    for(auto& w: stateless_workers) {
         co_await w.proc.wait();
     }
-    for(auto& w : stateful_workers) {
+    for(auto& w: stateful_workers) {
         co_await w.proc.wait();
     }
 
@@ -194,7 +199,8 @@ std::size_t WorkerPool::pick_least_loaded() {
 
 void WorkerPool::remove_owner(std::uint32_t path_id) {
     auto it = owner.find(path_id);
-    if(it == owner.end()) return;
+    if(it == owner.end())
+        return;
 
     auto worker_idx = it->second;
     stateful_workers[worker_idx].owned_documents--;
@@ -209,12 +215,12 @@ void WorkerPool::remove_owner(std::uint32_t path_id) {
 
 void WorkerPool::clear_owner(std::size_t worker_index) {
     llvm::SmallVector<std::uint32_t> to_remove;
-    for(auto& [pid, widx] : owner) {
+    for(auto& [pid, widx]: owner) {
         if(widx == worker_index) {
             to_remove.push_back(pid);
         }
     }
-    for(auto pid : to_remove) {
+    for(auto pid: to_remove) {
         remove_owner(pid);
     }
 }

@@ -1,18 +1,4 @@
 #include "server/stateful_worker.h"
-#include "server/protocol.h"
-#include "compile/compilation.h"
-#include "feature/feature.h"
-
-#include "eventide/async/io/loop.h"
-#include "eventide/async/io/request.h"
-#include "eventide/async/runtime/sync.h"
-#include "eventide/ipc/peer.h"
-#include "eventide/ipc/transport.h"
-#include "eventide/serde/serde/raw_value.h"
-#include "eventide/serde/json/serializer.h"
-
-#include "llvm/ADT/StringMap.h"
-#include "spdlog/spdlog.h"
 
 #include <atomic>
 #include <cstdint>
@@ -20,6 +6,20 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "compile/compilation.h"
+#include "eventide/async/io/loop.h"
+#include "eventide/async/io/request.h"
+#include "eventide/async/runtime/sync.h"
+#include "eventide/ipc/peer.h"
+#include "eventide/ipc/transport.h"
+#include "eventide/serde/json/serializer.h"
+#include "eventide/serde/serde/raw_value.h"
+#include "feature/feature.h"
+#include "server/protocol.h"
+
+#include "spdlog/spdlog.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace clice {
 
@@ -85,70 +85,76 @@ class StatefulWorker {
     }
 
 public:
-    StatefulWorker(et::ipc::BincodePeer& peer, std::uint64_t memory_limit)
-        : peer(peer), memory_limit(memory_limit) {}
+    StatefulWorker(et::ipc::BincodePeer& peer, std::uint64_t memory_limit) :
+        peer(peer), memory_limit(memory_limit) {}
 
     void register_handlers();
 };
 
 void StatefulWorker::register_handlers() {
     // === Compile ===
-    peer.on_request([this](RequestContext& ctx, const worker::CompileParams& params)
-                        -> RequestResult<worker::CompileParams> {
-        auto& doc = get_or_create(params.uri);
-        doc.version = params.version;
-        doc.text = params.text;
-        doc.directory = params.directory;
-        doc.arguments = params.arguments;
-        doc.pch = params.pch;
-        doc.pcms.clear();
-        for(auto& [name, path] : params.pcms) {
-            doc.pcms.try_emplace(name, path);
-        }
-
-        touch_lru(params.uri);
-
-        co_await doc.strand.lock();
-
-        auto compile_result = co_await et::queue([&]() -> worker::CompileResult {
-            CompilationParams cp;
-            cp.kind = CompilationKind::Content;
-            cp.directory = doc.directory;
-            for(auto& arg : doc.arguments) {
-                cp.arguments.push_back(arg.c_str());
-            }
-            if(!doc.pch.first.empty()) {
-                cp.pch = doc.pch;
-            }
-            cp.add_remapped_file(params.uri, doc.text);
-            for(auto& entry : doc.pcms) {
-                cp.pcms.try_emplace(entry.getKey(), entry.getValue());
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
+            auto& doc = get_or_create(params.uri);
+            doc.version = params.version;
+            doc.text = params.text;
+            doc.directory = params.directory;
+            doc.arguments = params.arguments;
+            doc.pch = params.pch;
+            doc.pcms.clear();
+            for(auto& [name, path]: params.pcms) {
+                doc.pcms.try_emplace(name, path);
             }
 
-            doc.unit = compile(cp);
-            doc.has_ast = true;
-            doc.dirty.store(false, std::memory_order_release);
+            touch_lru(params.uri);
 
-            worker::CompileResult result;
-            result.uri = std::string(params.uri);
-            result.version = doc.version;
-            if(doc.unit.completed() || doc.unit.fatal_error()) {
-                result.diagnostics = feature::diagnostics(doc.unit);
-            }
-            result.memory_usage = 0;  // TODO: query actual memory
-            return result;
+            co_await doc.strand.lock();
+
+            auto compile_result = co_await et::queue([&]() -> worker::CompileResult {
+                CompilationParams cp;
+                cp.kind = CompilationKind::Content;
+                cp.directory = doc.directory;
+                for(auto& arg: doc.arguments) {
+                    cp.arguments.push_back(arg.c_str());
+                }
+                if(!doc.pch.first.empty()) {
+                    cp.pch = doc.pch;
+                }
+                cp.add_remapped_file(params.uri, doc.text);
+                for(auto& entry: doc.pcms) {
+                    cp.pcms.try_emplace(entry.getKey(), entry.getValue());
+                }
+
+                doc.unit = compile(cp);
+                doc.has_ast = true;
+                doc.dirty.store(false, std::memory_order_release);
+
+                worker::CompileResult result;
+                result.uri = std::string(params.uri);
+                result.version = doc.version;
+                if(doc.unit.completed() || doc.unit.fatal_error()) {
+                    auto diags = feature::diagnostics(doc.unit);
+                    auto json = et::serde::json::to_json(diags);
+                    result.diagnostics = et::serde::RawValue{json ? std::move(*json) : "[]"};
+                } else {
+                    result.diagnostics = et::serde::RawValue{"[]"};
+                }
+                result.memory_usage = 0;  // TODO: query actual memory
+                return result;
+            });
+
+            doc.strand.unlock();
+            shrink_if_over_limit();
+
+            co_return compile_result.value();
         });
-
-        doc.strand.unlock();
-        shrink_if_over_limit();
-
-        co_return compile_result.value();
-    });
 
     // === DocumentUpdate ===
     peer.on_notification([this](const worker::DocumentUpdateParams& params) {
         auto it = documents.find(params.uri);
-        if(it == documents.end()) return;
+        if(it == documents.end())
+            return;
 
         auto& doc = *it->second;
         doc.version = params.version;
@@ -167,49 +173,51 @@ void StatefulWorker::register_handlers() {
     });
 
     // === Hover ===
-    peer.on_request([this](RequestContext& ctx, const worker::HoverParams& params)
-                        -> RequestResult<worker::HoverParams> {
-        auto it = documents.find(params.uri);
-        if(it == documents.end()) {
-            co_return et::serde::RawValue{"null"};
-        }
-
-        auto& doc = *it->second;
-        touch_lru(params.uri);
-
-        co_await doc.strand.lock();
-
-        auto result = co_await et::queue([&]() -> et::serde::RawValue {
-            if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error())) {
-                return et::serde::RawValue{"null"};
-            }
-            if(doc.dirty.load(std::memory_order_acquire)) {
-                return et::serde::RawValue{"null"};
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const worker::HoverParams& params) -> RequestResult<worker::HoverParams> {
+            auto it = documents.find(params.uri);
+            if(it == documents.end()) {
+                co_return et::serde::RawValue{"null"};
             }
 
-            uint32_t offset = 0;
-            int line = 0;
-            for(size_t i = 0; i < doc.text.size(); i++) {
-                if(line == params.line) {
-                    offset = static_cast<uint32_t>(i) + params.character;
-                    break;
+            auto& doc = *it->second;
+            touch_lru(params.uri);
+
+            co_await doc.strand.lock();
+
+            auto result = co_await et::queue([&]() -> et::serde::RawValue {
+                if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error())) {
+                    return et::serde::RawValue{"null"};
                 }
-                if(doc.text[i] == '\n') line++;
-            }
-
-            auto hover_result = feature::hover(doc.unit, offset);
-            if(hover_result) {
-                auto json = et::serde::json::to_json(*hover_result);
-                if(json) {
-                    return et::serde::RawValue{std::move(*json)};
+                if(doc.dirty.load(std::memory_order_acquire)) {
+                    return et::serde::RawValue{"null"};
                 }
-            }
-            return et::serde::RawValue{"null"};
+
+                uint32_t offset = 0;
+                int line = 0;
+                for(size_t i = 0; i < doc.text.size(); i++) {
+                    if(line == params.line) {
+                        offset = static_cast<uint32_t>(i) + params.character;
+                        break;
+                    }
+                    if(doc.text[i] == '\n')
+                        line++;
+                }
+
+                auto hover_result = feature::hover(doc.unit, offset);
+                if(hover_result) {
+                    auto json = et::serde::json::to_json(*hover_result);
+                    if(json) {
+                        return et::serde::RawValue{std::move(*json)};
+                    }
+                }
+                return et::serde::RawValue{"null"};
+            });
+
+            doc.strand.unlock();
+            co_return result.value();
         });
-
-        doc.strand.unlock();
-        co_return result.value();
-    });
 
     // === SemanticTokens ===
     peer.on_request([this](RequestContext& ctx, const worker::SemanticTokensParams& params)
@@ -245,38 +253,39 @@ void StatefulWorker::register_handlers() {
     });
 
     // === InlayHints ===
-    peer.on_request([this](RequestContext& ctx, const worker::InlayHintsParams& params)
-                        -> RequestResult<worker::InlayHintsParams> {
-        auto it = documents.find(params.uri);
-        if(it == documents.end()) {
-            co_return et::serde::RawValue{"null"};
-        }
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const worker::InlayHintsParams& params) -> RequestResult<worker::InlayHintsParams> {
+            auto it = documents.find(params.uri);
+            if(it == documents.end()) {
+                co_return et::serde::RawValue{"null"};
+            }
 
-        auto& doc = *it->second;
-        touch_lru(params.uri);
+            auto& doc = *it->second;
+            touch_lru(params.uri);
 
-        co_await doc.strand.lock();
+            co_await doc.strand.lock();
 
-        auto result = co_await et::queue([&]() -> et::serde::RawValue {
-            if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error())) {
+            auto result = co_await et::queue([&]() -> et::serde::RawValue {
+                if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error())) {
+                    return et::serde::RawValue{"null"};
+                }
+                if(doc.dirty.load(std::memory_order_acquire)) {
+                    return et::serde::RawValue{"null"};
+                }
+
+                LocalSourceRange range{0, static_cast<uint32_t>(doc.text.size())};
+                auto hints = feature::inlay_hints(doc.unit, range);
+                auto json = et::serde::json::to_json(hints);
+                if(json) {
+                    return et::serde::RawValue{std::move(*json)};
+                }
                 return et::serde::RawValue{"null"};
-            }
-            if(doc.dirty.load(std::memory_order_acquire)) {
-                return et::serde::RawValue{"null"};
-            }
+            });
 
-            LocalSourceRange range{0, static_cast<uint32_t>(doc.text.size())};
-            auto hints = feature::inlay_hints(doc.unit, range);
-            auto json = et::serde::json::to_json(hints);
-            if(json) {
-                return et::serde::RawValue{std::move(*json)};
-            }
-            return et::serde::RawValue{"null"};
+            doc.strand.unlock();
+            co_return result.value();
         });
-
-        doc.strand.unlock();
-        co_return result.value();
-    });
 
     // === FoldingRange ===
     peer.on_request([this](RequestContext& ctx, const worker::FoldingRangeParams& params)
@@ -378,11 +387,12 @@ void StatefulWorker::register_handlers() {
     });
 
     // === CodeAction ===
-    peer.on_request([this](RequestContext& ctx, const worker::CodeActionParams& params)
-                        -> RequestResult<worker::CodeActionParams> {
-        // TODO: Implement code actions
-        co_return et::serde::RawValue{"[]"};
-    });
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const worker::CodeActionParams& params) -> RequestResult<worker::CodeActionParams> {
+            // TODO: Implement code actions
+            co_return et::serde::RawValue{"[]"};
+        });
 
     // === GoToDefinition ===
     peer.on_request([this](RequestContext& ctx, const worker::GoToDefinitionParams& params)

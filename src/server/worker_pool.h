@@ -1,25 +1,24 @@
 #pragma once
 
-#include "server/protocol.h"
-
-#include "eventide/async/io/loop.h"
-#include "eventide/async/io/process.h"
-#include "eventide/ipc/peer.h"
-#include "eventide/ipc/transport.h"
-
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallVector.h"
-
 #include <chrono>
 #include <cstdint>
 #include <functional>
 #include <list>
 #include <memory>
 
+#include "eventide/async/io/loop.h"
+#include "eventide/async/io/process.h"
+#include "eventide/ipc/peer.h"
+#include "eventide/ipc/transport.h"
+#include "server/protocol.h"
+
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+
 namespace clice {
 
 /// Default timeout for IPC requests to worker processes.
-inline constexpr auto kWorkerRequestTimeout = std::chrono::milliseconds(30000);
+constexpr inline auto kWorkerRequestTimeout = std::chrono::milliseconds(30000);
 
 namespace et = eventide;
 using et::ipc::RequestResult;
@@ -43,13 +42,13 @@ public:
 
     /// Send a request to a stateful worker with path_id affinity routing.
     template <typename Params>
-    RequestResult<Params> send_stateful(std::uint32_t path_id, const Params& params,
+    RequestResult<Params> send_stateful(std::uint32_t path_id,
+                                        const Params& params,
                                         et::ipc::request_options opts = {});
 
     /// Send a request to a stateless worker with round-robin dispatch.
     template <typename Params>
-    RequestResult<Params> send_stateless(const Params& params,
-                                         et::ipc::request_options opts = {});
+    RequestResult<Params> send_stateless(const Params& params, et::ipc::request_options opts = {});
 
     /// Send a notification to the stateful worker owning path_id (if any).
     template <typename Params>
@@ -85,15 +84,15 @@ private:
     void clear_owner(std::size_t worker_index);
     std::size_t pick_least_loaded();
 
-    bool spawn_worker(const std::string& self_path, bool stateful,
-                      std::uint64_t memory_limit);
+    bool spawn_worker(const std::string& self_path, bool stateful, std::uint64_t memory_limit);
 };
 
 // --- Template implementations ---------------------------------------------------
 
 template <typename Params>
-RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id, const Params& params,
-                                                 et::ipc::request_options opts) {
+RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
+                                                const Params& params,
+                                                et::ipc::request_options opts) {
     if(!opts.timeout.has_value()) {
         opts.timeout = kWorkerRequestTimeout;
     }
@@ -103,7 +102,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id, const Par
 
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
-                                                  et::ipc::request_options opts) {
+                                                 et::ipc::request_options opts) {
     if(!opts.timeout.has_value()) {
         opts.timeout = kWorkerRequestTimeout;
     }
@@ -115,7 +114,8 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
 template <typename Params>
 void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
     auto it = owner.find(path_id);
-    if(it == owner.end()) return;
+    if(it == owner.end())
+        return;
     stateful_workers[it->second].peer->send_notification(params);
 }
 

@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import pytest
@@ -62,7 +63,23 @@ def executable(request) -> Path | None:
 @pytest.fixture(scope="session")
 def test_data_dir(request):
     path = os.path.join(os.path.dirname(__file__), "data")
-    return Path(path).resolve()
+    data_dir = Path(path).resolve()
+
+    # Generate compile_commands.json for hello_world so the server actually compiles
+    hw_dir = data_dir / "hello_world"
+    main_cpp = hw_dir / "main.cpp"
+    cdb_path = hw_dir / "compile_commands.json"
+    if main_cpp.exists() and not cdb_path.exists():
+        cdb = [
+            {
+                "directory": str(hw_dir),
+                "file": str(main_cpp),
+                "arguments": ["clang++", "-std=c++17", "-fsyntax-only", str(main_cpp)],
+            }
+        ]
+        cdb_path.write_text(json.dumps(cdb, indent=2))
+
+    return data_dir
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -72,7 +89,8 @@ async def client(request, executable: Path | None, test_data_dir: Path):
 
     cmd = [
         str(executable),
-        f"--mode={mode}",
+        "--mode",
+        mode,
     ]
 
     client = LSPClient(

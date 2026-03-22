@@ -1,11 +1,12 @@
 #include "server/config.h"
-#include "support/filesystem.h"
-
-#include "eventide/serde/toml.h"
-#include "spdlog/spdlog.h"
 
 #include <algorithm>
 #include <thread>
+
+#include "eventide/serde/toml.h"
+#include "support/filesystem.h"
+
+#include "spdlog/spdlog.h"
 
 namespace clice {
 
@@ -21,7 +22,8 @@ static void substitute_workspace(std::string& value, const std::string& workspac
 
 void CliceConfig::apply_defaults(const std::string& workspace_root) {
     auto cpu_count = std::thread::hardware_concurrency();
-    if(cpu_count == 0) cpu_count = 4;
+    if(cpu_count == 0)
+        cpu_count = 4;
 
     if(stateful_worker_count == 0) {
         stateful_worker_count = std::max(1u, cpu_count / 4);
@@ -42,7 +44,7 @@ void CliceConfig::apply_defaults(const std::string& workspace_root) {
 }
 
 std::optional<CliceConfig> CliceConfig::load(const std::string& path,
-                                              const std::string& workspace_root) {
+                                             const std::string& workspace_root) {
     auto content = fs::read(path);
     if(!content) {
         return std::nullopt;
@@ -64,11 +66,12 @@ std::optional<CliceConfig> CliceConfig::load(const std::string& path,
 CliceConfig CliceConfig::load_from_workspace(const std::string& workspace_root) {
     if(!workspace_root.empty()) {
         // Try standard config file locations
-        for(auto* name : {"clice.toml", ".clice/config.toml"}) {
+        for(auto* name: {"clice.toml", ".clice/config.toml"}) {
             auto config_path = path::join(workspace_root, name);
             if(llvm::sys::fs::exists(config_path)) {
                 auto config = load(config_path, workspace_root);
-                if(config) return std::move(*config);
+                if(config)
+                    return std::move(*config);
             }
         }
     }
@@ -76,10 +79,11 @@ CliceConfig CliceConfig::load_from_workspace(const std::string& workspace_root) 
     // No config file found; use defaults
     CliceConfig config;
     config.apply_defaults(workspace_root);
-    spdlog::info("No clice.toml found, using default configuration "
-                 "(stateful={}, stateless={}, memory_limit={}MB)",
-                 config.stateful_worker_count, config.stateless_worker_count,
-                 config.worker_memory_limit / (1024 * 1024));
+    spdlog::info(
+        "No clice.toml found, using default configuration " "(stateful={}, stateless={}, memory_limit={}MB)",
+        config.stateful_worker_count,
+        config.stateless_worker_count,
+        config.worker_memory_limit / (1024 * 1024));
     return config;
 }
 

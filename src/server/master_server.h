@@ -1,16 +1,21 @@
 #pragma once
 
-#include "compile/command.h"
-#include "syntax/scan.h"
-#include "server/compile_graph.h"
-#include "server/config.h"
-#include "server/worker_pool.h"
+#include <cstdint>
+#include <deque>
+#include <memory>
+#include <string>
 
+#include "compile/command.h"
 #include "eventide/async/io/loop.h"
 #include "eventide/async/io/watcher.h"
 #include "eventide/async/runtime/sync.h"
-#include "eventide/ipc/peer.h"
 #include "eventide/ipc/lsp/protocol.h"
+#include "eventide/ipc/peer.h"
+#include "eventide/serde/serde/raw_value.h"
+#include "server/compile_graph.h"
+#include "server/config.h"
+#include "server/worker_pool.h"
+#include "syntax/scan.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -19,15 +24,9 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
 
-#include <cstdint>
-#include <deque>
-#include <memory>
-#include <string>
-
 namespace clice {
 
 namespace et = eventide;
-namespace protocol = eventide::ipc::protocol;
 
 /// Global path interning pool. Maps file paths to uint32_t IDs.
 struct ServerPathPool {
@@ -68,7 +67,7 @@ enum class ServerLifecycle : std::uint8_t {
 
 class MasterServer {
 public:
-    MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer);
+    MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path);
 
     void register_handlers();
 
@@ -80,6 +79,7 @@ private:
     ServerPathPool path_pool;
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
 
+    std::string self_path;
     std::string workspace_root;
     CliceConfig config;
 
@@ -119,8 +119,9 @@ private:
     std::string uri_to_path(const std::string& uri);
 
     // Publish diagnostics to client
-    void publish_diagnostics(const std::string& uri, int version,
-                             std::vector<protocol::Diagnostic> diagnostics);
+    void publish_diagnostics(const std::string& uri,
+                             int version,
+                             const eventide::serde::RawValue& diagnostics_json);
     void clear_diagnostics(const std::string& uri);
 
     // Schedule a build after debounce
@@ -139,7 +140,8 @@ private:
     void scan_file(std::uint32_t path_id, llvm::StringRef path);
 
     // Helper: fill compile arguments from CDB into worker params
-    void fill_compile_args(llvm::StringRef path, std::string& directory,
+    void fill_compile_args(llvm::StringRef path,
+                           std::string& directory,
                            std::vector<std::string>& arguments);
 
     // === Index system ===

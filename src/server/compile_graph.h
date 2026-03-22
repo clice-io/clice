@@ -1,18 +1,17 @@
 #pragma once
 
-#include "server/worker_pool.h"
+#include <cstdint>
+#include <memory>
 
 #include "eventide/async/io/loop.h"
 #include "eventide/async/runtime/sync.h"
 #include "eventide/async/runtime/task.h"
 #include "eventide/async/vocab/cancellation.h"
+#include "server/worker_pool.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
-
-#include <cstdint>
-#include <memory>
 
 namespace clice {
 
@@ -26,8 +25,7 @@ struct CompileUnit {
     bool dirty = true;
     bool compiling = false;
 
-    std::unique_ptr<et::cancellation_source> source =
-        std::make_unique<et::cancellation_source>();
+    std::unique_ptr<et::cancellation_source> source = std::make_unique<et::cancellation_source>();
 
     std::unique_ptr<et::event> completion;
 };
@@ -37,8 +35,7 @@ public:
     explicit CompileGraph(WorkerPool& pool) : pool(pool) {}
 
     /// Register a compile unit with its dependencies.
-    void register_unit(std::uint32_t path_id,
-                       llvm::ArrayRef<std::uint32_t> deps);
+    void register_unit(std::uint32_t path_id, llvm::ArrayRef<std::uint32_t> deps);
 
     /// Cascade invalidation: mark dirty and cancel ongoing compilations.
     void update(std::uint32_t path_id);

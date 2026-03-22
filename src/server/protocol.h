@@ -7,8 +7,8 @@
 #include <utility>
 #include <vector>
 
-#include "eventide/ipc/protocol.h"
 #include "eventide/ipc/lsp/protocol.h"
+#include "eventide/ipc/protocol.h"
 #include "eventide/serde/serde/raw_value.h"
 
 namespace clice::worker {
@@ -30,7 +30,8 @@ struct CompileParams {
 struct CompileResult {
     std::string uri;
     int version;
-    std::vector<protocol::Diagnostic> diagnostics;
+    /// Diagnostics serialized as JSON (RawValue) to avoid bincode/serde annotation conflicts.
+    eventide::serde::RawValue diagnostics;
     std::size_t memory_usage;
 };
 
@@ -64,7 +65,6 @@ struct DocumentLinkParams {
 struct CodeActionParams {
     std::string uri;
     protocol::Range range;
-    protocol::CodeActionContext context;
 };
 
 struct GoToDefinitionParams {

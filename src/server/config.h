@@ -33,7 +33,7 @@ struct CliceConfig {
     /// Performs ${workspace} variable substitution in string fields.
     /// Returns std::nullopt if the file does not exist or cannot be parsed.
     static std::optional<CliceConfig> load(const std::string& path,
-                                            const std::string& workspace_root);
+                                           const std::string& workspace_root);
 
     /// Load config from the workspace, trying standard locations.
     /// Returns a default config (with apply_defaults) if no file is found.

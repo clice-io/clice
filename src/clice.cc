@@ -3,15 +3,16 @@
 #include <print>
 #include <string>
 
-#include "server/master_server.h"
-#include "server/stateless_worker.h"
-#include "server/stateful_worker.h"
-
 #include "eventide/async/io/loop.h"
 #include "eventide/deco/macro.h"
 #include "eventide/deco/runtime.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/transport.h"
+#include "server/master_server.h"
+#include "server/stateful_worker.h"
+#include "server/stateless_worker.h"
+
+#include "llvm/Support/FileSystem.h"
 
 namespace clice {
 
@@ -96,8 +97,10 @@ int main(int argc, const char** argv) {
             return 1;
         }
 
+        std::string self_path = llvm::sys::fs::getMainExecutable(argv[0], (void*)main);
+
         et::ipc::JsonPeer peer(loop, std::move(*transport));
-        clice::MasterServer server(loop, peer);
+        clice::MasterServer server(loop, peer, std::move(self_path));
         server.register_handlers();
 
         loop.schedule(peer.run());

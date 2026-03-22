@@ -16,15 +16,19 @@ class LSPClient(LSPTransport):
 
     async def initialize(self, workspace: str):
         self.workspace = workspace
+        workspace_uri = Path(workspace).as_uri()
         params = {
             "clientInfo": {
                 "name": "clice tester",
                 "version": "0.0.1",
             },
             "capabilities": {},
-            "workspaceFolders": [{"uri": Path(workspace).as_uri(), "name": "test"}],
+            "rootUri": workspace_uri,
+            "workspaceFolders": [{"uri": workspace_uri, "name": "test"}],
         }
-        return await self.send_request("initialize", params)
+        result = await self.send_request("initialize", params)
+        await self.send_notification("initialized")
+        return result
 
     async def exit(self):
         try:

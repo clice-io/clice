@@ -1,10 +1,4 @@
 #include "server/master_server.h"
-#include "server/protocol.h"
-#include "support/filesystem.h"
-
-#include "eventide/serde/serde/raw_value.h"
-
-#include "spdlog/spdlog.h"
 
 #include <cstddef>
 #include <string>
@@ -12,23 +6,45 @@
 #include <variant>
 #include <vector>
 
+#include "eventide/ipc/lsp/uri.h"
+#include "eventide/serde/json/json.h"
+#include "eventide/serde/serde/raw_value.h"
+#include "server/protocol.h"
+#include "support/filesystem.h"
+
+#include "spdlog/spdlog.h"
+
 namespace clice {
 
+namespace protocol = eventide::ipc::protocol;
 using et::ipc::RequestResult;
 using RequestContext = et::ipc::JsonPeer::RequestContext;
 
-MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer)
-    : loop(loop), peer(peer), pool(loop), compile_graph(pool) {}
+MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path) :
+    loop(loop), peer(peer), pool(loop), compile_graph(pool), self_path(std::move(self_path)) {}
 
 std::string MasterServer::uri_to_path(const std::string& uri) {
-    if(uri.starts_with("file://")) {
-        return uri.substr(7);
+    namespace lsp = eventide::ipc::lsp;
+    auto parsed = lsp::URI::parse(uri);
+    if(parsed.has_value()) {
+        auto path = parsed->file_path();
+        if(path.has_value()) {
+            return std::move(*path);
+        }
     }
     return uri;
 }
 
-void MasterServer::publish_diagnostics(const std::string& uri, int version,
-                                        std::vector<protocol::Diagnostic> diagnostics) {
+void MasterServer::publish_diagnostics(const std::string& uri,
+                                       int version,
+                                       const et::serde::RawValue& diagnostics_json) {
+    std::vector<protocol::Diagnostic> diagnostics;
+    if(!diagnostics_json.empty()) {
+        auto status = et::serde::json::from_json(diagnostics_json.data, diagnostics);
+        if(!status) {
+            spdlog::warn("Failed to deserialize diagnostics JSON for {}", uri);
+        }
+    }
     protocol::PublishDiagnosticsParams params;
     params.uri = uri;
     params.version = version;
@@ -45,7 +61,8 @@ void MasterServer::clear_diagnostics(const std::string& uri) {
 
 void MasterServer::schedule_build(std::uint32_t path_id, const std::string& uri) {
     auto it = documents.find(path_id);
-    if(it == documents.end()) return;
+    if(it == documents.end())
+        return;
 
     auto& doc = it->second;
 
@@ -76,7 +93,8 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
 
     while(true) {
         auto doc_it = documents.find(path_id);
-        if(doc_it == documents.end()) co_return;
+        if(doc_it == documents.end())
+            co_return;
 
         auto& doc = doc_it->second;
         doc.build_running = true;
@@ -89,7 +107,8 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
             spdlog::warn("Dependency compilation failed for {}, skipping build", uri);
             clear_diagnostics(uri);
             doc_it = documents.find(path_id);
-            if(doc_it == documents.end()) co_return;
+            if(doc_it == documents.end())
+                co_return;
             auto& doc_after_deps = doc_it->second;
             if(!doc_after_deps.build_requested) {
                 doc_after_deps.build_running = false;
@@ -110,15 +129,15 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
 
         // Re-lookup document (may have been closed during compile)
         doc_it = documents.find(path_id);
-        if(doc_it == documents.end()) co_return;
+        if(doc_it == documents.end())
+            co_return;
 
         auto& doc2 = doc_it->second;
 
         if(result.has_value()) {
             // Only publish diagnostics if the generation hasn't changed
             if(doc2.generation == gen) {
-                publish_diagnostics(uri, doc2.version,
-                                    std::move(result.value().diagnostics));
+                publish_diagnostics(uri, doc2.version, result.value().diagnostics);
             }
         } else {
             spdlog::warn("Compile failed for {}: {}", uri, result.error().message);
@@ -137,14 +156,14 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
 }
 
 et::task<> MasterServer::load_workspace() {
-    if(workspace_root.empty()) co_return;
+    if(workspace_root.empty())
+        co_return;
 
     // Create cache directory if configured
     if(!config.cache_dir.empty()) {
         auto ec = llvm::sys::fs::create_directories(config.cache_dir);
         if(ec) {
-            spdlog::warn("Failed to create cache directory {}: {}",
-                         config.cache_dir, ec.message());
+            spdlog::warn("Failed to create cache directory {}: {}", config.cache_dir, ec.message());
         } else {
             spdlog::info("Cache directory: {}", config.cache_dir);
         }
@@ -165,7 +184,7 @@ et::task<> MasterServer::load_workspace() {
 
     // Otherwise auto-detect in common locations
     if(cdb_path.empty()) {
-        for(auto* subdir : {"build", "cmake-build-debug", "cmake-build-release", "out", "."}) {
+        for(auto* subdir: {"build", "cmake-build-debug", "cmake-build-release", "out", "."}) {
             auto candidate = path::join(workspace_root, subdir, "compile_commands.json");
             if(llvm::sys::fs::exists(candidate)) {
                 cdb_path = std::move(candidate);
@@ -184,7 +203,7 @@ et::task<> MasterServer::load_workspace() {
 
     // Scan all source files from CDB to build include graph
     auto all_files = cdb.files();
-    for(auto* file : all_files) {
+    for(auto* file: all_files) {
         auto path_id = path_pool.intern(file);
         scan_file(path_id, file);
     }
@@ -198,16 +217,19 @@ et::task<> MasterServer::load_workspace() {
 
 void MasterServer::scan_file(std::uint32_t path_id, llvm::StringRef path) {
     auto ctx = cdb.lookup(path);
-    if(ctx.arguments.empty()) return;
+    if(ctx.arguments.empty())
+        return;
 
-    auto results = scan_fuzzy(ctx.arguments, ctx.directory,
+    auto results = scan_fuzzy(ctx.arguments,
+                              ctx.directory,
                               /*arguments_from_database=*/true,
-                              /*content=*/{}, &scan_cache);
+                              /*content=*/{},
+                              &scan_cache);
 
     // Clear old forward edges for this file
     auto old_it = include_forward.find(path_id);
     if(old_it != include_forward.end()) {
-        for(auto dep_id : old_it->second) {
+        for(auto dep_id: old_it->second) {
             auto back_it = include_backward.find(dep_id);
             if(back_it != include_backward.end()) {
                 back_it->second.erase(path_id);
@@ -217,9 +239,10 @@ void MasterServer::scan_file(std::uint32_t path_id, llvm::StringRef path) {
     }
 
     // Build new forward/backward edges from scan results
-    for(auto& [included_path, scan_result] : results) {
-        for(auto& inc : scan_result.includes) {
-            if(inc.not_found) continue;
+    for(auto& [included_path, scan_result]: results) {
+        for(auto& inc: scan_result.includes) {
+            if(inc.not_found)
+                continue;
             auto included_id = path_pool.intern(inc.path);
             include_forward[path_id].insert(included_id);
             include_backward[included_id].insert(path_id);
@@ -227,12 +250,13 @@ void MasterServer::scan_file(std::uint32_t path_id, llvm::StringRef path) {
     }
 }
 
-void MasterServer::fill_compile_args(llvm::StringRef path, std::string& directory,
-                                      std::vector<std::string>& arguments) {
+void MasterServer::fill_compile_args(llvm::StringRef path,
+                                     std::string& directory,
+                                     std::vector<std::string>& arguments) {
     auto ctx = cdb.lookup(path);
     directory = ctx.directory.str();
     arguments.clear();
-    for(auto* arg : ctx.arguments) {
+    for(auto* arg: ctx.arguments) {
         arguments.emplace_back(arg);
     }
 }
@@ -248,7 +272,7 @@ void MasterServer::reset_idle_timer() {
 void MasterServer::populate_index_queue() {
     auto all_files = cdb.files();
     index_queue.clear();
-    for(auto* file : all_files) {
+    for(auto* file: all_files) {
         auto path_id = path_pool.intern(file);
         index_queue.push_back(path_id);
     }
@@ -261,8 +285,7 @@ void MasterServer::populate_index_queue() {
 }
 
 et::task<> MasterServer::run_background_indexer() {
-    while(lifecycle != ServerLifecycle::ShuttingDown &&
-          lifecycle != ServerLifecycle::Exited) {
+    while(lifecycle != ServerLifecycle::ShuttingDown && lifecycle != ServerLifecycle::Exited) {
         // Wait until there is work in the index queue
         if(index_queue.empty()) {
             index_event.reset();
@@ -277,14 +300,14 @@ et::task<> MasterServer::run_background_indexer() {
         }
         co_await idle_timer->wait();
 
-        if(index_queue.empty()) continue;
+        if(index_queue.empty())
+            continue;
 
         indexing_active = true;
         spdlog::info("Background indexing started, {} files queued", index_queue.size());
 
         // Process files from the queue while idle
-        while(!index_queue.empty() &&
-              lifecycle != ServerLifecycle::ShuttingDown) {
+        while(!index_queue.empty() && lifecycle != ServerLifecycle::ShuttingDown) {
             auto path_id = index_queue.front();
             index_queue.pop_front();
 
@@ -294,8 +317,7 @@ et::task<> MasterServer::run_background_indexer() {
             // Ensure dependencies are compiled first
             auto deps_ok = co_await compile_graph.compile_deps(path_id, loop);
             if(!deps_ok) {
-                spdlog::warn("Index skipped for {} (dependency compilation failed)",
-                             path.str());
+                spdlog::warn("Index skipped for {} (dependency compilation failed)", path.str());
                 continue;
             }
 
@@ -312,8 +334,7 @@ et::task<> MasterServer::run_background_indexer() {
                 auto& idx_result = result.value();
                 if(idx_result.success) {
                     index_progress++;
-                    spdlog::debug("Indexed {}/{}: {}",
-                                  index_progress, index_total, path.str());
+                    spdlog::debug("Indexed {}/{}: {}", index_progress, index_total, path.str());
 
                     // TODO (Phase 9.2): Deserialize tu_index_data (FlatBuffers)
                     //   into TUIndex, perform path mapping, and merge into
@@ -327,22 +348,23 @@ et::task<> MasterServer::run_background_indexer() {
                     spdlog::warn("Index failed for {}: {}", path.str(), idx_result.error);
                 }
             } else {
-                spdlog::warn("Index request failed for {}: {}",
-                             path.str(), result.error().message);
+                spdlog::warn("Index request failed for {}: {}", path.str(), result.error().message);
             }
         }
 
         indexing_active = false;
         if(index_queue.empty()) {
             spdlog::info("Background indexing complete: {}/{} files indexed",
-                         index_progress, index_total);
+                         index_progress,
+                         index_total);
         }
     }
 }
 
 et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id, const std::string& uri) {
     auto doc_it = documents.find(path_id);
-    if(doc_it == documents.end()) co_return false;
+    if(doc_it == documents.end())
+        co_return false;
 
     // If the document has never been compiled, schedule a build and wait
     // For now, just return true - the worker may already have an AST
@@ -392,7 +414,8 @@ void MasterServer::register_handlers() {
         // Semantic tokens
         protocol::SemanticTokensOptions sem_opts;
         sem_opts.legend = protocol::SemanticTokensLegend{{}, {}};
-        sem_opts.full = protocol::variant<protocol::boolean, protocol::SemanticTokensFullDelta>{true};
+        sem_opts.full =
+            protocol::variant<protocol::boolean, protocol::SemanticTokensFullDelta>{true};
         result.capabilities.semantic_tokens_provider = std::move(sem_opts);
 
         // Server info
@@ -412,8 +435,19 @@ void MasterServer::register_handlers() {
         config = CliceConfig::load_from_workspace(workspace_root);
 
         spdlog::info("Server ready (stateful={}, stateless={}, debounce={}ms, idle={}ms)",
-                     config.stateful_worker_count, config.stateless_worker_count,
-                     config.debounce_ms, config.idle_timeout_ms);
+                     config.stateful_worker_count,
+                     config.stateless_worker_count,
+                     config.debounce_ms,
+                     config.idle_timeout_ms);
+
+        // Start worker pool
+        WorkerPoolOptions pool_opts;
+        pool_opts.self_path = self_path;
+        pool_opts.stateful_count = config.stateful_worker_count;
+        pool_opts.stateless_count = config.stateless_worker_count;
+        if(!pool.start(pool_opts)) {
+            spdlog::error("Failed to start worker pool");
+        }
 
         // Load CDB and build include graph in background
         loop.schedule(load_workspace());
@@ -425,12 +459,13 @@ void MasterServer::register_handlers() {
     });
 
     // === shutdown ===
-    peer.on_request([this](RequestContext& ctx, const protocol::ShutdownParams& params)
-                        -> RequestResult<protocol::ShutdownParams> {
-        lifecycle = ServerLifecycle::ShuttingDown;
-        spdlog::info("Shutdown requested");
-        co_return nullptr;
-    });
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const protocol::ShutdownParams& params) -> RequestResult<protocol::ShutdownParams> {
+            lifecycle = ServerLifecycle::ShuttingDown;
+            spdlog::info("Shutdown requested");
+            co_return nullptr;
+        });
 
     // === exit ===
     peer.on_notification([this](const protocol::ExitParams& params) {
@@ -447,7 +482,8 @@ void MasterServer::register_handlers() {
 
     // === textDocument/didOpen ===
     peer.on_notification([this](const protocol::DidOpenTextDocumentParams& params) {
-        if(lifecycle != ServerLifecycle::Ready) return;
+        if(lifecycle != ServerLifecycle::Ready)
+            return;
 
         auto& td = params.text_document;
         auto path = uri_to_path(td.uri);
@@ -470,7 +506,7 @@ void MasterServer::register_handlers() {
         llvm::SmallVector<std::uint32_t> deps;
         auto fwd_it = include_forward.find(path_id);
         if(fwd_it != include_forward.end()) {
-            for(auto dep_id : fwd_it->second) {
+            for(auto dep_id: fwd_it->second) {
                 deps.push_back(dep_id);
             }
         }
@@ -481,47 +517,53 @@ void MasterServer::register_handlers() {
 
     // === textDocument/didChange ===
     peer.on_notification([this](const protocol::DidChangeTextDocumentParams& params) {
-        if(lifecycle != ServerLifecycle::Ready) return;
+        if(lifecycle != ServerLifecycle::Ready)
+            return;
 
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = path_pool.intern(path);
 
         auto it = documents.find(path_id);
-        if(it == documents.end()) return;
+        if(it == documents.end())
+            return;
 
         auto& doc = it->second;
         doc.version = params.text_document.version;
 
         // Apply incremental changes
-        for(auto& change : params.content_changes) {
-            std::visit([&](auto& c) {
-                using T = std::remove_cvref_t<decltype(c)>;
-                if constexpr(std::is_same_v<T, protocol::TextDocumentContentChangeWholeDocument>) {
-                    doc.text = c.text;
-                } else {
-                    // Incremental change: replace range
-                    auto& range = c.range;
+        for(auto& change: params.content_changes) {
+            std::visit(
+                [&](auto& c) {
+                    using T = std::remove_cvref_t<decltype(c)>;
+                    if constexpr(std::is_same_v<T,
+                                                protocol::TextDocumentContentChangeWholeDocument>) {
+                        doc.text = c.text;
+                    } else {
+                        // Incremental change: replace range
+                        auto& range = c.range;
 
-                    // Convert Position (line/character) to byte offset
-                    auto pos_to_offset = [&](protocol::Position pos) -> std::size_t {
-                        std::size_t offset = 0;
-                        int line = 0;
-                        for(std::size_t i = 0; i < doc.text.size(); i++) {
-                            if(line == static_cast<int>(pos.line)) {
-                                return i + pos.character;
+                        // Convert Position (line/character) to byte offset
+                        auto pos_to_offset = [&](protocol::Position pos) -> std::size_t {
+                            std::size_t offset = 0;
+                            int line = 0;
+                            for(std::size_t i = 0; i < doc.text.size(); i++) {
+                                if(line == static_cast<int>(pos.line)) {
+                                    return i + pos.character;
+                                }
+                                if(doc.text[i] == '\n')
+                                    line++;
                             }
-                            if(doc.text[i] == '\n') line++;
-                        }
-                        return doc.text.size();
-                    };
+                            return doc.text.size();
+                        };
 
-                    auto start = pos_to_offset(range.start);
-                    auto end = pos_to_offset(range.end);
-                    if(start <= doc.text.size() && end <= doc.text.size() && start <= end) {
-                        doc.text.replace(start, end - start, c.text);
+                        auto start = pos_to_offset(range.start);
+                        auto end = pos_to_offset(range.end);
+                        if(start <= doc.text.size() && end <= doc.text.size() && start <= end) {
+                            doc.text.replace(start, end - start, c.text);
+                        }
                     }
-                }
-            }, change);
+                },
+                change);
         }
 
         doc.generation++;
@@ -538,7 +580,8 @@ void MasterServer::register_handlers() {
 
     // === textDocument/didClose ===
     peer.on_notification([this](const protocol::DidCloseTextDocumentParams& params) {
-        if(lifecycle != ServerLifecycle::Ready) return;
+        if(lifecycle != ServerLifecycle::Ready)
+            return;
 
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = path_pool.intern(path);
@@ -554,7 +597,8 @@ void MasterServer::register_handlers() {
 
     // === textDocument/didSave ===
     peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {
-        if(lifecycle != ServerLifecycle::Ready) return;
+        if(lifecycle != ServerLifecycle::Ready)
+            return;
 
         // TODO: Trigger dependent file rebuilds
         spdlog::debug("didSave: {}", params.text_document.uri);
@@ -573,17 +617,17 @@ void MasterServer::register_handlers() {
     using RawResult = et::task<serde_raw, et::ipc::Error>;
 
     // --- textDocument/hover ---
-    peer.on_request("textDocument/hover",
+    peer.on_request(
+        "textDocument/hover",
         [this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
 
-            auto path = uri_to_path(
-                params.text_document_position_params.text_document.uri);
+            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
             co_await ensure_compiled(path_id,
-                params.text_document_position_params.text_document.uri);
+                                     params.text_document_position_params.text_document.uri);
 
             worker::HoverParams wp;
             wp.uri = params.text_document_position_params.text_document.uri;
@@ -597,7 +641,8 @@ void MasterServer::register_handlers() {
         });
 
     // --- textDocument/semanticTokens/full ---
-    peer.on_request("textDocument/semanticTokens/full",
+    peer.on_request(
+        "textDocument/semanticTokens/full",
         [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
@@ -610,15 +655,15 @@ void MasterServer::register_handlers() {
             worker::SemanticTokensParams wp;
             wp.uri = params.text_document.uri;
 
-            auto result = co_await pool.send_stateful<worker::SemanticTokensParams>(
-                path_id, wp);
+            auto result = co_await pool.send_stateful<worker::SemanticTokensParams>(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
         });
 
     // --- textDocument/inlayHint ---
-    peer.on_request("textDocument/inlayHint",
+    peer.on_request(
+        "textDocument/inlayHint",
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
@@ -632,15 +677,15 @@ void MasterServer::register_handlers() {
             wp.uri = params.text_document.uri;
             wp.range = params.range;
 
-            auto result = co_await pool.send_stateful<worker::InlayHintsParams>(
-                path_id, wp);
+            auto result = co_await pool.send_stateful<worker::InlayHintsParams>(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
         });
 
     // --- textDocument/foldingRange ---
-    peer.on_request("textDocument/foldingRange",
+    peer.on_request(
+        "textDocument/foldingRange",
         [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
@@ -653,15 +698,15 @@ void MasterServer::register_handlers() {
             worker::FoldingRangeParams wp;
             wp.uri = params.text_document.uri;
 
-            auto result = co_await pool.send_stateful<worker::FoldingRangeParams>(
-                path_id, wp);
+            auto result = co_await pool.send_stateful<worker::FoldingRangeParams>(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
         });
 
     // --- textDocument/documentSymbol ---
-    peer.on_request("textDocument/documentSymbol",
+    peer.on_request(
+        "textDocument/documentSymbol",
         [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
@@ -674,15 +719,15 @@ void MasterServer::register_handlers() {
             worker::DocumentSymbolParams wp;
             wp.uri = params.text_document.uri;
 
-            auto result = co_await pool.send_stateful<worker::DocumentSymbolParams>(
-                path_id, wp);
+            auto result = co_await pool.send_stateful<worker::DocumentSymbolParams>(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
         });
 
     // --- textDocument/documentLink ---
-    peer.on_request("textDocument/documentLink",
+    peer.on_request(
+        "textDocument/documentLink",
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
@@ -695,15 +740,15 @@ void MasterServer::register_handlers() {
             worker::DocumentLinkParams wp;
             wp.uri = params.text_document.uri;
 
-            auto result = co_await pool.send_stateful<worker::DocumentLinkParams>(
-                path_id, wp);
+            auto result = co_await pool.send_stateful<worker::DocumentLinkParams>(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
         });
 
     // --- textDocument/codeAction ---
-    peer.on_request("textDocument/codeAction",
+    peer.on_request(
+        "textDocument/codeAction",
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
@@ -716,35 +761,32 @@ void MasterServer::register_handlers() {
             worker::CodeActionParams wp;
             wp.uri = params.text_document.uri;
             wp.range = params.range;
-            wp.context = params.context;
 
-            auto result = co_await pool.send_stateful<worker::CodeActionParams>(
-                path_id, wp);
+            auto result = co_await pool.send_stateful<worker::CodeActionParams>(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
         });
 
     // --- textDocument/definition ---
-    peer.on_request("textDocument/definition",
+    peer.on_request(
+        "textDocument/definition",
         [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
 
-            auto path = uri_to_path(
-                params.text_document_position_params.text_document.uri);
+            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
             co_await ensure_compiled(path_id,
-                params.text_document_position_params.text_document.uri);
+                                     params.text_document_position_params.text_document.uri);
 
             worker::GoToDefinitionParams wp;
             wp.uri = params.text_document_position_params.text_document.uri;
             wp.line = params.text_document_position_params.position.line;
             wp.character = params.text_document_position_params.position.character;
 
-            auto result = co_await pool.send_stateful<worker::GoToDefinitionParams>(
-                path_id, wp);
+            auto result = co_await pool.send_stateful<worker::GoToDefinitionParams>(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
@@ -755,7 +797,8 @@ void MasterServer::register_handlers() {
     // =========================================================================
 
     // --- textDocument/completion ---
-    peer.on_request("textDocument/completion",
+    peer.on_request(
+        "textDocument/completion",
         [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
@@ -785,7 +828,8 @@ void MasterServer::register_handlers() {
         });
 
     // --- textDocument/signatureHelp ---
-    peer.on_request("textDocument/signatureHelp",
+    peer.on_request(
+        "textDocument/signatureHelp",
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
