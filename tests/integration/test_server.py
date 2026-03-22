@@ -249,7 +249,7 @@ async def test_definition_request(client, test_data_dir):
     uri, _ = await _open_and_wait(client, test_data_dir)
     result = await client.text_document_definition_async(
         DefinitionParams(
-            text_document=_doc(uri), position=Position(line=2, character=4)
+            text_document=_doc(uri), position=Position(line=0, character=4)
         )
     )
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
@@ -379,16 +379,16 @@ async def test_all_features_after_compile_wait(client, test_data_dir):
     await _initialize(client, test_data_dir)
     uri, _ = await _open_and_wait(client, test_data_dir)
 
-    # Hover on 'main' (line 2, character 4)
+    # Hover on 'add' (line 0, character 4)
     hover = await client.text_document_hover_async(
-        HoverParams(text_document=_doc(uri), position=Position(line=2, character=4))
+        HoverParams(text_document=_doc(uri), position=Position(line=0, character=4))
     )
     assert hover is not None
 
     # Completion
     completion = await client.text_document_completion_async(
         CompletionParams(
-            text_document=_doc(uri), position=Position(line=3, character=13)
+            text_document=_doc(uri), position=Position(line=5, character=18)
         )
     )
 
@@ -399,10 +399,10 @@ async def test_all_features_after_compile_wait(client, test_data_dir):
         )
     )
 
-    # Definition on 'main'
+    # Definition on 'add'
     await client.text_document_definition_async(
         DefinitionParams(
-            text_document=_doc(uri), position=Position(line=2, character=4)
+            text_document=_doc(uri), position=Position(line=0, character=4)
         )
     )
 

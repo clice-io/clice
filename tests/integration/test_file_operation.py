@@ -112,11 +112,11 @@ async def test_hover_save_close(client, test_data_dir):
     # Wait for recompilation
     await asyncio.wait_for(event.wait(), timeout=30.0)
 
-    # Hover on 'main'
+    # Hover on 'add'
     hover = await client.text_document_hover_async(
         HoverParams(
             text_document=TextDocumentIdentifier(uri=uri),
-            position=Position(line=2, character=4),
+            position=Position(line=0, character=4),
         )
     )
     assert hover is not None

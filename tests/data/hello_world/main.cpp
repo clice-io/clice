@@ -1,6 +1,8 @@
-#include <iostream>
+int add(int a, int b) {
+    return a + b;
+}
 
 int main() {
-    std::cout << "Hello World!" << std::endl;
-    return 0;
+    int result = add(1, 2);
+    return result;
 }
