@@ -87,17 +87,23 @@ async def client(request, executable: Path | None, test_data_dir: Path):
     config = request.config
     mode = config.getoption("--mode")
 
+    host = config.getoption("--host")
+    port = config.getoption("--port")
+
     cmd = [
         str(executable),
         "--mode",
         mode,
     ]
 
+    if mode == "socket":
+        cmd += ["--host", host, "--port", str(port)]
+
     client = LSPClient(
         cmd,
         mode,
-        config.getoption("--host"),
-        config.getoption("--port"),
+        host,
+        port,
     )
 
     await client.start()

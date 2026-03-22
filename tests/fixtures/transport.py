@@ -43,12 +43,36 @@ class LSPTransport:
             self.writer = self.process.stdin
             self.logger.info(f"LSP server started with PID {self.process.pid}")
         elif self.mode == "socket":
+            self.logger.info(f"Starting LSP server in socket mode: {self.commands}")
+            self.process = await asyncio.create_subprocess_exec(
+                *self.commands,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
             self.logger.info(
-                f"Connecting to LSP server via socket: {self.host}:{self.port}"
+                f"LSP server started with PID {self.process.pid}, "
+                f"waiting for it to listen on {self.host}:{self.port}"
             )
-            self.reader, self.writer = await asyncio.open_connection(
-                self.host, self.port
-            )
+            # Wait for the server to start listening
+            for attempt in range(50):
+                await asyncio.sleep(0.1)
+                try:
+                    self.reader, self.writer = await asyncio.open_connection(
+                        self.host, self.port
+                    )
+                    break
+                except (ConnectionRefusedError, OSError):
+                    if self.process.returncode is not None:
+                        raise RuntimeError(
+                            f"Server exited with code {self.process.returncode} "
+                            "before accepting connections"
+                        )
+            else:
+                raise RuntimeError(
+                    f"Could not connect to server at {self.host}:{self.port} "
+                    "after 5 seconds"
+                )
             self.logger.info("Connected to LSP server via socket")
         else:
             raise ValueError("Invalid connection mode. Use 'pipe' or 'socket'")

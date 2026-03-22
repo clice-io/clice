@@ -1,9 +1,10 @@
 #include <cstdint>
-#include <iostream>
 #include <print>
+#include <sstream>
 #include <string>
 
 #include "eventide/async/io/loop.h"
+#include "eventide/async/io/stream.h"
 #include "eventide/deco/macro.h"
 #include "eventide/deco/runtime.h"
 #include "eventide/ipc/peer.h"
@@ -11,8 +12,7 @@
 #include "server/master_server.h"
 #include "server/stateful_worker.h"
 #include "server/stateless_worker.h"
-
-#include "llvm/Support/FileSystem.h"
+#include "support/filesystem.h"
 
 namespace clice {
 
@@ -61,8 +61,10 @@ int main(int argc, const char** argv) {
     auto& opts = result->options;
 
     if(opts.help.value_or(false)) {
-        auto usage = deco::cli::Dispatcher<clice::Options>("clice [OPTIONS]");
-        usage.usage(std::cout, true);
+        auto dispatcher = deco::cli::Dispatcher<clice::Options>("clice [OPTIONS]");
+        std::ostringstream oss;
+        dispatcher.usage(oss, true);
+        std::print("{}", oss.str());
         return 0;
     }
 
@@ -104,6 +106,45 @@ int main(int argc, const char** argv) {
         server.register_handlers();
 
         loop.schedule(peer.run());
+        return loop.run();
+    }
+
+    if(mode == "socket") {
+        namespace et = eventide;
+        et::event_loop loop;
+
+        auto host = opts.host.value_or("127.0.0.1");
+        auto port = opts.port.value_or(50051);
+
+        auto acceptor = et::tcp::listen(host, port, {}, loop);
+        if(!acceptor) {
+            std::println(stderr, "error: failed to listen on {}:{}", host, port);
+            return 1;
+        }
+
+        std::println(stderr, "Listening on {}:{} ...", host, port);
+
+        std::string self_path = llvm::sys::fs::getMainExecutable(argv[0], (void*)main);
+
+        loop.schedule([&]() -> et::task<> {
+            auto client = co_await acceptor->accept();
+            if(!client.has_value()) {
+                std::println(stderr, "error: failed to accept connection");
+                loop.stop();
+                co_return;
+            }
+
+            std::println(stderr, "Client connected");
+
+            auto transport = std::make_unique<et::ipc::StreamTransport>(std::move(client.value()));
+            et::ipc::JsonPeer peer(loop, std::move(transport));
+            clice::MasterServer server(loop, peer, std::string(self_path));
+            server.register_handlers();
+
+            co_await peer.run();
+            loop.stop();
+        }());
+
         return loop.run();
     }
 
