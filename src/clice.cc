@@ -12,6 +12,7 @@
 #include "server/stateful_worker.h"
 #include "server/stateless_worker.h"
 #include "support/filesystem.h"
+#include "support/logging.h"
 
 namespace clice {
 
@@ -53,7 +54,7 @@ int main(int argc, const char** argv) {
     auto result = deco::cli::parse<clice::Options>(args);
 
     if(!result.has_value()) {
-        std::println(stderr, "error: {}", result.error().message);
+        LOG_ERROR("{}", result.error().message);
         return 1;
     }
 
@@ -73,7 +74,7 @@ int main(int argc, const char** argv) {
     }
 
     if(!opts.mode.has_value()) {
-        std::println(stderr, "error: --mode is required");
+        LOG_ERROR("--mode is required");
         return 1;
     }
 
@@ -94,7 +95,7 @@ int main(int argc, const char** argv) {
 
         auto transport = et::ipc::StreamTransport::open_stdio(loop);
         if(!transport) {
-            std::println(stderr, "error: failed to open stdio transport");
+            LOG_ERROR("failed to open stdio transport");
             return 1;
         }
 
@@ -117,23 +118,23 @@ int main(int argc, const char** argv) {
 
         auto acceptor = et::tcp::listen(host, port, {}, loop);
         if(!acceptor) {
-            std::println(stderr, "error: failed to listen on {}:{}", host, port);
+            LOG_ERROR("failed to listen on {}:{}", host, port);
             return 1;
         }
 
-        std::println(stderr, "Listening on {}:{} ...", host, port);
+        LOG_INFO("Listening on {}:{} ...", host, port);
 
         std::string self_path = llvm::sys::fs::getMainExecutable(argv[0], (void*)main);
 
-        loop.schedule([&]() -> et::task<> {
+        auto task = [&]() -> et::task<> {
             auto client = co_await acceptor->accept();
             if(!client.has_value()) {
-                std::println(stderr, "error: failed to accept connection");
+                LOG_ERROR("failed to accept connection");
                 loop.stop();
                 co_return;
             }
 
-            std::println(stderr, "Client connected");
+            LOG_INFO("Client connected");
 
             auto transport = std::make_unique<et::ipc::StreamTransport>(std::move(client.value()));
             et::ipc::JsonPeer peer(loop, std::move(transport));
@@ -142,11 +143,12 @@ int main(int argc, const char** argv) {
 
             co_await peer.run();
             loop.stop();
-        }());
+        };
 
+        loop.schedule(task());
         return loop.run();
     }
 
-    std::println(stderr, "error: unknown mode '{}'", mode);
+    LOG_ERROR("unknown mode '{}'", mode);
     return 1;
 }

@@ -8,7 +8,6 @@
 
 #include "eventide/async/async.h"
 #include "eventide/ipc/peer.h"
-#include "eventide/ipc/transport.h"
 #include "server/protocol.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -58,13 +57,12 @@ public:
     void remove_owner(std::uint32_t path_id);
 
     /// Callback invoked when a stateful worker sends an EvictedParams notification.
-    /// The master should translate the uri to a path_id and call remove_owner().
-    std::function<void(const std::string& uri)> on_evicted;
+    /// The master should translate the path to a path_id and call remove_owner().
+    std::function<void(const std::string& path)> on_evicted;
 
 private:
     struct WorkerProcess {
         et::process proc;
-        std::unique_ptr<et::ipc::StreamTransport> transport;
         std::unique_ptr<et::ipc::BincodePeer> peer;
         std::size_t owned_documents = 0;
     };

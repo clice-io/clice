@@ -18,7 +18,7 @@ namespace protocol = eventide::ipc::protocol;
 // === StatefulWorker Requests ===
 
 struct CompileParams {
-    std::string uri;
+    std::string path;
     int version;
     std::string text;
     std::string directory;
@@ -28,7 +28,6 @@ struct CompileParams {
 };
 
 struct CompileResult {
-    std::string uri;
     int version;
     /// Diagnostics serialized as JSON (RawValue) to avoid bincode/serde annotation conflicts.
     eventide::serde::RawValue diagnostics;
@@ -36,67 +35,61 @@ struct CompileResult {
 };
 
 struct HoverParams {
-    std::string uri;
-    int line;
-    int character;
+    std::string path;
+    uint32_t offset;
 };
 
 struct SemanticTokensParams {
-    std::string uri;
+    std::string path;
 };
 
 struct InlayHintsParams {
-    std::string uri;
-    protocol::Range range;
+    std::string path;
 };
 
 struct FoldingRangeParams {
-    std::string uri;
+    std::string path;
 };
 
 struct DocumentSymbolParams {
-    std::string uri;
+    std::string path;
 };
 
 struct DocumentLinkParams {
-    std::string uri;
+    std::string path;
 };
 
 struct CodeActionParams {
-    std::string uri;
-    protocol::Range range;
+    std::string path;
 };
 
 struct GoToDefinitionParams {
-    std::string uri;
-    int line;
-    int character;
+    std::string path;
+    uint32_t offset;
 };
 
 // === StatelessWorker Requests ===
 
 struct CompletionParams {
-    std::string uri;
+    std::string path;
     int version;
     std::string text;
     std::string directory;
     std::vector<std::string> arguments;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
-    int line;
-    int character;
+    uint32_t offset;
 };
 
 struct SignatureHelpParams {
-    std::string uri;
+    std::string path;
     int version;
     std::string text;
     std::string directory;
     std::vector<std::string> arguments;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
-    int line;
-    int character;
+    uint32_t offset;
 };
 
 struct BuildPCHParams {
@@ -140,17 +133,17 @@ struct IndexResult {
 // === Notifications ===
 
 struct DocumentUpdateParams {
-    std::string uri;
+    std::string path;
     int version;
     std::string text;
 };
 
 struct EvictParams {
-    std::string uri;
+    std::string path;
 };
 
 struct EvictedParams {
-    std::string uri;
+    std::string path;
 };
 
 }  // namespace clice::worker

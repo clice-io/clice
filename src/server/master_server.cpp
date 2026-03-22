@@ -6,6 +6,7 @@
 #include <variant>
 #include <vector>
 
+#include "eventide/ipc/lsp/position.h"
 #include "eventide/ipc/lsp/uri.h"
 #include "eventide/serde/json/json.h"
 #include "eventide/serde/serde/raw_value.h"
@@ -120,7 +121,7 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
 
         // Send compile request to stateful worker
         worker::CompileParams params;
-        params.uri = uri;
+        params.path = std::string(path_pool.resolve(path_id));
         params.version = doc_it->second.version;
         params.text = doc_it->second.text;
         fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments);
@@ -544,22 +545,11 @@ void MasterServer::register_handlers() {
                         // Incremental change: replace range
                         auto& range = c.range;
 
-                        // Convert Position (line/character) to byte offset
-                        auto pos_to_offset = [&](protocol::Position pos) -> std::size_t {
-                            std::size_t offset = 0;
-                            int line = 0;
-                            for(std::size_t i = 0; i < doc.text.size(); i++) {
-                                if(line == static_cast<int>(pos.line)) {
-                                    return i + pos.character;
-                                }
-                                if(doc.text[i] == '\n')
-                                    line++;
-                            }
-                            return doc.text.size();
-                        };
-
-                        auto start = pos_to_offset(range.start);
-                        auto end = pos_to_offset(range.end);
+                        using eventide::ipc::lsp::PositionMapper;
+                        using eventide::ipc::lsp::PositionEncoding;
+                        PositionMapper mapper(doc.text, PositionEncoding::UTF16);
+                        auto start = mapper.to_offset(range.start);
+                        auto end = mapper.to_offset(range.end);
                         if(start <= doc.text.size() && end <= doc.text.size() && start <= end) {
                             doc.text.replace(start, end - start, c.text);
                         }
@@ -572,7 +562,7 @@ void MasterServer::register_handlers() {
 
         // Notify the owning stateful worker so it marks the document dirty
         worker::DocumentUpdateParams update;
-        update.uri = params.text_document.uri;
+        update.path = path;
         update.version = doc.version;
         update.text = doc.text;
         pool.notify_stateful(path_id, update);
@@ -639,9 +629,15 @@ void MasterServer::register_handlers() {
                                      params.text_document_position_params.text_document.uri);
 
             worker::HoverParams wp;
-            wp.uri = params.text_document_position_params.text_document.uri;
-            wp.line = params.text_document_position_params.position.line;
-            wp.character = params.text_document_position_params.position.character;
+            wp.path = path;
+
+            auto doc_it = documents.find(path_id);
+            if(doc_it != documents.end()) {
+                using eventide::ipc::lsp::PositionMapper;
+                using eventide::ipc::lsp::PositionEncoding;
+                PositionMapper mapper(doc_it->second.text, PositionEncoding::UTF16);
+                wp.offset = mapper.to_offset(params.text_document_position_params.position);
+            }
 
             auto result = co_await pool.send_stateful<worker::HoverParams>(path_id, wp);
             if(!result.has_value())
@@ -662,7 +658,7 @@ void MasterServer::register_handlers() {
             co_await ensure_compiled(path_id, params.text_document.uri);
 
             worker::SemanticTokensParams wp;
-            wp.uri = params.text_document.uri;
+            wp.path = path;
 
             auto result = co_await pool.send_stateful<worker::SemanticTokensParams>(path_id, wp);
             if(!result.has_value())
@@ -683,8 +679,7 @@ void MasterServer::register_handlers() {
             co_await ensure_compiled(path_id, params.text_document.uri);
 
             worker::InlayHintsParams wp;
-            wp.uri = params.text_document.uri;
-            wp.range = params.range;
+            wp.path = path;
 
             auto result = co_await pool.send_stateful<worker::InlayHintsParams>(path_id, wp);
             if(!result.has_value())
@@ -705,7 +700,7 @@ void MasterServer::register_handlers() {
             co_await ensure_compiled(path_id, params.text_document.uri);
 
             worker::FoldingRangeParams wp;
-            wp.uri = params.text_document.uri;
+            wp.path = path;
 
             auto result = co_await pool.send_stateful<worker::FoldingRangeParams>(path_id, wp);
             if(!result.has_value())
@@ -726,7 +721,7 @@ void MasterServer::register_handlers() {
             co_await ensure_compiled(path_id, params.text_document.uri);
 
             worker::DocumentSymbolParams wp;
-            wp.uri = params.text_document.uri;
+            wp.path = path;
 
             auto result = co_await pool.send_stateful<worker::DocumentSymbolParams>(path_id, wp);
             if(!result.has_value())
@@ -747,7 +742,7 @@ void MasterServer::register_handlers() {
             co_await ensure_compiled(path_id, params.text_document.uri);
 
             worker::DocumentLinkParams wp;
-            wp.uri = params.text_document.uri;
+            wp.path = path;
 
             auto result = co_await pool.send_stateful<worker::DocumentLinkParams>(path_id, wp);
             if(!result.has_value())
@@ -768,8 +763,7 @@ void MasterServer::register_handlers() {
             co_await ensure_compiled(path_id, params.text_document.uri);
 
             worker::CodeActionParams wp;
-            wp.uri = params.text_document.uri;
-            wp.range = params.range;
+            wp.path = path;
 
             auto result = co_await pool.send_stateful<worker::CodeActionParams>(path_id, wp);
             if(!result.has_value())
@@ -791,9 +785,15 @@ void MasterServer::register_handlers() {
                                      params.text_document_position_params.text_document.uri);
 
             worker::GoToDefinitionParams wp;
-            wp.uri = params.text_document_position_params.text_document.uri;
-            wp.line = params.text_document_position_params.position.line;
-            wp.character = params.text_document_position_params.position.character;
+            wp.path = path;
+
+            auto doc_it = documents.find(path_id);
+            if(doc_it != documents.end()) {
+                using eventide::ipc::lsp::PositionMapper;
+                using eventide::ipc::lsp::PositionEncoding;
+                PositionMapper mapper(doc_it->second.text, PositionEncoding::UTF16);
+                wp.offset = mapper.to_offset(params.text_document_position_params.position);
+            }
 
             auto result = co_await pool.send_stateful<worker::GoToDefinitionParams>(path_id, wp);
             if(!result.has_value())
@@ -812,8 +812,7 @@ void MasterServer::register_handlers() {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
 
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto path = uri_to_path(uri);
+            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
             auto doc_it = documents.find(path_id);
@@ -822,13 +821,16 @@ void MasterServer::register_handlers() {
 
             auto& doc = doc_it->second;
 
+            using eventide::ipc::lsp::PositionMapper;
+            using eventide::ipc::lsp::PositionEncoding;
+            PositionMapper mapper(doc.text, PositionEncoding::UTF16);
+
             worker::CompletionParams wp;
-            wp.uri = uri;
+            wp.path = path;
             wp.version = doc.version;
             wp.text = doc.text;
             fill_compile_args(path, wp.directory, wp.arguments);
-            wp.line = params.text_document_position_params.position.line;
-            wp.character = params.text_document_position_params.position.character;
+            wp.offset = mapper.to_offset(params.text_document_position_params.position);
 
             auto result = co_await pool.send_stateless<worker::CompletionParams>(wp);
             if(!result.has_value())
@@ -843,8 +845,7 @@ void MasterServer::register_handlers() {
             if(lifecycle != ServerLifecycle::Ready)
                 co_return et::outcome_error(et::ipc::Error{"Server not ready"});
 
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto path = uri_to_path(uri);
+            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
             auto doc_it = documents.find(path_id);
@@ -853,13 +854,16 @@ void MasterServer::register_handlers() {
 
             auto& doc = doc_it->second;
 
+            using eventide::ipc::lsp::PositionMapper;
+            using eventide::ipc::lsp::PositionEncoding;
+            PositionMapper mapper(doc.text, PositionEncoding::UTF16);
+
             worker::SignatureHelpParams wp;
-            wp.uri = uri;
+            wp.path = path;
             wp.version = doc.version;
             wp.text = doc.text;
             fill_compile_args(path, wp.directory, wp.arguments);
-            wp.line = params.text_document_position_params.position.line;
-            wp.character = params.text_document_position_params.position.character;
+            wp.offset = mapper.to_offset(params.text_document_position_params.position);
 
             auto result = co_await pool.send_stateless<worker::SignatureHelpParams>(wp);
             if(!result.has_value())

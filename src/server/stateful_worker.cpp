@@ -52,30 +52,30 @@ class StatefulWorker {
     std::list<std::string> lru;
     llvm::StringMap<std::list<std::string>::iterator> lru_index;
 
-    void touch_lru(llvm::StringRef uri) {
-        auto it = lru_index.find(uri);
+    void touch_lru(llvm::StringRef path) {
+        auto it = lru_index.find(path);
         if(it != lru_index.end()) {
             lru.erase(it->second);
         }
-        lru.emplace_front(uri.str());
-        lru_index[uri] = lru.begin();
+        lru.emplace_front(path.str());
+        lru_index[path] = lru.begin();
     }
 
     void shrink_if_over_limit() {
         // TODO: Implement memory-based eviction using memory_limit.
         // For now, cap at a fixed number of documents.
         while(documents.size() > 16 && !lru.empty()) {
-            auto uri = lru.back();
+            auto path = lru.back();
             lru.pop_back();
-            lru_index.erase(uri);
+            lru_index.erase(path);
             // Send evicted notification to master
-            peer.send_notification(worker::EvictedParams{std::string(uri)});
-            documents.erase(uri);
+            peer.send_notification(worker::EvictedParams{std::string(path)});
+            documents.erase(path);
         }
     }
 
-    DocumentEntry& get_or_create(llvm::StringRef uri) {
-        auto [it, inserted] = documents.try_emplace(uri, nullptr);
+    DocumentEntry& get_or_create(llvm::StringRef path) {
+        auto [it, inserted] = documents.try_emplace(path, nullptr);
         if(inserted) {
             it->second = std::make_unique<DocumentEntry>();
         }
@@ -94,18 +94,18 @@ void StatefulWorker::register_handlers() {
     peer.on_request(
         [this](RequestContext& ctx,
                const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
-            auto& doc = get_or_create(params.uri);
+            auto& doc = get_or_create(params.path);
             doc.version = params.version;
             doc.text = params.text;
             doc.directory = params.directory;
             doc.arguments = params.arguments;
             doc.pch = params.pch;
             doc.pcms.clear();
-            for(auto& [name, path]: params.pcms) {
-                doc.pcms.try_emplace(name, path);
+            for(auto& [name, pcm_path]: params.pcms) {
+                doc.pcms.try_emplace(name, pcm_path);
             }
 
-            touch_lru(params.uri);
+            touch_lru(params.path);
 
             co_await doc.strand.lock();
 
@@ -119,7 +119,7 @@ void StatefulWorker::register_handlers() {
                 if(!doc.pch.first.empty()) {
                     cp.pch = doc.pch;
                 }
-                cp.add_remapped_file(params.uri, doc.text);
+                cp.add_remapped_file(params.path, doc.text);
                 for(auto& entry: doc.pcms) {
                     cp.pcms.try_emplace(entry.getKey(), entry.getValue());
                 }
@@ -129,7 +129,6 @@ void StatefulWorker::register_handlers() {
                 doc.dirty.store(false, std::memory_order_release);
 
                 worker::CompileResult result;
-                result.uri = std::string(params.uri);
                 result.version = doc.version;
                 if(doc.unit.completed() || doc.unit.fatal_error()) {
                     auto diags = feature::diagnostics(doc.unit);
@@ -150,7 +149,7 @@ void StatefulWorker::register_handlers() {
 
     // === DocumentUpdate ===
     peer.on_notification([this](const worker::DocumentUpdateParams& params) {
-        auto it = documents.find(params.uri);
+        auto it = documents.find(params.path);
         if(it == documents.end())
             return;
 
@@ -162,25 +161,25 @@ void StatefulWorker::register_handlers() {
 
     // === Evict ===
     peer.on_notification([this](const worker::EvictParams& params) {
-        auto it = lru_index.find(params.uri);
+        auto it = lru_index.find(params.path);
         if(it != lru_index.end()) {
             lru.erase(it->second);
             lru_index.erase(it);
         }
-        documents.erase(params.uri);
+        documents.erase(params.path);
     });
 
     // === Hover ===
     peer.on_request(
         [this](RequestContext& ctx,
                const worker::HoverParams& params) -> RequestResult<worker::HoverParams> {
-            auto it = documents.find(params.uri);
+            auto it = documents.find(params.path);
             if(it == documents.end()) {
                 co_return et::serde::RawValue{"null"};
             }
 
             auto& doc = *it->second;
-            touch_lru(params.uri);
+            touch_lru(params.path);
 
             co_await doc.strand.lock();
 
@@ -192,18 +191,7 @@ void StatefulWorker::register_handlers() {
                     return et::serde::RawValue{"null"};
                 }
 
-                uint32_t offset = 0;
-                int line = 0;
-                for(size_t i = 0; i < doc.text.size(); i++) {
-                    if(line == params.line) {
-                        offset = static_cast<uint32_t>(i) + params.character;
-                        break;
-                    }
-                    if(doc.text[i] == '\n')
-                        line++;
-                }
-
-                auto hover_result = feature::hover(doc.unit, offset);
+                auto hover_result = feature::hover(doc.unit, params.offset);
                 if(hover_result) {
                     auto json = et::serde::json::to_json(*hover_result);
                     if(json) {
@@ -220,13 +208,13 @@ void StatefulWorker::register_handlers() {
     // === SemanticTokens ===
     peer.on_request([this](RequestContext& ctx, const worker::SemanticTokensParams& params)
                         -> RequestResult<worker::SemanticTokensParams> {
-        auto it = documents.find(params.uri);
+        auto it = documents.find(params.path);
         if(it == documents.end()) {
             co_return et::serde::RawValue{"null"};
         }
 
         auto& doc = *it->second;
-        touch_lru(params.uri);
+        touch_lru(params.path);
 
         co_await doc.strand.lock();
 
@@ -254,13 +242,13 @@ void StatefulWorker::register_handlers() {
     peer.on_request(
         [this](RequestContext& ctx,
                const worker::InlayHintsParams& params) -> RequestResult<worker::InlayHintsParams> {
-            auto it = documents.find(params.uri);
+            auto it = documents.find(params.path);
             if(it == documents.end()) {
                 co_return et::serde::RawValue{"null"};
             }
 
             auto& doc = *it->second;
-            touch_lru(params.uri);
+            touch_lru(params.path);
 
             co_await doc.strand.lock();
 
@@ -288,13 +276,13 @@ void StatefulWorker::register_handlers() {
     // === FoldingRange ===
     peer.on_request([this](RequestContext& ctx, const worker::FoldingRangeParams& params)
                         -> RequestResult<worker::FoldingRangeParams> {
-        auto it = documents.find(params.uri);
+        auto it = documents.find(params.path);
         if(it == documents.end()) {
             co_return et::serde::RawValue{"null"};
         }
 
         auto& doc = *it->second;
-        touch_lru(params.uri);
+        touch_lru(params.path);
 
         co_await doc.strand.lock();
 
@@ -321,13 +309,13 @@ void StatefulWorker::register_handlers() {
     // === DocumentSymbol ===
     peer.on_request([this](RequestContext& ctx, const worker::DocumentSymbolParams& params)
                         -> RequestResult<worker::DocumentSymbolParams> {
-        auto it = documents.find(params.uri);
+        auto it = documents.find(params.path);
         if(it == documents.end()) {
             co_return et::serde::RawValue{"null"};
         }
 
         auto& doc = *it->second;
-        touch_lru(params.uri);
+        touch_lru(params.path);
 
         co_await doc.strand.lock();
 
@@ -354,13 +342,13 @@ void StatefulWorker::register_handlers() {
     // === DocumentLink ===
     peer.on_request([this](RequestContext& ctx, const worker::DocumentLinkParams& params)
                         -> RequestResult<worker::DocumentLinkParams> {
-        auto it = documents.find(params.uri);
+        auto it = documents.find(params.path);
         if(it == documents.end()) {
             co_return et::serde::RawValue{"null"};
         }
 
         auto& doc = *it->second;
-        touch_lru(params.uri);
+        touch_lru(params.path);
 
         co_await doc.strand.lock();
 
@@ -401,6 +389,8 @@ void StatefulWorker::register_handlers() {
 }
 
 int run_stateful_worker_mode(std::uint64_t memory_limit) {
+    logging::stderr_logger("stateful-worker", logging::options);
+
     et::event_loop loop;
 
     auto transport_result = et::ipc::StreamTransport::open_stdio(loop);

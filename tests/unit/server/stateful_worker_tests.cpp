@@ -33,7 +33,7 @@ TEST_CASE(CompileRequest) {
 
     w.run([&]() -> et::task<> {
         worker::CompileParams params;
-        params.uri = src.uri();
+        params.path = src.path;
         params.version = 1;
         params.text = "int main() { return 0; }\n";
         params.directory = "/tmp";
@@ -43,7 +43,6 @@ TEST_CASE(CompileRequest) {
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().uri, src.uri());
         EXPECT_EQ(result.value().version, 1);
         test_done = true;
         w.peer->close_output();
@@ -61,9 +60,8 @@ TEST_CASE(HoverWithoutCompile) {
     w.run([&]() -> et::task<> {
         // Hover on a file that hasn't been compiled should return null.
         worker::HoverParams params;
-        params.uri = "file:///tmp/nonexistent.cpp";
-        params.line = 0;
-        params.character = 0;
+        params.path = "/tmp/nonexistent.cpp";
+        params.offset = 0;
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
@@ -88,7 +86,7 @@ TEST_CASE(CompileThenHover) {
     w.run([&]() -> et::task<> {
         // First compile
         worker::CompileParams cp;
-        cp.uri = src.uri();
+        cp.path = src.path;
         cp.version = 1;
         cp.text = text;
         cp.directory = "/tmp";
@@ -98,10 +96,10 @@ TEST_CASE(CompileThenHover) {
         CO_ASSERT_TRUE(compile_result.has_value());
 
         // After successful compilation, hover should return info.
+        // "int foo() { return 42; }\n" is 25 chars, then char 22 on line 1 = offset 47
         worker::HoverParams hp;
-        hp.uri = src.uri();
-        hp.line = 1;
-        hp.character = 22;  // position of 'foo' in 'return foo();'
+        hp.path = src.path;
+        hp.offset = 47;  // position of 'foo' in 'return foo();'
 
         auto hover_result = co_await w.peer->send_request(hp);
         EXPECT_TRUE(hover_result.has_value());
@@ -126,7 +124,7 @@ TEST_CASE(DocumentUpdate) {
     w.run([&]() -> et::task<> {
         // Compile first
         worker::CompileParams cp;
-        cp.uri = src.uri();
+        cp.path = src.path;
         cp.version = 1;
         cp.text = "int x = 1;\n";
         cp.directory = "/tmp";
@@ -137,16 +135,15 @@ TEST_CASE(DocumentUpdate) {
 
         // Send document update notification
         worker::DocumentUpdateParams up;
-        up.uri = src.uri();
+        up.path = src.path;
         up.version = 2;
         up.text = "int x = 2;\nint y = 3;\n";
         w.peer->send_notification(up);
 
         // After update, hover should return null (dirty flag set).
         worker::HoverParams hp;
-        hp.uri = src.uri();
-        hp.line = 0;
-        hp.character = 4;
+        hp.path = src.path;
+        hp.offset = 4;
 
         auto hover_result = co_await w.peer->send_request(hp);
         EXPECT_TRUE(hover_result.has_value());
@@ -167,7 +164,7 @@ TEST_CASE(CodeActionReturnsEmpty) {
 
     w.run([&]() -> et::task<> {
         worker::CodeActionParams params;
-        params.uri = "file:///tmp/test.cpp";
+        params.path = "/tmp/test.cpp";
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
@@ -188,9 +185,8 @@ TEST_CASE(GoToDefinitionReturnsEmpty) {
 
     w.run([&]() -> et::task<> {
         worker::GoToDefinitionParams params;
-        params.uri = "file:///tmp/test.cpp";
-        params.line = 0;
-        params.character = 0;
+        params.path = "/tmp/test.cpp";
+        params.offset = 0;
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
@@ -211,7 +207,7 @@ TEST_CASE(SemanticTokensWithoutCompile) {
 
     w.run([&]() -> et::task<> {
         worker::SemanticTokensParams params;
-        params.uri = "file:///tmp/nonexistent.cpp";
+        params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
@@ -231,7 +227,7 @@ TEST_CASE(FoldingRangeWithoutCompile) {
 
     w.run([&]() -> et::task<> {
         worker::FoldingRangeParams params;
-        params.uri = "file:///tmp/nonexistent.cpp";
+        params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
@@ -251,7 +247,7 @@ TEST_CASE(DocumentSymbolWithoutCompile) {
 
     w.run([&]() -> et::task<> {
         worker::DocumentSymbolParams params;
-        params.uri = "file:///tmp/nonexistent.cpp";
+        params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
@@ -271,7 +267,7 @@ TEST_CASE(DocumentLinkWithoutCompile) {
 
     w.run([&]() -> et::task<> {
         worker::DocumentLinkParams params;
-        params.uri = "file:///tmp/nonexistent.cpp";
+        params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
@@ -291,7 +287,7 @@ TEST_CASE(InlayHintsWithoutCompile) {
 
     w.run([&]() -> et::task<> {
         worker::InlayHintsParams params;
-        params.uri = "file:///tmp/nonexistent.cpp";
+        params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
@@ -320,7 +316,7 @@ TEST_CASE(MultipleSequentialRequests) {
     w.run([&]() -> et::task<> {
         // Compile first so feature requests return real data.
         worker::CompileParams cp;
-        cp.uri = src.uri();
+        cp.path = src.path;
         cp.version = 1;
         cp.text = "int foo(int x) {\n    return x + 1;\n}\nint main() {\n    return foo(0);\n}\n";
         cp.directory = "/tmp";
@@ -331,31 +327,32 @@ TEST_CASE(MultipleSequentialRequests) {
 
         // Now send multiple different feature requests sequentially.
         worker::HoverParams hp;
-        hp.uri = src.uri();
-        hp.line = 0;
-        hp.character = 4;  // 'foo'
+        hp.path = src.path;
+        hp.offset = 4;  // 'foo' on line 0
         auto r1 = co_await w.peer->send_request(hp);
         EXPECT_TRUE(r1.has_value());
 
         worker::CodeActionParams cap;
-        cap.uri = src.uri();
+        cap.path = src.path;
         auto r2 = co_await w.peer->send_request(cap);
         EXPECT_TRUE(r2.has_value());
 
+        // 'foo' in 'return foo(0);' at line 4, char 11
+        // lines: "int foo(int x) {\n"=17, "    return x + 1;\n"=18, "}\n"=2, "int main() {\n"=14
+        // offset = 17+18+2+14+11 = 62
         worker::GoToDefinitionParams gdp;
-        gdp.uri = src.uri();
-        gdp.line = 4;
-        gdp.character = 11;  // 'foo' in 'return foo(0);'
+        gdp.path = src.path;
+        gdp.offset = 62;
         auto r3 = co_await w.peer->send_request(gdp);
         EXPECT_TRUE(r3.has_value());
 
         worker::SemanticTokensParams stp;
-        stp.uri = src.uri();
+        stp.path = src.path;
         auto r4 = co_await w.peer->send_request(stp);
         EXPECT_TRUE(r4.has_value());
 
         worker::FoldingRangeParams frp;
-        frp.uri = src.uri();
+        frp.path = src.path;
         auto r5 = co_await w.peer->send_request(frp);
         EXPECT_TRUE(r5.has_value());
 
@@ -384,7 +381,7 @@ TEST_CASE(MultipleDocuments) {
         // Compile 3 different documents.
         for(int i = 0; i < 3; i++) {
             worker::CompileParams cp;
-            cp.uri = files[i]->uri();
+            cp.path = files[i]->path;
             cp.version = 1;
             cp.text = texts[i];
             cp.directory = "/tmp";
@@ -397,9 +394,8 @@ TEST_CASE(MultipleDocuments) {
         // Hover on each document after compilation.
         for(int i = 0; i < 3; i++) {
             worker::HoverParams hp;
-            hp.uri = files[i]->uri();
-            hp.line = 0;
-            hp.character = 4;  // 'var_N'
+            hp.path = files[i]->path;
+            hp.offset = 4;  // 'var_N'
 
             auto result = co_await w.peer->send_request(hp);
             EXPECT_TRUE(result.has_value());
@@ -421,14 +417,13 @@ TEST_CASE(EvictNotification) {
     w.run([&]() -> et::task<> {
         // Send an evict notification — worker should remove the document without crashing.
         worker::EvictParams ep;
-        ep.uri = "file:///tmp/evict_test.cpp";
+        ep.path = "/tmp/evict_test.cpp";
         w.peer->send_notification(ep);
 
         // Hover on the evicted document should return null (document doesn't exist).
         worker::HoverParams hp;
-        hp.uri = "file:///tmp/evict_test.cpp";
-        hp.line = 0;
-        hp.character = 0;
+        hp.path = "/tmp/evict_test.cpp";
+        hp.offset = 0;
 
         auto result = co_await w.peer->send_request(hp);
         CO_ASSERT_TRUE(result.has_value());
@@ -453,7 +448,7 @@ TEST_CASE(SpawnWithMemoryLimit) {
     w.run([&]() -> et::task<> {
         // Compile first.
         worker::CompileParams cp;
-        cp.uri = src.uri();
+        cp.path = src.path;
         cp.version = 1;
         cp.text = "int memlimit_var = 42;\n";
         cp.directory = "/tmp";
@@ -464,9 +459,8 @@ TEST_CASE(SpawnWithMemoryLimit) {
 
         // Feature request should work after compilation.
         worker::HoverParams hp;
-        hp.uri = src.uri();
-        hp.line = 0;
-        hp.character = 4;  // 'memlimit_var'
+        hp.path = src.path;
+        hp.offset = 4;  // 'memlimit_var'
 
         auto result = co_await w.peer->send_request(hp);
         EXPECT_TRUE(result.has_value());

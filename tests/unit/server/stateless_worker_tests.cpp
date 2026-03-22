@@ -23,7 +23,7 @@ TEST_CASE(CompileParamsRoundTrip) {
     namespace bincode = eventide::serde::bincode;
 
     worker::CompileParams params;
-    params.uri = "file:///tmp/test.cpp";
+    params.path = "/tmp/test.cpp";
     params.version = 1;
     params.text = "int main() { return 0; }";
     params.directory = "/tmp";
@@ -39,7 +39,7 @@ TEST_CASE(CompileParamsRoundTrip) {
         bincode::from_bytes(std::span<const std::byte>(bytes->data(), bytes->size()), result);
     ASSERT_TRUE(status.has_value());
 
-    EXPECT_EQ(result.uri, params.uri);
+    EXPECT_EQ(result.path, params.path);
     EXPECT_EQ(result.version, params.version);
     EXPECT_EQ(result.text, params.text);
     EXPECT_EQ(result.directory, params.directory);
@@ -50,7 +50,6 @@ TEST_CASE(CompileResultRoundTrip) {
     namespace bincode = eventide::serde::bincode;
 
     worker::CompileResult result;
-    result.uri = "file:///tmp/test.cpp";
     result.version = 1;
     result.diagnostics = {};  // empty
     result.memory_usage = 0;
@@ -62,7 +61,6 @@ TEST_CASE(CompileResultRoundTrip) {
     auto status =
         bincode::from_bytes(std::span<const std::byte>(bytes->data(), bytes->size()), decoded);
     ASSERT_TRUE(status.has_value());
-    EXPECT_EQ(decoded.uri, result.uri);
     EXPECT_EQ(decoded.version, result.version);
 }
 
@@ -177,13 +175,12 @@ TEST_CASE(CompletionRequest) {
 
     w.run([&]() -> et::task<> {
         worker::CompletionParams params;
-        params.uri = src.path;  // Completion uses path (not URI) as remapped key
+        params.path = src.path;
         params.version = 1;
         params.text = text;
         params.directory = "/tmp";
         params.arguments = make_args(src.path);
-        params.line = 1;
-        params.character = 12;  // after "fo" in "int bar = fo"
+        params.offset = 25;  // after "fo" in "int bar = fo" (13 + 12)
 
         auto result = co_await w.peer->send_request(params);
         EXPECT_TRUE(result.has_value());
@@ -205,13 +202,12 @@ TEST_CASE(SignatureHelpRequest) {
 
     w.run([&]() -> et::task<> {
         worker::SignatureHelpParams params;
-        params.uri = src.path;  // Path, not URI, as remapped key
+        params.path = src.path;
         params.version = 1;
         params.text = text;
         params.directory = "/tmp";
         params.arguments = make_args(src.path);
-        params.line = 1;
-        params.character = 19;  // after "foo("
+        params.offset = 45;  // after "foo(" (26 + 19)
 
         auto result = co_await w.peer->send_request(params);
         EXPECT_TRUE(result.has_value());

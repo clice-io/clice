@@ -17,6 +17,8 @@ using et::ipc::RequestResult;
 using RequestContext = et::ipc::BincodePeer::RequestContext;
 
 int run_stateless_worker_mode() {
+    logging::stderr_logger("stateless-worker", logging::options);
+
     et::event_loop loop;
 
     auto transport_result = et::ipc::StreamTransport::open_stdio(loop);
@@ -110,20 +112,8 @@ int run_stateless_worker_mode() {
                 for(auto& [name, path]: params.pcms) {
                     cp.pcms.try_emplace(name, path);
                 }
-                cp.add_remapped_file(params.uri, params.text);
-
-                // Convert line/character to byte offset.
-                uint32_t offset = 0;
-                int line = 0;
-                for(size_t i = 0; i < params.text.size(); i++) {
-                    if(line == params.line) {
-                        offset = static_cast<uint32_t>(i) + params.character;
-                        break;
-                    }
-                    if(params.text[i] == '\n')
-                        line++;
-                }
-                cp.completion = {params.uri, offset};
+                cp.add_remapped_file(params.path, params.text);
+                cp.completion = {params.path, params.offset};
 
                 auto items = feature::code_complete(cp);
 
@@ -152,20 +142,8 @@ int run_stateless_worker_mode() {
             for(auto& [name, path]: params.pcms) {
                 cp.pcms.try_emplace(name, path);
             }
-            cp.add_remapped_file(params.uri, params.text);
-
-            // Convert line/character to byte offset.
-            uint32_t offset = 0;
-            int line = 0;
-            for(size_t i = 0; i < params.text.size(); i++) {
-                if(line == params.line) {
-                    offset = static_cast<uint32_t>(i) + params.character;
-                    break;
-                }
-                if(params.text[i] == '\n')
-                    line++;
-            }
-            cp.completion = {params.uri, offset};
+            cp.add_remapped_file(params.path, params.text);
+            cp.completion = {params.path, params.offset};
 
             auto help = feature::signature_help(cp);
 

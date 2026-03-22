@@ -3,6 +3,7 @@
 #include <csignal>
 #include <string>
 
+#include "eventide/ipc/transport.h"
 #include "support/logging.h"
 
 namespace clice {
@@ -96,7 +97,6 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
 
     workers.push_back(WorkerProcess{
         .proc = std::move(spawn.proc),
-        .transport = {},  // transport ownership moved to peer
         .peer = std::move(peer),
         .owned_documents = 0,
     });
@@ -124,7 +124,7 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
     for(std::size_t i = 0; i < stateful_workers.size(); ++i) {
         stateful_workers[i].peer->on_notification([this](const worker::EvictedParams& params) {
             if(on_evicted) {
-                on_evicted(params.uri);
+                on_evicted(params.path);
             }
         });
     }
