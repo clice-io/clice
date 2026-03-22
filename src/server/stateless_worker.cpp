@@ -19,6 +19,31 @@ namespace et = eventide;
 using et::ipc::RequestResult;
 using RequestContext = et::ipc::BincodePeer::RequestContext;
 
+struct ScopedTimer {
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+    long long ms() const {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - start)
+            .count();
+    }
+};
+
+static void fill_args(CompilationParams& cp,
+                      const std::string& directory,
+                      const std::vector<std::string>& arguments) {
+    cp.directory = directory;
+    for(auto& arg: arguments) {
+        cp.arguments.push_back(arg.c_str());
+    }
+}
+
+template <typename T>
+static et::serde::RawValue to_raw(const T& value) {
+    auto json = et::serde::json::to_json<et::ipc::lsp_config>(value);
+    return et::serde::RawValue{json ? std::move(*json) : "null"};
+}
+
 int run_stateless_worker_mode() {
     logging::stderr_logger("stateless-worker", logging::options);
 
@@ -41,17 +66,13 @@ int run_stateless_worker_mode() {
             LOG_INFO("BuildPCH request: file={}", params.file);
 
             auto result = co_await et::queue([&]() -> worker::BuildPCHResult {
-                auto start = std::chrono::steady_clock::now();
+                ScopedTimer timer;
 
                 CompilationParams cp;
                 cp.kind = CompilationKind::Preamble;
-                cp.directory = params.directory;
-                for(auto& arg: params.arguments) {
-                    cp.arguments.push_back(arg.c_str());
-                }
+                fill_args(cp, params.directory, params.arguments);
                 cp.add_remapped_file(params.file, params.content);
 
-                // Generate a temporary file path for the PCH output.
                 auto tmp = fs::createTemporaryFile("clice-pch", "pch");
                 if(!tmp) {
                     LOG_ERROR("BuildPCH: failed to create temp file");
@@ -62,15 +83,11 @@ int run_stateless_worker_mode() {
                 PCHInfo pch_info;
                 auto unit = compile(cp, pch_info);
 
-                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                              std::chrono::steady_clock::now() - start)
-                              .count();
-
                 if(unit.completed()) {
-                    LOG_INFO("BuildPCH done: file={}, {}ms", params.file, ms);
+                    LOG_INFO("BuildPCH done: file={}, {}ms", params.file, timer.ms());
                     return {true, ""};
                 } else {
-                    LOG_WARN("BuildPCH failed: file={}, {}ms", params.file, ms);
+                    LOG_WARN("BuildPCH failed: file={}, {}ms", params.file, timer.ms());
                     return {false, "PCH compilation failed"};
                 }
             });
@@ -84,19 +101,15 @@ int run_stateless_worker_mode() {
             LOG_INFO("BuildPCM request: file={}, module={}", params.file, params.module_name);
 
             auto result = co_await et::queue([&]() -> worker::BuildPCMResult {
-                auto start = std::chrono::steady_clock::now();
+                ScopedTimer timer;
 
                 CompilationParams cp;
                 cp.kind = CompilationKind::ModuleInterface;
-                cp.directory = params.directory;
-                for(auto& arg: params.arguments) {
-                    cp.arguments.push_back(arg.c_str());
-                }
+                fill_args(cp, params.directory, params.arguments);
                 for(auto& [name, path]: params.pcms) {
                     cp.pcms.try_emplace(name, path);
                 }
 
-                // Generate a temporary file path for the PCM output.
                 auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
                 if(!tmp) {
                     LOG_ERROR("BuildPCM: failed to create temp file");
@@ -107,15 +120,11 @@ int run_stateless_worker_mode() {
                 PCMInfo pcm_info;
                 auto unit = compile(cp, pcm_info);
 
-                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                              std::chrono::steady_clock::now() - start)
-                              .count();
-
                 if(unit.completed()) {
-                    LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, ms);
+                    LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
                     return {true, ""};
                 } else {
-                    LOG_WARN("BuildPCM failed: module={}, {}ms", params.module_name, ms);
+                    LOG_WARN("BuildPCM failed: module={}, {}ms", params.module_name, timer.ms());
                     return {false, "PCM compilation failed"};
                 }
             });
@@ -129,14 +138,11 @@ int run_stateless_worker_mode() {
             LOG_DEBUG("Completion request: path={}, offset={}", params.path, params.offset);
 
             auto result = co_await et::queue([&]() -> et::serde::RawValue {
-                auto start = std::chrono::steady_clock::now();
+                ScopedTimer timer;
 
                 CompilationParams cp;
                 cp.kind = CompilationKind::Completion;
-                cp.directory = params.directory;
-                for(auto& arg: params.arguments) {
-                    cp.arguments.push_back(arg.c_str());
-                }
+                fill_args(cp, params.directory, params.arguments);
                 if(!params.pch.first.empty()) {
                     cp.pch = params.pch;
                 }
@@ -147,17 +153,8 @@ int run_stateless_worker_mode() {
                 cp.completion = {params.path, params.offset};
 
                 auto items = feature::code_complete(cp);
-
-                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                              std::chrono::steady_clock::now() - start)
-                              .count();
-                LOG_DEBUG("Completion done: {} items, {}ms", items.size(), ms);
-
-                auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
-                if(json) {
-                    return et::serde::RawValue{std::move(*json)};
-                }
-                return et::serde::RawValue{"[]"};
+                LOG_DEBUG("Completion done: {} items, {}ms", items.size(), timer.ms());
+                return to_raw(items);
             });
             co_return result.value();
         });
@@ -168,14 +165,11 @@ int run_stateless_worker_mode() {
         LOG_DEBUG("SignatureHelp request: path={}, offset={}", params.path, params.offset);
 
         auto result = co_await et::queue([&]() -> et::serde::RawValue {
-            auto start = std::chrono::steady_clock::now();
+            ScopedTimer timer;
 
             CompilationParams cp;
             cp.kind = CompilationKind::Completion;
-            cp.directory = params.directory;
-            for(auto& arg: params.arguments) {
-                cp.arguments.push_back(arg.c_str());
-            }
+            fill_args(cp, params.directory, params.arguments);
             if(!params.pch.first.empty()) {
                 cp.pch = params.pch;
             }
@@ -186,17 +180,8 @@ int run_stateless_worker_mode() {
             cp.completion = {params.path, params.offset};
 
             auto help = feature::signature_help(cp);
-
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - start)
-                          .count();
-            LOG_DEBUG("SignatureHelp done: {}ms", ms);
-
-            auto json = et::serde::json::to_json<et::ipc::lsp_config>(help);
-            if(json) {
-                return et::serde::RawValue{std::move(*json)};
-            }
-            return et::serde::RawValue{"null"};
+            LOG_DEBUG("SignatureHelp done: {}ms", timer.ms());
+            return to_raw(help);
         });
         co_return result.value();
     });
@@ -207,30 +192,23 @@ int run_stateless_worker_mode() {
         LOG_INFO("Index request: file={}", params.file);
 
         auto result = co_await et::queue([&]() -> worker::IndexResult {
-            auto start = std::chrono::steady_clock::now();
+            ScopedTimer timer;
 
             CompilationParams cp;
             cp.kind = CompilationKind::Indexing;
-            cp.directory = params.directory;
-            for(auto& arg: params.arguments) {
-                cp.arguments.push_back(arg.c_str());
-            }
+            fill_args(cp, params.directory, params.arguments);
             for(auto& [name, path]: params.pcms) {
                 cp.pcms.try_emplace(name, path);
             }
 
             auto unit = compile(cp);
 
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - start)
-                          .count();
-
             if(!unit.completed()) {
-                LOG_WARN("Index failed: file={}, {}ms", params.file, ms);
+                LOG_WARN("Index failed: file={}, {}ms", params.file, timer.ms());
                 return {false, "Index compilation failed", ""};
             }
 
-            LOG_INFO("Index done: file={}, {}ms", params.file, ms);
+            LOG_INFO("Index done: file={}, {}ms", params.file, timer.ms());
             // TODO: Generate TUIndex from the compilation unit
             return {true, "", ""};
         });

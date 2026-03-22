@@ -140,14 +140,13 @@ TEST_CASE(DocumentUpdate) {
         up.text = "int x = 2;\nint y = 3;\n";
         w.peer->send_notification(up);
 
-        // After update, hover should return null (dirty flag set).
+        // After update, hover still returns stale AST results (not null).
         worker::HoverParams hp;
         hp.path = src.path;
         hp.offset = 4;
 
         auto hover_result = co_await w.peer->send_request(hp);
         EXPECT_TRUE(hover_result.has_value());
-        EXPECT_EQ(hover_result.value().data, std::string("null"));
 
         test_done = true;
         w.peer->close_output();

@@ -48,6 +48,32 @@ struct DocumentEntry {
     et::mutex strand;
 };
 
+struct ScopedTimer {
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+    long long ms() const {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - start)
+            .count();
+    }
+};
+
+static void fill_args(CompilationParams& cp,
+                      const std::string& directory,
+                      const std::vector<std::string>& arguments) {
+    cp.directory = directory;
+    for(auto& arg: arguments) {
+        cp.arguments.push_back(arg.c_str());
+    }
+}
+
+/// Serialize any value to LSP JSON RawValue.
+template <typename T>
+static et::serde::RawValue to_raw(const T& value) {
+    auto json = et::serde::json::to_json<et::ipc::lsp_config>(value);
+    return et::serde::RawValue{json ? std::move(*json) : "null"};
+}
+
 class StatefulWorker {
     et::ipc::BincodePeer& peer;
     std::uint64_t memory_limit;
@@ -75,7 +101,6 @@ class StatefulWorker {
             lru.pop_back();
             lru_index.erase(path);
             LOG_DEBUG("Evicting document: {}", path);
-            // Send evicted notification to master
             peer.send_notification(worker::EvictedParams{std::string(path)});
             documents.erase(path);
         }
@@ -88,6 +113,30 @@ class StatefulWorker {
             LOG_DEBUG("Created new document entry: {}", path.str());
         }
         return *it->second;
+    }
+
+    /// Look up document, wait for AST, lock strand, run fn(doc) on thread pool, unlock.
+    /// Returns "null" if document not found or AST not usable.
+    template <typename F>
+    et::task<et::serde::RawValue> with_ast(llvm::StringRef path, F&& fn) {
+        auto it = documents.find(path);
+        if(it == documents.end())
+            co_return et::serde::RawValue{"null"};
+
+        auto& doc = *it->second;
+        touch_lru(path);
+
+        co_await doc.ast_ready.wait();
+        co_await doc.strand.lock();
+
+        auto result = co_await et::queue([&]() -> et::serde::RawValue {
+            if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error()))
+                return et::serde::RawValue{"null"};
+            return fn(doc);
+        });
+
+        doc.strand.unlock();
+        co_return result.value();
     }
 
 public:
@@ -122,14 +171,11 @@ void StatefulWorker::register_handlers() {
             auto compile_result = co_await et::queue([&]() -> worker::CompileResult {
                 LOG_DEBUG("Compiling: path={}, {} args", params.path, doc.arguments.size());
 
-                auto start = std::chrono::steady_clock::now();
+                ScopedTimer timer;
 
                 CompilationParams cp;
                 cp.kind = CompilationKind::Content;
-                cp.directory = doc.directory;
-                for(auto& arg: doc.arguments) {
-                    cp.arguments.push_back(arg.c_str());
-                }
+                fill_args(cp, doc.directory, doc.arguments);
                 if(!doc.pch.first.empty()) {
                     cp.pch = doc.pch;
                 }
@@ -142,9 +188,6 @@ void StatefulWorker::register_handlers() {
                 doc.has_ast = true;
                 doc.dirty.store(false, std::memory_order_release);
 
-                auto elapsed = std::chrono::steady_clock::now() - start;
-                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
-
                 worker::CompileResult result;
                 result.version = doc.version;
                 if(doc.unit.completed() || doc.unit.fatal_error()) {
@@ -153,12 +196,12 @@ void StatefulWorker::register_handlers() {
                     result.diagnostics = et::serde::RawValue{json ? std::move(*json) : "[]"};
                     LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
                              params.path,
-                             ms,
+                             timer.ms(),
                              diags.size(),
                              doc.unit.fatal_error());
                 } else {
                     result.diagnostics = et::serde::RawValue{"[]"};
-                    LOG_WARN("Compile incomplete: path={}, {}ms", params.path, ms);
+                    LOG_WARN("Compile incomplete: path={}, {}ms", params.path, timer.ms());
                 }
                 result.memory_usage = 0;  // TODO: query actual memory
                 return result;
@@ -203,247 +246,52 @@ void StatefulWorker::register_handlers() {
     peer.on_request(
         [this](RequestContext& ctx,
                const worker::HoverParams& params) -> RequestResult<worker::HoverParams> {
-            LOG_TRACE("Hover request: path={}, offset={}", params.path, params.offset);
-
-            auto it = documents.find(params.path);
-            if(it == documents.end()) {
-                LOG_TRACE("Hover: document not found, returning null");
-                co_return et::serde::RawValue{"null"};
-            }
-
-            auto& doc = *it->second;
-            touch_lru(params.path);
-
-            co_await doc.ast_ready.wait();
-            co_await doc.strand.lock();
-
-            auto result = co_await et::queue([&]() -> et::serde::RawValue {
-                if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error())) {
-                    LOG_TRACE("Hover: no AST available");
-                    return et::serde::RawValue{"null"};
-                }
-
-                auto hover_result = feature::hover(doc.unit, params.offset);
-                if(hover_result) {
-                    auto json = et::serde::json::to_json<et::ipc::lsp_config>(*hover_result);
-                    if(json) {
-                        LOG_TRACE("Hover: returning result");
-                        return et::serde::RawValue{std::move(*json)};
-                    }
-                }
-                LOG_TRACE("Hover: no result at offset");
-                return et::serde::RawValue{"null"};
+            co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                auto result = feature::hover(doc.unit, params.offset);
+                return result ? to_raw(*result) : et::serde::RawValue{"null"};
             });
-
-            doc.strand.unlock();
-            co_return result.value();
         });
 
     // === SemanticTokens ===
     peer.on_request([this](RequestContext& ctx, const worker::SemanticTokensParams& params)
                         -> RequestResult<worker::SemanticTokensParams> {
-        LOG_DEBUG("SemanticTokens request: path={}", params.path);
-
-        auto it = documents.find(params.path);
-        if(it == documents.end()) {
-            LOG_TRACE("SemanticTokens: document not found");
-            co_return et::serde::RawValue{"null"};
-        }
-
-        auto& doc = *it->second;
-        touch_lru(params.path);
-
-        co_await doc.ast_ready.wait();
-        co_await doc.strand.lock();
-
-        auto result = co_await et::queue([&]() -> et::serde::RawValue {
-            if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error())) {
-                LOG_TRACE("SemanticTokens: no AST available");
-                return et::serde::RawValue{"null"};
-            }
-
-            auto start = std::chrono::steady_clock::now();
-            auto tokens = feature::semantic_tokens(doc.unit);
-            auto json = et::serde::json::to_json<et::ipc::lsp_config>(tokens);
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - start)
-                          .count();
-            LOG_DEBUG("SemanticTokens: {} data entries, {}ms", tokens.data.size(), ms);
-
-            if(json) {
-                return et::serde::RawValue{std::move(*json)};
-            }
-            return et::serde::RawValue{"null"};
+        co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+            return to_raw(feature::semantic_tokens(doc.unit));
         });
-
-        doc.strand.unlock();
-        co_return result.value();
     });
 
     // === InlayHints ===
     peer.on_request(
         [this](RequestContext& ctx,
                const worker::InlayHintsParams& params) -> RequestResult<worker::InlayHintsParams> {
-            LOG_DEBUG("InlayHints request: path={}", params.path);
-
-            auto it = documents.find(params.path);
-            if(it == documents.end()) {
-                LOG_TRACE("InlayHints: document not found");
-                co_return et::serde::RawValue{"null"};
-            }
-
-            auto& doc = *it->second;
-            touch_lru(params.path);
-
-            co_await doc.ast_ready.wait();
-            co_await doc.strand.lock();
-
-            auto result = co_await et::queue([&]() -> et::serde::RawValue {
-                if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error())) {
-                    LOG_TRACE("InlayHints: no AST available");
-                    return et::serde::RawValue{"null"};
-                }
-
-                auto start = std::chrono::steady_clock::now();
+            co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
                 LocalSourceRange range{0, static_cast<uint32_t>(doc.text.size())};
-                auto hints = feature::inlay_hints(doc.unit, range);
-                auto json = et::serde::json::to_json<et::ipc::lsp_config>(hints);
-                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                              std::chrono::steady_clock::now() - start)
-                              .count();
-                LOG_DEBUG("InlayHints: {} hints, {}ms", hints.size(), ms);
-
-                if(json) {
-                    return et::serde::RawValue{std::move(*json)};
-                }
-                return et::serde::RawValue{"null"};
+                return to_raw(feature::inlay_hints(doc.unit, range));
             });
-
-            doc.strand.unlock();
-            co_return result.value();
         });
 
     // === FoldingRange ===
     peer.on_request([this](RequestContext& ctx, const worker::FoldingRangeParams& params)
                         -> RequestResult<worker::FoldingRangeParams> {
-        LOG_DEBUG("FoldingRange request: path={}", params.path);
-
-        auto it = documents.find(params.path);
-        if(it == documents.end()) {
-            LOG_TRACE("FoldingRange: document not found");
-            co_return et::serde::RawValue{"null"};
-        }
-
-        auto& doc = *it->second;
-        touch_lru(params.path);
-
-        co_await doc.ast_ready.wait();
-        co_await doc.strand.lock();
-
-        auto result = co_await et::queue([&]() -> et::serde::RawValue {
-            if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error())) {
-                LOG_TRACE("FoldingRange: no AST available");
-                return et::serde::RawValue{"null"};
-            }
-
-            auto start = std::chrono::steady_clock::now();
-            auto ranges = feature::folding_ranges(doc.unit);
-            auto json = et::serde::json::to_json<et::ipc::lsp_config>(ranges);
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - start)
-                          .count();
-            LOG_DEBUG("FoldingRange: {} ranges, {}ms", ranges.size(), ms);
-
-            if(json) {
-                return et::serde::RawValue{std::move(*json)};
-            }
-            return et::serde::RawValue{"null"};
+        co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+            return to_raw(feature::folding_ranges(doc.unit));
         });
-
-        doc.strand.unlock();
-        co_return result.value();
     });
 
     // === DocumentSymbol ===
     peer.on_request([this](RequestContext& ctx, const worker::DocumentSymbolParams& params)
                         -> RequestResult<worker::DocumentSymbolParams> {
-        LOG_DEBUG("DocumentSymbol request: path={}", params.path);
-
-        auto it = documents.find(params.path);
-        if(it == documents.end()) {
-            LOG_TRACE("DocumentSymbol: document not found");
-            co_return et::serde::RawValue{"null"};
-        }
-
-        auto& doc = *it->second;
-        touch_lru(params.path);
-
-        co_await doc.ast_ready.wait();
-        co_await doc.strand.lock();
-
-        auto result = co_await et::queue([&]() -> et::serde::RawValue {
-            if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error())) {
-                LOG_TRACE("DocumentSymbol: no AST available");
-                return et::serde::RawValue{"null"};
-            }
-
-            auto start = std::chrono::steady_clock::now();
-            auto symbols = feature::document_symbols(doc.unit);
-            auto json = et::serde::json::to_json<et::ipc::lsp_config>(symbols);
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - start)
-                          .count();
-            LOG_DEBUG("DocumentSymbol: {} symbols, {}ms", symbols.size(), ms);
-
-            if(json) {
-                return et::serde::RawValue{std::move(*json)};
-            }
-            return et::serde::RawValue{"null"};
+        co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+            return to_raw(feature::document_symbols(doc.unit));
         });
-
-        doc.strand.unlock();
-        co_return result.value();
     });
 
     // === DocumentLink ===
     peer.on_request([this](RequestContext& ctx, const worker::DocumentLinkParams& params)
                         -> RequestResult<worker::DocumentLinkParams> {
-        LOG_DEBUG("DocumentLink request: path={}", params.path);
-
-        auto it = documents.find(params.path);
-        if(it == documents.end()) {
-            LOG_TRACE("DocumentLink: document not found");
-            co_return et::serde::RawValue{"null"};
-        }
-
-        auto& doc = *it->second;
-        touch_lru(params.path);
-
-        co_await doc.ast_ready.wait();
-        co_await doc.strand.lock();
-
-        auto result = co_await et::queue([&]() -> et::serde::RawValue {
-            if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error())) {
-                LOG_TRACE("DocumentLink: no AST available");
-                return et::serde::RawValue{"null"};
-            }
-
-            auto start = std::chrono::steady_clock::now();
-            auto links = feature::document_links(doc.unit);
-            auto json = et::serde::json::to_json<et::ipc::lsp_config>(links);
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - start)
-                          .count();
-            LOG_DEBUG("DocumentLink: {} links, {}ms", links.size(), ms);
-
-            if(json) {
-                return et::serde::RawValue{std::move(*json)};
-            }
-            return et::serde::RawValue{"null"};
+        co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+            return to_raw(feature::document_links(doc.unit));
         });
-
-        doc.strand.unlock();
-        co_return result.value();
     });
 
     // === CodeAction ===

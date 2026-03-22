@@ -114,7 +114,7 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
                   params.arguments.size(),
                   gen);
 
-        auto result = co_await pool.send_stateful<worker::CompileParams>(path_id, params);
+        auto result = co_await pool.send_stateful(path_id, params);
 
         // Re-lookup document (may have been closed during compile)
         doc_it = documents.find(path_id);
@@ -460,9 +460,6 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "textDocument/hover",
         [this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
-            if(lifecycle != ServerLifecycle::Ready)
-                co_return et::outcome_error(et::ipc::Error{"Server not ready"});
-
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
@@ -481,7 +478,7 @@ void MasterServer::register_handlers() {
                 wp.offset = mapper.to_offset(params.text_document_position_params.position);
             }
 
-            auto result = co_await pool.send_stateful<worker::HoverParams>(path_id, wp);
+            auto result = co_await pool.send_stateful(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};  // null
             co_return std::move(result.value());
@@ -491,9 +488,6 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "textDocument/semanticTokens/full",
         [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
-            if(lifecycle != ServerLifecycle::Ready)
-                co_return et::outcome_error(et::ipc::Error{"Server not ready"});
-
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
@@ -503,7 +497,7 @@ void MasterServer::register_handlers() {
             worker::SemanticTokensParams wp;
             wp.path = path;
 
-            auto result = co_await pool.send_stateful<worker::SemanticTokensParams>(path_id, wp);
+            auto result = co_await pool.send_stateful(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
@@ -513,9 +507,6 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "textDocument/inlayHint",
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
-            if(lifecycle != ServerLifecycle::Ready)
-                co_return et::outcome_error(et::ipc::Error{"Server not ready"});
-
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
@@ -525,7 +516,7 @@ void MasterServer::register_handlers() {
             worker::InlayHintsParams wp;
             wp.path = path;
 
-            auto result = co_await pool.send_stateful<worker::InlayHintsParams>(path_id, wp);
+            auto result = co_await pool.send_stateful(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
@@ -535,9 +526,6 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "textDocument/foldingRange",
         [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
-            if(lifecycle != ServerLifecycle::Ready)
-                co_return et::outcome_error(et::ipc::Error{"Server not ready"});
-
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
@@ -547,7 +535,7 @@ void MasterServer::register_handlers() {
             worker::FoldingRangeParams wp;
             wp.path = path;
 
-            auto result = co_await pool.send_stateful<worker::FoldingRangeParams>(path_id, wp);
+            auto result = co_await pool.send_stateful(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
@@ -557,9 +545,6 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "textDocument/documentSymbol",
         [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
-            if(lifecycle != ServerLifecycle::Ready)
-                co_return et::outcome_error(et::ipc::Error{"Server not ready"});
-
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
@@ -569,7 +554,7 @@ void MasterServer::register_handlers() {
             worker::DocumentSymbolParams wp;
             wp.path = path;
 
-            auto result = co_await pool.send_stateful<worker::DocumentSymbolParams>(path_id, wp);
+            auto result = co_await pool.send_stateful(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
@@ -579,9 +564,6 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "textDocument/documentLink",
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
-            if(lifecycle != ServerLifecycle::Ready)
-                co_return et::outcome_error(et::ipc::Error{"Server not ready"});
-
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
@@ -591,7 +573,7 @@ void MasterServer::register_handlers() {
             worker::DocumentLinkParams wp;
             wp.path = path;
 
-            auto result = co_await pool.send_stateful<worker::DocumentLinkParams>(path_id, wp);
+            auto result = co_await pool.send_stateful(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
@@ -601,9 +583,6 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "textDocument/codeAction",
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
-            if(lifecycle != ServerLifecycle::Ready)
-                co_return et::outcome_error(et::ipc::Error{"Server not ready"});
-
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
@@ -613,7 +592,7 @@ void MasterServer::register_handlers() {
             worker::CodeActionParams wp;
             wp.path = path;
 
-            auto result = co_await pool.send_stateful<worker::CodeActionParams>(path_id, wp);
+            auto result = co_await pool.send_stateful(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
@@ -623,9 +602,6 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "textDocument/definition",
         [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
-            if(lifecycle != ServerLifecycle::Ready)
-                co_return et::outcome_error(et::ipc::Error{"Server not ready"});
-
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
@@ -644,7 +620,7 @@ void MasterServer::register_handlers() {
                 wp.offset = mapper.to_offset(params.text_document_position_params.position);
             }
 
-            auto result = co_await pool.send_stateful<worker::GoToDefinitionParams>(path_id, wp);
+            auto result = co_await pool.send_stateful(path_id, wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
@@ -658,9 +634,6 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "textDocument/completion",
         [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
-            if(lifecycle != ServerLifecycle::Ready)
-                co_return et::outcome_error(et::ipc::Error{"Server not ready"});
-
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
@@ -681,7 +654,7 @@ void MasterServer::register_handlers() {
             fill_compile_args(path, wp.directory, wp.arguments);
             wp.offset = mapper.to_offset(params.text_document_position_params.position);
 
-            auto result = co_await pool.send_stateless<worker::CompletionParams>(wp);
+            auto result = co_await pool.send_stateless(wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
@@ -691,9 +664,6 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "textDocument/signatureHelp",
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
-            if(lifecycle != ServerLifecycle::Ready)
-                co_return et::outcome_error(et::ipc::Error{"Server not ready"});
-
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
@@ -714,7 +684,7 @@ void MasterServer::register_handlers() {
             fill_compile_args(path, wp.directory, wp.arguments);
             wp.offset = mapper.to_offset(params.text_document_position_params.position);
 
-            auto result = co_await pool.send_stateless<worker::SignatureHelpParams>(wp);
+            auto result = co_await pool.send_stateless(wp);
             if(!result.has_value())
                 co_return serde_raw{};
             co_return std::move(result.value());
