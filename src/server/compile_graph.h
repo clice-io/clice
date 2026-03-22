@@ -3,10 +3,7 @@
 #include <cstdint>
 #include <memory>
 
-#include "eventide/async/io/loop.h"
-#include "eventide/async/runtime/sync.h"
-#include "eventide/async/runtime/task.h"
-#include "eventide/async/vocab/cancellation.h"
+#include "eventide/async/async.h"
 #include "server/worker_pool.h"
 
 #include "llvm/ADT/ArrayRef.h"

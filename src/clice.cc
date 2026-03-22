@@ -3,8 +3,7 @@
 #include <sstream>
 #include <string>
 
-#include "eventide/async/io/loop.h"
-#include "eventide/async/io/stream.h"
+#include "eventide/async/async.h"
 #include "eventide/deco/macro.h"
 #include "eventide/deco/runtime.h"
 #include "eventide/ipc/peer.h"

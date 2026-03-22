@@ -8,9 +8,7 @@
 #include <vector>
 
 #include "compile/compilation.h"
-#include "eventide/async/io/loop.h"
-#include "eventide/async/io/request.h"
-#include "eventide/async/runtime/sync.h"
+#include "eventide/async/async.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/transport.h"
 #include "eventide/serde/json/serializer.h"

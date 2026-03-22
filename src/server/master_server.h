@@ -6,9 +6,7 @@
 #include <string>
 
 #include "compile/command.h"
-#include "eventide/async/io/loop.h"
-#include "eventide/async/io/watcher.h"
-#include "eventide/async/runtime/sync.h"
+#include "eventide/async/async.h"
 #include "eventide/ipc/lsp/protocol.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/serde/serde/raw_value.h"

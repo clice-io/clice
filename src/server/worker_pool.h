@@ -6,8 +6,7 @@
 #include <list>
 #include <memory>
 
-#include "eventide/async/io/loop.h"
-#include "eventide/async/io/process.h"
+#include "eventide/async/async.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/transport.h"
 #include "server/protocol.h"
