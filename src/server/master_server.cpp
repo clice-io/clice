@@ -448,45 +448,37 @@ void MasterServer::register_handlers() {
     // Feature requests routed to stateful workers (RawValue passthrough)
     // =========================================================================
 
-    // We use the method-string overload of on_request so the handler can return
-    // task<serde::RawValue, Error> instead of the LSP-typed result.  The JsonPeer
-    // serialises RawValue as inline JSON, giving us zero-copy forwarding of the
-    // worker's already-serialised response back to the LSP client.
-
     using serde_raw = eventide::serde::RawValue;
     using RawResult = et::task<serde_raw, et::ipc::Error>;
 
     // --- textDocument/hover ---
-    peer.on_request(
-        "textDocument/hover",
-        [this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
-            auto path_id = path_pool.intern(path);
+    peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
+        auto path = uri_to_path(params.text_document_position_params.text_document.uri);
+        auto path_id = path_pool.intern(path);
 
-            if(!co_await ensure_compiled(path_id,
-                                         params.text_document_position_params.text_document.uri))
-                co_return serde_raw{"null"};
+        if(!co_await ensure_compiled(path_id,
+                                     params.text_document_position_params.text_document.uri))
+            co_return serde_raw{"null"};
 
-            worker::HoverParams wp;
-            wp.path = path;
+        worker::HoverParams wp;
+        wp.path = path;
 
-            auto doc_it = documents.find(path_id);
-            if(doc_it != documents.end()) {
-                using eventide::ipc::lsp::PositionMapper;
-                using eventide::ipc::lsp::PositionEncoding;
-                PositionMapper mapper(doc_it->second.text, PositionEncoding::UTF16);
-                wp.offset = mapper.to_offset(params.text_document_position_params.position);
-            }
+        auto doc_it = documents.find(path_id);
+        if(doc_it != documents.end()) {
+            using eventide::ipc::lsp::PositionMapper;
+            using eventide::ipc::lsp::PositionEncoding;
+            PositionMapper mapper(doc_it->second.text, PositionEncoding::UTF16);
+            wp.offset = mapper.to_offset(params.text_document_position_params.position);
+        }
 
-            auto result = co_await pool.send_stateful(path_id, wp);
-            if(!result.has_value())
-                co_return serde_raw{};  // null
-            co_return std::move(result.value());
-        });
+        auto result = co_await pool.send_stateful(path_id, wp);
+        if(!result.has_value())
+            co_return serde_raw{};  // null
+        co_return std::move(result.value());
+    });
 
     // --- textDocument/semanticTokens/full ---
     peer.on_request(
-        "textDocument/semanticTokens/full",
         [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
@@ -505,7 +497,6 @@ void MasterServer::register_handlers() {
 
     // --- textDocument/inlayHint ---
     peer.on_request(
-        "textDocument/inlayHint",
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
@@ -524,7 +515,6 @@ void MasterServer::register_handlers() {
 
     // --- textDocument/foldingRange ---
     peer.on_request(
-        "textDocument/foldingRange",
         [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
@@ -543,7 +533,6 @@ void MasterServer::register_handlers() {
 
     // --- textDocument/documentSymbol ---
     peer.on_request(
-        "textDocument/documentSymbol",
         [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
@@ -562,7 +551,6 @@ void MasterServer::register_handlers() {
 
     // --- textDocument/documentLink ---
     peer.on_request(
-        "textDocument/documentLink",
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
@@ -581,7 +569,6 @@ void MasterServer::register_handlers() {
 
     // --- textDocument/codeAction ---
     peer.on_request(
-        "textDocument/codeAction",
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
@@ -600,7 +587,6 @@ void MasterServer::register_handlers() {
 
     // --- textDocument/definition ---
     peer.on_request(
-        "textDocument/definition",
         [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
@@ -632,7 +618,6 @@ void MasterServer::register_handlers() {
 
     // --- textDocument/completion ---
     peer.on_request(
-        "textDocument/completion",
         [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
@@ -662,7 +647,6 @@ void MasterServer::register_handlers() {
 
     // --- textDocument/signatureHelp ---
     peer.on_request(
-        "textDocument/signatureHelp",
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
