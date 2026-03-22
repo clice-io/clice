@@ -1,6 +1,5 @@
 #include "server/master_server.h"
 
-#include <cstddef>
 #include <string>
 #include <type_traits>
 #include <variant>
@@ -348,21 +347,14 @@ void MasterServer::register_handlers() {
                 return s;
             };
 
-            std::vector<std::string> token_types;
-            using SymbolKindRefl = eventide::refl::reflection<SymbolKind::Kind>;
-            for(std::size_t i = 0; i < SymbolKindRefl::member_count; ++i) {
-                token_types.push_back(lower_first(SymbolKindRefl::member_names[i]));
-            }
-
-            std::vector<std::string> token_modifiers;
-            using SymbolModRefl = eventide::refl::reflection<SymbolModifiers::Kind>;
-            for(std::size_t i = 0; i < SymbolModRefl::member_count; ++i) {
-                token_modifiers.push_back(lower_first(SymbolModRefl::member_names[i]));
-            }
+            namespace views = std::ranges::views;
+            auto to_names = [&](auto names) {
+                return names | views::transform(lower_first) | std::ranges::to<std::vector>();
+            };
 
             sem_opts.legend = protocol::SemanticTokensLegend{
-                std::move(token_types),
-                std::move(token_modifiers),
+                to_names(eventide::refl::reflection<SymbolKind::Kind>::member_names),
+                to_names(eventide::refl::reflection<SymbolModifiers::Kind>::member_names),
             };
         }
         sem_opts.full =
