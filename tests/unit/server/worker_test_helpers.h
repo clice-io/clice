@@ -112,8 +112,13 @@ struct WorkerHandle {
         };
 
         auto result = et::process::spawn(opts, loop);
-        if(!result)
+        if(!result) {
+#ifndef _WIN32
+            if(stderr_fd >= 0)
+                ::close(stderr_fd);
+#endif
             return false;
+        }
 
         auto& spawn = *result;
         transport = std::make_unique<et::ipc::StreamTransport>(std::move(spawn.stdout_pipe),

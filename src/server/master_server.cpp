@@ -625,8 +625,9 @@ void MasterServer::register_handlers() {
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
-            co_await ensure_compiled(path_id,
-                                     params.text_document_position_params.text_document.uri);
+            if(!co_await ensure_compiled(path_id,
+                                         params.text_document_position_params.text_document.uri))
+                co_return serde_raw{"null"};
 
             worker::HoverParams wp;
             wp.path = path;
@@ -655,7 +656,8 @@ void MasterServer::register_handlers() {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
-            co_await ensure_compiled(path_id, params.text_document.uri);
+            if(!co_await ensure_compiled(path_id, params.text_document.uri))
+                co_return serde_raw{"null"};
 
             worker::SemanticTokensParams wp;
             wp.path = path;
@@ -676,7 +678,8 @@ void MasterServer::register_handlers() {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
-            co_await ensure_compiled(path_id, params.text_document.uri);
+            if(!co_await ensure_compiled(path_id, params.text_document.uri))
+                co_return serde_raw{"null"};
 
             worker::InlayHintsParams wp;
             wp.path = path;
@@ -697,7 +700,8 @@ void MasterServer::register_handlers() {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
-            co_await ensure_compiled(path_id, params.text_document.uri);
+            if(!co_await ensure_compiled(path_id, params.text_document.uri))
+                co_return serde_raw{"null"};
 
             worker::FoldingRangeParams wp;
             wp.path = path;
@@ -718,7 +722,8 @@ void MasterServer::register_handlers() {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
-            co_await ensure_compiled(path_id, params.text_document.uri);
+            if(!co_await ensure_compiled(path_id, params.text_document.uri))
+                co_return serde_raw{"null"};
 
             worker::DocumentSymbolParams wp;
             wp.path = path;
@@ -739,7 +744,8 @@ void MasterServer::register_handlers() {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
-            co_await ensure_compiled(path_id, params.text_document.uri);
+            if(!co_await ensure_compiled(path_id, params.text_document.uri))
+                co_return serde_raw{"null"};
 
             worker::DocumentLinkParams wp;
             wp.path = path;
@@ -760,7 +766,8 @@ void MasterServer::register_handlers() {
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
-            co_await ensure_compiled(path_id, params.text_document.uri);
+            if(!co_await ensure_compiled(path_id, params.text_document.uri))
+                co_return serde_raw{"null"};
 
             worker::CodeActionParams wp;
             wp.path = path;
@@ -781,8 +788,9 @@ void MasterServer::register_handlers() {
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = path_pool.intern(path);
 
-            co_await ensure_compiled(path_id,
-                                     params.text_document_position_params.text_document.uri);
+            if(!co_await ensure_compiled(path_id,
+                                         params.text_document_position_params.text_document.uri))
+                co_return serde_raw{"null"};
 
             worker::GoToDefinitionParams wp;
             wp.path = path;
