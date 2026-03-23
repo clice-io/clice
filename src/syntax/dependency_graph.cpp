@@ -253,11 +253,11 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     }
 
     auto config_end = std::chrono::steady_clock::now();
-    auto config_ms =
+    report.config_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
     LOG_INFO("Extracted {} configs in {}ms ({} context groups)",
              configs.size(),
-             config_ms,
+             report.config_ms,
              context_groups.size());
 
     // Shared stat cache for include resolution.
@@ -400,6 +400,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             std::chrono::duration_cast<std::chrono::milliseconds>(phase2_end - phase1_end).count();
         auto p3 =
             std::chrono::duration_cast<std::chrono::milliseconds>(phase3_end - phase2_end).count();
+
+        report.phase1_ms += p1;
+        report.phase2_ms += p2;
+        report.phase3_ms += p3;
 
         LOG_INFO("Wave {}: {} files | read+scan={}ms resolve={}ms graph={}ms | next={}",
                  wave_num,

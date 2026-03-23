@@ -143,14 +143,22 @@ void print_report(const ScanReport& report) {
         std::println("    Accuracy:            {:.1f}%", rate);
     }
 
-    // I/O statistics.
+    // Wall-clock phase breakdown.
     std::println("");
-    std::println("  I/O Statistics (cumulative)");
-    std::println("    File read:  {:.1f}ms", report.read_us / 1000.0);
-    std::println("    Lexer scan: {:.1f}ms", report.scan_us / 1000.0);
+    std::println("  Phase Breakdown (wall-clock)");
+    std::println("    Config extraction: {}ms", report.config_ms);
+    std::println("    Phase 1 (read+scan, parallel): {}ms", report.phase1_ms);
+    std::println("    Phase 2 (include resolve):     {}ms", report.phase2_ms);
+    std::println("    Phase 3 (graph build):         {}ms", report.phase3_ms);
+
+    // Cumulative I/O statistics.
+    std::println("");
+    std::println("  I/O Statistics (cumulative across threads)");
+    std::println("    File read:  {:.1f}ms (sum of all threads)", report.read_us / 1000.0);
+    std::println("    Lexer scan: {:.1f}ms (sum of all threads)", report.scan_us / 1000.0);
+    std::println("    Stat time:  {:.1f}ms", report.stat_us / 1000.0);
     std::println("    Stat calls: {} (cache misses)", report.stat_calls);
     std::println("    Stat hits:  {} (cache hits)", report.stat_hits);
-    std::println("    Stat time:  {:.1f}ms", report.stat_us / 1000.0);
     if(report.stat_calls + report.stat_hits > 0) {
         double hit_rate = 100.0 * static_cast<double>(report.stat_hits) /
                           static_cast<double>(report.stat_calls + report.stat_hits);

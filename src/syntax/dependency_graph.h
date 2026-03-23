@@ -120,12 +120,22 @@ struct ScanReport {
     /// BFS wave count.
     std::size_t waves = 0;
 
-    /// I/O statistics (cumulative across all waves).
-    std::int64_t read_us = 0;   // Microseconds spent reading files.
-    std::int64_t scan_us = 0;   // Microseconds spent in lexer scan().
-    std::int64_t stat_us = 0;   // Microseconds spent in stat() calls.
-    std::size_t stat_calls = 0;   // Total stat() syscalls (cache misses).
-    std::size_t stat_hits = 0;    // stat cache hits (no syscall).
+    /// Wall-clock time per phase (milliseconds, summed across waves).
+    std::int64_t phase1_ms = 0;  // Read + scan (parallel on thread pool).
+    std::int64_t phase2_ms = 0;  // Include resolution (stat calls).
+    std::int64_t phase3_ms = 0;  // Graph building (single-threaded).
+    std::int64_t config_ms = 0;  // Config extraction (one-time).
+
+    /// Cumulative I/O time across all threads/files (microseconds).
+    /// These are sums of per-file durations — will exceed wall-clock time
+    /// when work is parallelized across threads.
+    std::int64_t read_us = 0;   // File read (cumulative across threads).
+    std::int64_t scan_us = 0;   // Lexer scan (cumulative across threads).
+    std::int64_t stat_us = 0;   // stat() syscalls (on event loop thread).
+
+    /// Stat call counts.
+    std::size_t stat_calls = 0;   // Actual filesystem stat() calls (cache misses).
+    std::size_t stat_hits = 0;    // Cache hits (no syscall).
 
     /// Unresolved includes: (header_name, includer_path).
     struct UnresolvedInclude {
