@@ -1,12 +1,14 @@
 /// Benchmark for scan_dependency_graph on a real compilation database.
 ///
 /// Usage:
-///   scan_benchmark <path-to-compile_commands.json> [output.json]
+///   scan_benchmark [OPTIONS] <compile_commands.json>
 ///
 /// Example:
 ///   ./build/RelWithDebInfo/bin/scan_benchmark \
-///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json \
-///       graph.json
+///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
+///
+///   ./build/RelWithDebInfo/bin/scan_benchmark --log-level info --export graph.json \
+///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
 
 #include <algorithm>
 #include <chrono>
@@ -17,14 +19,38 @@
 #include <thread>
 
 #include "compile/command.h"
+#include "eventide/deco/macro.h"
+#include "eventide/deco/runtime.h"
 #include "eventide/serde/json/serializer.h"
 #include "support/filesystem.h"
+#include "support/logging.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
+
+#include "llvm/Support/FileSystem.h"
 
 namespace et = eventide;
 
 using namespace clice;
+
+struct BenchmarkOptions {
+    DecoKV(names = {"--log-level"}; help = "Log level: trace, debug, info, warn, error, off";
+           required = false;)
+    <std::string> log_level = "off";
+
+    DecoKV(names = {"--export"}; help = "Export dependency graph as JSON to this path";
+           required = false;)
+    <std::string> export_path;
+
+    DecoKV(names = {"--runs"}; help = "Number of benchmark iterations"; required = false;)
+    <int> runs = 3;
+
+    DecoFlag(names = {"-h", "--help"}; help = "Show help message"; required = false;)
+    help;
+
+    DecoInput(meta_var = "CDB"; help = "Path to compile_commands.json"; required = false;)
+    <std::string> cdb_path;
+};
 
 struct FileNode {
     std::string path;
@@ -38,7 +64,7 @@ struct GraphExport {
 
 void export_graph_json(const PathPool& path_pool,
                        const DependencyGraph& graph,
-                       const char* output_path) {
+                       llvm::StringRef output_path) {
     // Build reverse module map: path_id -> module_name.
     llvm::DenseMap<std::uint32_t, llvm::StringRef> path_to_module;
     for(auto& [name, path_id]: graph.modules()) {
@@ -74,7 +100,7 @@ void export_graph_json(const PathPool& path_pool,
         return;
     }
 
-    std::ofstream out(output_path);
+    std::ofstream out(output_path.str());
     out << *json;
     std::println("Graph exported to {} ({} files)", output_path, export_data.files.size());
 }
@@ -181,19 +207,39 @@ void print_report(const ScanReport& report) {
     std::println("===============================================================");
 }
 
-int main(int argc, char* argv[]) {
-    if(argc < 2) {
-        std::println(stderr, "Usage: {} <compile_commands.json>", argv[0]);
+int main(int argc, const char** argv) {
+    auto args = deco::util::argvify(argc, argv);
+    auto result = deco::cli::parse<BenchmarkOptions>(args);
+
+    if(!result.has_value()) {
+        std::println(stderr, "Error: {}", result.error().message);
         return 1;
     }
 
-    // Initialize resource directory (needed for -resource-dir in toolchain queries).
-    if(!clice::fs::init_resource_dir(argv[0])) {
-        std::println(stderr, "Warning: failed to find resource dir from {}", argv[0]);
+    auto& opts = result->options;
+
+    if(opts.help.value_or(false) || !opts.cdb_path.has_value()) {
+        auto dispatcher = deco::cli::Dispatcher<BenchmarkOptions>("scan_benchmark [OPTIONS] <cdb>");
+        std::ostringstream oss;
+        dispatcher.usage(oss, true);
+        std::print("{}", oss.str());
+        return opts.help.value_or(false) ? 0 : 1;
     }
 
-    auto cdb_path = argv[1];
+    // Configure logging.
+    auto level = spdlog::level::from_str(*opts.log_level);
+    clice::logging::options.level = level;
+    clice::logging::stderr_logger("scan_benchmark", clice::logging::options);
+
+    // Initialize resource directory (needed for -resource-dir in toolchain queries).
+    std::string self_path = llvm::sys::fs::getMainExecutable(argv[0], (void*)main);
+    if(!clice::fs::init_resource_dir(self_path)) {
+        std::println(stderr, "Warning: failed to find resource dir from {}", self_path);
+    }
+
+    auto& cdb_path = *opts.cdb_path;
     auto hw_threads = std::thread::hardware_concurrency();
+    auto runs = *opts.runs;
 
     // Set UV_THREADPOOL_SIZE to hardware concurrency if not already set.
     if(!std::getenv("UV_THREADPOOL_SIZE")) {
@@ -203,6 +249,7 @@ int main(int argc, char* argv[]) {
 
     std::println("Hardware threads: {}", hw_threads);
     std::println("UV_THREADPOOL_SIZE: {}", std::getenv("UV_THREADPOOL_SIZE"));
+    std::println("Log level: {}", *opts.log_level);
     std::println("CDB: {}", cdb_path);
     std::println("");
 
@@ -225,7 +272,6 @@ int main(int argc, char* argv[]) {
     std::println("CDB loaded: {} entries ({} active) in {}ms", updates.size(), active, load_ms);
 
     // Run dependency scan multiple times for warm-cache measurement.
-    constexpr int runs = 3;
     std::println("Running {} iterations...\n", runs);
 
     PathPool path_pool;
@@ -251,9 +297,9 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Export dependency graph as JSON if output path is provided.
-    if(argc >= 3) {
-        export_graph_json(path_pool, graph, argv[2]);
+    // Export dependency graph as JSON if requested.
+    if(opts.export_path.has_value()) {
+        export_graph_json(path_pool, graph, *opts.export_path);
     }
 
     return 0;

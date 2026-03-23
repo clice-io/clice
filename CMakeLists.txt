@@ -230,4 +230,4 @@ add_executable(scan_benchmark
 target_include_directories(scan_benchmark PRIVATE
     "${PROJECT_SOURCE_DIR}/src"
 )
-target_link_libraries(scan_benchmark PRIVATE clice::core)
+target_link_libraries(scan_benchmark PRIVATE clice::core eventide::deco)
