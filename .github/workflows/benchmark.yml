@@ -11,6 +11,9 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,10 +43,5 @@ jobs:
 
       # ── Run benchmark ──
 
-      - name: Run benchmark (Unix)
-        if: runner.os != 'Windows'
+      - name: Run benchmark
         run: ./build/RelWithDebInfo/bin/scan_benchmark llvm-build/compile_commands.json
-
-      - name: Run benchmark (Windows)
-        if: runner.os == 'Windows'
-        run: .\build\RelWithDebInfo\bin\scan_benchmark.exe llvm-build\compile_commands.json

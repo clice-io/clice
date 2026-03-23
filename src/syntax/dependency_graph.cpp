@@ -286,6 +286,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         }
 
         auto scan_outcome = co_await et::when_all(std::move(scan_tasks));
+        if(scan_outcome.has_error()) {
+            LOG_ERROR("Parallel scan failed: {}", scan_outcome.error().message());
+            break;
+        }
         auto& scan_results = *scan_outcome;
 
         auto phase1_end = std::chrono::steady_clock::now();
