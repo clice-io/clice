@@ -295,7 +295,65 @@ int main(int argc, const char** argv) {
 
     std::println("CDB loaded: {} entries ({} active) in {}ms", updates.size(), active, load_ms);
 
-    // Run dependency scan multiple times for warm-cache measurement.
+    // ── Parser microbenchmark ──────────────────────────────────────────
+    // Measures pure argument-parsing overhead: lookup() + extract_search_config()
+    // across all CDB entries, with toolchain cache already warm.
+    {
+        // Warm up toolchain cache with a single lookup per file.
+        CommandOptions warm_opts;
+        warm_opts.query_toolchain = true;
+        warm_opts.suppress_logging = true;
+
+        std::vector<std::pair<llvm::StringRef, const void*>> file_contexts;
+        for(auto& u: updates) {
+            if(u.kind == UpdateKind::Deleted)
+                continue;
+            file_contexts.push_back({cdb.resolve_path(u.path_id), u.context});
+        }
+
+        // Pre-warm: do one lookup per file so toolchain cache is populated.
+        for(auto& [file, ctx]: file_contexts) {
+            cdb.lookup(file, warm_opts, ctx);
+        }
+
+        // Now benchmark: lookup + extract_search_config, N iterations.
+        std::println("Parser microbenchmark ({} entries, {} iterations):", file_contexts.size(), runs);
+
+        for(int i = 0; i < runs; i++) {
+            auto t_start = std::chrono::steady_clock::now();
+            std::int64_t lookup_us = 0;
+            std::int64_t config_us = 0;
+            std::size_t parse_count = 0;
+
+            for(auto& [file, ctx]: file_contexts) {
+                auto tl0 = std::chrono::steady_clock::now();
+                auto cc = cdb.lookup(file, warm_opts, ctx);
+                auto tl1 = std::chrono::steady_clock::now();
+                cdb.extract_search_config(cc);
+                auto tl2 = std::chrono::steady_clock::now();
+                lookup_us +=
+                    std::chrono::duration_cast<std::chrono::microseconds>(tl1 - tl0).count();
+                config_us +=
+                    std::chrono::duration_cast<std::chrono::microseconds>(tl2 - tl1).count();
+                parse_count++;
+            }
+
+            auto t_end = std::chrono::steady_clock::now();
+            auto total_us =
+                std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
+            std::println("  [run {:2}] {:.1f}ms total | lookup={:.1f}ms config={:.1f}ms "
+                         "({} entries, {:.3f}ms/entry)",
+                         i + 1,
+                         total_us / 1000.0,
+                         lookup_us / 1000.0,
+                         config_us / 1000.0,
+                         parse_count,
+                         total_us / 1000.0 / parse_count);
+        }
+        std::println("");
+    }
+
+    // ── Full dependency scan benchmark ──────────────────────────────────
     std::println("Running {} iterations...\n", runs);
 
     PathPool path_pool;
