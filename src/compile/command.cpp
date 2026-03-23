@@ -1023,7 +1023,7 @@ std::vector<CompilationDatabase::ToolchainQuery>
             continue;
         }
 
-        LOG_INFO("Pre-warm: new toolchain key (len={}) for file={}", key.size(), stored_file);
+        LOG_DEBUG("Pre-warm: new toolchain key (len={}) for file={}", key.size(), stored_file);
         auto directory = self->strings.get(info->directory);
         queries.push_back({std::move(key), std::move(query_args), stored_file, directory});
     }

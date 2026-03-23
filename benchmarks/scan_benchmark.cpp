@@ -313,27 +313,6 @@ int main(int argc, const char** argv) {
                      total_files,
                      unique_contexts.size(),
                      static_cast<double>(total_files) / unique_contexts.size());
-
-        // If no dedup at all, show first 2 commands to diagnose what differs.
-        if(unique_contexts.size() > 1 && unique_contexts.size() == total_files) {
-            std::println("  WARNING: No context sharing. Showing first 2 commands:");
-            int shown = 0;
-            for(auto& u: updates) {
-                if(u.kind == UpdateKind::Deleted)
-                    continue;
-                if(shown >= 2)
-                    break;
-                auto file = cdb.resolve_path(u.path_id);
-                auto ctx = cdb.lookup(file, {}, u.context);
-                std::println("  [{}] file={}", shown, file);
-                std::print("    args:");
-                for(auto arg: ctx.arguments) {
-                    std::print(" {}", arg);
-                }
-                std::println("");
-                shown++;
-            }
-        }
     }
 
     // ── Full dependency scan benchmark ──────────────────────────────────
