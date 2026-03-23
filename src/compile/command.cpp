@@ -949,11 +949,12 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
 std::vector<CompilationDatabase::ToolchainQuery>
     CompilationDatabase::get_pending_toolchain_queries(
         llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files) {
-    // First pass: deduplicate by driver binary + file extension (fast, no parsing).
-    // Files sharing the same driver and extension almost always produce the same
-    // toolchain key, so we only need to do expensive argument parsing for unique
-    // (driver, extension) combinations (~2-4 instead of hundreds).
-    llvm::StringMap<std::pair<llvm::StringRef, object_ptr<CompilationInfo>>> unique_drivers;
+    // Extract the full toolchain key for every context and deduplicate.
+    // The key includes driver + extension + toolchain-affecting flags
+    // (e.g. -std=, -target, -isysroot), so contexts with different flags
+    // produce different keys and need separate queries.
+    llvm::StringMap<bool> seen_keys;
+    std::vector<ToolchainQuery> queries;
 
     for(auto& [file, context]: files) {
         auto path_id = self->strings.get(file);
@@ -980,22 +981,6 @@ std::vector<CompilationDatabase::ToolchainQuery>
             continue;
         }
 
-        // Quick dedup key: driver binary + file extension.
-        auto driver = self->strings.get(info->arguments[0]);
-        auto ext = path::extension(stored_file);
-        llvm::SmallString<128> dedup_key(driver);
-        dedup_key += '\0';
-        dedup_key += ext;
-        unique_drivers.try_emplace(dedup_key, stored_file, info);
-    }
-
-    // Second pass: for each unique driver combo, extract the full toolchain key
-    // using the argument parser. Only ~2-4 iterations.
-    std::vector<ToolchainQuery> queries;
-
-    for(auto& [_, pair]: unique_drivers) {
-        auto& [stored_file, info] = pair;
-
         llvm::SmallVector<const char*, 32> raw_args;
         for(auto arg_id: info->arguments) {
             raw_args.push_back(self->strings.get(arg_id).data());
@@ -1003,7 +988,8 @@ std::vector<CompilationDatabase::ToolchainQuery>
 
         auto [key, query_args] = self->extract_toolchain_flags(stored_file, raw_args);
 
-        if(self->toolchain_cache.count(key)) {
+        // Skip if already cached or already queued.
+        if(self->toolchain_cache.count(key) || !seen_keys.try_emplace(key, true).second) {
             continue;
         }
 

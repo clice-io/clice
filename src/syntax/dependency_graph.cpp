@@ -281,6 +281,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         }
     }
 
+    auto prewarm_end = std::chrono::steady_clock::now();
+
     for(auto& [context, file_ids]: context_groups) {
         std::uint32_t config_id = next_config_id++;
         context_to_config_id[context] = config_id;
@@ -294,11 +296,16 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     }
 
     auto config_end = std::chrono::steady_clock::now();
+    report.prewarm_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - config_start).count();
+    report.config_loop_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(config_end - prewarm_end).count();
     report.config_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
-    LOG_INFO("Extracted {} configs in {}ms ({} context groups, toolchain pre-warmed)",
-             configs.size(),
+    LOG_INFO("Config: {}ms total (prewarm={}ms, lookup+config={}ms, {} groups)",
              report.config_ms,
+             report.prewarm_ms,
+             report.config_loop_ms,
              context_groups.size());
 
     // Shared directory listing cache for include resolution.
