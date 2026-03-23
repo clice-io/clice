@@ -18,6 +18,7 @@
 
 #include "compile/command.h"
 #include "eventide/serde/json/serializer.h"
+#include "support/filesystem.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
@@ -184,6 +185,11 @@ int main(int argc, char* argv[]) {
     if(argc < 2) {
         std::println(stderr, "Usage: {} <compile_commands.json>", argv[0]);
         return 1;
+    }
+
+    // Initialize resource directory (needed for -resource-dir in toolchain queries).
+    if(!clice::fs::init_resource_dir(argv[0])) {
+        std::println(stderr, "Warning: failed to find resource dir from {}", argv[0]);
     }
 
     auto cdb_path = argv[1];

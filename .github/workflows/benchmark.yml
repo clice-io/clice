@@ -29,26 +29,13 @@ jobs:
       - name: Clone LLVM
         run: git clone --depth 1 https://github.com/llvm/llvm-project.git
 
-      - name: Generate CDB (Unix)
-        if: runner.os != 'Windows'
+      - name: Generate CDB
         run: |
           cmake -B llvm-build -G Ninja \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DCMAKE_C_COMPILER=cc \
-            -DCMAKE_CXX_COMPILER=c++ \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
             -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld;lldb;mlir;polly;flang;bolt" \
             -DLLVM_ENABLE_RUNTIMES="compiler-rt;libcxx;libcxxabi;libunwind" \
-            llvm-project/llvm
-
-      - name: Generate CDB (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          cmake -B llvm-build -G Ninja `
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON `
-            -DCMAKE_C_COMPILER=cl `
-            -DCMAKE_CXX_COMPILER=cl `
-            -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld;lldb;mlir;polly;flang;bolt" `
-            -DLLVM_ENABLE_RUNTIMES="compiler-rt;libcxx;libcxxabi;libunwind" `
             llvm-project/llvm
 
       # ── Run benchmark ──
