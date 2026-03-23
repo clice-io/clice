@@ -146,7 +146,7 @@ void print_report(const ScanReport& report) {
     // Wall-clock phase breakdown.
     std::println("");
     std::println("  Phase Breakdown (wall-clock)");
-    std::println("    Config extraction: {}ms (prewarm={}ms, lookup+config={}ms)",
+    std::println("    Config extraction: {}ms (prewarm={}ms, loop={}ms)",
                  report.config_ms,
                  report.prewarm_ms,
                  report.config_loop_ms);

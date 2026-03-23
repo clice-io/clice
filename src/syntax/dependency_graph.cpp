@@ -283,16 +283,29 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 
     auto prewarm_end = std::chrono::steady_clock::now();
 
+    std::int64_t lookup_us = 0;
+    std::int64_t extract_us = 0;
+    std::size_t config_count = 0;
+
     for(auto& [context, file_ids]: context_groups) {
         std::uint32_t config_id = next_config_id++;
         context_to_config_id[context] = config_id;
 
-        // All toolchain queries should be cached now; lookup is fast.
         auto representative_path = path_pool.resolve(file_ids[0]);
+
+        auto t0 = std::chrono::steady_clock::now();
         auto ctx = cdb.lookup(representative_path,
                               {.resource_dir = true, .query_toolchain = true},
                               context);
+        auto t1 = std::chrono::steady_clock::now();
         configs[config_id] = cdb.extract_search_config(ctx);
+        auto t2 = std::chrono::steady_clock::now();
+
+        lookup_us +=
+            std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        extract_us +=
+            std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        config_count++;
     }
 
     auto config_end = std::chrono::steady_clock::now();
@@ -302,11 +315,14 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - prewarm_end).count();
     report.config_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
-    LOG_INFO("Config: {}ms total (prewarm={}ms, lookup+config={}ms, {} groups)",
+    LOG_INFO("Config: {}ms total (prewarm={}ms, loop={}ms [{} groups, "
+             "lookup={:.1f}ms, extract={:.1f}ms])",
              report.config_ms,
              report.prewarm_ms,
              report.config_loop_ms,
-             context_groups.size());
+             config_count,
+             lookup_us / 1000.0,
+             extract_us / 1000.0);
 
     // Shared directory listing cache for include resolution.
     DirListingCache dir_cache;
