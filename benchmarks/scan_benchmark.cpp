@@ -191,8 +191,8 @@ int main(int argc, char* argv[]) {
 
     // Set UV_THREADPOOL_SIZE to hardware concurrency if not already set.
     if(!std::getenv("UV_THREADPOOL_SIZE")) {
-        auto size = std::to_string(hw_threads);
-        setenv("UV_THREADPOOL_SIZE", size.c_str(), 0);
+        static std::string env = "UV_THREADPOOL_SIZE=" + std::to_string(hw_threads);
+        putenv(env.data());
     }
 
     std::println("Hardware threads: {}", hw_threads);
