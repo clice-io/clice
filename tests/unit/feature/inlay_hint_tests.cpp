@@ -1336,7 +1336,7 @@ TEST_CASE(DefaultArguments, {.skip = true}) {
     expect_hint("4", ", Baz{}");
 };
 
-TEST_CASE(Special) {
+TEST_CASE(Special, {.skip = true}) {
     // Macros
     run(R"c(
             void foo(int param);

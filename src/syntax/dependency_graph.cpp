@@ -1,7 +1,6 @@
 #include "syntax/dependency_graph.h"
 
 #include <chrono>
-#include <thread>
 
 #include "eventide/async/async.h"
 #include "support/logging.h"
@@ -310,11 +309,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             report.scan_us += sr.scan_us;
         }
 
-        // Phase 2: Resolve includes in parallel on the thread pool.
-        // DirListingCache uses sharded locking (64 independent shards),
-        // so different directories rarely contend.
-        std::vector<et::task<FileResolveResult, et::error>> resolve_tasks;
-        resolve_tasks.reserve(scan_results.size());
+        // Phase 2: Resolve includes on main thread.
+        // Parallelizing this doesn't help — the thread pool contention
+        // slows down Phase 1 more than Phase 2 gains.
+        std::vector<FileResolveResult> resolve_results;
 
         for(auto& scan_result: scan_results) {
             if(scan_result.read_failed) {
@@ -329,20 +327,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 continue;
             }
 
-            auto* config_ptr = &config_it->second;
-            resolve_tasks.push_back(et::queue(
-                [sr = std::move(scan_result), config_ptr, &dir_cache]() mutable {
-                    return resolve_file_includes(std::move(sr), *config_ptr, dir_cache);
-                },
-                loop));
+            resolve_results.push_back(
+                resolve_file_includes(std::move(scan_result), config_it->second, dir_cache));
         }
-
-        auto resolve_outcome = co_await et::when_all(std::move(resolve_tasks));
-        if(resolve_outcome.has_error()) {
-            LOG_ERROR("Parallel resolve failed: {}", resolve_outcome.error().message());
-            break;
-        }
-        auto& resolve_results = *resolve_outcome;
 
         auto phase2_end = std::chrono::steady_clock::now();
 

@@ -1,15 +1,11 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
-#include <mutex>
 #include <optional>
 #include <string>
-#include <vector>
 
 #include "compile/command.h"
 
-#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
@@ -38,22 +34,8 @@ struct StatCounters {
 /// contents once via readdir() and do in-memory set lookups thereafter.
 /// This is dramatically faster on Windows where individual stat() calls
 /// are very expensive (~10x slower than Linux).
-/// Sharded directory listing cache for concurrent access.
-/// Directories are hashed into N independent shards, each with its own mutex.
-/// Different directories typically land in different shards, minimizing contention.
 struct DirListingCache {
-    static constexpr std::size_t NUM_SHARDS = 64;
-
-    struct Shard {
-        std::mutex mutex;
-        llvm::StringMap<llvm::StringSet<>> dirs;
-    };
-
-    std::array<Shard, NUM_SHARDS> shards;
-
-    Shard& shard_for(llvm::StringRef dir) {
-        return shards[llvm::hash_value(dir) % NUM_SHARDS];
-    }
+    llvm::StringMap<llvm::StringSet<>> dirs;
 };
 
 /// Resolve an include directive to an absolute file path.
@@ -66,14 +48,13 @@ struct DirListingCache {
 /// @param config         The search configuration to use
 /// @param dir_cache      Directory listing cache for file existence checks
 /// @return Resolved path and the search dir index, or nullopt if not found
-std::optional<ResolveResult>
-    resolve_include(llvm::StringRef filename,
-                    bool is_angled,
-                    llvm::StringRef includer_dir,
-                    bool is_include_next,
-                    unsigned found_dir_idx,
-                    const SearchConfig& config,
-                    DirListingCache& dir_cache,
-                    StatCounters* stat_counters = nullptr);
+std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
+                                             bool is_angled,
+                                             llvm::StringRef includer_dir,
+                                             bool is_include_next,
+                                             unsigned found_dir_idx,
+                                             const SearchConfig& config,
+                                             DirListingCache& dir_cache,
+                                             StatCounters* stat_counters = nullptr);
 
 }  // namespace clice

@@ -22,17 +22,11 @@ std::optional<std::string> check_file(llvm::StringRef path,
     auto dir = llvm::sys::path::parent_path(path);
     auto name = llvm::sys::path::filename(path);
 
-    auto& shard = cache.shard_for(dir);
-    std::lock_guard lock(shard.mutex);
-
-    auto dir_it = shard.dirs.find(dir);
-    if(dir_it == shard.dirs.end()) {
-        // Directory not cached — list it.
-        // Unlock during expensive readdir, then re-lock to insert.
+    auto dir_it = cache.dirs.find(dir);
+    if(dir_it == cache.dirs.end()) {
         if(counters) {
             counters->dir_listings++;
         }
-        shard.mutex.unlock();
 
         auto t0 = std::chrono::steady_clock::now();
         llvm::StringSet<> entries;
@@ -43,13 +37,10 @@ std::optional<std::string> check_file(llvm::StringRef path,
         }
         auto t1 = std::chrono::steady_clock::now();
         if(counters) {
-            counters->us +=
-                std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+            counters->us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
         }
 
-        shard.mutex.lock();
-        // Another thread may have inserted while unlocked — try_emplace is safe.
-        dir_it = shard.dirs.try_emplace(dir, std::move(entries)).first;
+        dir_it = cache.dirs.try_emplace(dir, std::move(entries)).first;
     } else {
         if(counters) {
             counters->dir_hits++;
@@ -65,15 +56,14 @@ std::optional<std::string> check_file(llvm::StringRef path,
 
 }  // namespace
 
-std::optional<ResolveResult>
-    resolve_include(llvm::StringRef filename,
-                    bool is_angled,
-                    llvm::StringRef includer_dir,
-                    bool is_include_next,
-                    unsigned found_dir_idx,
-                    const SearchConfig& config,
-                    DirListingCache& dir_cache,
-                    StatCounters* stat_counters) {
+std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
+                                             bool is_angled,
+                                             llvm::StringRef includer_dir,
+                                             bool is_include_next,
+                                             unsigned found_dir_idx,
+                                             const SearchConfig& config,
+                                             DirListingCache& dir_cache,
+                                             StatCounters* stat_counters) {
     // 1. Absolute path: return directly if exists.
     if(llvm::sys::path::is_absolute(filename)) {
         if(auto result = check_file(filename, dir_cache, stat_counters)) {

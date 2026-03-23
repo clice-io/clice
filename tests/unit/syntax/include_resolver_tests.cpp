@@ -8,16 +8,6 @@
 namespace clice::testing {
 namespace {
 
-namespace et = eventide;
-
-/// Helper: run an async test task on a local event loop.
-template <typename Fn>
-void run_async(Fn&& fn) {
-    et::event_loop loop;
-    loop.schedule(fn(loop));
-    loop.run();
-}
-
 // ============================================================================
 // scan() — is_angled and is_include_next fields
 // ============================================================================
@@ -81,7 +71,7 @@ TEST_CASE(ScanMixedDirectives) {
 }
 
 // ============================================================================
-// resolve_include() — async tests with real filesystem
+// resolve_include() — tests with real filesystem
 // ============================================================================
 
 /// RAII helper for a temporary directory tree.
@@ -125,18 +115,11 @@ TEST_CASE(ResolveAbsolutePath) {
 
     auto abs_path = tmp.path("header.h");
     SearchConfig config;
-    llvm::StringMap<std::optional<std::string>> stat_cache;
+    DirListingCache dir_cache;
 
-    std::optional<ResolveResult> result;
-    run_async([&](et::event_loop& loop) -> et::task<> {
-        auto r = co_await resolve_include(abs_path, false, "", false, 0, config, stat_cache, loop);
-        if(r.has_value() && r->has_value()) {
-            result = std::move(*r);
-        }
-    });
+    auto result = resolve_include(abs_path, false, "", false, 0, config, dir_cache);
 
     ASSERT_TRUE(result.has_value());
-    // The resolved path should point to the same file.
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, abs_path));
 }
 
@@ -149,22 +132,9 @@ TEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
     config.dirs.push_back({tmp.path("include")});
     config.angled_start_idx = 0;
 
-    llvm::StringMap<std::optional<std::string>> stat_cache;
+    DirListingCache dir_cache;
 
-    std::optional<ResolveResult> result;
-    run_async([&](et::event_loop& loop) -> et::task<> {
-        auto r = co_await resolve_include("local.h",
-                                          false,
-                                          tmp.path("src"),
-                                          false,
-                                          0,
-                                          config,
-                                          stat_cache,
-                                          loop);
-        if(r.has_value() && r->has_value()) {
-            result = std::move(*r);
-        }
-    });
+    auto result = resolve_include("local.h", false, tmp.path("src"), false, 0, config, dir_cache);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("src/local.h")));
@@ -178,16 +148,9 @@ TEST_CASE(ResolveAngledIncludeFromSearchDirs) {
     config.dirs.push_back({tmp.path("include")});
     config.angled_start_idx = 0;
 
-    llvm::StringMap<std::optional<std::string>> stat_cache;
+    DirListingCache dir_cache;
 
-    std::optional<ResolveResult> result;
-    run_async([&](et::event_loop& loop) -> et::task<> {
-        auto r =
-            co_await resolve_include("sys/types.h", true, "", false, 0, config, stat_cache, loop);
-        if(r.has_value() && r->has_value()) {
-            result = std::move(*r);
-        }
-    });
+    auto result = resolve_include("sys/types.h", true, "", false, 0, config, dir_cache);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("include/sys/types.h")));
@@ -203,15 +166,9 @@ TEST_CASE(ResolveAngledSkipsQuotedDirs) {
     config.dirs.push_back({tmp.path("angled")});  // index 1 — angled starts
     config.angled_start_idx = 1;
 
-    llvm::StringMap<std::optional<std::string>> stat_cache;
+    DirListingCache dir_cache;
 
-    std::optional<ResolveResult> result;
-    run_async([&](et::event_loop& loop) -> et::task<> {
-        auto r = co_await resolve_include("header.h", true, "", false, 0, config, stat_cache, loop);
-        if(r.has_value() && r->has_value()) {
-            result = std::move(*r);
-        }
-    });
+    auto result = resolve_include("header.h", true, "", false, 0, config, dir_cache);
 
     ASSERT_TRUE(result.has_value());
     // Angled include should skip quoted dir and find in angled dir.
@@ -229,16 +186,10 @@ TEST_CASE(ResolveIncludeNext) {
     config.dirs.push_back({tmp.path("dir2")});  // index 1
     config.angled_start_idx = 0;
 
-    llvm::StringMap<std::optional<std::string>> stat_cache;
+    DirListingCache dir_cache;
 
-    std::optional<ResolveResult> result;
-    run_async([&](et::event_loop& loop) -> et::task<> {
-        // Simulate #include_next from a file found at dir index 0.
-        auto r = co_await resolve_include("stdlib.h", true, "", true, 0, config, stat_cache, loop);
-        if(r.has_value() && r->has_value()) {
-            result = std::move(*r);
-        }
-    });
+    // Simulate #include_next from a file found at dir index 0.
+    auto result = resolve_include("stdlib.h", true, "", true, 0, config, dir_cache);
 
     ASSERT_TRUE(result.has_value());
     // Should skip dir1 (found_dir_idx=0) and find in dir2.
@@ -253,26 +204,11 @@ TEST_CASE(ResolveNotFound) {
     config.dirs.push_back({tmp.path("include")});
     config.angled_start_idx = 0;
 
-    llvm::StringMap<std::optional<std::string>> stat_cache;
+    DirListingCache dir_cache;
 
-    std::optional<ResolveResult> result;
-    bool resolved = false;
-    run_async([&](et::event_loop& loop) -> et::task<> {
-        auto r = co_await resolve_include("nonexistent.h",
-                                          false,
-                                          tmp.path("src"),
-                                          false,
-                                          0,
-                                          config,
-                                          stat_cache,
-                                          loop);
-        resolved = true;
-        if(r.has_value() && r->has_value()) {
-            result = std::move(*r);
-        }
-    });
+    auto result =
+        resolve_include("nonexistent.h", false, tmp.path("src"), false, 0, config, dir_cache);
 
-    EXPECT_TRUE(resolved);
     EXPECT_FALSE(result.has_value());
 }
 
@@ -284,27 +220,15 @@ TEST_CASE(ResolveStatCacheHits) {
     config.dirs.push_back({tmp.path("include")});
     config.angled_start_idx = 0;
 
-    llvm::StringMap<std::optional<std::string>> stat_cache;
+    DirListingCache dir_cache;
 
     // First resolution — populates cache.
-    std::optional<ResolveResult> result1;
-    run_async([&](et::event_loop& loop) -> et::task<> {
-        auto r = co_await resolve_include("cached.h", true, "", false, 0, config, stat_cache, loop);
-        if(r.has_value() && r->has_value()) {
-            result1 = std::move(*r);
-        }
-    });
+    auto result1 = resolve_include("cached.h", true, "", false, 0, config, dir_cache);
 
     ASSERT_TRUE(result1.has_value());
 
-    // Second resolution — should use cache (no async I/O needed).
-    std::optional<ResolveResult> result2;
-    run_async([&](et::event_loop& loop) -> et::task<> {
-        auto r = co_await resolve_include("cached.h", true, "", false, 0, config, stat_cache, loop);
-        if(r.has_value() && r->has_value()) {
-            result2 = std::move(*r);
-        }
-    });
+    // Second resolution — should use cache (no filesystem I/O needed).
+    auto result2 = resolve_include("cached.h", true, "", false, 0, config, dir_cache);
 
     ASSERT_TRUE(result2.has_value());
     EXPECT_EQ(result1->path, result2->path);
@@ -319,22 +243,10 @@ TEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
     config.dirs.push_back({tmp.path("include")});
     config.angled_start_idx = 0;
 
-    llvm::StringMap<std::optional<std::string>> stat_cache;
+    DirListingCache dir_cache;
 
-    std::optional<ResolveResult> result;
-    run_async([&](et::event_loop& loop) -> et::task<> {
-        auto r = co_await resolve_include("fallback.h",
-                                          false,
-                                          tmp.path("src"),
-                                          false,
-                                          0,
-                                          config,
-                                          stat_cache,
-                                          loop);
-        if(r.has_value() && r->has_value()) {
-            result = std::move(*r);
-        }
-    });
+    auto result =
+        resolve_include("fallback.h", false, tmp.path("src"), false, 0, config, dir_cache);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("include/fallback.h")));
