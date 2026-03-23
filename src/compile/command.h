@@ -130,8 +130,8 @@ public:
         llvm::StringRef directory;
     };
 
-    std::vector<ToolchainQuery>
-        get_pending_toolchain_queries(llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files);
+    std::vector<ToolchainQuery> get_pending_toolchain_queries(
+        llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files);
 
     /// Inject pre-computed toolchain query results into the cache.
     /// Each result is a (key, cc1_args) pair. Strings are copied into
