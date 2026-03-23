@@ -111,6 +111,8 @@ struct FileScanResult {
     std::uint32_t config_id;
     ScanResult scan_result;
     bool read_failed = false;
+    std::int64_t read_us = 0;
+    std::int64_t scan_us = 0;
 };
 
 /// Result of resolving includes for a single file (on event loop thread).
@@ -135,6 +137,9 @@ struct FileResolveResult {
 
     std::vector<IncludeEdge> edges;
     std::vector<UnresolvedEdge> unresolved;
+
+    /// Stat counters accumulated during include resolution.
+    StatCounters stat_counters;
 };
 
 /// Scan a single file: read content + lexer scan.
@@ -145,13 +150,20 @@ FileScanResult scan_file_worker(std::string path, std::uint32_t path_id, std::ui
     result.path_id = path_id;
     result.config_id = config_id;
 
+    auto t0 = std::chrono::steady_clock::now();
     auto content = et::fs::sync::read_to_string(result.path);
+    auto t1 = std::chrono::steady_clock::now();
+    result.read_us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
     if(!content.has_value()) {
         result.read_failed = true;
         return result;
     }
 
     result.scan_result = scan(content.value());
+    auto t2 = std::chrono::steady_clock::now();
+    result.scan_us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+
     return result;
 }
 
@@ -179,7 +191,8 @@ et::task<FileResolveResult, et::error>
                                                  0,  // default found_dir_idx
                                                  config,
                                                  stat_cache,
-                                                 loop);
+                                                 loop,
+                                                 &result.stat_counters);
         // resolved is outcome<optional<ResolveResult>, error>.
         if(resolved.has_error() || !resolved.has_value() || !resolved->has_value()) {
             result.unresolved.push_back({inc.path, inc.is_angled, inc.conditional});
@@ -294,6 +307,12 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 
         auto phase1_end = std::chrono::steady_clock::now();
 
+        // Accumulate per-file read/scan timing into report.
+        for(auto& sr: scan_results) {
+            report.read_us += sr.read_us;
+            report.scan_us += sr.scan_us;
+        }
+
         // Phase 2: Resolve includes for each file using async stat.
         // Launch all resolution tasks concurrently.
         std::vector<et::task<FileResolveResult, et::error>> resolve_tasks;
@@ -328,6 +347,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         for(auto& result: resolve_results) {
             report.includes_found += result.total_includes;
             report.includes_resolved += result.edges.size();
+            report.stat_calls += result.stat_counters.calls;
+            report.stat_hits += result.stat_counters.hits;
+            report.stat_us += result.stat_counters.us;
 
             // Record module mapping.
             if(!result.module_name.empty()) {

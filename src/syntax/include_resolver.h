@@ -24,6 +24,13 @@ struct ResolveResult {
     unsigned found_dir_idx = 0;
 };
 
+/// Counters for stat() call tracking during include resolution.
+struct StatCounters {
+    std::size_t calls = 0;   // Actual filesystem stat() calls (cache misses).
+    std::size_t hits = 0;    // Cache hits (no syscall).
+    std::int64_t us = 0;     // Microseconds spent in actual stat() calls.
+};
+
 /// Resolve an include directive to an absolute file path (async version).
 /// Uses eventide's async fs::stat() for non-blocking filesystem access.
 ///
@@ -44,6 +51,7 @@ et::task<std::optional<ResolveResult>, et::error>
                     unsigned found_dir_idx,
                     const SearchConfig& config,
                     llvm::StringMap<std::optional<std::string>>& stat_cache,
-                    et::event_loop& loop);
+                    et::event_loop& loop,
+                    StatCounters* stat_counters = nullptr);
 
 }  // namespace clice

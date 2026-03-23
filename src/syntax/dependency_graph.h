@@ -120,6 +120,13 @@ struct ScanReport {
     /// BFS wave count.
     std::size_t waves = 0;
 
+    /// I/O statistics (cumulative across all waves).
+    std::int64_t read_us = 0;   // Microseconds spent reading files.
+    std::int64_t scan_us = 0;   // Microseconds spent in lexer scan().
+    std::int64_t stat_us = 0;   // Microseconds spent in stat() calls.
+    std::size_t stat_calls = 0;   // Total stat() syscalls (cache misses).
+    std::size_t stat_hits = 0;    // stat cache hits (no syscall).
+
     /// Unresolved includes: (header_name, includer_path).
     struct UnresolvedInclude {
         std::string header;

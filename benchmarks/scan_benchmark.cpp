@@ -143,6 +143,20 @@ void print_report(const ScanReport& report) {
         std::println("    Accuracy:            {:.1f}%", rate);
     }
 
+    // I/O statistics.
+    std::println("");
+    std::println("  I/O Statistics (cumulative)");
+    std::println("    File read:  {:.1f}ms", report.read_us / 1000.0);
+    std::println("    Lexer scan: {:.1f}ms", report.scan_us / 1000.0);
+    std::println("    Stat calls: {} (cache misses)", report.stat_calls);
+    std::println("    Stat hits:  {} (cache hits)", report.stat_hits);
+    std::println("    Stat time:  {:.1f}ms", report.stat_us / 1000.0);
+    if(report.stat_calls + report.stat_hits > 0) {
+        double hit_rate = 100.0 * static_cast<double>(report.stat_hits) /
+                          static_cast<double>(report.stat_calls + report.stat_hits);
+        std::println("    Stat cache hit rate: {:.1f}%", hit_rate);
+    }
+
     // Unresolved details.
     if(!report.unresolved.empty()) {
         // Deduplicate by header name, count occurrences.
