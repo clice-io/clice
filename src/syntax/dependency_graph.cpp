@@ -172,7 +172,7 @@ FileScanResult scan_file_worker(std::string path, std::uint32_t path_id, std::ui
 et::task<FileResolveResult, et::error>
     resolve_file_includes(FileScanResult scan_result,
                           const SearchConfig& config,
-                          llvm::StringMap<std::optional<std::string>>& stat_cache,
+                          DirListingCache& dir_cache,
                           et::event_loop& loop) {
     FileResolveResult result;
     result.path_id = scan_result.path_id;
@@ -190,7 +190,7 @@ et::task<FileResolveResult, et::error>
                                                  inc.is_include_next,
                                                  0,  // default found_dir_idx
                                                  config,
-                                                 stat_cache,
+                                                 dir_cache,
                                                  loop,
                                                  &result.stat_counters);
         // resolved is outcome<optional<ResolveResult>, error>.
@@ -260,8 +260,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
              report.config_ms,
              context_groups.size());
 
-    // Shared stat cache for include resolution.
-    llvm::StringMap<std::optional<std::string>> stat_cache;
+    // Shared directory listing cache for include resolution.
+    DirListingCache dir_cache;
 
     // Track which files have been scanned (by absolute path).
     llvm::StringMap<std::uint32_t> scanned_files;
@@ -332,7 +332,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             }
 
             resolve_tasks.push_back(
-                resolve_file_includes(std::move(scan_result), config_it->second, stat_cache, loop));
+                resolve_file_includes(std::move(scan_result), config_it->second, dir_cache, loop));
         }
 
         auto resolve_outcome = co_await et::when_all(std::move(resolve_tasks));
@@ -347,9 +347,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         for(auto& result: resolve_results) {
             report.includes_found += result.total_includes;
             report.includes_resolved += result.edges.size();
-            report.stat_calls += result.stat_counters.calls;
-            report.stat_hits += result.stat_counters.hits;
-            report.stat_us += result.stat_counters.us;
+            report.dir_listings += result.stat_counters.dir_listings;
+            report.dir_hits += result.stat_counters.dir_hits;
+            report.fs_lookups += result.stat_counters.lookups;
+            report.fs_us += result.stat_counters.us;
 
             // Record module mapping.
             if(!result.module_name.empty()) {

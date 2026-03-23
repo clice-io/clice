@@ -131,11 +131,12 @@ struct ScanReport {
     /// when work is parallelized across threads.
     std::int64_t read_us = 0;   // File read (cumulative across threads).
     std::int64_t scan_us = 0;   // Lexer scan (cumulative across threads).
-    std::int64_t stat_us = 0;   // stat() syscalls (on event loop thread).
+    std::int64_t fs_us = 0;     // Filesystem ops (readdir calls).
 
-    /// Stat call counts.
-    std::size_t stat_calls = 0;   // Actual filesystem stat() calls (cache misses).
-    std::size_t stat_hits = 0;    // Cache hits (no syscall).
+    /// Filesystem call counts.
+    std::size_t dir_listings = 0;  // Actual readdir() calls (dir cache misses).
+    std::size_t dir_hits = 0;      // Directory cache hits (no syscall).
+    std::size_t fs_lookups = 0;    // Total file existence lookups.
 
     /// Unresolved includes: (header_name, includer_path).
     struct UnresolvedInclude {

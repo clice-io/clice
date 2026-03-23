@@ -156,13 +156,15 @@ void print_report(const ScanReport& report) {
     std::println("  I/O Statistics (cumulative across threads)");
     std::println("    File read:  {:.1f}ms (sum of all threads)", report.read_us / 1000.0);
     std::println("    Lexer scan: {:.1f}ms (sum of all threads)", report.scan_us / 1000.0);
-    std::println("    Stat time:  {:.1f}ms", report.stat_us / 1000.0);
-    std::println("    Stat calls: {} (cache misses)", report.stat_calls);
-    std::println("    Stat hits:  {} (cache hits)", report.stat_hits);
-    if(report.stat_calls + report.stat_hits > 0) {
-        double hit_rate = 100.0 * static_cast<double>(report.stat_hits) /
-                          static_cast<double>(report.stat_calls + report.stat_hits);
-        std::println("    Stat cache hit rate: {:.1f}%", hit_rate);
+    std::println("    Filesystem: {:.1f}ms ({} readdir calls, {} dir cache hits)",
+                 report.fs_us / 1000.0,
+                 report.dir_listings,
+                 report.dir_hits);
+    std::println("    File lookups: {}", report.fs_lookups);
+    if(report.dir_listings + report.dir_hits > 0) {
+        double hit_rate = 100.0 * static_cast<double>(report.dir_hits) /
+                          static_cast<double>(report.dir_listings + report.dir_hits);
+        std::println("    Dir cache hit rate: {:.1f}%", hit_rate);
     }
 
     // Unresolved details.
