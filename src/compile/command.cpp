@@ -265,6 +265,11 @@ struct CompilationDatabase::Impl {
             return it->second;
         }
 
+        LOG_WARN("Toolchain cache miss (spawning process): file={}, cache_size={}, key_len={}",
+                 file,
+                 self.toolchain_cache.size(),
+                 key.size());
+
         auto callback = [&](const char* s) -> const char* {
             return self.strings.save(s).data();
         };
@@ -993,10 +998,15 @@ std::vector<CompilationDatabase::ToolchainQuery>
             continue;
         }
 
+        LOG_INFO("Pre-warm: new toolchain key (len={}) for file={}", key.size(), stored_file);
         auto directory = self->strings.get(info->directory);
         queries.push_back({std::move(key), std::move(query_args), stored_file, directory});
     }
 
+    LOG_INFO("Pre-warm: {} unique keys from {} contexts, {} queries needed",
+             seen_keys.size(),
+             files.size(),
+             queries.size());
     return queries;
 }
 

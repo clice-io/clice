@@ -298,11 +298,37 @@ int main(int argc, const char** argv) {
 
     std::println("CDB loaded: {} entries ({} active) in {}ms", updates.size(), active, load_ms);
 
+    // ── Full dependency scan benchmark ──────────────────────────────────
+    std::println("Running {} scan iterations...\n", runs);
+
+    PathPool path_pool;
+    DependencyGraph graph;
+
+    for(int i = 0; i < runs; i++) {
+        path_pool = PathPool{};
+        graph = DependencyGraph{};
+
+        auto report = scan_dependency_graph(cdb, updates, path_pool, graph);
+
+        std::println("[run {}] {}ms | files={} modules={} edges={}",
+                     i + 1,
+                     report.elapsed_ms,
+                     report.total_files,
+                     report.modules,
+                     report.total_edges);
+
+        // Print detailed report for the last run.
+        if(i == runs - 1) {
+            std::println("");
+            print_report(report);
+        }
+    }
+
     // ── Parser microbenchmark ──────────────────────────────────────────
     // Measures pure argument-parsing overhead: lookup() + extract_search_config()
-    // across all CDB entries, with toolchain cache already warm.
+    // across all CDB entries, with toolchain cache already warm (from scan above).
     {
-        // Warm up toolchain cache with a single lookup per file.
+        // Toolchain cache is already warm from the scan above.
         CommandOptions warm_opts;
         warm_opts.query_toolchain = true;
         warm_opts.suppress_logging = true;
@@ -314,12 +340,7 @@ int main(int argc, const char** argv) {
             file_contexts.push_back({cdb.resolve_path(u.path_id), u.context});
         }
 
-        // Pre-warm: do one lookup per file so toolchain cache is populated.
-        for(auto& [file, ctx]: file_contexts) {
-            cdb.lookup(file, warm_opts, ctx);
-        }
-
-        // Now benchmark: lookup + extract_search_config, N iterations.
+        // Benchmark: lookup + extract_search_config, N iterations.
         std::println("Parser microbenchmark ({} entries, {} iterations):", file_contexts.size(), runs);
 
         for(int i = 0; i < runs; i++) {
@@ -354,32 +375,6 @@ int main(int argc, const char** argv) {
                          total_us / 1000.0 / parse_count);
         }
         std::println("");
-    }
-
-    // ── Full dependency scan benchmark ──────────────────────────────────
-    std::println("Running {} iterations...\n", runs);
-
-    PathPool path_pool;
-    DependencyGraph graph;
-
-    for(int i = 0; i < runs; i++) {
-        path_pool = PathPool{};
-        graph = DependencyGraph{};
-
-        auto report = scan_dependency_graph(cdb, updates, path_pool, graph);
-
-        std::println("[run {}] {}ms | files={} modules={} edges={}",
-                     i + 1,
-                     report.elapsed_ms,
-                     report.total_files,
-                     report.modules,
-                     report.total_edges);
-
-        // Print detailed report for the last run.
-        if(i == runs - 1) {
-            std::println("");
-            print_report(report);
-        }
     }
 
     // Export dependency graph as JSON if requested.
