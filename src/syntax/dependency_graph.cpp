@@ -1,7 +1,9 @@
 #include "syntax/dependency_graph.h"
 
 #include <chrono>
+#include <thread>
 
+#include "eventide/async/async.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
@@ -167,13 +169,10 @@ FileScanResult scan_file_worker(std::string path, std::uint32_t path_id, std::ui
     return result;
 }
 
-/// Resolve all includes for a scanned file using async stat.
-/// Runs on the event loop thread.
-et::task<FileResolveResult, et::error>
-    resolve_file_includes(FileScanResult scan_result,
-                          const SearchConfig& config,
-                          DirListingCache& dir_cache,
-                          et::event_loop& loop) {
+/// Resolve all includes for a scanned file.
+FileResolveResult resolve_file_includes(FileScanResult scan_result,
+                                        const SearchConfig& config,
+                                        DirListingCache& dir_cache) {
     FileResolveResult result;
     result.path_id = scan_result.path_id;
     result.config_id = scan_result.config_id;
@@ -184,29 +183,27 @@ et::task<FileResolveResult, et::error>
     result.total_includes = scan_result.scan_result.includes.size();
 
     for(auto& inc: scan_result.scan_result.includes) {
-        auto resolved = co_await resolve_include(inc.path,
-                                                 inc.is_angled,
-                                                 includer_dir,
-                                                 inc.is_include_next,
-                                                 0,  // default found_dir_idx
-                                                 config,
-                                                 dir_cache,
-                                                 loop,
-                                                 &result.stat_counters);
-        // resolved is outcome<optional<ResolveResult>, error>.
-        if(resolved.has_error() || !resolved.has_value() || !resolved->has_value()) {
+        auto resolved = resolve_include(inc.path,
+                                        inc.is_angled,
+                                        includer_dir,
+                                        inc.is_include_next,
+                                        0,  // default found_dir_idx
+                                        config,
+                                        dir_cache,
+                                        &result.stat_counters);
+        if(!resolved.has_value()) {
             result.unresolved.push_back({inc.path, inc.is_angled, inc.conditional});
             continue;
         }
 
         result.edges.push_back({
-            std::move(resolved->value().path),
-            resolved->value().found_dir_idx,
+            std::move(resolved->path),
+            resolved->found_dir_idx,
             inc.conditional,
         });
     }
 
-    co_return result;
+    return result;
 }
 
 /// The async scan implementation that runs on a local event loop.
@@ -313,8 +310,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             report.scan_us += sr.scan_us;
         }
 
-        // Phase 2: Resolve includes for each file using async stat.
-        // Launch all resolution tasks concurrently.
+        // Phase 2: Resolve includes in parallel on the thread pool.
+        // DirListingCache uses sharded locking (64 independent shards),
+        // so different directories rarely contend.
         std::vector<et::task<FileResolveResult, et::error>> resolve_tasks;
         resolve_tasks.reserve(scan_results.size());
 
@@ -331,11 +329,19 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 continue;
             }
 
-            resolve_tasks.push_back(
-                resolve_file_includes(std::move(scan_result), config_it->second, dir_cache, loop));
+            auto* config_ptr = &config_it->second;
+            resolve_tasks.push_back(et::queue(
+                [sr = std::move(scan_result), config_ptr, &dir_cache]() mutable {
+                    return resolve_file_includes(std::move(sr), *config_ptr, dir_cache);
+                },
+                loop));
         }
 
         auto resolve_outcome = co_await et::when_all(std::move(resolve_tasks));
+        if(resolve_outcome.has_error()) {
+            LOG_ERROR("Parallel resolve failed: {}", resolve_outcome.error().message());
+            break;
+        }
         auto& resolve_results = *resolve_outcome;
 
         auto phase2_end = std::chrono::steady_clock::now();

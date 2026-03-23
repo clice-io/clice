@@ -1,20 +1,20 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "compile/command.h"
-#include "eventide/async/async.h"
 
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 
 namespace clice {
-
-namespace et = eventide;
 
 struct ResolveResult {
     /// The resolved absolute path.
@@ -38,12 +38,22 @@ struct StatCounters {
 /// contents once via readdir() and do in-memory set lookups thereafter.
 /// This is dramatically faster on Windows where individual stat() calls
 /// are very expensive (~10x slower than Linux).
+/// Sharded directory listing cache for concurrent access.
+/// Directories are hashed into N independent shards, each with its own mutex.
+/// Different directories typically land in different shards, minimizing contention.
 struct DirListingCache {
-    /// Maps directory path -> set of entry names in that directory.
-    llvm::StringMap<llvm::StringSet<>> dirs;
+    static constexpr std::size_t NUM_SHARDS = 64;
 
-    /// Maps full path -> stable owning string (for returning StringRef).
-    llvm::StringMap<std::string> path_store;
+    struct Shard {
+        std::mutex mutex;
+        llvm::StringMap<llvm::StringSet<>> dirs;
+    };
+
+    std::array<Shard, NUM_SHARDS> shards;
+
+    Shard& shard_for(llvm::StringRef dir) {
+        return shards[llvm::hash_value(dir) % NUM_SHARDS];
+    }
 };
 
 /// Resolve an include directive to an absolute file path.
@@ -55,9 +65,8 @@ struct DirListingCache {
 /// @param found_dir_idx  For #include_next: the search dir index of the includer
 /// @param config         The search configuration to use
 /// @param dir_cache      Directory listing cache for file existence checks
-/// @param loop           Event loop (unused, kept for interface compatibility)
 /// @return Resolved path and the search dir index, or nullopt if not found
-et::task<std::optional<ResolveResult>, et::error>
+std::optional<ResolveResult>
     resolve_include(llvm::StringRef filename,
                     bool is_angled,
                     llvm::StringRef includer_dir,
@@ -65,7 +74,6 @@ et::task<std::optional<ResolveResult>, et::error>
                     unsigned found_dir_idx,
                     const SearchConfig& config,
                     DirListingCache& dir_cache,
-                    et::event_loop& loop,
                     StatCounters* stat_counters = nullptr);
 
 }  // namespace clice
