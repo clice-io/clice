@@ -358,7 +358,9 @@ int main(int argc, const char** argv) {
         }
 
         // Benchmark: lookup + extract_search_config, N iterations.
-        std::println("Parser microbenchmark ({} entries, {} iterations):", file_contexts.size(), runs);
+        std::println("Parser microbenchmark ({} entries, {} iterations):",
+                     file_contexts.size(),
+                     runs);
 
         for(int i = 0; i < runs; i++) {
             auto t_start = std::chrono::steady_clock::now();
@@ -382,14 +384,14 @@ int main(int argc, const char** argv) {
             auto t_end = std::chrono::steady_clock::now();
             auto total_us =
                 std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
-            std::println("  [run {:2}] {:.1f}ms total | lookup={:.1f}ms config={:.1f}ms "
-                         "({} entries, {:.3f}ms/entry)",
-                         i + 1,
-                         total_us / 1000.0,
-                         lookup_us / 1000.0,
-                         config_us / 1000.0,
-                         parse_count,
-                         total_us / 1000.0 / parse_count);
+            std::println(
+                "  [run {:2}] {:.1f}ms total | lookup={:.1f}ms config={:.1f}ms " "({} entries, {:.3f}ms/entry)",
+                i + 1,
+                total_us / 1000.0,
+                lookup_us / 1000.0,
+                config_us / 1000.0,
+                parse_count,
+                total_us / 1000.0 / parse_count);
         }
         std::println("");
     }

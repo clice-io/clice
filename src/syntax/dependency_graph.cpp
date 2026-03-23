@@ -260,10 +260,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                         llvm::BumpPtrAllocator alloc;
                         llvm::StringSaver saver(alloc);
                         toolchain::query_toolchain(
-                            {q.file,
-                             q.directory,
-                             q.query_args,
-                             [&](const char* s) -> const char* {
+                            {q.file, q.directory, q.query_args, [&](const char* s) -> const char* {
                                  result.cc1_args.push_back(s);
                                  return saver.save(s).data();
                              }});
@@ -301,10 +298,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         configs[config_id] = cdb.extract_search_config(ctx);
         auto t2 = std::chrono::steady_clock::now();
 
-        lookup_us +=
-            std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-        extract_us +=
-            std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        extract_us += std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
         config_count++;
     }
 
@@ -315,14 +310,14 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - prewarm_end).count();
     report.config_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
-    LOG_INFO("Config: {}ms total (prewarm={}ms, loop={}ms [{} groups, "
-             "lookup={:.1f}ms, extract={:.1f}ms])",
-             report.config_ms,
-             report.prewarm_ms,
-             report.config_loop_ms,
-             config_count,
-             lookup_us / 1000.0,
-             extract_us / 1000.0);
+    LOG_INFO(
+        "Config: {}ms total (prewarm={}ms, loop={}ms [{} groups, " "lookup={:.1f}ms, extract={:.1f}ms])",
+        report.config_ms,
+        report.prewarm_ms,
+        report.config_loop_ms,
+        config_count,
+        lookup_us / 1000.0,
+        extract_us / 1000.0);
 
     // Shared directory listing cache for include resolution.
     DirListingCache dir_cache;

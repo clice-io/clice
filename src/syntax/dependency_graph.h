@@ -121,19 +121,19 @@ struct ScanReport {
     std::size_t waves = 0;
 
     /// Wall-clock time per phase (milliseconds, summed across waves).
-    std::int64_t phase1_ms = 0;  // Read + scan (parallel on thread pool).
-    std::int64_t phase2_ms = 0;  // Include resolution (stat calls).
-    std::int64_t phase3_ms = 0;  // Graph building (single-threaded).
-    std::int64_t config_ms = 0;      // Config extraction (one-time, total).
-    std::int64_t prewarm_ms = 0;     // Toolchain pre-warm subset.
-    std::int64_t config_loop_ms = 0; // lookup + extract_search_config loop.
+    std::int64_t phase1_ms = 0;       // Read + scan (parallel on thread pool).
+    std::int64_t phase2_ms = 0;       // Include resolution (stat calls).
+    std::int64_t phase3_ms = 0;       // Graph building (single-threaded).
+    std::int64_t config_ms = 0;       // Config extraction (one-time, total).
+    std::int64_t prewarm_ms = 0;      // Toolchain pre-warm subset.
+    std::int64_t config_loop_ms = 0;  // lookup + extract_search_config loop.
 
     /// Cumulative I/O time across all threads/files (microseconds).
     /// These are sums of per-file durations — will exceed wall-clock time
     /// when work is parallelized across threads.
-    std::int64_t read_us = 0;   // File read (cumulative across threads).
-    std::int64_t scan_us = 0;   // Lexer scan (cumulative across threads).
-    std::int64_t fs_us = 0;     // Filesystem ops (readdir calls).
+    std::int64_t read_us = 0;  // File read (cumulative across threads).
+    std::int64_t scan_us = 0;  // Lexer scan (cumulative across threads).
+    std::int64_t fs_us = 0;    // Filesystem ops (readdir calls).
 
     /// Filesystem call counts.
     std::size_t dir_listings = 0;  // Actual readdir() calls (dir cache misses).

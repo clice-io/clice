@@ -976,9 +976,8 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
     }
 }
 
-std::vector<CompilationDatabase::ToolchainQuery>
-    CompilationDatabase::get_pending_toolchain_queries(
-        llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files) {
+std::vector<CompilationDatabase::ToolchainQuery> CompilationDatabase::get_pending_toolchain_queries(
+    llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files) {
     // Extract the full toolchain key for every context and deduplicate.
     // The key includes driver + extension + toolchain-affecting flags
     // (e.g. -std=, -target, -isysroot), so contexts with different flags
