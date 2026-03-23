@@ -280,6 +280,31 @@ struct CompilationDatabase::Impl {
         return entry->second;
     }
 
+    /// Check if an argument matches the source file path, handling
+    /// Windows path separator differences (backslash vs forward slash).
+    static bool is_same_file(llvm::StringRef argument, llvm::StringRef file) {
+        if(argument == file) {
+            return true;
+        }
+
+#ifdef _WIN32
+        // On Windows, cmake may use backslashes in `arguments` but forward
+        // slashes in `file`. Normalize and compare.
+        if(argument.size() == file.size()) {
+            for(std::size_t i = 0; i < argument.size(); i++) {
+                char a = argument[i] == '\\' ? '/' : argument[i];
+                char b = file[i] == '\\' ? '/' : file[i];
+                if(a != b) {
+                    return false;
+                }
+            }
+            return true;
+        }
+#endif
+
+        return false;
+    }
+
     object_ptr<CompilationInfo> save_compilation_info(this Impl& self,
                                                       llvm::StringRef file,
                                                       llvm::StringRef directory,
@@ -293,8 +318,7 @@ struct CompilationDatabase::Impl {
         for(unsigned it = 0; it != arguments.size(); it++) {
             llvm::StringRef argument = arguments[it];
 
-            /// FIXME: Is it possible that file in command and field are different?
-            if(argument == file) {
+            if(is_same_file(argument, file)) {
                 continue;
             }
 
@@ -305,6 +329,7 @@ struct CompilationDatabase::Impl {
                 "/o",
                 "/Fo",
                 "/Fe",
+                "/Fd",
             };
 
             /// FIXME: This is a heuristic approach that covers the vast majority of cases, but
