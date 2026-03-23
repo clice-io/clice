@@ -2,6 +2,7 @@
 
 #include <chrono>
 
+#include "compile/toolchain.h"
 #include "eventide/async/async.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
@@ -10,6 +11,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/StringSaver.h"
 
 namespace clice {
 
@@ -234,13 +236,56 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 
     auto config_start = std::chrono::steady_clock::now();
 
+    // Pre-warm toolchain cache: extract unique queries, execute in parallel.
+    {
+        std::vector<std::pair<llvm::StringRef, const void*>> file_contexts;
+        for(auto& [context, file_ids]: context_groups) {
+            auto representative_path = path_pool.resolve(file_ids[0]);
+            file_contexts.push_back({representative_path, context});
+        }
+
+        auto pending = cdb.get_pending_toolchain_queries(file_contexts);
+        if(!pending.empty()) {
+            LOG_INFO("Warming toolchain cache: {} unique queries", pending.size());
+
+            std::vector<et::task<CompilationDatabase::ToolchainResult, et::error>> tasks;
+            tasks.reserve(pending.size());
+            for(auto& query: pending) {
+                tasks.push_back(et::queue(
+                    [q = std::move(query)]() -> CompilationDatabase::ToolchainResult {
+                        CompilationDatabase::ToolchainResult result;
+                        result.key = q.key;
+                        // Use a local allocator for the callback — query_toolchain
+                        // stores returned pointers but we only need the owned strings.
+                        llvm::BumpPtrAllocator alloc;
+                        llvm::StringSaver saver(alloc);
+                        toolchain::query_toolchain(
+                            {q.file,
+                             q.directory,
+                             q.query_args,
+                             [&](const char* s) -> const char* {
+                                 result.cc1_args.push_back(s);
+                                 return saver.save(s).data();
+                             }});
+                        return result;
+                    },
+                    loop));
+            }
+
+            auto outcome = co_await et::when_all(std::move(tasks));
+            if(outcome.has_value()) {
+                cdb.inject_toolchain_results(*outcome);
+            } else {
+                LOG_ERROR("Parallel toolchain query failed: {}", outcome.error().message());
+            }
+        }
+    }
+
     for(auto& [context, file_ids]: context_groups) {
         std::uint32_t config_id = next_config_id++;
         context_to_config_id[context] = config_id;
 
-        // Use the first file in the group to extract the config.
-        // query_toolchain = true makes lookup return cc1 args with system
-        // include paths (-internal-isystem etc.), cached internally by CDB.
+        // All toolchain queries should be cached now; lookup is fast.
         auto representative_path = path_pool.resolve(file_ids[0]);
         auto ctx = cdb.lookup(representative_path,
                               {.resource_dir = true, .query_toolchain = true},
@@ -251,7 +296,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     auto config_end = std::chrono::steady_clock::now();
     report.config_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
-    LOG_INFO("Extracted {} configs in {}ms ({} context groups)",
+    LOG_INFO("Extracted {} configs in {}ms ({} context groups, toolchain pre-warmed)",
              configs.size(),
              report.config_ms,
              context_groups.size());

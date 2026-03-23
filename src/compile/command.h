@@ -119,6 +119,30 @@ public:
     /// Resolve a path_id (from UpdateInfo) back to the file path string.
     llvm::StringRef resolve_path(std::uint32_t path_id);
 
+    /// Pre-warm the toolchain cache for a set of files.
+    /// Extracts unique toolchain keys from the given (file, context) pairs,
+    /// returns a list of queries for cache-miss keys. The caller can execute
+    /// these in parallel, then inject results via inject_toolchain_results().
+    struct ToolchainQuery {
+        std::string key;
+        std::vector<const char*> query_args;
+        llvm::StringRef file;
+        llvm::StringRef directory;
+    };
+
+    std::vector<ToolchainQuery>
+        get_pending_toolchain_queries(llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files);
+
+    /// Inject pre-computed toolchain query results into the cache.
+    /// Each result is a (key, cc1_args) pair. Strings are copied into
+    /// the CDB's internal string pool.
+    struct ToolchainResult {
+        std::string key;
+        std::vector<std::string> cc1_args;
+    };
+
+    void inject_toolchain_results(llvm::ArrayRef<ToolchainResult> results);
+
     /// FIXME: bad interface design ...
     std::vector<const char*> files();
 

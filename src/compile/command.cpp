@@ -946,6 +946,89 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
     }
 }
 
+std::vector<CompilationDatabase::ToolchainQuery>
+    CompilationDatabase::get_pending_toolchain_queries(
+        llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files) {
+    // First pass: deduplicate by driver binary + file extension (fast, no parsing).
+    // Files sharing the same driver and extension almost always produce the same
+    // toolchain key, so we only need to do expensive argument parsing for unique
+    // (driver, extension) combinations (~2-4 instead of hundreds).
+    llvm::StringMap<std::pair<llvm::StringRef, object_ptr<CompilationInfo>>> unique_drivers;
+
+    for(auto& [file, context]: files) {
+        auto path_id = self->strings.get(file);
+        auto stored_file = self->strings.get(path_id);
+
+        object_ptr<CompilationInfo> info = nullptr;
+        auto it = self->files.find(path_id);
+        if(it != self->files.end()) {
+            if(!context) {
+                info = it->second->info;
+            } else {
+                auto cur = it->second;
+                while(cur) {
+                    if(cur->info.ptr == context) {
+                        info = cur->info;
+                        break;
+                    }
+                    cur = cur->next;
+                }
+            }
+        }
+
+        if(!info || info->arguments.empty()) {
+            continue;
+        }
+
+        // Quick dedup key: driver binary + file extension.
+        auto driver = self->strings.get(info->arguments[0]);
+        auto ext = path::extension(stored_file);
+        llvm::SmallString<128> dedup_key(driver);
+        dedup_key += '\0';
+        dedup_key += ext;
+        unique_drivers.try_emplace(dedup_key, stored_file, info);
+    }
+
+    // Second pass: for each unique driver combo, extract the full toolchain key
+    // using the argument parser. Only ~2-4 iterations.
+    std::vector<ToolchainQuery> queries;
+
+    for(auto& [_, pair]: unique_drivers) {
+        auto& [stored_file, info] = pair;
+
+        llvm::SmallVector<const char*, 32> raw_args;
+        for(auto arg_id: info->arguments) {
+            raw_args.push_back(self->strings.get(arg_id).data());
+        }
+
+        auto [key, query_args] = self->extract_toolchain_flags(stored_file, raw_args);
+
+        if(self->toolchain_cache.count(key)) {
+            continue;
+        }
+
+        auto directory = self->strings.get(info->directory);
+        queries.push_back({std::move(key), std::move(query_args), stored_file, directory});
+    }
+
+    return queries;
+}
+
+void CompilationDatabase::inject_toolchain_results(
+    llvm::ArrayRef<CompilationDatabase::ToolchainResult> results) {
+    for(auto& result: results) {
+        if(self->toolchain_cache.count(result.key)) {
+            continue;
+        }
+        std::vector<const char*> saved;
+        saved.reserve(result.cc1_args.size());
+        for(auto& arg: result.cc1_args) {
+            saved.push_back(self->strings.save(arg).data());
+        }
+        self->toolchain_cache.try_emplace(result.key, std::move(saved));
+    }
+}
+
 llvm::StringRef CompilationDatabase::resolve_path(std::uint32_t path_id) {
     return self->strings.get(path_id);
 }
