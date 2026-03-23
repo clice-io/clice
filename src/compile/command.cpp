@@ -149,13 +149,131 @@ struct CompilationDatabase::Impl {
     /// All source files in the compilation database.
     llvm::DenseMap<StringID, object_ptr<JSONItem>> files;
 
-    /// TODO: Cache of toolchain query driver results.
-    llvm::DenseMap<CompilationInfo*, int> toolchains;
+    /// Cache of toolchain query results, keyed by canonical toolchain key.
+    /// The key captures only flags that affect system path discovery (driver,
+    /// target, sysroot, stdlib, etc.), so files sharing the same compiler
+    /// configuration share one cached result.
+    llvm::StringMap<std::vector<const char*>> toolchain_cache;
 
     /// The clang options we want to filter in all cases, like -c and -o.
     llvm::DenseSet<std::uint32_t> filtered_options;
 
     ArgumentParser parser{&allocator};
+
+    /// Option IDs that affect system path discovery. These determine the
+    /// toolchain cache key and are the only flags passed to the toolchain query.
+    static bool is_toolchain_option(unsigned id) {
+        switch(id) {
+            case ID::OPT_target:
+            case ID::OPT_target_legacy_spelling:
+            case ID::OPT_isysroot:
+            case ID::OPT__sysroot_EQ:
+            case ID::OPT__sysroot:
+            case ID::OPT_stdlib_EQ:
+            case ID::OPT_gcc_toolchain:
+            case ID::OPT_gcc_install_dir_EQ:
+            case ID::OPT_nostdinc:
+            case ID::OPT_nostdincxx:
+            case ID::OPT_std_EQ: return true;
+            default: return false;
+        }
+    }
+
+    /// Extract toolchain-relevant flags from arguments using the clang argument
+    /// parser. Returns both a cache key string and a minimal argument list for
+    /// the toolchain query. Using the parser ensures all flag forms (joined,
+    /// separate, etc.) are handled correctly.
+    struct ToolchainExtract {
+        std::string key;
+        std::vector<const char*> query_args;
+    };
+
+    ToolchainExtract extract_toolchain_flags(this Impl& self,
+                                             llvm::StringRef file,
+                                             llvm::ArrayRef<const char*> arguments) {
+        ToolchainExtract result;
+
+        // Driver binary (first arg) — e.g. "clang++" vs "clang" affects language mode.
+        result.key += arguments[0];
+        result.key += '\0';
+
+        // File extension affects language mode (C vs C++).
+        result.key += path::extension(file);
+        result.key += '\0';
+
+        result.query_args.push_back(arguments[0]);
+
+        self.parser.parse(
+            llvm::ArrayRef(arguments).drop_front(),
+            [&](std::unique_ptr<llvm::opt::Arg> arg) {
+                auto id = arg->getOption().getID();
+                if(!is_toolchain_option(id)) {
+                    return;
+                }
+
+                // Add option ID and all its values to the cache key.
+                result.key += std::to_string(id);
+                result.key += '\0';
+                for(auto value: arg->getValues()) {
+                    result.key += value;
+                    result.key += '\0';
+                }
+
+                // Render the argument back to query args, respecting the option's
+                // render style (joined vs separate).
+                switch(arg->getOption().getRenderStyle()) {
+                    case llvm::opt::Option::RenderJoinedStyle: {
+                        // e.g. -std=c++17, --target=x86_64-linux-gnu
+                        llvm::SmallString<64> joined(arg->getSpelling());
+                        if(arg->getNumValues() > 0) {
+                            joined += arg->getValue(0);
+                        }
+                        result.query_args.push_back(self.strings.save(joined).data());
+                        break;
+                    }
+                    case llvm::opt::Option::RenderSeparateStyle: {
+                        // e.g. -target x86_64-linux-gnu, -isysroot /path
+                        result.query_args.push_back(self.strings.save(arg->getSpelling()).data());
+                        for(auto value: arg->getValues()) {
+                            result.query_args.push_back(self.strings.save(value).data());
+                        }
+                        break;
+                    }
+                    default: {
+                        // Flags (no value): -nostdinc, -nostdinc++
+                        result.query_args.push_back(self.strings.save(arg->getSpelling()).data());
+                        break;
+                    }
+                }
+            },
+            [](int, int) {
+                // Ignore unknown arguments — they won't affect toolchain discovery.
+            });
+
+        return result;
+    }
+
+    /// Query toolchain with caching. Returns the cached cc1 args for the given
+    /// toolchain key, running the expensive query only on cache miss.
+    llvm::ArrayRef<const char*> query_toolchain_cached(this Impl& self,
+                                                       llvm::StringRef file,
+                                                       llvm::StringRef directory,
+                                                       llvm::ArrayRef<const char*> arguments) {
+        auto [key, query_args] = self.extract_toolchain_flags(file, arguments);
+        auto it = self.toolchain_cache.find(key);
+        if(it != self.toolchain_cache.end()) {
+            return it->second;
+        }
+
+        auto callback = [&](const char* s) -> const char* {
+            return self.strings.save(s).data();
+        };
+        toolchain::QueryParams params = {file, directory, query_args, callback};
+        auto result = toolchain::query_toolchain(params);
+
+        auto [entry, _] = self.toolchain_cache.try_emplace(std::move(key), std::move(result));
+        return entry->second;
+    }
 
     object_ptr<CompilationInfo> save_compilation_info(this Impl& self,
                                                       llvm::StringRef file,
@@ -720,39 +838,92 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
     }
 
     if(info && options.query_toolchain) {
-        auto callback = [&](const char* s) {
-            return save_string(s).data();
-        };
-        toolchain::QueryParams params = {file, directory, arguments, callback};
+        // Save user-level include paths before replacing with cc1 args.
+        // The cached toolchain query uses minimal args (no -I/-D/-W etc.)
+        // for cache efficiency, so user include paths must be injected back.
+        auto user_args = std::move(arguments);
 
-        /// FIXME: querying is expensive, we want to cache this ...
-        arguments = toolchain::query_toolchain(params);
+        auto cached = self->query_toolchain_cached(file, directory, user_args);
 
-        /// FIXME: we need mangle the arguments again.
-        /// Work around ... the logic of this should be moved to query ...
-        bool next_main_file = false;
-        for(auto& arg: arguments) {
-            if(arg == llvm::StringRef("-main-file-name")) {
-                next_main_file = true;
-                continue;
-            }
-
-            if(next_main_file) {
-                arg = self->strings.save(path::filename(file)).data();
-                next_main_file = false;
-            }
-        }
-
-        if(arguments.empty()) {
+        if(cached.empty()) {
             LOG_WARN("failed to query toolchain: {}", file);
+            arguments = std::move(user_args);
         } else {
+            // Start with cc1 result (has system paths, driver flags, etc.).
+            arguments.assign(cached.begin(), cached.end());
+
+            // Remove the temp source file that was appended during query.
             arguments.pop_back();
+
+            // Inject user include paths (-I, -isystem, -iquote) from the
+            // original mangled args into the cc1 result.
+            self->parser.parse(
+                llvm::ArrayRef(user_args).drop_front(),
+                [&](std::unique_ptr<llvm::opt::Arg> arg) {
+                    auto id = arg->getOption().getID();
+                    if(id == ID::OPT_I || id == ID::OPT_isystem || id == ID::OPT_iquote) {
+                        append_arg(arg->getSpelling());
+                        for(auto value: arg->getValues()) {
+                            append_arg(value);
+                        }
+                    }
+                },
+                [](int, int) {});
+
+            // Fix -main-file-name to match the actual file.
+            bool next_main_file = false;
+            for(auto& arg: arguments) {
+                if(arg == llvm::StringRef("-main-file-name")) {
+                    next_main_file = true;
+                    continue;
+                }
+
+                if(next_main_file) {
+                    arg = self->strings.save(path::filename(file)).data();
+                    next_main_file = false;
+                }
+            }
         }
     }
 
     arguments.emplace_back(file.data());
 
     return CompilationContext(directory, std::move(arguments));
+}
+
+SearchConfig CompilationDatabase::extract_search_config(const CompilationContext& ctx) {
+    SearchConfig config;
+
+    auto add_dir = [&](llvm::StringRef path, bool is_system) {
+        llvm::SmallString<256> abs_path(path);
+        if(!llvm::sys::path::is_absolute(abs_path)) {
+            llvm::sys::fs::make_absolute(ctx.directory, abs_path);
+        }
+        llvm::sys::path::remove_dots(abs_path, true);
+
+        if(is_system && config.angled_start_idx == config.dirs.size()) {
+            config.angled_start_idx = static_cast<unsigned>(config.dirs.size());
+        }
+
+        config.dirs.push_back({abs_path.str().str()});
+    };
+
+    self->parser.parse(
+        llvm::ArrayRef(ctx.arguments).drop_front(),
+        [&](std::unique_ptr<llvm::opt::Arg> arg) {
+            auto id = arg->getOption().getID();
+            switch(id) {
+                case ID::OPT_I: add_dir(arg->getValue(), false); break;
+                case ID::OPT_isystem:
+                case ID::OPT_internal_isystem:
+                case ID::OPT_internal_externc_isystem: add_dir(arg->getValue(), true); break;
+                case ID::OPT_iquote: add_dir(arg->getValue(), false); break;
+                default: break;
+            }
+        },
+        [](int, int) {});
+
+    return config;
 }
 
 std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef argument) {
@@ -773,6 +944,10 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
     } else {
         return {};
     }
+}
+
+llvm::StringRef CompilationDatabase::resolve_path(std::uint32_t path_id) {
+    return self->strings.get(path_id);
 }
 
 std::vector<const char*> CompilationDatabase::files() {

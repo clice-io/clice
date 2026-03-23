@@ -62,11 +62,13 @@ ScanResult scan(llvm::StringRef content) {
                         auto name = content.substr(tok.Offset, tok.Length);
                         // Strip <> or "" delimiters.
                         if(name.size() >= 2) {
-                            result.includes.push_back({
-                                std::string(name.substr(1, name.size() - 2)),
-                                conditional_depth > 0,
-                                false,
-                            });
+                            bool angled = name.front() == '<';
+                            ScanResult::IncludeInfo info;
+                            info.path = std::string(name.substr(1, name.size() - 2));
+                            info.conditional = conditional_depth > 0;
+                            info.is_angled = angled;
+                            info.is_include_next = dir.Kind == dds::pp_include_next;
+                            result.includes.push_back(std::move(info));
                         }
                         break;
                     }
@@ -118,53 +120,14 @@ ScanResult scan(llvm::StringRef content) {
 
 namespace {
 
-enum class ScanMode { Fuzzy, Precise };
-
-/// Compute include_is_conditional from raw directives: for each pp_include
-/// (and pp_include_next, pp___include_macros, pp_import), record whether
-/// it is nested inside any conditional block.
-void compute_include_conditionals(SharedScanCache::CachedEntry& entry) {
-    using namespace clang::dependency_directives_scan;
-
-    entry.include_is_conditional.clear();
-    int cond_depth = 0;
-
-    for(auto& dir: entry.directives) {
-        switch(dir.Kind) {
-            case pp_if:
-            case pp_ifdef:
-            case pp_ifndef: {
-                cond_depth++;
-                break;
-            }
-            case pp_endif: {
-                if(cond_depth > 0) {
-                    cond_depth--;
-                }
-                break;
-            }
-            case pp_include:
-            case pp_include_next:
-            case pp___include_macros:
-            case pp_import: {
-                entry.include_is_conditional.push_back(cond_depth > 0);
-                break;
-            }
-            default: {
-                break;
-            }
-        }
-    }
-}
-
 class ScanDirectivesGetter : public clang::DependencyDirectivesGetter {
 public:
-    ScanDirectivesGetter(ScanMode mode, SharedScanCache* cache, clang::FileManager& file_mgr) :
-        mode(mode), cache(cache), file_mgr(&file_mgr) {}
+    ScanDirectivesGetter(SharedScanCache* cache, clang::FileManager& file_mgr) :
+        cache(cache), file_mgr(&file_mgr) {}
 
     std::unique_ptr<clang::DependencyDirectivesGetter>
         cloneFor(clang::FileManager& new_file_mgr) override {
-        return std::make_unique<ScanDirectivesGetter>(mode, cache, new_file_mgr);
+        return std::make_unique<ScanDirectivesGetter>(cache, new_file_mgr);
     }
 
     std::optional<llvm::ArrayRef<clang::dependency_directives_scan::Directive>>
@@ -178,7 +141,7 @@ public:
         if(cache) {
             auto it = cache->entries.find(path);
             if(it != cache->entries.end()) {
-                return get_directives(it->second);
+                return llvm::ArrayRef(it->second.directives);
             }
         }
 
@@ -216,149 +179,13 @@ public:
             return std::nullopt;
         }
 
-        compute_include_conditionals(*entry_ptr);
-        return get_directives(*entry_ptr);
+        return llvm::ArrayRef(entry_ptr->directives);
     }
 
 private:
-    using DirectiveVec = llvm::SmallVector<clang::dependency_directives_scan::Directive>;
-
-    llvm::ArrayRef<clang::dependency_directives_scan::Directive>
-        get_directives(SharedScanCache::CachedEntry& entry) {
-        if(mode == ScanMode::Precise) {
-            return entry.directives;
-        }
-
-        // Fuzzy mode: strip #define/#undef and ALL conditional directives,
-        // so every #include is processed unconditionally by the preprocessor.
-        auto& slot = filtered_directives[&entry];
-        if(slot && !slot->empty()) {
-            return *slot;
-        }
-
-        slot = std::make_unique<DirectiveVec>();
-
-        using namespace clang::dependency_directives_scan;
-        for(auto& dir: entry.directives) {
-            switch(dir.Kind) {
-                case pp_define:
-                case pp_undef:
-                case pp_if:
-                case pp_ifdef:
-                case pp_ifndef:
-                case pp_elif:
-                case pp_elifdef:
-                case pp_elifndef:
-                case pp_else:
-                case pp_endif:
-                case pp_pragma_push_macro:
-                case pp_pragma_pop_macro: {
-                    break;
-                }
-                default: {
-                    slot->push_back(dir);
-                    break;
-                }
-            }
-        }
-
-        return *slot;
-    }
-
-    ScanMode mode;
     SharedScanCache* cache;
     clang::FileManager* file_mgr;
     std::deque<SharedScanCache::CachedEntry> local_entries;
-    llvm::DenseMap<SharedScanCache::CachedEntry*, std::unique_ptr<DirectiveVec>>
-        filtered_directives;
-};
-
-/// PPCallbacks for fuzzy mode: tracks per-file includes with conditional
-/// flags looked up from the SharedScanCache.
-class FuzzyScanPPCallbacks : public clang::PPCallbacks {
-public:
-    FuzzyScanPPCallbacks(llvm::StringMap<ScanResult>& results,
-                         SharedScanCache& cache,
-                         clang::SourceManager& source_mgr) :
-        results(results), cache(cache), source_mgr(source_mgr) {}
-
-    void FileChanged(clang::SourceLocation loc,
-                     FileChangeReason reason,
-                     clang::SrcMgr::CharacteristicKind,
-                     clang::FileID) override {
-        if(reason == EnterFile) {
-            current_file = get_file_path(source_mgr.getFileID(loc));
-        }
-    }
-
-    bool FileNotFound(llvm::StringRef file_name) override {
-        // Record the not-found include and consume the include counter
-        // so conditional flag correlation stays in sync.
-        record_include(current_file, file_name.str(), true);
-        // Return true to suppress the diagnostic and continue scanning.
-        return true;
-    }
-
-    void InclusionDirective(clang::SourceLocation hash_loc,
-                            const clang::Token&,
-                            llvm::StringRef file_name,
-                            bool,
-                            clang::CharSourceRange,
-                            clang::OptionalFileEntryRef file,
-                            llvm::StringRef,
-                            llvm::StringRef,
-                            const clang::Module*,
-                            bool,
-                            clang::SrcMgr::CharacteristicKind) override {
-        // Determine which file this include is from via HashLoc.
-        auto from_file = get_file_path(source_mgr.getFileID(hash_loc));
-
-        std::string resolved_path;
-        if(file) {
-            resolved_path = file->getFileEntry().tryGetRealPathName().str();
-            if(resolved_path.empty()) {
-                resolved_path = file->getName().str();
-            }
-        } else {
-            resolved_path = file_name.str();
-        }
-
-        record_include(from_file, std::move(resolved_path), !file.has_value());
-    }
-
-private:
-    llvm::StringRef get_file_path(clang::FileID fid) {
-        auto fe = source_mgr.getFileEntryRefForID(fid);
-        if(fe) {
-            auto path = fe->getFileEntry().tryGetRealPathName();
-            return path.empty() ? fe->getName() : path;
-        }
-        return "";
-    }
-
-    void record_include(llvm::StringRef from_file, std::string path, bool not_found) {
-        // Look up conditional flag from cache.
-        bool conditional = false;
-        auto cache_it = cache.entries.find(from_file);
-        if(cache_it != cache.entries.end()) {
-            unsigned idx = include_counters[from_file]++;
-            if(idx < cache_it->second.include_is_conditional.size()) {
-                conditional = cache_it->second.include_is_conditional[idx];
-            }
-        }
-
-        results[from_file].includes.push_back({
-            std::move(path),
-            conditional,
-            not_found,
-        });
-    }
-
-    llvm::StringMap<ScanResult>& results;
-    SharedScanCache& cache;
-    clang::SourceManager& source_mgr;
-    llvm::StringRef current_file;
-    llvm::StringMap<unsigned> include_counters;
 };
 
 /// PPCallbacks for precise mode: single ScanResult with accurate
@@ -494,54 +321,6 @@ std::unique_ptr<clang::CompilerInstance>
 
 }  // namespace
 
-llvm::StringMap<ScanResult> scan_fuzzy(llvm::ArrayRef<const char*> arguments,
-                                       llvm::StringRef directory,
-                                       llvm::StringRef content,
-                                       SharedScanCache* cache,
-                                       llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
-    llvm::StringMap<ScanResult> results;
-
-    if(!vfs) {
-        vfs = llvm::vfs::createPhysicalFileSystem();
-    }
-
-    auto instance = create_scan_instance(arguments, directory, content, vfs);
-    if(!instance) {
-        return results;
-    }
-
-    // Use a local cache if none provided, so we always have conditional flags.
-    SharedScanCache local_cache;
-    if(!cache) {
-        cache = &local_cache;
-    }
-
-    auto getter =
-        std::make_unique<ScanDirectivesGetter>(ScanMode::Fuzzy, cache, instance->getFileManager());
-    instance->setDependencyDirectivesGetter(std::move(getter));
-
-    if(!instance->createTarget()) {
-        return results;
-    }
-
-    auto action = std::make_unique<clang::PreprocessOnlyAction>();
-
-    if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
-        return results;
-    }
-
-    instance->getPreprocessor().addPPCallbacks(
-        std::make_unique<FuzzyScanPPCallbacks>(results, *cache, instance->getSourceManager()));
-
-    if(auto error = action->Execute()) {
-        llvm::consumeError(std::move(error));
-    }
-
-    action->EndSourceFile();
-
-    return results;
-}
-
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         llvm::StringRef content,
@@ -558,9 +337,7 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
         return result;
     }
 
-    auto getter = std::make_unique<ScanDirectivesGetter>(ScanMode::Precise,
-                                                         cache,
-                                                         instance->getFileManager());
+    auto getter = std::make_unique<ScanDirectivesGetter>(cache, instance->getFileManager());
     instance->setDependencyDirectivesGetter(std::move(getter));
 
     if(!instance->createTarget()) {

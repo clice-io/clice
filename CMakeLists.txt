@@ -145,6 +145,8 @@ add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/support/logging.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/scan.cpp"
+    "${PROJECT_SOURCE_DIR}/src/syntax/include_resolver.cpp"
+    "${PROJECT_SOURCE_DIR}/src/syntax/dependency_graph.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/semantic_tokens.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/document_links.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/document_symbols.cpp"
@@ -221,3 +223,11 @@ if(CLICE_ENABLE_TEST)
     )
     target_link_libraries(unit_tests PRIVATE clice::core eventide::zest eventide::deco)
 endif()
+
+add_executable(scan_benchmark
+    "${PROJECT_SOURCE_DIR}/benchmarks/scan_benchmark.cpp"
+)
+target_include_directories(scan_benchmark PRIVATE
+    "${PROJECT_SOURCE_DIR}/src"
+)
+target_link_libraries(scan_benchmark PRIVATE clice::core)

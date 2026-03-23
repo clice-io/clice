@@ -4,17 +4,6 @@
 namespace clice::testing {
 namespace {
 
-/// Helper: find entry in StringMap whose key contains the given substring.
-template <typename T>
-auto find_by_substr(llvm::StringMap<T>& map, llvm::StringRef substr) {
-    for(auto it = map.begin(); it != map.end(); ++it) {
-        if(it->first().contains(substr)) {
-            return it;
-        }
-    }
-    return map.end();
-}
-
 TEST_SUITE(Scan) {
 
 // === scan() tests ===
@@ -28,8 +17,10 @@ int x = 1;
 
     ASSERT_EQ(result.includes.size(), 2u);
     EXPECT_EQ(result.includes[0].path, "vector");
+    EXPECT_TRUE(result.includes[0].is_angled);
     EXPECT_FALSE(result.includes[0].conditional);
     EXPECT_EQ(result.includes[1].path, "foo/bar.h");
+    EXPECT_FALSE(result.includes[1].is_angled);
     EXPECT_FALSE(result.includes[1].conditional);
     EXPECT_TRUE(result.module_name.empty());
 }
@@ -84,6 +75,7 @@ export module my.module;
     EXPECT_FALSE(result.need_preprocess);
     ASSERT_EQ(result.includes.size(), 1u);
     EXPECT_EQ(result.includes[0].path, "header.h");
+    EXPECT_TRUE(result.includes[0].is_angled);
 }
 
 TEST_CASE(ModulePartition) {
@@ -141,156 +133,8 @@ int main() {
 
     EXPECT_TRUE(result.includes.empty());
     EXPECT_TRUE(result.module_name.empty());
-}
-
-// === scan_fuzzy() tests ===
-
-TEST_CASE(FuzzyBasic) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp", R"(
-#include "header.h"
-int main() {}
-)");
-    vfs->add("header.h", R"(
-#pragma once
-int x = 1;
-)");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, TestVFS::root(), {}, nullptr, vfs);
-
-    auto main_it = find_by_substr(results, "main.cpp");
-    ASSERT_TRUE(main_it != results.end());
-    ASSERT_EQ(main_it->second.includes.size(), 1u);
-    EXPECT_FALSE(main_it->second.includes[0].not_found);
-    EXPECT_FALSE(main_it->second.includes[0].conditional);
-}
-
-TEST_CASE(FuzzyConditionalTracking) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp", R"(
-#include "always.h"
-#ifdef FOO
-#include "conditional.h"
-#endif
-#include "after.h"
-)");
-    vfs->add("always.h");
-    vfs->add("conditional.h");
-    vfs->add("after.h");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, TestVFS::root(), {}, nullptr, vfs);
-
-    auto main_it = find_by_substr(results, "main.cpp");
-    ASSERT_TRUE(main_it != results.end());
-
-    auto& includes = main_it->second.includes;
-    ASSERT_EQ(includes.size(), 3u);
-    EXPECT_FALSE(includes[0].conditional);  // always.h
-    EXPECT_TRUE(includes[1].conditional);   // conditional.h
-    EXPECT_FALSE(includes[2].conditional);  // after.h
-}
-
-TEST_CASE(FuzzyNotFound) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp", R"(
-#include "exists.h"
-#include "missing.h"
-#include "also_exists.h"
-)");
-    vfs->add("exists.h");
-    vfs->add("also_exists.h");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, TestVFS::root(), {}, nullptr, vfs);
-
-    auto main_it = find_by_substr(results, "main.cpp");
-    ASSERT_TRUE(main_it != results.end());
-
-    auto& includes = main_it->second.includes;
-    ASSERT_EQ(includes.size(), 3u);
-    EXPECT_FALSE(includes[0].not_found);  // exists.h
-    EXPECT_TRUE(includes[1].not_found);   // missing.h
-    EXPECT_FALSE(includes[2].not_found);  // also_exists.h
-}
-
-TEST_CASE(FuzzyTransitiveIncludes) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp", R"(
-#include "a.h"
-)");
-    vfs->add("a.h", R"(
-#pragma once
-#include "b.h"
-)");
-    vfs->add("b.h", R"(
-#pragma once
-int b = 1;
-)");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, TestVFS::root(), {}, nullptr, vfs);
-
-    // main.cpp includes a.h
-    auto main_it = find_by_substr(results, "main.cpp");
-    ASSERT_TRUE(main_it != results.end());
-    ASSERT_EQ(main_it->second.includes.size(), 1u);
-
-    // a.h includes b.h
-    auto a_it = find_by_substr(results, "a.h");
-    ASSERT_TRUE(a_it != results.end());
-    ASSERT_EQ(a_it->second.includes.size(), 1u);
-}
-
-TEST_CASE(FuzzyWithCache) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    auto other_path = TestVFS::path("other.cpp");
-    vfs->add("main.cpp", R"(
-#include "shared.h"
-)");
-    vfs->add("other.cpp", R"(
-#include "shared.h"
-)");
-    vfs->add("shared.h", R"(
-#pragma once
-int shared = 1;
-)");
-
-    SharedScanCache cache;
-
-    auto args1 = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results1 = scan_fuzzy(args1, TestVFS::root(), {}, &cache, vfs);
-
-    // shared.h should be cached after first scan.
-    EXPECT_FALSE(cache.entries.empty());
-
-    auto args2 = std::vector<const char*>{"clang++", "-std=c++20", other_path.c_str()};
-    auto results2 = scan_fuzzy(args2, TestVFS::root(), {}, &cache, vfs);
-
-    // Both scans should find includes.
-    ASSERT_TRUE(find_by_substr(results1, "main.cpp") != results1.end());
-    ASSERT_TRUE(find_by_substr(results2, "other.cpp") != results2.end());
-}
-
-TEST_CASE(FuzzyWithContent) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp");
-    vfs->add("header.h");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto results = scan_fuzzy(args, TestVFS::root(), R"(#include "header.h")", nullptr, vfs);
-
-    auto main_it = find_by_substr(results, "main.cpp");
-    ASSERT_TRUE(main_it != results.end());
-    ASSERT_EQ(main_it->second.includes.size(), 1u);
-    EXPECT_FALSE(main_it->second.includes[0].not_found);
+    EXPECT_FALSE(result.is_interface_unit);
+    EXPECT_FALSE(result.need_preprocess);
 }
 
 // === scan_precise() tests ===

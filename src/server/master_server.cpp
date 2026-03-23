@@ -194,6 +194,9 @@ et::task<> MasterServer::load_workspace() {
 
     auto updates = cdb.load_compile_database(cdb_path);
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, updates.size());
+
+    // Build dependency graph via wavefront BFS scan.
+    scan_dependency_graph(cdb, updates, path_pool, dependency_graph);
 }
 
 void MasterServer::fill_compile_args(llvm::StringRef path,

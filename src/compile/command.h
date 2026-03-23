@@ -62,6 +62,19 @@ struct CompilationContext {
     std::vector<const char*> arguments;
 };
 
+struct SearchDir {
+    std::string path;
+};
+
+struct SearchConfig {
+    /// Ordered list of search directories.
+    std::vector<SearchDir> dirs;
+
+    /// Index in dirs where angled (<>) includes start searching.
+    /// Quoted ("") includes search from index 0.
+    unsigned angled_start_idx = 0;
+};
+
 std::string print_argv(llvm::ArrayRef<const char*> args);
 
 class CompilationDatabase {
@@ -95,8 +108,16 @@ public:
     /// all contexts and let user choose one.
     /// std::vector<CompilationContext> fetch_all(llvm::StringRef file);
 
+    /// Extract header search configuration from compilation arguments.
+    /// Parses -I, -isystem, -iquote (user-level) and -internal-isystem,
+    /// -internal-externc-isystem (cc1-level) using the clang argument parser.
+    SearchConfig extract_search_config(const CompilationContext& ctx);
+
     /// Get an the option for specific argument.
     static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
+
+    /// Resolve a path_id (from UpdateInfo) back to the file path string.
+    llvm::StringRef resolve_path(std::uint32_t path_id);
 
     /// FIXME: bad interface design ...
     std::vector<const char*> files();
