@@ -104,11 +104,6 @@ std::size_t DependencyGraph::edge_count() const {
 
 namespace {
 
-struct WaveEntry {
-    std::uint32_t path_id;
-    std::uint32_t config_id;
-};
-
 /// Result of scanning a single file (returned from worker thread).
 struct FileScanResult {
     const char* path;  // Stable pointer from PathPool.
@@ -159,105 +154,102 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                      et::event_loop& loop) {
     auto start_time = std::chrono::steady_clock::now();
 
-    // Group files by context pointer to identify unique compilation commands.
-    // Convert CDB string IDs to PathPool IDs.
-    llvm::DenseMap<const void*, llvm::SmallVector<std::uint32_t>> context_groups;
-    llvm::DenseMap<const void*, std::uint32_t> context_to_config_id;
+    // Reuse context groups and configs from cache when available (warm runs).
+    // On the first call (or when cache is null) we build everything from scratch.
+    const bool have_config_cache =
+        ext_cache && !ext_cache->context_groups.empty() && !ext_cache->configs.empty();
 
-    for(auto& update: updates) {
-        if(update.kind == UpdateKind::Deleted) {
-            continue;
-        }
-        auto path = cdb.resolve_path(update.path_id);
-        auto pool_id = path_pool.intern(path);
-        context_groups[update.context].push_back(pool_id);
-    }
+    // Provide local storage when not using the persistent cache.
+    llvm::DenseMap<const void*, llvm::SmallVector<std::uint32_t>> local_context_groups;
+    llvm::DenseMap<const void*, std::uint32_t> local_context_to_config_id;
+    llvm::DenseMap<std::uint32_t, SearchConfig> local_configs;
 
-    // Extract SearchConfig for each unique context.
-    llvm::DenseMap<std::uint32_t, SearchConfig> configs;
-    std::uint32_t next_config_id = 0;
+    llvm::DenseMap<const void*, llvm::SmallVector<std::uint32_t>>& context_groups =
+        have_config_cache ? ext_cache->context_groups : local_context_groups;
+    llvm::DenseMap<const void*, std::uint32_t>& context_to_config_id =
+        have_config_cache ? ext_cache->context_to_config_id : local_context_to_config_id;
+    llvm::DenseMap<std::uint32_t, SearchConfig>& configs =
+        have_config_cache ? ext_cache->configs : local_configs;
 
     auto config_start = std::chrono::steady_clock::now();
 
-    // Pre-warm toolchain cache: extract unique queries, execute in parallel.
-    // Skip entirely when configs are already cached (warm runs), since the
-    // toolchain cache is necessarily also populated from the previous scan.
-    if(!cdb.has_cached_configs()) {
-        std::vector<std::pair<llvm::StringRef, const void*>> file_contexts;
+    if(!have_config_cache) {
+        // Group files by context pointer to identify unique compilation commands.
+        // Convert CDB string IDs to PathPool IDs.
+        for(auto& update: updates) {
+            if(update.kind == UpdateKind::Deleted) {
+                continue;
+            }
+            auto path = cdb.resolve_path(update.path_id);
+            auto pool_id = path_pool.intern(path);
+            context_groups[update.context].push_back(pool_id);
+        }
+
+        // Pre-warm toolchain cache: extract unique queries, execute in parallel.
+        // Skip entirely when configs are already cached (warm runs), since the
+        // toolchain cache is necessarily also populated from the previous scan.
+        if(!cdb.has_cached_configs()) {
+            std::vector<std::pair<llvm::StringRef, const void*>> file_contexts;
+            for(auto& [context, file_ids]: context_groups) {
+                auto representative_path = path_pool.resolve(file_ids[0]);
+                file_contexts.push_back({representative_path, context});
+            }
+
+            auto pending = cdb.get_pending_toolchain_queries(file_contexts);
+            if(!pending.empty()) {
+                LOG_INFO("Warming toolchain cache: {} unique queries", pending.size());
+
+                std::vector<et::task<CompilationDatabase::ToolchainResult, et::error>> tasks;
+                tasks.reserve(pending.size());
+                for(auto& query: pending) {
+                    tasks.push_back(et::queue(
+                        [q = std::move(query)]() -> CompilationDatabase::ToolchainResult {
+                            CompilationDatabase::ToolchainResult result;
+                            result.key = q.key;
+                            llvm::BumpPtrAllocator alloc;
+                            llvm::StringSaver saver(alloc);
+                            toolchain::query_toolchain({q.file,
+                                                        q.directory,
+                                                        q.query_args,
+                                                        [&](const char* s) -> const char* {
+                                                            result.cc1_args.push_back(s);
+                                                            return saver.save(s).data();
+                                                        }});
+                            return result;
+                        },
+                        loop));
+                }
+
+                auto outcome = co_await et::when_all(std::move(tasks));
+                if(outcome.has_value()) {
+                    cdb.inject_toolchain_results(*outcome);
+                } else {
+                    LOG_ERROR("Parallel toolchain query failed: {}", outcome.error().message());
+                }
+            }
+        }
+
+        // Extract SearchConfig for each unique context.
+        std::uint32_t next_config_id = 0;
+        std::int64_t lookup_us = 0;
         for(auto& [context, file_ids]: context_groups) {
+            std::uint32_t config_id = next_config_id++;
+            context_to_config_id[context] = config_id;
             auto representative_path = path_pool.resolve(file_ids[0]);
-            file_contexts.push_back({representative_path, context});
+            auto t0 = std::chrono::steady_clock::now();
+            configs[config_id] =
+                cdb.lookup_search_config(representative_path,
+                                         {.resource_dir = true, .query_toolchain = true},
+                                         context);
+            auto t1 = std::chrono::steady_clock::now();
+            lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
         }
-
-        auto pending = cdb.get_pending_toolchain_queries(file_contexts);
-        if(!pending.empty()) {
-            LOG_INFO("Warming toolchain cache: {} unique queries", pending.size());
-
-            std::vector<et::task<CompilationDatabase::ToolchainResult, et::error>> tasks;
-            tasks.reserve(pending.size());
-            for(auto& query: pending) {
-                tasks.push_back(et::queue(
-                    [q = std::move(query)]() -> CompilationDatabase::ToolchainResult {
-                        CompilationDatabase::ToolchainResult result;
-                        result.key = q.key;
-                        // Use a local allocator for the callback — query_toolchain
-                        // stores returned pointers but we only need the owned strings.
-                        llvm::BumpPtrAllocator alloc;
-                        llvm::StringSaver saver(alloc);
-                        toolchain::query_toolchain(
-                            {q.file, q.directory, q.query_args, [&](const char* s) -> const char* {
-                                 result.cc1_args.push_back(s);
-                                 return saver.save(s).data();
-                             }});
-                        return result;
-                    },
-                    loop));
-            }
-
-            auto outcome = co_await et::when_all(std::move(tasks));
-            if(outcome.has_value()) {
-                cdb.inject_toolchain_results(*outcome);
-            } else {
-                LOG_ERROR("Parallel toolchain query failed: {}", outcome.error().message());
-            }
-        }
-    }
-
-    auto prewarm_end = std::chrono::steady_clock::now();
-
-    std::int64_t lookup_us = 0;
-    std::size_t config_count = 0;
-
-    for(auto& [context, file_ids]: context_groups) {
-        std::uint32_t config_id = next_config_id++;
-        context_to_config_id[context] = config_id;
-
-        auto representative_path = path_pool.resolve(file_ids[0]);
-
-        auto t0 = std::chrono::steady_clock::now();
-        configs[config_id] =
-            cdb.lookup_search_config(representative_path,
-                                     {.resource_dir = true, .query_toolchain = true},
-                                     context);
-        auto t1 = std::chrono::steady_clock::now();
-
-        lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-        config_count++;
+        LOG_INFO("Config extracted: {} groups, {:.1f}ms", configs.size(), lookup_us / 1000.0);
     }
 
     auto config_end = std::chrono::steady_clock::now();
-    report.prewarm_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - config_start).count();
-    report.config_loop_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(config_end - prewarm_end).count();
     report.config_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
-    LOG_INFO("Config: {}ms total (prewarm={}ms, loop={}ms [{} groups, {:.1f}ms])",
-             report.config_ms,
-             report.prewarm_ms,
-             report.config_loop_ms,
-             config_count,
-             lookup_us / 1000.0);
 
     // Use external persistent cache when provided, otherwise create a local one.
     DirListingCache local_dir_cache;
@@ -324,14 +316,25 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     llvm::DenseSet<std::uint32_t> scanned_files;
 
     // Wave 0: all source files from CDB.
+    // Re-use the cached initial_wave when available to avoid re-iterating context_groups.
     std::vector<WaveEntry> current_wave;
-    current_wave.reserve(updates.size());
-
-    for(auto& [context, file_ids]: context_groups) {
-        auto config_id = context_to_config_id[context];
-        for(auto path_id: file_ids) {
-            scanned_files.insert(path_id);
-            current_wave.push_back({path_id, config_id});
+    const bool have_initial_wave_cache = ext_cache && !ext_cache->initial_wave.empty();
+    if(have_initial_wave_cache) {
+        current_wave = ext_cache->initial_wave;
+        for(auto& entry: current_wave) {
+            scanned_files.insert(entry.path_id);
+        }
+    } else {
+        current_wave.reserve(updates.size());
+        for(auto& [context, file_ids]: context_groups) {
+            auto config_id = context_to_config_id[context];
+            for(auto path_id: file_ids) {
+                scanned_files.insert(path_id);
+                current_wave.push_back({path_id, config_id});
+            }
+        }
+        if(ext_cache) {
+            ext_cache->initial_wave = current_wave;
         }
     }
 

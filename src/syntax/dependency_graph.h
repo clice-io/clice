@@ -96,6 +96,12 @@ private:
     llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> file_configs;
 };
 
+/// A (file, search-config) pair used to track per-wave work items.
+struct WaveEntry {
+    std::uint32_t path_id;
+    std::uint32_t config_id;
+};
+
 /// Detailed report from a dependency scan.
 struct ScanReport {
     /// Timing in milliseconds.
@@ -178,6 +184,23 @@ struct ScanCache {
     /// warm-run Phase 1 effectively free.
     /// Invalidate per-entry when a file changes on disk.
     llvm::DenseMap<std::uint32_t, ScanResult> scan_results;
+
+    // ── Config extraction cache ──────────────────────────────────────────
+    // Populated during the first scan and reused on all subsequent calls
+    // when the compilation database has not changed.
+
+    /// Files grouped by unique CompilationInfo pointer (context).
+    /// path_ids are valid for the persistent PathPool.
+    llvm::DenseMap<const void*, llvm::SmallVector<std::uint32_t>> context_groups;
+
+    /// Context pointer → dense config_id (index into configs).
+    llvm::DenseMap<const void*, std::uint32_t> context_to_config_id;
+
+    /// Per-config search configuration (reused across scans).
+    llvm::DenseMap<std::uint32_t, SearchConfig> configs;
+
+    /// Pre-built initial wave (wave 0): all source files with their config IDs.
+    std::vector<WaveEntry> initial_wave;
 };
 
 /// Run the wavefront BFS scan over all files in the compilation database.
