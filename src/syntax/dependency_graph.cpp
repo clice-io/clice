@@ -342,23 +342,43 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         auto wave_start = std::chrono::steady_clock::now();
 
         // Phase 1: Read + scan all files in parallel on the thread pool.
+        // Files with a cached ScanResult skip I/O and lexing entirely.
+        std::vector<FileScanResult> scan_results;
         std::vector<et::task<FileScanResult, et::error>> scan_tasks;
+        scan_results.reserve(current_wave.size());
         scan_tasks.reserve(current_wave.size());
+
         for(auto& entry: current_wave) {
             auto pid = entry.path_id;
             auto cid = entry.config_id;
-            // PathPool pointers are stable (BumpPtrAllocator), safe to capture raw pointer.
+            if(ext_cache) {
+                auto it = ext_cache->scan_results.find(pid);
+                if(it != ext_cache->scan_results.end()) {
+                    scan_results.push_back(
+                        {path_pool.resolve(pid).data(), pid, cid, it->second, false, 0, 0});
+                    report.scan_cache_hits++;
+                    continue;
+                }
+            }
             auto path = path_pool.resolve(pid).data();
             scan_tasks.push_back(
                 et::queue([path, pid, cid]() { return scan_file_worker(path, pid, cid); }, loop));
         }
 
-        auto scan_outcome = co_await et::when_all(std::move(scan_tasks));
-        if(scan_outcome.has_error()) {
-            LOG_ERROR("Parallel scan failed: {}", scan_outcome.error().message());
-            break;
+        if(!scan_tasks.empty()) {
+            auto scan_outcome = co_await et::when_all(std::move(scan_tasks));
+            if(scan_outcome.has_error()) {
+                LOG_ERROR("Parallel scan failed: {}", scan_outcome.error().message());
+                break;
+            }
+            // Populate scan cache and merge with cached results.
+            for(auto& r: *scan_outcome) {
+                if(!r.read_failed && ext_cache) {
+                    ext_cache->scan_results.try_emplace(r.path_id, r.scan_result);
+                }
+                scan_results.push_back(std::move(r));
+            }
         }
-        auto& scan_results = *scan_outcome;
 
         auto phase1_end = std::chrono::steady_clock::now();
 

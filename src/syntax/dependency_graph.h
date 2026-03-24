@@ -7,6 +7,7 @@
 #include "compile/command.h"
 #include "support/path_pool.h"
 #include "syntax/include_resolver.h"
+#include "syntax/scan.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -140,6 +141,7 @@ struct ScanReport {
     std::size_t dir_hits = 0;            // Directory cache hits (no syscall).
     std::size_t fs_lookups = 0;          // Total file existence lookups.
     std::size_t include_cache_hits = 0;  // Include resolution cache hits (skipped resolve).
+    std::size_t scan_cache_hits = 0;     // Scan result cache hits (skipped I/O + lexer).
 
     /// Unresolved includes: (header_name, includer_path).
     struct UnresolvedInclude {
@@ -154,7 +156,7 @@ struct ScanReport {
 
 /// Persistent cache that can be reused across successive scan calls.
 /// Holding onto this between incremental re-scans eliminates repeated
-/// readdir() calls and angled-include resolution on warm runs.
+/// readdir() calls, angled-include resolution, and file I/O on warm runs.
 ///
 /// Thread safety: not thread-safe; callers must serialise scan calls.
 ///
@@ -169,6 +171,13 @@ struct ScanCache {
     /// that populated this cache.  If PathPool is reset between scans, clear
     /// this cache too (or pass nullptr to scan_dependency_graph).
     llvm::StringMap<std::uint32_t> include_cache;
+
+    /// Lexer scan result cache: path_id → ScanResult.
+    /// Populated on the first scan of each file.  On subsequent calls the
+    /// worker-thread file read and lexer scan are skipped entirely, making
+    /// warm-run Phase 1 effectively free.
+    /// Invalidate per-entry when a file changes on disk.
+    llvm::DenseMap<std::uint32_t, ScanResult> scan_results;
 };
 
 /// Run the wavefront BFS scan over all files in the compilation database.
