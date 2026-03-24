@@ -9,8 +9,8 @@
 #include "syntax/scan.h"
 
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/StringSaver.h"
@@ -130,9 +130,9 @@ FileScanResult scan_file_worker(std::string path, std::uint32_t path_id, std::ui
 
     auto t0 = std::chrono::steady_clock::now();
     auto buf = llvm::MemoryBuffer::getFile(result.path,
-                                               /*FileSize=*/-1,
-                                               /*RequiresNullTerminator=*/false,
-                                               /*IsVolatile=*/false);
+                                           /*FileSize=*/-1,
+                                           /*RequiresNullTerminator=*/false,
+                                           /*IsVolatile=*/false);
     auto t1 = std::chrono::steady_clock::now();
     result.read_us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
