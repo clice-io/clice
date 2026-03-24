@@ -9,6 +9,7 @@
 #include "syntax/scan.h"
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -323,11 +324,55 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     // Shared directory listing cache for include resolution.
     DirListingCache dir_cache;
 
+    // Pre-populate dir cache: collect all unique search dirs and list them
+    // in parallel on the thread pool. This avoids serial readdir() syscalls
+    // during Phase 2 of the first wave (especially impactful on Windows).
+    {
+        llvm::StringSet<> unique_dirs;
+        for(auto& [config_id, config]: configs) {
+            for(auto& dir: config.dirs) {
+                unique_dirs.insert(dir.path);
+            }
+        }
+
+        struct DirEntry {
+            std::string dir_path;
+            llvm::StringSet<> entries;
+        };
+
+        std::vector<et::task<DirEntry, et::error>> dir_tasks;
+        dir_tasks.reserve(unique_dirs.size());
+        for(auto& entry: unique_dirs) {
+            auto dir_path = entry.getKey().str();
+            dir_tasks.push_back(et::queue(
+                [dir_path = std::move(dir_path)]() -> DirEntry {
+                    DirEntry result;
+                    result.dir_path = dir_path;
+                    std::error_code ec;
+                    llvm::sys::fs::directory_iterator di(result.dir_path, ec);
+                    for(; !ec && di != llvm::sys::fs::directory_iterator(); di.increment(ec)) {
+                        result.entries.insert(llvm::sys::path::filename(di->path()));
+                    }
+                    return result;
+                },
+                loop));
+        }
+
+        auto dir_outcome = co_await et::when_all(std::move(dir_tasks));
+        if(dir_outcome.has_value()) {
+            for(auto& entry: *dir_outcome) {
+                dir_cache.dirs.try_emplace(entry.dir_path, std::move(entry.entries));
+            }
+            LOG_INFO("Pre-populated dir cache: {} directories", dir_outcome->size());
+        }
+    }
+
     // Track which files have been scanned (by absolute path).
     llvm::StringMap<std::uint32_t> scanned_files;
 
     // Wave 0: all source files from CDB.
     std::vector<WaveEntry> current_wave;
+    current_wave.reserve(updates.size());
 
     for(auto& [context, file_ids]: context_groups) {
         auto config_id = context_to_config_id[context];
@@ -348,12 +393,11 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         std::vector<et::task<FileScanResult, et::error>> scan_tasks;
         scan_tasks.reserve(current_wave.size());
         for(auto& entry: current_wave) {
-            auto path = std::string(path_pool.resolve(entry.path_id));
             auto pid = entry.path_id;
             auto cid = entry.config_id;
             scan_tasks.push_back(et::queue(
-                [path = std::move(path), pid, cid]() {
-                    return scan_file_worker(std::string(path), pid, cid);
+                [path = std::string(path_pool.resolve(pid)), pid, cid]() mutable {
+                    return scan_file_worker(std::move(path), pid, cid);
                 },
                 loop));
         }
@@ -377,6 +421,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         // Parallelizing this doesn't help — the thread pool contention
         // slows down Phase 1 more than Phase 2 gains.
         std::vector<FileResolveResult> resolve_results;
+        resolve_results.reserve(scan_results.size());
 
         for(auto& scan_result: scan_results) {
             if(scan_result.read_failed) {

@@ -12,9 +12,7 @@ namespace {
 /// Check if a file exists using cached directory listings.
 /// On first access to a directory, lists all entries via readdir() and caches them.
 /// Subsequent lookups in the same directory are pure in-memory set checks.
-std::optional<std::string> check_file(llvm::StringRef path,
-                                      DirListingCache& cache,
-                                      StatCounters* counters) {
+bool check_file(llvm::StringRef path, DirListingCache& cache, StatCounters* counters) {
     if(counters) {
         counters->lookups++;
     }
@@ -47,11 +45,7 @@ std::optional<std::string> check_file(llvm::StringRef path,
         }
     }
 
-    if(!dir_it->second.contains(name)) {
-        return std::nullopt;
-    }
-
-    return path.str();
+    return dir_it->second.contains(name);
 }
 
 }  // namespace
@@ -66,20 +60,23 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              StatCounters* stat_counters) {
     // 1. Absolute path: return directly if exists.
     if(llvm::sys::path::is_absolute(filename)) {
-        if(auto result = check_file(filename, dir_cache, stat_counters)) {
-            return ResolveResult{std::move(*result), 0};
+        if(check_file(filename, dir_cache, stat_counters)) {
+            return ResolveResult{filename.str(), 0};
         }
         return std::nullopt;
     }
+
+    // Reusable candidate buffer to avoid repeated SmallString construction.
+    llvm::SmallString<256> candidate;
 
     // 2. For #include_next, start from found_dir_idx + 1.
     if(is_include_next) {
         unsigned start = found_dir_idx + 1;
         for(unsigned i = start; i < config.dirs.size(); ++i) {
-            llvm::SmallString<256> candidate(config.dirs[i].path);
+            candidate = config.dirs[i].path;
             llvm::sys::path::append(candidate, filename);
-            if(auto result = check_file(candidate, dir_cache, stat_counters)) {
-                return ResolveResult{std::move(*result), i};
+            if(check_file(candidate, dir_cache, stat_counters)) {
+                return ResolveResult{std::string(candidate), i};
             }
         }
         return std::nullopt;
@@ -87,20 +84,20 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
 
     // 3. Quoted include: try includer's directory first.
     if(!is_angled && !includer_dir.empty()) {
-        llvm::SmallString<256> candidate(includer_dir);
+        candidate = includer_dir;
         llvm::sys::path::append(candidate, filename);
-        if(auto result = check_file(candidate, dir_cache, stat_counters)) {
-            return ResolveResult{std::move(*result), 0};
+        if(check_file(candidate, dir_cache, stat_counters)) {
+            return ResolveResult{std::string(candidate), 0};
         }
     }
 
     // 4. Search directories from appropriate start index.
     unsigned start = is_angled ? config.angled_start_idx : 0;
     for(unsigned i = start; i < config.dirs.size(); ++i) {
-        llvm::SmallString<256> candidate(config.dirs[i].path);
+        candidate = config.dirs[i].path;
         llvm::sys::path::append(candidate, filename);
-        if(auto result = check_file(candidate, dir_cache, stat_counters)) {
-            return ResolveResult{std::move(*result), i};
+        if(check_file(candidate, dir_cache, stat_counters)) {
+            return ResolveResult{std::string(candidate), i};
         }
     }
 

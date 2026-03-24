@@ -44,7 +44,7 @@ struct BenchmarkOptions {
     <std::string> export_path;
 
     DecoKV(names = {"--runs"}; help = "Number of benchmark iterations"; required = false;)
-    <int> runs = 3;
+    <int> runs = 20;
 
     DecoFlag(names = {"-h", "--help"}; help = "Show help message"; required = false;)
     help;
