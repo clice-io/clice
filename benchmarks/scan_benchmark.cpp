@@ -165,6 +165,7 @@ void print_report(const ScanReport& report) {
                  report.dir_listings,
                  report.dir_hits);
     std::println("    File lookups: {}", report.fs_lookups);
+    std::println("    Include cache hits: {}", report.include_cache_hits);
     if(report.dir_listings + report.dir_hits > 0) {
         double hit_rate = 100.0 * static_cast<double>(report.dir_hits) /
                           static_cast<double>(report.dir_listings + report.dir_hits);

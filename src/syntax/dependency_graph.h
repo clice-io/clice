@@ -136,9 +136,10 @@ struct ScanReport {
     std::int64_t fs_us = 0;    // Filesystem ops (readdir calls).
 
     /// Filesystem call counts.
-    std::size_t dir_listings = 0;  // Actual readdir() calls (dir cache misses).
-    std::size_t dir_hits = 0;      // Directory cache hits (no syscall).
-    std::size_t fs_lookups = 0;    // Total file existence lookups.
+    std::size_t dir_listings = 0;       // Actual readdir() calls (dir cache misses).
+    std::size_t dir_hits = 0;           // Directory cache hits (no syscall).
+    std::size_t fs_lookups = 0;         // Total file existence lookups.
+    std::size_t include_cache_hits = 0; // Include resolution cache hits (skipped resolve).
 
     /// Unresolved includes: (header_name, includer_path).
     struct UnresolvedInclude {

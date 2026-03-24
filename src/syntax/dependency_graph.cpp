@@ -122,9 +122,10 @@ struct FileScanResult {
 
 /// Scan a single file: read content + lexer scan.
 /// Runs on libuv worker thread via queue().
-FileScanResult scan_file_worker(std::string path, std::uint32_t path_id, std::uint32_t config_id) {
+/// @param path  Stable pointer from PathPool (must outlive the task).
+FileScanResult scan_file_worker(const char* path, std::uint32_t path_id, std::uint32_t config_id) {
     FileScanResult result;
-    result.path = std::move(path);
+    result.path = path;
     result.path_id = path_id;
     result.config_id = config_id;
 
@@ -318,6 +319,13 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     // Track which files have been scanned (by path_id — cheaper than string hash).
     llvm::DenseSet<std::uint32_t> scanned_files;
 
+    // Include resolution cache: maps (header_name, config_id) → interned path_id.
+    // For angled includes, the resolution depends only on the search config, not the
+    // includer directory. Caching avoids redundant directory searches when many files
+    // include the same system headers (e.g. <vector>, <string>).
+    // Key: "config_id\0header_name", Value: path_id (UINT32_MAX = known unresolved).
+    llvm::StringMap<std::uint32_t> include_cache;
+
     // Wave 0: all source files from CDB.
     std::vector<WaveEntry> current_wave;
     current_wave.reserve(updates.size());
@@ -342,11 +350,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         for(auto& entry: current_wave) {
             auto pid = entry.path_id;
             auto cid = entry.config_id;
+            // PathPool pointers are stable (BumpPtrAllocator), safe to capture raw pointer.
+            auto path = path_pool.resolve(pid).data();
             scan_tasks.push_back(et::queue(
-                [path = std::string(path_pool.resolve(pid)), pid, cid]() mutable {
-                    return scan_file_worker(std::move(path), pid, cid);
-                },
-                loop));
+                [path, pid, cid]() { return scan_file_worker(path, pid, cid); }, loop));
         }
 
         auto scan_outcome = co_await et::when_all(std::move(scan_tasks));
@@ -367,6 +374,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         // Phase 2+3: Resolve includes, intern paths, build graph, collect next wave.
         // Merged into a single pass to avoid intermediate string allocations.
         std::vector<WaveEntry> next_wave;
+        next_wave.reserve(current_wave.size());  // Heuristic: next wave ≤ current wave.
         llvm::SmallString<256> candidate;
         StatCounters wave_stat_counters;
 
@@ -397,6 +405,47 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             include_ids.reserve(scan_result.scan_result.includes.size());
 
             for(auto& inc: scan_result.scan_result.includes) {
+                // For angled includes, resolution depends only on config (not includer dir).
+                // Cache these to skip redundant directory searches across files.
+                bool cache_eligible = inc.is_angled && !inc.is_include_next;
+                llvm::SmallString<80> cache_key;
+                if(cache_eligible) {
+                    cache_key.append(reinterpret_cast<const char*>(&scan_result.config_id),
+                                     reinterpret_cast<const char*>(&scan_result.config_id) +
+                                         sizeof(std::uint32_t));
+                    cache_key += inc.path;
+
+                    auto cache_it = include_cache.find(cache_key);
+                    if(cache_it != include_cache.end()) {
+                        report.include_cache_hits++;
+                        auto cached_id = cache_it->second;
+                        if(cached_id == UINT32_MAX) {
+                            report.unresolved.push_back({
+                                std::move(inc.path),
+                                std::string(path_pool.resolve(scan_result.path_id)),
+                                inc.is_angled,
+                                inc.conditional,
+                            });
+                            continue;
+                        }
+                        report.includes_resolved++;
+                        // Jump directly to edge building with cached path_id.
+                        std::uint32_t flagged_id = cached_id;
+                        if(inc.conditional) {
+                            flagged_id |= DependencyGraph::CONDITIONAL_FLAG;
+                            report.conditional_edges++;
+                        } else {
+                            report.unconditional_edges++;
+                        }
+                        report.total_edges++;
+                        include_ids.push_back(flagged_id);
+                        if(scanned_files.insert(cached_id).second) {
+                            next_wave.push_back({cached_id, scan_result.config_id});
+                        }
+                        continue;
+                    }
+                }
+
                 auto resolved = resolve_include(inc.path,
                                                 inc.is_angled,
                                                 includer_dir,
@@ -406,6 +455,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                                                 dir_cache,
                                                 &wave_stat_counters);
                 if(!resolved.has_value()) {
+                    if(cache_eligible) {
+                        include_cache.try_emplace(cache_key, UINT32_MAX);
+                    }
                     report.unresolved.push_back({
                         std::move(inc.path),
                         std::string(path_pool.resolve(scan_result.path_id)),
@@ -417,6 +469,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 
                 auto inc_path_id = path_pool.intern(resolved->path);
                 report.includes_resolved++;
+
+                if(cache_eligible) {
+                    include_cache.try_emplace(cache_key, inc_path_id);
+                }
 
                 std::uint32_t flagged_id = inc_path_id;
                 if(inc.conditional) {
