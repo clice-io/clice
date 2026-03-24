@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 
 #include "llvm/ADT/SmallVector.h"
@@ -18,8 +19,13 @@ struct PathPool {
     std::uint32_t intern(llvm::StringRef path) {
         auto [it, inserted] = cache.try_emplace(path, paths.size());
         if(inserted) {
-            auto saved = path.copy(allocator);
-            paths.push_back(saved);
+            // Allocate with null terminator so that resolve().data() is safe
+            // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
+            const std::size_t n = path.size();
+            char* buf = allocator.Allocate<char>(n + 1);
+            std::copy(path.begin(), path.end(), buf);
+            buf[n] = '\0';
+            paths.push_back(llvm::StringRef(buf, n));
         }
         return it->second;
     }
