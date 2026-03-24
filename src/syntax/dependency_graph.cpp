@@ -10,6 +10,7 @@
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/StringSaver.h"
 
@@ -154,16 +155,16 @@ FileScanResult scan_file_worker(std::string path, std::uint32_t path_id, std::ui
     result.config_id = config_id;
 
     auto t0 = std::chrono::steady_clock::now();
-    auto content = et::fs::sync::read_to_string(result.path);
+    auto buf = llvm::MemoryBuffer::getFile(result.path);
     auto t1 = std::chrono::steady_clock::now();
     result.read_us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
-    if(!content.has_value()) {
+    if(!buf) {
         result.read_failed = true;
         return result;
     }
 
-    result.scan_result = scan(content.value());
+    result.scan_result = scan((*buf)->getBuffer());
     auto t2 = std::chrono::steady_clock::now();
     result.scan_us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
