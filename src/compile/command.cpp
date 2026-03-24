@@ -999,6 +999,10 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
     return config;
 }
 
+bool CompilationDatabase::has_cached_configs() const {
+    return !self->search_config_cache.empty();
+}
+
 std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef argument) {
     auto& table = clang::driver::getDriverOptTable();
 

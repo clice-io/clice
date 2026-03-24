@@ -179,7 +179,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     auto config_start = std::chrono::steady_clock::now();
 
     // Pre-warm toolchain cache: extract unique queries, execute in parallel.
-    {
+    // Skip entirely when configs are already cached (warm runs), since the
+    // toolchain cache is necessarily also populated from the previous scan.
+    if(!cdb.has_cached_configs()) {
         std::vector<std::pair<llvm::StringRef, const void*>> file_contexts;
         for(auto& [context, file_ids]: context_groups) {
             auto representative_path = path_pool.resolve(file_ids[0]);

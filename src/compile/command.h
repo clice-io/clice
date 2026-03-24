@@ -120,6 +120,10 @@ public:
                                       const CommandOptions& options = {},
                                       const void* context = nullptr);
 
+    /// Check if SearchConfig cache is populated (non-empty).
+    /// When true, toolchain cache is also populated, so pre-warm can be skipped.
+    bool has_cached_configs() const;
+
     /// Get an the option for specific argument.
     static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
 
