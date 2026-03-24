@@ -20,8 +20,7 @@
 #include <thread>
 
 #include "compile/command.h"
-#include "eventide/deco/macro.h"
-#include "eventide/deco/runtime.h"
+#include "eventide/deco/deco.h"
 #include "eventide/serde/json/serializer.h"
 #include "support/filesystem.h"
 #include "support/logging.h"

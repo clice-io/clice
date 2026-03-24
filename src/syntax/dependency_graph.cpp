@@ -111,7 +111,7 @@ struct WaveEntry {
 
 /// Result of scanning a single file (returned from worker thread).
 struct FileScanResult {
-    std::string path;
+    const char* path;  // Stable pointer from PathPool.
     std::uint32_t path_id;
     std::uint32_t config_id;
     ScanResult scan_result;
