@@ -6,6 +6,7 @@
 
 #include "compile/command.h"
 
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
@@ -13,8 +14,8 @@
 namespace clice {
 
 struct ResolveResult {
-    /// The resolved absolute path.
-    std::string path;
+    /// The resolved absolute path (stack-allocated for paths < 256 chars).
+    llvm::SmallString<256> path;
 
     /// The index in SearchConfig::dirs where this file was found.
     /// Used for #include_next to resume searching from found_dir_idx + 1.

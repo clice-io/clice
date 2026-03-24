@@ -120,33 +120,6 @@ struct FileScanResult {
     std::int64_t scan_us = 0;
 };
 
-/// Result of resolving includes for a single file (on event loop thread).
-struct FileResolveResult {
-    std::uint32_t path_id;
-    std::uint32_t config_id;
-    std::string module_name;
-    bool is_interface_unit = false;
-    std::size_t total_includes = 0;
-
-    struct IncludeEdge {
-        std::string resolved_path;
-        unsigned found_dir_idx;
-        bool conditional;
-    };
-
-    struct UnresolvedEdge {
-        std::string header;
-        bool is_angled;
-        bool conditional;
-    };
-
-    std::vector<IncludeEdge> edges;
-    std::vector<UnresolvedEdge> unresolved;
-
-    /// Stat counters accumulated during include resolution.
-    StatCounters stat_counters;
-};
-
 /// Scan a single file: read content + lexer scan.
 /// Runs on libuv worker thread via queue().
 FileScanResult scan_file_worker(std::string path, std::uint32_t path_id, std::uint32_t config_id) {
@@ -171,44 +144,6 @@ FileScanResult scan_file_worker(std::string path, std::uint32_t path_id, std::ui
     result.scan_result = scan((*buf)->getBuffer());
     auto t2 = std::chrono::steady_clock::now();
     result.scan_us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-
-    return result;
-}
-
-/// Resolve all includes for a scanned file.
-FileResolveResult resolve_file_includes(FileScanResult scan_result,
-                                        const SearchConfig& config,
-                                        DirListingCache& dir_cache) {
-    FileResolveResult result;
-    result.path_id = scan_result.path_id;
-    result.config_id = scan_result.config_id;
-    result.module_name = std::move(scan_result.scan_result.module_name);
-    result.is_interface_unit = scan_result.scan_result.is_interface_unit;
-
-    auto includer_dir = llvm::sys::path::parent_path(scan_result.path);
-    result.total_includes = scan_result.scan_result.includes.size();
-    result.edges.reserve(result.total_includes);
-
-    for(auto& inc: scan_result.scan_result.includes) {
-        auto resolved = resolve_include(inc.path,
-                                        inc.is_angled,
-                                        includer_dir,
-                                        inc.is_include_next,
-                                        0,  // default found_dir_idx
-                                        config,
-                                        dir_cache,
-                                        &result.stat_counters);
-        if(!resolved.has_value()) {
-            result.unresolved.push_back({inc.path, inc.is_angled, inc.conditional});
-            continue;
-        }
-
-        result.edges.push_back({
-            std::move(resolved->path),
-            resolved->found_dir_idx,
-            inc.conditional,
-        });
-    }
 
     return result;
 }
@@ -371,8 +306,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         }
     }
 
-    // Track which files have been scanned (by absolute path).
-    llvm::StringMap<std::uint32_t> scanned_files;
+    // Track which files have been scanned (by path_id — cheaper than string hash).
+    llvm::DenseSet<std::uint32_t> scanned_files;
 
     // Wave 0: all source files from CDB.
     std::vector<WaveEntry> current_wave;
@@ -381,8 +316,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     for(auto& [context, file_ids]: context_groups) {
         auto config_id = context_to_config_id[context];
         for(auto path_id: file_ids) {
-            auto path = path_pool.resolve(path_id);
-            scanned_files.try_emplace(path, path_id);
+            scanned_files.insert(path_id);
             current_wave.push_back({path_id, config_id});
         }
     }
@@ -421,11 +355,11 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             report.scan_us += sr.scan_us;
         }
 
-        // Phase 2: Resolve includes on main thread.
-        // Parallelizing this doesn't help — the thread pool contention
-        // slows down Phase 1 more than Phase 2 gains.
-        std::vector<FileResolveResult> resolve_results;
-        resolve_results.reserve(scan_results.size());
+        // Phase 2+3: Resolve includes, intern paths, build graph, collect next wave.
+        // Merged into a single pass to avoid intermediate string allocations.
+        std::vector<WaveEntry> next_wave;
+        llvm::SmallString<256> candidate;
+        StatCounters wave_stat_counters;
 
         for(auto& scan_result: scan_results) {
             if(scan_result.read_failed) {
@@ -440,47 +374,43 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 continue;
             }
 
-            resolve_results.push_back(
-                resolve_file_includes(std::move(scan_result), config_it->second, dir_cache));
-        }
-
-        auto phase2_end = std::chrono::steady_clock::now();
-
-        // Phase 3: Process results on main thread — intern paths, build graph,
-        // collect next wave.
-        std::vector<WaveEntry> next_wave;
-
-        for(auto& result: resolve_results) {
-            report.includes_found += result.total_includes;
-            report.includes_resolved += result.edges.size();
-            report.dir_listings += result.stat_counters.dir_listings;
-            report.dir_hits += result.stat_counters.dir_hits;
-            report.fs_lookups += result.stat_counters.lookups;
-            report.fs_us += result.stat_counters.us;
+            auto& config = config_it->second;
+            auto includer_dir = llvm::sys::path::parent_path(scan_result.path);
 
             // Record module mapping.
-            if(!result.module_name.empty()) {
-                graph.add_module(result.module_name, result.path_id);
+            if(!scan_result.scan_result.module_name.empty()) {
+                graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
             }
 
-            // Collect unresolved includes.
-            for(auto& u: result.unresolved) {
-                report.unresolved.push_back({
-                    std::move(u.header),
-                    std::string(path_pool.resolve(result.path_id)),
-                    u.is_angled,
-                    u.conditional,
-                });
-            }
+            report.includes_found += scan_result.scan_result.includes.size();
 
-            // Build include edge list and discover new files.
             llvm::SmallVector<std::uint32_t> include_ids;
+            include_ids.reserve(scan_result.scan_result.includes.size());
 
-            for(auto& edge: result.edges) {
-                auto inc_path_id = path_pool.intern(edge.resolved_path);
+            for(auto& inc: scan_result.scan_result.includes) {
+                auto resolved = resolve_include(inc.path,
+                                                inc.is_angled,
+                                                includer_dir,
+                                                inc.is_include_next,
+                                                0,
+                                                config,
+                                                dir_cache,
+                                                &wave_stat_counters);
+                if(!resolved.has_value()) {
+                    report.unresolved.push_back({
+                        std::move(inc.path),
+                        std::string(path_pool.resolve(scan_result.path_id)),
+                        inc.is_angled,
+                        inc.conditional,
+                    });
+                    continue;
+                }
+
+                auto inc_path_id = path_pool.intern(resolved->path);
+                report.includes_resolved++;
 
                 std::uint32_t flagged_id = inc_path_id;
-                if(edge.conditional) {
+                if(inc.conditional) {
                     flagged_id |= DependencyGraph::CONDITIONAL_FLAG;
                     report.conditional_edges++;
                 } else {
@@ -489,17 +419,21 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 report.total_edges++;
                 include_ids.push_back(flagged_id);
 
-                // If this is a newly discovered file, add to next wave.
-                auto [it, inserted] = scanned_files.try_emplace(edge.resolved_path, inc_path_id);
-                if(inserted) {
-                    next_wave.push_back({inc_path_id, result.config_id});
+                if(scanned_files.insert(inc_path_id).second) {
+                    next_wave.push_back({inc_path_id, scan_result.config_id});
                 }
             }
 
-            graph.set_includes(result.path_id, result.config_id, std::move(include_ids));
+            graph.set_includes(scan_result.path_id, scan_result.config_id, std::move(include_ids));
         }
 
-        auto phase3_end = std::chrono::steady_clock::now();
+        report.dir_listings += wave_stat_counters.dir_listings;
+        report.dir_hits += wave_stat_counters.dir_hits;
+        report.fs_lookups += wave_stat_counters.lookups;
+        report.fs_us += wave_stat_counters.us;
+
+        auto phase2_end = std::chrono::steady_clock::now();
+        auto phase3_end = phase2_end;
 
         auto p1 =
             std::chrono::duration_cast<std::chrono::milliseconds>(phase1_end - wave_start).count();

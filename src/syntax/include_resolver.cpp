@@ -61,7 +61,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     // 1. Absolute path: return directly if exists.
     if(llvm::sys::path::is_absolute(filename)) {
         if(check_file(filename, dir_cache, stat_counters)) {
-            return ResolveResult{filename.str(), 0};
+            return ResolveResult{llvm::SmallString<256>(filename), 0};
         }
         return std::nullopt;
     }
@@ -76,7 +76,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
             candidate = config.dirs[i].path;
             llvm::sys::path::append(candidate, filename);
             if(check_file(candidate, dir_cache, stat_counters)) {
-                return ResolveResult{std::string(candidate), i};
+                return ResolveResult{candidate, i};
             }
         }
         return std::nullopt;
@@ -87,7 +87,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
         candidate = includer_dir;
         llvm::sys::path::append(candidate, filename);
         if(check_file(candidate, dir_cache, stat_counters)) {
-            return ResolveResult{std::string(candidate), 0};
+            return ResolveResult{candidate, 0};
         }
     }
 
@@ -97,7 +97,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
         candidate = config.dirs[i].path;
         llvm::sys::path::append(candidate, filename);
         if(check_file(candidate, dir_cache, stat_counters)) {
-            return ResolveResult{std::string(candidate), i};
+            return ResolveResult{candidate, i};
         }
     }
 
