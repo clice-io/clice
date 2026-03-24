@@ -113,6 +113,13 @@ public:
     /// -internal-externc-isystem (cc1-level) using the clang argument parser.
     SearchConfig extract_search_config(const CompilationContext& ctx);
 
+    /// Combined lookup + extract_search_config with internal caching.
+    /// Results are cached by CompilationInfo pointer, avoiding repeated
+    /// argument parsing across multiple calls with the same context.
+    SearchConfig lookup_search_config(llvm::StringRef file,
+                                      const CommandOptions& options = {},
+                                      const void* context = nullptr);
+
     /// Get an the option for specific argument.
     static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
 

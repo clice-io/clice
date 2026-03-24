@@ -155,6 +155,11 @@ struct CompilationDatabase::Impl {
     /// configuration share one cached result.
     llvm::StringMap<std::vector<const char*>> toolchain_cache;
 
+    /// Cache of SearchConfig per CompilationInfo pointer. Since infos are
+    /// deduplicated by ObjectSet, the pointer uniquely identifies a compilation
+    /// context. This avoids re-parsing arguments on repeated scans.
+    llvm::DenseMap<const CompilationInfo*, SearchConfig> search_config_cache;
+
     /// The clang options we want to filter in all cases, like -c and -o.
     llvm::DenseSet<std::uint32_t> filtered_options;
 
@@ -953,6 +958,44 @@ SearchConfig CompilationDatabase::extract_search_config(const CompilationContext
         },
         [](int, int) {});
 
+    return config;
+}
+
+SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
+                                                        const CommandOptions& options,
+                                                        const void* context) {
+    // Resolve to the internal CompilationInfo pointer for cache lookup.
+    auto path_id = self->strings.get(file);
+    auto it = self->files.find(path_id);
+    const CompilationInfo* info_ptr = nullptr;
+    if(it != self->files.end()) {
+        if(!context) {
+            info_ptr = it->second->info.ptr;
+        } else {
+            auto cur = it->second;
+            while(cur) {
+                if(cur->info.ptr == context) {
+                    info_ptr = cur->info.ptr;
+                    break;
+                }
+                cur = cur->next;
+            }
+        }
+    }
+
+    if(info_ptr) {
+        auto cache_it = self->search_config_cache.find(info_ptr);
+        if(cache_it != self->search_config_cache.end()) {
+            return cache_it->second;
+        }
+    }
+
+    auto ctx = lookup(file, options, context);
+    auto config = extract_search_config(ctx);
+
+    if(info_ptr) {
+        self->search_config_cache.try_emplace(info_ptr, config);
+    }
     return config;
 }
 
