@@ -31,6 +31,9 @@ ScanResult scan(llvm::StringRef content) {
         return result;
     }
 
+    // Most source files have 10-30 includes; pre-allocate to avoid reallocs.
+    result.includes.reserve(std::min<std::size_t>(directives.size(), 32));
+
     int conditional_depth = 0;
 
     for(auto& dir: directives) {

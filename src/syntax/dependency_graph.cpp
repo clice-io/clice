@@ -273,6 +273,15 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 unique_dirs.insert(dir.path);
             }
         }
+        // Also prefetch parent directories of source files (for quoted include resolution).
+        for(auto& [context, file_ids]: context_groups) {
+            for(auto path_id: file_ids) {
+                auto dir = llvm::sys::path::parent_path(path_pool.resolve(path_id));
+                if(!dir.empty()) {
+                    unique_dirs.insert(dir);
+                }
+            }
+        }
 
         struct DirEntry {
             std::string dir_path;
