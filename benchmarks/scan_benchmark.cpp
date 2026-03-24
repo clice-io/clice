@@ -247,9 +247,8 @@ int main(int argc, const char** argv) {
     auto& opts = result->options;
 
     if(opts.help.value_or(false) || !opts.cdb_path.has_value()) {
-        auto dispatcher = deco::cli::Dispatcher<BenchmarkOptions>("scan_benchmark [OPTIONS] <cdb>");
         std::ostringstream oss;
-        dispatcher.usage(oss, true);
+        deco::cli::write_usage_for<BenchmarkOptions>(oss, "scan_benchmark [OPTIONS] <cdb>");
         std::print("{}", oss.str());
         return opts.help.value_or(false) ? 0 : 1;
     }
@@ -318,14 +317,17 @@ int main(int argc, const char** argv) {
     // ── Full dependency scan benchmark ──────────────────────────────────
     std::println("\nRunning {} scan iterations...\n", runs);
 
+    // PathPool and ScanCache persist across runs so that warm iterations
+    // exercise the realistic steady-state: path IDs stable, dir listing
+    // cache and include-resolution cache already populated.
     PathPool path_pool;
+    ScanCache scan_cache;
     DependencyGraph graph;
 
     for(int i = 0; i < runs; i++) {
-        path_pool = PathPool{};
         graph = DependencyGraph{};
 
-        auto report = scan_dependency_graph(cdb, updates, path_pool, graph);
+        auto report = scan_dependency_graph(cdb, updates, path_pool, graph, &scan_cache);
 
         std::println("[run {}] {}ms | files={} modules={} edges={}",
                      i + 1,

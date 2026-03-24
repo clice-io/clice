@@ -152,12 +152,37 @@ struct ScanReport {
     std::vector<UnresolvedInclude> unresolved;
 };
 
+/// Persistent cache that can be reused across successive scan calls.
+/// Holding onto this between incremental re-scans eliminates repeated
+/// readdir() calls and angled-include resolution on warm runs.
+///
+/// Thread safety: not thread-safe; callers must serialise scan calls.
+///
+/// Invalidation: callers must clear (or discard) this cache whenever the
+/// compilation database or filesystem state changes.
+struct ScanCache {
+    /// Directory listing cache: dir path → set of filenames.
+    DirListingCache dir_cache;
+
+    /// Angled-include resolution cache: (config_id bytes + header) → path_id.
+    /// path_id values are valid only for the PathPool used during the scan
+    /// that populated this cache.  If PathPool is reset between scans, clear
+    /// this cache too (or pass nullptr to scan_dependency_graph).
+    llvm::StringMap<std::uint32_t> include_cache;
+};
+
 /// Run the wavefront BFS scan over all files in the compilation database.
 /// Internally creates a local event loop for async I/O (file reads via worker
 /// thread pool, stat calls via libuv). Blocks until the scan is complete.
+///
+/// @param cache  Optional persistent cache. When non-null and pre-populated,
+///               avoids repeated readdir() and include-resolution work across
+///               successive calls.  PathPool must NOT be reset between calls
+///               when a persistent cache is used (path_id values must remain stable).
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
                                  const std::vector<UpdateInfo>& updates,
                                  PathPool& path_pool,
-                                 DependencyGraph& graph);
+                                 DependencyGraph& graph,
+                                 ScanCache* cache = nullptr);
 
 }  // namespace clice

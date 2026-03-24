@@ -155,6 +155,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                      PathPool& path_pool,
                      DependencyGraph& graph,
                      ScanReport& report,
+                     ScanCache* ext_cache,
                      et::event_loop& loop) {
     auto start_time = std::chrono::steady_clock::now();
 
@@ -258,13 +259,19 @@ et::task<> scan_impl(CompilationDatabase& cdb,
              config_count,
              lookup_us / 1000.0);
 
-    // Shared directory listing cache for include resolution.
-    DirListingCache dir_cache;
+    // Use external persistent cache when provided, otherwise create a local one.
+    DirListingCache local_dir_cache;
+    DirListingCache& dir_cache = ext_cache ? ext_cache->dir_cache : local_dir_cache;
+
+    llvm::StringMap<std::uint32_t> local_include_cache;
+    llvm::StringMap<std::uint32_t>& include_cache =
+        ext_cache ? ext_cache->include_cache : local_include_cache;
 
     // Pre-populate dir cache: collect all unique search dirs and list them
     // in parallel on the thread pool. This avoids serial readdir() syscalls
     // during Phase 2 of the first wave (especially impactful on Windows).
-    {
+    // Skip when the persistent cache is already warm.
+    if(dir_cache.dirs.empty()) {
         llvm::StringSet<> unique_dirs;
         for(auto& [config_id, config]: configs) {
             for(auto& dir: config.dirs) {
@@ -316,13 +323,6 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     // Track which files have been scanned (by path_id — cheaper than string hash).
     llvm::DenseSet<std::uint32_t> scanned_files;
 
-    // Include resolution cache: maps (header_name, config_id) → interned path_id.
-    // For angled includes, the resolution depends only on the search config, not the
-    // includer directory. Caching avoids redundant directory searches when many files
-    // include the same system headers (e.g. <vector>, <string>).
-    // Key: "config_id\0header_name", Value: path_id (UINT32_MAX = known unresolved).
-    llvm::StringMap<std::uint32_t> include_cache;
-
     // Wave 0: all source files from CDB.
     std::vector<WaveEntry> current_wave;
     current_wave.reserve(updates.size());
@@ -372,7 +372,6 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         // Merged into a single pass to avoid intermediate string allocations.
         std::vector<WaveEntry> next_wave;
         next_wave.reserve(current_wave.size());  // Heuristic: next wave ≤ current wave.
-        llvm::SmallString<256> candidate;
         StatCounters wave_stat_counters;
 
         for(auto& scan_result: scan_results) {
@@ -537,14 +536,15 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
                                  const std::vector<UpdateInfo>& updates,
                                  PathPool& path_pool,
-                                 DependencyGraph& graph) {
+                                 DependencyGraph& graph,
+                                 ScanCache* cache) {
     ScanReport report;
     if(updates.empty()) {
         return report;
     }
 
     et::event_loop loop;
-    loop.schedule(scan_impl(cdb, updates, path_pool, graph, report, loop));
+    loop.schedule(scan_impl(cdb, updates, path_pool, graph, report, cache, loop));
     loop.run();
     return report;
 }
