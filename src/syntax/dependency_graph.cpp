@@ -234,8 +234,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         auto representative_path = path_pool.resolve(file_ids[0]);
 
         auto t0 = std::chrono::steady_clock::now();
-        configs[config_id] = cdb.lookup_search_config(
-            representative_path, {.resource_dir = true, .query_toolchain = true}, context);
+        configs[config_id] =
+            cdb.lookup_search_config(representative_path,
+                                     {.resource_dir = true, .query_toolchain = true},
+                                     context);
         auto t1 = std::chrono::steady_clock::now();
 
         lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
@@ -347,8 +349,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             auto cid = entry.config_id;
             // PathPool pointers are stable (BumpPtrAllocator), safe to capture raw pointer.
             auto path = path_pool.resolve(pid).data();
-            scan_tasks.push_back(et::queue(
-                [path, pid, cid]() { return scan_file_worker(path, pid, cid); }, loop));
+            scan_tasks.push_back(
+                et::queue([path, pid, cid]() { return scan_file_worker(path, pid, cid); }, loop));
         }
 
         auto scan_outcome = co_await et::when_all(std::move(scan_tasks));

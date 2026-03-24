@@ -962,8 +962,8 @@ SearchConfig CompilationDatabase::extract_search_config(const CompilationContext
 }
 
 SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
-                                                        const CommandOptions& options,
-                                                        const void* context) {
+                                                       const CommandOptions& options,
+                                                       const void* context) {
     // Resolve to the internal CompilationInfo pointer for cache lookup.
     auto path_id = self->strings.get(file);
     auto it = self->files.find(path_id);
