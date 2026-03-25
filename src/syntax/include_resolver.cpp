@@ -65,7 +65,20 @@ bool check_in_dir(llvm::StringRef dir_path,
         return entries->contains(filename);
     }
 
-    // Multi-component path: construct full path, resolve actual subdirectory.
+    // Quick rejection: check if first path component exists in pre-resolved
+    // entries. For "llvm/Support/raw_ostream.h", check if "llvm" exists in
+    // the search dir listing. Most search dirs won't have it, so we skip
+    // the expensive full path construction + subdirectory resolution.
+    // Skip this for relative paths starting with "." or ".." (e.g. "../foo.h").
+    auto first_sep = filename.find_first_of("/\\");
+    auto first_component = filename.substr(0, first_sep);
+    if(first_component != "." && first_component != "..") {
+        if(!entries->contains(first_component)) {
+            return false;
+        }
+    }
+
+    // First component matched — construct full path, resolve actual subdirectory.
     llvm::SmallString<256> full;
     full = dir_path;
     llvm::sys::path::append(full, filename);
