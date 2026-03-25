@@ -125,10 +125,15 @@ FileScanResult scan_file_worker(const char* path, std::uint32_t path_id, std::ui
     result.config_id = config_id;
 
     auto t0 = std::chrono::steady_clock::now();
+    // Force read() instead of mmap: RequiresNullTerminator=true makes LLVM
+    // fall back to read() for page-aligned files, and IsVolatile=true forces
+    // read() unconditionally — bypassing mmap entirely.  This separates
+    // actual I/O cost from page-fault cost that was previously hidden inside
+    // the lexer timing.
     auto buf = llvm::MemoryBuffer::getFile(result.path,
                                            /*FileSize=*/-1,
-                                           /*RequiresNullTerminator=*/false,
-                                           /*IsVolatile=*/false);
+                                           /*RequiresNullTerminator=*/true,
+                                           /*IsVolatile=*/true);
     auto t1 = std::chrono::steady_clock::now();
     result.read_us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
