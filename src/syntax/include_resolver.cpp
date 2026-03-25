@@ -111,7 +111,22 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     bool is_simple = filename.find('/') == llvm::StringRef::npos &&
                      filename.find('\\') == llvm::StringRef::npos;
 
+    // Check if filename contains "." or ".." components that need normalization.
+    // Only these produce non-canonical paths after path::append.
+    bool needs_normalize = !is_simple && (filename.find("..") != llvm::StringRef::npos ||
+                                          filename.find("./") != llvm::StringRef::npos ||
+                                          filename.find("\\.") != llvm::StringRef::npos);
+
     llvm::SmallString<256> candidate;
+
+    // Helper: build candidate path + normalize if needed.
+    auto make_candidate = [&](llvm::StringRef dir, llvm::StringRef fname) {
+        candidate = dir;
+        llvm::sys::path::append(candidate, fname);
+        if(needs_normalize) {
+            llvm::sys::path::remove_dots(candidate, /*remove_dot_dot=*/true);
+        }
+    };
 
     // 2. For #include_next, start from found_dir_idx + 1.
     if(is_include_next) {
@@ -119,8 +134,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
         for(unsigned i = start; i < config.dirs.size(); ++i) {
             if(check_in_dir(config.dirs[i].path, config.dirs[i].entries, filename, is_simple,
                             dir_cache, stat_counters)) {
-                candidate = config.dirs[i].path;
-                llvm::sys::path::append(candidate, filename);
+                make_candidate(config.dirs[i].path, filename);
                 return ResolveResult{candidate, i};
             }
         }
@@ -131,8 +145,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     if(!is_angled && includer_entries) {
         if(check_in_dir(includer_dir, includer_entries, filename, is_simple, dir_cache,
                          stat_counters)) {
-            candidate = includer_dir;
-            llvm::sys::path::append(candidate, filename);
+            make_candidate(includer_dir, filename);
             return ResolveResult{candidate, 0};
         }
     }
@@ -142,8 +155,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     for(unsigned i = start; i < config.dirs.size(); ++i) {
         if(check_in_dir(config.dirs[i].path, config.dirs[i].entries, filename, is_simple,
                         dir_cache, stat_counters)) {
-            candidate = config.dirs[i].path;
-            llvm::sys::path::append(candidate, filename);
+            make_candidate(config.dirs[i].path, filename);
             return ResolveResult{candidate, i};
         }
     }
