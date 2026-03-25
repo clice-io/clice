@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "command/search_config.h"
+#include "command/toolchain_provider.h"
 #include "support/format.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -95,8 +97,31 @@ public:
     /// all contexts and let user choose one.
     /// std::vector<CompilationContext> fetch_all(llvm::StringRef file);
 
+    /// Combined lookup + extract_search_config with internal caching.
+    /// Results are cached by CompilationInfo pointer, avoiding repeated
+    /// argument parsing across multiple calls with the same context.
+    SearchConfig lookup_search_config(llvm::StringRef file,
+                                      const CommandOptions& options = {},
+                                      const void* context = nullptr);
+
+    /// Check if SearchConfig cache is populated (non-empty).
+    /// When true, toolchain cache is also populated, so pre-warm can be skipped.
+    bool has_cached_configs() const;
+
     /// Get an the option for specific argument.
     static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
+
+    /// Resolve a path_id (from UpdateInfo) back to the file path string.
+    llvm::StringRef resolve_path(std::uint32_t path_id);
+
+    /// Access the toolchain provider for batch pre-warming and direct queries.
+    ToolchainProvider& toolchain();
+
+    /// Resolve (file, context) pairs to PendingEntry tuples for toolchain queries.
+    /// Converts CDB-internal context pointers to raw (file, directory, arguments)
+    /// that the ToolchainProvider can consume.
+    std::vector<ToolchainProvider::PendingEntry>
+        resolve_toolchain_entries(llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files);
 
     /// FIXME: bad interface design ...
     std::vector<const char*> files();

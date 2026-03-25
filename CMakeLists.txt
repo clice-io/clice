@@ -132,7 +132,9 @@ add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 # Temporary migration-only build graph.
 add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/command/command.cpp"
+    "${PROJECT_SOURCE_DIR}/src/command/search_config.cpp"
     "${PROJECT_SOURCE_DIR}/src/command/toolchain.cpp"
+    "${PROJECT_SOURCE_DIR}/src/command/toolchain_provider.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/compilation.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/compilation_unit.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/diagnostic.cpp"
