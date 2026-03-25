@@ -72,7 +72,9 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
                     break;
 
                 // TODO: -idirafter (clang: frontend::After group, searched after System)
-                // TODO: HeaderMap support
+                // TODO: -cxx-isystem (clang: frontend::CXXSystem, C++-only system dirs)
+                // TODO: -iwithsysroot (prepends sysroot to path, then adds to System)
+                // TODO: HeaderMap support (-I foo.hmap remaps include names)
                 default: break;
             }
         },

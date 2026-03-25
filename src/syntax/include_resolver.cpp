@@ -152,7 +152,8 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     }
 
     // 4. Search directories from appropriate start index.
-    // TODO: Support macOS Framework directory search (.framework bundles).
+    // TODO: macOS Framework search — for <Foo/Bar.h>, try Foo.framework/Headers/Bar.h
+    //       in dirs marked as framework dirs (-F, -iframework).
     unsigned start = is_angled ? config.angled_start_idx : 0;
     for(unsigned i = start; i < config.dirs.size(); ++i) {
         if(check_in_dir(config.dirs[i].path, config.dirs[i].entries, filename, is_simple,
