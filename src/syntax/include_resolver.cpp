@@ -40,6 +40,7 @@ const llvm::StringSet<>* resolve_dir(llvm::StringRef dir, DirListingCache& cache
 ResolvedSearchConfig resolve_search_config(const SearchConfig& config, DirListingCache& cache) {
     ResolvedSearchConfig resolved;
     resolved.angled_start_idx = config.angled_start_idx;
+    resolved.system_start_idx = config.system_start_idx;
     resolved.dirs.reserve(config.dirs.size());
     for(auto& dir: config.dirs) {
         resolved.dirs.push_back({dir.path, resolve_dir(dir.path, cache)});
@@ -151,6 +152,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     }
 
     // 4. Search directories from appropriate start index.
+    // TODO: Support macOS Framework directory search (.framework bundles).
     unsigned start = is_angled ? config.angled_start_idx : 0;
     for(unsigned i = start; i < config.dirs.size(); ++i) {
         if(check_in_dir(config.dirs[i].path, config.dirs[i].entries, filename, is_simple,

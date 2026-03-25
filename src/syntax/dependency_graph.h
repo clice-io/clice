@@ -100,6 +100,9 @@ private:
 struct WaveEntry {
     std::uint32_t path_id;
     std::uint32_t config_id;
+    /// Search dir index where this file was found. Used for #include_next.
+    /// Source files (wave 0) use 0.
+    unsigned found_dir_idx = 0;
 };
 
 /// Detailed report from a dependency scan.

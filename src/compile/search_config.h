@@ -13,15 +13,20 @@ struct SearchDir {
 };
 
 /// Header search configuration extracted from compilation arguments.
-/// Mirrors clang's HeaderSearch directory ordering: quoted includes search
-/// from index 0, angled includes search from angled_start_idx.
+/// Uses a three-segment model matching clang's InitHeaderSearch::Realize layout:
+///   [Quoted... | Angled... | System...]
+///              ^            ^
+///      angled_start_idx   system_start_idx
 struct SearchConfig {
-    /// Ordered list of search directories.
+    /// Ordered list of search directories, partitioned into three segments.
     std::vector<SearchDir> dirs;
 
-    /// Index in dirs where angled (<>) includes start searching.
-    /// Quoted ("") includes search from index 0.
+    /// Index in dirs where Angled (-I) dirs start.
+    /// Quoted ("") includes search from index 0; angled (<>) from here.
     unsigned angled_start_idx = 0;
+
+    /// Index in dirs where System (-isystem, -internal-isystem, etc.) dirs start.
+    unsigned system_start_idx = 0;
 };
 
 /// Extract header search configuration from compilation arguments.

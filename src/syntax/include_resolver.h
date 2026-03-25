@@ -52,6 +52,7 @@ struct ResolvedSearchDir {
 struct ResolvedSearchConfig {
     llvm::SmallVector<ResolvedSearchDir> dirs;
     unsigned angled_start_idx = 0;
+    unsigned system_start_idx = 0;
 };
 
 /// Resolve a single directory to its cached StringSet.

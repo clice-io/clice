@@ -252,6 +252,113 @@ TEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("include/fallback.h")));
 }
 
+// ============================================================================
+// Three-tier search directory tests
+// ============================================================================
+
+TEST_CASE(ThreeTierAngledSkipsQuotedFindsInAngled) {
+    TempDir tmp;
+    tmp.touch("iquote/header.h", "// iquote");
+    tmp.touch("idir/header.h", "// I dir");
+    tmp.touch("sys/header.h", "// system");
+
+    // Layout: [iquote | idir | sys]
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("iquote")});  // 0: Quoted
+    config.dirs.push_back({tmp.path("idir")});     // 1: Angled
+    config.dirs.push_back({tmp.path("sys")});      // 2: System
+    config.angled_start_idx = 1;
+    config.system_start_idx = 2;
+
+    DirListingCache dir_cache;
+
+    // <header.h> should skip iquote, find in idir (Angled before System).
+    auto result = resolve_include("header.h", true, "", false, 0, config, dir_cache);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("idir/header.h")));
+    EXPECT_EQ(result->found_dir_idx, 1u);
+}
+
+TEST_CASE(ThreeTierAngledOnlyInQuotedNotFound) {
+    TempDir tmp;
+    tmp.touch("iquote/only_here.h");
+
+    // Layout: [iquote | (no angled) | (no system)]
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("iquote")});
+    config.angled_start_idx = 1;
+    config.system_start_idx = 1;
+
+    DirListingCache dir_cache;
+
+    // <only_here.h> should NOT find it — only in quoted dir.
+    auto result = resolve_include("only_here.h", true, "", false, 0, config, dir_cache);
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST_CASE(ThreeTierQuotedSearchesAllSegments) {
+    TempDir tmp;
+    tmp.touch("sys/deep.h", "// system");
+
+    // Layout: [iquote | idir | sys]
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("iquote")});
+    config.dirs.push_back({tmp.path("idir")});
+    config.dirs.push_back({tmp.path("sys")});
+    config.angled_start_idx = 1;
+    config.system_start_idx = 2;
+
+    DirListingCache dir_cache;
+
+    // "deep.h" is only in system dir, but quoted search goes through all.
+    auto result = resolve_include("deep.h", false, "", false, 0, config, dir_cache);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("sys/deep.h")));
+}
+
+TEST_CASE(ThreeTierAngledPrefersAngledOverSystem) {
+    TempDir tmp;
+    tmp.touch("idir/priority.h", "// angled");
+    tmp.touch("sys/priority.h", "// system");
+
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("idir")});  // 0: Angled
+    config.dirs.push_back({tmp.path("sys")});   // 1: System
+    config.angled_start_idx = 0;
+    config.system_start_idx = 1;
+
+    DirListingCache dir_cache;
+
+    // <priority.h> should find in Angled (index 0) before System (index 1).
+    auto result = resolve_include("priority.h", true, "", false, 0, config, dir_cache);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("idir/priority.h")));
+    EXPECT_EQ(result->found_dir_idx, 0u);
+}
+
+TEST_CASE(IncludeNextWithCorrectFoundDirIdx) {
+    TempDir tmp;
+    tmp.touch("dir0/limits.h", "// local");
+    tmp.touch("dir1/limits.h", "// system1");
+    tmp.touch("dir2/limits.h", "// system2");
+
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("dir0")});
+    config.dirs.push_back({tmp.path("dir1")});
+    config.dirs.push_back({tmp.path("dir2")});
+    config.angled_start_idx = 0;
+    config.system_start_idx = 1;
+
+    DirListingCache dir_cache;
+
+    // File found at dir1 (index 1) does #include_next <limits.h>
+    auto result = resolve_include("limits.h", true, "", true, 1, config, dir_cache);
+    ASSERT_TRUE(result.has_value());
+    // Should skip dirs 0-1, find in dir2.
+    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("dir2/limits.h")));
+    EXPECT_EQ(result->found_dir_idx, 2u);
+}
+
 };  // TEST_SUITE(IncludeResolver)
 
 }  // namespace

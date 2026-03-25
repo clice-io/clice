@@ -319,6 +319,114 @@ void expect_load(llvm::StringRef content,
 
 };  // TEST_SUITE(Command)
 
+// ============================================================================
+// extract_search_config — three-tier directory model
+// ============================================================================
+
+TEST_SUITE(ExtractSearchConfig) {
+
+TEST_CASE(ClassifiesAndReordersByGroup) {
+    // Simulates cc1 args from toolchain query (system first) + appended user flags.
+    std::vector<const char*> args = {"clang++",
+                                     "-internal-isystem", "/stdlib",
+                                     "-internal-isystem", "/clang",
+                                     "-internal-externc-isystem", "/sysroot",
+                                     "-I", "/user",
+                                     "-iquote", "/quoted",
+                                     "main.cpp"};
+    auto config = extract_search_config(args, "/fake");
+
+    // Expected order: [/quoted | /user | /stdlib, /clang, /sysroot]
+    ASSERT_EQ(config.dirs.size(), 5u);
+    EXPECT_EQ(config.angled_start_idx, 1u);
+    EXPECT_EQ(config.system_start_idx, 2u);
+
+    EXPECT_EQ(config.dirs[0].path, "/quoted");
+    EXPECT_EQ(config.dirs[1].path, "/user");
+    EXPECT_EQ(config.dirs[2].path, "/stdlib");
+    EXPECT_EQ(config.dirs[3].path, "/clang");
+    EXPECT_EQ(config.dirs[4].path, "/sysroot");
+}
+
+TEST_CASE(PreservesWithinGroupOrder) {
+    std::vector<const char*> args = {"clang++",
+                                     "-I", "/b",
+                                     "-I", "/a",
+                                     "-isystem", "/s2",
+                                     "-isystem", "/s1",
+                                     "main.cpp"};
+    auto config = extract_search_config(args, "/fake");
+
+    // [/b, /a | /s2, /s1]  — within-group order preserved
+    ASSERT_EQ(config.dirs.size(), 4u);
+    EXPECT_EQ(config.angled_start_idx, 0u);
+    EXPECT_EQ(config.system_start_idx, 2u);
+    EXPECT_EQ(config.dirs[0].path, "/b");
+    EXPECT_EQ(config.dirs[1].path, "/a");
+    EXPECT_EQ(config.dirs[2].path, "/s2");
+    EXPECT_EQ(config.dirs[3].path, "/s1");
+}
+
+TEST_CASE(DeduplicatesAcrossAngledAndSystem) {
+    std::vector<const char*> args = {"clang++",
+                                     "-I", "/shared",
+                                     "-internal-isystem", "/shared",
+                                     "-internal-isystem", "/only_sys",
+                                     "main.cpp"};
+    auto config = extract_search_config(args, "/fake");
+
+    // /shared appears in both Angled and System. After dedup: keep Angled copy.
+    // [/shared | /only_sys]
+    ASSERT_EQ(config.dirs.size(), 2u);
+    EXPECT_EQ(config.angled_start_idx, 0u);
+    EXPECT_EQ(config.system_start_idx, 1u);
+    EXPECT_EQ(config.dirs[0].path, "/shared");
+    EXPECT_EQ(config.dirs[1].path, "/only_sys");
+}
+
+TEST_CASE(DeduplicateAdjustsSystemStartIdx) {
+    std::vector<const char*> args = {"clang++",
+                                     "-iquote", "/q",
+                                     "-I", "/dup",
+                                     "-I", "/a2",
+                                     "-isystem", "/dup",
+                                     "-isystem", "/s",
+                                     "main.cpp"};
+    auto config = extract_search_config(args, "/fake");
+
+    // Before dedup: [/q | /dup, /a2 | /dup, /s] angled=1, system=3
+    // /dup in system is removed. system_start_idx stays 3 (removed after it).
+    ASSERT_EQ(config.dirs.size(), 4u);
+    EXPECT_EQ(config.angled_start_idx, 1u);
+    EXPECT_EQ(config.system_start_idx, 3u);
+    EXPECT_EQ(config.dirs[0].path, "/q");
+    EXPECT_EQ(config.dirs[1].path, "/dup");
+    EXPECT_EQ(config.dirs[2].path, "/a2");
+    EXPECT_EQ(config.dirs[3].path, "/s");
+}
+
+TEST_CASE(PrefixIncludeOptions) {
+    std::vector<const char*> args = {"clang++",
+                                     "-iprefix", "/gcc/12/",
+                                     "-iwithprefixbefore", "include",
+                                     "-iwithprefix", "lib",
+                                     "-iprefix", "/gcc/13/",
+                                     "-iwithprefix", "include",
+                                     "main.cpp"};
+    auto config = extract_search_config(args, "/fake");
+
+    // -iwithprefixbefore → Angled: /gcc/12/include
+    // -iwithprefix → System: /gcc/12/lib, /gcc/13/include
+    ASSERT_EQ(config.dirs.size(), 3u);
+    EXPECT_EQ(config.angled_start_idx, 0u);
+    EXPECT_EQ(config.system_start_idx, 1u);
+    EXPECT_EQ(config.dirs[0].path, "/gcc/12/include");
+    EXPECT_EQ(config.dirs[1].path, "/gcc/12/lib");
+    EXPECT_EQ(config.dirs[2].path, "/gcc/13/include");
+}
+
+};  // TEST_SUITE(ExtractSearchConfig)
+
 }  // namespace
 
 }  // namespace clice::testing

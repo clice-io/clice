@@ -325,7 +325,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     }
 
     // Track which files have been scanned (by path_id — cheaper than string hash).
-    llvm::DenseSet<std::uint32_t> scanned_files;
+    // Value: found_dir_idx needed for #include_next.
+    llvm::DenseMap<std::uint32_t, unsigned> scanned_files;
 
     // Wave 0: all source files from CDB.
     // Re-use the cached initial_wave when available to avoid re-iterating context_groups.
@@ -334,15 +335,15 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     if(have_initial_wave_cache) {
         current_wave = ext_cache->initial_wave;
         for(auto& entry: current_wave) {
-            scanned_files.insert(entry.path_id);
+            scanned_files.try_emplace(entry.path_id, entry.found_dir_idx);
         }
     } else {
         current_wave.reserve(updates.size());
         for(auto& [context, file_ids]: context_groups) {
             auto config_id = context_to_config_id[context];
             for(auto path_id: file_ids) {
-                scanned_files.insert(path_id);
-                current_wave.push_back({path_id, config_id});
+                scanned_files.try_emplace(path_id, 0u);
+                current_wave.push_back({path_id, config_id, /*found_dir_idx=*/0});
             }
         }
         if(ext_cache) {
@@ -499,6 +500,13 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             auto includer_dir = llvm::sys::path::parent_path(scan_result.path);
             auto* includer_entries = resolve_dir(includer_dir, dir_cache, &wave_stat_counters);
 
+            // Look up the found_dir_idx for this file (stored when it was discovered).
+            unsigned includer_found_dir_idx = 0;
+            auto sf_it = scanned_files.find(scan_result.path_id);
+            if(sf_it != scanned_files.end()) {
+                includer_found_dir_idx = sf_it->second;
+            }
+
             // Record module mapping.
             if(!scan_result.scan_result.module_name.empty()) {
                 graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
@@ -544,7 +552,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                         }
                         report.total_edges++;
                         include_ids.push_back(flagged_id);
-                        if(scanned_files.insert(cached_id).second) {
+                        if(scanned_files.try_emplace(cached_id, 0u).second) {
                             next_wave.push_back({cached_id, scan_result.config_id});
                         }
                         continue;
@@ -557,7 +565,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                                                 includer_entries,
                                                 includer_dir,
                                                 inc.is_include_next,
-                                                0,
+                                                includer_found_dir_idx,
                                                 resolved_config,
                                                 dir_cache,
                                                 &wave_stat_counters);
@@ -594,8 +602,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 report.total_edges++;
                 include_ids.push_back(flagged_id);
 
-                if(scanned_files.insert(inc_path_id).second) {
-                    next_wave.push_back({inc_path_id, scan_result.config_id});
+                if(scanned_files.try_emplace(inc_path_id, resolved->found_dir_idx).second) {
+                    next_wave.push_back({inc_path_id, scan_result.config_id, resolved->found_dir_idx});
                     // Prefetch: start scanning this file immediately on the
                     // thread pool so it's ready when the next wave begins.
                     if(!ext_cache ||
