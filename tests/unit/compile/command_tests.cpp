@@ -325,7 +325,7 @@ void expect_load(llvm::StringRef content,
 
 TEST_SUITE(ExtractSearchConfig) {
 
-TEST_CASE(ClassifiesAndReordersByGroup) {
+TEST_CASE(ReordersDirectoryGroups) {
     // Simulates cc1 args from toolchain query (system first) + appended user flags.
     std::vector<const char*> args = {"clang++",
                                      "-internal-isystem", "/stdlib",
@@ -367,7 +367,7 @@ TEST_CASE(PreservesWithinGroupOrder) {
     EXPECT_EQ(config.dirs[3].path, "/s1");
 }
 
-TEST_CASE(DeduplicatesAcrossAngledAndSystem) {
+TEST_CASE(DeduplicatesAngledSystem) {
     std::vector<const char*> args = {"clang++",
                                      "-I", "/shared",
                                      "-internal-isystem", "/shared",
@@ -384,7 +384,7 @@ TEST_CASE(DeduplicatesAcrossAngledAndSystem) {
     EXPECT_EQ(config.dirs[1].path, "/only_sys");
 }
 
-TEST_CASE(DeduplicateAdjustsSystemStartIdx) {
+TEST_CASE(DeduplicateAdjustsIndices) {
     std::vector<const char*> args = {"clang++",
                                      "-iquote", "/q",
                                      "-I", "/dup",

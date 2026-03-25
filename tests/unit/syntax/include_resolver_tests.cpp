@@ -256,7 +256,7 @@ TEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
 // Three-tier search directory tests
 // ============================================================================
 
-TEST_CASE(ThreeTierAngledSkipsQuotedFindsInAngled) {
+TEST_CASE(AngledSkipsQuotedDirs) {
     TempDir tmp;
     tmp.touch("iquote/header.h", "// iquote");
     tmp.touch("idir/header.h", "// I dir");
@@ -279,7 +279,7 @@ TEST_CASE(ThreeTierAngledSkipsQuotedFindsInAngled) {
     EXPECT_EQ(result->found_dir_idx, 1u);
 }
 
-TEST_CASE(ThreeTierAngledOnlyInQuotedNotFound) {
+TEST_CASE(AngledMissesQuotedOnly) {
     TempDir tmp;
     tmp.touch("iquote/only_here.h");
 
@@ -296,7 +296,7 @@ TEST_CASE(ThreeTierAngledOnlyInQuotedNotFound) {
     EXPECT_FALSE(result.has_value());
 }
 
-TEST_CASE(ThreeTierQuotedSearchesAllSegments) {
+TEST_CASE(QuotedSearchesAllDirs) {
     TempDir tmp;
     tmp.touch("sys/deep.h", "// system");
 
@@ -316,7 +316,7 @@ TEST_CASE(ThreeTierQuotedSearchesAllSegments) {
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("sys/deep.h")));
 }
 
-TEST_CASE(ThreeTierAngledPrefersAngledOverSystem) {
+TEST_CASE(AngledBeforeSystem) {
     TempDir tmp;
     tmp.touch("idir/priority.h", "// angled");
     tmp.touch("sys/priority.h", "// system");
@@ -336,7 +336,7 @@ TEST_CASE(ThreeTierAngledPrefersAngledOverSystem) {
     EXPECT_EQ(result->found_dir_idx, 0u);
 }
 
-TEST_CASE(IncludeNextWithCorrectFoundDirIdx) {
+TEST_CASE(IncludeNextPropagatesIdx) {
     TempDir tmp;
     tmp.touch("dir0/limits.h", "// local");
     tmp.touch("dir1/limits.h", "// system1");

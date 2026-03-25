@@ -2,9 +2,8 @@
 
 #include <cstdint>
 #include <optional>
-#include <string>
 
-#include "compile/command.h"
+#include "compile/search_config.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
