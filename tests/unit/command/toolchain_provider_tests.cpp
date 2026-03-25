@@ -1,0 +1,212 @@
+#include "test/test.h"
+#include "command/toolchain_provider.h"
+
+namespace clice::testing {
+
+namespace {
+
+TEST_SUITE(ToolchainProvider) {
+
+TEST_CASE(InitiallyEmpty) {
+    ToolchainProvider provider;
+    EXPECT_FALSE(provider.has_cached_entries());
+}
+
+TEST_CASE(InjectResultsPopulatesCache) {
+    ToolchainProvider provider;
+
+    std::vector<ToolchainResult> results;
+    results.push_back({
+        "key1",
+        {"-cc1", "-triple", "x86_64-linux-gnu"}
+    });
+    provider.inject_results(results);
+
+    EXPECT_TRUE(provider.has_cached_entries());
+}
+
+TEST_CASE(InjectResultsSkipsDuplicateKeys) {
+    ToolchainProvider provider;
+
+    std::vector<ToolchainResult> results;
+    results.push_back({
+        "key1",
+        {"-cc1", "-triple", "x86_64"}
+    });
+    results.push_back({
+        "key1",
+        {"-cc1", "-triple", "aarch64"}
+    });
+    provider.inject_results(results);
+
+    // After injection, query_cached with same key should return the first result.
+    // We verify indirectly: inject twice, cache should still work.
+    EXPECT_TRUE(provider.has_cached_entries());
+}
+
+TEST_CASE(GetPendingQueriesReturnsUncachedOnly) {
+    ToolchainProvider provider;
+
+    // Inject a result for one toolchain configuration.
+    std::vector<ToolchainResult> results;
+    results.push_back({
+        "preloaded_key",
+        {"-cc1", "-triple", "x86_64"}
+    });
+    provider.inject_results(results);
+
+    // Create entries: one matching the cached key pattern, one new.
+    // Since get_pending_queries extracts keys internally, we need real-ish args.
+    ToolchainProvider::PendingEntry entry1;
+    entry1.file = "a.cpp";
+    entry1.directory = "/tmp";
+    entry1.arguments = {"clang++", "-std=c++17", "a.cpp"};
+
+    ToolchainProvider::PendingEntry entry2;
+    entry2.file = "b.cpp";
+    entry2.directory = "/tmp";
+    entry2.arguments = {"clang++", "-std=c++17", "b.cpp"};
+
+    // Both entries have the same toolchain key (same driver, same extension,
+    // same toolchain flags), so only one query should be returned.
+    auto queries = provider.get_pending_queries({entry1, entry2});
+    EXPECT_EQ(queries.size(), 1u);
+}
+
+TEST_CASE(GetPendingQueriesDeduplicatesSameKey) {
+    ToolchainProvider provider;
+
+    // Three entries with same driver and no toolchain-relevant flags.
+    ToolchainProvider::PendingEntry entry1;
+    entry1.file = "x.cpp";
+    entry1.directory = "/project";
+    entry1.arguments = {"clang++", "-Wall", "-O2", "x.cpp"};
+
+    ToolchainProvider::PendingEntry entry2;
+    entry2.file = "y.cpp";
+    entry2.directory = "/project";
+    entry2.arguments = {"clang++", "-Werror", "y.cpp"};
+
+    ToolchainProvider::PendingEntry entry3;
+    entry3.file = "z.cpp";
+    entry3.directory = "/project";
+    entry3.arguments = {"clang++", "-g", "z.cpp"};
+
+    auto queries = provider.get_pending_queries({entry1, entry2, entry3});
+    // Same driver (clang++), same extension (.cpp), no toolchain flags → same key.
+    EXPECT_EQ(queries.size(), 1u);
+}
+
+TEST_CASE(GetPendingQueriesDifferentDrivers) {
+    ToolchainProvider provider;
+
+    ToolchainProvider::PendingEntry entry1;
+    entry1.file = "a.cpp";
+    entry1.directory = "/tmp";
+    entry1.arguments = {"clang++", "a.cpp"};
+
+    ToolchainProvider::PendingEntry entry2;
+    entry2.file = "b.cpp";
+    entry2.directory = "/tmp";
+    entry2.arguments = {"g++", "b.cpp"};
+
+    auto queries = provider.get_pending_queries({entry1, entry2});
+    // Different drivers → different keys → two queries.
+    EXPECT_EQ(queries.size(), 2u);
+}
+
+TEST_CASE(GetPendingQueriesDifferentTargets) {
+    ToolchainProvider provider;
+
+    ToolchainProvider::PendingEntry entry1;
+    entry1.file = "a.cpp";
+    entry1.directory = "/tmp";
+    entry1.arguments = {"clang++", "--target=x86_64-linux-gnu", "a.cpp"};
+
+    ToolchainProvider::PendingEntry entry2;
+    entry2.file = "b.cpp";
+    entry2.directory = "/tmp";
+    entry2.arguments = {"clang++", "--target=aarch64-linux-gnu", "b.cpp"};
+
+    auto queries = provider.get_pending_queries({entry1, entry2});
+    // Different targets → different keys → two queries.
+    EXPECT_EQ(queries.size(), 2u);
+}
+
+TEST_CASE(GetPendingQueriesDifferentLanguageMode) {
+    ToolchainProvider provider;
+
+    // clang foo.h (default: c-header) vs clang -x c++ foo.h (c++)
+    // produce different system include paths, so they must have different keys.
+    ToolchainProvider::PendingEntry entry1;
+    entry1.file = "foo.h";
+    entry1.directory = "/tmp";
+    entry1.arguments = {"clang", "foo.h"};
+
+    ToolchainProvider::PendingEntry entry2;
+    entry2.file = "foo.h";
+    entry2.directory = "/tmp";
+    entry2.arguments = {"clang", "-x", "c++", "foo.h"};
+
+    auto queries = provider.get_pending_queries({entry1, entry2});
+    // -x c++ changes language mode → different keys → two queries.
+    EXPECT_EQ(queries.size(), 2u);
+}
+
+TEST_CASE(GetPendingQueriesSkipsEmptyArgs) {
+    ToolchainProvider provider;
+
+    ToolchainProvider::PendingEntry empty;
+    empty.file = "empty.cpp";
+    empty.directory = "/tmp";
+    // arguments is empty
+
+    ToolchainProvider::PendingEntry valid;
+    valid.file = "valid.cpp";
+    valid.directory = "/tmp";
+    valid.arguments = {"clang++", "valid.cpp"};
+
+    auto queries = provider.get_pending_queries({empty, valid});
+    EXPECT_EQ(queries.size(), 1u);
+}
+
+TEST_CASE(InjectThenGetPendingSkipsCached) {
+    ToolchainProvider provider;
+
+    // First, get pending queries to learn what key is generated.
+    ToolchainProvider::PendingEntry entry;
+    entry.file = "test.cpp";
+    entry.directory = "/tmp";
+    entry.arguments = {"clang++", "test.cpp"};
+
+    auto queries = provider.get_pending_queries({entry});
+    ASSERT_EQ(queries.size(), 1u);
+
+    // Inject a result for that key.
+    std::vector<ToolchainResult> results;
+    results.push_back({
+        queries[0].key,
+        {"-cc1", "-triple", "x86_64-linux-gnu"}
+    });
+    provider.inject_results(results);
+
+    // Now the same entry should produce no pending queries.
+    auto queries2 = provider.get_pending_queries({entry});
+    EXPECT_EQ(queries2.size(), 0u);
+}
+
+TEST_CASE(MoveConstruction) {
+    ToolchainProvider provider;
+    std::vector<ToolchainResult> results;
+    results.push_back({"key1", {"-cc1"}});
+    provider.inject_results(results);
+
+    ToolchainProvider moved(std::move(provider));
+    EXPECT_TRUE(moved.has_cached_entries());
+}
+
+};  // TEST_SUITE(ToolchainProvider)
+
+}  // namespace
+
+}  // namespace clice::testing

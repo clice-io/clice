@@ -150,8 +150,18 @@ struct CompilationDatabase::Impl {
     /// All source files in the compilation database.
     llvm::DenseMap<StringID, object_ptr<JSONItem>> files;
 
-    /// TODO: Cache of toolchain query driver results.
-    llvm::DenseMap<CompilationInfo*, int> toolchains;
+    /// Pluggable toolchain provider: manages toolchain queries and caching.
+    ToolchainProvider toolchain;
+
+    /// Cache of SearchConfig keyed by (CompilationInfo*, options_bits).
+    /// options_bits encodes the CommandOptions fields that affect the result,
+    /// so different option combinations don't pollute each other's cache entries.
+    using ConfigCacheKey = std::pair<const CompilationInfo*, std::uint8_t>;
+    llvm::DenseMap<ConfigCacheKey, SearchConfig> search_config_cache;
+
+    static std::uint8_t options_bits(const CommandOptions& options) {
+        return options.query_toolchain ? 1u : 0u;
+    }
 
     /// The clang options we want to filter in all cases, like -c and -o.
     llvm::DenseSet<std::uint32_t> filtered_options;
@@ -750,58 +760,81 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
     };
 
     if(info && options.query_toolchain) {
-        auto callback = [&](const char* s) {
-            return save_string(s).data();
-        };
-        toolchain::QueryParams params = {file, directory, arguments, callback};
+        // Save user-level include paths before replacing with cc1 args.
+        // The cached toolchain query uses minimal args (no -I/-D/-W etc.)
+        // for cache efficiency, so user include paths must be injected back.
+        auto user_args = std::move(arguments);
 
-        /// FIXME: querying is expensive, we want to cache this ...
-        arguments = toolchain::query_toolchain(params);
+        auto cached = self->toolchain.query_cached(file, directory, user_args);
 
-        /// FIXME: we need mangle the arguments again.
-        /// Work around ... the logic of this should be moved to query ...
-        bool next_main_file = false;
-        for(auto& arg: arguments) {
-            if(arg == llvm::StringRef("-main-file-name")) {
-                next_main_file = true;
-                continue;
-            }
-
-            if(next_main_file) {
-                arg = self->strings.save(path::filename(file)).data();
-                next_main_file = false;
-            }
-        }
-
-        if(arguments.empty()) {
+        if(cached.empty()) {
             LOG_WARN("failed to query toolchain: {}", file);
+            arguments = std::move(user_args);
         } else {
-            arguments.pop_back();
-        }
+            // Start with cc1 result (has system paths, driver flags, etc.).
+            arguments.assign(cached.begin(), cached.end());
 
-        // Replace the queried resource dir with ours so the headers are consistent.
-        // (See clangd's CommandMangler for precedent.)
-        if(!resource_dir().empty()) {
-            llvm::StringRef old_resource_dir;
-            for(std::size_t i = 0; i + 1 < arguments.size(); ++i) {
-                if(arguments[i] == llvm::StringRef("-resource-dir")) {
-                    old_resource_dir = arguments[i + 1];
-                    break;
+            // Remove the temp source file that was appended during query.
+            arguments.pop_back();
+
+            // The toolchain query derives the resource dir from the system
+            // compiler's executable path. If that compiler is a different clang
+            // version, its builtin headers may not match ours. Replace the
+            // queried resource dir with ours so the headers are consistent.
+            // (See clangd's CommandMangler for precedent.)
+            if(!resource_dir().empty()) {
+                llvm::StringRef old_resource_dir;
+                for(std::size_t i = 0; i + 1 < arguments.size(); ++i) {
+                    if(arguments[i] == llvm::StringRef("-resource-dir")) {
+                        old_resource_dir = arguments[i + 1];
+                        break;
+                    }
+                }
+                if(!old_resource_dir.empty() && old_resource_dir != resource_dir()) {
+                    for(auto& arg: arguments) {
+                        llvm::StringRef s(arg);
+                        if(s.starts_with(old_resource_dir)) {
+                            auto replaced =
+                                resource_dir().str() + s.substr(old_resource_dir.size()).str();
+                            arg = self->strings.save(replaced).data();
+                        }
+                    }
                 }
             }
-            if(!old_resource_dir.empty() && old_resource_dir != resource_dir()) {
-                for(auto& arg: arguments) {
-                    llvm::StringRef s(arg);
-                    if(s.starts_with(old_resource_dir)) {
-                        auto replaced =
-                            resource_dir().str() + s.substr(old_resource_dir.size()).str();
-                        arg = self->strings.save(replaced).data();
+
+            // Inject user include paths (-I, -isystem, -iquote) from the
+            // original mangled args into the cc1 result.
+            self->parser.parse(
+                llvm::ArrayRef(user_args).drop_front(),
+                [&](std::unique_ptr<llvm::opt::Arg> arg) {
+                    auto id = arg->getOption().getID();
+                    if(id == ID::OPT_I || id == ID::OPT_isystem || id == ID::OPT_iquote) {
+                        append_arg(arg->getSpelling());
+                        for(auto value: arg->getValues()) {
+                            append_arg(value);
+                        }
                     }
+                },
+                [](int, int) {});
+
+            // Fix -main-file-name to match the actual file.
+            bool next_main_file = false;
+            for(auto& arg: arguments) {
+                if(arg == llvm::StringRef("-main-file-name")) {
+                    next_main_file = true;
+                    continue;
+                }
+
+                if(next_main_file) {
+                    arg = self->strings.save(path::filename(file)).data();
+                    next_main_file = false;
                 }
             }
         }
 
         // Inject our resource dir if not already present in the arguments.
+        // On success, the cc1 output already has -resource-dir (possibly
+        // replaced above). On failure, the original user_args won't have it.
         if(!resource_dir().empty()) {
             bool has_resource_dir = false;
             for(auto& arg: arguments) {
@@ -820,6 +853,50 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
     arguments.emplace_back(file.data());
 
     return CompilationContext(directory, std::move(arguments));
+}
+
+SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
+                                                       const CommandOptions& options,
+                                                       const void* context) {
+    // Resolve to the internal CompilationInfo pointer for cache lookup.
+    auto path_id = self->strings.get(file);
+    auto it = self->files.find(path_id);
+    const CompilationInfo* info_ptr = nullptr;
+    if(it != self->files.end()) {
+        if(!context) {
+            info_ptr = it->second->info.ptr;
+        } else {
+            auto cur = it->second;
+            while(cur) {
+                if(cur->info.ptr == context) {
+                    info_ptr = cur->info.ptr;
+                    break;
+                }
+                cur = cur->next;
+            }
+        }
+    }
+
+    if(info_ptr) {
+        auto key = Impl::ConfigCacheKey{info_ptr, Impl::options_bits(options)};
+        auto cache_it = self->search_config_cache.find(key);
+        if(cache_it != self->search_config_cache.end()) {
+            return cache_it->second;
+        }
+    }
+
+    auto ctx = lookup(file, options, context);
+    auto config = extract_search_config(ctx.arguments, ctx.directory);
+
+    if(info_ptr) {
+        auto key = Impl::ConfigCacheKey{info_ptr, Impl::options_bits(options)};
+        self->search_config_cache.try_emplace(key, config);
+    }
+    return config;
+}
+
+bool CompilationDatabase::has_cached_configs() const {
+    return !self->search_config_cache.empty();
 }
 
 std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef argument) {
@@ -853,6 +930,58 @@ llvm::StringRef CompilationDatabase::resource_dir() {
         return clang::driver::Driver::GetResourcesPath(exe);
     }();
     return dir;
+}
+
+ToolchainProvider& CompilationDatabase::toolchain() {
+    return self->toolchain;
+}
+
+std::vector<ToolchainProvider::PendingEntry> CompilationDatabase::resolve_toolchain_entries(
+    llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files) {
+    std::vector<ToolchainProvider::PendingEntry> entries;
+    entries.reserve(files.size());
+
+    for(auto& [file, context]: files) {
+        auto path_id = self->strings.get(file);
+        auto stored_file = self->strings.get(path_id);
+
+        object_ptr<CompilationInfo> info = nullptr;
+        auto it = self->files.find(path_id);
+        if(it != self->files.end()) {
+            if(!context) {
+                info = it->second->info;
+            } else {
+                auto cur = it->second;
+                while(cur) {
+                    if(cur->info.ptr == context) {
+                        info = cur->info;
+                        break;
+                    }
+                    cur = cur->next;
+                }
+            }
+        }
+
+        if(!info || info->arguments.empty()) {
+            continue;
+        }
+
+        ToolchainProvider::PendingEntry entry;
+        entry.file = stored_file;
+        entry.directory = self->strings.get(info->directory);
+        entry.arguments.reserve(info->arguments.size());
+        for(auto arg_id: info->arguments) {
+            entry.arguments.push_back(self->strings.get(arg_id).data());
+        }
+
+        entries.push_back(std::move(entry));
+    }
+
+    return entries;
+}
+
+llvm::StringRef CompilationDatabase::resolve_path(std::uint32_t path_id) {
+    return self->strings.get(path_id);
 }
 
 std::vector<const char*> CompilationDatabase::files() {
