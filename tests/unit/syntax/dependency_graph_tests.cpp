@@ -190,11 +190,12 @@ std::vector<UpdateInfo> write_cdb(TempDir& tmp,
 }
 
 /// Helper: build a compile_commands.json array from entries.
-/// Each entry is {dir, file, extra_args}.
+/// Uses "arguments" array form to avoid platform-specific tokenization issues
+/// (e.g. TokenizeGNUCommandLine treating backslashes as escape characters).
 struct CDBEntry {
     llvm::StringRef dir;
     std::string file;
-    std::string extra_args;
+    std::vector<std::string> extra_args;
 };
 
 /// Escape backslashes and quotes for JSON string values.
@@ -214,14 +215,6 @@ std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
     std::string json = "[\n";
     for(std::size_t i = 0; i < entries.size(); ++i) {
         auto& e = entries[i];
-        std::string command = "clang++ -std=c++20";
-        if(!e.extra_args.empty()) {
-            command += " ";
-            command += e.extra_args;
-        }
-        command += " ";
-        command += e.file;
-
         if(i > 0) {
             json += ",\n";
         }
@@ -229,9 +222,15 @@ std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
         json += json_escape(e.dir);
         json += R"(", "file": ")";
         json += json_escape(e.file);
-        json += R"(", "command": ")";
-        json += json_escape(command);
-        json += R"("})";
+        json += R"(", "arguments": ["clang++", "-std=c++20")";
+        for(auto& arg: e.extra_args) {
+            json += R"(, ")";
+            json += json_escape(arg);
+            json += R"(")";
+        }
+        json += R"(, ")";
+        json += json_escape(e.file);
+        json += R"("]})";
     }
     json += "\n]";
     return json;
@@ -261,7 +260,7 @@ TEST_CASE(SingleFileNoIncludes) {
     DependencyGraph graph;
 
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/main.cpp"), ""}
+        {tmp.root, tmp.path("src/main.cpp"), {}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -283,9 +282,8 @@ int main() { return x; }
     PathPool pool;
     DependencyGraph graph;
 
-    auto inc = "-I" + tmp.path("include");
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/main.cpp"), inc}
+        {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("include")}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -308,9 +306,8 @@ int main() {}
     PathPool pool;
     DependencyGraph graph;
 
-    auto inc = "-I" + tmp.path("inc");
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/main.cpp"), inc}
+        {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -336,7 +333,7 @@ void b() {}
     PathPool pool;
     DependencyGraph graph;
 
-    auto inc = "-I" + tmp.path("inc");
+    std::vector<std::string> inc = {"-I", tmp.path("inc")};
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/a.cpp"), inc},
         {tmp.root, tmp.path("src/b.cpp"), inc},
@@ -363,9 +360,8 @@ TEST_CASE(ConditionalIncludes) {
     PathPool pool;
     DependencyGraph graph;
 
-    auto inc = "-I" + tmp.path("inc");
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/main.cpp"), inc}
+        {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -400,7 +396,7 @@ export int foo() { return 42; }
     DependencyGraph graph;
 
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/mymod.cpp"), ""}
+        {tmp.root, tmp.path("src/mymod.cpp"), {}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -424,7 +420,7 @@ void impl() {}
     DependencyGraph graph;
 
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/mod.cpp"), ""}
+        {tmp.root, tmp.path("src/mod.cpp"), {}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -441,7 +437,7 @@ TEST_CASE(DeletedFilesSkipped) {
     DependencyGraph graph;
 
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/main.cpp"), ""}
+        {tmp.root, tmp.path("src/main.cpp"), {}}
     });
     auto updates = write_cdb(tmp, cdb, json);
 
@@ -476,9 +472,8 @@ int main() {}
     PathPool pool;
     DependencyGraph graph;
 
-    auto inc = "-I" + tmp.path("inc");
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/main.cpp"), inc}
+        {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -502,9 +497,8 @@ int main() {}
     PathPool pool;
     DependencyGraph graph;
 
-    auto args = "-iquote " + tmp.path("quoted") + " -I" + tmp.path("angled");
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/main.cpp"), args}
+        {tmp.root, tmp.path("src/main.cpp"), {"-iquote", tmp.path("quoted"), "-I", tmp.path("angled")}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -524,7 +518,7 @@ int main() {}
     DependencyGraph graph;
 
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/main.cpp"), ""}
+        {tmp.root, tmp.path("src/main.cpp"), {}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -553,9 +547,9 @@ void a_impl() {}
     DependencyGraph graph;
 
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/mod_a.cpp"), ""},
-        {tmp.root, tmp.path("src/mod_b.cpp"), ""},
-        {tmp.root, tmp.path("src/impl.cpp"),  ""},
+        {tmp.root, tmp.path("src/mod_a.cpp"), {}},
+        {tmp.root, tmp.path("src/mod_b.cpp"), {}},
+        {tmp.root, tmp.path("src/impl.cpp"),  {}},
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -581,9 +575,8 @@ int main() {}
     PathPool pool;
     DependencyGraph graph;
 
-    auto inc = "-I" + tmp.path("inc");
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/main.cpp"), inc}
+        {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
@@ -607,9 +600,8 @@ export int value() { return util; }
     PathPool pool;
     DependencyGraph graph;
 
-    auto inc = "-I" + tmp.path("inc");
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/mymod.cpp"), inc}
+        {tmp.root, tmp.path("src/mymod.cpp"), {"-I", tmp.path("inc")}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
