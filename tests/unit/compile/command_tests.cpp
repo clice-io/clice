@@ -1,3 +1,4 @@
+#include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
 #include "compile/compilation.h"
@@ -323,183 +324,178 @@ void expect_load(llvm::StringRef content,
 // extract_search_config — three-tier directory model
 // ============================================================================
 
-// On Windows, paths like "/foo" lack a drive letter and are not absolute,
-// causing make_absolute() to prepend the working directory.  Prefix them
-// with "C:" so they are absolute on every platform.
-#ifdef _WIN32
-#define P(x) "C:" x
-#else
-#define P(x) x
-#endif
-
 TEST_SUITE(ExtractSearchConfig) {
 
 TEST_CASE(ReordersDirectoryGroups) {
-    // Simulates cc1 args from toolchain query (system first) + appended user flags.
+    // TempDir gives cross-platform absolute paths (drive letter on Windows).
+    TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-internal-isystem",
-                                     P("/stdlib"),
+                                     tmp.c_path("stdlib"),
                                      "-internal-isystem",
-                                     P("/clang"),
+                                     tmp.c_path("clang"),
                                      "-internal-externc-isystem",
-                                     P("/sysroot"),
+                                     tmp.c_path("sysroot"),
                                      "-I",
-                                     P("/user"),
+                                     tmp.c_path("user"),
                                      "-iquote",
-                                     P("/quoted"),
+                                     tmp.c_path("quoted"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, P("/fake"));
+    auto config = extract_search_config(args, tmp.root.str());
 
-    // Expected order: [/quoted | /user | /stdlib, /clang, /sysroot]
+    // Expected order: [quoted | user | stdlib, clang, sysroot]
     ASSERT_EQ(config.dirs.size(), 5u);
     EXPECT_EQ(config.angled_start_idx, 1u);
     EXPECT_EQ(config.system_start_idx, 2u);
 
-    EXPECT_EQ(config.dirs[0].path, P("/quoted"));
-    EXPECT_EQ(config.dirs[1].path, P("/user"));
-    EXPECT_EQ(config.dirs[2].path, P("/stdlib"));
-    EXPECT_EQ(config.dirs[3].path, P("/clang"));
-    EXPECT_EQ(config.dirs[4].path, P("/sysroot"));
+    EXPECT_EQ(config.dirs[0].path, tmp.path("quoted"));
+    EXPECT_EQ(config.dirs[1].path, tmp.path("user"));
+    EXPECT_EQ(config.dirs[2].path, tmp.path("stdlib"));
+    EXPECT_EQ(config.dirs[3].path, tmp.path("clang"));
+    EXPECT_EQ(config.dirs[4].path, tmp.path("sysroot"));
 }
 
 TEST_CASE(PreservesWithinGroupOrder) {
+    TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-I",
-                                     P("/b"),
+                                     tmp.c_path("b"),
                                      "-I",
-                                     P("/a"),
+                                     tmp.c_path("a"),
                                      "-isystem",
-                                     P("/s2"),
+                                     tmp.c_path("s2"),
                                      "-isystem",
-                                     P("/s1"),
+                                     tmp.c_path("s1"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, P("/fake"));
+    auto config = extract_search_config(args, tmp.root.str());
 
-    // [/b, /a | /s2, /s1]  — within-group order preserved
     ASSERT_EQ(config.dirs.size(), 4u);
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.system_start_idx, 2u);
-    EXPECT_EQ(config.dirs[0].path, P("/b"));
-    EXPECT_EQ(config.dirs[1].path, P("/a"));
-    EXPECT_EQ(config.dirs[2].path, P("/s2"));
-    EXPECT_EQ(config.dirs[3].path, P("/s1"));
+    EXPECT_EQ(config.dirs[0].path, tmp.path("b"));
+    EXPECT_EQ(config.dirs[1].path, tmp.path("a"));
+    EXPECT_EQ(config.dirs[2].path, tmp.path("s2"));
+    EXPECT_EQ(config.dirs[3].path, tmp.path("s1"));
 }
 
 TEST_CASE(DeduplicatesAngledSystem) {
+    TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-I",
-                                     P("/shared"),
+                                     tmp.c_path("shared"),
                                      "-internal-isystem",
-                                     P("/shared"),
+                                     tmp.c_path("shared"),
                                      "-internal-isystem",
-                                     P("/only_sys"),
+                                     tmp.c_path("only_sys"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, P("/fake"));
+    auto config = extract_search_config(args, tmp.root.str());
 
-    // /shared appears in both Angled and System. After dedup: keep Angled copy.
-    // [/shared | /only_sys]
+    // /shared in both Angled and System → keep Angled copy.
     ASSERT_EQ(config.dirs.size(), 2u);
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.system_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, P("/shared"));
-    EXPECT_EQ(config.dirs[1].path, P("/only_sys"));
+    EXPECT_EQ(config.dirs[0].path, tmp.path("shared"));
+    EXPECT_EQ(config.dirs[1].path, tmp.path("only_sys"));
 }
 
 TEST_CASE(DeduplicateAdjustsIndices) {
+    TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-iquote",
-                                     P("/q"),
+                                     tmp.c_path("q"),
                                      "-I",
-                                     P("/dup"),
+                                     tmp.c_path("dup"),
                                      "-I",
-                                     P("/a2"),
+                                     tmp.c_path("a2"),
                                      "-isystem",
-                                     P("/dup"),
+                                     tmp.c_path("dup"),
                                      "-isystem",
-                                     P("/s"),
+                                     tmp.c_path("s"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, P("/fake"));
+    auto config = extract_search_config(args, tmp.root.str());
 
-    // Before dedup: [/q | /dup, /a2 | /dup, /s] angled=1, system=3
-    // /dup in system is removed. system_start_idx stays 3 (removed after it).
+    // Before dedup: [q | dup, a2 | dup, s] angled=1, system=3
+    // dup in system removed. system_start_idx stays 3.
     ASSERT_EQ(config.dirs.size(), 4u);
     EXPECT_EQ(config.angled_start_idx, 1u);
     EXPECT_EQ(config.system_start_idx, 3u);
-    EXPECT_EQ(config.dirs[0].path, P("/q"));
-    EXPECT_EQ(config.dirs[1].path, P("/dup"));
-    EXPECT_EQ(config.dirs[2].path, P("/a2"));
-    EXPECT_EQ(config.dirs[3].path, P("/s"));
+    EXPECT_EQ(config.dirs[0].path, tmp.path("q"));
+    EXPECT_EQ(config.dirs[1].path, tmp.path("dup"));
+    EXPECT_EQ(config.dirs[2].path, tmp.path("a2"));
+    EXPECT_EQ(config.dirs[3].path, tmp.path("s"));
 }
 
 TEST_CASE(PrefixIncludeOptions) {
+    TempDir tmp;
+    // -iprefix sets a prefix; -iwithprefixbefore/iwithprefix append to it.
+    // The trailing separator in the prefix path ensures correct concatenation.
+    auto prefix12 = tmp.path("gcc/12/");
+    auto prefix13 = tmp.path("gcc/13/");
     std::vector<const char*> args = {"clang++",
                                      "-iprefix",
-                                     P("/gcc/12/"),
+                                     prefix12.c_str(),
                                      "-iwithprefixbefore",
                                      "include",
                                      "-iwithprefix",
                                      "lib",
                                      "-iprefix",
-                                     P("/gcc/13/"),
+                                     prefix13.c_str(),
                                      "-iwithprefix",
                                      "include",
                                      "main.cpp"};
-    auto config = extract_search_config(args, P("/fake"));
+    auto config = extract_search_config(args, tmp.root.str());
 
-    // -iwithprefixbefore → Angled: /gcc/12/include
-    // -iwithprefix → After: /gcc/12/lib, /gcc/13/include
+    // -iwithprefixbefore → Angled, -iwithprefix → After
     ASSERT_EQ(config.dirs.size(), 3u);
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.system_start_idx, 1u);
     EXPECT_EQ(config.after_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, P("/gcc/12/include"));
-    EXPECT_EQ(config.dirs[1].path, P("/gcc/12/lib"));
-    EXPECT_EQ(config.dirs[2].path, P("/gcc/13/include"));
+    EXPECT_EQ(config.dirs[0].path, tmp.path("gcc/12/include"));
+    EXPECT_EQ(config.dirs[1].path, tmp.path("gcc/12/lib"));
+    EXPECT_EQ(config.dirs[2].path, tmp.path("gcc/13/include"));
 }
 
 TEST_CASE(DirafterGroup) {
+    TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-I",
-                                     P("/user"),
+                                     tmp.c_path("user"),
                                      "-isystem",
-                                     P("/sys"),
+                                     tmp.c_path("sys"),
                                      "-idirafter",
-                                     P("/fallback"),
+                                     tmp.c_path("fallback"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, P("/fake"));
+    auto config = extract_search_config(args, tmp.root.str());
 
-    // [/user | /sys | /fallback]
     ASSERT_EQ(config.dirs.size(), 3u);
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.system_start_idx, 1u);
     EXPECT_EQ(config.after_start_idx, 2u);
-    EXPECT_EQ(config.dirs[0].path, P("/user"));
-    EXPECT_EQ(config.dirs[1].path, P("/sys"));
-    EXPECT_EQ(config.dirs[2].path, P("/fallback"));
+    EXPECT_EQ(config.dirs[0].path, tmp.path("user"));
+    EXPECT_EQ(config.dirs[1].path, tmp.path("sys"));
+    EXPECT_EQ(config.dirs[2].path, tmp.path("fallback"));
 }
 
 TEST_CASE(DirafterDeduplication) {
+    TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-I",
-                                     P("/shared"),
+                                     tmp.c_path("shared"),
                                      "-idirafter",
-                                     P("/shared"),
+                                     tmp.c_path("shared"),
                                      "-idirafter",
-                                     P("/extra"),
+                                     tmp.c_path("extra"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, P("/fake"));
+    auto config = extract_search_config(args, tmp.root.str());
 
-    // /shared in After is deduped against Angled copy.
     ASSERT_EQ(config.dirs.size(), 2u);
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.after_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, P("/shared"));
-    EXPECT_EQ(config.dirs[1].path, P("/extra"));
+    EXPECT_EQ(config.dirs[0].path, tmp.path("shared"));
+    EXPECT_EQ(config.dirs[1].path, tmp.path("extra"));
 }
 
 };  // TEST_SUITE(ExtractSearchConfig)
-
-#undef P
 
 }  // namespace
 

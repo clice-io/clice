@@ -1,10 +1,8 @@
+#include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
-
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
 
 namespace clice::testing {
 namespace {
@@ -183,40 +181,13 @@ TEST_CASE(EmptyIncludes) {
 // ============================================================================
 
 /// RAII helper for a temporary directory tree.
-struct TempDir {
-    llvm::SmallString<128> root;
-
-    TempDir() {
-        llvm::sys::fs::createUniqueDirectory("clice-dep-test", root);
-    }
-
-    ~TempDir() {
-        llvm::sys::fs::remove_directories(root);
-    }
-
-    std::string path(llvm::StringRef relative) {
-        llvm::SmallString<256> result(root);
-        llvm::sys::path::append(result, relative);
-        return std::string(result);
-    }
-
-    void touch(llvm::StringRef relative, llvm::StringRef content = "") {
-        auto p = path(relative);
-        auto dir = llvm::sys::path::parent_path(p);
-        llvm::sys::fs::create_directories(dir);
-        std::error_code ec;
-        llvm::raw_fd_ostream out(p, ec);
-        if(!ec) {
-            out << content;
-        }
-    }
-
-    /// Write a compile_commands.json and load it into the given CDB.
-    std::vector<UpdateInfo> write_cdb(CompilationDatabase& cdb, llvm::StringRef json_content) {
-        touch("compile_commands.json", json_content);
-        return cdb.load_compile_database(path("compile_commands.json"));
-    }
-};
+/// Write a compile_commands.json into the temp dir and load it into the given CDB.
+std::vector<UpdateInfo> write_cdb(TempDir& tmp,
+                                  CompilationDatabase& cdb,
+                                  llvm::StringRef json_content) {
+    tmp.touch("compile_commands.json", json_content);
+    return cdb.load_compile_database(tmp.path("compile_commands.json"));
+}
 
 /// Helper: build a compile_commands.json array from entries.
 /// Each entry is {dir, file, extra_args}.
@@ -292,7 +263,7 @@ TEST_CASE(SingleFileNoIncludes) {
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), ""}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     EXPECT_EQ(graph.file_count(), 1u);
@@ -316,7 +287,7 @@ int main() { return x; }
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), inc}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     EXPECT_GE(graph.file_count(), 1u);
@@ -341,7 +312,7 @@ int main() {}
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), inc}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     // main->a, a->b, b->c across 4 waves.
@@ -370,7 +341,7 @@ void b() {}
         {tmp.root, tmp.path("src/a.cpp"), inc},
         {tmp.root, tmp.path("src/b.cpp"), inc},
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     EXPECT_GE(graph.file_count(), 2u);
@@ -396,7 +367,7 @@ TEST_CASE(ConditionalIncludes) {
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), inc}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     // Both headers discovered (over-approximate).
@@ -431,7 +402,7 @@ export int foo() { return 42; }
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/mymod.cpp"), ""}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     auto result = graph.lookup_module("my.module");
@@ -455,7 +426,7 @@ void impl() {}
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/mod.cpp"), ""}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     ASSERT_TRUE(graph.lookup_module("my.mod:part").has_value());
@@ -472,7 +443,7 @@ TEST_CASE(DeletedFilesSkipped) {
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), ""}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
 
     for(auto& u: updates) {
         u.kind = UpdateKind::Deleted;
@@ -509,7 +480,7 @@ int main() {}
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), inc}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     // main->a, main->b, a->common, b->common.
@@ -535,7 +506,7 @@ int main() {}
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), args}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     EXPECT_GE(graph.edge_count(), 2u);
@@ -555,7 +526,7 @@ int main() {}
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), ""}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     EXPECT_EQ(graph.file_count(), 1u);
@@ -586,7 +557,7 @@ void a_impl() {}
         {tmp.root, tmp.path("src/mod_b.cpp"), ""},
         {tmp.root, tmp.path("src/impl.cpp"),  ""},
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     EXPECT_EQ(graph.module_count(), 2u);
@@ -614,7 +585,7 @@ int main() {}
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), inc}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     // main->h0->h1->h2->h3->h4 across 5 waves.
@@ -640,7 +611,7 @@ export int value() { return util; }
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/mymod.cpp"), inc}
     });
-    auto updates = tmp.write_cdb(cdb, json);
+    auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
 
     ASSERT_TRUE(graph.lookup_module("my.lib").has_value());

@@ -1,9 +1,7 @@
+#include "test/temp_dir.h"
 #include "test/test.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
-
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
 
 namespace clice::testing {
 namespace {
@@ -73,41 +71,6 @@ TEST_CASE(ScanMixedDirectives) {
 // ============================================================================
 // resolve_include() — tests with real filesystem
 // ============================================================================
-
-/// RAII helper for a temporary directory tree.
-struct TempDir {
-    llvm::SmallString<128> root;
-
-    TempDir() {
-        llvm::sys::fs::createUniqueDirectory("clice-test", root);
-    }
-
-    ~TempDir() {
-        llvm::sys::fs::remove_directories(root);
-    }
-
-    std::string path(llvm::StringRef relative) {
-        llvm::SmallString<256> result(root);
-        llvm::sys::path::append(result, relative);
-        return std::string(result);
-    }
-
-    void mkdir(llvm::StringRef relative) {
-        auto p = path(relative);
-        llvm::sys::fs::create_directories(p);
-    }
-
-    void touch(llvm::StringRef relative, llvm::StringRef content = "") {
-        auto p = path(relative);
-        auto dir = llvm::sys::path::parent_path(p);
-        llvm::sys::fs::create_directories(dir);
-        std::error_code ec;
-        llvm::raw_fd_ostream out(p, ec);
-        if(!ec) {
-            out << content;
-        }
-    }
-};
 
 TEST_CASE(ResolveAbsolutePath) {
     TempDir tmp;
