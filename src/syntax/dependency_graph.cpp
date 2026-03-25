@@ -241,24 +241,16 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start)
                 .count();
 
-        // Extract SearchConfig for each unique context.
+        // Assign config IDs now (fast, needed for initial wave construction).
+        // Actual SearchConfig extraction is deferred to overlap with Phase 1.
         std::uint32_t next_config_id = 0;
-        std::int64_t lookup_us = 0;
         for(auto& [context, file_ids]: context_groups) {
-            std::uint32_t config_id = next_config_id++;
-            context_to_config_id[context] = config_id;
-            auto representative_path = path_pool.resolve(file_ids[0]);
-            auto t0 = std::chrono::steady_clock::now();
-            configs[config_id] =
-                cdb.lookup_search_config(representative_path,
-                                         {.resource_dir = true, .query_toolchain = true},
-                                         context);
-            auto t1 = std::chrono::steady_clock::now();
-            lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+            context_to_config_id[context] = next_config_id++;
         }
-        report.config_loop_ms = lookup_us / 1000;
-        LOG_INFO("Config extracted: {} groups, {:.1f}ms", configs.size(), lookup_us / 1000.0);
     }
+
+    // Flag: config extraction still pending (will run overlapped with Phase 1).
+    bool config_extract_pending = !have_config_cache && configs.empty();
 
     auto config_end = std::chrono::steady_clock::now();
     report.config_ms =
@@ -272,55 +264,13 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     llvm::StringMap<std::uint32_t>& include_cache =
         ext_cache ? ext_cache->include_cache : local_include_cache;
 
-    // ── Dir cache pre-population ─────────────────────────────────────
-    // Collect all unique search dirs and launch readdir tasks on the
-    // thread pool.  Tasks start executing immediately but are NOT awaited
-    // here — instead they run concurrently with Wave 0's file scanning
-    // (Optimization 1: overlap dir cache with Phase 1).  We only await
-    // them before Phase 2 of Wave 0, which is the first consumer.
-
+    // Dir cache types — actual launch is deferred to overlap with Phase 1.
     struct DirEntry {
         std::string dir_path;
         llvm::StringSet<> entries;
     };
 
     std::vector<et::task<DirEntry, et::error>> pending_dir_tasks;
-
-    if(dir_cache.dirs.empty()) {
-        llvm::StringSet<> unique_dirs;
-        for(auto& [config_id, config]: configs) {
-            for(auto& dir: config.dirs) {
-                unique_dirs.insert(dir.path);
-            }
-        }
-        // Also prefetch parent directories of source files (for quoted include resolution).
-        for(auto& [context, file_ids]: context_groups) {
-            for(auto path_id: file_ids) {
-                auto dir = llvm::sys::path::parent_path(path_pool.resolve(path_id));
-                if(!dir.empty()) {
-                    unique_dirs.insert(dir);
-                }
-            }
-        }
-
-        pending_dir_tasks.reserve(unique_dirs.size());
-        for(auto& entry: unique_dirs) {
-            auto dir_path = entry.getKey().str();
-            pending_dir_tasks.push_back(et::queue(
-                [dir_path = std::move(dir_path)]() -> DirEntry {
-                    DirEntry result;
-                    result.dir_path = dir_path;
-                    std::error_code ec;
-                    llvm::sys::fs::directory_iterator di(result.dir_path, ec);
-                    for(; !ec && di != llvm::sys::fs::directory_iterator(); di.increment(ec)) {
-                        result.entries.insert(llvm::sys::path::filename(di->path()));
-                    }
-                    return result;
-                },
-                loop));
-        }
-        LOG_INFO("Launched {} dir cache tasks (running in background)", pending_dir_tasks.size());
-    }
 
     // Track which files have been scanned (by path_id — cheaper than string hash).
     llvm::DenseSet<std::uint32_t> scanned_files;
@@ -417,10 +367,74 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                     [path, pid, cid]() { return scan_file_worker(path, pid, cid); }, loop));
             }
 
-            // Optimization 1: await dir cache tasks concurrently with scan tasks.
-            // Both sets of tasks run on the same thread pool.  By awaiting dir
-            // tasks first (while scan tasks continue in the background), we pay
-            // max(dir_time, scan_time) instead of dir_time + scan_time.
+            // ── Config extraction (overlapped with Phase 1) ──────────
+            // Scan tasks are already running on the thread pool.
+            // Extract configs now (serial, single-threaded) — pays
+            // max(config_time, scan_time) instead of config_time + scan_time.
+            if(config_extract_pending) {
+                auto cfg_t0 = std::chrono::steady_clock::now();
+                std::int64_t lookup_us = 0;
+                for(auto& [context, file_ids]: context_groups) {
+                    auto config_id = context_to_config_id[context];
+                    auto representative_path = path_pool.resolve(file_ids[0]);
+                    auto t0 = std::chrono::steady_clock::now();
+                    configs[config_id] =
+                        cdb.lookup_search_config(representative_path,
+                                                 {.resource_dir = true, .query_toolchain = true},
+                                                 context);
+                    auto t1 = std::chrono::steady_clock::now();
+                    lookup_us +=
+                        std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+                }
+                report.config_loop_ms = lookup_us / 1000;
+                config_extract_pending = false;
+                auto cfg_t1 = std::chrono::steady_clock::now();
+                LOG_INFO("Config extracted (overlapped): {} groups, {:.1f}ms",
+                         configs.size(),
+                         lookup_us / 1000.0);
+            }
+
+            // ── Dir cache pre-population (overlapped with Phase 1) ───
+            // Needs configs (now available). Scan tasks still running.
+            if(dir_cache.dirs.empty()) {
+                llvm::StringSet<> unique_dirs;
+                for(auto& [config_id, config]: configs) {
+                    for(auto& dir: config.dirs) {
+                        unique_dirs.insert(dir.path);
+                    }
+                }
+                for(auto& [context, file_ids]: context_groups) {
+                    for(auto path_id: file_ids) {
+                        auto dir = llvm::sys::path::parent_path(path_pool.resolve(path_id));
+                        if(!dir.empty()) {
+                            unique_dirs.insert(dir);
+                        }
+                    }
+                }
+
+                pending_dir_tasks.reserve(unique_dirs.size());
+                for(auto& entry: unique_dirs) {
+                    auto dir_path = entry.getKey().str();
+                    pending_dir_tasks.push_back(et::queue(
+                        [dir_path = std::move(dir_path)]() -> DirEntry {
+                            DirEntry result;
+                            result.dir_path = dir_path;
+                            std::error_code ec;
+                            llvm::sys::fs::directory_iterator di(result.dir_path, ec);
+                            for(; !ec && di != llvm::sys::fs::directory_iterator();
+                                 di.increment(ec)) {
+                                result.entries.insert(
+                                    llvm::sys::path::filename(di->path()));
+                            }
+                            return result;
+                        },
+                        loop));
+                }
+                LOG_INFO("Launched {} dir cache tasks (overlapped with Phase 1)",
+                         pending_dir_tasks.size());
+            }
+
+            // Await dir cache tasks (scan tasks continue in background).
             if(!pending_dir_tasks.empty()) {
                 auto dir_t0 = std::chrono::steady_clock::now();
                 auto dir_outcome = co_await et::when_all(std::move(pending_dir_tasks));
@@ -536,6 +550,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                     }
                 }
 
+                auto r_t0 = std::chrono::steady_clock::now();
                 auto resolved = resolve_include(inc.path,
                                                 inc.is_angled,
                                                 includer_dir,
@@ -544,6 +559,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                                                 config,
                                                 dir_cache,
                                                 &wave_stat_counters);
+                auto r_t1 = std::chrono::steady_clock::now();
+                report.p2_resolve_us +=
+                    std::chrono::duration_cast<std::chrono::microseconds>(r_t1 - r_t0).count();
                 if(!resolved.has_value()) {
                     if(cache_eligible) {
                         include_cache.try_emplace(cache_key, UINT32_MAX);
@@ -557,7 +575,11 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                     continue;
                 }
 
+                auto i_t0 = std::chrono::steady_clock::now();
                 auto inc_path_id = path_pool.intern(resolved->path);
+                auto i_t1 = std::chrono::steady_clock::now();
+                report.p2_intern_us +=
+                    std::chrono::duration_cast<std::chrono::microseconds>(i_t1 - i_t0).count();
                 report.includes_resolved++;
 
                 if(cache_eligible) {
@@ -582,11 +604,16 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                        ext_cache->scan_results.find(inc_path_id) ==
                            ext_cache->scan_results.end()) {
                         auto inc_path = path_pool.resolve(inc_path_id).data();
+                        auto pf_t0 = std::chrono::steady_clock::now();
                         prefetch_tasks.push_back(et::queue(
                             [inc_path, inc_path_id, cid = scan_result.config_id]() {
                                 return scan_file_worker(inc_path, inc_path_id, cid);
                             },
                             loop));
+                        auto pf_t1 = std::chrono::steady_clock::now();
+                        report.p2_prefetch_us +=
+                            std::chrono::duration_cast<std::chrono::microseconds>(pf_t1 - pf_t0)
+                                .count();
                     }
                 }
             }

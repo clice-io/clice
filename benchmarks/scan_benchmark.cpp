@@ -176,6 +176,19 @@ void print_report(const ScanReport& report) {
         }
     }
 
+    // Phase 2 breakdown.
+    if(report.p2_resolve_us > 0 || report.p2_intern_us > 0) {
+        std::println("");
+        std::println("  Phase 2 Breakdown (single-threaded)");
+        std::println("    resolve_include: {:.1f}ms", report.p2_resolve_us / 1000.0);
+        std::println("    path_pool.intern: {:.1f}ms", report.p2_intern_us / 1000.0);
+        std::println("    et::queue (prefetch): {:.1f}ms", report.p2_prefetch_us / 1000.0);
+        auto accounted = report.p2_resolve_us + report.p2_intern_us + report.p2_prefetch_us;
+        auto total_p2_us = report.phase2_ms * 1000;
+        auto other = total_p2_us - accounted / 1000;
+        std::println("    Other (cache lookup, graph, etc): ~{}ms", other);
+    }
+
     // Cumulative I/O statistics.
     std::println("");
     std::println("  I/O Statistics (cumulative across threads)");
