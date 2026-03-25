@@ -767,6 +767,33 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
             // Remove the temp source file that was appended during query.
             arguments.pop_back();
 
+#ifdef _WIN32
+            // On Windows, the toolchain query derives the resource dir from the
+            // system compiler's executable path.  If that compiler is a different
+            // clang version, its builtin headers may reference renamed builtins
+            // (e.g. AVX10.2-BF16 nepbh→bf16 rename between clang 20→21).
+            // Replace the queried resource dir with ours so the headers match.
+            if(!fs::resource_dir.empty()) {
+                llvm::StringRef old_resource_dir;
+                for(std::size_t i = 0; i + 1 < arguments.size(); ++i) {
+                    if(arguments[i] == llvm::StringRef("-resource-dir")) {
+                        old_resource_dir = arguments[i + 1];
+                        break;
+                    }
+                }
+                if(!old_resource_dir.empty() && old_resource_dir != fs::resource_dir) {
+                    for(auto& arg: arguments) {
+                        llvm::StringRef s(arg);
+                        if(s.starts_with(old_resource_dir)) {
+                            auto replaced =
+                                fs::resource_dir + s.substr(old_resource_dir.size()).str();
+                            arg = self->strings.save(replaced).data();
+                        }
+                    }
+                }
+            }
+#endif
+
             // Inject user include paths (-I, -isystem, -iquote) from the
             // original mangled args into the cc1 result.
             self->parser.parse(

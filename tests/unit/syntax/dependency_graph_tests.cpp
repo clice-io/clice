@@ -226,6 +226,19 @@ struct CDBEntry {
     std::string extra_args;
 };
 
+/// Escape backslashes and quotes for JSON string values.
+std::string json_escape(llvm::StringRef s) {
+    std::string result;
+    result.reserve(s.size());
+    for(char c: s) {
+        if(c == '\\' || c == '"') {
+            result += '\\';
+        }
+        result += c;
+    }
+    return result;
+}
+
 std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
     std::string json = "[\n";
     for(std::size_t i = 0; i < entries.size(); ++i) {
@@ -242,11 +255,11 @@ std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
             json += ",\n";
         }
         json += R"(  {"directory": ")";
-        json += e.dir.str();
+        json += json_escape(e.dir);
         json += R"(", "file": ")";
-        json += e.file;
+        json += json_escape(e.file);
         json += R"(", "command": ")";
-        json += command;
+        json += json_escape(command);
         json += R"("})";
     }
     json += "\n]";
