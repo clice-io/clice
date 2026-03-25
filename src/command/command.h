@@ -188,6 +188,12 @@ public:
     /// Resolve a path_id back to the file path string.
     llvm::StringRef resolve_path(std::uint32_t path_id);
 
+    /// Intern a file path and return its path_id.
+    std::uint32_t intern_path(llvm::StringRef path);
+
+    /// All compilation entries (sorted by path_id).
+    llvm::ArrayRef<CompilationEntry> get_entries() const;
+
     /// Entry for batch pre-warming: file + directory + raw compilation arguments.
     struct PendingEntry {
         llvm::StringRef file;

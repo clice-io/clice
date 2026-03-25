@@ -6,6 +6,8 @@ namespace {
 
 TEST_SUITE(Scan) {
 
+// === scan() tests ===
+
 TEST_CASE(BasicIncludes) {
     auto result = scan(R"(
 #include <vector>
@@ -15,8 +17,10 @@ int x = 1;
 
     ASSERT_EQ(result.includes.size(), 2u);
     EXPECT_EQ(result.includes[0].path, "vector");
+    EXPECT_TRUE(result.includes[0].is_angled);
     EXPECT_FALSE(result.includes[0].conditional);
     EXPECT_EQ(result.includes[1].path, "foo/bar.h");
+    EXPECT_FALSE(result.includes[1].is_angled);
     EXPECT_FALSE(result.includes[1].conditional);
     EXPECT_TRUE(result.module_name.empty());
 }
@@ -71,6 +75,7 @@ export module my.module;
     EXPECT_FALSE(result.need_preprocess);
     ASSERT_EQ(result.includes.size(), 1u);
     EXPECT_EQ(result.includes[0].path, "header.h");
+    EXPECT_TRUE(result.includes[0].is_angled);
 }
 
 TEST_CASE(ModulePartition) {
@@ -128,6 +133,8 @@ int main() {
 
     EXPECT_TRUE(result.includes.empty());
     EXPECT_TRUE(result.module_name.empty());
+    EXPECT_FALSE(result.is_interface_unit);
+    EXPECT_FALSE(result.need_preprocess);
 }
 
 // === scan_precise() tests ===

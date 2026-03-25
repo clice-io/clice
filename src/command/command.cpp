@@ -634,6 +634,14 @@ llvm::StringRef CompilationDatabase::resolve_path(std::uint32_t path_id) {
     return paths.resolve(path_id);
 }
 
+std::uint32_t CompilationDatabase::intern_path(llvm::StringRef path) {
+    return paths.intern(path);
+}
+
+llvm::ArrayRef<CompilationEntry> CompilationDatabase::get_entries() const {
+    return entries;
+}
+
 #ifdef CLICE_ENABLE_TEST
 
 void CompilationDatabase::add_command(llvm::StringRef directory,

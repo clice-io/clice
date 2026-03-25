@@ -14,6 +14,7 @@
 #include "server/protocol.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "syntax/dependency_graph.h"
 
 namespace clice {
 
@@ -194,6 +195,9 @@ et::task<> MasterServer::load_workspace() {
 
     auto count = cdb.load(cdb_path);
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
+
+    // Build dependency graph via wavefront BFS scan.
+    scan_dependency_graph(cdb, path_pool, dependency_graph);
 }
 
 void MasterServer::fill_compile_args(llvm::StringRef path,
