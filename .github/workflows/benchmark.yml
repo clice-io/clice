@@ -44,4 +44,4 @@ jobs:
       # ── Run benchmark ──
 
       - name: Run benchmark
-        run: ./build/RelWithDebInfo/bin/scan_benchmark --runs 1 llvm-build/compile_commands.json
+        run: ./build/RelWithDebInfo/bin/scan_benchmark --runs 5 llvm-build/compile_commands.json

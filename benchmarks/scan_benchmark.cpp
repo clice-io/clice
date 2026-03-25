@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
+#include <numeric>
 #include <map>
 #include <print>
 #include <set>
@@ -43,7 +44,7 @@ struct BenchmarkOptions {
     <std::string> export_path;
 
     DecoKV(names = {"--runs"}; help = "Number of cold start iterations"; required = false;)
-    <int> runs = 1;
+    <int> runs = 20;
 
     DecoFlag(names = {"-h", "--help"}; help = "Show help message"; required = false;)
     help;
@@ -291,10 +292,9 @@ int main(int argc, const char** argv) {
     auto runs = *opts.runs;
 
     // Set UV_THREADPOOL_SIZE if not already set.
-    // Use at least 8 threads: file I/O is I/O-bound, not CPU-bound, so more
-    // threads than cores helps (especially on macOS CI with only 3 cores).
+    // Use at least libuv's default (4) so low-core CI runners don't regress.
     if(!std::getenv("UV_THREADPOOL_SIZE")) {
-        auto pool_size = std::max(hw_threads, 8u);
+        auto pool_size = std::max(hw_threads, 4u);
         static std::string env = "UV_THREADPOOL_SIZE=" + std::to_string(pool_size);
         putenv(env.data());
     }
@@ -344,22 +344,62 @@ int main(int argc, const char** argv) {
 
     PathPool path_pool;
     DependencyGraph graph;
+    std::vector<std::int64_t> elapsed_times;
+    std::vector<std::int64_t> config_times;
+    std::vector<std::int64_t> phase1_times;
+    std::vector<std::int64_t> phase2_times;
+    elapsed_times.reserve(runs);
+    config_times.reserve(runs);
+    phase1_times.reserve(runs);
+    phase2_times.reserve(runs);
 
     for(int i = 0; i < runs; i++) {
-        // Each iteration is a fresh cold start: no ScanCache, no PathPool reuse.
+        // True cold start: rebuild CDB (clears toolchain & config caches),
+        // reset PathPool and DependencyGraph.
+        cdb = CompilationDatabase{};
+        updates = cdb.load_compile_database(cdb_path);
         path_pool = PathPool{};
         graph = DependencyGraph{};
 
         auto report = scan_dependency_graph(cdb, updates, path_pool, graph);
 
-        std::println("[run {}] {}ms | files={} modules={} edges={}",
+        elapsed_times.push_back(report.elapsed_ms);
+        config_times.push_back(report.config_ms);
+        phase1_times.push_back(report.phase1_ms);
+        phase2_times.push_back(report.phase2_ms);
+
+        std::println("[run {:2}] {}ms | config={}ms phase1={}ms phase2={}ms | files={}",
                      i + 1,
                      report.elapsed_ms,
-                     report.total_files,
-                     report.modules,
-                     report.total_edges);
-        std::println("");
-        print_report(report);
+                     report.config_ms,
+                     report.phase1_ms,
+                     report.phase2_ms,
+                     report.total_files);
+
+        // Print detailed report for the first run only.
+        if(i == 0) {
+            std::println("");
+            print_report(report);
+        }
+    }
+
+    // Summary statistics.
+    if(runs > 1) {
+        auto stats = [](std::vector<std::int64_t>& v) {
+            std::ranges::sort(v);
+            auto sum = std::accumulate(v.begin(), v.end(), std::int64_t{0});
+            return std::tuple{v.front(), sum / static_cast<std::int64_t>(v.size()), v.back()};
+        };
+        auto [e_min, e_avg, e_max] = stats(elapsed_times);
+        auto [c_min, c_avg, c_max] = stats(config_times);
+        auto [p1_min, p1_avg, p1_max] = stats(phase1_times);
+        auto [p2_min, p2_avg, p2_max] = stats(phase2_times);
+
+        std::println("\n  Summary ({} runs)             min    avg    max", runs);
+        std::println("    Total:              {:>7} {:>6} {:>6}", e_min, e_avg, e_max);
+        std::println("    Config extraction:  {:>7} {:>6} {:>6}", c_min, c_avg, c_max);
+        std::println("    Phase 1 (read+scan):{:>7} {:>6} {:>6}", p1_min, p1_avg, p1_max);
+        std::println("    Phase 2 (resolve):  {:>7} {:>6} {:>6}", p2_min, p2_avg, p2_max);
     }
 
     // Export dependency graph as JSON if requested.
