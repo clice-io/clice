@@ -38,6 +38,7 @@ struct TempDir {
     std::string path(llvm::StringRef relative) const {
         llvm::SmallString<256> result(root);
         llvm::sys::path::append(result, relative);
+        llvm::sys::path::native(result);
         return std::string(result);
     }
 
