@@ -2,7 +2,7 @@
 
 #include <chrono>
 
-#include "compile/toolchain.h"
+#include "command/toolchain.h"
 #include "eventide/async/async.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <optional>
 
-#include "compile/search_config.h"
+#include "command/search_config.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"

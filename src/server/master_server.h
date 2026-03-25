@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "compile/command.h"
+#include "command/command.h"
 #include "eventide/async/async.h"
 #include "eventide/ipc/lsp/protocol.h"
 #include "eventide/ipc/peer.h"

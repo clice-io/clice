@@ -1,5 +1,5 @@
 #include "test/test.h"
-#include "compile/command.h"
+#include "command/command.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 

@@ -1,12 +1,12 @@
-#include "compile/command.h"
+#include "command/command.h"
 
 #include <array>
 #include <ranges>
 #include <string_view>
 #include <tuple>
 
-#include "compile/driver.h"
-#include "compile/toolchain.h"
+#include "command/driver.h"
+#include "command/toolchain.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/object_pool.h"

@@ -1,5 +1,5 @@
 #include "test/test.h"
-#include "compile/command.h"
+#include "command/command.h"
 #include "compile/compilation.h"
 
 #include "llvm/ADT/ScopeExit.h"

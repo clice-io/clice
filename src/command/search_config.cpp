@@ -1,6 +1,6 @@
-#include "compile/search_config.h"
+#include "command/search_config.h"
 
-#include "compile/driver.h"
+#include "command/driver.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSet.h"

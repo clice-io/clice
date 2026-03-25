@@ -5,7 +5,7 @@
 #include <memory>
 #include <ranges>
 
-#include "compile/command.h"
+#include "command/command.h"
 
 #include "llvm/Support/Allocator.h"
 #include "clang/Driver/Driver.h"

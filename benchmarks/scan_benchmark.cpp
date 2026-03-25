@@ -18,7 +18,7 @@
 #include <print>
 #include <thread>
 
-#include "compile/command.h"
+#include "command/command.h"
 #include "eventide/deco/deco.h"
 #include "eventide/serde/json/serializer.h"
 #include "support/filesystem.h"

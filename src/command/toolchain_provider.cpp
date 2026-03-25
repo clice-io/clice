@@ -1,7 +1,7 @@
-#include "compile/toolchain_provider.h"
+#include "command/toolchain_provider.h"
 
-#include "compile/driver.h"
-#include "compile/toolchain.h"
+#include "command/driver.h"
+#include "command/toolchain.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/object_pool.h"

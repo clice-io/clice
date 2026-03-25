@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-#include "compile/search_config.h"
-#include "compile/toolchain_provider.h"
+#include "command/search_config.h"
+#include "command/toolchain_provider.h"
 #include "support/format.h"
 
 #include "llvm/ADT/ArrayRef.h"

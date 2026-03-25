@@ -4,7 +4,7 @@
 #include <optional>
 #include <vector>
 
-#include "compile/command.h"
+#include "command/command.h"
 #include "support/path_pool.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
