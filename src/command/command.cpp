@@ -282,12 +282,20 @@ struct CompilationDatabase::Impl {
 
         llvm::SmallVector<const char*, 32> arguments;
 
-        /// FIXME: We need a better way to handle this.
-        if(command.contains("cl.exe") || command.contains("clang-cl")) {
-            llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
-        } else {
-            llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
-        }
+        /// On Windows, always use the Windows tokenizer regardless of the compiler
+        /// (MSVC, clang-cl, MinGW, etc.), because all programs are invoked through
+        /// the Windows API and paths use backslashes. The GNU tokenizer treats '\'
+        /// as an escape character, which corrupts Windows paths like C:\Users into
+        /// C:Users.
+        ///
+        /// Note: this does NOT affect toolchain.cpp's query_clang_toolchain(), which
+        /// parses clang's -### output. That output uses shell-style escaping (\\),
+        /// so the GNU tokenizer is correct there.
+#ifdef _WIN32
+        llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
+#else
+        llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
+#endif
 
         return self.save_compilation_info(file, directory, arguments);
     }
