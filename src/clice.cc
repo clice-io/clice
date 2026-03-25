@@ -1,6 +1,6 @@
 #include <cstdint>
+#include <iostream>
 #include <print>
-#include <sstream>
 #include <string>
 
 #include "eventide/async/async.h"
@@ -60,10 +60,7 @@ int main(int argc, const char** argv) {
     auto& opts = result->options;
 
     if(opts.help.value_or(false)) {
-        auto dispatcher = deco::cli::Dispatcher<clice::Options>("clice [OPTIONS]");
-        std::ostringstream oss;
-        dispatcher.usage(oss, true);
-        std::print("{}", oss.str());
+        deco::cli::write_usage_for<clice::Options>(std::cout, "clice [OPTIONS]");
         return 0;
     }
 

@@ -1,6 +1,6 @@
 #include "test/test.h"
-#include "compile/compilation.h"
 #include "command/toolchain.h"
+#include "compile/compilation.h"
 #include "support/logging.h"
 
 #include "llvm/Support/Allocator.h"
