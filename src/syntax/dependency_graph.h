@@ -143,11 +143,6 @@ struct ScanReport {
     std::int64_t scan_us = 0;  // Lexer scan (cumulative across threads).
     std::int64_t fs_us = 0;    // Filesystem ops (readdir calls).
 
-    /// Phase 2 breakdown (microseconds, single-threaded).
-    std::int64_t p2_resolve_us = 0;   // resolve_include() calls.
-    std::int64_t p2_intern_us = 0;    // path_pool.intern() calls.
-    std::int64_t p2_prefetch_us = 0;  // et::queue() for prefetch tasks.
-
     /// Filesystem call counts.
     std::size_t dir_listings = 0;        // Actual readdir() calls (dir cache misses).
     std::size_t dir_hits = 0;            // Directory cache hits (no syscall).
