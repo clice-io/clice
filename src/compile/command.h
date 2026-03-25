@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "compile/toolchain_provider.h"
 #include "support/format.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -130,29 +131,14 @@ public:
     /// Resolve a path_id (from UpdateInfo) back to the file path string.
     llvm::StringRef resolve_path(std::uint32_t path_id);
 
-    /// Pre-warm the toolchain cache for a set of files.
-    /// Extracts unique toolchain keys from the given (file, context) pairs,
-    /// returns a list of queries for cache-miss keys. The caller can execute
-    /// these in parallel, then inject results via inject_toolchain_results().
-    struct ToolchainQuery {
-        std::string key;
-        std::vector<const char*> query_args;
-        llvm::StringRef file;
-        llvm::StringRef directory;
-    };
+    /// Access the toolchain provider for batch pre-warming and direct queries.
+    ToolchainProvider& toolchain();
 
-    std::vector<ToolchainQuery> get_pending_toolchain_queries(
+    /// Resolve (file, context) pairs to PendingEntry tuples for toolchain queries.
+    /// Converts CDB-internal context pointers to raw (file, directory, arguments)
+    /// that the ToolchainProvider can consume.
+    std::vector<ToolchainProvider::PendingEntry> resolve_toolchain_entries(
         llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files);
-
-    /// Inject pre-computed toolchain query results into the cache.
-    /// Each result is a (key, cc1_args) pair. Strings are copied into
-    /// the CDB's internal string pool.
-    struct ToolchainResult {
-        std::string key;
-        std::vector<std::string> cc1_args;
-    };
-
-    void inject_toolchain_results(llvm::ArrayRef<ToolchainResult> results);
 
     /// FIXME: bad interface design ...
     std::vector<const char*> files();

@@ -203,16 +203,18 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 file_contexts.push_back({representative_path, context});
             }
 
-            auto pending = cdb.get_pending_toolchain_queries(file_contexts);
+            auto entries = cdb.resolve_toolchain_entries(file_contexts);
+            auto& tc = cdb.toolchain();
+            auto pending = tc.get_pending_queries(entries);
             if(!pending.empty()) {
                 LOG_INFO("Warming toolchain cache: {} unique queries", pending.size());
 
-                std::vector<et::task<CompilationDatabase::ToolchainResult, et::error>> tasks;
+                std::vector<et::task<ToolchainResult, et::error>> tasks;
                 tasks.reserve(pending.size());
                 for(auto& query: pending) {
                     tasks.push_back(et::queue(
-                        [q = std::move(query)]() -> CompilationDatabase::ToolchainResult {
-                            CompilationDatabase::ToolchainResult result;
+                        [q = std::move(query)]() -> ToolchainResult {
+                            ToolchainResult result;
                             result.key = q.key;
                             llvm::BumpPtrAllocator alloc;
                             llvm::StringSaver saver(alloc);
@@ -230,7 +232,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 
                 auto outcome = co_await et::when_all(std::move(tasks));
                 if(outcome.has_value()) {
-                    cdb.inject_toolchain_results(*outcome);
+                    tc.inject_results(*outcome);
                 } else {
                     LOG_ERROR("Parallel toolchain query failed: {}", outcome.error().message());
                 }
