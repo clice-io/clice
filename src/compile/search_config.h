@@ -13,12 +13,12 @@ struct SearchDir {
 };
 
 /// Header search configuration extracted from compilation arguments.
-/// Uses a three-segment model matching clang's InitHeaderSearch::Realize layout:
-///   [Quoted... | Angled... | System...]
-///              ^            ^
-///      angled_start_idx   system_start_idx
+/// Uses a four-segment model matching clang's InitHeaderSearch::Realize layout:
+///   [Quoted... | Angled... | System... | After...]
+///              ^            ^            ^
+///      angled_start_idx   system_start_idx  after_start_idx
 struct SearchConfig {
-    /// Ordered list of search directories, partitioned into three segments.
+    /// Ordered list of search directories, partitioned into four segments.
     std::vector<SearchDir> dirs;
 
     /// Index in dirs where Angled (-I) dirs start.
@@ -27,6 +27,9 @@ struct SearchConfig {
 
     /// Index in dirs where System (-isystem, -internal-isystem, etc.) dirs start.
     unsigned system_start_idx = 0;
+
+    /// Index in dirs where After (-idirafter, -iwithprefix) dirs start.
+    unsigned after_start_idx = 0;
 };
 
 /// Extract header search configuration from compilation arguments.
@@ -39,6 +42,6 @@ struct SearchConfig {
 /// This is intentionally a standalone function (not tied to CompilationDatabase)
 /// so it can be tested and improved independently to match clang's behavior.
 SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
-                                    llvm::StringRef directory);
+                                   llvm::StringRef directory);
 
 }  // namespace clice

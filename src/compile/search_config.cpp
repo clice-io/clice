@@ -12,7 +12,7 @@ namespace clice {
 using ID = clang::driver::options::ID;
 
 SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
-                                    llvm::StringRef directory) {
+                                   llvm::StringRef directory) {
     // Replicate clang's InitHeaderSearch::Realize layout:
     //   Quoted (-iquote) → Angled (-I) → System (-isystem, -internal-isystem, etc.)
     // Then deduplicate across [Angled..end) matching clang's RemoveDuplicates.
@@ -20,6 +20,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
     std::vector<SearchDir> quoted;
     std::vector<SearchDir> angled;
     std::vector<SearchDir> system;
+    std::vector<SearchDir> after;
 
     auto make_absolute = [&](llvm::StringRef path) -> std::string {
         llvm::SmallString<256> abs_path(path);
@@ -42,14 +43,10 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
             auto id = arg->getOption().getID();
             switch(id) {
                 // Quoted group (clang: frontend::Quoted)
-                case ID::OPT_iquote:
-                    quoted.push_back({make_absolute(arg->getValue())});
-                    break;
+                case ID::OPT_iquote: quoted.push_back({make_absolute(arg->getValue())}); break;
 
                 // Angled group (clang: frontend::Angled)
-                case ID::OPT_I:
-                    angled.push_back({make_absolute(arg->getValue())});
-                    break;
+                case ID::OPT_I: angled.push_back({make_absolute(arg->getValue())}); break;
 
                 // System group (clang: frontend::System / ExternCSystem)
                 case ID::OPT_isystem:
@@ -59,19 +56,18 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
                     break;
 
                 // Prefix options: must be processed in argument order.
-                case ID::OPT_iprefix:
-                    prefix = arg->getValue();
-                    break;
+                case ID::OPT_iprefix: prefix = arg->getValue(); break;
                 case ID::OPT_iwithprefix:
-                    // clang maps to After group; we simplify After→System.
-                    system.push_back({make_absolute(prefix + arg->getValue())});
+                    // clang maps to After group.
+                    after.push_back({make_absolute(prefix + arg->getValue())});
                     break;
                 case ID::OPT_iwithprefixbefore:
                     // clang maps to Angled group.
                     angled.push_back({make_absolute(prefix + arg->getValue())});
                     break;
 
-                // TODO: -idirafter (clang: frontend::After group, searched after System)
+                case ID::OPT_idirafter: after.push_back({make_absolute(arg->getValue())}); break;
+
                 // TODO: -cxx-isystem (clang: frontend::CXXSystem, C++-only system dirs)
                 // TODO: -iwithsysroot (prepends sysroot to path, then adds to System)
                 // TODO: HeaderMap support (-I foo.hmap remaps include names)
@@ -80,17 +76,24 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
         },
         [](int, int) {});
 
-    // Concatenate: Quoted → Angled → System
+    // Concatenate: Quoted → Angled → System → After
     SearchConfig config;
-    config.dirs.reserve(quoted.size() + angled.size() + system.size());
-    config.dirs.insert(config.dirs.end(), std::make_move_iterator(quoted.begin()),
+    config.dirs.reserve(quoted.size() + angled.size() + system.size() + after.size());
+    config.dirs.insert(config.dirs.end(),
+                       std::make_move_iterator(quoted.begin()),
                        std::make_move_iterator(quoted.end()));
     config.angled_start_idx = static_cast<unsigned>(config.dirs.size());
-    config.dirs.insert(config.dirs.end(), std::make_move_iterator(angled.begin()),
+    config.dirs.insert(config.dirs.end(),
+                       std::make_move_iterator(angled.begin()),
                        std::make_move_iterator(angled.end()));
     config.system_start_idx = static_cast<unsigned>(config.dirs.size());
-    config.dirs.insert(config.dirs.end(), std::make_move_iterator(system.begin()),
+    config.dirs.insert(config.dirs.end(),
+                       std::make_move_iterator(system.begin()),
                        std::make_move_iterator(system.end()));
+    config.after_start_idx = static_cast<unsigned>(config.dirs.size());
+    config.dirs.insert(config.dirs.end(),
+                       std::make_move_iterator(after.begin()),
+                       std::make_move_iterator(after.end()));
 
     // Deduplicate across [angled_start_idx..end), matching clang's
     // RemoveDuplicates(SearchList, NumQuoted). If a path appears in both
@@ -104,7 +107,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
         }
 
         unsigned write = config.angled_start_idx;
-        unsigned system_removed_before = 0;
+        unsigned removed_before_system = 0;
+        unsigned removed_before_after = 0;
         for(unsigned read = config.angled_start_idx; read < config.dirs.size(); ++read) {
             if(seen.insert(config.dirs[read].path).second) {
                 if(write != read) {
@@ -112,14 +116,17 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
                 }
                 ++write;
             } else {
-                // Track removals before system_start_idx to adjust it.
                 if(read < config.system_start_idx) {
-                    ++system_removed_before;
+                    ++removed_before_system;
+                }
+                if(read < config.after_start_idx) {
+                    ++removed_before_after;
                 }
             }
         }
         config.dirs.resize(write);
-        config.system_start_idx -= system_removed_before;
+        config.system_start_idx -= removed_before_system;
+        config.after_start_idx -= removed_before_after;
     }
 
     return config;

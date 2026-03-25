@@ -159,7 +159,14 @@ void print_report(const ScanReport& report) {
         std::println("");
         std::println("  Per-Wave Breakdown");
         std::println("    {:>5s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s} {:>10s} {:>10s}",
-                     "Wave", "Files", "P1(ms)", "P2(ms)", "Next", "Prefetch", "DirList", "DirHits");
+                     "Wave",
+                     "Files",
+                     "P1(ms)",
+                     "P2(ms)",
+                     "Next",
+                     "Prefetch",
+                     "DirList",
+                     "DirHits");
         for(std::size_t i = 0; i < report.wave_stats.size(); i++) {
             auto& ws = report.wave_stats[i];
             std::println("    {:>5} {:>8} {:>8} {:>8} {:>8} {:>8} {:>10} {:>10}",

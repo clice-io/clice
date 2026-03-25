@@ -46,8 +46,8 @@ public:
     /// compilation arguments, running the expensive compiler query only on
     /// cache miss. The returned ArrayRef is valid for the provider's lifetime.
     llvm::ArrayRef<const char*> query_cached(llvm::StringRef file,
-                                              llvm::StringRef directory,
-                                              llvm::ArrayRef<const char*> arguments);
+                                             llvm::StringRef directory,
+                                             llvm::ArrayRef<const char*> arguments);
 
     /// Entry for batch pre-warming: file + directory + raw compilation arguments.
     struct PendingEntry {

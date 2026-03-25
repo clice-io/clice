@@ -158,14 +158,14 @@ struct ScanReport {
 
     /// Per-wave timing breakdown for cold start analysis.
     struct WaveStats {
-        std::size_t files = 0;            // Files processed in this wave.
-        std::int64_t phase1_ms = 0;       // Read + scan (parallel).
-        std::int64_t phase2_ms = 0;       // Include resolution (serial).
-        std::size_t next_files = 0;       // Files discovered for next wave.
-        std::size_t prefetch_count = 0;   // Prefetch tasks launched during Phase 2.
-        std::size_t dir_listings = 0;     // readdir() calls in this wave.
-        std::size_t dir_hits = 0;         // Dir cache hits in this wave.
-        std::size_t cache_hits = 0;       // Scan cache hits in this wave.
+        std::size_t files = 0;           // Files processed in this wave.
+        std::int64_t phase1_ms = 0;      // Read + scan (parallel).
+        std::int64_t phase2_ms = 0;      // Include resolution (serial).
+        std::size_t next_files = 0;      // Files discovered for next wave.
+        std::size_t prefetch_count = 0;  // Prefetch tasks launched during Phase 2.
+        std::size_t dir_listings = 0;    // readdir() calls in this wave.
+        std::size_t dir_hits = 0;        // Dir cache hits in this wave.
+        std::size_t cache_hits = 0;      // Scan cache hits in this wave.
     };
 
     std::vector<WaveStats> wave_stats;

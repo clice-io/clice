@@ -7,7 +7,8 @@
 
 namespace clice {
 
-const llvm::StringSet<>* resolve_dir(llvm::StringRef dir, DirListingCache& cache,
+const llvm::StringSet<>* resolve_dir(llvm::StringRef dir,
+                                     DirListingCache& cache,
                                      StatCounters* counters) {
     auto it = cache.dirs.find(dir);
     if(it != cache.dirs.end()) {
@@ -41,6 +42,7 @@ ResolvedSearchConfig resolve_search_config(const SearchConfig& config, DirListin
     ResolvedSearchConfig resolved;
     resolved.angled_start_idx = config.angled_start_idx;
     resolved.system_start_idx = config.system_start_idx;
+    resolved.after_start_idx = config.after_start_idx;
     resolved.dirs.reserve(config.dirs.size());
     for(auto& dir: config.dirs) {
         resolved.dirs.push_back({dir.path, resolve_dir(dir.path, cache)});
@@ -60,7 +62,8 @@ bool check_in_dir(llvm::StringRef dir_path,
                   bool is_simple,
                   DirListingCache& dir_cache,
                   StatCounters* counters) {
-    if(counters) counters->lookups++;
+    if(counters)
+        counters->lookups++;
 
     if(is_simple) {
         return entries->contains(filename);
@@ -109,8 +112,8 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     }
 
     // Check if filename has path separators (multi-component like "llvm/Support/foo.h").
-    bool is_simple = filename.find('/') == llvm::StringRef::npos &&
-                     filename.find('\\') == llvm::StringRef::npos;
+    bool is_simple =
+        filename.find('/') == llvm::StringRef::npos && filename.find('\\') == llvm::StringRef::npos;
 
     // Check if filename contains "." or ".." components that need normalization.
     // Only these produce non-canonical paths after path::append.
@@ -133,8 +136,12 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     if(is_include_next) {
         unsigned start = found_dir_idx + 1;
         for(unsigned i = start; i < config.dirs.size(); ++i) {
-            if(check_in_dir(config.dirs[i].path, config.dirs[i].entries, filename, is_simple,
-                            dir_cache, stat_counters)) {
+            if(check_in_dir(config.dirs[i].path,
+                            config.dirs[i].entries,
+                            filename,
+                            is_simple,
+                            dir_cache,
+                            stat_counters)) {
                 make_candidate(config.dirs[i].path, filename);
                 return ResolveResult{candidate, i};
             }
@@ -144,8 +151,12 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
 
     // 3. Quoted include: try includer's directory first.
     if(!is_angled && includer_entries) {
-        if(check_in_dir(includer_dir, includer_entries, filename, is_simple, dir_cache,
-                         stat_counters)) {
+        if(check_in_dir(includer_dir,
+                        includer_entries,
+                        filename,
+                        is_simple,
+                        dir_cache,
+                        stat_counters)) {
             make_candidate(includer_dir, filename);
             return ResolveResult{candidate, 0};
         }
@@ -156,8 +167,12 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     //       in dirs marked as framework dirs (-F, -iframework).
     unsigned start = is_angled ? config.angled_start_idx : 0;
     for(unsigned i = start; i < config.dirs.size(); ++i) {
-        if(check_in_dir(config.dirs[i].path, config.dirs[i].entries, filename, is_simple,
-                        dir_cache, stat_counters)) {
+        if(check_in_dir(config.dirs[i].path,
+                        config.dirs[i].entries,
+                        filename,
+                        is_simple,
+                        dir_cache,
+                        stat_counters)) {
             make_candidate(config.dirs[i].path, filename);
             return ResolveResult{candidate, i};
         }
@@ -177,8 +192,14 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     auto resolved_config = resolve_search_config(config, dir_cache);
     const llvm::StringSet<>* includer_entries =
         includer_dir.empty() ? nullptr : resolve_dir(includer_dir, dir_cache, stat_counters);
-    return resolve_include(filename, is_angled, includer_entries, includer_dir,
-                           is_include_next, found_dir_idx, resolved_config, dir_cache,
+    return resolve_include(filename,
+                           is_angled,
+                           includer_entries,
+                           includer_dir,
+                           is_include_next,
+                           found_dir_idx,
+                           resolved_config,
+                           dir_cache,
                            stat_counters);
 }
 

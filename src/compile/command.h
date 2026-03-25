@@ -120,8 +120,8 @@ public:
     /// Resolve (file, context) pairs to PendingEntry tuples for toolchain queries.
     /// Converts CDB-internal context pointers to raw (file, directory, arguments)
     /// that the ToolchainProvider can consume.
-    std::vector<ToolchainProvider::PendingEntry> resolve_toolchain_entries(
-        llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files);
+    std::vector<ToolchainProvider::PendingEntry>
+        resolve_toolchain_entries(llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files);
 
     /// FIXME: bad interface design ...
     std::vector<const char*> files();

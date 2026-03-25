@@ -265,8 +265,8 @@ TEST_CASE(AngledSkipsQuotedDirs) {
     // Layout: [iquote | idir | sys]
     SearchConfig config;
     config.dirs.push_back({tmp.path("iquote")});  // 0: Quoted
-    config.dirs.push_back({tmp.path("idir")});     // 1: Angled
-    config.dirs.push_back({tmp.path("sys")});      // 2: System
+    config.dirs.push_back({tmp.path("idir")});    // 1: Angled
+    config.dirs.push_back({tmp.path("sys")});     // 2: System
     config.angled_start_idx = 1;
     config.system_start_idx = 2;
 
@@ -334,6 +334,28 @@ TEST_CASE(AngledBeforeSystem) {
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("idir/priority.h")));
     EXPECT_EQ(result->found_dir_idx, 0u);
+}
+
+TEST_CASE(AfterSearchedLast) {
+    TempDir tmp;
+    tmp.touch("after/fallback.h", "// after");
+
+    // Layout: [| /angled | /sys | /after]
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("angled")});
+    config.dirs.push_back({tmp.path("sys")});
+    config.dirs.push_back({tmp.path("after")});
+    config.angled_start_idx = 0;
+    config.system_start_idx = 1;
+    config.after_start_idx = 2;
+
+    DirListingCache dir_cache;
+
+    // <fallback.h> not in angled or sys, found in after.
+    auto result = resolve_include("fallback.h", true, "", false, 0, config, dir_cache);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("after/fallback.h")));
+    EXPECT_EQ(result->found_dir_idx, 2u);
 }
 
 TEST_CASE(IncludeNextPropagatesIdx) {

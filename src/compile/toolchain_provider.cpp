@@ -154,13 +154,13 @@ ToolchainProvider::ToolchainProvider(ToolchainProvider&&) noexcept = default;
 ToolchainProvider& ToolchainProvider::operator=(ToolchainProvider&&) noexcept = default;
 
 llvm::ArrayRef<const char*> ToolchainProvider::query_cached(llvm::StringRef file,
-                                                             llvm::StringRef directory,
-                                                             llvm::ArrayRef<const char*> arguments) {
+                                                            llvm::StringRef directory,
+                                                            llvm::ArrayRef<const char*> arguments) {
     return self->query_toolchain_cached(file, directory, arguments);
 }
 
 std::vector<ToolchainQuery>
-ToolchainProvider::get_pending_queries(llvm::ArrayRef<PendingEntry> entries) {
+    ToolchainProvider::get_pending_queries(llvm::ArrayRef<PendingEntry> entries) {
     llvm::StringMap<bool> seen_keys;
     std::vector<ToolchainQuery> queries;
 

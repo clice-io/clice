@@ -328,11 +328,16 @@ TEST_SUITE(ExtractSearchConfig) {
 TEST_CASE(ReordersDirectoryGroups) {
     // Simulates cc1 args from toolchain query (system first) + appended user flags.
     std::vector<const char*> args = {"clang++",
-                                     "-internal-isystem", "/stdlib",
-                                     "-internal-isystem", "/clang",
-                                     "-internal-externc-isystem", "/sysroot",
-                                     "-I", "/user",
-                                     "-iquote", "/quoted",
+                                     "-internal-isystem",
+                                     "/stdlib",
+                                     "-internal-isystem",
+                                     "/clang",
+                                     "-internal-externc-isystem",
+                                     "/sysroot",
+                                     "-I",
+                                     "/user",
+                                     "-iquote",
+                                     "/quoted",
                                      "main.cpp"};
     auto config = extract_search_config(args, "/fake");
 
@@ -349,12 +354,8 @@ TEST_CASE(ReordersDirectoryGroups) {
 }
 
 TEST_CASE(PreservesWithinGroupOrder) {
-    std::vector<const char*> args = {"clang++",
-                                     "-I", "/b",
-                                     "-I", "/a",
-                                     "-isystem", "/s2",
-                                     "-isystem", "/s1",
-                                     "main.cpp"};
+    std::vector<const char*> args =
+        {"clang++", "-I", "/b", "-I", "/a", "-isystem", "/s2", "-isystem", "/s1", "main.cpp"};
     auto config = extract_search_config(args, "/fake");
 
     // [/b, /a | /s2, /s1]  — within-group order preserved
@@ -369,9 +370,12 @@ TEST_CASE(PreservesWithinGroupOrder) {
 
 TEST_CASE(DeduplicatesAngledSystem) {
     std::vector<const char*> args = {"clang++",
-                                     "-I", "/shared",
-                                     "-internal-isystem", "/shared",
-                                     "-internal-isystem", "/only_sys",
+                                     "-I",
+                                     "/shared",
+                                     "-internal-isystem",
+                                     "/shared",
+                                     "-internal-isystem",
+                                     "/only_sys",
                                      "main.cpp"};
     auto config = extract_search_config(args, "/fake");
 
@@ -386,11 +390,16 @@ TEST_CASE(DeduplicatesAngledSystem) {
 
 TEST_CASE(DeduplicateAdjustsIndices) {
     std::vector<const char*> args = {"clang++",
-                                     "-iquote", "/q",
-                                     "-I", "/dup",
-                                     "-I", "/a2",
-                                     "-isystem", "/dup",
-                                     "-isystem", "/s",
+                                     "-iquote",
+                                     "/q",
+                                     "-I",
+                                     "/dup",
+                                     "-I",
+                                     "/a2",
+                                     "-isystem",
+                                     "/dup",
+                                     "-isystem",
+                                     "/s",
                                      "main.cpp"};
     auto config = extract_search_config(args, "/fake");
 
@@ -407,22 +416,56 @@ TEST_CASE(DeduplicateAdjustsIndices) {
 
 TEST_CASE(PrefixIncludeOptions) {
     std::vector<const char*> args = {"clang++",
-                                     "-iprefix", "/gcc/12/",
-                                     "-iwithprefixbefore", "include",
-                                     "-iwithprefix", "lib",
-                                     "-iprefix", "/gcc/13/",
-                                     "-iwithprefix", "include",
+                                     "-iprefix",
+                                     "/gcc/12/",
+                                     "-iwithprefixbefore",
+                                     "include",
+                                     "-iwithprefix",
+                                     "lib",
+                                     "-iprefix",
+                                     "/gcc/13/",
+                                     "-iwithprefix",
+                                     "include",
                                      "main.cpp"};
     auto config = extract_search_config(args, "/fake");
 
     // -iwithprefixbefore → Angled: /gcc/12/include
-    // -iwithprefix → System: /gcc/12/lib, /gcc/13/include
+    // -iwithprefix → After: /gcc/12/lib, /gcc/13/include
     ASSERT_EQ(config.dirs.size(), 3u);
     EXPECT_EQ(config.angled_start_idx, 0u);
     EXPECT_EQ(config.system_start_idx, 1u);
+    EXPECT_EQ(config.after_start_idx, 1u);
     EXPECT_EQ(config.dirs[0].path, "/gcc/12/include");
     EXPECT_EQ(config.dirs[1].path, "/gcc/12/lib");
     EXPECT_EQ(config.dirs[2].path, "/gcc/13/include");
+}
+
+TEST_CASE(DirafterGroup) {
+    std::vector<const char*> args =
+        {"clang++", "-I", "/user", "-isystem", "/sys", "-idirafter", "/fallback", "main.cpp"};
+    auto config = extract_search_config(args, "/fake");
+
+    // [/user | /sys | /fallback]
+    ASSERT_EQ(config.dirs.size(), 3u);
+    EXPECT_EQ(config.angled_start_idx, 0u);
+    EXPECT_EQ(config.system_start_idx, 1u);
+    EXPECT_EQ(config.after_start_idx, 2u);
+    EXPECT_EQ(config.dirs[0].path, "/user");
+    EXPECT_EQ(config.dirs[1].path, "/sys");
+    EXPECT_EQ(config.dirs[2].path, "/fallback");
+}
+
+TEST_CASE(DirafterDeduplication) {
+    std::vector<const char*> args =
+        {"clang++", "-I", "/shared", "-idirafter", "/shared", "-idirafter", "/extra", "main.cpp"};
+    auto config = extract_search_config(args, "/fake");
+
+    // /shared in After is deduped against Angled copy.
+    ASSERT_EQ(config.dirs.size(), 2u);
+    EXPECT_EQ(config.angled_start_idx, 0u);
+    EXPECT_EQ(config.after_start_idx, 1u);
+    EXPECT_EQ(config.dirs[0].path, "/shared");
+    EXPECT_EQ(config.dirs[1].path, "/extra");
 }
 
 };  // TEST_SUITE(ExtractSearchConfig)

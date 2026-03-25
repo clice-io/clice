@@ -52,12 +52,14 @@ struct ResolvedSearchConfig {
     llvm::SmallVector<ResolvedSearchDir> dirs;
     unsigned angled_start_idx = 0;
     unsigned system_start_idx = 0;
+    unsigned after_start_idx = 0;
 };
 
 /// Resolve a single directory to its cached StringSet.
 /// Returns a stable pointer into the DirListingCache.
 /// On cache miss, lazily populates via readdir().
-const llvm::StringSet<>* resolve_dir(llvm::StringRef dir, DirListingCache& cache,
+const llvm::StringSet<>* resolve_dir(llvm::StringRef dir,
+                                     DirListingCache& cache,
                                      StatCounters* counters = nullptr);
 
 /// Pre-resolve a SearchConfig against a populated DirListingCache.

@@ -420,8 +420,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                     continue;
                 }
                 auto path = path_pool.resolve(pid).data();
-                scan_tasks.push_back(et::queue(
-                    [path, pid, cid]() { return scan_file_worker(path, pid, cid); }, loop));
+                scan_tasks.push_back(
+                    et::queue([path, pid, cid]() { return scan_file_worker(path, pid, cid); },
+                              loop));
             }
 
             // Optimization 1: await dir cache tasks concurrently with scan tasks.
@@ -603,12 +604,12 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 include_ids.push_back(flagged_id);
 
                 if(scanned_files.try_emplace(inc_path_id, resolved->found_dir_idx).second) {
-                    next_wave.push_back({inc_path_id, scan_result.config_id, resolved->found_dir_idx});
+                    next_wave.push_back(
+                        {inc_path_id, scan_result.config_id, resolved->found_dir_idx});
                     // Prefetch: start scanning this file immediately on the
                     // thread pool so it's ready when the next wave begins.
                     if(!ext_cache ||
-                       ext_cache->scan_results.find(inc_path_id) ==
-                           ext_cache->scan_results.end()) {
+                       ext_cache->scan_results.find(inc_path_id) == ext_cache->scan_results.end()) {
                         auto inc_path = path_pool.resolve(inc_path_id).data();
                         prefetch_tasks.push_back(et::queue(
                             [inc_path, inc_path_id, cid = scan_result.config_id]() {
@@ -653,15 +654,15 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         ws.cache_hits = wave_cache_hits;
         report.wave_stats.push_back(ws);
 
-        LOG_INFO("Wave {}: {} files | read+scan={}ms resolve={}ms graph={}ms | next={} "
-                 "prefetch={}",
-                 wave_num,
-                 current_wave.size(),
-                 p1,
-                 p2,
-                 p3,
-                 next_wave.size(),
-                 prefetch_tasks.size());
+        LOG_INFO(
+            "Wave {}: {} files | read+scan={}ms resolve={}ms graph={}ms | next={} " "prefetch={}",
+            wave_num,
+            current_wave.size(),
+            p1,
+            p2,
+            p3,
+            next_wave.size(),
+            prefetch_tasks.size());
 
         current_wave = std::move(next_wave);
         wave_num++;
