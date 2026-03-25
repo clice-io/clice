@@ -1,6 +1,6 @@
 #include "compile/compilation.h"
 
-#include "compile/command.h"
+#include "command/command.h"
 #include "compile/diagnostic.h"
 #include "compile/implement.h"
 #include "semantic/ast_utility.h"

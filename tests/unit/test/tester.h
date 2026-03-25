@@ -5,7 +5,7 @@
 
 #include "test/annotation.h"
 #include "test/test.h"
-#include "compile/command.h"
+#include "command/command.h"
 #include "compile/compilation.h"
 #include "eventide/ipc/lsp/protocol.h"
 #include "support/logging.h"

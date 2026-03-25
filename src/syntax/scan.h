@@ -33,6 +33,12 @@ struct ScanResult {
 
         /// Whether the included file was not found during resolution.
         bool not_found = false;
+
+        /// Whether this is an angled include (<...>) vs quoted ("...").
+        bool is_angled = false;
+
+        /// Whether this is an #include_next directive.
+        bool is_include_next = false;
     };
 
     /// Include file names.
@@ -55,10 +61,6 @@ struct SharedScanCache {
 
         /// Scanned directives (referencing tokens above).
         llvm::SmallVector<clang::dependency_directives_scan::Directive> directives;
-
-        /// Whether each pp_include directive is inside a conditional block,
-        /// computed from the raw directive structure before filtering.
-        std::vector<bool> include_is_conditional;
     };
 
     /// path -> cached scan result.
@@ -69,17 +71,6 @@ struct SharedScanCache {
 /// If module declaration is inside #if/#ifdef, sets need_preprocess=true
 /// and module_name will be empty.
 ScanResult scan(llvm::StringRef content);
-
-/// Fuzzy preprocessing-based scan. Strips #define and conditional directives
-/// so ALL #include are processed unconditionally. Each include is marked
-/// with its structural conditional status from the raw directive scan.
-/// Returns per-file results (main file + all transitively included files).
-llvm::StringMap<ScanResult>
-    scan_fuzzy(llvm::ArrayRef<const char*> arguments,
-               llvm::StringRef directory,
-               llvm::StringRef content = {},
-               SharedScanCache* cache = nullptr,
-               llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
 
 /// Precise preprocessing-based scan. Keeps all directives including #define
 /// and conditionals. Used for lazy module dependency resolution.

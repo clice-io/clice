@@ -1,11 +1,10 @@
 #include <cstdint>
+#include <iostream>
 #include <print>
-#include <sstream>
 #include <string>
 
 #include "eventide/async/async.h"
-#include "eventide/deco/macro.h"
-#include "eventide/deco/runtime.h"
+#include "eventide/deco/deco.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/transport.h"
 #include "server/master_server.h"
@@ -61,10 +60,7 @@ int main(int argc, const char** argv) {
     auto& opts = result->options;
 
     if(opts.help.value_or(false)) {
-        auto dispatcher = deco::cli::Dispatcher<clice::Options>("clice [OPTIONS]");
-        std::ostringstream oss;
-        dispatcher.usage(oss, true);
-        std::print("{}", oss.str());
+        deco::cli::write_usage_for<clice::Options>(std::cout, "clice [OPTIONS]");
         return 0;
     }
 
