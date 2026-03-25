@@ -198,9 +198,9 @@ public:
     explicit PreciseScanPPCallbacks(ScanResult& result) : result(result) {}
 
     void InclusionDirective(clang::SourceLocation,
-                            const clang::Token&,
+                            const clang::Token& include_tok,
                             llvm::StringRef file_name,
-                            bool,
+                            bool is_angled,
                             clang::CharSourceRange,
                             clang::OptionalFileEntryRef file,
                             llvm::StringRef,
@@ -216,11 +216,15 @@ public:
             resolved_path = file_name.str();
         }
 
-        result.includes.push_back({
-            std::move(resolved_path),
-            conditional_depth > 0,
-            not_found,
-        });
+        ScanResult::IncludeInfo info;
+        info.path = std::move(resolved_path);
+        info.conditional = conditional_depth > 0;
+        info.not_found = not_found;
+        info.is_angled = is_angled;
+        info.is_include_next =
+            include_tok.getIdentifierInfo() &&
+            include_tok.getIdentifierInfo()->getPPKeywordID() == clang::tok::pp_include_next;
+        result.includes.push_back(std::move(info));
     }
 
     void If(clang::SourceLocation, clang::SourceRange, ConditionValueKind) override {

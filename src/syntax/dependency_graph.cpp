@@ -485,12 +485,12 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         StatCounters wave_stat_counters;
 
         for(auto& scan_result: scan_results) {
+            report.total_files++;
+
             if(scan_result.read_failed) {
                 LOG_WARN("Failed to read file for scanning: {}", scan_result.path);
                 continue;
             }
-
-            report.total_files++;
 
             auto rc_it = resolved_configs.find(scan_result.config_id);
             if(rc_it == resolved_configs.end()) {

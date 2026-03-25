@@ -100,6 +100,10 @@ void export_graph_json(const PathPool& path_pool,
     }
 
     std::ofstream out(output_path.str());
+    if(!out) {
+        std::println(stderr, "Failed to open output file: {}", output_path);
+        return;
+    }
     out << *json;
     std::println("Graph exported to {} ({} files)", output_path, export_data.files.size());
 }
