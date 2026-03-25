@@ -498,7 +498,9 @@ int main() {}
     DependencyGraph graph;
 
     auto json = build_cdb_json({
-        {tmp.root, tmp.path("src/main.cpp"), {"-iquote", tmp.path("quoted"), "-I", tmp.path("angled")}}
+        {tmp.root,
+         tmp.path("src/main.cpp"),
+         {"-iquote", tmp.path("quoted"), "-I", tmp.path("angled")}}
     });
     auto updates = write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, updates, pool, graph);
