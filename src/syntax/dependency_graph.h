@@ -134,6 +134,7 @@ struct ScanReport {
     std::int64_t config_ms = 0;       // Config extraction (one-time, total).
     std::int64_t prewarm_ms = 0;      // Toolchain pre-warm subset.
     std::int64_t config_loop_ms = 0;  // lookup + extract_search_config loop.
+    std::int64_t dir_cache_ms = 0;    // Dir cache pre-population (overlapped with Phase 1).
 
     /// Cumulative I/O time across all threads/files (microseconds).
     /// These are sums of per-file durations — will exceed wall-clock time
@@ -148,6 +149,20 @@ struct ScanReport {
     std::size_t fs_lookups = 0;          // Total file existence lookups.
     std::size_t include_cache_hits = 0;  // Include resolution cache hits (skipped resolve).
     std::size_t scan_cache_hits = 0;     // Scan result cache hits (skipped I/O + lexer).
+
+    /// Per-wave timing breakdown for cold start analysis.
+    struct WaveStats {
+        std::size_t files = 0;            // Files processed in this wave.
+        std::int64_t phase1_ms = 0;       // Read + scan (parallel).
+        std::int64_t phase2_ms = 0;       // Include resolution (serial).
+        std::size_t next_files = 0;       // Files discovered for next wave.
+        std::size_t prefetch_count = 0;   // Prefetch tasks launched during Phase 2.
+        std::size_t dir_listings = 0;     // readdir() calls in this wave.
+        std::size_t dir_hits = 0;         // Dir cache hits in this wave.
+        std::size_t cache_hits = 0;       // Scan cache hits in this wave.
+    };
+
+    std::vector<WaveStats> wave_stats;
 
     /// Unresolved includes: (header_name, includer_path).
     struct UnresolvedInclude {

@@ -164,12 +164,14 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     llvm::DenseMap<const void*, std::uint32_t> local_context_to_config_id;
     llvm::DenseMap<std::uint32_t, SearchConfig> local_configs;
 
+    // When ext_cache is provided, write directly into it so that the data
+    // survives across calls (making have_config_cache true on run 2+).
     llvm::DenseMap<const void*, llvm::SmallVector<std::uint32_t>>& context_groups =
-        have_config_cache ? ext_cache->context_groups : local_context_groups;
+        ext_cache ? ext_cache->context_groups : local_context_groups;
     llvm::DenseMap<const void*, std::uint32_t>& context_to_config_id =
-        have_config_cache ? ext_cache->context_to_config_id : local_context_to_config_id;
+        ext_cache ? ext_cache->context_to_config_id : local_context_to_config_id;
     llvm::DenseMap<std::uint32_t, SearchConfig>& configs =
-        have_config_cache ? ext_cache->configs : local_configs;
+        ext_cache ? ext_cache->configs : local_configs;
 
     auto config_start = std::chrono::steady_clock::now();
 
@@ -188,6 +190,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         // Pre-warm toolchain cache: extract unique queries, execute in parallel.
         // Skip entirely when configs are already cached (warm runs), since the
         // toolchain cache is necessarily also populated from the previous scan.
+        auto prewarm_start = std::chrono::steady_clock::now();
         if(!cdb.has_cached_configs()) {
             std::vector<std::pair<llvm::StringRef, const void*>> file_contexts;
             for(auto& [context, file_ids]: context_groups) {
@@ -228,6 +231,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 }
             }
         }
+        auto prewarm_end = std::chrono::steady_clock::now();
+        report.prewarm_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start)
+                .count();
 
         // Extract SearchConfig for each unique context.
         std::uint32_t next_config_id = 0;
@@ -244,6 +251,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             auto t1 = std::chrono::steady_clock::now();
             lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
         }
+        report.config_loop_ms = lookup_us / 1000;
         LOG_INFO("Config extracted: {} groups, {:.1f}ms", configs.size(), lookup_us / 1000.0);
     }
 
@@ -259,10 +267,20 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     llvm::StringMap<std::uint32_t>& include_cache =
         ext_cache ? ext_cache->include_cache : local_include_cache;
 
-    // Pre-populate dir cache: collect all unique search dirs and list them
-    // in parallel on the thread pool. This avoids serial readdir() syscalls
-    // during Phase 2 of the first wave (especially impactful on Windows).
-    // Skip when the persistent cache is already warm.
+    // ── Dir cache pre-population ─────────────────────────────────────
+    // Collect all unique search dirs and launch readdir tasks on the
+    // thread pool.  Tasks start executing immediately but are NOT awaited
+    // here — instead they run concurrently with Wave 0's file scanning
+    // (Optimization 1: overlap dir cache with Phase 1).  We only await
+    // them before Phase 2 of Wave 0, which is the first consumer.
+
+    struct DirEntry {
+        std::string dir_path;
+        llvm::StringSet<> entries;
+    };
+
+    std::vector<et::task<DirEntry, et::error>> pending_dir_tasks;
+
     if(dir_cache.dirs.empty()) {
         llvm::StringSet<> unique_dirs;
         for(auto& [config_id, config]: configs) {
@@ -280,16 +298,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             }
         }
 
-        struct DirEntry {
-            std::string dir_path;
-            llvm::StringSet<> entries;
-        };
-
-        std::vector<et::task<DirEntry, et::error>> dir_tasks;
-        dir_tasks.reserve(unique_dirs.size());
+        pending_dir_tasks.reserve(unique_dirs.size());
         for(auto& entry: unique_dirs) {
             auto dir_path = entry.getKey().str();
-            dir_tasks.push_back(et::queue(
+            pending_dir_tasks.push_back(et::queue(
                 [dir_path = std::move(dir_path)]() -> DirEntry {
                     DirEntry result;
                     result.dir_path = dir_path;
@@ -302,14 +314,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 },
                 loop));
         }
-
-        auto dir_outcome = co_await et::when_all(std::move(dir_tasks));
-        if(dir_outcome.has_value()) {
-            for(auto& entry: *dir_outcome) {
-                dir_cache.dirs.try_emplace(entry.dir_path, std::move(entry.entries));
-            }
-            LOG_INFO("Pre-populated dir cache: {} directories", dir_outcome->size());
-        }
+        LOG_INFO("Launched {} dir cache tasks (running in background)", pending_dir_tasks.size());
     }
 
     // Track which files have been scanned (by path_id — cheaper than string hash).
@@ -341,45 +346,103 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     report.source_files = current_wave.size();
     std::size_t wave_num = 0;
 
+    // Optimization 2: prefetch scan tasks.
+    // During Phase 2 of wave N, newly discovered files are immediately
+    // queued for scanning on the thread pool.  When wave N+1 starts,
+    // these tasks are already running (or finished), eliminating most
+    // of the Phase 1 wait time for subsequent waves.
+    std::vector<et::task<FileScanResult, et::error>> prefetch_tasks;
+
     while(!current_wave.empty()) {
         auto wave_start = std::chrono::steady_clock::now();
 
         // Phase 1: Read + scan all files in parallel on the thread pool.
         // Files with a cached ScanResult skip I/O and lexing entirely.
+        // For waves > 0, files discovered during the previous wave's Phase 2
+        // already have running scan tasks in prefetch_tasks.
         std::vector<FileScanResult> scan_results;
-        std::vector<et::task<FileScanResult, et::error>> scan_tasks;
         scan_results.reserve(current_wave.size());
-        scan_tasks.reserve(current_wave.size());
+        std::size_t wave_cache_hits = 0;
 
+        // Collect cache hits first (applies to all waves).
         for(auto& entry: current_wave) {
-            auto pid = entry.path_id;
-            auto cid = entry.config_id;
             if(ext_cache) {
-                auto it = ext_cache->scan_results.find(pid);
+                auto it = ext_cache->scan_results.find(entry.path_id);
                 if(it != ext_cache->scan_results.end()) {
-                    scan_results.push_back(
-                        {path_pool.resolve(pid).data(), pid, cid, it->second, false, 0, 0});
+                    scan_results.push_back({path_pool.resolve(entry.path_id).data(),
+                                            entry.path_id,
+                                            entry.config_id,
+                                            it->second,
+                                            false,
+                                            0,
+                                            0});
                     report.scan_cache_hits++;
-                    continue;
+                    wave_cache_hits++;
                 }
             }
-            auto path = path_pool.resolve(pid).data();
-            scan_tasks.push_back(
-                et::queue([path, pid, cid]() { return scan_file_worker(path, pid, cid); }, loop));
         }
 
-        if(!scan_tasks.empty()) {
-            auto scan_outcome = co_await et::when_all(std::move(scan_tasks));
+        if(!prefetch_tasks.empty()) {
+            // Waves 1+: await prefetched scan tasks from previous Phase 2.
+            auto scan_outcome = co_await et::when_all(std::move(prefetch_tasks));
+            prefetch_tasks.clear();
             if(scan_outcome.has_error()) {
-                LOG_ERROR("Parallel scan failed: {}", scan_outcome.error().message());
+                LOG_ERROR("Prefetch scan failed: {}", scan_outcome.error().message());
                 break;
             }
-            // Populate scan cache and merge with cached results.
             for(auto& r: *scan_outcome) {
                 if(!r.read_failed && ext_cache) {
                     ext_cache->scan_results.try_emplace(r.path_id, r.scan_result);
                 }
                 scan_results.push_back(std::move(r));
+            }
+        } else {
+            // Wave 0 (or warm run with all cache hits): create scan tasks now.
+            std::vector<et::task<FileScanResult, et::error>> scan_tasks;
+            scan_tasks.reserve(current_wave.size());
+            for(auto& entry: current_wave) {
+                auto pid = entry.path_id;
+                auto cid = entry.config_id;
+                // Skip files already served from cache above.
+                if(ext_cache && ext_cache->scan_results.count(pid)) {
+                    continue;
+                }
+                auto path = path_pool.resolve(pid).data();
+                scan_tasks.push_back(et::queue(
+                    [path, pid, cid]() { return scan_file_worker(path, pid, cid); }, loop));
+            }
+
+            // Optimization 1: await dir cache tasks concurrently with scan tasks.
+            // Both sets of tasks run on the same thread pool.  By awaiting dir
+            // tasks first (while scan tasks continue in the background), we pay
+            // max(dir_time, scan_time) instead of dir_time + scan_time.
+            if(!pending_dir_tasks.empty()) {
+                auto dir_t0 = std::chrono::steady_clock::now();
+                auto dir_outcome = co_await et::when_all(std::move(pending_dir_tasks));
+                pending_dir_tasks.clear();
+                if(dir_outcome.has_value()) {
+                    for(auto& entry: *dir_outcome) {
+                        dir_cache.dirs.try_emplace(entry.dir_path, std::move(entry.entries));
+                    }
+                    LOG_INFO("Pre-populated dir cache: {} directories", dir_outcome->size());
+                }
+                auto dir_t1 = std::chrono::steady_clock::now();
+                report.dir_cache_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(dir_t1 - dir_t0).count();
+            }
+
+            if(!scan_tasks.empty()) {
+                auto scan_outcome = co_await et::when_all(std::move(scan_tasks));
+                if(scan_outcome.has_error()) {
+                    LOG_ERROR("Parallel scan failed: {}", scan_outcome.error().message());
+                    break;
+                }
+                for(auto& r: *scan_outcome) {
+                    if(!r.read_failed && ext_cache) {
+                        ext_cache->scan_results.try_emplace(r.path_id, r.scan_result);
+                    }
+                    scan_results.push_back(std::move(r));
+                }
             }
         }
 
@@ -393,6 +456,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 
         // Phase 2+3: Resolve includes, intern paths, build graph, collect next wave.
         // Merged into a single pass to avoid intermediate string allocations.
+        // Optimization 2: newly discovered files are immediately queued for
+        // scanning (prefetch_tasks), overlapping Phase 1 of the next wave
+        // with Phase 2 of the current wave.
         std::vector<WaveEntry> next_wave;
         next_wave.reserve(current_wave.size());  // Heuristic: next wave ≤ current wave.
         StatCounters wave_stat_counters;
@@ -505,6 +571,18 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 
                 if(scanned_files.insert(inc_path_id).second) {
                     next_wave.push_back({inc_path_id, scan_result.config_id});
+                    // Prefetch: start scanning this file immediately on the
+                    // thread pool so it's ready when the next wave begins.
+                    if(!ext_cache ||
+                       ext_cache->scan_results.find(inc_path_id) ==
+                           ext_cache->scan_results.end()) {
+                        auto inc_path = path_pool.resolve(inc_path_id).data();
+                        prefetch_tasks.push_back(et::queue(
+                            [inc_path, inc_path_id, cid = scan_result.config_id]() {
+                                return scan_file_worker(inc_path, inc_path_id, cid);
+                            },
+                            loop));
+                    }
                 }
             }
 
@@ -530,13 +608,27 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         report.phase2_ms += p2;
         report.phase3_ms += p3;
 
-        LOG_INFO("Wave {}: {} files | read+scan={}ms resolve={}ms graph={}ms | next={}",
+        // Record per-wave stats for cold start analysis.
+        ScanReport::WaveStats ws;
+        ws.files = current_wave.size();
+        ws.phase1_ms = p1;
+        ws.phase2_ms = p2;
+        ws.next_files = next_wave.size();
+        ws.prefetch_count = prefetch_tasks.size();
+        ws.dir_listings = wave_stat_counters.dir_listings;
+        ws.dir_hits = wave_stat_counters.dir_hits;
+        ws.cache_hits = wave_cache_hits;
+        report.wave_stats.push_back(ws);
+
+        LOG_INFO("Wave {}: {} files | read+scan={}ms resolve={}ms graph={}ms | next={} "
+                 "prefetch={}",
                  wave_num,
                  current_wave.size(),
                  p1,
                  p2,
                  p3,
-                 next_wave.size());
+                 next_wave.size(),
+                 prefetch_tasks.size());
 
         current_wave = std::move(next_wave);
         wave_num++;

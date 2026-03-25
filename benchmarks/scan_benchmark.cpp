@@ -42,8 +42,8 @@ struct BenchmarkOptions {
            required = false;)
     <std::string> export_path;
 
-    DecoKV(names = {"--runs"}; help = "Number of benchmark iterations"; required = false;)
-    <int> runs = 20;
+    DecoKV(names = {"--runs"}; help = "Number of cold start iterations"; required = false;)
+    <int> runs = 1;
 
     DecoFlag(names = {"-h", "--help"}; help = "Show help message"; required = false;)
     help;
@@ -150,9 +150,30 @@ void print_report(const ScanReport& report) {
                  report.config_ms,
                  report.prewarm_ms,
                  report.config_loop_ms);
+    std::println("    Dir cache pre-pop: {}ms (overlapped with Phase 1)", report.dir_cache_ms);
     std::println("    Phase 1 (read+scan, parallel): {}ms", report.phase1_ms);
     std::println("    Phase 2 (include resolve):     {}ms", report.phase2_ms);
     std::println("    Phase 3 (graph build):         {}ms", report.phase3_ms);
+
+    // Per-wave breakdown.
+    if(!report.wave_stats.empty()) {
+        std::println("");
+        std::println("  Per-Wave Breakdown");
+        std::println("    {:>5s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s} {:>10s} {:>10s}",
+                     "Wave", "Files", "P1(ms)", "P2(ms)", "Next", "Prefetch", "DirList", "DirHits");
+        for(std::size_t i = 0; i < report.wave_stats.size(); i++) {
+            auto& ws = report.wave_stats[i];
+            std::println("    {:>5} {:>8} {:>8} {:>8} {:>8} {:>8} {:>10} {:>10}",
+                         i,
+                         ws.files,
+                         ws.phase1_ms,
+                         ws.phase2_ms,
+                         ws.next_files,
+                         ws.prefetch_count,
+                         ws.dir_listings,
+                         ws.dir_hits);
+        }
+    }
 
     // Cumulative I/O statistics.
     std::println("");
@@ -269,9 +290,12 @@ int main(int argc, const char** argv) {
     auto hw_threads = std::thread::hardware_concurrency();
     auto runs = *opts.runs;
 
-    // Set UV_THREADPOOL_SIZE to hardware concurrency if not already set.
+    // Set UV_THREADPOOL_SIZE if not already set.
+    // Use at least 8 threads: file I/O is I/O-bound, not CPU-bound, so more
+    // threads than cores helps (especially on macOS CI with only 3 cores).
     if(!std::getenv("UV_THREADPOOL_SIZE")) {
-        static std::string env = "UV_THREADPOOL_SIZE=" + std::to_string(hw_threads);
+        auto pool_size = std::max(hw_threads, 8u);
+        static std::string env = "UV_THREADPOOL_SIZE=" + std::to_string(pool_size);
         putenv(env.data());
     }
 
@@ -315,20 +339,18 @@ int main(int argc, const char** argv) {
                      static_cast<double>(total_files) / unique_contexts.size());
     }
 
-    // ── Full dependency scan benchmark ──────────────────────────────────
-    std::println("\nRunning {} scan iterations...\n", runs);
+    // ── Cold start dependency scan benchmark ──────────────────────────────
+    std::println("\nRunning {} cold start scan(s)...\n", runs);
 
-    // PathPool and ScanCache persist across runs so that warm iterations
-    // exercise the realistic steady-state: path IDs stable, dir listing
-    // cache and include-resolution cache already populated.
     PathPool path_pool;
-    ScanCache scan_cache;
     DependencyGraph graph;
 
     for(int i = 0; i < runs; i++) {
+        // Each iteration is a fresh cold start: no ScanCache, no PathPool reuse.
+        path_pool = PathPool{};
         graph = DependencyGraph{};
 
-        auto report = scan_dependency_graph(cdb, updates, path_pool, graph, &scan_cache);
+        auto report = scan_dependency_graph(cdb, updates, path_pool, graph);
 
         std::println("[run {}] {}ms | files={} modules={} edges={}",
                      i + 1,
@@ -336,67 +358,8 @@ int main(int argc, const char** argv) {
                      report.total_files,
                      report.modules,
                      report.total_edges);
-
-        // Print detailed report for the last run.
-        if(i == runs - 1) {
-            std::println("");
-            print_report(report);
-        }
-    }
-
-    // ── Parser microbenchmark ──────────────────────────────────────────
-    // Measures pure argument-parsing overhead: lookup() + extract_search_config()
-    // across all CDB entries, with toolchain cache already warm (from scan above).
-    {
-        // Toolchain cache is already warm from the scan above.
-        CommandOptions warm_opts;
-        warm_opts.query_toolchain = true;
-        warm_opts.suppress_logging = true;
-
-        std::vector<std::pair<llvm::StringRef, const void*>> file_contexts;
-        for(auto& u: updates) {
-            if(u.kind == UpdateKind::Deleted)
-                continue;
-            file_contexts.push_back({cdb.resolve_path(u.path_id), u.context});
-        }
-
-        // Benchmark: lookup + extract_search_config, N iterations.
-        std::println("Parser microbenchmark ({} entries, {} iterations):",
-                     file_contexts.size(),
-                     runs);
-
-        for(int i = 0; i < runs; i++) {
-            auto t_start = std::chrono::steady_clock::now();
-            std::int64_t lookup_us = 0;
-            std::int64_t config_us = 0;
-            std::size_t parse_count = 0;
-
-            for(auto& [file, ctx]: file_contexts) {
-                auto tl0 = std::chrono::steady_clock::now();
-                auto cc = cdb.lookup(file, warm_opts, ctx);
-                auto tl1 = std::chrono::steady_clock::now();
-                cdb.extract_search_config(cc);
-                auto tl2 = std::chrono::steady_clock::now();
-                lookup_us +=
-                    std::chrono::duration_cast<std::chrono::microseconds>(tl1 - tl0).count();
-                config_us +=
-                    std::chrono::duration_cast<std::chrono::microseconds>(tl2 - tl1).count();
-                parse_count++;
-            }
-
-            auto t_end = std::chrono::steady_clock::now();
-            auto total_us =
-                std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
-            std::println(
-                "  [run {:2}] {:.1f}ms total | lookup={:.1f}ms config={:.1f}ms " "({} entries, {:.3f}ms/entry)",
-                i + 1,
-                total_us / 1000.0,
-                lookup_us / 1000.0,
-                config_us / 1000.0,
-                parse_count,
-                total_us / 1000.0 / parse_count);
-        }
         std::println("");
+        print_report(report);
     }
 
     // Export dependency graph as JSON if requested.
