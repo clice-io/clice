@@ -152,10 +152,15 @@ struct CompilationDatabase::Impl {
     /// Pluggable toolchain provider: manages toolchain queries and caching.
     ToolchainProvider toolchain;
 
-    /// Cache of SearchConfig per CompilationInfo pointer. Since infos are
-    /// deduplicated by ObjectSet, the pointer uniquely identifies a compilation
-    /// context. This avoids re-parsing arguments on repeated scans.
-    llvm::DenseMap<const CompilationInfo*, SearchConfig> search_config_cache;
+    /// Cache of SearchConfig keyed by (CompilationInfo*, options_bits).
+    /// options_bits encodes the CommandOptions fields that affect the result,
+    /// so different option combinations don't pollute each other's cache entries.
+    using ConfigCacheKey = std::pair<const CompilationInfo*, std::uint8_t>;
+    llvm::DenseMap<ConfigCacheKey, SearchConfig> search_config_cache;
+
+    static std::uint8_t options_bits(const CommandOptions& options) {
+        return options.query_toolchain ? 1u : 0u;
+    }
 
     /// The clang options we want to filter in all cases, like -c and -o.
     llvm::DenseSet<std::uint32_t> filtered_options;
@@ -752,11 +757,6 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         arguments.emplace_back(self->strings.save(s).data());
     };
 
-    if(options.resource_dir) {
-        append_arg("-resource-dir");
-        append_arg(fs::resource_dir);
-    }
-
     if(info && options.query_toolchain) {
         // Save user-level include paths before replacing with cc1 args.
         // The cached toolchain query uses minimal args (no -I/-D/-W etc.)
@@ -775,13 +775,12 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
             // Remove the temp source file that was appended during query.
             arguments.pop_back();
 
-#ifdef _WIN32
-            // On Windows, the toolchain query derives the resource dir from the
-            // system compiler's executable path.  If that compiler is a different
-            // clang version, its builtin headers may reference renamed builtins
-            // (e.g. AVX10.2-BF16 nepbh→bf16 rename between clang 20→21).
-            // Replace the queried resource dir with ours so the headers match.
-            if(!fs::resource_dir.empty()) {
+            // The toolchain query derives the resource dir from the system
+            // compiler's executable path. If that compiler is a different clang
+            // version, its builtin headers may not match ours. Replace the
+            // queried resource dir with ours so the headers are consistent.
+            // (See clangd's CommandMangler for precedent.)
+            if(!resource_dir().empty()) {
                 llvm::StringRef old_resource_dir;
                 for(std::size_t i = 0; i + 1 < arguments.size(); ++i) {
                     if(arguments[i] == llvm::StringRef("-resource-dir")) {
@@ -789,18 +788,17 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                         break;
                     }
                 }
-                if(!old_resource_dir.empty() && old_resource_dir != fs::resource_dir) {
+                if(!old_resource_dir.empty() && old_resource_dir != resource_dir()) {
                     for(auto& arg: arguments) {
                         llvm::StringRef s(arg);
                         if(s.starts_with(old_resource_dir)) {
                             auto replaced =
-                                fs::resource_dir + s.substr(old_resource_dir.size()).str();
+                                resource_dir().str() + s.substr(old_resource_dir.size()).str();
                             arg = self->strings.save(replaced).data();
                         }
                     }
                 }
             }
-#endif
 
             // Inject user include paths (-I, -isystem, -iquote) from the
             // original mangled args into the cc1 result.
@@ -829,6 +827,23 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                     arg = self->strings.save(path::filename(file)).data();
                     next_main_file = false;
                 }
+            }
+        }
+
+        // Inject our resource dir if not already present in the arguments.
+        // On success, the cc1 output already has -resource-dir (possibly
+        // replaced above). On failure, the original user_args won't have it.
+        if(!resource_dir().empty()) {
+            bool has_resource_dir = false;
+            for(auto& arg: arguments) {
+                if(arg == llvm::StringRef("-resource-dir")) {
+                    has_resource_dir = true;
+                    break;
+                }
+            }
+            if(!has_resource_dir) {
+                append_arg("-resource-dir");
+                append_arg(resource_dir());
             }
         }
     }
@@ -861,7 +876,8 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
     }
 
     if(info_ptr) {
-        auto cache_it = self->search_config_cache.find(info_ptr);
+        auto key = Impl::ConfigCacheKey{info_ptr, Impl::options_bits(options)};
+        auto cache_it = self->search_config_cache.find(key);
         if(cache_it != self->search_config_cache.end()) {
             return cache_it->second;
         }
@@ -871,13 +887,27 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
     auto config = extract_search_config(ctx.arguments, ctx.directory);
 
     if(info_ptr) {
-        self->search_config_cache.try_emplace(info_ptr, config);
+        auto key = Impl::ConfigCacheKey{info_ptr, Impl::options_bits(options)};
+        self->search_config_cache.try_emplace(key, config);
     }
     return config;
 }
 
 bool CompilationDatabase::has_cached_configs() const {
     return !self->search_config_cache.empty();
+}
+
+llvm::StringRef CompilationDatabase::resource_dir() {
+    static std::string dir = [] {
+        // Use address of this lambda to locate our binary via dladdr/proc.
+        static int anchor;
+        auto exe = llvm::sys::fs::getMainExecutable("", &anchor);
+        if(exe.empty()) {
+            return std::string{};
+        }
+        return clang::driver::Driver::GetResourcesPath(exe);
+    }();
+    return dir;
 }
 
 std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef argument) {

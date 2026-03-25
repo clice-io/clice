@@ -38,7 +38,8 @@ struct ToolchainProvider::Impl {
             case ID::OPT_gcc_install_dir_EQ:
             case ID::OPT_nostdinc:
             case ID::OPT_nostdincxx:
-            case ID::OPT_std_EQ: return true;
+            case ID::OPT_std_EQ:
+            case ID::OPT_x: return true;
             default: return false;
         }
     }

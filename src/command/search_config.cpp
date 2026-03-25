@@ -101,10 +101,9 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
     // critical for #include_next correctness.
     {
         llvm::StringSet<> seen;
-        // Seed with Quoted paths (they're not deduped against Angled/System).
-        for(unsigned i = 0; i < config.angled_start_idx; ++i) {
-            seen.insert(config.dirs[i].path);
-        }
+        // Do NOT seed with Quoted paths. clang's RemoveDuplicates(SearchList,
+        // NumQuoted) starts from NumQuoted, so a path in both Quoted and Angled
+        // is kept in both — this matters for #include <...> and #include_next.
 
         unsigned write = config.angled_start_idx;
         unsigned removed_before_system = 0;

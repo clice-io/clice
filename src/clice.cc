@@ -74,10 +74,8 @@ int main(int argc, const char** argv) {
         return 1;
     }
 
-    std::string self_path = llvm::sys::fs::getMainExecutable(argv[0], (void*)main);
-    if(!clice::fs::init_resource_dir(self_path)) {
-        LOG_ERROR("Cannot find the resource dir: {}", self_path);
-    }
+    static int anchor;
+    std::string self_path = llvm::sys::fs::getMainExecutable("", &anchor);
 
     auto& mode = *opts.mode;
 

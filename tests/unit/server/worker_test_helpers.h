@@ -10,6 +10,7 @@
 #include <unistd.h>
 #endif
 
+#include "command/command.h"
 #include "eventide/async/async.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/transport.h"
@@ -35,11 +36,11 @@ namespace et = eventide;
 
 /// Resolve path to the clice binary for spawning workers.
 inline std::string clice_binary() {
-    auto resource_dir = fs::resource_dir;
-    // resource_dir is <build>/lib/clang/...
+    auto res_dir = CompilationDatabase::resource_dir();
+    // res_dir is <build>/lib/clang/...
     // clice binary is at <build>/bin/clice
     auto build_dir = llvm::sys::path::parent_path(
-        llvm::sys::path::parent_path(llvm::sys::path::parent_path(resource_dir)));
+        llvm::sys::path::parent_path(llvm::sys::path::parent_path(res_dir)));
     llvm::SmallString<256> path(build_dir);
     llvm::sys::path::append(path, "bin", "clice");
     return std::string(path);
@@ -73,8 +74,12 @@ struct TempFile {
 /// Build compile arguments for a source file, including -resource-dir.
 inline std::vector<std::string> make_args(const std::string& file_path,
                                           const std::string& extra = "") {
-    std::vector<std::string> args =
-        {"clang++", "-fsyntax-only", "-resource-dir", fs::resource_dir, "-c", file_path};
+    std::vector<std::string> args = {"clang++",
+                                     "-fsyntax-only",
+                                     "-resource-dir",
+                                     std::string(CompilationDatabase::resource_dir()),
+                                     "-c",
+                                     file_path};
     if(!extra.empty()) {
         args.insert(args.begin() + 1, extra);
     }
