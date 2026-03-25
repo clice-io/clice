@@ -18,10 +18,9 @@ struct CommandOptions {
     /// Ignore unknown commands arguments.
     bool ignore_unknown = true;
 
-    /// Inject resource directory to the command.
-    bool resource_dir = false;
-
     /// Query the compiler driver for additional information, such as system includes and target.
+    /// When enabled, also replaces the queried resource dir with our own (clang tools must use
+    /// builtin headers matching their parser version — see clangd's CommandMangler for precedent).
     bool query_toolchain = false;
 
     /// Suppress the warning log if failed to query driver info.
@@ -97,6 +96,10 @@ public:
 
     /// Get an the option for specific argument.
     static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
+
+    /// Get the resource directory for clang builtin headers. Computed once
+    /// from the current executable path using Driver::GetResourcesPath.
+    static llvm::StringRef resource_dir();
 
     /// FIXME: bad interface design ...
     std::vector<const char*> files();

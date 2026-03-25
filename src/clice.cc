@@ -10,7 +10,6 @@
 #include "server/master_server.h"
 #include "server/stateful_worker.h"
 #include "server/stateless_worker.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 
 namespace clice {
@@ -74,10 +73,7 @@ int main(int argc, const char** argv) {
         return 1;
     }
 
-    std::string self_path = llvm::sys::fs::getMainExecutable(argv[0], (void*)main);
-    if(!clice::fs::init_resource_dir(self_path)) {
-        LOG_ERROR("Cannot find the resource dir: {}", self_path);
-    }
+    std::string self_path = argv[0];
 
     auto& mode = *opts.mode;
 

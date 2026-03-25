@@ -199,17 +199,29 @@ TEST_CASE(Module) {
 }
 
 TEST_CASE(ResourceDir) {
+    // When query_toolchain is enabled, resource dir is injected automatically.
     CompilationDatabase database;
     using namespace std::literals;
     database.add_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
-    auto arguments = database.lookup("main.cpp", {.resource_dir = true}).arguments;
 
-    ASSERT_EQ(arguments.size(), 5U);
-    ASSERT_EQ(arguments[0], "clang++"sv);
-    ASSERT_EQ(arguments[1], "-std=c++23"sv);
-    ASSERT_EQ(arguments[2], "-resource-dir"sv);
-    ASSERT_EQ(arguments[3], fs::resource_dir);
-    ASSERT_EQ(arguments[4], "main.cpp"sv);
+    // Without query_toolchain, no resource dir injection.
+    auto args_no_tc = database.lookup("main.cpp").arguments;
+    ASSERT_EQ(args_no_tc.size(), 3U);
+    ASSERT_EQ(args_no_tc[0], "clang++"sv);
+    ASSERT_EQ(args_no_tc[1], "-std=c++23"sv);
+    ASSERT_EQ(args_no_tc[2], "main.cpp"sv);
+
+    // With query_toolchain, resource dir is present in the result.
+    auto args_tc = database.lookup("main.cpp", {.query_toolchain = true}).arguments;
+    bool has_resource_dir = false;
+    for(size_t i = 0; i + 1 < args_tc.size(); ++i) {
+        if(args_tc[i] == llvm::StringRef("-resource-dir")) {
+            EXPECT_EQ(llvm::StringRef(args_tc[i + 1]), CompilationDatabase::resource_dir());
+            has_resource_dir = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(has_resource_dir);
 };
 
 void expect_load(llvm::StringRef content,

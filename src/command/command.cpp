@@ -1,6 +1,7 @@
 #include "command/command.h"
 
 #include <array>
+#include <cctype>
 #include <ranges>
 #include <string_view>
 #include <tuple>
@@ -157,6 +158,32 @@ struct CompilationDatabase::Impl {
 
     ArgumentParser parser{&allocator};
 
+    /// Check if an argument matches the source file path, handling
+    /// Windows path separator differences (backslash vs forward slash).
+    static bool is_same_file(llvm::StringRef argument, llvm::StringRef file) {
+        if(argument == file) {
+            return true;
+        }
+
+#ifdef _WIN32
+        // On Windows, cmake may use backslashes in `arguments` but forward
+        // slashes in `file`. Normalize and compare.
+        if(argument.size() == file.size()) {
+            for(std::size_t i = 0; i < argument.size(); i++) {
+                char a = argument[i] == '\\' ? '/' : argument[i];
+                char b = file[i] == '\\' ? '/' : file[i];
+                if(std::tolower(static_cast<unsigned char>(a)) !=
+                   std::tolower(static_cast<unsigned char>(b))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+#endif
+
+        return false;
+    }
+
     object_ptr<CompilationInfo> save_compilation_info(this Impl& self,
                                                       llvm::StringRef file,
                                                       llvm::StringRef directory,
@@ -170,8 +197,7 @@ struct CompilationDatabase::Impl {
         for(unsigned it = 0; it != arguments.size(); it++) {
             llvm::StringRef argument = arguments[it];
 
-            /// FIXME: Is it possible that file in command and field are different?
-            if(argument == file) {
+            if(is_same_file(argument, file)) {
                 continue;
             }
 
@@ -182,6 +208,7 @@ struct CompilationDatabase::Impl {
                 "/o",
                 "/Fo",
                 "/Fe",
+                "/Fd",
             };
 
             /// FIXME: This is a heuristic approach that covers the vast majority of cases, but
@@ -722,11 +749,6 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         arguments.emplace_back(self->strings.save(s).data());
     };
 
-    if(options.resource_dir) {
-        append_arg("-resource-dir");
-        append_arg(fs::resource_dir);
-    }
-
     if(info && options.query_toolchain) {
         auto callback = [&](const char* s) {
             return save_string(s).data();
@@ -756,6 +778,43 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         } else {
             arguments.pop_back();
         }
+
+        // Replace the queried resource dir with ours so the headers are consistent.
+        // (See clangd's CommandMangler for precedent.)
+        if(!resource_dir().empty()) {
+            llvm::StringRef old_resource_dir;
+            for(std::size_t i = 0; i + 1 < arguments.size(); ++i) {
+                if(arguments[i] == llvm::StringRef("-resource-dir")) {
+                    old_resource_dir = arguments[i + 1];
+                    break;
+                }
+            }
+            if(!old_resource_dir.empty() && old_resource_dir != resource_dir()) {
+                for(auto& arg: arguments) {
+                    llvm::StringRef s(arg);
+                    if(s.starts_with(old_resource_dir)) {
+                        auto replaced =
+                            resource_dir().str() + s.substr(old_resource_dir.size()).str();
+                        arg = self->strings.save(replaced).data();
+                    }
+                }
+            }
+        }
+
+        // Inject our resource dir if not already present in the arguments.
+        if(!resource_dir().empty()) {
+            bool has_resource_dir = false;
+            for(auto& arg: arguments) {
+                if(arg == llvm::StringRef("-resource-dir")) {
+                    has_resource_dir = true;
+                    break;
+                }
+            }
+            if(!has_resource_dir) {
+                append_arg("-resource-dir");
+                append_arg(resource_dir());
+            }
+        }
     }
 
     arguments.emplace_back(file.data());
@@ -781,6 +840,19 @@ std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef 
     } else {
         return {};
     }
+}
+
+llvm::StringRef CompilationDatabase::resource_dir() {
+    static std::string dir = [] {
+        // Use address of this lambda to locate our binary via dladdr/proc.
+        static int anchor;
+        auto exe = llvm::sys::fs::getMainExecutable("", &anchor);
+        if(exe.empty()) {
+            return std::string{};
+        }
+        return clang::driver::Driver::GetResourcesPath(exe);
+    }();
+    return dir;
 }
 
 std::vector<const char*> CompilationDatabase::files() {

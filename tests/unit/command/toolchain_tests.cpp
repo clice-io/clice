@@ -1,4 +1,5 @@
 #include "test/test.h"
+#include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "support/logging.h"
@@ -53,7 +54,7 @@ TEST_CASE(GCC, {.skip = !(CIEnvironment && (Windows || Linux))}) {
     auto arguments = toolchain::query_toolchain({
         .arguments = {"g++",
                       "-std=c++23", "-resource-dir",
-                      fs::resource_dir.c_str(),
+                      CompilationDatabase::resource_dir().data(),
                       "-xc++", file->c_str()},
         .callback = [&](const char* str) { return s.save(str).data(); }
     });
@@ -92,7 +93,7 @@ TEST_CASE(Clang, {.skip = !CIEnvironment}) {
     auto arguments = toolchain::query_toolchain({
         .arguments = {"clang++",
                       "-std=c++23", "-resource-dir",
-                      fs::resource_dir.c_str(),
+                      CompilationDatabase::resource_dir().data(),
                       "-xc++", file->c_str()},
         .callback = [&](const char* str) { return s.save(str).data(); }
     });

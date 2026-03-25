@@ -14,7 +14,6 @@ void Tester::prepare(llvm::StringRef standard) {
     params.kind = CompilationKind::Content;
 
     CommandOptions options;
-    options.resource_dir = true;
     options.query_toolchain = true;
     options.suppress_logging = true;
 
@@ -52,7 +51,6 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     params.kind = CompilationKind::Preamble;
 
     CommandOptions options;
-    options.resource_dir = true;
     options.query_toolchain = true;
     options.suppress_logging = true;
 

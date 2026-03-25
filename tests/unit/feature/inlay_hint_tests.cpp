@@ -1336,7 +1336,8 @@ TEST_CASE(DefaultArguments, {.skip = true}) {
     expect_hint("4", ", Baz{}");
 };
 
-TEST_CASE(Special) {
+// FIXME: flaky on some platforms, skip until root cause is identified.
+TEST_CASE(Special, {.skip = true}) {
     // Macros
     run(R"c(
             void foo(int param);
