@@ -536,6 +536,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                     }
                 }
 
+                auto r_t0 = std::chrono::steady_clock::now();
                 auto resolved = resolve_include(inc.path,
                                                 inc.is_angled,
                                                 includer_dir,
@@ -544,6 +545,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                                                 config,
                                                 dir_cache,
                                                 &wave_stat_counters);
+                auto r_t1 = std::chrono::steady_clock::now();
+                report.p2_resolve_us +=
+                    std::chrono::duration_cast<std::chrono::microseconds>(r_t1 - r_t0).count();
                 if(!resolved.has_value()) {
                     if(cache_eligible) {
                         include_cache.try_emplace(cache_key, UINT32_MAX);

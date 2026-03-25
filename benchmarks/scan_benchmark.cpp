@@ -176,6 +176,15 @@ void print_report(const ScanReport& report) {
         }
     }
 
+    // Phase 2 breakdown.
+    if(report.p2_resolve_us > 0) {
+        auto other_us = report.phase2_ms * 1000 - report.p2_resolve_us;
+        std::println("");
+        std::println("  Phase 2 Breakdown (single-threaded)");
+        std::println("    resolve_include: {:.1f}ms", report.p2_resolve_us / 1000.0);
+        std::println("    Other (cache lookup, intern, graph): {:.1f}ms", other_us / 1000.0);
+    }
+
     // Cumulative I/O statistics.
     std::println("");
     std::println("  I/O Statistics (cumulative across threads)");
