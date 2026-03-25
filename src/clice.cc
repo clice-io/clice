@@ -4,8 +4,7 @@
 #include <string>
 
 #include "eventide/async/async.h"
-#include "eventide/deco/macro.h"
-#include "eventide/deco/runtime.h"
+#include "eventide/deco/deco.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/transport.h"
 #include "server/master_server.h"

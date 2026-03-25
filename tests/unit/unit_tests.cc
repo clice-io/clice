@@ -1,8 +1,7 @@
 #include <string>
 #include <string_view>
 
-#include "eventide/deco/macro.h"
-#include "eventide/deco/runtime.h"
+#include "eventide/deco/deco.h"
 #include "eventide/zest/zest.h"
 #include "support/filesystem.h"
 
