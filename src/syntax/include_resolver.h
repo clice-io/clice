@@ -82,6 +82,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              bool is_include_next,
                                              unsigned found_dir_idx,
                                              const ResolvedSearchConfig& config,
+                                             DirListingCache& dir_cache,
                                              StatCounters* stat_counters = nullptr);
 
 /// Convenience overload: resolves config and includer_dir on the fly.

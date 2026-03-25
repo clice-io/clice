@@ -47,6 +47,36 @@ ResolvedSearchConfig resolve_search_config(const SearchConfig& config, DirListin
     return resolved;
 }
 
+namespace {
+
+/// Check if a file exists in a directory, handling multi-component include paths.
+/// For simple filenames (no '/'), checks pre-resolved entries directly.
+/// For multi-component paths like "llvm/Support/raw_ostream.h", constructs the
+/// full path and resolves the actual parent subdirectory via DirListingCache.
+bool check_in_dir(llvm::StringRef dir_path,
+                  const llvm::StringSet<>* entries,
+                  llvm::StringRef filename,
+                  bool is_simple,
+                  DirListingCache& dir_cache,
+                  StatCounters* counters) {
+    if(counters) counters->lookups++;
+
+    if(is_simple) {
+        return entries->contains(filename);
+    }
+
+    // Multi-component path: construct full path, resolve actual subdirectory.
+    llvm::SmallString<256> full;
+    full = dir_path;
+    llvm::sys::path::append(full, filename);
+    auto parent = llvm::sys::path::parent_path(full);
+    auto name = llvm::sys::path::filename(full);
+    auto* sub_entries = resolve_dir(parent, dir_cache, counters);
+    return sub_entries->contains(name);
+}
+
+}  // namespace
+
 std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              bool is_angled,
                                              const llvm::StringSet<>* includer_entries,
@@ -54,6 +84,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              bool is_include_next,
                                              unsigned found_dir_idx,
                                              const ResolvedSearchConfig& config,
+                                             DirListingCache& dir_cache,
                                              StatCounters* stat_counters) {
     // 1. Absolute path: check directly via stat().
     if(llvm::sys::path::is_absolute(filename)) {
@@ -63,14 +94,18 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
         return std::nullopt;
     }
 
+    // Check if filename has path separators (multi-component like "llvm/Support/foo.h").
+    bool is_simple = filename.find('/') == llvm::StringRef::npos &&
+                     filename.find('\\') == llvm::StringRef::npos;
+
     llvm::SmallString<256> candidate;
 
     // 2. For #include_next, start from found_dir_idx + 1.
     if(is_include_next) {
         unsigned start = found_dir_idx + 1;
         for(unsigned i = start; i < config.dirs.size(); ++i) {
-            if(stat_counters) stat_counters->lookups++;
-            if(config.dirs[i].entries->contains(filename)) {
+            if(check_in_dir(config.dirs[i].path, config.dirs[i].entries, filename, is_simple,
+                            dir_cache, stat_counters)) {
                 candidate = config.dirs[i].path;
                 llvm::sys::path::append(candidate, filename);
                 return ResolveResult{candidate, i};
@@ -81,8 +116,8 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
 
     // 3. Quoted include: try includer's directory first.
     if(!is_angled && includer_entries) {
-        if(stat_counters) stat_counters->lookups++;
-        if(includer_entries->contains(filename)) {
+        if(check_in_dir(includer_dir, includer_entries, filename, is_simple, dir_cache,
+                         stat_counters)) {
             candidate = includer_dir;
             llvm::sys::path::append(candidate, filename);
             return ResolveResult{candidate, 0};
@@ -92,8 +127,8 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     // 4. Search directories from appropriate start index.
     unsigned start = is_angled ? config.angled_start_idx : 0;
     for(unsigned i = start; i < config.dirs.size(); ++i) {
-        if(stat_counters) stat_counters->lookups++;
-        if(config.dirs[i].entries->contains(filename)) {
+        if(check_in_dir(config.dirs[i].path, config.dirs[i].entries, filename, is_simple,
+                        dir_cache, stat_counters)) {
             candidate = config.dirs[i].path;
             llvm::sys::path::append(candidate, filename);
             return ResolveResult{candidate, i};
@@ -115,7 +150,8 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     const llvm::StringSet<>* includer_entries =
         includer_dir.empty() ? nullptr : resolve_dir(includer_dir, dir_cache, stat_counters);
     return resolve_include(filename, is_angled, includer_entries, includer_dir,
-                           is_include_next, found_dir_idx, resolved_config, stat_counters);
+                           is_include_next, found_dir_idx, resolved_config, dir_cache,
+                           stat_counters);
 }
 
 }  // namespace clice

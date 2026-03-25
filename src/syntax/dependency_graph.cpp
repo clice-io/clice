@@ -557,6 +557,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                                                 inc.is_include_next,
                                                 0,
                                                 resolved_config,
+                                                dir_cache,
                                                 &wave_stat_counters);
                 auto r_t1 = std::chrono::steady_clock::now();
                 report.p2_resolve_us +=
