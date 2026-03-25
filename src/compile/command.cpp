@@ -803,41 +803,6 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
     return CompilationContext(directory, std::move(arguments));
 }
 
-SearchConfig CompilationDatabase::extract_search_config(const CompilationContext& ctx) {
-    SearchConfig config;
-
-    auto add_dir = [&](llvm::StringRef path, bool is_system) {
-        llvm::SmallString<256> abs_path(path);
-        if(!llvm::sys::path::is_absolute(abs_path)) {
-            llvm::sys::fs::make_absolute(ctx.directory, abs_path);
-        }
-        llvm::sys::path::remove_dots(abs_path, true);
-
-        if(is_system && config.angled_start_idx == config.dirs.size()) {
-            config.angled_start_idx = static_cast<unsigned>(config.dirs.size());
-        }
-
-        config.dirs.push_back({abs_path.str().str()});
-    };
-
-    self->parser.parse(
-        llvm::ArrayRef(ctx.arguments).drop_front(),
-        [&](std::unique_ptr<llvm::opt::Arg> arg) {
-            auto id = arg->getOption().getID();
-            switch(id) {
-                case ID::OPT_I: add_dir(arg->getValue(), false); break;
-                case ID::OPT_isystem:
-                case ID::OPT_internal_isystem:
-                case ID::OPT_internal_externc_isystem: add_dir(arg->getValue(), true); break;
-                case ID::OPT_iquote: add_dir(arg->getValue(), false); break;
-                default: break;
-            }
-        },
-        [](int, int) {});
-
-    return config;
-}
-
 SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
                                                        const CommandOptions& options,
                                                        const void* context) {
@@ -868,7 +833,7 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
     }
 
     auto ctx = lookup(file, options, context);
-    auto config = extract_search_config(ctx);
+    auto config = extract_search_config(ctx.arguments, ctx.directory);
 
     if(info_ptr) {
         self->search_config_cache.try_emplace(info_ptr, config);

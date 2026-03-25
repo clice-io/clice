@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "compile/search_config.h"
 #include "compile/toolchain_provider.h"
 #include "support/format.h"
 
@@ -63,19 +64,6 @@ struct CompilationContext {
     std::vector<const char*> arguments;
 };
 
-struct SearchDir {
-    std::string path;
-};
-
-struct SearchConfig {
-    /// Ordered list of search directories.
-    std::vector<SearchDir> dirs;
-
-    /// Index in dirs where angled (<>) includes start searching.
-    /// Quoted ("") includes search from index 0.
-    unsigned angled_start_idx = 0;
-};
-
 std::string print_argv(llvm::ArrayRef<const char*> args);
 
 class CompilationDatabase {
@@ -108,11 +96,6 @@ public:
     /// TODO: list all compilation context of the file, this is useful to show
     /// all contexts and let user choose one.
     /// std::vector<CompilationContext> fetch_all(llvm::StringRef file);
-
-    /// Extract header search configuration from compilation arguments.
-    /// Parses -I, -isystem, -iquote (user-level) and -internal-isystem,
-    /// -internal-externc-isystem (cc1-level) using the clang argument parser.
-    SearchConfig extract_search_config(const CompilationContext& ctx);
 
     /// Combined lookup + extract_search_config with internal caching.
     /// Results are cached by CompilationInfo pointer, avoiding repeated
