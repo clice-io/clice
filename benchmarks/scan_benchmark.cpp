@@ -15,9 +15,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <numeric>
-#include <map>
 #include <print>
-#include <set>
 #include <thread>
 
 #include "compile/command.h"
@@ -201,66 +199,6 @@ void print_report(const ScanReport& report) {
         double hit_rate = 100.0 * static_cast<double>(report.dir_hits) /
                           static_cast<double>(report.dir_listings + report.dir_hits);
         std::println("    Dir cache hit rate: {:.1f}%", hit_rate);
-    }
-
-    // Unresolved details.
-    if(!report.unresolved.empty()) {
-        // Deduplicate by header name, count occurrences.
-        std::map<std::string, std::size_t> unresolved_counts;
-        std::map<std::string, bool> unresolved_angled;
-        std::map<std::string, bool> unresolved_conditional;
-        for(auto& u: report.unresolved) {
-            unresolved_counts[u.header]++;
-            unresolved_angled[u.header] = u.is_angled;
-            if(!u.conditional) {
-                unresolved_conditional[u.header] = false;
-            } else if(!unresolved_conditional.contains(u.header)) {
-                unresolved_conditional[u.header] = true;
-            }
-        }
-
-        // Sort by count descending.
-        std::vector<std::pair<std::string, std::size_t>> sorted(unresolved_counts.begin(),
-                                                                unresolved_counts.end());
-        std::ranges::sort(sorted, [](auto& a, auto& b) { return a.second > b.second; });
-
-        // Split into conditional-only and unconditional.
-        std::vector<std::pair<std::string, std::size_t>> unconditional_unresolved;
-        std::vector<std::pair<std::string, std::size_t>> conditional_unresolved;
-        for(auto& [header, count]: sorted) {
-            if(unresolved_conditional[header]) {
-                conditional_unresolved.push_back({header, count});
-            } else {
-                unconditional_unresolved.push_back({header, count});
-            }
-        }
-
-        if(!unconditional_unresolved.empty()) {
-            std::println("");
-            std::println("  Unresolved Headers (unconditional, {} unique):",
-                         unconditional_unresolved.size());
-            for(auto& [header, count]: unconditional_unresolved) {
-                auto bracket = unresolved_angled[header] ? '<' : '"';
-                auto close = unresolved_angled[header] ? '>' : '"';
-                std::println("    {}{}{} (x{})", bracket, header, close, count);
-            }
-        }
-
-        if(!conditional_unresolved.empty()) {
-            std::println("");
-            std::println("  Unresolved Headers (conditional only, {} unique):",
-                         conditional_unresolved.size());
-            auto limit = std::min(conditional_unresolved.size(), std::size_t(20));
-            for(std::size_t i = 0; i < limit; i++) {
-                auto& [header, count] = conditional_unresolved[i];
-                auto bracket = unresolved_angled[header] ? '<' : '"';
-                auto close = unresolved_angled[header] ? '>' : '"';
-                std::println("    {}{}{} (x{})", bracket, header, close, count);
-            }
-            if(conditional_unresolved.size() > limit) {
-                std::println("    ... and {} more", conditional_unresolved.size() - limit);
-            }
-        }
     }
 
     std::println("");

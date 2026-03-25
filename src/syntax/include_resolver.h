@@ -7,6 +7,7 @@
 #include "compile/command.h"
 
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
@@ -39,16 +40,52 @@ struct DirListingCache {
     llvm::StringMap<llvm::StringSet<>> dirs;
 };
 
-/// Resolve an include directive to an absolute file path.
+/// A search directory with a pre-resolved pointer to its cached entries.
+/// The pointer is stable because StringMap allocates entries on the heap.
+struct ResolvedSearchDir {
+    llvm::StringRef path;
+    const llvm::StringSet<>* entries;  // Never null after resolve_search_config().
+};
+
+/// Pre-resolved version of SearchConfig — all directory lookups are resolved
+/// to direct pointers, eliminating StringMap lookups during include resolution.
+struct ResolvedSearchConfig {
+    llvm::SmallVector<ResolvedSearchDir> dirs;
+    unsigned angled_start_idx = 0;
+};
+
+/// Resolve a single directory to its cached StringSet.
+/// Returns a stable pointer into the DirListingCache.
+/// On cache miss, lazily populates via readdir().
+const llvm::StringSet<>* resolve_dir(llvm::StringRef dir, DirListingCache& cache,
+                                     StatCounters* counters = nullptr);
+
+/// Pre-resolve a SearchConfig against a populated DirListingCache.
+/// Call once per config after dir cache pre-population, then reuse
+/// the result for all resolve_include() calls with that config.
+ResolvedSearchConfig resolve_search_config(const SearchConfig& config, DirListingCache& cache);
+
+/// Resolve an include directive using pre-resolved config and includer entries.
 ///
-/// @param filename       Raw include name (without delimiters)
-/// @param is_angled      Whether this is a <...> include
-/// @param includer_dir   Directory of the file containing the #include
-/// @param is_include_next Whether this is #include_next (start from found_dir_idx + 1)
-/// @param found_dir_idx  For #include_next: the search dir index of the includer
-/// @param config         The search configuration to use
-/// @param dir_cache      Directory listing cache for file existence checks
+/// @param filename         Raw include name (without delimiters)
+/// @param is_angled        Whether this is a <...> include
+/// @param includer_entries Pre-resolved StringSet for the includer's directory (may be null)
+/// @param includer_dir     Directory of the file containing the #include
+/// @param is_include_next  Whether this is #include_next
+/// @param found_dir_idx    For #include_next: the search dir index of the includer
+/// @param config           Pre-resolved search configuration
 /// @return Resolved path and the search dir index, or nullopt if not found
+std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
+                                             bool is_angled,
+                                             const llvm::StringSet<>* includer_entries,
+                                             llvm::StringRef includer_dir,
+                                             bool is_include_next,
+                                             unsigned found_dir_idx,
+                                             const ResolvedSearchConfig& config,
+                                             StatCounters* stat_counters = nullptr);
+
+/// Convenience overload: resolves config and includer_dir on the fly.
+/// Use for tests and one-off calls where pre-resolution overhead doesn't matter.
 std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              bool is_angled,
                                              llvm::StringRef includer_dir,

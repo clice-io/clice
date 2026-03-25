@@ -358,6 +358,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     // of the Phase 1 wait time for subsequent waves.
     std::vector<et::task<FileScanResult, et::error>> prefetch_tasks;
 
+    // Pre-resolved search configs: built once after dir cache is populated,
+    // then reused for all waves.  Eliminates StringMap lookups in Phase 2.
+    llvm::DenseMap<std::uint32_t, ResolvedSearchConfig> resolved_configs;
+
     while(!current_wave.empty()) {
         auto wave_start = std::chrono::steady_clock::now();
 
@@ -459,6 +463,14 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             report.scan_us += sr.scan_us;
         }
 
+        // Pre-resolve search configs once after dir cache is populated (wave 0).
+        // Converts StringMap lookups into direct pointer dereferences for Phase 2.
+        if(resolved_configs.empty()) {
+            for(auto& [config_id, config]: configs) {
+                resolved_configs[config_id] = resolve_search_config(config, dir_cache);
+            }
+        }
+
         // Phase 2+3: Resolve includes, intern paths, build graph, collect next wave.
         // Merged into a single pass to avoid intermediate string allocations.
         // Optimization 2: newly discovered files are immediately queued for
@@ -476,13 +488,14 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 
             report.total_files++;
 
-            auto config_it = configs.find(scan_result.config_id);
-            if(config_it == configs.end()) {
+            auto rc_it = resolved_configs.find(scan_result.config_id);
+            if(rc_it == resolved_configs.end()) {
                 continue;
             }
 
-            auto& config = config_it->second;
+            auto& resolved_config = rc_it->second;
             auto includer_dir = llvm::sys::path::parent_path(scan_result.path);
+            auto* includer_entries = resolve_dir(includer_dir, dir_cache, &wave_stat_counters);
 
             // Record module mapping.
             if(!scan_result.scan_result.module_name.empty()) {
@@ -539,11 +552,11 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 auto r_t0 = std::chrono::steady_clock::now();
                 auto resolved = resolve_include(inc.path,
                                                 inc.is_angled,
+                                                includer_entries,
                                                 includer_dir,
                                                 inc.is_include_next,
                                                 0,
-                                                config,
-                                                dir_cache,
+                                                resolved_config,
                                                 &wave_stat_counters);
                 auto r_t1 = std::chrono::steady_clock::now();
                 report.p2_resolve_us +=
