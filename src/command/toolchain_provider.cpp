@@ -19,35 +19,32 @@ struct ToolchainProvider::Impl {
     ArgumentParser parser{&allocator};
 
     /// Cache of toolchain query results, keyed by canonical toolchain key.
-    /// The key captures only flags that affect system path discovery (driver,
-    /// target, sysroot, stdlib, etc.), so files sharing the same compiler
-    /// configuration share one cached result.
+    /// The key includes all flags except user-content options (-I/-D/-U/etc.),
+    /// so the cc1 result reflects the correct compiler semantics (-f/-W/-O/etc.)
+    /// and only user-content options need to be replayed after cache lookup.
     llvm::StringMap<std::vector<const char*>> toolchain_cache;
 
-    /// Option IDs that affect system path discovery. These determine the
-    /// toolchain cache key and are the only flags passed to the toolchain query.
-    static bool is_toolchain_option(unsigned id) {
+    /// Options excluded from the cache key and toolchain query. These are
+    /// per-file user content (include paths, defines, forced includes) or
+    /// input files. They don't affect compiler semantics or system path
+    /// discovery, and are replayed into the cc1 result afterward.
+    static bool is_excluded_option(unsigned id) {
         switch(id) {
-            case ID::OPT_target:
-            case ID::OPT_target_legacy_spelling:
-            case ID::OPT_isysroot:
-            case ID::OPT__sysroot_EQ:
-            case ID::OPT__sysroot:
-            case ID::OPT_stdlib_EQ:
-            case ID::OPT_gcc_toolchain:
-            case ID::OPT_gcc_install_dir_EQ:
-            case ID::OPT_nostdinc:
-            case ID::OPT_nostdincxx:
-            case ID::OPT_std_EQ:
-            case ID::OPT_x: return true;
+            case ID::OPT_I:
+            case ID::OPT_isystem:
+            case ID::OPT_iquote:
+            case ID::OPT_idirafter:
+            case ID::OPT_D:
+            case ID::OPT_U:
+            case ID::OPT_include:
+            case ID::OPT_INPUT: return true;
             default: return false;
         }
     }
 
-    /// Extract toolchain-relevant flags from arguments using the clang argument
-    /// parser. Returns both a cache key string and a minimal argument list for
-    /// the toolchain query. Using the parser ensures all flag forms (joined,
-    /// separate, etc.) are handled correctly.
+    /// Extract flags for the toolchain query. All options except user-content
+    /// options (-I/-D/-U/etc.) are included in both the cache key and query args,
+    /// so the cc1 result correctly reflects compiler semantics (-f/-W/-O/etc.).
     struct ToolchainExtract {
         std::string key;
         std::vector<const char*> query_args;
@@ -72,7 +69,7 @@ struct ToolchainProvider::Impl {
             llvm::ArrayRef(arguments).drop_front(),
             [&](std::unique_ptr<llvm::opt::Arg> arg) {
                 auto id = arg->getOption().getID();
-                if(!is_toolchain_option(id)) {
+                if(is_excluded_option(id)) {
                     return;
                 }
 
@@ -112,7 +109,7 @@ struct ToolchainProvider::Impl {
                 }
             },
             [](int, int) {
-                // Ignore unknown arguments — they won't affect toolchain discovery.
+                // Unknown arguments are included in key/query to be safe.
             });
 
         return result;

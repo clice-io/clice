@@ -760,9 +760,10 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
     };
 
     if(info && options.query_toolchain) {
-        // Save user-level include paths before replacing with cc1 args.
-        // The cached toolchain query uses minimal args (no -I/-D/-W etc.)
-        // for cache efficiency, so user include paths must be injected back.
+        // Save user args before replacing with cc1 result. The toolchain
+        // query includes all flags except user-content options (-I/-D/-U/etc.),
+        // so the cc1 result has correct semantics. Only user-content options
+        // need to be replayed afterward.
         auto user_args = std::move(arguments);
 
         auto cached = self->toolchain.query_cached(file, directory, user_args);
@@ -802,10 +803,9 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                 }
             }
 
-            // Inject user flags from the original mangled args into the cc1
-            // result. The toolchain query only caches system-level results
-            // (target, sysroot, system includes), so user-level flags like
-            // -I, -D, -U, -include, -idirafter must be replayed.
+            // Replay user-content options (-I/-D/-U/-include/-idirafter) from
+            // the original mangled args. These were excluded from the toolchain
+            // query since they don't affect compiler semantics or system paths.
             self->parser.parse(
                 llvm::ArrayRef(user_args).drop_front(),
                 [&](std::unique_ptr<llvm::opt::Arg> arg) {
@@ -814,10 +814,10 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                         case ID::OPT_I:
                         case ID::OPT_isystem:
                         case ID::OPT_iquote:
+                        case ID::OPT_idirafter:
                         case ID::OPT_D:
                         case ID::OPT_U:
                         case ID::OPT_include:
-                        case ID::OPT_idirafter:
                             append_arg(arg->getSpelling());
                             for(auto value: arg->getValues()) {
                                 append_arg(value);

@@ -47,53 +47,45 @@ TEST_CASE(InjectResultsSkipsDuplicateKeys) {
 TEST_CASE(GetPendingQueriesReturnsUncachedOnly) {
     ToolchainProvider provider;
 
-    // Inject a result for one toolchain configuration.
-    std::vector<ToolchainResult> results;
-    results.push_back({
-        "preloaded_key",
-        {"-cc1", "-triple", "x86_64"}
-    });
-    provider.inject_results(results);
-
-    // Create entries: one matching the cached key pattern, one new.
-    // Since get_pending_queries extracts keys internally, we need real-ish args.
+    // Two entries with same flags but different user-content options.
+    // They share the same cache key, so only one query is needed.
     ToolchainProvider::PendingEntry entry1;
     entry1.file = "a.cpp";
     entry1.directory = "/tmp";
-    entry1.arguments = {"clang++", "-std=c++17", "a.cpp"};
+    entry1.arguments = {"clang++", "-std=c++17", "-DFOO", "a.cpp"};
 
     ToolchainProvider::PendingEntry entry2;
     entry2.file = "b.cpp";
     entry2.directory = "/tmp";
-    entry2.arguments = {"clang++", "-std=c++17", "b.cpp"};
+    entry2.arguments = {"clang++", "-std=c++17", "-DBAR", "b.cpp"};
 
-    // Both entries have the same toolchain key (same driver, same extension,
-    // same toolchain flags), so only one query should be returned.
     auto queries = provider.get_pending_queries({entry1, entry2});
+    // Same driver, same extension, same non-content flags → one query.
     EXPECT_EQ(queries.size(), 1u);
 }
 
 TEST_CASE(GetPendingQueriesDeduplicatesSameKey) {
     ToolchainProvider provider;
 
-    // Three entries with same driver and no toolchain-relevant flags.
+    // Three entries with same driver and same flags (only -I/-D differ,
+    // which are user-content options excluded from the cache key).
     ToolchainProvider::PendingEntry entry1;
     entry1.file = "x.cpp";
     entry1.directory = "/project";
-    entry1.arguments = {"clang++", "-Wall", "-O2", "x.cpp"};
+    entry1.arguments = {"clang++", "-Wall", "-O2", "-DFOO=1", "-I/inc/a", "x.cpp"};
 
     ToolchainProvider::PendingEntry entry2;
     entry2.file = "y.cpp";
     entry2.directory = "/project";
-    entry2.arguments = {"clang++", "-Werror", "y.cpp"};
+    entry2.arguments = {"clang++", "-Wall", "-O2", "-DBAR=2", "-I/inc/b", "y.cpp"};
 
     ToolchainProvider::PendingEntry entry3;
     entry3.file = "z.cpp";
     entry3.directory = "/project";
-    entry3.arguments = {"clang++", "-g", "z.cpp"};
+    entry3.arguments = {"clang++", "-Wall", "-O2", "-Uhello", "z.cpp"};
 
     auto queries = provider.get_pending_queries({entry1, entry2, entry3});
-    // Same driver (clang++), same extension (.cpp), no toolchain flags → same key.
+    // Same driver, same extension, same non-content flags → same key.
     EXPECT_EQ(queries.size(), 1u);
 }
 
