@@ -103,6 +103,16 @@ struct DenseMapInfo<clice::CanonicalCommand> {
     }
 
     static bool isEqual(const T& lhs, const T& rhs) {
+        // Sentinels have distinct data pointers but both have size 0,
+        // and ArrayRef equality is content-based — so we must compare
+        // data pointers first to keep sentinels distinguishable.
+        if(lhs.arguments.data() == rhs.arguments.data())
+            return lhs.arguments.size() == rhs.arguments.size();
+        if(lhs.arguments.data() == getEmptyKey().arguments.data() ||
+           lhs.arguments.data() == getTombstoneKey().arguments.data() ||
+           rhs.arguments.data() == getEmptyKey().arguments.data() ||
+           rhs.arguments.data() == getTombstoneKey().arguments.data())
+            return false;
         return lhs == rhs;
     }
 };

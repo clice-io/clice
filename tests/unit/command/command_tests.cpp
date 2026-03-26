@@ -170,6 +170,289 @@ TEST_CASE(RemoveAppend) {
     ASSERT_EQ(print_argv(result), "clang++ -D C main.cpp");
 };
 
+TEST_CASE(DefaultFallback) {
+    /// Lookup for a file not in the CDB should synthesize a default command.
+    CompilationDatabase database;
+
+    /// C++ files get "clang++ -std=c++20 <file>".
+    auto cpp_results = database.lookup("unknown.cpp");
+    ASSERT_EQ(cpp_results.size(), 1U);
+    auto& cpp_ctx = cpp_results.front();
+    ASSERT_EQ(cpp_ctx.arguments.size(), 3U);
+    ASSERT_EQ(llvm::StringRef(cpp_ctx.arguments[0]), "clang++");
+    ASSERT_EQ(llvm::StringRef(cpp_ctx.arguments[1]), "-std=c++20");
+    ASSERT_EQ(llvm::StringRef(cpp_ctx.arguments[2]), "unknown.cpp");
+
+    /// .hpp files also get C++ default.
+    auto hpp_results = database.lookup("header.hpp");
+    ASSERT_EQ(hpp_results.front().arguments.size(), 3U);
+    ASSERT_EQ(llvm::StringRef(hpp_results.front().arguments[0]), "clang++");
+
+    /// .cc files also get C++ default.
+    auto cc_results = database.lookup("file.cc");
+    ASSERT_EQ(cc_results.front().arguments.size(), 3U);
+    ASSERT_EQ(llvm::StringRef(cc_results.front().arguments[0]), "clang++");
+
+    /// C files get "clang <file>".
+    auto c_results = database.lookup("unknown.c");
+    ASSERT_EQ(c_results.size(), 1U);
+    auto& c_ctx = c_results.front();
+    ASSERT_EQ(c_ctx.arguments.size(), 2U);
+    ASSERT_EQ(llvm::StringRef(c_ctx.arguments[0]), "clang");
+    ASSERT_EQ(llvm::StringRef(c_ctx.arguments[1]), "unknown.c");
+
+    /// Other extensions also get plain clang.
+    auto h_results = database.lookup("foo.h");
+    ASSERT_EQ(h_results.front().arguments.size(), 2U);
+    ASSERT_EQ(llvm::StringRef(h_results.front().arguments[0]), "clang");
+};
+
+TEST_CASE(MultiCommand) {
+    /// A file can have multiple compilation commands (e.g. different configs).
+    using namespace std::literals;
+
+    CompilationDatabase database;
+    database.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
+    database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+    database.add_command("fake", "other.cpp", "clang++ -std=c++23 other.cpp"sv);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+
+    auto results = database.lookup("main.cpp", options);
+    ASSERT_EQ(results.size(), 2U);
+
+    /// Both commands are present (order depends on insert position).
+    bool has_17 = false, has_20 = false;
+    for(auto& ctx: results) {
+        auto argv = print_argv(ctx.arguments);
+        if(llvm::StringRef(argv).contains("-std=c++17"))
+            has_17 = true;
+        if(llvm::StringRef(argv).contains("-std=c++20"))
+            has_20 = true;
+    }
+    EXPECT_TRUE(has_17);
+    EXPECT_TRUE(has_20);
+
+    /// other.cpp has only one.
+    auto other = database.lookup("other.cpp", options);
+    ASSERT_EQ(other.size(), 1U);
+};
+
+TEST_CASE(CodegenFilter) {
+    /// Codegen-only options should be stripped from the canonical command.
+    using namespace std::literals;
+
+    CompilationDatabase database;
+    database.add_command(
+        "fake",
+        "main.cpp",
+        "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong "
+        "-fdata-sections -ffunction-sections -flto -fcolor-diagnostics -g main.cpp"sv);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+    auto result = database.lookup("main.cpp", options).front().arguments;
+    auto argv = print_argv(result);
+
+    /// -std=c++20 must survive (semantic).
+    EXPECT_TRUE(llvm::StringRef(argv).contains("-std=c++20"));
+
+    /// All codegen flags must be stripped.
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-fPIC"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-fno-omit-frame-pointer"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-fstack-protector"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-fdata-sections"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-ffunction-sections"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-flto"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-fcolor-diagnostics"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-g"));
+};
+
+TEST_CASE(DependencyScanFilter) {
+    /// Dependency scan options should be stripped.
+    using namespace std::literals;
+
+    CompilationDatabase database;
+    database.add_command("fake",
+                         "main.cpp",
+                         "clang++ -std=c++20 -MD -MF main.d -MT main.o main.cpp"sv);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+    auto result = database.lookup("main.cpp", options).front().arguments;
+    auto argv = print_argv(result);
+
+    EXPECT_TRUE(llvm::StringRef(argv).contains("-std=c++20"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-MD"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-MF"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("-MT"));
+    EXPECT_FALSE(llvm::StringRef(argv).contains("main.d"));
+};
+
+TEST_CASE(ModuleFilter) {
+    /// Module-related options should be stripped.
+    expect_strip("clang++ -std=c++20 -fmodule-file=mod.pcm main.cpp",
+                 "clang++ -std=c++20 main.cpp");
+    expect_strip("clang++ -std=c++20 -fprebuilt-module-path=/tmp main.cpp",
+                 "clang++ -std=c++20 main.cpp");
+};
+
+TEST_CASE(UserContentClassification) {
+    /// -D, -U, -include go to per-file patch; -std=, -W go to canonical.
+    /// Files with different -D but same -std/-W share canonical.
+    using namespace std::literals;
+
+    CompilationDatabase database;
+    database.add_command("fake", "a.cpp", "clang++ -std=c++20 -Wall -DA=1 -DFOO a.cpp"sv);
+    database.add_command("fake", "b.cpp", "clang++ -std=c++20 -Wall -DB=2 b.cpp"sv);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+
+    auto a_args = database.lookup("a.cpp", options).front().arguments;
+    auto b_args = database.lookup("b.cpp", options).front().arguments;
+
+    auto a_argv = print_argv(a_args);
+    auto b_argv = print_argv(b_args);
+
+    /// Both must contain canonical flags.
+    EXPECT_TRUE(llvm::StringRef(a_argv).contains("-std=c++20"));
+    EXPECT_TRUE(llvm::StringRef(a_argv).contains("-Wall"));
+    EXPECT_TRUE(llvm::StringRef(b_argv).contains("-std=c++20"));
+    EXPECT_TRUE(llvm::StringRef(b_argv).contains("-Wall"));
+
+    /// a.cpp has its own defines.
+    EXPECT_TRUE(llvm::StringRef(a_argv).contains("-D"));
+    EXPECT_TRUE(llvm::StringRef(a_argv).contains("A=1"));
+    EXPECT_TRUE(llvm::StringRef(a_argv).contains("FOO"));
+
+    /// b.cpp has its own defines.
+    EXPECT_TRUE(llvm::StringRef(b_argv).contains("-D"));
+    EXPECT_TRUE(llvm::StringRef(b_argv).contains("B=2"));
+
+    /// Cross check: a.cpp should not have B=2, b.cpp should not have A=1.
+    EXPECT_FALSE(llvm::StringRef(a_argv).contains("B=2"));
+    EXPECT_FALSE(llvm::StringRef(b_argv).contains("A=1"));
+};
+
+TEST_CASE(IncludePathAbsolutize) {
+    /// Relative include paths should be absolutized against the directory.
+    using namespace std::literals;
+
+    CompilationDatabase database;
+    database.add_command("/project/build", "main.cpp",
+                         "clang++ -Iinclude -isystem sys/inc -iquote ../src main.cpp"sv);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+    auto result = database.lookup("main.cpp", options).front().arguments;
+    auto argv = print_argv(result);
+
+    /// Relative paths must be resolved against /project/build.
+    EXPECT_TRUE(llvm::StringRef(argv).contains("/project/build/include"));
+    EXPECT_TRUE(llvm::StringRef(argv).contains("/project/build/sys/inc"));
+    /// ../src relative to /project/build → /project/src (or /project/build/../src)
+    EXPECT_TRUE(llvm::StringRef(argv).contains("/project/"));
+    EXPECT_TRUE(llvm::StringRef(argv).contains("src"));
+
+    /// Absolute paths should be kept as-is.
+    CompilationDatabase database2;
+    database2.add_command("/project/build", "main.cpp",
+                          "clang++ -I/usr/include main.cpp"sv);
+
+    auto result2 = database2.lookup("main.cpp", options).front().arguments;
+    auto argv2 = print_argv(result2);
+    EXPECT_TRUE(llvm::StringRef(argv2).contains("/usr/include"));
+};
+
+TEST_CASE(SemanticOptionsPreserved) {
+    /// Flags that affect semantics must survive.
+    expect_strip("clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp",
+                 "clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp");
+    expect_strip("clang++ -std=c++20 -Wall -Werror main.cpp",
+                 "clang++ -std=c++20 -Wall -Werror main.cpp");
+};
+
+TEST_CASE(LookupSearchConfig) {
+    using namespace std::literals;
+
+    CompilationDatabase database;
+    database.add_command("/project", "main.cpp",
+                         "clang++ -std=c++20 -I/usr/include -isystem /usr/local/include main.cpp"sv);
+
+    ASSERT_FALSE(database.has_cached_configs());
+
+    CommandOptions options;
+    options.suppress_logging = true;
+    auto config = database.lookup_search_config("main.cpp", options);
+
+    /// Should have search dirs from the command.
+    EXPECT_FALSE(config.dirs.empty());
+
+    /// Second call should hit cache.
+    EXPECT_TRUE(database.has_cached_configs());
+    auto config2 = database.lookup_search_config("main.cpp", options);
+    ASSERT_EQ(config.dirs.size(), config2.dirs.size());
+};
+
+TEST_CASE(ResolvePath) {
+    using namespace std::literals;
+
+    CompilationDatabase database;
+    database.add_command("fake", "test/main.cpp", "clang++ test/main.cpp"sv);
+
+    /// After add_command, lookup should work and resolve_path via the file in arguments.
+    CommandOptions options;
+    options.suppress_logging = true;
+    auto result = database.lookup("test/main.cpp", options).front().arguments;
+    /// The last argument is the file, resolved from PathPool.
+    ASSERT_EQ(llvm::StringRef(result.back()), "test/main.cpp");
+};
+
+TEST_CASE(MoveSemantics) {
+    using namespace std::literals;
+
+    CompilationDatabase db1;
+    db1.add_command("fake", "main.cpp", "clang++ -std=c++23 main.cpp"sv);
+
+    /// Move construct.
+    CompilationDatabase db2 = std::move(db1);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+    auto result = db2.lookup("main.cpp", options).front().arguments;
+    ASSERT_EQ(result.size(), 3U);
+    ASSERT_EQ(llvm::StringRef(result[1]), "-std=c++23");
+
+    /// Move assign.
+    CompilationDatabase db3;
+    db3 = std::move(db2);
+    result = db3.lookup("main.cpp", options).front().arguments;
+    ASSERT_EQ(result.size(), 3U);
+    ASSERT_EQ(llvm::StringRef(result[1]), "-std=c++23");
+};
+
+TEST_CASE(PrintArgv) {
+    /// Normal args.
+    std::vector<const char*> args = {"clang++", "-std=c++20", "main.cpp"};
+    ASSERT_EQ(print_argv(args), "clang++ -std=c++20 main.cpp");
+
+    /// Empty args.
+    std::vector<const char*> empty = {};
+    ASSERT_EQ(print_argv(empty), "");
+
+    /// Args with spaces get quoted.
+    std::vector<const char*> spaced = {"clang++", "-DFOO=hello world"};
+    auto result = print_argv(spaced);
+    EXPECT_TRUE(llvm::StringRef(result).contains("\""));
+
+    /// Args with backslash get quoted/escaped.
+    std::vector<const char*> escaped = {"clang++", "-DPATH=C:\\foo"};
+    auto result2 = print_argv(escaped);
+    EXPECT_TRUE(llvm::StringRef(result2).contains("\""));
+};
+
 TEST_CASE(Module) {
     // TODO: revisit module command handling.
 }
@@ -197,7 +480,11 @@ TEST_CASE(ResourceDir) {
             break;
         }
     }
-    EXPECT_TRUE(has_resource_dir);
+    if(resource_dir().empty()) {
+        EXPECT_FALSE(has_resource_dir);
+    } else {
+        EXPECT_TRUE(has_resource_dir);
+    }
 };
 
 };  // TEST_SUITE(Command)

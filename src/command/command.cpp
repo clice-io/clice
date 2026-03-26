@@ -189,6 +189,10 @@ object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(llvm::Str
     llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
 #endif
 
+    if(arguments.empty()) {
+        return {nullptr};
+    }
+
     return save_compilation_info(file, directory, arguments);
 }
 
@@ -284,6 +288,10 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
             auto info = save_compilation_info(file_ref,
                                               dir_ref,
                                               llvm::StringRef(cmd_sv.data(), cmd_sv.size()));
+            if(!info) {
+                ++index;
+                continue;
+            }
             auto path_id = paths.intern(file_ref);
             entries.push_back({path_id, info});
         }
