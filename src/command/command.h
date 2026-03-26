@@ -14,14 +14,12 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
 
 struct CommandOptions {
-    /// Ignore unknown commands arguments.
-    bool ignore_unknown = true;
-
     /// Query the compiler driver for additional information, such as system includes and target.
     /// When enabled, also replaces the queried resource dir with our own (clang tools must use
     /// builtin headers matching their parser version — see clangd's CommandMangler for precedent).
@@ -31,10 +29,10 @@ struct CommandOptions {
     /// Set true in unittests to avoid cluttering test output.
     bool suppress_logging = false;
 
-    /// The commands that you want to remove from original commands list.
+    /// Extra arguments to remove from the original command line.
     llvm::ArrayRef<std::string> remove;
 
-    /// The commands that you want to add to original commands list.
+    /// Extra arguments to append to the original command line.
     llvm::ArrayRef<std::string> append;
 };
 
@@ -50,7 +48,10 @@ struct CompilationContext {
 /// Deduped via ObjectSet so most files share one instance. This directly
 /// serves as the toolchain cache key (no re-parsing needed at query time).
 struct CanonicalCommand {
+    /// Driver path followed by semantics-affecting flags (e.g. -std=, -target, -W*).
+    /// All pointers are interned in StringSet and pointer-stable.
     llvm::ArrayRef<const char*> arguments;
+
     friend bool operator==(const CanonicalCommand&, const CanonicalCommand&) = default;
 };
 
@@ -78,8 +79,6 @@ struct CompilationEntry {
     /// Parsed compilation info (directory + canonical + patch).
     object_ptr<CompilationInfo> info;
 };
-
-std::string print_argv(llvm::ArrayRef<const char*> args);
 
 }  // namespace clice
 
@@ -151,9 +150,10 @@ public:
     /// but ToolchainProvider cache survives. Returns the number of entries loaded.
     std::size_t load(llvm::StringRef path);
 
-    /// Lookup the compilation context for a file. When a file has multiple
-    /// compilation commands, returns the first one.
-    CompilationContext lookup(llvm::StringRef file, const CommandOptions& options = {});
+    /// Lookup the compilation contexts for a file. A file may have multiple
+    /// compilation commands (e.g. different build configurations); all are returned.
+    llvm::SmallVector<CompilationContext> lookup(llvm::StringRef file,
+                                                 const CommandOptions& options = {});
 
     /// Combined lookup + extract_search_config with internal caching.
     SearchConfig lookup_search_config(llvm::StringRef file, const CommandOptions& options = {});
@@ -178,14 +178,9 @@ public:
 #endif
 
 private:
-    /// Find the CompilationInfo for a file by its path_id (binary search).
-    object_ptr<CompilationInfo> find_info(std::uint32_t path_id) const;
-
-    /// Render a parsed argument into a flat list of interned const char*.
-    void render_arg(llvm::SmallVectorImpl<const char*>& out, llvm::opt::Arg& arg);
-
-    /// Render a parsed argument into a flat list of interned const char*.
-    void render_arg(std::vector<const char*>& out, llvm::opt::Arg& arg);
+    /// Find all CompilationEntry items for a file by path_id (binary search).
+    /// Returns a sub-range of `entries`; may be empty.
+    llvm::ArrayRef<CompilationEntry> find_entries(std::uint32_t path_id) const;
 
     /// Allocate a persistent copy of a const char* array on the bump allocator.
     llvm::ArrayRef<const char*> persist_args(llvm::ArrayRef<const char*> args);

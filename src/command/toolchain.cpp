@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "command/argument_parser.h"
 #include "eventide/reflection/enum.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -61,19 +62,6 @@ llvm::StringRef null_dev = "/dev/null";
 namespace clice::toolchain {
 
 namespace {
-
-std::string print_argv(llvm::ArrayRef<const char*> args) {
-    std::string s = "[";
-    if(!args.empty()) {
-        s += args.consume_front();
-        for(auto arg: args) {
-            s += " ";
-            s += arg;
-        }
-    }
-    s += "]";
-    return s;
-}
 
 std::optional<std::string> execute_command(llvm::ArrayRef<const char*> arguments,
                                            bool capture_stdout = false) {

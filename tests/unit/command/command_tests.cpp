@@ -97,7 +97,7 @@ void expect_strip(llvm::StringRef argv, llvm::StringRef result) {
 
     CommandOptions options;
     options.suppress_logging = true;
-    ASSERT_EQ(result, print_argv(database.lookup(file, options).arguments));
+    ASSERT_EQ(result, print_argv(database.lookup(file, options).front().arguments));
 };
 
 TEST_CASE(DefaultFilters) {
@@ -131,8 +131,8 @@ TEST_CASE(Reuse) {
 
     CommandOptions options;
     options.suppress_logging = true;
-    auto command1 = database.lookup("test.cpp", options).arguments;
-    auto command2 = database.lookup("test2.cpp", options).arguments;
+    auto command1 = database.lookup("test.cpp", options).front().arguments;
+    auto command2 = database.lookup("test2.cpp", options).front().arguments;
     ASSERT_EQ(command1.size(), 3U);
     ASSERT_EQ(command2.size(), 3U);
 
@@ -166,32 +166,32 @@ TEST_CASE(RemoveAppend) {
 
     remove = {"-DA"};
     options.remove = remove;
-    auto result = database.lookup("main.cpp", options).arguments;
+    auto result = database.lookup("main.cpp", options).front().arguments;
     ASSERT_EQ(print_argv(result), "clang++ -D B=0 main.cpp");
 
     remove = {"-D", "A"};
     options.remove = remove;
-    result = database.lookup("main.cpp", options).arguments;
+    result = database.lookup("main.cpp", options).front().arguments;
     ASSERT_EQ(print_argv(result), "clang++ -D B=0 main.cpp");
 
     remove = {"-DA", "-D", "B=0"};
     options.remove = remove;
-    result = database.lookup("main.cpp", options).arguments;
+    result = database.lookup("main.cpp", options).front().arguments;
     ASSERT_EQ(print_argv(result), "clang++ main.cpp");
 
     remove = {"-D*"};
     options.remove = remove;
-    result = database.lookup("main.cpp", options).arguments;
+    result = database.lookup("main.cpp", options).front().arguments;
     ASSERT_EQ(print_argv(result), "clang++ main.cpp");
 
     remove = {"-D", "*"};
     options.remove = remove;
-    result = database.lookup("main.cpp", options).arguments;
+    result = database.lookup("main.cpp", options).front().arguments;
     ASSERT_EQ(print_argv(result), "clang++ main.cpp");
 
     append = {"-D", "C"};
     options.append = append;
-    result = database.lookup("main.cpp", options).arguments;
+    result = database.lookup("main.cpp", options).front().arguments;
     ASSERT_EQ(print_argv(result), "clang++ -D C main.cpp");
 };
 
@@ -206,14 +206,14 @@ TEST_CASE(ResourceDir) {
     database.add_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
 
     // Without query_toolchain, no resource dir injection.
-    auto args_no_tc = database.lookup("main.cpp").arguments;
+    auto args_no_tc = database.lookup("main.cpp").front().arguments;
     ASSERT_EQ(args_no_tc.size(), 3U);
     ASSERT_EQ(args_no_tc[0], "clang++"sv);
     ASSERT_EQ(args_no_tc[1], "-std=c++23"sv);
     ASSERT_EQ(args_no_tc[2], "main.cpp"sv);
 
     // With query_toolchain, resource dir is present in the result.
-    auto args_tc = database.lookup("main.cpp", {.query_toolchain = true}).arguments;
+    auto args_tc = database.lookup("main.cpp", {.query_toolchain = true}).front().arguments;
     bool has_resource_dir = false;
     for(size_t i = 0; i + 1 < args_tc.size(); ++i) {
         if(args_tc[i] == llvm::StringRef("-resource-dir")) {

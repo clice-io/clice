@@ -26,12 +26,11 @@ CompilationDatabase::CompilationDatabase() = default;
 
 CompilationDatabase::~CompilationDatabase() = default;
 
-object_ptr<CompilationInfo> CompilationDatabase::find_info(std::uint32_t path_id) const {
-    auto it = ranges::lower_bound(entries, path_id, {}, &CompilationEntry::file);
-    if(it != entries.end() && it->file == path_id) {
-        return it->info;
-    }
-    return nullptr;
+llvm::ArrayRef<CompilationEntry> CompilationDatabase::find_entries(std::uint32_t path_id) const {
+    auto [first, last] = ranges::equal_range(entries, path_id, {}, &CompilationEntry::file);
+    if(first == last)
+        return {};
+    return {&*first, static_cast<size_t>(last - first)};
 }
 
 namespace {
@@ -78,14 +77,6 @@ void render_arg_to(Emit&& emit, llvm::opt::Arg& arg) {
 
 }  // namespace
 
-void CompilationDatabase::render_arg(llvm::SmallVectorImpl<const char*>& out, llvm::opt::Arg& arg) {
-    render_arg_to([&](llvm::StringRef s) { out.push_back(strings.save(s).data()); }, arg);
-}
-
-void CompilationDatabase::render_arg(std::vector<const char*>& out, llvm::opt::Arg& arg) {
-    render_arg_to([&](llvm::StringRef s) { out.push_back(strings.save(s).data()); }, arg);
-}
-
 llvm::ArrayRef<const char*> CompilationDatabase::persist_args(llvm::ArrayRef<const char*> args) {
     if(args.empty())
         return {};
@@ -98,6 +89,10 @@ object_ptr<CompilationInfo>
     CompilationDatabase::save_compilation_info(llvm::StringRef file,
                                                llvm::StringRef directory,
                                                llvm::ArrayRef<const char*> arguments) {
+    auto render_arg = [&](auto& out, llvm::opt::Arg& arg) {
+        render_arg_to([&](llvm::StringRef s) { out.push_back(strings.save(s).data()); }, arg);
+    };
+
     llvm::SmallVector<const char*, 32> canonical_args;
     llvm::SmallVector<const char*, 16> patch_args;
 
@@ -302,24 +297,27 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
     return entries.size();
 }
 
-CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
-                                               const CommandOptions& options) {
+llvm::SmallVector<CompilationContext> CompilationDatabase::lookup(llvm::StringRef file,
+                                                                  const CommandOptions& options) {
     auto path_id = paths.intern(file);
-    auto info = find_info(path_id);
+    auto matched = find_entries(path_id);
 
-    llvm::StringRef directory;
-    std::vector<const char*> arguments;
-
-    auto append_arg = [&](llvm::StringRef s) {
-        arguments.emplace_back(strings.save(s).data());
+    auto render_arg = [&](auto& out, llvm::opt::Arg& arg) {
+        render_arg_to([&](llvm::StringRef s) { out.push_back(strings.save(s).data()); }, arg);
     };
 
-    auto append_args = [&](llvm::ArrayRef<const char*> args) {
-        arguments.insert(arguments.end(), args.begin(), args.end());
-    };
+    /// Build one CompilationContext from a single CompilationInfo.
+    auto build_context = [&](object_ptr<CompilationInfo> info) -> CompilationContext {
+        llvm::StringRef directory = info->directory;
+        std::vector<const char*> arguments;
 
-    if(info) {
-        directory = info->directory;
+        auto append_arg = [&](llvm::StringRef s) {
+            arguments.emplace_back(strings.save(s).data());
+        };
+
+        auto append_args = [&](llvm::ArrayRef<const char*> args) {
+            arguments.insert(arguments.end(), args.begin(), args.end());
+        };
 
         if(options.query_toolchain) {
             auto cached = toolchain_.query_cached(file, directory, info->canonical->arguments);
@@ -328,11 +326,9 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                 if(!options.suppress_logging) {
                     LOG_WARN("failed to query toolchain: {}", file);
                 }
-                // Fall back to simple canonical + patch.
                 append_args(info->canonical->arguments);
                 append_args(info->patch);
             } else {
-                // Start with cc1 result.
                 arguments.assign(cached.begin(), cached.end());
                 arguments.pop_back();  // remove temp source file
 
@@ -357,7 +353,6 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                     }
                 }
 
-                // Replay patch args directly — already parsed, no re-parsing needed.
                 append_args(info->patch);
 
                 // Fix -main-file-name to match the actual file.
@@ -389,14 +384,11 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                 }
             }
         } else {
-            // Simple: canonical + patch. Already parsed and classified
-            // at CDB load time — no re-parsing needed.
             append_args(info->canonical->arguments);
             append_args(info->patch);
         }
 
-        // Apply remove filter to the final args (after query_toolchain so
-        // the filter isn't lost when cc1 args replace the originals).
+        // Apply remove filter.
         if(!options.remove.empty()) {
             using Arg = std::unique_ptr<llvm::opt::Arg>;
             llvm::SmallVector<const char*> remove_strs;
@@ -442,39 +434,55 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         for(auto& arg: options.append) {
             append_arg(arg);
         }
-    } else if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
-        arguments = {"clang++", "-std=c++20"};
+
+        arguments.emplace_back(paths.resolve(path_id).data());
+        return CompilationContext(directory, std::move(arguments));
+    };
+
+    llvm::SmallVector<CompilationContext> results;
+
+    if(!matched.empty()) {
+        for(auto& entry: matched) {
+            results.push_back(build_context(entry.info));
+        }
     } else {
-        arguments = {"clang"};
+        // No matching entry — synthesize a default command.
+        std::vector<const char*> arguments;
+        if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
+            arguments = {"clang++", "-std=c++20"};
+        } else {
+            arguments = {"clang"};
+        }
+        arguments.emplace_back(paths.resolve(path_id).data());
+        results.push_back(CompilationContext({}, std::move(arguments)));
     }
 
-    arguments.emplace_back(paths.resolve(path_id).data());
-
-    return CompilationContext(directory, std::move(arguments));
+    return results;
 }
 
 SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
                                                        const CommandOptions& options) {
     auto path_id = paths.intern(file);
-    auto info = find_info(path_id);
+    auto matched = find_entries(path_id);
 
     // Only cache when remove/append are empty — custom options produce
     // per-call results that shouldn't pollute the shared cache.
-    bool cacheable = info && options.remove.empty() && options.append.empty();
+    bool cacheable = !matched.empty() && options.remove.empty() && options.append.empty();
 
     if(cacheable) {
-        auto key = ConfigCacheKey{info.ptr, options_bits(options)};
+        auto key = ConfigCacheKey{matched.front().info.ptr, options_bits(options)};
         auto cache_it = search_config_cache.find(key);
         if(cache_it != search_config_cache.end()) {
             return cache_it->second;
         }
     }
 
-    auto ctx = lookup(file, options);
+    auto results = lookup(file, options);
+    auto& ctx = results.front();
     auto config = extract_search_config(ctx.arguments, ctx.directory);
 
     if(cacheable) {
-        auto key = ConfigCacheKey{info.ptr, options_bits(options)};
+        auto key = ConfigCacheKey{matched.front().info.ptr, options_bits(options)};
         search_config_cache.try_emplace(key, config);
     }
     return config;
@@ -514,18 +522,5 @@ void CompilationDatabase::add_command(llvm::StringRef directory,
 }
 
 #endif
-
-std::string print_argv(llvm::ArrayRef<const char*> args) {
-    std::string s = "[";
-    if(!args.empty()) {
-        s += args.consume_front();
-        for(auto arg: args) {
-            s += " ";
-            s += arg;
-        }
-    }
-    s += "]";
-    return s;
-}
 
 }  // namespace clice

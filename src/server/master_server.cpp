@@ -199,7 +199,8 @@ et::task<> MasterServer::load_workspace() {
 void MasterServer::fill_compile_args(llvm::StringRef path,
                                      std::string& directory,
                                      std::vector<std::string>& arguments) {
-    auto ctx = cdb.lookup(path, {.query_toolchain = true});
+    auto results = cdb.lookup(path, {.query_toolchain = true});
+    auto& ctx = results.front();
     directory = ctx.directory.str();
     arguments.clear();
     for(auto* arg: ctx.arguments) {

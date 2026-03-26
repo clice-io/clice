@@ -108,4 +108,7 @@ std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
 /// from the current executable path using Driver::GetResourcesPath.
 llvm::StringRef resource_dir();
 
+/// Format an argument list as a human-readable string: "[arg1 arg2 ...]".
+std::string print_argv(llvm::ArrayRef<const char*> args);
+
 }  // namespace clice
