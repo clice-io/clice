@@ -109,7 +109,9 @@ struct ToolchainProvider::Impl {
                 }
             },
             [](int, int) {
-                // Unknown arguments are included in key/query to be safe.
+                // Unknown arguments are silently dropped — they can't be
+                // reliably parsed, so we skip them rather than corrupting
+                // the cache key.
             });
 
         return result;
@@ -175,7 +177,8 @@ std::vector<ToolchainQuery>
         }
 
         LOG_DEBUG("Pre-warm: new toolchain key (len={}) for file={}", key.size(), entry.file);
-        queries.push_back({std::move(key), std::move(query_args), entry.file, entry.directory});
+        queries.push_back(
+            {std::move(key), std::move(query_args), entry.file.str(), entry.directory.str()});
     }
 
     LOG_INFO("Pre-warm: {} unique keys from {} entries, {} queries needed",

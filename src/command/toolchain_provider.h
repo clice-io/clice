@@ -15,8 +15,8 @@ namespace clice {
 struct ToolchainQuery {
     std::string key;
     std::vector<const char*> query_args;
-    llvm::StringRef file;
-    llvm::StringRef directory;
+    std::string file;
+    std::string directory;
 };
 
 /// Result of a toolchain query, to be injected back into the cache.

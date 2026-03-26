@@ -14,7 +14,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 
 option(CLICE_ENABLE_LTO "Enable ThinLTO for all targets" OFF)
 
-#Make sure all third libraries are affected by ABI related options
+# Make sure all third libraries are affected by ABI related options
 if(CLICE_USE_LIBCXX)
     string(APPEND CMAKE_CXX_FLAGS " -stdlib=libc++")
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -stdlib=libc++")
@@ -60,7 +60,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 if(APPLE)
-#https:  // conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
+    # https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
     string(APPEND CMAKE_CXX_FLAGS " -D_LIBCPP_DISABLE_AVAILABILITY=1")
 endif()
 
@@ -85,7 +85,7 @@ if(WIN32)
     target_link_options(clice_options INTERFACE
         -fuse-ld=lld-link
         -Wl,/OPT:REF
-#, / OPT : NOICF
+        #,/OPT:NOICF
     )
 elseif(APPLE)
     target_link_options(clice_options INTERFACE
@@ -129,7 +129,7 @@ add_custom_command(
 
 add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 
-#Temporary migration - only build graph.
+# Temporary migration-only build graph.
 add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/command/command.cpp"
     "${PROJECT_SOURCE_DIR}/src/command/search_config.cpp"

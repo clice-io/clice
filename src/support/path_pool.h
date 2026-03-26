@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 
 #include "llvm/ADT/SmallVector.h"
@@ -31,6 +32,7 @@ struct PathPool {
     }
 
     llvm::StringRef resolve(std::uint32_t id) const {
+        assert(id < paths.size());
         return paths[id];
     }
 };
