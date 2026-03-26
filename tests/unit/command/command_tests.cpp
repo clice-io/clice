@@ -1,37 +1,12 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
-#include "compile/compilation.h"
 
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Program.h"
 #include "clang/Driver/Options.h"
 
 namespace clice::testing {
 
 namespace {
-
-std::string print_argv(llvm::ArrayRef<const char*> args) {
-    std::string buf;
-    llvm::raw_string_ostream os(buf);
-    bool Sep = false;
-    for(llvm::StringRef arg: args) {
-        if(Sep)
-            os << ' ';
-        Sep = true;
-        if(llvm::all_of(arg, llvm::isPrint) &&
-           arg.find_first_of(" \t\n\"\\") == llvm::StringRef::npos) {
-            os << arg;
-            continue;
-        }
-        os << '"';
-        os.write_escaped(arg, /*UseHexEscapes=*/true);
-        os << '"';
-    }
-    return std::move(os.str());
-}
 
 TEST_SUITE(Command) {
 

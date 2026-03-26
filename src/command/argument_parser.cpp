@@ -3,7 +3,9 @@
 #include <array>
 
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/raw_ostream.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Options.h"
 
@@ -200,16 +202,23 @@ bool is_codegen_option(unsigned id, const llvm::opt::Option& opt) {
 }
 
 std::string print_argv(llvm::ArrayRef<const char*> args) {
-    std::string s = "[";
-    if(!args.empty()) {
-        s += args.consume_front();
-        for(auto arg: args) {
-            s += " ";
-            s += arg;
+    std::string buf;
+    llvm::raw_string_ostream os(buf);
+    bool sep = false;
+    for(llvm::StringRef arg: args) {
+        if(sep)
+            os << ' ';
+        sep = true;
+        if(llvm::all_of(arg, llvm::isPrint) &&
+           arg.find_first_of(" \t\n\"\\") == llvm::StringRef::npos) {
+            os << arg;
+            continue;
         }
+        os << '"';
+        os.write_escaped(arg, /*UseHexEscapes=*/true);
+        os << '"';
     }
-    s += "]";
-    return s;
+    return std::move(os.str());
 }
 
 }  // namespace clice
