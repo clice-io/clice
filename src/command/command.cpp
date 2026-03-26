@@ -6,19 +6,17 @@
 #include <string_view>
 #include <tuple>
 
-#include "command/driver.h"
 #include "command/toolchain.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
-#include "support/object_pool.h"
 
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/StringSaver.h"
+
+#include "clang/Driver/Driver.h"
+#include "clang/Driver/Options.h"
 
 namespace clice {
 
@@ -27,663 +25,394 @@ namespace {
 namespace ranges = std::ranges;
 namespace json = llvm::json;
 
-using StringID = StringSet::ID;
-
-struct CompilationInfo {
-    /// The working directory of the compilation.
-    StringID directory = 0;
-
-    /// The canonical compilation arguments(input file and output file are removed).
-    llvm::ArrayRef<StringID> arguments;
-
-    friend bool operator==(const CompilationInfo&, const CompilationInfo&) = default;
-};
-
-/// An item in the compilation database.
-struct JSONItem {
-    /// The path of the source json file, so that we can know where this
-    /// json item from.
-    StringID json_src_path = 0;
-
-    /// The file path of this json item.
-    StringID file_path = 0;
-
-    /// The canonical compilation info of this item.
-    object_ptr<CompilationInfo> info = {nullptr};
-
-    /// A file may have multiple compilation commands, we use
-    /// a chain to connect them. Note that this field does't
-    /// get involved in equality judgement or hash computing.
-    object_ptr<JSONItem> next = {nullptr};
-
-    friend bool operator==(const JSONItem& lhs, const JSONItem& rhs) {
-        return lhs.json_src_path == rhs.json_src_path && lhs.file_path == rhs.file_path &&
-               lhs.info == rhs.info;
-    }
-
-    friend bool operator<(const JSONItem& lhs, const JSONItem& rhs) {
-        return std::tie(lhs.file_path, lhs.info) < std::tie(rhs.file_path, rhs.info);
-    }
-};
-
-struct JSONSource {
-    /// The path of the source json file.
-    StringID src_path;
-
-    /// All json items in the json file, used for increment update.
-    std::vector<object_ptr<JSONItem>> items;
-};
-
 using ID = clang::driver::options::ID;
 
 }  // namespace
 
-}  // namespace clice
+CompilationDatabase::CompilationDatabase() = default;
 
-namespace llvm {
+CompilationDatabase::~CompilationDatabase() = default;
 
-template <>
-struct DenseMapInfo<clice::CompilationInfo> {
-    using T = clice::CompilationInfo;
-
-    inline static T getEmptyKey() {
-        return T(llvm::DenseMapInfo<std::uint32_t>::getEmptyKey());
+bool CompilationDatabase::is_same_file(llvm::StringRef argument, llvm::StringRef file) {
+    if(argument == file) {
+        return true;
     }
-
-    inline static T getTombstoneKey() {
-        return T(llvm::DenseMapInfo<std::uint32_t>::getTombstoneKey());
-    }
-
-    static unsigned getHashValue(const T& info) {
-        return llvm::hash_combine(info.directory, llvm::hash_combine_range(info.arguments));
-    }
-
-    static bool isEqual(const T& lhs, const T& rhs) {
-        return lhs == rhs;
-    }
-};
-
-template <>
-struct DenseMapInfo<clice::JSONItem> {
-    using T = clice::JSONItem;
-
-    inline static T getEmptyKey() {
-        return T(0, llvm::DenseMapInfo<std::uint32_t>::getEmptyKey());
-    }
-
-    inline static T getTombstoneKey() {
-        return T(0, llvm::DenseMapInfo<std::uint32_t>::getTombstoneKey());
-    }
-
-    static unsigned getHashValue(const T& value) {
-        return llvm::hash_combine(value.json_src_path, value.file_path, value.info.ptr);
-    }
-
-    static bool isEqual(const T& lhs, const T& rhs) {
-        return lhs == rhs;
-    }
-};
-
-}  // namespace llvm
-
-namespace clice {
-
-struct CompilationDatabase::Impl {
-    /// The memory pool which holds all elements of compilation database.
-    /// We never try to release the memory until it destructs. So don't
-    /// worry about the lifetime of allocated elements.
-    llvm::BumpPtrAllocator allocator;
-
-    /// Keep all strings.
-    StringSet strings{allocator};
-
-    /// Keep all items in the `compile_commands.json`.
-    ObjectSet<JSONItem> items{allocator};
-
-    /// Keep all canonical command infos, most of file actually
-    /// have the same canonical command.
-    ObjectSet<CompilationInfo> infos{allocator};
-
-    /// All json source file.
-    llvm::SmallVector<JSONSource> sources;
-
-    /// All source files in the compilation database.
-    llvm::DenseMap<StringID, object_ptr<JSONItem>> files;
-
-    /// Pluggable toolchain provider: manages toolchain queries and caching.
-    ToolchainProvider toolchain;
-
-    /// Cache of SearchConfig keyed by (CompilationInfo*, options_bits).
-    /// options_bits encodes the CommandOptions fields that affect the result,
-    /// so different option combinations don't pollute each other's cache entries.
-    using ConfigCacheKey = std::pair<const CompilationInfo*, std::uint8_t>;
-    llvm::DenseMap<ConfigCacheKey, SearchConfig> search_config_cache;
-
-    static std::uint8_t options_bits(const CommandOptions& options) {
-        return options.query_toolchain ? 1u : 0u;
-    }
-
-    /// The clang options we want to filter in all cases, like -c and -o.
-    llvm::DenseSet<std::uint32_t> filtered_options;
-
-    ArgumentParser parser{&allocator};
-
-    /// Check if an argument matches the source file path, handling
-    /// Windows path separator differences (backslash vs forward slash).
-    static bool is_same_file(llvm::StringRef argument, llvm::StringRef file) {
-        if(argument == file) {
-            return true;
-        }
 
 #ifdef _WIN32
-        // On Windows, cmake may use backslashes in `arguments` but forward
-        // slashes in `file`. Normalize and compare.
-        if(argument.size() == file.size()) {
-            for(std::size_t i = 0; i < argument.size(); i++) {
-                char a = argument[i] == '\\' ? '/' : argument[i];
-                char b = file[i] == '\\' ? '/' : file[i];
-                if(std::tolower(static_cast<unsigned char>(a)) !=
-                   std::tolower(static_cast<unsigned char>(b))) {
-                    return false;
-                }
+    // On Windows, cmake may use backslashes in `arguments` but forward
+    // slashes in `file`. Normalize and compare.
+    if(argument.size() == file.size()) {
+        for(std::size_t i = 0; i < argument.size(); i++) {
+            char a = argument[i] == '\\' ? '/' : argument[i];
+            char b = file[i] == '\\' ? '/' : file[i];
+            if(std::tolower(static_cast<unsigned char>(a)) !=
+               std::tolower(static_cast<unsigned char>(b))) {
+                return false;
             }
+        }
+        return true;
+    }
+#endif
+
+    return false;
+}
+
+bool CompilationDatabase::is_discarded_option(unsigned id) {
+    switch(id) {
+        /// Input file and output — we manage these ourselves.
+        case ID::OPT_INPUT:
+        case ID::OPT_c:
+        case ID::OPT_o:
+        case ID::OPT_dxc_Fc:
+        case ID::OPT_dxc_Fo:
+
+        /// PCH building.
+        case ID::OPT_emit_pch:
+        case ID::OPT_include_pch:
+        case ID::OPT__SLASH_Yu:
+        case ID::OPT__SLASH_Fp:
+
+        /// Dependency scan.
+        case ID::OPT_E:
+        case ID::OPT_M:
+        case ID::OPT_MM:
+        case ID::OPT_MD:
+        case ID::OPT_MMD:
+        case ID::OPT_MF:
+        case ID::OPT_MT:
+        case ID::OPT_MQ:
+        case ID::OPT_MG:
+        case ID::OPT_MP:
+        case ID::OPT_show_inst:
+        case ID::OPT_show_encoding:
+        case ID::OPT_show_includes:
+        case ID::OPT__SLASH_showFilenames:
+        case ID::OPT__SLASH_showFilenames_:
+        case ID::OPT__SLASH_showIncludes:
+        case ID::OPT__SLASH_showIncludes_user:
+
+        /// C++ modules — we handle these ourselves.
+        case ID::OPT_fmodule_file:
+        case ID::OPT_fmodule_output:
+        case ID::OPT_fprebuilt_module_path:
             return true;
-        }
-#endif
 
-        return false;
-    }
-
-    object_ptr<CompilationInfo> save_compilation_info(this Impl& self,
-                                                      llvm::StringRef file,
-                                                      llvm::StringRef directory,
-                                                      llvm::ArrayRef<const char*> arguments) {
-        llvm::SmallVector<StringID, 32> stored_arguments;
-
-        self.parser.set_arguments(arguments);
-        /// We don't want to parse all arguments here, it is time-consuming. But we
-        /// want to remove output and input file from arguments. They are main reasons
-        /// causing different file have different commands.
-        for(unsigned it = 0; it != arguments.size(); it++) {
-            llvm::StringRef argument = arguments[it];
-
-            if(is_same_file(argument, file)) {
-                continue;
-            }
-
-            /// All possible output options prefix.
-            constexpr static std::string_view output_options[] = {
-                "-o",
-                "--output",
-                "/o",
-                "/Fo",
-                "/Fe",
-                "/Fd",
-            };
-
-            /// FIXME: This is a heuristic approach that covers the vast majority of cases, but
-            /// theoretical corner cases exist. For example, `-oxx` might be an argument for another
-            /// command, and processing it this way would lead to its incorrect removal. To fix
-            /// these corner cases, it's necessary to parse the command line fully. Additionally,
-            /// detailed benchmarks should be conducted to determine the time required for parsing
-            /// command-line arguments in order to decide if it's worth doing so.
-            if(ranges::any_of(output_options, [&](llvm::StringRef option) {
-                   return argument.starts_with(option);
-               })) {
-                auto prev = it;
-                auto arg = self.parser.parse_one(it);
-
-                /// FIXME: How to handle parse error here?
-                if(!arg) {
-                    it = prev;
-                    continue;
-                }
-
-                auto id = arg->getOption().getID();
-                if(id == ID::OPT_o || id == ID::OPT_dxc_Fo || id == ID::OPT__SLASH_o ||
-                   id == ID::OPT__SLASH_Fo || id == ID::OPT__SLASH_Fe) {
-                    /// It will point to the next argument start but it also increases
-                    /// in the next loop. So decrease it for not skipping next argument.
-                    it -= 1;
-                    continue;
-                }
-
-                /// This argument doesn't represent output file, just recovery it.
-                it = prev;
-            }
-
-            /// FIXME: Handle response file.
-            if(argument.starts_with("@")) {
-                LOG_WARN(
-                    "clice currently supports only one response file in the command, when loads {}",
-                    file);
-                continue;
-            }
-
-            stored_arguments.emplace_back(self.strings.get(argument));
-        }
-
-        auto info_id = self.infos.get({
-            self.strings.get(directory),
-            stored_arguments,
-        });
-
-        /// Note: check whether the arguments data are same as stored arguments,
-        /// if so, we need allocate buffer for it to avoid dangling reference.
-        auto info = self.infos.get(info_id);
-        if(info->arguments.data() == stored_arguments.data()) {
-            auto result = self.allocator.Allocate<StringID>(info->arguments.size());
-            std::ranges::copy(info->arguments, result);
-            info->arguments = {result, info->arguments.size()};
-        }
-
-        return info;
-    }
-
-    object_ptr<CompilationInfo> save_compilation_info(this Impl& self,
-                                                      llvm::StringRef file,
-                                                      llvm::StringRef directory,
-                                                      llvm::StringRef command) {
-        llvm::BumpPtrAllocator local;
-        llvm::StringSaver saver(local);
-
-        llvm::SmallVector<const char*, 32> arguments;
-
-        /// On Windows, always use the Windows tokenizer regardless of the compiler
-        /// (MSVC, clang-cl, MinGW, etc.), because all programs are invoked through
-        /// the Windows API and paths use backslashes. The GNU tokenizer treats '\'
-        /// as an escape character, which corrupts Windows paths like C:\Users into
-        /// C:Users.
-        ///
-        /// Note: this does NOT affect toolchain.cpp's query_clang_toolchain(), which
-        /// parses clang's -### output. That output uses shell-style escaping (\\),
-        /// so the GNU tokenizer is correct there.
-#ifdef _WIN32
-        llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
-#else
-        llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
-#endif
-
-        return self.save_compilation_info(file, directory, arguments);
-    }
-
-    void insert_item(this Impl& self, object_ptr<JSONItem> item) {
-        auto [it, success] = self.files.try_emplace(item->file_path, item);
-        if(success) {
-            return;
-        }
-
-        if(!it->second) {
-            it->second = item;
-            return;
-        }
-
-        auto cur = it->second;
-        while(cur->next) {
-            cur = cur->next;
-        }
-        cur->next = item;
-    }
-
-    void delete_item(this Impl& self, object_ptr<JSONItem> item) {
-        auto it = self.files.find(item->file_path);
-        if(it == self.files.end()) {
-            return;
-        }
-
-        if(it->second == item) {
-            it->second = item->next;
-            return;
-        }
-
-        auto cur = it->second;
-        while(cur->next) {
-            if(cur->next == item) {
-                cur->next = item->next;
-                break;
-            }
-            cur = cur->next;
-        }
-    }
-
-    auto update_source(this Impl& self, JSONSource& source) {
-        std::vector<UpdateInfo> updates;
-
-        /// We only need to sort the input source items, so that sources in self
-        /// are already sorted.
-        ranges::sort(source.items, [](object_ptr<JSONItem> lhs, object_ptr<JSONItem> rhs) {
-            return *lhs < *rhs;
-        });
-
-        auto it = ranges::find(self.sources, source.src_path, &JSONSource::src_path);
-        if(it == self.sources.end()) {
-            for(auto& item: source.items) {
-                self.insert_item(item);
-                updates.emplace_back(UpdateKind::Inserted, item->file_path, item->info.ptr);
-            }
-
-            self.sources.emplace_back(std::move(source));
-        } else {
-            auto& new_items = source.items;
-            auto& old_items = it->items;
-
-            auto it_new = new_items.begin();
-            auto it_old = old_items.begin();
-
-            while(it_new != new_items.end() && it_old != old_items.end()) {
-                const auto& new_item = **it_new;
-                const auto& old_item = **it_old;
-
-                if(new_item == old_item) {
-                    updates.emplace_back(UpdateKind::Unchanged,
-                                         new_item.file_path,
-                                         new_item.info.ptr);
-                    ++it_new;
-                    ++it_old;
-                } else if(new_item < old_item) {
-                    self.insert_item(*it_new);
-                    updates.emplace_back(UpdateKind::Inserted,
-                                         new_item.file_path,
-                                         new_item.info.ptr);
-                    ++it_new;
-                } else {
-                    self.delete_item(*it_old);
-                    updates.emplace_back(UpdateKind::Deleted,
-                                         old_item.file_path,
-                                         old_item.info.ptr);
-                    ++it_old;
-                }
-            }
-
-            while(it_new != new_items.end()) {
-                self.insert_item(*it_new);
-                updates.emplace_back(UpdateKind::Inserted,
-                                     (*it_new)->file_path,
-                                     (*it_new)->info.ptr);
-                ++it_new;
-            }
-
-            while(it_old != old_items.end()) {
-                self.delete_item(*it_old);
-                updates.emplace_back(UpdateKind::Deleted,
-                                     (*it_old)->file_path,
-                                     (*it_old)->info.ptr);
-                ++it_old;
-            }
-
-            it->items = std::move(source.items);
-        }
-
-        return updates;
-    }
-
-    auto mangle_command(this Impl& self,
-                        llvm::StringRef file,
-                        const CompilationInfo& info,
-                        const CommandOptions& options) {
-        llvm::StringRef directory = self.strings.get(info.directory);
-        llvm::SmallVector<const char*, 32> arguments;
-        for(auto arg: info.arguments) {
-            arguments.emplace_back(self.strings.get(arg).data());
-        }
-
-        /// Store the final result arguments.
-        llvm::SmallVector<const char*, 16> final_arguments;
-
-        auto add_string = [&](llvm::StringRef argument) {
-            auto saved = self.strings.save(argument);
-            final_arguments.emplace_back(saved.data());
-        };
-
-        /// Rewrite the argument to filter arguments, we basically reimplement
-        /// the logic of `Arg::render` to use our allocator to allocate memory.
-        auto add_argument = [&](llvm::opt::Arg& arg) {
-            switch(arg.getOption().getRenderStyle()) {
-                case llvm::opt::Option::RenderValuesStyle: {
-                    for(auto value: arg.getValues()) {
-                        add_string(value);
-                    }
-                    break;
-                }
-
-                case llvm::opt::Option::RenderSeparateStyle: {
-                    add_string(arg.getSpelling());
-                    for(auto value: arg.getValues()) {
-                        add_string(value);
-                    }
-                    break;
-                }
-
-                case llvm::opt::Option::RenderJoinedStyle: {
-                    llvm::SmallString<256> first = {arg.getSpelling(), arg.getValue(0)};
-                    add_string(first);
-                    for(auto value: llvm::ArrayRef(arg.getValues()).drop_front()) {
-                        add_string(value);
-                    }
-                    break;
-                }
-
-                case llvm::opt::Option::RenderCommaJoinedStyle: {
-                    llvm::SmallString<256> buffer = arg.getSpelling();
-                    for(auto i = 0; i < arg.getNumValues(); i++) {
-                        if(i) {
-                            buffer += ',';
-                        }
-                        buffer += arg.getValue(i);
-                    }
-                    add_string(buffer);
-                    break;
-                }
-            }
-        };
-
-        /// Append driver sperately
-        add_string(arguments.front());
-
-        using Arg = std::unique_ptr<llvm::opt::Arg>;
-        auto on_error = [&](int index, int count) {
-            LOG_WARN("missing argument index: {}, count: {} when parse: {}", index, count, file);
-        };
-
-        /// Prepare for removing arguments.
-        llvm::SmallVector<const char*> remove;
-        for(auto& arg: options.remove) {
-            remove.push_back(self.strings.save(arg).data());
-        }
-
-        /// FIXME: Handle unknow remove arguments.
-        llvm::SmallVector<Arg> known_remove_args;
-        self.parser.parse(
-            remove,
-            [&known_remove_args](Arg arg) { known_remove_args.emplace_back(std::move(arg)); },
-            on_error);
-        auto get_id = [](const Arg& arg) {
-            return arg->getOption().getID();
-        };
-        ranges::sort(known_remove_args, {}, get_id);
-
-        bool remove_pch = false;
-
-        /// FIXME: Append the commands from response file.
-        self.parser.parse(
-            llvm::ArrayRef(arguments).drop_front(),
-            [&](Arg arg) {
-                auto& opt = arg->getOption();
-                auto id = opt.getID();
-
-                /// Filter options we don't need.
-                if(self.filtered_options.contains(id)) {
-                    return;
-                }
-
-                /// Filter debug info options by group (-g, -gdwarf-*, -gsplit-dwarf, etc.).
-                /// These only affect debug info generation, not frontend semantics.
-                if(opt.matches(ID::OPT_DebugInfo_Group)) {
-                    return;
-                }
-
-                /// Remove arguments in the remove list.
-                auto range = ranges::equal_range(known_remove_args, id, {}, get_id);
-                for(auto& remove: range) {
-                    /// Match the -I*.
-                    if(remove->getNumValues() == 1 && remove->getValue(0) == llvm::StringRef("*")) {
-                        return;
-                    }
-
-                    /// Compare each value, convert `const char*` to `llvm::StringRef` for
-                    /// comparing.
-                    if(ranges::equal(
-                           arg->getValues(),
-                           remove->getValues(),
-                           [](llvm::StringRef lhs, llvm::StringRef rhs) { return lhs == rhs; })) {
-                        return;
-                    }
-                }
-
-                /// For arguments -I<dir>, convert directory to absolute path.
-                /// i.e xmake will generate commands in this style.
-                if(id == ID::OPT_I && arg->getNumValues() == 1) {
-                    add_string("-I");
-                    llvm::StringRef value = arg->getValue(0);
-                    if(!value.empty() && !path::is_absolute(value)) {
-                        add_string(path::join(directory, value));
-                    } else {
-                        add_string(value);
-                    }
-                    return;
-                }
-
-                /// A workaround to remove extra PCH when cmake generate PCH flags for clang.
-                if(id == ID::OPT_Xclang && arg->getNumValues() == 1) {
-                    if(remove_pch) {
-                        remove_pch = false;
-                        return;
-                    }
-
-                    llvm::StringRef value = arg->getValue(0);
-                    if(value == "-include-pch") {
-                        remove_pch = true;
-                        return;
-                    }
-                }
-
-                add_argument(*arg);
-            },
-            on_error);
-
-        /// FIXME: Do we want to parse append arguments also?
-        for(auto& arg: options.append) {
-            add_string(arg);
-        }
-
-        return llvm::ArrayRef(final_arguments).vec();
-    }
-};
-
-CompilationDatabase::CompilationDatabase() : self(std::make_unique<CompilationDatabase::Impl>()) {
-    constexpr static std::array filtered_options = {
-        /// Remove the input file, we will add input file ourselves.
-        ID::OPT_INPUT,
-
-        /// -c and -o are meaningless for frontend.
-        ID::OPT_c,
-        ID::OPT_o,
-        ID::OPT_dxc_Fc,
-        ID::OPT_dxc_Fo,
-
-        /// Remove all ID related to PCH building.
-        ID::OPT_emit_pch,
-        ID::OPT_include_pch,
-        ID::OPT__SLASH_Yu,
-        ID::OPT__SLASH_Fp,
-
-        /// Remove all ID related to dependency scan.
-        ID::OPT_E,
-        ID::OPT_M,
-        ID::OPT_MM,
-        ID::OPT_MD,
-        ID::OPT_MMD,
-        ID::OPT_MF,
-        ID::OPT_MT,
-        ID::OPT_MQ,
-        ID::OPT_MG,
-        ID::OPT_MP,
-        ID::OPT_show_inst,
-        ID::OPT_show_encoding,
-        ID::OPT_show_includes,
-        ID::OPT__SLASH_showFilenames,
-        ID::OPT__SLASH_showFilenames_,
-        ID::OPT__SLASH_showIncludes,
-        ID::OPT__SLASH_showIncludes_user,
-
-        /// Remove all ID related to C++ module, we will
-        /// build module and set deps ourselves.
-        ID::OPT_fmodule_file,
-        ID::OPT_fmodule_output,
-        ID::OPT_fprebuilt_module_path,
-
-        /// Remove codegen-only options that don't affect frontend semantics
-        /// (parsing, diagnostics, code completion). These are pure backend/linker
-        /// concerns irrelevant to an LSP server.
-        ///
-        /// Note: -fno-exceptions, -fno-rtti, -std=*, -march=*, -fsanitize=*, -O*
-        /// are NOT filtered here — they affect predefined macros or language semantics.
-
-        /// Position-independent code — pure codegen, no macro or semantic effect.
-        ID::OPT_fPIC,
-        ID::OPT_fno_PIC,
-        ID::OPT_fpic,
-        ID::OPT_fno_pic,
-        ID::OPT_fPIE,
-        ID::OPT_fno_PIE,
-        ID::OPT_fpie,
-        ID::OPT_fno_pie,
-
-        /// Frame pointer and unwind tables — pure codegen.
-        ID::OPT_fomit_frame_pointer,
-        ID::OPT_fno_omit_frame_pointer,
-        ID::OPT_funwind_tables,
-        ID::OPT_fno_unwind_tables,
-        ID::OPT_fasynchronous_unwind_tables,
-        ID::OPT_fno_asynchronous_unwind_tables,
-
-        /// Stack protection — pure codegen.
-        ID::OPT_fstack_protector,
-        ID::OPT_fstack_protector_strong,
-        ID::OPT_fstack_protector_all,
-        ID::OPT_fno_stack_protector,
-
-        /// Section splitting, LTO, semantic interposition — pure codegen/linker.
-        ID::OPT_fdata_sections,
-        ID::OPT_fno_data_sections,
-        ID::OPT_ffunction_sections,
-        ID::OPT_fno_function_sections,
-        ID::OPT_flto,
-        ID::OPT_flto_EQ,
-        ID::OPT_fno_lto,
-        ID::OPT_fsemantic_interposition,
-        ID::OPT_fno_semantic_interposition,
-        ID::OPT_fvisibility_inlines_hidden,
-
-        /// Diagnostics output formatting — doesn't affect analysis.
-        ID::OPT_fcolor_diagnostics,
-        ID::OPT_fno_color_diagnostics,
-
-        /// Floating-point codegen — doesn't define macros (unlike -ffast-math).
-        ID::OPT_ftrapping_math,
-        ID::OPT_fno_trapping_math,
-    };
-
-    for(auto opt: filtered_options) {
-        self->filtered_options.insert(opt);
+        default:
+            return false;
     }
 }
 
-CompilationDatabase::CompilationDatabase(CompilationDatabase&& other) = default;
+bool CompilationDatabase::is_user_content_option(unsigned id) {
+    switch(id) {
+        case ID::OPT_I:
+        case ID::OPT_isystem:
+        case ID::OPT_iquote:
+        case ID::OPT_idirafter:
+        case ID::OPT_D:
+        case ID::OPT_U:
+        case ID::OPT_include:
+            return true;
+        default:
+            return false;
+    }
+}
 
-CompilationDatabase& CompilationDatabase::operator=(CompilationDatabase&& other) = default;
+void CompilationDatabase::render_arg(llvm::SmallVectorImpl<StringID>& out,
+                                     llvm::opt::Arg& arg) {
+    switch(arg.getOption().getRenderStyle()) {
+        case llvm::opt::Option::RenderValuesStyle:
+            for(auto value: arg.getValues()) {
+                out.push_back(strings.get(value));
+            }
+            break;
 
-CompilationDatabase::~CompilationDatabase() = default;
+        case llvm::opt::Option::RenderSeparateStyle:
+            out.push_back(strings.get(arg.getSpelling()));
+            for(auto value: arg.getValues()) {
+                out.push_back(strings.get(value));
+            }
+            break;
+
+        case llvm::opt::Option::RenderJoinedStyle: {
+            llvm::SmallString<256> first = {arg.getSpelling(), arg.getValue(0)};
+            out.push_back(strings.get(first));
+            for(auto value: llvm::ArrayRef(arg.getValues()).drop_front()) {
+                out.push_back(strings.get(value));
+            }
+            break;
+        }
+
+        case llvm::opt::Option::RenderCommaJoinedStyle: {
+            llvm::SmallString<256> buffer = arg.getSpelling();
+            for(int i = 0; i < arg.getNumValues(); i++) {
+                if(i)
+                    buffer += ',';
+                buffer += arg.getValue(i);
+            }
+            out.push_back(strings.get(buffer));
+            break;
+        }
+    }
+}
+
+void CompilationDatabase::render_arg_chars(std::vector<const char*>& out,
+                                           llvm::opt::Arg& arg) {
+    switch(arg.getOption().getRenderStyle()) {
+        case llvm::opt::Option::RenderValuesStyle:
+            for(auto value: arg.getValues()) {
+                out.push_back(strings.save(value).data());
+            }
+            break;
+
+        case llvm::opt::Option::RenderSeparateStyle:
+            out.push_back(strings.save(arg.getSpelling()).data());
+            for(auto value: arg.getValues()) {
+                out.push_back(strings.save(value).data());
+            }
+            break;
+
+        case llvm::opt::Option::RenderJoinedStyle: {
+            llvm::SmallString<256> first = {arg.getSpelling(), arg.getValue(0)};
+            out.push_back(strings.save(first).data());
+            for(auto value: llvm::ArrayRef(arg.getValues()).drop_front()) {
+                out.push_back(strings.save(value).data());
+            }
+            break;
+        }
+
+        case llvm::opt::Option::RenderCommaJoinedStyle: {
+            llvm::SmallString<256> buffer = arg.getSpelling();
+            for(int i = 0; i < arg.getNumValues(); i++) {
+                if(i)
+                    buffer += ',';
+                buffer += arg.getValue(i);
+            }
+            out.push_back(strings.save(buffer).data());
+            break;
+        }
+    }
+}
+
+llvm::ArrayRef<StringID> CompilationDatabase::persist_ids(llvm::ArrayRef<StringID> ids) {
+    if(ids.empty())
+        return {};
+    auto* buf = allocator.Allocate<StringID>(ids.size());
+    std::ranges::copy(ids, buf);
+    return {buf, ids.size()};
+}
+
+object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(
+    llvm::StringRef file,
+    llvm::StringRef directory,
+    llvm::ArrayRef<const char*> arguments) {
+    llvm::SmallVector<StringID, 32> canonical_args;
+    llvm::SmallVector<StringID, 16> patch_args;
+
+    /// Driver goes into canonical.
+    canonical_args.push_back(strings.get(arguments[0]));
+
+    bool remove_pch = false;
+
+    auto on_error = [&](int index, int count) {
+        LOG_WARN("missing argument index: {}, count: {} when parse: {}", index, count, file);
+    };
+
+    parser.parse(
+        llvm::ArrayRef(arguments).drop_front(),
+        [&](std::unique_ptr<llvm::opt::Arg> arg) {
+            auto& opt = arg->getOption();
+            auto id = opt.getID();
+
+            /// Discard options irrelevant to frontend.
+            if(is_discarded_option(id)) {
+                return;
+            }
+
+            /// Discard codegen-only options (shared with ToolchainProvider).
+            if(is_codegen_option(id, opt)) {
+                return;
+            }
+
+            /// Handle CMake's Xclang PCH workaround:
+            /// -Xclang -include-pch -Xclang <pchfile> → discard both pairs.
+            if(id == ID::OPT_Xclang && arg->getNumValues() == 1) {
+                if(remove_pch) {
+                    remove_pch = false;
+                    return;
+                }
+                llvm::StringRef value = arg->getValue(0);
+                if(value == "-include-pch") {
+                    remove_pch = true;
+                    return;
+                }
+            }
+
+            /// User-content options go into per-file patch.
+            if(is_user_content_option(id)) {
+                /// For -I, absolutize relative paths.
+                if(id == ID::OPT_I && arg->getNumValues() == 1) {
+                    patch_args.push_back(strings.get("-I"));
+                    llvm::StringRef value = arg->getValue(0);
+                    if(!value.empty() && !path::is_absolute(value)) {
+                        patch_args.push_back(strings.get(path::join(directory, value)));
+                    } else {
+                        patch_args.push_back(strings.get(value));
+                    }
+                    return;
+                }
+                render_arg(patch_args, *arg);
+                return;
+            }
+
+            /// Everything else goes into canonical.
+            render_arg(canonical_args, *arg);
+        },
+        on_error);
+
+    /// Dedup canonical command.
+    auto canonical_id = canonicals.get(CanonicalCommand{canonical_args});
+    auto canonical = canonicals.get(canonical_id);
+    if(canonical->arguments.data() == canonical_args.data()) {
+        canonical->arguments = persist_ids(canonical_args);
+    }
+
+    /// Build and dedup CompilationInfo.
+    auto dir_id = strings.get(directory);
+    auto info_id = infos.get(CompilationInfo{dir_id, canonical, patch_args});
+    auto info = infos.get(info_id);
+    if(info->patch.data() == patch_args.data()) {
+        info->patch = persist_ids(patch_args);
+    }
+
+    return info;
+}
+
+object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(
+    llvm::StringRef file,
+    llvm::StringRef directory,
+    llvm::StringRef command) {
+    llvm::BumpPtrAllocator local;
+    llvm::StringSaver saver(local);
+
+    llvm::SmallVector<const char*, 32> arguments;
+
+#ifdef _WIN32
+    llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
+#else
+    llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
+#endif
+
+    return save_compilation_info(file, directory, arguments);
+}
+
+void CompilationDatabase::insert_item(object_ptr<JSONItem> item) {
+    auto [it, success] = files_.try_emplace(item->file_path, item);
+    if(success) {
+        return;
+    }
+
+    if(!it->second) {
+        it->second = item;
+        return;
+    }
+
+    auto cur = it->second;
+    while(cur->next) {
+        cur = cur->next;
+    }
+    cur->next = item;
+}
+
+void CompilationDatabase::delete_item(object_ptr<JSONItem> item) {
+    auto it = files_.find(item->file_path);
+    if(it == files_.end()) {
+        return;
+    }
+
+    if(it->second == item) {
+        it->second = item->next;
+        return;
+    }
+
+    auto cur = it->second;
+    while(cur->next) {
+        if(cur->next == item) {
+            cur->next = item->next;
+            break;
+        }
+        cur = cur->next;
+    }
+}
+
+std::vector<UpdateInfo> CompilationDatabase::update_source(JSONSource& source) {
+    namespace ranges = std::ranges;
+    std::vector<UpdateInfo> updates;
+
+    ranges::sort(source.items, [](object_ptr<JSONItem> lhs, object_ptr<JSONItem> rhs) {
+        return *lhs < *rhs;
+    });
+
+    auto it = ranges::find(sources, source.src_path, &JSONSource::src_path);
+    if(it == sources.end()) {
+        for(auto& item: source.items) {
+            insert_item(item);
+            updates.emplace_back(UpdateKind::Inserted, item->file_path, item->info.ptr);
+        }
+
+        sources.emplace_back(std::move(source));
+    } else {
+        auto& new_items = source.items;
+        auto& old_items = it->items;
+
+        auto it_new = new_items.begin();
+        auto it_old = old_items.begin();
+
+        while(it_new != new_items.end() && it_old != old_items.end()) {
+            const auto& new_item = **it_new;
+            const auto& old_item = **it_old;
+
+            if(new_item == old_item) {
+                updates.emplace_back(UpdateKind::Unchanged,
+                                     new_item.file_path,
+                                     new_item.info.ptr);
+                ++it_new;
+                ++it_old;
+            } else if(new_item < old_item) {
+                insert_item(*it_new);
+                updates.emplace_back(UpdateKind::Inserted,
+                                     new_item.file_path,
+                                     new_item.info.ptr);
+                ++it_new;
+            } else {
+                delete_item(*it_old);
+                updates.emplace_back(UpdateKind::Deleted,
+                                     old_item.file_path,
+                                     old_item.info.ptr);
+                ++it_old;
+            }
+        }
+
+        while(it_new != new_items.end()) {
+            insert_item(*it_new);
+            updates.emplace_back(UpdateKind::Inserted,
+                                 (*it_new)->file_path,
+                                 (*it_new)->info.ptr);
+            ++it_new;
+        }
+
+        while(it_old != old_items.end()) {
+            delete_item(*it_old);
+            updates.emplace_back(UpdateKind::Deleted,
+                                 (*it_old)->file_path,
+                                 (*it_old)->info.ptr);
+            ++it_old;
+        }
+
+        it->items = std::move(source.items);
+    }
+
+    return updates;
+}
 
 std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringRef path) {
     auto content = llvm::MemoryBuffer::getFile(path);
@@ -694,15 +423,15 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
         return {};
     }
 
-    auto json = json::parse(content.get()->getBuffer());
-    if(!json) {
+    auto json_val = json::parse(content.get()->getBuffer());
+    if(!json_val) {
         LOG_ERROR("Failed to parse compilation database from {}. Reason: {}",
                   path,
-                  json.takeError());
+                  json_val.takeError());
         return {};
     }
 
-    if(json->kind() != json::Value::Array) {
+    if(json_val->kind() != json::Value::Array) {
         LOG_ERROR(
             "Invalid compilation database format in {}. Reason: Root element must be an array.",
             path);
@@ -710,10 +439,10 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
     }
 
     JSONSource source;
-    source.src_path = self->strings.get(path);
+    source.src_path = strings.get(path);
 
-    for(size_t i = 0; i < json->getAsArray()->size(); ++i) {
-        const auto& value = (*json->getAsArray())[i];
+    for(size_t i = 0; i < json_val->getAsArray()->size(); ++i) {
+        const auto& value = (*json_val->getAsArray())[i];
         if(value.kind() != json::Value::Object) {
             LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {}. Reason: item is not an object.",
@@ -753,7 +482,7 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
 
         JSONItem item;
         item.json_src_path = source.src_path;
-        item.file_path = self->strings.get(*file);
+        item.file_path = strings.get(*file);
         if(arguments) {
             llvm::BumpPtrAllocator local;
             llvm::StringSaver saver(local);
@@ -763,14 +492,14 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
                     agrs.emplace_back(saver.save(*argument.getAsString()).data());
                 }
             }
-            item.info = self->save_compilation_info(*file, *directory, agrs);
+            item.info = save_compilation_info(*file, *directory, agrs);
         } else if(command) {
-            item.info = self->save_compilation_info(*file, *directory, *command);
+            item.info = save_compilation_info(*file, *directory, *command);
         }
-        source.items.emplace_back(self->items.save(item));
+        source.items.emplace_back(items.save(item));
     }
 
-    return self->update_source(source);
+    return update_source(source);
 }
 
 CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
@@ -778,16 +507,14 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                                                const void* context) {
     object_ptr<CompilationInfo> info = nullptr;
 
-    auto path_id = self->strings.get(file);
-    file = self->strings.get(path_id);
+    auto path_id = strings.get(file);
+    file = strings.get(path_id);
 
-    auto it = self->files.find(path_id);
-    if(it != self->files.end()) [[unlikely]] {
+    auto it = files_.find(path_id);
+    if(it != files_.end()) [[unlikely]] {
         if(!context) {
-            /// If context is not provided, we just use the first.
             info = it->second->info;
         } else {
-            /// Otherwise find the corresponding one.
             auto cur = it->second;
             while(cur) {
                 if(cur->info.ptr == context) {
@@ -802,44 +529,122 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
     llvm::StringRef directory;
     std::vector<const char*> arguments;
 
+    auto append_arg = [&](llvm::StringRef s) {
+        arguments.emplace_back(strings.save(s).data());
+    };
+
+    auto append_ids = [&](llvm::ArrayRef<StringID> ids) {
+        for(auto id: ids) {
+            arguments.push_back(strings.get(id).data());
+        }
+    };
+
     if(info) {
-        directory = self->strings.get(info->directory);
-        arguments = self->mangle_command(file, *info, options);
-        // TODO: other c++ suffixes
+        directory = strings.get(info->directory);
+
+        // Build final args: canonical + patch. Already parsed and classified
+        // at CDB load time — no re-parsing needed.
+        append_ids(info->canonical->arguments);
+
+        if(!options.remove.empty()) {
+            // Apply remove filter on canonical args (rare path).
+            // Parse the remove list and match by option ID against the args.
+            using Arg = std::unique_ptr<llvm::opt::Arg>;
+            llvm::SmallVector<const char*> remove_strs;
+            for(auto& arg: options.remove) {
+                remove_strs.push_back(strings.save(arg).data());
+            }
+            llvm::SmallVector<Arg> remove_args;
+            parser.parse(
+                remove_strs,
+                [&remove_args](Arg arg) { remove_args.emplace_back(std::move(arg)); },
+                [](int, int) {});
+            auto get_id = [](const Arg& arg) { return arg->getOption().getID(); };
+            std::ranges::sort(remove_args, {}, get_id);
+
+            // Re-parse the current canonical+patch args to filter by remove list.
+            auto saved_args = std::move(arguments);
+            arguments.clear();
+            arguments.push_back(saved_args.front()); // driver
+
+            parser.parse(
+                llvm::ArrayRef(saved_args).drop_front(),
+                [&](Arg arg) {
+                    auto id = arg->getOption().getID();
+                    auto range = std::ranges::equal_range(remove_args, id, {}, get_id);
+                    for(auto& remove: range) {
+                        if(remove->getNumValues() == 1 &&
+                           remove->getValue(0) == llvm::StringRef("*")) {
+                            return;
+                        }
+                        if(std::ranges::equal(
+                               arg->getValues(),
+                               remove->getValues(),
+                               [](llvm::StringRef l, llvm::StringRef r) { return l == r; })) {
+                            return;
+                        }
+                    }
+                    render_arg_chars(arguments, *arg);
+                },
+                [](int, int) {});
+
+            // Append patch args (also subject to remove).
+            llvm::SmallVector<const char*, 16> patch_chars;
+            for(auto id: info->patch) {
+                patch_chars.push_back(strings.get(id).data());
+            }
+            parser.parse(
+                patch_chars,
+                [&](Arg arg) {
+                    auto id = arg->getOption().getID();
+                    auto range = std::ranges::equal_range(remove_args, id, {}, get_id);
+                    for(auto& remove: range) {
+                        if(remove->getNumValues() == 1 &&
+                           remove->getValue(0) == llvm::StringRef("*")) {
+                            return;
+                        }
+                        if(std::ranges::equal(
+                               arg->getValues(),
+                               remove->getValues(),
+                               [](llvm::StringRef l, llvm::StringRef r) { return l == r; })) {
+                            return;
+                        }
+                    }
+                    render_arg_chars(arguments, *arg);
+                },
+                [](int, int) {});
+        } else {
+            append_ids(info->patch);
+        }
+
+        for(auto& arg: options.append) {
+            append_arg(arg);
+        }
     } else if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
         arguments = {"clang++", "-std=c++20"};
     } else {
         arguments = {"clang"};
     }
 
-    auto append_arg = [&](llvm::StringRef s) {
-        arguments.emplace_back(self->strings.save(s).data());
-    };
-
     if(info && options.query_toolchain) {
-        // Save user args before replacing with cc1 result. The toolchain
-        // query includes all flags except user-content options (-I/-D/-U/etc.),
-        // so the cc1 result has correct semantics. Only user-content options
-        // need to be replayed afterward.
-        auto user_args = std::move(arguments);
+        // Build canonical-only args for the toolchain query.
+        llvm::SmallVector<const char*, 32> canonical_chars;
+        for(auto id: info->canonical->arguments) {
+            canonical_chars.push_back(strings.get(id).data());
+        }
 
-        auto cached = self->toolchain.query_cached(file, directory, user_args);
+        auto cached = toolchain_.query_cached(file, directory, canonical_chars);
 
         if(cached.empty()) {
-            LOG_WARN("failed to query toolchain: {}", file);
-            arguments = std::move(user_args);
+            if(!options.suppress_logging) {
+                LOG_WARN("failed to query toolchain: {}", file);
+            }
         } else {
-            // Start with cc1 result (has system paths, driver flags, etc.).
+            // Start with cc1 result.
             arguments.assign(cached.begin(), cached.end());
+            arguments.pop_back(); // remove temp source file
 
-            // Remove the temp source file that was appended during query.
-            arguments.pop_back();
-
-            // The toolchain query derives the resource dir from the system
-            // compiler's executable path. If that compiler is a different clang
-            // version, its builtin headers may not match ours. Replace the
-            // queried resource dir with ours so the headers are consistent.
-            // (See clangd's CommandMangler for precedent.)
+            // Replace resource dir if needed.
             if(!resource_dir().empty()) {
                 llvm::StringRef old_resource_dir;
                 for(std::size_t i = 0; i + 1 < arguments.size(); ++i) {
@@ -854,36 +659,14 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                         if(s.starts_with(old_resource_dir)) {
                             auto replaced =
                                 resource_dir().str() + s.substr(old_resource_dir.size()).str();
-                            arg = self->strings.save(replaced).data();
+                            arg = strings.save(replaced).data();
                         }
                     }
                 }
             }
 
-            // Replay user-content options (-I/-D/-U/-include/-idirafter) from
-            // the original mangled args. These were excluded from the toolchain
-            // query since they don't affect compiler semantics or system paths.
-            self->parser.parse(
-                llvm::ArrayRef(user_args).drop_front(),
-                [&](std::unique_ptr<llvm::opt::Arg> arg) {
-                    auto id = arg->getOption().getID();
-                    switch(id) {
-                        case ID::OPT_I:
-                        case ID::OPT_isystem:
-                        case ID::OPT_iquote:
-                        case ID::OPT_idirafter:
-                        case ID::OPT_D:
-                        case ID::OPT_U:
-                        case ID::OPT_include:
-                            append_arg(arg->getSpelling());
-                            for(auto value: arg->getValues()) {
-                                append_arg(value);
-                            }
-                            break;
-                        default: break;
-                    }
-                },
-                [](int, int) {});
+            // Replay patch args directly — already parsed, no re-parsing needed.
+            append_ids(info->patch);
 
             // Fix -main-file-name to match the actual file.
             bool next_main_file = false;
@@ -892,17 +675,14 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                     next_main_file = true;
                     continue;
                 }
-
                 if(next_main_file) {
-                    arg = self->strings.save(path::filename(file)).data();
+                    arg = strings.save(path::filename(file)).data();
                     next_main_file = false;
                 }
             }
         }
 
-        // Inject our resource dir if not already present in the arguments.
-        // On success, the cc1 output already has -resource-dir (possibly
-        // replaced above). On failure, the original user_args won't have it.
+        // Inject our resource dir if not already present.
         if(!resource_dir().empty()) {
             bool has_resource_dir = false;
             for(auto& arg: arguments) {
@@ -927,10 +707,10 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
                                                        const CommandOptions& options,
                                                        const void* context) {
     // Resolve to the internal CompilationInfo pointer for cache lookup.
-    auto path_id = self->strings.get(file);
-    auto it = self->files.find(path_id);
+    auto path_id = strings.get(file);
+    auto it = files_.find(path_id);
     const CompilationInfo* info_ptr = nullptr;
-    if(it != self->files.end()) {
+    if(it != files_.end()) {
         if(!context) {
             info_ptr = it->second->info.ptr;
         } else {
@@ -946,9 +726,9 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
     }
 
     if(info_ptr) {
-        auto key = Impl::ConfigCacheKey{info_ptr, Impl::options_bits(options)};
-        auto cache_it = self->search_config_cache.find(key);
-        if(cache_it != self->search_config_cache.end()) {
+        auto key = ConfigCacheKey{info_ptr, options_bits(options)};
+        auto cache_it = search_config_cache.find(key);
+        if(cache_it != search_config_cache.end()) {
             return cache_it->second;
         }
     }
@@ -957,14 +737,14 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
     auto config = extract_search_config(ctx.arguments, ctx.directory);
 
     if(info_ptr) {
-        auto key = Impl::ConfigCacheKey{info_ptr, Impl::options_bits(options)};
-        self->search_config_cache.try_emplace(key, config);
+        auto key = ConfigCacheKey{info_ptr, options_bits(options)};
+        search_config_cache.try_emplace(key, config);
     }
     return config;
 }
 
 bool CompilationDatabase::has_cached_configs() const {
-    return !self->search_config_cache.empty();
+    return !search_config_cache.empty();
 }
 
 std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef argument) {
@@ -1001,7 +781,7 @@ llvm::StringRef CompilationDatabase::resource_dir() {
 }
 
 ToolchainProvider& CompilationDatabase::toolchain() {
-    return self->toolchain;
+    return toolchain_;
 }
 
 std::vector<ToolchainProvider::PendingEntry> CompilationDatabase::resolve_toolchain_entries(
@@ -1010,12 +790,12 @@ std::vector<ToolchainProvider::PendingEntry> CompilationDatabase::resolve_toolch
     entries.reserve(files.size());
 
     for(auto& [file, context]: files) {
-        auto path_id = self->strings.get(file);
-        auto stored_file = self->strings.get(path_id);
+        auto path_id = strings.get(file);
+        auto stored_file = strings.get(path_id);
 
         object_ptr<CompilationInfo> info = nullptr;
-        auto it = self->files.find(path_id);
-        if(it != self->files.end()) {
+        auto it = files_.find(path_id);
+        if(it != files_.end()) {
             if(!context) {
                 info = it->second->info;
             } else {
@@ -1030,16 +810,19 @@ std::vector<ToolchainProvider::PendingEntry> CompilationDatabase::resolve_toolch
             }
         }
 
-        if(!info || info->arguments.empty()) {
+        if(!info || !info->canonical || info->canonical->arguments.empty()) {
             continue;
         }
 
         ToolchainProvider::PendingEntry entry;
         entry.file = stored_file;
-        entry.directory = self->strings.get(info->directory);
-        entry.arguments.reserve(info->arguments.size());
-        for(auto arg_id: info->arguments) {
-            entry.arguments.push_back(self->strings.get(arg_id).data());
+        entry.directory = strings.get(info->directory);
+        // Pass only canonical args — user-content options (-I/-D/-U/etc.)
+        // are already separated into patch and will be replayed after
+        // the toolchain query.
+        entry.arguments.reserve(info->canonical->arguments.size());
+        for(auto arg_id: info->canonical->arguments) {
+            entry.arguments.push_back(strings.get(arg_id).data());
         }
 
         entries.push_back(std::move(entry));
@@ -1049,42 +832,41 @@ std::vector<ToolchainProvider::PendingEntry> CompilationDatabase::resolve_toolch
 }
 
 llvm::StringRef CompilationDatabase::resolve_path(std::uint32_t path_id) {
-    return self->strings.get(path_id);
+    return strings.get(path_id);
 }
 
 std::vector<const char*> CompilationDatabase::files() {
     std::vector<const char*> result;
-    for(auto& [file, _]: self->files) {
-        result.emplace_back(self->strings.get(file).data());
+    for(auto& [file, _]: files_) {
+        result.emplace_back(strings.get(file).data());
     }
     return result;
 }
 
 llvm::StringRef CompilationDatabase::save_string(llvm::StringRef string) {
-    return self->strings.save(string);
+    return strings.save(string);
 }
 
 #ifdef CLICE_ENABLE_TEST
 
 void CompilationDatabase::add_command(llvm::StringRef directory,
                                       llvm::StringRef file,
-
                                       llvm::ArrayRef<const char*> arguments) {
     JSONItem item;
-    item.json_src_path = self->strings.get("fake");
-    item.file_path = self->strings.get(file);
-    item.info = self->save_compilation_info(file, directory, arguments);
-    self->insert_item(self->items.save(item));
+    item.json_src_path = strings.get("fake");
+    item.file_path = strings.get(file);
+    item.info = save_compilation_info(file, directory, arguments);
+    insert_item(items.save(item));
 }
 
 void CompilationDatabase::add_command(llvm::StringRef directory,
                                       llvm::StringRef file,
                                       llvm::StringRef command) {
     JSONItem item;
-    item.json_src_path = self->strings.get("fake");
-    item.file_path = self->strings.get(file);
-    item.info = self->save_compilation_info(file, directory, command);
-    self->insert_item(self->items.save(item));
+    item.json_src_path = strings.get("fake");
+    item.file_path = strings.get(file);
+    item.info = save_compilation_info(file, directory, command);
+    insert_item(items.save(item));
 }
 
 #endif

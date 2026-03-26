@@ -187,16 +187,6 @@ TEST_CASE(InjectThenGetPendingSkipsCached) {
     EXPECT_EQ(queries2.size(), 0u);
 }
 
-TEST_CASE(MoveConstruction) {
-    ToolchainProvider provider;
-    std::vector<ToolchainResult> results;
-    results.push_back({"key1", {"-cc1"}});
-    provider.inject_results(results);
-
-    ToolchainProvider moved(std::move(provider));
-    EXPECT_TRUE(moved.has_cached_entries());
-}
-
 };  // TEST_SUITE(ToolchainProvider)
 
 }  // namespace

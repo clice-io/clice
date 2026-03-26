@@ -1,12 +1,15 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
+#include "command/argument_parser.h"
+#include "support/object_pool.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -37,10 +40,12 @@ struct ToolchainResult {
 /// composition and delegates all toolchain operations to it.
 class ToolchainProvider {
 public:
-    ToolchainProvider();
-    ~ToolchainProvider();
-    ToolchainProvider(ToolchainProvider&&) noexcept;
-    ToolchainProvider& operator=(ToolchainProvider&&) noexcept;
+    ToolchainProvider() = default;
+    ~ToolchainProvider() = default;
+    ToolchainProvider(const ToolchainProvider&) = delete;
+    ToolchainProvider& operator=(const ToolchainProvider&) = delete;
+    ToolchainProvider(ToolchainProvider&&) = delete;
+    ToolchainProvider& operator=(ToolchainProvider&&) = delete;
 
     /// Query toolchain with caching. Returns cached cc1 args for the given
     /// compilation arguments, running the expensive compiler query only on
@@ -68,8 +73,24 @@ public:
     bool has_cached_entries() const;
 
 private:
-    struct Impl;
-    std::unique_ptr<Impl> self;
+    struct ToolchainExtract {
+        std::string key;
+        std::vector<const char*> query_args;
+    };
+
+    /// Options excluded from the cache key and toolchain query. Per-file user
+    /// content (include paths, defines, forced includes) or input files.
+    static bool is_excluded_option(unsigned id);
+
+    ToolchainExtract extract_toolchain_flags(llvm::StringRef file,
+                                             llvm::ArrayRef<const char*> arguments);
+
+    llvm::BumpPtrAllocator allocator;
+    StringSet strings{allocator};
+    ArgumentParser parser{&allocator};
+
+    /// Cache of toolchain query results, keyed by canonical toolchain key.
+    llvm::StringMap<std::vector<const char*>> toolchain_cache;
 };
 
 }  // namespace clice

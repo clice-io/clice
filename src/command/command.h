@@ -1,17 +1,19 @@
 #pragma once
 
 #include <cstdint>
-#include <expected>
-#include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
+#include "command/argument_parser.h"
 #include "command/search_config.h"
 #include "command/toolchain_provider.h"
 #include "support/format.h"
+#include "support/object_pool.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -63,19 +65,151 @@ struct CompilationContext {
     std::vector<const char*> arguments;
 };
 
+using StringID = StringSet::ID;
+
+/// Shared compiler identity — driver + all semantics-affecting flags.
+/// Deduped via ObjectSet so most files share one instance. This directly
+/// serves as the toolchain cache key (no re-parsing needed at query time).
+struct CanonicalCommand {
+    llvm::ArrayRef<StringID> arguments;
+    friend bool operator==(const CanonicalCommand&, const CanonicalCommand&) = default;
+};
+
+/// Per-file compilation entry = shared canonical + per-file user-content patch.
+/// Parsed and classified once at CDB load time; no further parsing needed.
+struct CompilationInfo {
+    StringID directory = 0;
+
+    /// Shared canonical command (driver + semantic flags).
+    object_ptr<CanonicalCommand> canonical = {nullptr};
+
+    /// Per-file user-content options: -I, -D, -U, -include, -isystem, -iquote,
+    /// -idirafter. Pre-rendered as flat arg list with -I paths already absolutized.
+    llvm::ArrayRef<StringID> patch;
+
+    friend bool operator==(const CompilationInfo&, const CompilationInfo&) = default;
+};
+
+/// An item in the compilation database.
+struct JSONItem {
+    /// The path of the source json file, so that we can know where this
+    /// json item from.
+    StringID json_src_path = 0;
+
+    /// The file path of this json item.
+    StringID file_path = 0;
+
+    /// The canonical compilation info of this item.
+    object_ptr<CompilationInfo> info = {nullptr};
+
+    /// A file may have multiple compilation commands, we use
+    /// a chain to connect them. Note that this field does't
+    /// get involved in equality judgement or hash computing.
+    object_ptr<JSONItem> next = {nullptr};
+
+    friend bool operator==(const JSONItem& lhs, const JSONItem& rhs) {
+        return lhs.json_src_path == rhs.json_src_path && lhs.file_path == rhs.file_path &&
+               lhs.info == rhs.info;
+    }
+
+    friend bool operator<(const JSONItem& lhs, const JSONItem& rhs) {
+        return std::tie(lhs.file_path, lhs.info) < std::tie(rhs.file_path, rhs.info);
+    }
+};
+
+struct JSONSource {
+    /// The path of the source json file.
+    StringID src_path;
+
+    /// All json items in the json file, used for increment update.
+    std::vector<object_ptr<JSONItem>> items;
+};
+
 std::string print_argv(llvm::ArrayRef<const char*> args);
+
+}  // namespace clice
+
+namespace llvm {
+
+template <>
+struct DenseMapInfo<clice::CanonicalCommand> {
+    using T = clice::CanonicalCommand;
+
+    inline static T getEmptyKey() {
+        return T{llvm::ArrayRef<clice::StringID>(
+            reinterpret_cast<clice::StringID*>(~uintptr_t(0)), size_t(0))};
+    }
+
+    inline static T getTombstoneKey() {
+        return T{llvm::ArrayRef<clice::StringID>(
+            reinterpret_cast<clice::StringID*>(~uintptr_t(0) - 1), size_t(0))};
+    }
+
+    static unsigned getHashValue(const T& cmd) {
+        return llvm::hash_combine_range(cmd.arguments);
+    }
+
+    static bool isEqual(const T& lhs, const T& rhs) {
+        return lhs == rhs;
+    }
+};
+
+template <>
+struct DenseMapInfo<clice::CompilationInfo> {
+    using T = clice::CompilationInfo;
+
+    inline static T getEmptyKey() {
+        return T{llvm::DenseMapInfo<std::uint32_t>::getEmptyKey()};
+    }
+
+    inline static T getTombstoneKey() {
+        return T{llvm::DenseMapInfo<std::uint32_t>::getTombstoneKey()};
+    }
+
+    static unsigned getHashValue(const T& info) {
+        return llvm::hash_combine(info.directory,
+                                  info.canonical.ptr,
+                                  llvm::hash_combine_range(info.patch));
+    }
+
+    static bool isEqual(const T& lhs, const T& rhs) {
+        return lhs == rhs;
+    }
+};
+
+template <>
+struct DenseMapInfo<clice::JSONItem> {
+    using T = clice::JSONItem;
+
+    inline static T getEmptyKey() {
+        return T{0, llvm::DenseMapInfo<std::uint32_t>::getEmptyKey()};
+    }
+
+    inline static T getTombstoneKey() {
+        return T{0, llvm::DenseMapInfo<std::uint32_t>::getTombstoneKey()};
+    }
+
+    static unsigned getHashValue(const T& value) {
+        return llvm::hash_combine(value.json_src_path, value.file_path, value.info.ptr);
+    }
+
+    static bool isEqual(const T& lhs, const T& rhs) {
+        return lhs == rhs;
+    }
+};
+
+}  // namespace llvm
+
+namespace clice {
 
 class CompilationDatabase {
 public:
     CompilationDatabase();
 
     CompilationDatabase(const CompilationDatabase&) = delete;
-
-    CompilationDatabase(CompilationDatabase&& other);
-
     CompilationDatabase& operator=(const CompilationDatabase&) = delete;
-
-    CompilationDatabase& operator=(CompilationDatabase&& other);
+    CompilationDatabase(CompilationDatabase&&) = delete;
+    CompilationDatabase& operator=(CompilationDatabase&&) = delete;
 
     ~CompilationDatabase();
 
@@ -91,10 +225,6 @@ public:
     CompilationContext lookup(llvm::StringRef file,
                               const CommandOptions& options = {},
                               const void* context = nullptr);
-
-    /// TODO: list all compilation context of the file, this is useful to show
-    /// all contexts and let user choose one.
-    /// std::vector<CompilationContext> fetch_all(llvm::StringRef file);
 
     /// Combined lookup + extract_search_config with internal caching.
     /// Results are cached by CompilationInfo pointer, avoiding repeated
@@ -146,8 +276,71 @@ public:
 #endif
 
 private:
-    struct Impl;
-    std::unique_ptr<Impl> self;
+    /// Check if an argument matches the source file path, handling
+    /// Windows path separator differences (backslash vs forward slash).
+    static bool is_same_file(llvm::StringRef argument, llvm::StringRef file);
+
+    /// Options that are completely irrelevant to an LSP and should be discarded.
+    static bool is_discarded_option(unsigned id);
+
+    /// User-content options go into the per-file patch (not the shared canonical).
+    static bool is_user_content_option(unsigned id);
+
+    /// Render a parsed argument into a flat list of StringIDs.
+    void render_arg(llvm::SmallVectorImpl<StringID>& out, llvm::opt::Arg& arg);
+
+    /// Render a parsed argument into a flat list of const char*.
+    void render_arg_chars(std::vector<const char*>& out, llvm::opt::Arg& arg);
+
+    /// Allocate a persistent copy of a StringID array on the bump allocator.
+    llvm::ArrayRef<StringID> persist_ids(llvm::ArrayRef<StringID> ids);
+
+    /// Parse and classify a compilation command into canonical + patch.
+    object_ptr<CompilationInfo> save_compilation_info(llvm::StringRef file,
+                                                      llvm::StringRef directory,
+                                                      llvm::ArrayRef<const char*> arguments);
+
+    object_ptr<CompilationInfo> save_compilation_info(llvm::StringRef file,
+                                                      llvm::StringRef directory,
+                                                      llvm::StringRef command);
+
+    void insert_item(object_ptr<JSONItem> item);
+    void delete_item(object_ptr<JSONItem> item);
+    std::vector<UpdateInfo> update_source(JSONSource& source);
+
+    static std::uint8_t options_bits(const CommandOptions& options) {
+        return options.query_toolchain ? 1u : 0u;
+    }
+
+    /// The memory pool which holds all elements of compilation database.
+    llvm::BumpPtrAllocator allocator;
+
+    /// Keep all strings.
+    StringSet strings{allocator};
+
+    /// Keep all items in the `compile_commands.json`.
+    ObjectSet<JSONItem> items{allocator};
+
+    /// Shared canonical commands — most files share one instance.
+    ObjectSet<CanonicalCommand> canonicals{allocator};
+
+    /// Per-file compilation infos (canonical + patch + directory).
+    ObjectSet<CompilationInfo> infos{allocator};
+
+    /// All json source file.
+    llvm::SmallVector<JSONSource> sources;
+
+    /// All source files in the compilation database.
+    llvm::DenseMap<StringID, object_ptr<JSONItem>> files_;
+
+    /// Pluggable toolchain provider: manages toolchain queries and caching.
+    ToolchainProvider toolchain_;
+
+    /// Cache of SearchConfig keyed by (CompilationInfo*, options_bits).
+    using ConfigCacheKey = std::pair<const CompilationInfo*, std::uint8_t>;
+    llvm::DenseMap<ConfigCacheKey, SearchConfig> search_config_cache;
+
+    ArgumentParser parser{&allocator};
 };
 
 }  // namespace clice
