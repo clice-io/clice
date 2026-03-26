@@ -259,6 +259,14 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
         llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
         llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
+        // Resolve relative file paths against the directory so that entries
+        // from different directories don't collide in the PathPool.
+        std::string file_abs;
+        if(!path::is_absolute(file_ref)) {
+            file_abs = path::join(dir_ref, file_ref);
+            file_ref = file_abs;
+        }
+
         simdjson::ondemand::array args_arr;
         if(!obj["arguments"].get_array().get(args_arr)) {
             llvm::BumpPtrAllocator local;
