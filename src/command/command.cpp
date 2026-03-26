@@ -1,18 +1,17 @@
 #include "command/command.h"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <ranges>
 #include <string_view>
-#include <tuple>
 
+#include "simdjson.h"
 #include "command/toolchain.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/JSON.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/StringSaver.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Options.h"
@@ -22,7 +21,6 @@ namespace clice {
 namespace {
 
 namespace ranges = std::ranges;
-namespace json = llvm::json;
 
 using ID = clang::driver::options::ID;
 
@@ -32,21 +30,10 @@ CompilationDatabase::CompilationDatabase() = default;
 
 CompilationDatabase::~CompilationDatabase() = default;
 
-object_ptr<CompilationInfo> CompilationDatabase::find_info(StringID path_id,
-                                                           const void* context) const {
-    auto it = files_.find(path_id);
-    if(it == files_.end()) {
-        return nullptr;
-    }
-    if(!context) {
-        return it->second->info;
-    }
-    auto cur = it->second;
-    while(cur) {
-        if(cur->info.ptr == context) {
-            return cur->info;
-        }
-        cur = cur->next;
+object_ptr<CompilationInfo> CompilationDatabase::find_info(std::uint32_t path_id) const {
+    auto it = ranges::lower_bound(entries, path_id, {}, &CompilationEntry::file);
+    if(it != entries.end() && it->file == path_id) {
+        return it->info;
     }
     return nullptr;
 }
@@ -272,201 +259,115 @@ object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(llvm::Str
     return save_compilation_info(file, directory, arguments);
 }
 
-void CompilationDatabase::insert_item(object_ptr<JSONItem> item) {
-    auto [it, success] = files_.try_emplace(item->file_path, item);
-    if(success) {
-        return;
-    }
-
-    if(!it->second) {
-        it->second = item;
-        return;
-    }
-
-    auto cur = it->second;
-    while(cur->next) {
-        cur = cur->next;
-    }
-    cur->next = item;
-}
-
-void CompilationDatabase::delete_item(object_ptr<JSONItem> item) {
-    auto it = files_.find(item->file_path);
-    if(it == files_.end()) {
-        return;
-    }
-
-    if(it->second == item) {
-        it->second = item->next;
-        return;
-    }
-
-    auto cur = it->second;
-    while(cur->next) {
-        if(cur->next == item) {
-            cur->next = item->next;
-            break;
-        }
-        cur = cur->next;
-    }
-}
-
-std::vector<UpdateInfo> CompilationDatabase::update_source(JSONSource& source) {
-    namespace ranges = std::ranges;
-    std::vector<UpdateInfo> updates;
-
-    // Invalidate SearchConfig cache — compilation entries are changing.
+std::size_t CompilationDatabase::load(llvm::StringRef path) {
+    // Clear old entries and caches (but keep allocator/strings/canonicals/infos/toolchain).
+    entries.clear();
     search_config_cache.clear();
 
-    ranges::sort(source.items,
-                 [](object_ptr<JSONItem> lhs, object_ptr<JSONItem> rhs) { return *lhs < *rhs; });
-
-    auto it = ranges::find(sources, source.src_path, &JSONSource::src_path);
-    if(it == sources.end()) {
-        for(auto& item: source.items) {
-            insert_item(item);
-            updates.emplace_back(UpdateKind::Inserted, item->file_path, item->info.ptr);
-        }
-
-        sources.emplace_back(std::move(source));
-    } else {
-        auto& new_items = source.items;
-        auto& old_items = it->items;
-
-        auto it_new = new_items.begin();
-        auto it_old = old_items.begin();
-
-        while(it_new != new_items.end() && it_old != old_items.end()) {
-            const auto& new_item = **it_new;
-            const auto& old_item = **it_old;
-
-            if(new_item == old_item) {
-                updates.emplace_back(UpdateKind::Unchanged, new_item.file_path, new_item.info.ptr);
-                ++it_new;
-                ++it_old;
-            } else if(new_item < old_item) {
-                insert_item(*it_new);
-                updates.emplace_back(UpdateKind::Inserted, new_item.file_path, new_item.info.ptr);
-                ++it_new;
-            } else {
-                delete_item(*it_old);
-                updates.emplace_back(UpdateKind::Deleted, old_item.file_path, old_item.info.ptr);
-                ++it_old;
-            }
-        }
-
-        while(it_new != new_items.end()) {
-            insert_item(*it_new);
-            updates.emplace_back(UpdateKind::Inserted, (*it_new)->file_path, (*it_new)->info.ptr);
-            ++it_new;
-        }
-
-        while(it_old != old_items.end()) {
-            delete_item(*it_old);
-            updates.emplace_back(UpdateKind::Deleted, (*it_old)->file_path, (*it_old)->info.ptr);
-            ++it_old;
-        }
-
-        it->items = std::move(source.items);
-    }
-
-    return updates;
-}
-
-std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringRef path) {
-    auto content = llvm::MemoryBuffer::getFile(path);
-    if(!content) {
-        LOG_ERROR("Failed to read compilation database from {}. Reason: {}",
+    simdjson::padded_string json_buf;
+    if(auto error = simdjson::padded_string::load(std::string(path)).get(json_buf)) {
+        LOG_ERROR("Failed to read compilation database from {}: {}",
                   path,
-                  content.getError());
-        return {};
+                  simdjson::error_message(error));
+        return 0;
     }
 
-    auto json_val = json::parse(content.get()->getBuffer());
-    if(!json_val) {
-        LOG_ERROR("Failed to parse compilation database from {}. Reason: {}",
+    simdjson::ondemand::parser json_parser;
+    simdjson::ondemand::document doc;
+    if(auto error = json_parser.iterate(json_buf).get(doc)) {
+        LOG_ERROR("Failed to parse compilation database from {}: {}",
                   path,
-                  json_val.takeError());
-        return {};
+                  simdjson::error_message(error));
+        return 0;
     }
 
-    if(json_val->kind() != json::Value::Array) {
-        LOG_ERROR(
-            "Invalid compilation database format in {}. Reason: Root element must be an array.",
-            path);
-        return {};
+    simdjson::ondemand::array arr;
+    if(auto error = doc.get_array().get(arr)) {
+        LOG_ERROR("Invalid compilation database format in {}: root element must be an array.",
+                  path);
+        return 0;
     }
 
-    JSONSource source;
-    source.src_path = strings.get(path);
-
-    for(size_t i = 0; i < json_val->getAsArray()->size(); ++i) {
-        const auto& value = (*json_val->getAsArray())[i];
-        if(value.kind() != json::Value::Object) {
+    std::size_t index = 0;
+    for(auto element: arr) {
+        simdjson::ondemand::object obj;
+        if(element.get_object().get(obj)) {
             LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {}. Reason: item is not an object.",
+                "Invalid compilation database in {}. Skipping item at index {}: " "item is not an object.",
                 path,
-                i);
+                index);
+            ++index;
             continue;
         }
 
-        auto& object = *value.getAsObject();
-        auto directory = object.getString("directory");
-        if(!directory) {
+        std::string_view dir_sv, file_sv;
+        if(obj["directory"].get_string().get(dir_sv)) {
             LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {}. Reason: 'directory' key is missing.",
+                "Invalid compilation database in {}. Skipping item at index {}: " "'directory' key is missing.",
                 path,
-                i);
+                index);
+            ++index;
             continue;
         }
 
-        auto file = object.getString("file");
-        if(!file) {
+        if(obj["file"].get_string().get(file_sv)) {
             LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {}. Reason: 'file' key is missing.",
+                "Invalid compilation database in {}. Skipping item at index {}: " "'file' key is missing.",
                 path,
-                i);
+                index);
+            ++index;
             continue;
         }
 
-        auto arguments = object.getArray("arguments");
-        auto command = object.getString("command");
-        if(!arguments && !command) {
-            LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {}. Reason: neither 'arguments' nor 'command' key is present.",
-                path,
-                i);
-            continue;
-        }
+        llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
+        llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
-        JSONItem item;
-        item.json_src_path = source.src_path;
-        item.file_path = strings.get(*file);
-        if(arguments) {
+        simdjson::ondemand::array args_arr;
+        if(!obj["arguments"].get_array().get(args_arr)) {
             llvm::BumpPtrAllocator local;
             llvm::StringSaver saver(local);
-            llvm::SmallVector<const char*, 32> agrs;
-            for(auto& argument: *arguments) {
-                if(argument.kind() == json::Value::String) {
-                    agrs.emplace_back(saver.save(*argument.getAsString()).data());
+            llvm::SmallVector<const char*, 32> args;
+            for(auto arg_val: args_arr) {
+                std::string_view sv;
+                if(!arg_val.get_string().get(sv)) {
+                    args.push_back(saver.save(llvm::StringRef(sv.data(), sv.size())).data());
                 }
             }
-            item.info = save_compilation_info(*file, *directory, agrs);
-        } else if(command) {
-            item.info = save_compilation_info(*file, *directory, *command);
+            if(!args.empty()) {
+                auto info = save_compilation_info(file_ref, dir_ref, args);
+                auto path_id = paths.intern(file_ref);
+                entries.push_back({path_id, info});
+            }
+        } else {
+            std::string_view cmd_sv;
+            if(obj["command"].get_string().get(cmd_sv)) {
+                LOG_ERROR(
+                    "Invalid compilation database in {}. Skipping item at index {}: " "neither 'arguments' nor 'command' key is present.",
+                    path,
+                    index);
+                ++index;
+                continue;
+            }
+            auto info = save_compilation_info(file_ref,
+                                              dir_ref,
+                                              llvm::StringRef(cmd_sv.data(), cmd_sv.size()));
+            auto path_id = paths.intern(file_ref);
+            entries.push_back({path_id, info});
         }
-        source.items.emplace_back(items.save(item));
+
+        ++index;
     }
 
-    return update_source(source);
+    // Sort by file path_id for binary search.
+    ranges::sort(entries, {}, &CompilationEntry::file);
+
+    return entries.size();
 }
 
 CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
-                                               const CommandOptions& options,
-                                               const void* context) {
-    auto path_id = strings.get(file);
-    file = strings.get(path_id);
-    auto info = find_info(path_id, context);
+                                               const CommandOptions& options) {
+    auto path_id = paths.intern(file);
+    auto info = find_info(path_id);
 
     llvm::StringRef directory;
     std::vector<const char*> arguments;
@@ -617,16 +518,15 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         arguments = {"clang"};
     }
 
-    arguments.emplace_back(file.data());
+    arguments.emplace_back(paths.resolve(path_id).data());
 
     return CompilationContext(directory, std::move(arguments));
 }
 
 SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
-                                                       const CommandOptions& options,
-                                                       const void* context) {
-    auto path_id = strings.get(file);
-    auto info = find_info(path_id, context);
+                                                       const CommandOptions& options) {
+    auto path_id = paths.intern(file);
+    auto info = find_info(path_id);
 
     // Only cache when remove/append are empty — custom options produce
     // per-call results that shouldn't pollute the shared cache.
@@ -640,7 +540,7 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
         }
     }
 
-    auto ctx = lookup(file, options, context);
+    auto ctx = lookup(file, options);
     auto config = extract_search_config(ctx.arguments, ctx.directory);
 
     if(cacheable) {
@@ -691,51 +591,8 @@ ToolchainProvider& CompilationDatabase::toolchain() {
     return toolchain_;
 }
 
-std::vector<ToolchainProvider::PendingEntry> CompilationDatabase::resolve_toolchain_entries(
-    llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files) {
-    std::vector<ToolchainProvider::PendingEntry> entries;
-    entries.reserve(files.size());
-
-    for(auto& [file, context]: files) {
-        auto path_id = strings.get(file);
-        auto stored_file = strings.get(path_id);
-        auto info = find_info(path_id, context);
-
-        if(!info || !info->canonical || info->canonical->arguments.empty()) {
-            continue;
-        }
-
-        ToolchainProvider::PendingEntry entry;
-        entry.file = stored_file;
-        entry.directory = strings.get(info->directory);
-        // Pass only canonical args — user-content options (-I/-D/-U/etc.)
-        // are already separated into patch and will be replayed after
-        // the toolchain query.
-        entry.arguments.reserve(info->canonical->arguments.size());
-        for(auto arg_id: info->canonical->arguments) {
-            entry.arguments.push_back(strings.get(arg_id).data());
-        }
-
-        entries.push_back(std::move(entry));
-    }
-
-    return entries;
-}
-
 llvm::StringRef CompilationDatabase::resolve_path(std::uint32_t path_id) {
-    return strings.get(path_id);
-}
-
-std::vector<const char*> CompilationDatabase::files() {
-    std::vector<const char*> result;
-    for(auto& [file, _]: files_) {
-        result.emplace_back(strings.get(file).data());
-    }
-    return result;
-}
-
-llvm::StringRef CompilationDatabase::save_string(llvm::StringRef string) {
-    return strings.save(string);
+    return paths.resolve(path_id);
 }
 
 #ifdef CLICE_ENABLE_TEST
@@ -743,21 +600,20 @@ llvm::StringRef CompilationDatabase::save_string(llvm::StringRef string) {
 void CompilationDatabase::add_command(llvm::StringRef directory,
                                       llvm::StringRef file,
                                       llvm::ArrayRef<const char*> arguments) {
-    JSONItem item;
-    item.json_src_path = strings.get("fake");
-    item.file_path = strings.get(file);
-    item.info = save_compilation_info(file, directory, arguments);
-    insert_item(items.save(item));
+    auto path_id = paths.intern(file);
+    auto info = save_compilation_info(file, directory, arguments);
+    // Insert in sorted position to maintain sort invariant.
+    auto it = ranges::lower_bound(entries, path_id, {}, &CompilationEntry::file);
+    entries.insert(it, {path_id, info});
 }
 
 void CompilationDatabase::add_command(llvm::StringRef directory,
                                       llvm::StringRef file,
                                       llvm::StringRef command) {
-    JSONItem item;
-    item.json_src_path = strings.get("fake");
-    item.file_path = strings.get(file);
-    item.info = save_compilation_info(file, directory, command);
-    insert_item(items.save(item));
+    auto path_id = paths.intern(file);
+    auto info = save_compilation_info(file, directory, command);
+    auto it = ranges::lower_bound(entries, path_id, {}, &CompilationEntry::file);
+    entries.insert(it, {path_id, info});
 }
 
 #endif

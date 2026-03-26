@@ -188,6 +188,7 @@ target_link_libraries(clice-core PUBLIC
     flatbuffers
     eventide::ipc::lsp
     eventide::serde::toml
+    simdjson::simdjson
 )
 
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")

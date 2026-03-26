@@ -192,8 +192,8 @@ et::task<> MasterServer::load_workspace() {
         co_return;
     }
 
-    auto updates = cdb.load_compile_database(cdb_path);
-    LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, updates.size());
+    auto count = cdb.load(cdb_path);
+    LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
 }
 
 void MasterServer::fill_compile_args(llvm::StringRef path,

@@ -8,13 +8,12 @@
 #include "command/argument_parser.h"
 #include "command/search_config.h"
 #include "command/toolchain_provider.h"
-#include "support/format.h"
 #include "support/object_pool.h"
+#include "support/path_pool.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -37,25 +36,6 @@ struct CommandOptions {
 
     /// The commands that you want to add to original commands list.
     llvm::ArrayRef<std::string> append;
-};
-
-enum class UpdateKind : std::uint8_t {
-    Unchanged,
-    Inserted,
-    Deleted,
-};
-
-struct UpdateInfo {
-    /// The kind of update.
-    UpdateKind kind;
-
-    /// The updated file.
-    std::uint32_t path_id;
-
-    /// The compilation context of this file command, which could
-    /// be used to identity the same file with different compilation
-    /// contexts.
-    const void* context;
 };
 
 struct CompilationContext {
@@ -91,39 +71,13 @@ struct CompilationInfo {
     friend bool operator==(const CompilationInfo&, const CompilationInfo&) = default;
 };
 
-/// An item in the compilation database.
-struct JSONItem {
-    /// The path of the source json file, so that we can know where this
-    /// json item from.
-    StringID json_src_path = 0;
+/// A single entry in the compilation database, stored in a flat sorted vector.
+struct CompilationEntry {
+    /// Interned path ID for the source file (from PathPool).
+    std::uint32_t file;
 
-    /// The file path of this json item.
-    StringID file_path = 0;
-
-    /// The canonical compilation info of this item.
-    object_ptr<CompilationInfo> info = {nullptr};
-
-    /// A file may have multiple compilation commands, we use
-    /// a chain to connect them. Note that this field does't
-    /// get involved in equality judgement or hash computing.
-    object_ptr<JSONItem> next = {nullptr};
-
-    friend bool operator==(const JSONItem& lhs, const JSONItem& rhs) {
-        return lhs.json_src_path == rhs.json_src_path && lhs.file_path == rhs.file_path &&
-               lhs.info == rhs.info;
-    }
-
-    friend bool operator<(const JSONItem& lhs, const JSONItem& rhs) {
-        return std::tie(lhs.file_path, lhs.info) < std::tie(rhs.file_path, rhs.info);
-    }
-};
-
-struct JSONSource {
-    /// The path of the source json file.
-    StringID src_path;
-
-    /// All json items in the json file, used for increment update.
-    std::vector<object_ptr<JSONItem>> items;
+    /// Parsed compilation info (directory + canonical + patch).
+    object_ptr<CompilationInfo> info;
 };
 
 std::string print_argv(llvm::ArrayRef<const char*> args);
@@ -179,27 +133,6 @@ struct DenseMapInfo<clice::CompilationInfo> {
     }
 };
 
-template <>
-struct DenseMapInfo<clice::JSONItem> {
-    using T = clice::JSONItem;
-
-    inline static T getEmptyKey() {
-        return T{0, llvm::DenseMapInfo<std::uint32_t>::getEmptyKey()};
-    }
-
-    inline static T getTombstoneKey() {
-        return T{0, llvm::DenseMapInfo<std::uint32_t>::getTombstoneKey()};
-    }
-
-    static unsigned getHashValue(const T& value) {
-        return llvm::hash_combine(value.json_src_path, value.file_path, value.info.ptr);
-    }
-
-    static bool isEqual(const T& lhs, const T& rhs) {
-        return lhs == rhs;
-    }
-};
-
 }  // namespace llvm
 
 namespace clice {
@@ -215,52 +148,33 @@ public:
     CompilationDatabase& operator=(CompilationDatabase&&) = default;
 
 public:
-    /// Read the compilation database on the give file and return the
-    /// incremental update infos.
-    std::vector<UpdateInfo> load_compile_database(llvm::StringRef file);
+    /// Load (or reload) the compilation database from the given file.
+    /// Full reload: old entries are replaced, SearchConfig cache is cleared,
+    /// but ToolchainProvider cache survives. Returns the number of entries loaded.
+    std::size_t load(llvm::StringRef path);
 
-    /// Lookup the compilation context of specific file. If the context
-    /// param is provided, we will return the compilation context corresponding
-    /// to the handle. Otherwise we just return the first one(if the file have)
-    /// multiple compilation contexts.
-    CompilationContext lookup(llvm::StringRef file,
-                              const CommandOptions& options = {},
-                              const void* context = nullptr);
+    /// Lookup the compilation context for a file. When a file has multiple
+    /// compilation commands, returns the first one.
+    CompilationContext lookup(llvm::StringRef file, const CommandOptions& options = {});
 
     /// Combined lookup + extract_search_config with internal caching.
-    /// Results are cached by CompilationInfo pointer, avoiding repeated
-    /// argument parsing across multiple calls with the same context.
-    SearchConfig lookup_search_config(llvm::StringRef file,
-                                      const CommandOptions& options = {},
-                                      const void* context = nullptr);
+    SearchConfig lookup_search_config(llvm::StringRef file, const CommandOptions& options = {});
 
     /// Check if SearchConfig cache is populated (non-empty).
     bool has_cached_configs() const;
 
-    /// Get an the option for specific argument.
+    /// Get the option ID for a specific argument string.
     static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
 
     /// Get the resource directory for clang builtin headers. Computed once
     /// from the current executable path using Driver::GetResourcesPath.
     static llvm::StringRef resource_dir();
 
-    /// Resolve a path_id (from UpdateInfo) back to the file path string.
+    /// Resolve a path_id back to the file path string.
     llvm::StringRef resolve_path(std::uint32_t path_id);
 
     /// Access the toolchain provider for batch pre-warming and direct queries.
     ToolchainProvider& toolchain();
-
-    /// Resolve (file, context) pairs to PendingEntry tuples for toolchain queries.
-    /// Converts CDB-internal context pointers to raw (file, directory, arguments)
-    /// that the ToolchainProvider can consume.
-    std::vector<ToolchainProvider::PendingEntry>
-        resolve_toolchain_entries(llvm::ArrayRef<std::pair<llvm::StringRef, const void*>> files);
-
-    /// FIXME: bad interface design ...
-    std::vector<const char*> files();
-
-    /// FIXME: remove this api?
-    auto save_string(llvm::StringRef string) -> llvm::StringRef;
 
 #ifdef CLICE_ENABLE_TEST
 
@@ -270,15 +184,11 @@ public:
 
     void add_command(llvm::StringRef directory, llvm::StringRef file, llvm::StringRef command);
 
-    /// FIXME: remove this
-    /// Update commands from json file and return all updated file.
-    std::expected<std::vector<UpdateInfo>, std::string> load_commands(llvm::StringRef json_content,
-                                                                      llvm::StringRef workspace);
 #endif
 
 private:
-    /// Find the CompilationInfo for a (path_id, context) pair.
-    object_ptr<CompilationInfo> find_info(StringID path_id, const void* context) const;
+    /// Find the CompilationInfo for a file by its path_id (binary search).
+    object_ptr<CompilationInfo> find_info(std::uint32_t path_id) const;
 
     /// Options that are completely irrelevant to an LSP and should be discarded.
     static bool is_discarded_option(unsigned id);
@@ -304,10 +214,6 @@ private:
                                                       llvm::StringRef directory,
                                                       llvm::StringRef command);
 
-    void insert_item(object_ptr<JSONItem> item);
-    void delete_item(object_ptr<JSONItem> item);
-    std::vector<UpdateInfo> update_source(JSONSource& source);
-
     static std::uint8_t options_bits(const CommandOptions& options) {
         return options.query_toolchain ? 1u : 0u;
     }
@@ -316,11 +222,8 @@ private:
     /// Heap-allocated so its address is stable across moves.
     std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();
 
-    /// Keep all strings.
+    /// Keep all strings (arguments, directories, etc.).
     StringSet strings{allocator.get()};
-
-    /// Keep all items in the `compile_commands.json`.
-    ObjectSet<JSONItem> items{allocator.get()};
 
     /// Shared canonical commands — most files share one instance.
     ObjectSet<CanonicalCommand> canonicals{allocator.get()};
@@ -328,11 +231,12 @@ private:
     /// Per-file compilation infos (canonical + patch + directory).
     ObjectSet<CompilationInfo> infos{allocator.get()};
 
-    /// All json source file.
-    llvm::SmallVector<JSONSource> sources;
+    /// Intern pool for file paths → compact uint32_t IDs.
+    PathPool paths;
 
-    /// All source files in the compilation database.
-    llvm::DenseMap<StringID, object_ptr<JSONItem>> files_;
+    /// All compilation entries, sorted by file path_id.
+    /// Multiple entries for the same file are adjacent.
+    std::vector<CompilationEntry> entries;
 
     /// Pluggable toolchain provider: manages toolchain queries and caching.
     ToolchainProvider toolchain_;
