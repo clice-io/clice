@@ -3,9 +3,8 @@
 #include "command/command.h"
 #include "support/filesystem.h"
 
-#include "clang/Driver/Options.h"
-
 #include "llvm/Support/raw_ostream.h"
+#include "clang/Driver/Options.h"
 
 namespace clice::testing {
 
@@ -250,8 +249,7 @@ TEST_CASE(CodegenFilter) {
     database.add_command(
         "fake",
         "main.cpp",
-        "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong "
-        "-fdata-sections -ffunction-sections -flto -fcolor-diagnostics -g main.cpp"sv);
+        "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong " "-fdata-sections -ffunction-sections -flto -fcolor-diagnostics -g main.cpp"sv);
 
     CommandOptions options;
     options.suppress_logging = true;
@@ -344,7 +342,8 @@ TEST_CASE(IncludePathAbsolutize) {
     using namespace std::literals;
 
     CompilationDatabase database;
-    database.add_command("/project/build", "main.cpp",
+    database.add_command("/project/build",
+                         "main.cpp",
                          "clang++ -Iinclude -isystem sys/inc -iquote ../src main.cpp"sv);
 
     CommandOptions options;
@@ -361,8 +360,7 @@ TEST_CASE(IncludePathAbsolutize) {
 
     /// Absolute paths should be kept as-is.
     CompilationDatabase database2;
-    database2.add_command("/project/build", "main.cpp",
-                          "clang++ -I/usr/include main.cpp"sv);
+    database2.add_command("/project/build", "main.cpp", "clang++ -I/usr/include main.cpp"sv);
 
     auto result2 = database2.lookup("main.cpp", options).front().arguments;
     auto argv2 = print_argv(result2);
@@ -381,8 +379,10 @@ TEST_CASE(LookupSearchConfig) {
     using namespace std::literals;
 
     CompilationDatabase database;
-    database.add_command("/project", "main.cpp",
-                         "clang++ -std=c++20 -I/usr/include -isystem /usr/local/include main.cpp"sv);
+    database.add_command(
+        "/project",
+        "main.cpp",
+        "clang++ -std=c++20 -I/usr/include -isystem /usr/local/include main.cpp"sv);
 
     ASSERT_FALSE(database.has_cached_configs());
 
