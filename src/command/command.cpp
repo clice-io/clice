@@ -802,17 +802,28 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                 }
             }
 
-            // Inject user include paths (-I, -isystem, -iquote) from the
-            // original mangled args into the cc1 result.
+            // Inject user flags from the original mangled args into the cc1
+            // result. The toolchain query only caches system-level results
+            // (target, sysroot, system includes), so user-level flags like
+            // -I, -D, -U, -include, -idirafter must be replayed.
             self->parser.parse(
                 llvm::ArrayRef(user_args).drop_front(),
                 [&](std::unique_ptr<llvm::opt::Arg> arg) {
                     auto id = arg->getOption().getID();
-                    if(id == ID::OPT_I || id == ID::OPT_isystem || id == ID::OPT_iquote) {
-                        append_arg(arg->getSpelling());
-                        for(auto value: arg->getValues()) {
-                            append_arg(value);
-                        }
+                    switch(id) {
+                        case ID::OPT_I:
+                        case ID::OPT_isystem:
+                        case ID::OPT_iquote:
+                        case ID::OPT_D:
+                        case ID::OPT_U:
+                        case ID::OPT_include:
+                        case ID::OPT_idirafter:
+                            append_arg(arg->getSpelling());
+                            for(auto value: arg->getValues()) {
+                                append_arg(value);
+                            }
+                            break;
+                        default: break;
                     }
                 },
                 [](int, int) {});
