@@ -78,31 +78,31 @@ void render_arg_to(Emit&& emit, llvm::opt::Arg& arg) {
 
 }  // namespace
 
-void CompilationDatabase::render_arg(llvm::SmallVectorImpl<StringID>& out, llvm::opt::Arg& arg) {
-    render_arg_to([&](llvm::StringRef s) { out.push_back(strings.get(s)); }, arg);
-}
-
-void CompilationDatabase::render_arg_chars(std::vector<const char*>& out, llvm::opt::Arg& arg) {
+void CompilationDatabase::render_arg(llvm::SmallVectorImpl<const char*>& out, llvm::opt::Arg& arg) {
     render_arg_to([&](llvm::StringRef s) { out.push_back(strings.save(s).data()); }, arg);
 }
 
-llvm::ArrayRef<StringID> CompilationDatabase::persist_ids(llvm::ArrayRef<StringID> ids) {
-    if(ids.empty())
+void CompilationDatabase::render_arg(std::vector<const char*>& out, llvm::opt::Arg& arg) {
+    render_arg_to([&](llvm::StringRef s) { out.push_back(strings.save(s).data()); }, arg);
+}
+
+llvm::ArrayRef<const char*> CompilationDatabase::persist_args(llvm::ArrayRef<const char*> args) {
+    if(args.empty())
         return {};
-    auto* buf = allocator->Allocate<StringID>(ids.size());
-    std::ranges::copy(ids, buf);
-    return {buf, ids.size()};
+    auto* buf = allocator->Allocate<const char*>(args.size());
+    std::ranges::copy(args, buf);
+    return {buf, args.size()};
 }
 
 object_ptr<CompilationInfo>
     CompilationDatabase::save_compilation_info(llvm::StringRef file,
                                                llvm::StringRef directory,
                                                llvm::ArrayRef<const char*> arguments) {
-    llvm::SmallVector<StringID, 32> canonical_args;
-    llvm::SmallVector<StringID, 16> patch_args;
+    llvm::SmallVector<const char*, 32> canonical_args;
+    llvm::SmallVector<const char*, 16> patch_args;
 
     /// Driver goes into canonical.
-    canonical_args.push_back(strings.get(arguments[0]));
+    canonical_args.push_back(strings.save(arguments[0]).data());
 
     bool remove_pch = false;
 
@@ -144,12 +144,12 @@ object_ptr<CompilationInfo>
             if(is_user_content_option(id)) {
                 /// Absolutize relative paths for include-path options.
                 if(is_include_path_option(id) && arg->getNumValues() == 1) {
-                    patch_args.push_back(strings.get(arg->getSpelling()));
+                    patch_args.push_back(strings.save(arg->getSpelling()).data());
                     llvm::StringRef value = arg->getValue(0);
                     if(!value.empty() && !path::is_absolute(value)) {
-                        patch_args.push_back(strings.get(path::join(directory, value)));
+                        patch_args.push_back(strings.save(path::join(directory, value)).data());
                     } else {
-                        patch_args.push_back(strings.get(value));
+                        patch_args.push_back(strings.save(value).data());
                     }
                     return;
                 }
@@ -166,15 +166,15 @@ object_ptr<CompilationInfo>
     auto canonical_id = canonicals.get(CanonicalCommand{canonical_args});
     auto canonical = canonicals.get(canonical_id);
     if(canonical->arguments.data() == canonical_args.data()) {
-        canonical->arguments = persist_ids(canonical_args);
+        canonical->arguments = persist_args(canonical_args);
     }
 
     /// Build and dedup CompilationInfo.
-    auto dir_id = strings.get(directory);
-    auto info_id = infos.get(CompilationInfo{dir_id, canonical, patch_args});
+    auto dir = strings.save(directory).data();
+    auto info_id = infos.get(CompilationInfo{dir, canonical, patch_args});
     auto info = infos.get(info_id);
     if(info->patch.data() == patch_args.data()) {
-        info->patch = persist_ids(patch_args);
+        info->patch = persist_args(patch_args);
     }
 
     return info;
@@ -314,31 +314,23 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         arguments.emplace_back(strings.save(s).data());
     };
 
-    auto append_ids = [&](llvm::ArrayRef<StringID> ids) {
-        for(auto id: ids) {
-            arguments.push_back(strings.get(id).data());
-        }
+    auto append_args = [&](llvm::ArrayRef<const char*> args) {
+        arguments.insert(arguments.end(), args.begin(), args.end());
     };
 
     if(info) {
-        directory = strings.get(info->directory);
+        directory = info->directory;
 
         if(options.query_toolchain) {
-            // Build canonical-only args for the toolchain query.
-            llvm::SmallVector<const char*, 32> canonical_chars;
-            for(auto id: info->canonical->arguments) {
-                canonical_chars.push_back(strings.get(id).data());
-            }
-
-            auto cached = toolchain_.query_cached(file, directory, canonical_chars);
+            auto cached = toolchain_.query_cached(file, directory, info->canonical->arguments);
 
             if(cached.empty()) {
                 if(!options.suppress_logging) {
                     LOG_WARN("failed to query toolchain: {}", file);
                 }
                 // Fall back to simple canonical + patch.
-                append_ids(info->canonical->arguments);
-                append_ids(info->patch);
+                append_args(info->canonical->arguments);
+                append_args(info->patch);
             } else {
                 // Start with cc1 result.
                 arguments.assign(cached.begin(), cached.end());
@@ -366,7 +358,7 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                 }
 
                 // Replay patch args directly — already parsed, no re-parsing needed.
-                append_ids(info->patch);
+                append_args(info->patch);
 
                 // Fix -main-file-name to match the actual file.
                 bool next_main_file = false;
@@ -399,8 +391,8 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         } else {
             // Simple: canonical + patch. Already parsed and classified
             // at CDB load time — no re-parsing needed.
-            append_ids(info->canonical->arguments);
-            append_ids(info->patch);
+            append_args(info->canonical->arguments);
+            append_args(info->patch);
         }
 
         // Apply remove filter to the final args (after query_toolchain so
@@ -442,7 +434,7 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                             return;
                         }
                     }
-                    render_arg_chars(arguments, *arg);
+                    render_arg(arguments, *arg);
                 },
                 [](int, int) {});
         }

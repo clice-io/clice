@@ -46,27 +46,26 @@ struct CompilationContext {
     std::vector<const char*> arguments;
 };
 
-using StringID = StringSet::ID;
-
 /// Shared compiler identity — driver + all semantics-affecting flags.
 /// Deduped via ObjectSet so most files share one instance. This directly
 /// serves as the toolchain cache key (no re-parsing needed at query time).
 struct CanonicalCommand {
-    llvm::ArrayRef<StringID> arguments;
+    llvm::ArrayRef<const char*> arguments;
     friend bool operator==(const CanonicalCommand&, const CanonicalCommand&) = default;
 };
 
 /// Per-file compilation entry = shared canonical + per-file user-content patch.
 /// Parsed and classified once at CDB load time; no further parsing needed.
 struct CompilationInfo {
-    StringID directory = 0;
+    /// Working directory (interned in StringSet, pointer-stable).
+    const char* directory = nullptr;
 
     /// Shared canonical command (driver + semantic flags).
     object_ptr<CanonicalCommand> canonical = {nullptr};
 
     /// Per-file user-content options: -I, -D, -U, -include, -isystem, -iquote,
     /// -idirafter. Pre-rendered as flat arg list with -I paths already absolutized.
-    llvm::ArrayRef<StringID> patch;
+    llvm::ArrayRef<const char*> patch;
 
     friend bool operator==(const CompilationInfo&, const CompilationInfo&) = default;
 };
@@ -91,14 +90,13 @@ struct DenseMapInfo<clice::CanonicalCommand> {
     using T = clice::CanonicalCommand;
 
     inline static T getEmptyKey() {
-        return T{llvm::ArrayRef<clice::StringID>(reinterpret_cast<clice::StringID*>(~uintptr_t(0)),
-                                                 size_t(0))};
+        return T{
+            llvm::ArrayRef<const char*>(reinterpret_cast<const char**>(~uintptr_t(0)), size_t(0))};
     }
 
     inline static T getTombstoneKey() {
-        return T{
-            llvm::ArrayRef<clice::StringID>(reinterpret_cast<clice::StringID*>(~uintptr_t(0) - 1),
-                                            size_t(0))};
+        return T{llvm::ArrayRef<const char*>(reinterpret_cast<const char**>(~uintptr_t(0) - 1),
+                                             size_t(0))};
     }
 
     static unsigned getHashValue(const T& cmd) {
@@ -115,11 +113,11 @@ struct DenseMapInfo<clice::CompilationInfo> {
     using T = clice::CompilationInfo;
 
     inline static T getEmptyKey() {
-        return T{llvm::DenseMapInfo<std::uint32_t>::getEmptyKey()};
+        return T{llvm::DenseMapInfo<const char*>::getEmptyKey()};
     }
 
     inline static T getTombstoneKey() {
-        return T{llvm::DenseMapInfo<std::uint32_t>::getTombstoneKey()};
+        return T{llvm::DenseMapInfo<const char*>::getTombstoneKey()};
     }
 
     static unsigned getHashValue(const T& info) {
@@ -183,14 +181,14 @@ private:
     /// Find the CompilationInfo for a file by its path_id (binary search).
     object_ptr<CompilationInfo> find_info(std::uint32_t path_id) const;
 
-    /// Render a parsed argument into a flat list of StringIDs.
-    void render_arg(llvm::SmallVectorImpl<StringID>& out, llvm::opt::Arg& arg);
+    /// Render a parsed argument into a flat list of interned const char*.
+    void render_arg(llvm::SmallVectorImpl<const char*>& out, llvm::opt::Arg& arg);
 
-    /// Render a parsed argument into a flat list of const char*.
-    void render_arg_chars(std::vector<const char*>& out, llvm::opt::Arg& arg);
+    /// Render a parsed argument into a flat list of interned const char*.
+    void render_arg(std::vector<const char*>& out, llvm::opt::Arg& arg);
 
-    /// Allocate a persistent copy of a StringID array on the bump allocator.
-    llvm::ArrayRef<StringID> persist_ids(llvm::ArrayRef<StringID> ids);
+    /// Allocate a persistent copy of a const char* array on the bump allocator.
+    llvm::ArrayRef<const char*> persist_args(llvm::ArrayRef<const char*> args);
 
     /// Parse and classify a compilation command into canonical + patch.
     object_ptr<CompilationInfo> save_compilation_info(llvm::StringRef file,
