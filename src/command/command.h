@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -136,13 +137,14 @@ struct DenseMapInfo<clice::CanonicalCommand> {
     using T = clice::CanonicalCommand;
 
     inline static T getEmptyKey() {
-        return T{llvm::ArrayRef<clice::StringID>(
-            reinterpret_cast<clice::StringID*>(~uintptr_t(0)), size_t(0))};
+        return T{llvm::ArrayRef<clice::StringID>(reinterpret_cast<clice::StringID*>(~uintptr_t(0)),
+                                                 size_t(0))};
     }
 
     inline static T getTombstoneKey() {
-        return T{llvm::ArrayRef<clice::StringID>(
-            reinterpret_cast<clice::StringID*>(~uintptr_t(0) - 1), size_t(0))};
+        return T{
+            llvm::ArrayRef<clice::StringID>(reinterpret_cast<clice::StringID*>(~uintptr_t(0) - 1),
+                                            size_t(0))};
     }
 
     static unsigned getHashValue(const T& cmd) {
@@ -205,13 +207,12 @@ namespace clice {
 class CompilationDatabase {
 public:
     CompilationDatabase();
+    ~CompilationDatabase();
 
     CompilationDatabase(const CompilationDatabase&) = delete;
     CompilationDatabase& operator=(const CompilationDatabase&) = delete;
-    CompilationDatabase(CompilationDatabase&&) = delete;
-    CompilationDatabase& operator=(CompilationDatabase&&) = delete;
-
-    ~CompilationDatabase();
+    CompilationDatabase(CompilationDatabase&&) = default;
+    CompilationDatabase& operator=(CompilationDatabase&&) = default;
 
 public:
     /// Read the compilation database on the give file and return the
@@ -312,19 +313,20 @@ private:
     }
 
     /// The memory pool which holds all elements of compilation database.
-    llvm::BumpPtrAllocator allocator;
+    /// Heap-allocated so its address is stable across moves.
+    std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();
 
     /// Keep all strings.
-    StringSet strings{allocator};
+    StringSet strings{allocator.get()};
 
     /// Keep all items in the `compile_commands.json`.
-    ObjectSet<JSONItem> items{allocator};
+    ObjectSet<JSONItem> items{allocator.get()};
 
     /// Shared canonical commands — most files share one instance.
-    ObjectSet<CanonicalCommand> canonicals{allocator};
+    ObjectSet<CanonicalCommand> canonicals{allocator.get()};
 
     /// Per-file compilation infos (canonical + patch + directory).
-    ObjectSet<CompilationInfo> infos{allocator};
+    ObjectSet<CompilationInfo> infos{allocator.get()};
 
     /// All json source file.
     llvm::SmallVector<JSONSource> sources;
@@ -339,7 +341,7 @@ private:
     using ConfigCacheKey = std::pair<const CompilationInfo*, std::uint8_t>;
     llvm::DenseMap<ConfigCacheKey, SearchConfig> search_config_cache;
 
-    ArgumentParser parser{&allocator};
+    std::unique_ptr<ArgumentParser> parser = std::make_unique<ArgumentParser>(allocator.get());
 };
 
 }  // namespace clice

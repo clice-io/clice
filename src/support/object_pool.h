@@ -19,14 +19,14 @@ class StringSet {
 public:
     using ID = std::uint32_t;
 
-    explicit StringSet(llvm::BumpPtrAllocator& allocator) : allocator(allocator) {
+    explicit StringSet(llvm::BumpPtrAllocator* allocator) : allocator(allocator) {
         strings.emplace_back();
     }
 
     StringSet(const StringSet&) = delete;
-    StringSet(StringSet&&) = delete;
     StringSet& operator=(const StringSet&) = delete;
-    StringSet& operator=(StringSet&&) = delete;
+    StringSet(StringSet&&) = default;
+    StringSet& operator=(StringSet&&) = default;
     ~StringSet() = default;
 
     ID get(llvm::StringRef s) {
@@ -40,7 +40,7 @@ public:
         }
 
         const auto size = s.size();
-        auto* p = allocator.Allocate<char>(size + 1);
+        auto* p = allocator->Allocate<char>(size + 1);
         std::memcpy(p, s.data(), size);
         p[size] = '\0';
 
@@ -60,7 +60,7 @@ public:
     }
 
 private:
-    llvm::BumpPtrAllocator& allocator;
+    llvm::BumpPtrAllocator* allocator;
     std::vector<llvm::StringRef> strings;
     llvm::DenseMap<llvm::StringRef, ID> cache;
 };
@@ -98,12 +98,12 @@ class ObjectSet {
 public:
     using ID = std::uint32_t;
 
-    explicit ObjectSet(llvm::BumpPtrAllocator& allocator) : allocator(allocator) {}
+    explicit ObjectSet(llvm::BumpPtrAllocator* allocator) : allocator(allocator) {}
 
     ObjectSet(const ObjectSet&) = delete;
-    ObjectSet(ObjectSet&&) = delete;
     ObjectSet& operator=(const ObjectSet&) = delete;
-    ObjectSet& operator=(ObjectSet&&) = delete;
+    ObjectSet(ObjectSet&&) = default;
+    ObjectSet& operator=(ObjectSet&&) = default;
 
     ~ObjectSet() {
         if constexpr(!std::is_trivially_destructible_v<T>) {
@@ -137,7 +137,7 @@ public:
             it->second = id;
             objects[id] = o;
         } else {
-            auto* p = allocator.Allocate<T>(1);
+            auto* p = allocator->Allocate<T>(1);
             p = new (p) T(object);
 
             it->first = object_ptr<T>{p};
@@ -170,7 +170,7 @@ public:
     }
 
 private:
-    llvm::BumpPtrAllocator& allocator;
+    llvm::BumpPtrAllocator* allocator;
     std::vector<object_ptr<T>> objects;
     llvm::SmallVector<std::pair<object_ptr<T>, ID>> removed;
     llvm::DenseMap<object_ptr<T>, ID> cache;

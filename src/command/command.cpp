@@ -14,7 +14,6 @@
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/StringSaver.h"
-
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Options.h"
 
@@ -34,7 +33,7 @@ CompilationDatabase::CompilationDatabase() = default;
 CompilationDatabase::~CompilationDatabase() = default;
 
 object_ptr<CompilationInfo> CompilationDatabase::find_info(StringID path_id,
-                                                            const void* context) const {
+                                                           const void* context) const {
     auto it = files_.find(path_id);
     if(it == files_.end()) {
         return nullptr;
@@ -89,11 +88,9 @@ bool CompilationDatabase::is_discarded_option(unsigned id) {
         /// C++ modules — we handle these ourselves.
         case ID::OPT_fmodule_file:
         case ID::OPT_fmodule_output:
-        case ID::OPT_fprebuilt_module_path:
-            return true;
+        case ID::OPT_fprebuilt_module_path: return true;
 
-        default:
-            return false;
+        default: return false;
     }
 }
 
@@ -105,10 +102,8 @@ bool CompilationDatabase::is_user_content_option(unsigned id) {
         case ID::OPT_idirafter:
         case ID::OPT_D:
         case ID::OPT_U:
-        case ID::OPT_include:
-            return true;
-        default:
-            return false;
+        case ID::OPT_include: return true;
+        default: return false;
     }
 }
 
@@ -156,28 +151,26 @@ void render_arg_to(Emit&& emit, llvm::opt::Arg& arg) {
 
 }  // namespace
 
-void CompilationDatabase::render_arg(llvm::SmallVectorImpl<StringID>& out,
-                                     llvm::opt::Arg& arg) {
+void CompilationDatabase::render_arg(llvm::SmallVectorImpl<StringID>& out, llvm::opt::Arg& arg) {
     render_arg_to([&](llvm::StringRef s) { out.push_back(strings.get(s)); }, arg);
 }
 
-void CompilationDatabase::render_arg_chars(std::vector<const char*>& out,
-                                           llvm::opt::Arg& arg) {
+void CompilationDatabase::render_arg_chars(std::vector<const char*>& out, llvm::opt::Arg& arg) {
     render_arg_to([&](llvm::StringRef s) { out.push_back(strings.save(s).data()); }, arg);
 }
 
 llvm::ArrayRef<StringID> CompilationDatabase::persist_ids(llvm::ArrayRef<StringID> ids) {
     if(ids.empty())
         return {};
-    auto* buf = allocator.Allocate<StringID>(ids.size());
+    auto* buf = allocator->Allocate<StringID>(ids.size());
     std::ranges::copy(ids, buf);
     return {buf, ids.size()};
 }
 
-object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(
-    llvm::StringRef file,
-    llvm::StringRef directory,
-    llvm::ArrayRef<const char*> arguments) {
+object_ptr<CompilationInfo>
+    CompilationDatabase::save_compilation_info(llvm::StringRef file,
+                                               llvm::StringRef directory,
+                                               llvm::ArrayRef<const char*> arguments) {
     llvm::SmallVector<StringID, 32> canonical_args;
     llvm::SmallVector<StringID, 16> patch_args;
 
@@ -190,7 +183,7 @@ object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(
         LOG_WARN("missing argument index: {}, count: {} when parse: {}", index, count, file);
     };
 
-    parser.parse(
+    parser->parse(
         llvm::ArrayRef(arguments).drop_front(),
         [&](std::unique_ptr<llvm::opt::Arg> arg) {
             auto& opt = arg->getOption();
@@ -223,8 +216,8 @@ object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(
             /// User-content options go into per-file patch.
             if(is_user_content_option(id)) {
                 /// Absolutize relative paths for include-path options.
-                if((id == ID::OPT_I || id == ID::OPT_isystem ||
-                    id == ID::OPT_iquote || id == ID::OPT_idirafter) &&
+                if((id == ID::OPT_I || id == ID::OPT_isystem || id == ID::OPT_iquote ||
+                    id == ID::OPT_idirafter) &&
                    arg->getNumValues() == 1) {
                     patch_args.push_back(strings.get(arg->getSpelling()));
                     llvm::StringRef value = arg->getValue(0);
@@ -262,10 +255,9 @@ object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(
     return info;
 }
 
-object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(
-    llvm::StringRef file,
-    llvm::StringRef directory,
-    llvm::StringRef command) {
+object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(llvm::StringRef file,
+                                                                       llvm::StringRef directory,
+                                                                       llvm::StringRef command) {
     llvm::BumpPtrAllocator local;
     llvm::StringSaver saver(local);
 
@@ -326,9 +318,8 @@ std::vector<UpdateInfo> CompilationDatabase::update_source(JSONSource& source) {
     // Invalidate SearchConfig cache — compilation entries are changing.
     search_config_cache.clear();
 
-    ranges::sort(source.items, [](object_ptr<JSONItem> lhs, object_ptr<JSONItem> rhs) {
-        return *lhs < *rhs;
-    });
+    ranges::sort(source.items,
+                 [](object_ptr<JSONItem> lhs, object_ptr<JSONItem> rhs) { return *lhs < *rhs; });
 
     auto it = ranges::find(sources, source.src_path, &JSONSource::src_path);
     if(it == sources.end()) {
@@ -350,39 +341,29 @@ std::vector<UpdateInfo> CompilationDatabase::update_source(JSONSource& source) {
             const auto& old_item = **it_old;
 
             if(new_item == old_item) {
-                updates.emplace_back(UpdateKind::Unchanged,
-                                     new_item.file_path,
-                                     new_item.info.ptr);
+                updates.emplace_back(UpdateKind::Unchanged, new_item.file_path, new_item.info.ptr);
                 ++it_new;
                 ++it_old;
             } else if(new_item < old_item) {
                 insert_item(*it_new);
-                updates.emplace_back(UpdateKind::Inserted,
-                                     new_item.file_path,
-                                     new_item.info.ptr);
+                updates.emplace_back(UpdateKind::Inserted, new_item.file_path, new_item.info.ptr);
                 ++it_new;
             } else {
                 delete_item(*it_old);
-                updates.emplace_back(UpdateKind::Deleted,
-                                     old_item.file_path,
-                                     old_item.info.ptr);
+                updates.emplace_back(UpdateKind::Deleted, old_item.file_path, old_item.info.ptr);
                 ++it_old;
             }
         }
 
         while(it_new != new_items.end()) {
             insert_item(*it_new);
-            updates.emplace_back(UpdateKind::Inserted,
-                                 (*it_new)->file_path,
-                                 (*it_new)->info.ptr);
+            updates.emplace_back(UpdateKind::Inserted, (*it_new)->file_path, (*it_new)->info.ptr);
             ++it_new;
         }
 
         while(it_old != old_items.end()) {
             delete_item(*it_old);
-            updates.emplace_back(UpdateKind::Deleted,
-                                 (*it_old)->file_path,
-                                 (*it_old)->info.ptr);
+            updates.emplace_back(UpdateKind::Deleted, (*it_old)->file_path, (*it_old)->info.ptr);
             ++it_old;
         }
 
@@ -522,7 +503,7 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
             } else {
                 // Start with cc1 result.
                 arguments.assign(cached.begin(), cached.end());
-                arguments.pop_back(); // remove temp source file
+                arguments.pop_back();  // remove temp source file
 
                 // Replace resource dir if needed.
                 if(!resource_dir().empty()) {
@@ -592,18 +573,20 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                 remove_strs.push_back(strings.save(s).data());
             }
             llvm::SmallVector<Arg> remove_args;
-            parser.parse(
+            parser->parse(
                 remove_strs,
                 [&remove_args](Arg arg) { remove_args.emplace_back(std::move(arg)); },
                 [](int, int) {});
-            auto get_id = [](const Arg& arg) { return arg->getOption().getID(); };
+            auto get_id = [](const Arg& arg) {
+                return arg->getOption().getID();
+            };
             std::ranges::sort(remove_args, {}, get_id);
 
             auto saved_args = std::move(arguments);
             arguments.clear();
             arguments.push_back(saved_args.front());
 
-            parser.parse(
+            parser->parse(
                 llvm::ArrayRef(saved_args).drop_front(),
                 [&](Arg arg) {
                     auto id = arg->getOption().getID();

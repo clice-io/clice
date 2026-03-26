@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -44,8 +45,8 @@ public:
     ~ToolchainProvider() = default;
     ToolchainProvider(const ToolchainProvider&) = delete;
     ToolchainProvider& operator=(const ToolchainProvider&) = delete;
-    ToolchainProvider(ToolchainProvider&&) = delete;
-    ToolchainProvider& operator=(ToolchainProvider&&) = delete;
+    ToolchainProvider(ToolchainProvider&&) = default;
+    ToolchainProvider& operator=(ToolchainProvider&&) = default;
 
     /// Query toolchain with caching. Returns cached cc1 args for the given
     /// compilation arguments, running the expensive compiler query only on
@@ -85,9 +86,9 @@ private:
     ToolchainExtract extract_toolchain_flags(llvm::StringRef file,
                                              llvm::ArrayRef<const char*> arguments);
 
-    llvm::BumpPtrAllocator allocator;
-    StringSet strings{allocator};
-    ArgumentParser parser{&allocator};
+    std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();
+    StringSet strings{allocator.get()};
+    std::unique_ptr<ArgumentParser> parser = std::make_unique<ArgumentParser>(allocator.get());
 
     /// Cache of toolchain query results, keyed by canonical toolchain key.
     llvm::StringMap<std::vector<const char*>> toolchain_cache;

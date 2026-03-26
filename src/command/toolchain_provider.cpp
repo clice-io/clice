@@ -39,7 +39,7 @@ ToolchainProvider::ToolchainExtract
 
     result.query_args.push_back(arguments[0]);
 
-    parser.parse(
+    parser->parse(
         llvm::ArrayRef(arguments).drop_front(),
         [&](std::unique_ptr<llvm::opt::Arg> arg) {
             auto& opt = arg->getOption();
