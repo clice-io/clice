@@ -516,6 +516,12 @@ struct CompilationDatabase::Impl {
                     return;
                 }
 
+                /// Filter debug info options by group (-g, -gdwarf-*, -gsplit-dwarf, etc.).
+                /// These only affect debug info generation, not frontend semantics.
+                if(opt.matches(ID::OPT_DebugInfo_Group)) {
+                    return;
+                }
+
                 /// Remove arguments in the remove list.
                 auto range = ranges::equal_range(known_remove_args, id, {}, get_id);
                 for(auto& remove: range) {
@@ -615,6 +621,57 @@ CompilationDatabase::CompilationDatabase() : self(std::make_unique<CompilationDa
         ID::OPT_fmodule_file,
         ID::OPT_fmodule_output,
         ID::OPT_fprebuilt_module_path,
+
+        /// Remove codegen-only options that don't affect frontend semantics
+        /// (parsing, diagnostics, code completion). These are pure backend/linker
+        /// concerns irrelevant to an LSP server.
+        ///
+        /// Note: -fno-exceptions, -fno-rtti, -std=*, -march=*, -fsanitize=*, -O*
+        /// are NOT filtered here — they affect predefined macros or language semantics.
+
+        /// Position-independent code — pure codegen, no macro or semantic effect.
+        ID::OPT_fPIC,
+        ID::OPT_fno_PIC,
+        ID::OPT_fpic,
+        ID::OPT_fno_pic,
+        ID::OPT_fPIE,
+        ID::OPT_fno_PIE,
+        ID::OPT_fpie,
+        ID::OPT_fno_pie,
+
+        /// Frame pointer and unwind tables — pure codegen.
+        ID::OPT_fomit_frame_pointer,
+        ID::OPT_fno_omit_frame_pointer,
+        ID::OPT_funwind_tables,
+        ID::OPT_fno_unwind_tables,
+        ID::OPT_fasynchronous_unwind_tables,
+        ID::OPT_fno_asynchronous_unwind_tables,
+
+        /// Stack protection — pure codegen.
+        ID::OPT_fstack_protector,
+        ID::OPT_fstack_protector_strong,
+        ID::OPT_fstack_protector_all,
+        ID::OPT_fno_stack_protector,
+
+        /// Section splitting, LTO, semantic interposition — pure codegen/linker.
+        ID::OPT_fdata_sections,
+        ID::OPT_fno_data_sections,
+        ID::OPT_ffunction_sections,
+        ID::OPT_fno_function_sections,
+        ID::OPT_flto,
+        ID::OPT_flto_EQ,
+        ID::OPT_fno_lto,
+        ID::OPT_fsemantic_interposition,
+        ID::OPT_fno_semantic_interposition,
+        ID::OPT_fvisibility_inlines_hidden,
+
+        /// Diagnostics output formatting — doesn't affect analysis.
+        ID::OPT_fcolor_diagnostics,
+        ID::OPT_fno_color_diagnostics,
+
+        /// Floating-point codegen — doesn't define macros (unlike -ffast-math).
+        ID::OPT_ftrapping_math,
+        ID::OPT_fno_trapping_math,
     };
 
     for(auto opt: filtered_options) {
