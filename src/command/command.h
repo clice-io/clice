@@ -276,9 +276,8 @@ public:
 #endif
 
 private:
-    /// Check if an argument matches the source file path, handling
-    /// Windows path separator differences (backslash vs forward slash).
-    static bool is_same_file(llvm::StringRef argument, llvm::StringRef file);
+    /// Find the CompilationInfo for a (path_id, context) pair.
+    object_ptr<CompilationInfo> find_info(StringID path_id, const void* context) const;
 
     /// Options that are completely irrelevant to an LSP and should be discarded.
     static bool is_discarded_option(unsigned id);

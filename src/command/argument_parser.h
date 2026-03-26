@@ -36,14 +36,6 @@ public:
         return p;
     }
 
-    void set_arguments(llvm::ArrayRef<const char*> arguments) {
-        if(getArgs().size() != 0) {
-            std::abort();
-        }
-
-        this->arguments = arguments;
-    }
-
     /// Parse a single argument at the given index. Defined out-of-line in
     /// argument_parser.cpp to isolate the heavy clang driver option table include.
     std::unique_ptr<llvm::opt::Arg> parse_one(unsigned& index);

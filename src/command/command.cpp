@@ -33,28 +33,23 @@ CompilationDatabase::CompilationDatabase() = default;
 
 CompilationDatabase::~CompilationDatabase() = default;
 
-bool CompilationDatabase::is_same_file(llvm::StringRef argument, llvm::StringRef file) {
-    if(argument == file) {
-        return true;
+object_ptr<CompilationInfo> CompilationDatabase::find_info(StringID path_id,
+                                                            const void* context) const {
+    auto it = files_.find(path_id);
+    if(it == files_.end()) {
+        return nullptr;
     }
-
-#ifdef _WIN32
-    // On Windows, cmake may use backslashes in `arguments` but forward
-    // slashes in `file`. Normalize and compare.
-    if(argument.size() == file.size()) {
-        for(std::size_t i = 0; i < argument.size(); i++) {
-            char a = argument[i] == '\\' ? '/' : argument[i];
-            char b = file[i] == '\\' ? '/' : file[i];
-            if(std::tolower(static_cast<unsigned char>(a)) !=
-               std::tolower(static_cast<unsigned char>(b))) {
-                return false;
-            }
+    if(!context) {
+        return it->second->info;
+    }
+    auto cur = it->second;
+    while(cur) {
+        if(cur->info.ptr == context) {
+            return cur->info;
         }
-        return true;
+        cur = cur->next;
     }
-#endif
-
-    return false;
+    return nullptr;
 }
 
 bool CompilationDatabase::is_discarded_option(unsigned id) {
@@ -117,80 +112,58 @@ bool CompilationDatabase::is_user_content_option(unsigned id) {
     }
 }
 
-void CompilationDatabase::render_arg(llvm::SmallVectorImpl<StringID>& out,
-                                     llvm::opt::Arg& arg) {
+namespace {
+
+/// Shared render logic for a parsed argument. Calls `emit(StringRef)` for each
+/// output token, handling all four render styles.
+template <typename Emit>
+void render_arg_to(Emit&& emit, llvm::opt::Arg& arg) {
     switch(arg.getOption().getRenderStyle()) {
         case llvm::opt::Option::RenderValuesStyle:
             for(auto value: arg.getValues()) {
-                out.push_back(strings.get(value));
+                emit(llvm::StringRef(value));
             }
             break;
 
         case llvm::opt::Option::RenderSeparateStyle:
-            out.push_back(strings.get(arg.getSpelling()));
+            emit(arg.getSpelling());
             for(auto value: arg.getValues()) {
-                out.push_back(strings.get(value));
+                emit(llvm::StringRef(value));
             }
             break;
 
         case llvm::opt::Option::RenderJoinedStyle: {
             llvm::SmallString<256> first = {arg.getSpelling(), arg.getValue(0)};
-            out.push_back(strings.get(first));
+            emit(llvm::StringRef(first));
             for(auto value: llvm::ArrayRef(arg.getValues()).drop_front()) {
-                out.push_back(strings.get(value));
+                emit(llvm::StringRef(value));
             }
             break;
         }
 
         case llvm::opt::Option::RenderCommaJoinedStyle: {
             llvm::SmallString<256> buffer = arg.getSpelling();
-            for(int i = 0; i < arg.getNumValues(); i++) {
+            for(unsigned i = 0; i < arg.getNumValues(); i++) {
                 if(i)
                     buffer += ',';
                 buffer += arg.getValue(i);
             }
-            out.push_back(strings.get(buffer));
+            emit(llvm::StringRef(buffer));
             break;
         }
     }
 }
 
+}  // namespace
+
+void CompilationDatabase::render_arg(llvm::SmallVectorImpl<StringID>& out,
+                                     llvm::opt::Arg& arg) {
+    render_arg_to([&](llvm::StringRef s) { out.push_back(strings.get(s)); }, arg);
+}
+
 void CompilationDatabase::render_arg_chars(std::vector<const char*>& out,
                                            llvm::opt::Arg& arg) {
-    switch(arg.getOption().getRenderStyle()) {
-        case llvm::opt::Option::RenderValuesStyle:
-            for(auto value: arg.getValues()) {
-                out.push_back(strings.save(value).data());
-            }
-            break;
-
-        case llvm::opt::Option::RenderSeparateStyle:
-            out.push_back(strings.save(arg.getSpelling()).data());
-            for(auto value: arg.getValues()) {
-                out.push_back(strings.save(value).data());
-            }
-            break;
-
-        case llvm::opt::Option::RenderJoinedStyle: {
-            llvm::SmallString<256> first = {arg.getSpelling(), arg.getValue(0)};
-            out.push_back(strings.save(first).data());
-            for(auto value: llvm::ArrayRef(arg.getValues()).drop_front()) {
-                out.push_back(strings.save(value).data());
-            }
-            break;
-        }
-
-        case llvm::opt::Option::RenderCommaJoinedStyle: {
-            llvm::SmallString<256> buffer = arg.getSpelling();
-            for(int i = 0; i < arg.getNumValues(); i++) {
-                if(i)
-                    buffer += ',';
-                buffer += arg.getValue(i);
-            }
-            out.push_back(strings.save(buffer).data());
-            break;
-        }
-    }
+    render_arg_to([&](llvm::StringRef s) { out.push_back(strings.save(s).data()); }, arg);
 }
 
 llvm::ArrayRef<StringID> CompilationDatabase::persist_ids(llvm::ArrayRef<StringID> ids) {
@@ -249,9 +222,11 @@ object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(
 
             /// User-content options go into per-file patch.
             if(is_user_content_option(id)) {
-                /// For -I, absolutize relative paths.
-                if(id == ID::OPT_I && arg->getNumValues() == 1) {
-                    patch_args.push_back(strings.get("-I"));
+                /// Absolutize relative paths for include-path options.
+                if((id == ID::OPT_I || id == ID::OPT_isystem ||
+                    id == ID::OPT_iquote || id == ID::OPT_idirafter) &&
+                   arg->getNumValues() == 1) {
+                    patch_args.push_back(strings.get(arg->getSpelling()));
                     llvm::StringRef value = arg->getValue(0);
                     if(!value.empty() && !path::is_absolute(value)) {
                         patch_args.push_back(strings.get(path::join(directory, value)));
@@ -347,6 +322,9 @@ void CompilationDatabase::delete_item(object_ptr<JSONItem> item) {
 std::vector<UpdateInfo> CompilationDatabase::update_source(JSONSource& source) {
     namespace ranges = std::ranges;
     std::vector<UpdateInfo> updates;
+
+    // Invalidate SearchConfig cache — compilation entries are changing.
+    search_config_cache.clear();
 
     ranges::sort(source.items, [](object_ptr<JSONItem> lhs, object_ptr<JSONItem> rhs) {
         return *lhs < *rhs;
@@ -505,26 +483,9 @@ std::vector<UpdateInfo> CompilationDatabase::load_compile_database(llvm::StringR
 CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                                                const CommandOptions& options,
                                                const void* context) {
-    object_ptr<CompilationInfo> info = nullptr;
-
     auto path_id = strings.get(file);
     file = strings.get(path_id);
-
-    auto it = files_.find(path_id);
-    if(it != files_.end()) [[unlikely]] {
-        if(!context) {
-            info = it->second->info;
-        } else {
-            auto cur = it->second;
-            while(cur) {
-                if(cur->info.ptr == context) {
-                    info = cur->info;
-                    break;
-                }
-                cur = cur->next;
-            }
-        }
-    }
+    auto info = find_info(path_id, context);
 
     llvm::StringRef directory;
     std::vector<const char*> arguments;
@@ -542,17 +503,93 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
     if(info) {
         directory = strings.get(info->directory);
 
-        // Build final args: canonical + patch. Already parsed and classified
-        // at CDB load time — no re-parsing needed.
-        append_ids(info->canonical->arguments);
+        if(options.query_toolchain) {
+            // Build canonical-only args for the toolchain query.
+            llvm::SmallVector<const char*, 32> canonical_chars;
+            for(auto id: info->canonical->arguments) {
+                canonical_chars.push_back(strings.get(id).data());
+            }
 
+            auto cached = toolchain_.query_cached(file, directory, canonical_chars);
+
+            if(cached.empty()) {
+                if(!options.suppress_logging) {
+                    LOG_WARN("failed to query toolchain: {}", file);
+                }
+                // Fall back to simple canonical + patch.
+                append_ids(info->canonical->arguments);
+                append_ids(info->patch);
+            } else {
+                // Start with cc1 result.
+                arguments.assign(cached.begin(), cached.end());
+                arguments.pop_back(); // remove temp source file
+
+                // Replace resource dir if needed.
+                if(!resource_dir().empty()) {
+                    llvm::StringRef old_resource_dir;
+                    for(std::size_t i = 0; i + 1 < arguments.size(); ++i) {
+                        if(arguments[i] == llvm::StringRef("-resource-dir")) {
+                            old_resource_dir = arguments[i + 1];
+                            break;
+                        }
+                    }
+                    if(!old_resource_dir.empty() && old_resource_dir != resource_dir()) {
+                        for(auto& arg: arguments) {
+                            llvm::StringRef s(arg);
+                            if(s.starts_with(old_resource_dir)) {
+                                auto replaced =
+                                    resource_dir().str() + s.substr(old_resource_dir.size()).str();
+                                arg = strings.save(replaced).data();
+                            }
+                        }
+                    }
+                }
+
+                // Replay patch args directly — already parsed, no re-parsing needed.
+                append_ids(info->patch);
+
+                // Fix -main-file-name to match the actual file.
+                bool next_main_file = false;
+                for(auto& arg: arguments) {
+                    if(arg == llvm::StringRef("-main-file-name")) {
+                        next_main_file = true;
+                        continue;
+                    }
+                    if(next_main_file) {
+                        arg = strings.save(path::filename(file)).data();
+                        next_main_file = false;
+                    }
+                }
+            }
+
+            // Inject our resource dir if not already present.
+            if(!resource_dir().empty()) {
+                bool has_resource_dir = false;
+                for(auto& arg: arguments) {
+                    if(arg == llvm::StringRef("-resource-dir")) {
+                        has_resource_dir = true;
+                        break;
+                    }
+                }
+                if(!has_resource_dir) {
+                    append_arg("-resource-dir");
+                    append_arg(resource_dir());
+                }
+            }
+        } else {
+            // Simple: canonical + patch. Already parsed and classified
+            // at CDB load time — no re-parsing needed.
+            append_ids(info->canonical->arguments);
+            append_ids(info->patch);
+        }
+
+        // Apply remove filter to the final args (after query_toolchain so
+        // the filter isn't lost when cc1 args replace the originals).
         if(!options.remove.empty()) {
-            // Apply remove filter on canonical args (rare path).
-            // Parse the remove list and match by option ID against the args.
             using Arg = std::unique_ptr<llvm::opt::Arg>;
             llvm::SmallVector<const char*> remove_strs;
-            for(auto& arg: options.remove) {
-                remove_strs.push_back(strings.save(arg).data());
+            for(auto& s: options.remove) {
+                remove_strs.push_back(strings.save(s).data());
             }
             llvm::SmallVector<Arg> remove_args;
             parser.parse(
@@ -562,10 +599,9 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
             auto get_id = [](const Arg& arg) { return arg->getOption().getID(); };
             std::ranges::sort(remove_args, {}, get_id);
 
-            // Re-parse the current canonical+patch args to filter by remove list.
             auto saved_args = std::move(arguments);
             arguments.clear();
-            arguments.push_back(saved_args.front()); // driver
+            arguments.push_back(saved_args.front());
 
             parser.parse(
                 llvm::ArrayRef(saved_args).drop_front(),
@@ -587,34 +623,6 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
                     render_arg_chars(arguments, *arg);
                 },
                 [](int, int) {});
-
-            // Append patch args (also subject to remove).
-            llvm::SmallVector<const char*, 16> patch_chars;
-            for(auto id: info->patch) {
-                patch_chars.push_back(strings.get(id).data());
-            }
-            parser.parse(
-                patch_chars,
-                [&](Arg arg) {
-                    auto id = arg->getOption().getID();
-                    auto range = std::ranges::equal_range(remove_args, id, {}, get_id);
-                    for(auto& remove: range) {
-                        if(remove->getNumValues() == 1 &&
-                           remove->getValue(0) == llvm::StringRef("*")) {
-                            return;
-                        }
-                        if(std::ranges::equal(
-                               arg->getValues(),
-                               remove->getValues(),
-                               [](llvm::StringRef l, llvm::StringRef r) { return l == r; })) {
-                            return;
-                        }
-                    }
-                    render_arg_chars(arguments, *arg);
-                },
-                [](int, int) {});
-        } else {
-            append_ids(info->patch);
         }
 
         for(auto& arg: options.append) {
@@ -626,78 +634,6 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
         arguments = {"clang"};
     }
 
-    if(info && options.query_toolchain) {
-        // Build canonical-only args for the toolchain query.
-        llvm::SmallVector<const char*, 32> canonical_chars;
-        for(auto id: info->canonical->arguments) {
-            canonical_chars.push_back(strings.get(id).data());
-        }
-
-        auto cached = toolchain_.query_cached(file, directory, canonical_chars);
-
-        if(cached.empty()) {
-            if(!options.suppress_logging) {
-                LOG_WARN("failed to query toolchain: {}", file);
-            }
-        } else {
-            // Start with cc1 result.
-            arguments.assign(cached.begin(), cached.end());
-            arguments.pop_back(); // remove temp source file
-
-            // Replace resource dir if needed.
-            if(!resource_dir().empty()) {
-                llvm::StringRef old_resource_dir;
-                for(std::size_t i = 0; i + 1 < arguments.size(); ++i) {
-                    if(arguments[i] == llvm::StringRef("-resource-dir")) {
-                        old_resource_dir = arguments[i + 1];
-                        break;
-                    }
-                }
-                if(!old_resource_dir.empty() && old_resource_dir != resource_dir()) {
-                    for(auto& arg: arguments) {
-                        llvm::StringRef s(arg);
-                        if(s.starts_with(old_resource_dir)) {
-                            auto replaced =
-                                resource_dir().str() + s.substr(old_resource_dir.size()).str();
-                            arg = strings.save(replaced).data();
-                        }
-                    }
-                }
-            }
-
-            // Replay patch args directly — already parsed, no re-parsing needed.
-            append_ids(info->patch);
-
-            // Fix -main-file-name to match the actual file.
-            bool next_main_file = false;
-            for(auto& arg: arguments) {
-                if(arg == llvm::StringRef("-main-file-name")) {
-                    next_main_file = true;
-                    continue;
-                }
-                if(next_main_file) {
-                    arg = strings.save(path::filename(file)).data();
-                    next_main_file = false;
-                }
-            }
-        }
-
-        // Inject our resource dir if not already present.
-        if(!resource_dir().empty()) {
-            bool has_resource_dir = false;
-            for(auto& arg: arguments) {
-                if(arg == llvm::StringRef("-resource-dir")) {
-                    has_resource_dir = true;
-                    break;
-                }
-            }
-            if(!has_resource_dir) {
-                append_arg("-resource-dir");
-                append_arg(resource_dir());
-            }
-        }
-    }
-
     arguments.emplace_back(file.data());
 
     return CompilationContext(directory, std::move(arguments));
@@ -706,27 +642,15 @@ CompilationContext CompilationDatabase::lookup(llvm::StringRef file,
 SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
                                                        const CommandOptions& options,
                                                        const void* context) {
-    // Resolve to the internal CompilationInfo pointer for cache lookup.
     auto path_id = strings.get(file);
-    auto it = files_.find(path_id);
-    const CompilationInfo* info_ptr = nullptr;
-    if(it != files_.end()) {
-        if(!context) {
-            info_ptr = it->second->info.ptr;
-        } else {
-            auto cur = it->second;
-            while(cur) {
-                if(cur->info.ptr == context) {
-                    info_ptr = cur->info.ptr;
-                    break;
-                }
-                cur = cur->next;
-            }
-        }
-    }
+    auto info = find_info(path_id, context);
 
-    if(info_ptr) {
-        auto key = ConfigCacheKey{info_ptr, options_bits(options)};
+    // Only cache when remove/append are empty — custom options produce
+    // per-call results that shouldn't pollute the shared cache.
+    bool cacheable = info && options.remove.empty() && options.append.empty();
+
+    if(cacheable) {
+        auto key = ConfigCacheKey{info.ptr, options_bits(options)};
         auto cache_it = search_config_cache.find(key);
         if(cache_it != search_config_cache.end()) {
             return cache_it->second;
@@ -736,8 +660,8 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
     auto ctx = lookup(file, options, context);
     auto config = extract_search_config(ctx.arguments, ctx.directory);
 
-    if(info_ptr) {
-        auto key = ConfigCacheKey{info_ptr, options_bits(options)};
+    if(cacheable) {
+        auto key = ConfigCacheKey{info.ptr, options_bits(options)};
         search_config_cache.try_emplace(key, config);
     }
     return config;
@@ -792,23 +716,7 @@ std::vector<ToolchainProvider::PendingEntry> CompilationDatabase::resolve_toolch
     for(auto& [file, context]: files) {
         auto path_id = strings.get(file);
         auto stored_file = strings.get(path_id);
-
-        object_ptr<CompilationInfo> info = nullptr;
-        auto it = files_.find(path_id);
-        if(it != files_.end()) {
-            if(!context) {
-                info = it->second->info;
-            } else {
-                auto cur = it->second;
-                while(cur) {
-                    if(cur->info.ptr == context) {
-                        info = cur->info;
-                        break;
-                    }
-                    cur = cur->next;
-                }
-            }
-        }
+        auto info = find_info(path_id, context);
 
         if(!info || !info->canonical || info->canonical->arguments.empty()) {
             continue;
