@@ -1,8 +1,11 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
+#include "support/filesystem.h"
 
 #include "clang/Driver/Options.h"
+
+#include "llvm/Support/raw_ostream.h"
 
 namespace clice::testing {
 
@@ -451,6 +454,48 @@ TEST_CASE(PrintArgv) {
     std::vector<const char*> escaped = {"clang++", "-DPATH=C:\\foo"};
     auto result2 = print_argv(escaped);
     EXPECT_TRUE(llvm::StringRef(result2).contains("\""));
+};
+
+TEST_CASE(RelativeFilePath) {
+    /// load() should resolve relative file paths against directory.
+    auto path = fs::createTemporaryFile("cdb", "json");
+    ASSERT_TRUE(path.has_value());
+
+    {
+        std::error_code ec;
+        llvm::raw_fd_ostream out(*path, ec);
+        ASSERT_FALSE(ec.operator bool());
+        out << R"([
+            {"directory": "/project/build", "file": "src/main.cpp",
+             "arguments": ["clang++", "-std=c++20", "src/main.cpp"]},
+            {"directory": "/other/build", "file": "src/main.cpp",
+             "arguments": ["clang++", "-std=c++17", "src/main.cpp"]}
+        ])";
+    }
+
+    CompilationDatabase database;
+    auto count = database.load(*path);
+    llvm::sys::fs::remove(*path);
+
+    ASSERT_EQ(count, 2U);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+
+    /// Lookup by the resolved absolute path.
+    auto results = database.lookup("/project/build/src/main.cpp", options);
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_TRUE(llvm::StringRef(print_argv(results.front().arguments)).contains("-std=c++20"));
+
+    auto results2 = database.lookup("/other/build/src/main.cpp", options);
+    ASSERT_EQ(results2.size(), 1U);
+    EXPECT_TRUE(llvm::StringRef(print_argv(results2.front().arguments)).contains("-std=c++17"));
+
+    /// Relative path lookup should not match (different path_id).
+    auto results3 = database.lookup("src/main.cpp", options);
+    ASSERT_EQ(results3.size(), 1U);
+    /// Falls back to default command since no match.
+    EXPECT_TRUE(llvm::StringRef(print_argv(results3.front().arguments)).contains("clang"));
 };
 
 TEST_CASE(Module) {
