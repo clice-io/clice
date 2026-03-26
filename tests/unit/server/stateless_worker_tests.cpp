@@ -94,12 +94,8 @@ TEST_CASE(BuildPCHRequest) {
         worker::BuildPCHParams params;
         params.file = hdr.path;
         params.directory = "/tmp";
-        params.arguments = {"clang++",
-                            "-resource-dir",
-                            std::string(CompilationDatabase::resource_dir()),
-                            "-x",
-                            "c++-header",
-                            hdr.path};
+        params.arguments =
+            {"clang++", "-resource-dir", std::string(resource_dir()), "-x", "c++-header", hdr.path};
         params.content = "#pragma once\nint pch_global = 42;\n";
 
         auto result = co_await w.peer->send_request(params);
@@ -157,7 +153,7 @@ TEST_CASE(BuildPCMRequest) {
         params.directory = "/tmp";
         params.arguments = {"clang++",
                             "-resource-dir",
-                            std::string(CompilationDatabase::resource_dir()),
+                            std::string(resource_dir()),
                             "-std=c++20",
                             "--precompile",
                             src.path};

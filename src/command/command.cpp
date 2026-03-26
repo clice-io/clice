@@ -13,16 +13,12 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/StringSaver.h"
-#include "clang/Driver/Driver.h"
-#include "clang/Driver/Options.h"
 
 namespace clice {
 
 namespace {
 
 namespace ranges = std::ranges;
-
-using ID = clang::driver::options::ID;
 
 }  // namespace
 
@@ -36,62 +32,6 @@ object_ptr<CompilationInfo> CompilationDatabase::find_info(std::uint32_t path_id
         return it->info;
     }
     return nullptr;
-}
-
-bool CompilationDatabase::is_discarded_option(unsigned id) {
-    switch(id) {
-        /// Input file and output — we manage these ourselves.
-        case ID::OPT_INPUT:
-        case ID::OPT_c:
-        case ID::OPT_o:
-        case ID::OPT_dxc_Fc:
-        case ID::OPT_dxc_Fo:
-
-        /// PCH building.
-        case ID::OPT_emit_pch:
-        case ID::OPT_include_pch:
-        case ID::OPT__SLASH_Yu:
-        case ID::OPT__SLASH_Fp:
-
-        /// Dependency scan.
-        case ID::OPT_E:
-        case ID::OPT_M:
-        case ID::OPT_MM:
-        case ID::OPT_MD:
-        case ID::OPT_MMD:
-        case ID::OPT_MF:
-        case ID::OPT_MT:
-        case ID::OPT_MQ:
-        case ID::OPT_MG:
-        case ID::OPT_MP:
-        case ID::OPT_show_inst:
-        case ID::OPT_show_encoding:
-        case ID::OPT_show_includes:
-        case ID::OPT__SLASH_showFilenames:
-        case ID::OPT__SLASH_showFilenames_:
-        case ID::OPT__SLASH_showIncludes:
-        case ID::OPT__SLASH_showIncludes_user:
-
-        /// C++ modules — we handle these ourselves.
-        case ID::OPT_fmodule_file:
-        case ID::OPT_fmodule_output:
-        case ID::OPT_fprebuilt_module_path: return true;
-
-        default: return false;
-    }
-}
-
-bool CompilationDatabase::is_user_content_option(unsigned id) {
-    switch(id) {
-        case ID::OPT_I:
-        case ID::OPT_isystem:
-        case ID::OPT_iquote:
-        case ID::OPT_idirafter:
-        case ID::OPT_D:
-        case ID::OPT_U:
-        case ID::OPT_include: return true;
-        default: return false;
-    }
 }
 
 namespace {
@@ -188,7 +128,7 @@ object_ptr<CompilationInfo>
 
             /// Handle CMake's Xclang PCH workaround:
             /// -Xclang -include-pch -Xclang <pchfile> → discard both pairs.
-            if(id == ID::OPT_Xclang && arg->getNumValues() == 1) {
+            if(is_xclang_option(id) && arg->getNumValues() == 1) {
                 if(remove_pch) {
                     remove_pch = false;
                     return;
@@ -203,9 +143,7 @@ object_ptr<CompilationInfo>
             /// User-content options go into per-file patch.
             if(is_user_content_option(id)) {
                 /// Absolutize relative paths for include-path options.
-                if((id == ID::OPT_I || id == ID::OPT_isystem || id == ID::OPT_iquote ||
-                    id == ID::OPT_idirafter) &&
-                   arg->getNumValues() == 1) {
+                if(is_include_path_option(id) && arg->getNumValues() == 1) {
                     patch_args.push_back(strings.get(arg->getSpelling()));
                     llvm::StringRef value = arg->getValue(0);
                     if(!value.empty() && !path::is_absolute(value)) {
@@ -552,39 +490,6 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
 
 bool CompilationDatabase::has_cached_configs() const {
     return !search_config_cache.empty();
-}
-
-std::optional<std::uint32_t> CompilationDatabase::get_option_id(llvm::StringRef argument) {
-    auto& table = clang::driver::getDriverOptTable();
-
-    llvm::SmallString<64> buffer = argument;
-
-    if(argument.ends_with("=")) {
-        buffer += "placeholder";
-    }
-
-    unsigned index = 1;
-    std::array arguments = {"clang++", buffer.c_str(), "placeholder"};
-    llvm::opt::InputArgList arg_list(arguments.data(), arguments.data() + arguments.size());
-
-    if(auto arg = table.ParseOneArg(arg_list, index)) {
-        return arg->getOption().getID();
-    } else {
-        return {};
-    }
-}
-
-llvm::StringRef CompilationDatabase::resource_dir() {
-    static std::string dir = [] {
-        // Use address of this lambda to locate our binary via dladdr/proc.
-        static int anchor;
-        auto exe = llvm::sys::fs::getMainExecutable("", &anchor);
-        if(exe.empty()) {
-            return std::string{};
-        }
-        return clang::driver::Driver::GetResourcesPath(exe);
-    }();
-    return dir;
 }
 
 ToolchainProvider& CompilationDatabase::toolchain() {

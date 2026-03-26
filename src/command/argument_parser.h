@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cassert>
+#include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -83,5 +85,27 @@ private:
 ///
 /// Defined out-of-line in argument_parser.cpp (needs clang driver option IDs).
 bool is_codegen_option(unsigned id, const llvm::opt::Option& opt);
+
+/// Options that are completely irrelevant to an LSP and should be discarded
+/// (input/output, PCH building, dependency scan, C++ modules).
+bool is_discarded_option(unsigned id);
+
+/// User-content options that go into the per-file patch rather than the
+/// shared canonical command: -I, -D, -U, -include, -isystem, -iquote, -idirafter.
+bool is_user_content_option(unsigned id);
+
+/// Subset of user-content options that are include-path flags
+/// (-I, -isystem, -iquote, -idirafter) — used for path absolutization.
+bool is_include_path_option(unsigned id);
+
+/// Check if this is the -Xclang pass-through option.
+bool is_xclang_option(unsigned id);
+
+/// Get the option ID for a specific argument string.
+std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
+
+/// Get the resource directory for clang builtin headers. Computed once
+/// from the current executable path using Driver::GetResourcesPath.
+llvm::StringRef resource_dir();
 
 }  // namespace clice

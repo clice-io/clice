@@ -163,13 +163,6 @@ public:
     /// Check if SearchConfig cache is populated (non-empty).
     bool has_cached_configs() const;
 
-    /// Get the option ID for a specific argument string.
-    static std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
-
-    /// Get the resource directory for clang builtin headers. Computed once
-    /// from the current executable path using Driver::GetResourcesPath.
-    static llvm::StringRef resource_dir();
-
     /// Resolve a path_id back to the file path string.
     llvm::StringRef resolve_path(std::uint32_t path_id);
 
@@ -189,12 +182,6 @@ public:
 private:
     /// Find the CompilationInfo for a file by its path_id (binary search).
     object_ptr<CompilationInfo> find_info(std::uint32_t path_id) const;
-
-    /// Options that are completely irrelevant to an LSP and should be discarded.
-    static bool is_discarded_option(unsigned id);
-
-    /// User-content options go into the per-file patch (not the shared canonical).
-    static bool is_user_content_option(unsigned id);
 
     /// Render a parsed argument into a flat list of StringIDs.
     void render_arg(llvm::SmallVectorImpl<StringID>& out, llvm::opt::Arg& arg);

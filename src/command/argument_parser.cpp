@@ -1,6 +1,11 @@
 #include "command/argument_parser.h"
 
+#include <array>
+
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/FileSystem.h"
 #include "clang/Driver/Driver.h"
+#include "clang/Driver/Options.h"
 
 namespace clice {
 
@@ -24,8 +29,7 @@ struct Thief {
     }
 };
 
-template struct Thief<&opt::OptTable::DashDashParsing,
-                      &opt::OptTable::GroupedShortOptions>;
+template struct Thief<&opt::OptTable::DashDashParsing, &opt::OptTable::GroupedShortOptions>;
 
 auto& option_table = driver::getDriverOptTable();
 
@@ -38,6 +42,107 @@ std::unique_ptr<llvm::opt::Arg> ArgumentParser::parse_one(unsigned& index) {
 }
 
 using ID = clang::driver::options::ID;
+
+bool is_discarded_option(unsigned id) {
+    switch(id) {
+        /// Input file and output — we manage these ourselves.
+        case ID::OPT_INPUT:
+        case ID::OPT_c:
+        case ID::OPT_o:
+        case ID::OPT_dxc_Fc:
+        case ID::OPT_dxc_Fo:
+
+        /// PCH building.
+        case ID::OPT_emit_pch:
+        case ID::OPT_include_pch:
+        case ID::OPT__SLASH_Yu:
+        case ID::OPT__SLASH_Fp:
+
+        /// Dependency scan.
+        case ID::OPT_E:
+        case ID::OPT_M:
+        case ID::OPT_MM:
+        case ID::OPT_MD:
+        case ID::OPT_MMD:
+        case ID::OPT_MF:
+        case ID::OPT_MT:
+        case ID::OPT_MQ:
+        case ID::OPT_MG:
+        case ID::OPT_MP:
+        case ID::OPT_show_inst:
+        case ID::OPT_show_encoding:
+        case ID::OPT_show_includes:
+        case ID::OPT__SLASH_showFilenames:
+        case ID::OPT__SLASH_showFilenames_:
+        case ID::OPT__SLASH_showIncludes:
+        case ID::OPT__SLASH_showIncludes_user:
+
+        /// C++ modules — we handle these ourselves.
+        case ID::OPT_fmodule_file:
+        case ID::OPT_fmodule_output:
+        case ID::OPT_fprebuilt_module_path: return true;
+
+        default: return false;
+    }
+}
+
+bool is_user_content_option(unsigned id) {
+    switch(id) {
+        case ID::OPT_I:
+        case ID::OPT_isystem:
+        case ID::OPT_iquote:
+        case ID::OPT_idirafter:
+        case ID::OPT_D:
+        case ID::OPT_U:
+        case ID::OPT_include: return true;
+        default: return false;
+    }
+}
+
+bool is_include_path_option(unsigned id) {
+    switch(id) {
+        case ID::OPT_I:
+        case ID::OPT_isystem:
+        case ID::OPT_iquote:
+        case ID::OPT_idirafter: return true;
+        default: return false;
+    }
+}
+
+bool is_xclang_option(unsigned id) {
+    return id == ID::OPT_Xclang;
+}
+
+std::optional<std::uint32_t> get_option_id(llvm::StringRef argument) {
+    llvm::SmallString<64> buffer = argument;
+
+    if(argument.ends_with("=")) {
+        buffer += "placeholder";
+    }
+
+    unsigned index = 1;
+    std::array arguments = {"clang++", buffer.c_str(), "placeholder"};
+    llvm::opt::InputArgList arg_list(arguments.data(), arguments.data() + arguments.size());
+
+    if(auto arg = option_table.ParseOneArg(arg_list, index)) {
+        return arg->getOption().getID();
+    } else {
+        return {};
+    }
+}
+
+llvm::StringRef resource_dir() {
+    static std::string dir = [] {
+        // Use address of this lambda to locate our binary via dladdr/proc.
+        static int anchor;
+        auto exe = llvm::sys::fs::getMainExecutable("", &anchor);
+        if(exe.empty()) {
+            return std::string{};
+        }
+        return clang::driver::Driver::GetResourcesPath(exe);
+    }();
+    return dir;
+}
 
 bool is_codegen_option(unsigned id, const llvm::opt::Option& opt) {
     /// Debug info options form a group (-g, -gdwarf-*, -gsplit-dwarf, etc.).
@@ -88,11 +193,9 @@ bool is_codegen_option(unsigned id, const llvm::opt::Option& opt) {
 
         /// Floating-point codegen — doesn't define macros (unlike -ffast-math).
         case ID::OPT_ftrapping_math:
-        case ID::OPT_fno_trapping_math:
-            return true;
+        case ID::OPT_fno_trapping_math: return true;
 
-        default:
-            return false;
+        default: return false;
     }
 }
 

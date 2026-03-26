@@ -1,4 +1,5 @@
 #include "test/test.h"
+#include "command/argument_parser.h"
 #include "command/command.h"
 #include "compile/compilation.h"
 
@@ -6,7 +7,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Program.h"
-#include "clang/Driver/Driver.h"
+#include "clang/Driver/Options.h"
 
 namespace clice::testing {
 
@@ -37,7 +38,7 @@ TEST_SUITE(Command) {
 using option = clang::driver::options::ID;
 
 void expect_id(llvm::StringRef command, option opt) {
-    auto id = CompilationDatabase::get_option_id(command);
+    auto id = get_option_id(command);
     ASSERT_TRUE(id.has_value());
     ASSERT_EQ(*id, int(opt));
 }
@@ -216,7 +217,7 @@ TEST_CASE(ResourceDir) {
     bool has_resource_dir = false;
     for(size_t i = 0; i + 1 < args_tc.size(); ++i) {
         if(args_tc[i] == llvm::StringRef("-resource-dir")) {
-            EXPECT_EQ(llvm::StringRef(args_tc[i + 1]), CompilationDatabase::resource_dir());
+            EXPECT_EQ(llvm::StringRef(args_tc[i + 1]), resource_dir());
             has_resource_dir = true;
             break;
         }

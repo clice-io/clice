@@ -1,4 +1,5 @@
 #include "test/test.h"
+#include "command/argument_parser.h"
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
@@ -6,7 +7,6 @@
 
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/StringSaver.h"
-#include "clang/Driver/Driver.h"
 
 namespace clice::testing {
 namespace {
@@ -52,10 +52,8 @@ TEST_CASE(GCC, {.skip = !(CIEnvironment && (Windows || Linux))}) {
     llvm::BumpPtrAllocator a;
     llvm::StringSaver s(a);
     auto arguments = toolchain::query_toolchain({
-        .arguments = {"g++",
-                      "-std=c++23", "-resource-dir",
-                      CompilationDatabase::resource_dir().data(),
-                      "-xc++", file->c_str()},
+        .arguments =
+            {"g++", "-std=c++23", "-resource-dir", resource_dir().data(), "-xc++", file->c_str()},
         .callback = [&](const char* str) { return s.save(str).data(); }
     });
 
@@ -93,7 +91,7 @@ TEST_CASE(Clang, {.skip = !CIEnvironment}) {
     auto arguments = toolchain::query_toolchain({
         .arguments = {"clang++",
                       "-std=c++23", "-resource-dir",
-                      CompilationDatabase::resource_dir().data(),
+                      resource_dir().data(),
                       "-xc++", file->c_str()},
         .callback = [&](const char* str) { return s.save(str).data(); }
     });
