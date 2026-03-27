@@ -242,7 +242,9 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
 
 unsigned default_visibility(llvm::StringRef driver) {
     namespace options = clang::driver::options;
-    if(llvm::sys::path::stem(driver).equals_insensitive("cl")) {
+    auto stem = llvm::sys::path::stem(driver);
+    /// cl.exe and clang-cl.exe both need MSVC-style /options.
+    if(stem.equals_insensitive("cl") || stem.equals_insensitive("clang-cl")) {
         return ~0u;
     }
     /// Exclude CLOption to prevent /U, /D, /I from matching Unix paths.
