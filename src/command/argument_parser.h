@@ -128,4 +128,9 @@ std::string print_argv(llvm::ArrayRef<const char*> args);
 /// Defined out-of-line in argument_parser.cpp (needs ClangVisibility enum).
 unsigned default_visibility(llvm::StringRef driver);
 
+/// Check if a filename has a C/C++/ObjC/CUDA/etc. extension accepted by clang.
+/// Returns false for .rc (Windows resource), .asm, .def, and other non-C-family files.
+/// Defined out-of-line in argument_parser.cpp (needs clang::driver::types).
+bool is_c_family_file(llvm::StringRef filename);
+
 }  // namespace clice

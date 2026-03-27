@@ -264,6 +264,13 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
         llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
         llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
+        // Skip non-C-family files (e.g. .rc, .asm, .def) that some build
+        // systems emit into compile_commands.json.
+        if(!is_c_family_file(file_ref)) {
+            ++index;
+            continue;
+        }
+
         // Resolve relative file paths against the directory so that entries
         // from different directories don't collide in the PathPool.
         std::string file_abs;

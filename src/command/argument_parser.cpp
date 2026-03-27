@@ -9,6 +9,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Options.h"
+#include "clang/Driver/Types.h"
 
 namespace clice {
 
@@ -249,6 +250,17 @@ unsigned default_visibility(llvm::StringRef driver) {
     }
     /// Exclude CLOption to prevent /U, /D, /I from matching Unix paths.
     return ~static_cast<unsigned>(options::CLOption);
+}
+
+bool is_c_family_file(llvm::StringRef filename) {
+    namespace types = clang::driver::types;
+    auto ext = llvm::sys::path::extension(filename);
+    if(ext.empty()) {
+        return false;
+    }
+    /// Drop the leading dot: ".cpp" → "cpp".
+    auto type = types::lookupTypeForExtension(ext.drop_front());
+    return type != types::TY_INVALID && types::isAcceptedByClang(type);
 }
 
 }  // namespace clice
