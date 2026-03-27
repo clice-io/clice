@@ -288,11 +288,13 @@ int main(int argc, const char** argv) {
             unique_canonicals.insert(entry.info->canonical.ptr);
             canonical_hist[entry.info->canonical.ptr]++;
         }
+        double dedup_ratio =
+            unique_contexts.empty() ? 0.0 : static_cast<double>(count) / unique_contexts.size();
         std::println(
             "Context dedup: {} files -> {} unique contexts ({:.1f}x), {} unique canonicals",
             count,
             unique_contexts.size(),
-            static_cast<double>(count) / unique_contexts.size(),
+            dedup_ratio,
             unique_canonicals.size());
 
         // If canonical dedup is poor, dump diagnostics.

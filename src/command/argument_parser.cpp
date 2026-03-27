@@ -247,9 +247,16 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
 
 unsigned default_visibility(llvm::StringRef driver) {
     namespace options = clang::driver::options;
-    auto stem = llvm::sys::path::stem(driver);
+    auto name = llvm::sys::path::filename(driver);
+    name.consume_back(".exe");
+
+    auto is_cl = [](llvm::StringRef s) {
+        return s.equals_insensitive("cl") || s.equals_insensitive("clang-cl");
+    };
+
     /// cl.exe and clang-cl.exe both need MSVC-style /options.
-    if(stem.equals_insensitive("cl") || stem.equals_insensitive("clang-cl")) {
+    /// Also handle versioned names like clang-cl-17, clang-cl-17.0.1.
+    if(is_cl(name) || is_cl(name.rtrim("0123456789.-"))) {
         return ~0u;
     }
     /// Exclude CLOption to prevent /U, /D, /I from matching Unix paths.

@@ -2,6 +2,8 @@
 
 #include <chrono>
 
+#include "support/logging.h"
+
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
@@ -26,6 +28,9 @@ const llvm::StringSet<>* resolve_dir(llvm::StringRef dir,
     llvm::StringSet<> entries;
     std::error_code ec;
     llvm::sys::fs::directory_iterator di(dir, ec);
+    if(ec) {
+        LOG_DEBUG("readdir failed for '{}': {}", dir, ec.message());
+    }
     for(; !ec && di != llvm::sys::fs::directory_iterator(); di.increment(ec)) {
         entries.insert(llvm::sys::path::filename(di->path()));
     }
