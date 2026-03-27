@@ -42,7 +42,9 @@ public:
     /// options. Pass a narrower mask to exclude option groups — e.g. exclude
     /// MSVC cl.exe-style /U, /D, /I options that would otherwise misparse
     /// Unix absolute paths like /Users/... on macOS.
-    void set_visibility(unsigned mask) { visibility_mask = mask; }
+    void set_visibility(unsigned mask) {
+        visibility_mask = mask;
+    }
 
     /// Parse a single argument at the given index. Defined out-of-line in
     /// argument_parser.cpp to isolate the heavy clang driver option table include.

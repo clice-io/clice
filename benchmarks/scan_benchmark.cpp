@@ -284,11 +284,12 @@ int main(int argc, const char** argv) {
             unique_canonicals.insert(entry.info->canonical.ptr);
             canonical_hist[entry.info->canonical.ptr]++;
         }
-        std::println("Context dedup: {} files -> {} unique contexts ({:.1f}x), {} unique canonicals",
-                     count,
-                     unique_contexts.size(),
-                     static_cast<double>(count) / unique_contexts.size(),
-                     unique_canonicals.size());
+        std::println(
+            "Context dedup: {} files -> {} unique contexts ({:.1f}x), {} unique canonicals",
+            count,
+            unique_contexts.size(),
+            static_cast<double>(count) / unique_contexts.size(),
+            unique_canonicals.size());
 
         // If canonical dedup is poor, dump diagnostics.
         if(unique_canonicals.size() > 200) {
@@ -296,7 +297,9 @@ int main(int argc, const char** argv) {
             std::vector<std::pair<int, const CanonicalCommand*>> sorted;
             for(auto& [ptr, cnt]: canonical_hist)
                 sorted.push_back({cnt, ptr});
-            std::ranges::sort(sorted, std::greater{}, &std::pair<int, const CanonicalCommand*>::first);
+            std::ranges::sort(sorted,
+                              std::greater{},
+                              &std::pair<int, const CanonicalCommand*>::first);
 
             // Show top-5 canonical commands.
             for(int i = 0; i < std::min(5, (int)sorted.size()); i++) {
