@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -53,11 +52,11 @@ public:
         }
     };
 
-    /// Register a module name -> PathID mapping.
+    /// Register a module interface unit: module name -> PathID.
     void add_module(llvm::StringRef module_name, std::uint32_t path_id);
 
-    /// Look up the PathID that provides a given module.
-    std::optional<std::uint32_t> lookup_module(llvm::StringRef module_name) const;
+    /// Look up all PathIDs that provide a given module (may have multiple candidates).
+    llvm::ArrayRef<std::uint32_t> lookup_module(llvm::StringRef module_name) const;
 
     /// Set the direct include list for a (file, config) pair.
     void set_includes(std::uint32_t path_id,
@@ -81,13 +80,13 @@ public:
     std::size_t edge_count() const;
 
     /// Access the module name -> PathID mapping.
-    const llvm::StringMap<std::uint32_t>& modules() const {
+    const llvm::StringMap<llvm::SmallVector<std::uint32_t, 2>>& modules() const {
         return module_to_path;
     }
 
 private:
-    /// Module name -> PathID.
-    llvm::StringMap<std::uint32_t> module_to_path;
+    /// Module name -> PathIDs (multiple candidates possible, e.g. different targets).
+    llvm::StringMap<llvm::SmallVector<std::uint32_t, 2>> module_to_path;
 
     /// (PathID, ConfigID) -> list of directly included PathIDs.
     /// Each PathID may have bit 31 set to indicate conditional include.

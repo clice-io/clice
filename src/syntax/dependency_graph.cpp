@@ -24,22 +24,18 @@ namespace et = eventide;
 // ============================================================================
 
 void DependencyGraph::add_module(llvm::StringRef module_name, std::uint32_t path_id) {
-    auto [it, inserted] = module_to_path.try_emplace(module_name, path_id);
-    if(!inserted && it->second != path_id) {
-        LOG_WARN("Duplicate module '{}': PathID {} overwrites {}",
-                 module_name,
-                 path_id,
-                 it->second);
-        it->second = path_id;
+    auto& ids = module_to_path[module_name];
+    if(llvm::find(ids, path_id) == ids.end()) {
+        ids.push_back(path_id);
     }
 }
 
-std::optional<std::uint32_t> DependencyGraph::lookup_module(llvm::StringRef module_name) const {
+llvm::ArrayRef<std::uint32_t> DependencyGraph::lookup_module(llvm::StringRef module_name) const {
     auto it = module_to_path.find(module_name);
     if(it != module_to_path.end()) {
         return it->second;
     }
-    return std::nullopt;
+    return {};
 }
 
 void DependencyGraph::set_includes(std::uint32_t path_id,
@@ -510,8 +506,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 includer_found_dir_idx = sf_it->second;
             }
 
-            // Record module mapping.
-            if(!scan_result.scan_result.module_name.empty()) {
+            // Record module interface unit mapping.
+            if(scan_result.scan_result.is_interface_unit) {
                 graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
             }
 

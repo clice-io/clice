@@ -533,10 +533,8 @@ CompilationDatabase::ToolchainExtract
     parser->parse(
         llvm::ArrayRef(arguments).drop_front(),
         [&](std::unique_ptr<llvm::opt::Arg> arg) {
-            auto& opt = arg->getOption();
-            auto id = opt.getID();
-            if(is_discarded_option(id) || is_user_content_option(id) ||
-               is_codegen_option(id, opt)) {
+            auto id = arg->getOption().getID();
+            if(!is_toolchain_option(id)) {
                 return;
             }
 

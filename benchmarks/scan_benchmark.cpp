@@ -67,8 +67,10 @@ void export_graph_json(const PathPool& path_pool,
                        llvm::StringRef output_path) {
     // Build reverse module map: path_id -> module_name.
     llvm::DenseMap<std::uint32_t, llvm::StringRef> path_to_module;
-    for(auto& [name, path_id]: graph.modules()) {
-        path_to_module[path_id] = name;
+    for(auto& [name, path_ids]: graph.modules()) {
+        for(auto path_id: path_ids) {
+            path_to_module[path_id] = name;
+        }
     }
 
     GraphExport export_data;

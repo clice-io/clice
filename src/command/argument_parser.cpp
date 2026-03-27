@@ -115,6 +115,24 @@ bool is_xclang_option(unsigned id) {
     return id == ID::OPT_Xclang;
 }
 
+bool is_toolchain_option(unsigned id) {
+    switch(id) {
+        case ID::OPT_target:
+        case ID::OPT_target_legacy_spelling:
+        case ID::OPT_isysroot:
+        case ID::OPT__sysroot_EQ:
+        case ID::OPT__sysroot:
+        case ID::OPT_stdlib_EQ:
+        case ID::OPT_gcc_toolchain:
+        case ID::OPT_gcc_install_dir_EQ:
+        case ID::OPT_nostdinc:
+        case ID::OPT_nostdincxx:
+        case ID::OPT_std_EQ:
+        case ID::OPT_x: return true;
+        default: return false;
+    }
+}
+
 std::optional<std::uint32_t> get_option_id(llvm::StringRef argument) {
     llvm::SmallString<64> buffer = argument;
 

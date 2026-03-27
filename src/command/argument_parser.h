@@ -101,6 +101,10 @@ bool is_include_path_option(unsigned id);
 /// Check if this is the -Xclang pass-through option.
 bool is_xclang_option(unsigned id);
 
+/// Options that affect system path discovery and should be included in the
+/// toolchain cache key. Only these flags are passed to the toolchain query.
+bool is_toolchain_option(unsigned id);
+
 /// Get the option ID for a specific argument string.
 std::optional<std::uint32_t> get_option_id(llvm::StringRef argument);
 

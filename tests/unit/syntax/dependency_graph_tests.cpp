@@ -15,7 +15,7 @@ TEST_SUITE(DependencyGraph) {
 
 TEST_CASE(LookupModuleEmpty) {
     clice::DependencyGraph graph;
-    EXPECT_FALSE(graph.lookup_module("foo.bar").has_value());
+    EXPECT_TRUE(graph.lookup_module("foo.bar").empty());
 }
 
 TEST_CASE(AddAndLookupModule) {
@@ -23,18 +23,23 @@ TEST_CASE(AddAndLookupModule) {
     graph.add_module("foo.bar", 42);
 
     auto result = graph.lookup_module("foo.bar");
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, 42u);
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_EQ(result[0], 42u);
 }
 
-TEST_CASE(DuplicateModuleOverwrites) {
+TEST_CASE(DuplicateModuleDedup) {
     clice::DependencyGraph graph;
+    // Same module name, same path_id — should dedup.
     graph.add_module("foo", 10);
-    graph.add_module("foo", 20);
+    graph.add_module("foo", 10);
+    ASSERT_EQ(graph.lookup_module("foo").size(), 1u);
 
+    // Same module name, different path_id — multiple candidates.
+    graph.add_module("foo", 20);
     auto result = graph.lookup_module("foo");
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, 20u);
+    ASSERT_EQ(result.size(), 2u);
+    EXPECT_EQ(result[0], 10u);
+    EXPECT_EQ(result[1], 20u);
 }
 
 TEST_CASE(MultipleModules) {
@@ -43,10 +48,13 @@ TEST_CASE(MultipleModules) {
     graph.add_module("mod.b", 2);
     graph.add_module("mod.c:part", 3);
 
-    EXPECT_EQ(*graph.lookup_module("mod.a"), 1u);
-    EXPECT_EQ(*graph.lookup_module("mod.b"), 2u);
-    EXPECT_EQ(*graph.lookup_module("mod.c:part"), 3u);
-    EXPECT_FALSE(graph.lookup_module("mod.d").has_value());
+    ASSERT_EQ(graph.lookup_module("mod.a").size(), 1u);
+    EXPECT_EQ(graph.lookup_module("mod.a")[0], 1u);
+    ASSERT_EQ(graph.lookup_module("mod.b").size(), 1u);
+    EXPECT_EQ(graph.lookup_module("mod.b")[0], 2u);
+    ASSERT_EQ(graph.lookup_module("mod.c:part").size(), 1u);
+    EXPECT_EQ(graph.lookup_module("mod.c:part")[0], 3u);
+    EXPECT_TRUE(graph.lookup_module("mod.d").empty());
 }
 
 TEST_CASE(ModuleCount) {
@@ -59,7 +67,7 @@ TEST_CASE(ModuleCount) {
     graph.add_module("b", 2);
     EXPECT_EQ(graph.module_count(), 2u);
 
-    // Overwrite doesn't increase count.
+    // Second candidate for "a" doesn't increase module name count.
     graph.add_module("a", 3);
     EXPECT_EQ(graph.module_count(), 2u);
 }
@@ -398,9 +406,9 @@ export int foo() { return 42; }
     scan_dependency_graph(cdb, pool, graph);
 
     auto result = graph.lookup_module("my.module");
-    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result.size(), 1u);
 
-    auto path = pool.resolve(*result);
+    auto path = pool.resolve(result[0]);
     EXPECT_TRUE(llvm::sys::fs::equivalent(path, tmp.path("src/mymod.cpp")));
 }
 
@@ -421,7 +429,7 @@ void impl() {}
     write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, pool, graph);
 
-    ASSERT_TRUE(graph.lookup_module("my.mod:part").has_value());
+    ASSERT_EQ(graph.lookup_module("my.mod:part").size(), 1u);
 }
 
 TEST_CASE(DiamondIncludes) {
@@ -530,8 +538,8 @@ void a_impl() {}
     scan_dependency_graph(cdb, pool, graph);
 
     EXPECT_EQ(graph.module_count(), 2u);
-    ASSERT_TRUE(graph.lookup_module("mod.a").has_value());
-    ASSERT_TRUE(graph.lookup_module("mod.b").has_value());
+    ASSERT_FALSE(graph.lookup_module("mod.a").empty());
+    ASSERT_FALSE(graph.lookup_module("mod.b").empty());
 }
 
 TEST_CASE(DeepIncludeChain) {
@@ -581,7 +589,7 @@ export int value() { return util; }
     write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb, pool, graph);
 
-    ASSERT_TRUE(graph.lookup_module("my.lib").has_value());
+    ASSERT_FALSE(graph.lookup_module("my.lib").empty());
     EXPECT_GE(graph.edge_count(), 1u);
 }
 
