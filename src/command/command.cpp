@@ -116,7 +116,7 @@ object_ptr<CompilationInfo>
                 return;
             }
 
-            /// Discard codegen-only options (shared with ToolchainProvider).
+            /// Discard codegen-only options.
             if(is_codegen_option(id, opt)) {
                 return;
             }
@@ -339,7 +339,7 @@ llvm::SmallVector<CompilationContext> CompilationDatabase::lookup(llvm::StringRe
         };
 
         if(options.query_toolchain) {
-            auto cached = toolchain_.query_cached(file, directory, info->canonical->arguments);
+            auto cached = query_toolchain_cached(file, directory, info->canonical->arguments);
 
             if(cached.empty()) {
                 if(!options.suppress_logging) {
@@ -511,8 +511,119 @@ bool CompilationDatabase::has_cached_configs() const {
     return !search_config_cache.empty();
 }
 
-ToolchainProvider& CompilationDatabase::toolchain() {
-    return toolchain_;
+CompilationDatabase::ToolchainExtract
+    CompilationDatabase::extract_toolchain_flags(llvm::StringRef file,
+                                                 llvm::ArrayRef<const char*> arguments) {
+    ToolchainExtract result;
+
+    // Driver binary (first arg) — e.g. "clang++" vs "clang" affects language mode.
+    result.key += arguments[0];
+    result.key += '\0';
+
+    // File extension affects language mode (C vs C++).
+    result.key += path::extension(file);
+    result.key += '\0';
+
+    result.query_args.push_back(arguments[0]);
+
+    parser->parse(
+        llvm::ArrayRef(arguments).drop_front(),
+        [&](std::unique_ptr<llvm::opt::Arg> arg) {
+            auto& opt = arg->getOption();
+            auto id = opt.getID();
+            if(is_discarded_option(id) || is_user_content_option(id) ||
+               is_codegen_option(id, opt)) {
+                return;
+            }
+
+            // Add option ID and all its values to the cache key.
+            result.key += std::to_string(id);
+            result.key += '\0';
+            for(auto value: arg->getValues()) {
+                result.key += value;
+                result.key += '\0';
+            }
+
+            // Render the argument back to query args.
+            render_arg_to(
+                [&](llvm::StringRef s) { result.query_args.push_back(strings.save(s).data()); },
+                *arg);
+        },
+        [](int, int) {});
+
+    return result;
+}
+
+llvm::ArrayRef<const char*>
+    CompilationDatabase::query_toolchain_cached(llvm::StringRef file,
+                                                llvm::StringRef directory,
+                                                llvm::ArrayRef<const char*> arguments) {
+    auto [key, query_args] = extract_toolchain_flags(file, arguments);
+    auto it = toolchain_cache.find(key);
+    if(it != toolchain_cache.end()) {
+        return it->second;
+    }
+
+    LOG_WARN("Toolchain cache miss (spawning process): file={}, cache_size={}, key_len={}",
+             file,
+             toolchain_cache.size(),
+             key.size());
+
+    auto callback = [&](const char* s) -> const char* {
+        return strings.save(s).data();
+    };
+    toolchain::QueryParams params = {file, directory, query_args, callback};
+    auto result = toolchain::query_toolchain(params);
+
+    auto [entry, _] = toolchain_cache.try_emplace(std::move(key), std::move(result));
+    return entry->second;
+}
+
+std::vector<ToolchainQuery>
+    CompilationDatabase::get_pending_queries(llvm::ArrayRef<PendingEntry> entries) {
+    llvm::StringMap<bool> seen_keys;
+    std::vector<ToolchainQuery> queries;
+
+    for(auto& entry: entries) {
+        if(entry.arguments.empty()) {
+            continue;
+        }
+
+        auto [key, query_args] = extract_toolchain_flags(entry.file, entry.arguments);
+
+        // Skip if already cached or already queued.
+        if(toolchain_cache.count(key) || !seen_keys.try_emplace(key, true).second) {
+            continue;
+        }
+
+        LOG_DEBUG("Pre-warm: new toolchain key (len={}) for file={}", key.size(), entry.file);
+        queries.push_back(
+            {std::move(key), std::move(query_args), entry.file.str(), entry.directory.str()});
+    }
+
+    LOG_INFO("Pre-warm: {} unique keys from {} entries, {} queries needed",
+             seen_keys.size(),
+             entries.size(),
+             queries.size());
+    return queries;
+}
+
+void CompilationDatabase::inject_results(llvm::ArrayRef<ToolchainResult> results) {
+    for(auto& result: results) {
+        if(toolchain_cache.count(result.key)) {
+            continue;
+        }
+        std::vector<const char*> saved;
+        saved.reserve(result.cc1_args.size());
+        for(auto& arg: result.cc1_args) {
+            saved.push_back(strings.save(arg).data());
+        }
+        toolchain_cache.try_emplace(result.key, std::move(saved));
+    }
+}
+
+bool CompilationDatabase::has_cached_toolchain() const {
+    return !toolchain_cache.empty();
 }
 
 llvm::StringRef CompilationDatabase::resolve_path(std::uint32_t path_id) {

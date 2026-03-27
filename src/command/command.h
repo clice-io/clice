@@ -7,7 +7,6 @@
 
 #include "command/argument_parser.h"
 #include "command/search_config.h"
-#include "command/toolchain_provider.h"
 #include "support/object_pool.h"
 #include "support/path_pool.h"
 
@@ -15,6 +14,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -78,6 +78,20 @@ struct CompilationEntry {
 
     /// Parsed compilation info (directory + canonical + patch).
     object_ptr<CompilationInfo> info;
+};
+
+/// A pending toolchain query, ready to be executed (possibly in parallel).
+struct ToolchainQuery {
+    std::string key;
+    std::vector<const char*> query_args;
+    std::string file;
+    std::string directory;
+};
+
+/// Result of a toolchain query, to be injected back into the cache.
+struct ToolchainResult {
+    std::string key;
+    std::vector<std::string> cc1_args;
 };
 
 }  // namespace clice
@@ -157,7 +171,7 @@ public:
 public:
     /// Load (or reload) the compilation database from the given file.
     /// Full reload: old entries are replaced, SearchConfig cache is cleared,
-    /// but ToolchainProvider cache survives. Returns the number of entries loaded.
+    /// but toolchain cache survives. Returns the number of entries loaded.
     std::size_t load(llvm::StringRef path);
 
     /// Lookup the compilation contexts for a file. A file may have multiple
@@ -174,8 +188,23 @@ public:
     /// Resolve a path_id back to the file path string.
     llvm::StringRef resolve_path(std::uint32_t path_id);
 
-    /// Access the toolchain provider for batch pre-warming and direct queries.
-    ToolchainProvider& toolchain();
+    /// Entry for batch pre-warming: file + directory + raw compilation arguments.
+    struct PendingEntry {
+        llvm::StringRef file;
+        llvm::StringRef directory;
+        llvm::SmallVector<const char*, 32> arguments;
+    };
+
+    /// Get pending toolchain queries for a batch of compilation entries.
+    /// Returns queries only for cache-miss keys (deduplicated).
+    std::vector<ToolchainQuery> get_pending_queries(llvm::ArrayRef<PendingEntry> entries);
+
+    /// Inject pre-computed toolchain results into the cache. Strings are copied
+    /// into the internal string pool.
+    void inject_results(llvm::ArrayRef<ToolchainResult> results);
+
+    /// Check if toolchain cache has any entries.
+    bool has_cached_toolchain() const;
 
 #ifdef CLICE_ENABLE_TEST
 
@@ -208,6 +237,21 @@ private:
         return options.query_toolchain ? 1u : 0u;
     }
 
+    struct ToolchainExtract {
+        std::string key;
+        std::vector<const char*> query_args;
+    };
+
+    /// Extract toolchain-relevant flags and build a cache key.
+    ToolchainExtract extract_toolchain_flags(llvm::StringRef file,
+                                             llvm::ArrayRef<const char*> arguments);
+
+    /// Query toolchain with caching. Returns cached cc1 args, running the
+    /// expensive compiler query only on cache miss.
+    llvm::ArrayRef<const char*> query_toolchain_cached(llvm::StringRef file,
+                                                       llvm::StringRef directory,
+                                                       llvm::ArrayRef<const char*> arguments);
+
     /// The memory pool which holds all elements of compilation database.
     /// Heap-allocated so its address is stable across moves.
     std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();
@@ -228,12 +272,12 @@ private:
     /// Multiple entries for the same file are adjacent.
     std::vector<CompilationEntry> entries;
 
-    /// Pluggable toolchain provider: manages toolchain queries and caching.
-    ToolchainProvider toolchain_;
-
     /// Cache of SearchConfig keyed by (CompilationInfo*, options_bits).
     using ConfigCacheKey = std::pair<const CompilationInfo*, std::uint8_t>;
     llvm::DenseMap<ConfigCacheKey, SearchConfig> search_config_cache;
+
+    /// Cache of toolchain query results, keyed by canonical toolchain key.
+    llvm::StringMap<std::vector<const char*>> toolchain_cache;
 
     std::unique_ptr<ArgumentParser> parser = std::make_unique<ArgumentParser>(allocator.get());
 };
