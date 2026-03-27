@@ -1,23 +1,17 @@
-name :
-    benchmark
+name: benchmark
 
-        on :
-    pull_request :
-    branches :
-    [main]
+on:
+  pull_request:
+    branches: [main]
 
-    jobs :
-    benchmark :
-    strategy :
-    fail -
-    fast :
-    false matrix :
-    os :
-    [ ubuntu - 24.04, macos - 15, windows - 2025 ] runs -
-    on : $ {
-    { matrix.os }
-}
-defaults:
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
       run:
         shell: bash
     steps:
