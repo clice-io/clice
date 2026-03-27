@@ -119,6 +119,18 @@ object_ptr<CompilationInfo>
                 return;
             }
 
+            /// On macOS, paths like /Users/... are misinterpreted as MSVC-style
+            /// options (/U, /I, /D, etc.) by the option parser because they start
+            /// with /U.  Detect and discard: if spelling + value reconstructs to
+            /// an absolute path, it was actually a file path, not an option.
+            if(arg->getSpelling().starts_with("/") && arg->getNumValues() == 1) {
+                llvm::SmallString<256> reconstructed(arg->getSpelling());
+                reconstructed += arg->getValue(0);
+                if(llvm::sys::path::is_absolute(reconstructed)) {
+                    return;
+                }
+            }
+
             /// Discard codegen-only options.
             if(is_codegen_option(id, opt)) {
                 return;
