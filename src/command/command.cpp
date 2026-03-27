@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cctype>
 #include <ranges>
 #include <string_view>
@@ -89,6 +90,8 @@ object_ptr<CompilationInfo>
     CompilationDatabase::save_compilation_info(llvm::StringRef file,
                                                llvm::StringRef directory,
                                                llvm::ArrayRef<const char*> arguments) {
+    assert(!arguments.empty() && "arguments must contain at least the driver");
+
     auto render_arg = [&](auto& out, llvm::opt::Arg& arg) {
         render_arg_to([&](llvm::StringRef s) { out.push_back(strings.save(s).data()); }, arg);
     };
@@ -283,6 +286,7 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
             }
             if(!malformed && !args.empty()) {
                 auto info = save_compilation_info(file_ref, dir_ref, args);
+                assert(info && "save_compilation_info must succeed with non-empty args");
                 auto path_id = paths.intern(file_ref);
                 entries.push_back({path_id, info});
             }
