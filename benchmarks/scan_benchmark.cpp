@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
+#include <map>
 #include <numeric>
 #include <print>
 #include <set>
@@ -273,19 +274,64 @@ int main(int argc, const char** argv) {
 
     std::println("CDB loaded: {} entries in {}ms", count, load_ms);
 
-    // ── Context dedup summary ──────────────────────────────────────
+    // ── Context dedup diagnostic ──────────────────────────────────────
     {
         std::set<const CompilationInfo*> unique_contexts;
         std::set<const CanonicalCommand*> unique_canonicals;
+        std::map<const CanonicalCommand*, int> canonical_hist;
         for(auto& entry: cdb.get_entries()) {
             unique_contexts.insert(entry.info.ptr);
             unique_canonicals.insert(entry.info->canonical.ptr);
+            canonical_hist[entry.info->canonical.ptr]++;
         }
         std::println("Context dedup: {} files -> {} unique contexts ({:.1f}x), {} unique canonicals",
                      count,
                      unique_contexts.size(),
                      static_cast<double>(count) / unique_contexts.size(),
                      unique_canonicals.size());
+
+        // If canonical dedup is poor, dump diagnostics.
+        if(unique_canonicals.size() > 200) {
+            // Sort canonicals by frequency (descending).
+            std::vector<std::pair<int, const CanonicalCommand*>> sorted;
+            for(auto& [ptr, cnt]: canonical_hist)
+                sorted.push_back({cnt, ptr});
+            std::ranges::sort(sorted, std::greater{}, &std::pair<int, const CanonicalCommand*>::first);
+
+            // Show top-5 canonical commands.
+            for(int i = 0; i < std::min(5, (int)sorted.size()); i++) {
+                auto [cnt, cmd] = sorted[i];
+                std::println("  canonical[{}] ({} files, {} args):", i, cnt, cmd->arguments.size());
+                for(auto arg: cmd->arguments)
+                    std::println("    {}", arg);
+            }
+
+            // Show a singleton canonical (count==1) to see what per-file arg leaks in.
+            for(auto& [cnt, cmd]: sorted) {
+                if(cnt == 1) {
+                    std::println("  singleton canonical ({} args):", cmd->arguments.size());
+                    for(auto arg: cmd->arguments)
+                        std::println("    {}", arg);
+                    break;
+                }
+            }
+
+            // Find two canonicals that differ by only a few args.
+            if(sorted.size() >= 2) {
+                auto* a = sorted[0].second;
+                auto* b = sorted[1].second;
+                std::println("  --- Canonical diff (top-1 vs top-2) ---");
+                auto max_len = std::max(a->arguments.size(), b->arguments.size());
+                for(std::size_t i = 0; i < max_len; i++) {
+                    llvm::StringRef av = i < a->arguments.size() ? a->arguments[i] : "<missing>";
+                    llvm::StringRef bv = i < b->arguments.size() ? b->arguments[i] : "<missing>";
+                    if(av != bv)
+                        std::println("    DIFF[{}]: '{}' vs '{}'", i, av, bv);
+                    else
+                        std::println("    SAME[{}]: '{}'", i, av);
+                }
+            }
+        }
     }
 
     // ── Cold start dependency scan benchmark ──────────────────────────────
