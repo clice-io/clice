@@ -456,26 +456,164 @@ TEST_CASE(PrintArgv) {
     EXPECT_TRUE(llvm::StringRef(result2).contains("\""));
 };
 
-TEST_CASE(RelativeFilePath) {
-    /// load() should resolve relative file paths against directory.
+/// Write JSON to a temp file, load into a CDB, remove the file.
+/// Returns the number of entries loaded.
+std::size_t load_json(CompilationDatabase& database, llvm::StringRef json) {
     auto path = fs::createTemporaryFile("cdb", "json");
-    ASSERT_TRUE(path.has_value());
-
+    if(!path)
+        return 0;
     {
         std::error_code ec;
         llvm::raw_fd_ostream out(*path, ec);
-        ASSERT_FALSE(ec.operator bool());
-        out << R"([
-            {"directory": "/project/build", "file": "src/main.cpp",
-             "arguments": ["clang++", "-std=c++20", "src/main.cpp"]},
-            {"directory": "/other/build", "file": "src/main.cpp",
-             "arguments": ["clang++", "-std=c++17", "src/main.cpp"]}
-        ])";
+        if(ec)
+            return 0;
+        out << json;
     }
-
-    CompilationDatabase database;
     auto count = database.load(*path);
     llvm::sys::fs::remove(*path);
+    return count;
+}
+
+TEST_CASE(LoadMixedFormats) {
+    /// "arguments" array and "command" string can coexist in the same CDB.
+    CompilationDatabase database;
+    auto count = load_json(database, R"([
+        {"directory": "/build", "file": "/src/a.cpp",
+         "arguments": ["clang++", "-std=c++20", "/src/a.cpp"]},
+        {"directory": "/build", "file": "/src/b.cpp",
+         "command": "clang++ -std=c++23 /src/b.cpp"}
+    ])");
+
+    ASSERT_EQ(count, 2U);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+
+    auto a = database.lookup("/src/a.cpp", options);
+    ASSERT_EQ(a.size(), 1U);
+    EXPECT_TRUE(llvm::StringRef(print_argv(a.front().arguments)).contains("-std=c++20"));
+
+    auto b = database.lookup("/src/b.cpp", options);
+    ASSERT_EQ(b.size(), 1U);
+    EXPECT_TRUE(llvm::StringRef(print_argv(b.front().arguments)).contains("-std=c++23"));
+};
+
+TEST_CASE(LoadErrorRecovery) {
+    /// Bad entries should be skipped; good entries still load.
+    CompilationDatabase database;
+    auto count = load_json(database, R"([
+        {"file": "/src/no_dir.cpp",
+         "arguments": ["clang++", "/src/no_dir.cpp"]},
+        {"directory": "/build",
+         "arguments": ["clang++", "/src/no_file.cpp"]},
+        {"directory": "/build", "file": "/src/no_args.cpp"},
+        {"directory": "/build", "file": "/src/good.cpp",
+         "arguments": ["clang++", "-std=c++20", "/src/good.cpp"]},
+        42,
+        {"directory": "/build", "file": "/src/also_good.cpp",
+         "command": "clang++ -Wall /src/also_good.cpp"}
+    ])");
+
+    /// Only the two valid entries should survive.
+    ASSERT_EQ(count, 2U);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+
+    auto good = database.lookup("/src/good.cpp", options);
+    ASSERT_EQ(good.size(), 1U);
+    EXPECT_TRUE(llvm::StringRef(print_argv(good.front().arguments)).contains("-std=c++20"));
+
+    auto also = database.lookup("/src/also_good.cpp", options);
+    ASSERT_EQ(also.size(), 1U);
+    EXPECT_TRUE(llvm::StringRef(print_argv(also.front().arguments)).contains("-Wall"));
+};
+
+TEST_CASE(LoadEmptyCommand) {
+    /// Whitespace-only or empty "command" should not crash.
+    CompilationDatabase database;
+    auto count = load_json(database, R"([
+        {"directory": "/build", "file": "/src/empty.cpp", "command": ""},
+        {"directory": "/build", "file": "/src/spaces.cpp", "command": "   "},
+        {"directory": "/build", "file": "/src/ok.cpp",
+         "command": "clang++ -std=c++20 /src/ok.cpp"}
+    ])");
+
+    /// Only the valid entry survives.
+    ASSERT_EQ(count, 1U);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+    auto ok = database.lookup("/src/ok.cpp", options);
+    ASSERT_EQ(ok.size(), 1U);
+    EXPECT_TRUE(llvm::StringRef(print_argv(ok.front().arguments)).contains("-std=c++20"));
+};
+
+TEST_CASE(LoadReload) {
+    /// Second load() replaces all entries from the first.
+    CompilationDatabase database;
+
+    load_json(database, R"([
+        {"directory": "/build", "file": "/src/a.cpp",
+         "arguments": ["clang++", "-std=c++17", "/src/a.cpp"]}
+    ])");
+
+    CommandOptions options;
+    options.suppress_logging = true;
+
+    auto a = database.lookup("/src/a.cpp", options);
+    ASSERT_EQ(a.size(), 1U);
+    EXPECT_TRUE(llvm::StringRef(print_argv(a.front().arguments)).contains("-std=c++17"));
+
+    /// Reload with different content.
+    auto count = load_json(database, R"([
+        {"directory": "/build", "file": "/src/b.cpp",
+         "arguments": ["clang++", "-std=c++23", "/src/b.cpp"]}
+    ])");
+
+    ASSERT_EQ(count, 1U);
+
+    /// Old entry gone (falls back to default).
+    auto a2 = database.lookup("/src/a.cpp", options);
+    ASSERT_EQ(a2.size(), 1U);
+    EXPECT_FALSE(llvm::StringRef(print_argv(a2.front().arguments)).contains("-std=c++17"));
+
+    /// New entry present.
+    auto b = database.lookup("/src/b.cpp", options);
+    ASSERT_EQ(b.size(), 1U);
+    EXPECT_TRUE(llvm::StringRef(print_argv(b.front().arguments)).contains("-std=c++23"));
+};
+
+TEST_CASE(LoadCommandQuoting) {
+    /// "command" string with spaces in paths and quoted defines.
+    CompilationDatabase database;
+    auto count = load_json(database, R"([
+        {"directory": "/build", "file": "/src/main.cpp",
+         "command": "clang++ -std=c++20 \"-DMSG=hello world\" -I\"/path with spaces\" /src/main.cpp"}
+    ])");
+
+    ASSERT_EQ(count, 1U);
+
+    CommandOptions options;
+    options.suppress_logging = true;
+    auto result = database.lookup("/src/main.cpp", options);
+    ASSERT_EQ(result.size(), 1U);
+    auto argv = print_argv(result.front().arguments);
+
+    /// The define and include path should be present after shell tokenization.
+    EXPECT_TRUE(llvm::StringRef(argv).contains("hello world"));
+    EXPECT_TRUE(llvm::StringRef(argv).contains("/path with spaces"));
+};
+
+TEST_CASE(LoadRelativePath) {
+    /// load() should resolve relative file paths against directory.
+    CompilationDatabase database;
+    auto count = load_json(database, R"([
+        {"directory": "/project/build", "file": "src/main.cpp",
+         "arguments": ["clang++", "-std=c++20", "src/main.cpp"]},
+        {"directory": "/other/build", "file": "src/main.cpp",
+         "arguments": ["clang++", "-std=c++17", "src/main.cpp"]}
+    ])");
 
     ASSERT_EQ(count, 2U);
 
