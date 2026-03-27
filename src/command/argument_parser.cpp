@@ -52,6 +52,7 @@ bool is_discarded_option(unsigned id) {
         /// Input file, unknown args, and output — we manage these ourselves.
         case ID::OPT_INPUT:
         case ID::OPT_UNKNOWN:
+        case ID::OPT__DASH_DASH:
         case ID::OPT_c:
         case ID::OPT_o:
         case ID::OPT_dxc_Fc:
