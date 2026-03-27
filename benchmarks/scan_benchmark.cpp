@@ -248,6 +248,10 @@ int main(int argc, const char** argv) {
     auto& cdb_path = *opts.cdb_path;
     auto hw_threads = std::thread::hardware_concurrency();
     auto runs = *opts.runs;
+    if(runs <= 0) {
+        std::println(stderr, "Error: --runs must be positive (got {})", runs);
+        return 1;
+    }
 
     // Set UV_THREADPOOL_SIZE if not already set.
     // Use at least libuv's default (4) so low-core CI runners don't regress.

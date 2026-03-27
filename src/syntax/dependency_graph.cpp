@@ -43,7 +43,10 @@ void DependencyGraph::set_includes(std::uint32_t path_id,
                                    llvm::SmallVector<std::uint32_t> included_ids) {
     IncludeKey key{path_id, config_id};
     includes[key] = std::move(included_ids);
-    file_configs[path_id].push_back(config_id);
+    auto& configs = file_configs[path_id];
+    if(std::find(configs.begin(), configs.end(), config_id) == configs.end()) {
+        configs.push_back(config_id);
+    }
 }
 
 llvm::ArrayRef<std::uint32_t> DependencyGraph::get_includes(std::uint32_t path_id,
@@ -268,8 +271,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     DirListingCache local_dir_cache;
     DirListingCache& dir_cache = ext_cache ? ext_cache->dir_cache : local_dir_cache;
 
-    llvm::StringMap<std::uint32_t> local_include_cache;
-    llvm::StringMap<std::uint32_t>& include_cache =
+    llvm::StringMap<ScanCache::CachedInclude> local_include_cache;
+    llvm::StringMap<ScanCache::CachedInclude>& include_cache =
         ext_cache ? ext_cache->include_cache : local_include_cache;
 
     // ── Dir cache pre-population ─────────────────────────────────────
@@ -530,8 +533,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                     auto cache_it = include_cache.find(cache_key);
                     if(cache_it != include_cache.end()) {
                         report.include_cache_hits++;
-                        auto cached_id = cache_it->second;
-                        if(cached_id == UINT32_MAX) {
+                        auto& cached = cache_it->second;
+                        if(cached.path_id == UINT32_MAX) {
                             report.unresolved.push_back({
                                 std::move(inc.path),
                                 std::string(path_pool.resolve(scan_result.path_id)),
@@ -542,7 +545,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                         }
                         report.includes_resolved++;
                         // Jump directly to edge building with cached path_id.
-                        std::uint32_t flagged_id = cached_id;
+                        std::uint32_t flagged_id = cached.path_id;
                         if(inc.conditional) {
                             flagged_id |= DependencyGraph::CONDITIONAL_FLAG;
                             report.conditional_edges++;
@@ -551,8 +554,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                         }
                         report.total_edges++;
                         include_ids.push_back(flagged_id);
-                        if(scanned_files.try_emplace(cached_id, 0u).second) {
-                            next_wave.push_back({cached_id, scan_result.config_id});
+                        if(scanned_files.try_emplace(cached.path_id, cached.found_dir_idx).second) {
+                            next_wave.push_back(
+                                {cached.path_id, scan_result.config_id, cached.found_dir_idx});
                         }
                         continue;
                     }
@@ -573,7 +577,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                     std::chrono::duration_cast<std::chrono::microseconds>(r_t1 - r_t0).count();
                 if(!resolved.has_value()) {
                     if(cache_eligible) {
-                        include_cache.try_emplace(cache_key, UINT32_MAX);
+                        include_cache.try_emplace(cache_key,
+                                                  ScanCache::CachedInclude{UINT32_MAX, 0});
                     }
                     report.unresolved.push_back({
                         std::move(inc.path),
@@ -588,7 +593,9 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 report.includes_resolved++;
 
                 if(cache_eligible) {
-                    include_cache.try_emplace(cache_key, inc_path_id);
+                    include_cache.try_emplace(
+                        cache_key,
+                        ScanCache::CachedInclude{inc_path_id, resolved->found_dir_idx});
                 }
 
                 std::uint32_t flagged_id = inc_path_id;

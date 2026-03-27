@@ -193,11 +193,16 @@ struct ScanCache {
     /// Directory listing cache: dir path → set of filenames.
     DirListingCache dir_cache;
 
-    /// Angled-include resolution cache: (config_id bytes + header) → path_id.
+    /// Angled-include resolution cache: (config_id bytes + header) → {path_id, found_dir_idx}.
     /// path_id values are valid only for the PathPool used during the scan
     /// that populated this cache.  If PathPool is reset between scans, clear
     /// this cache too (or pass nullptr to scan_dependency_graph).
-    llvm::StringMap<std::uint32_t> include_cache;
+    struct CachedInclude {
+        std::uint32_t path_id;
+        unsigned found_dir_idx;
+    };
+
+    llvm::StringMap<CachedInclude> include_cache;
 
     /// Lexer scan result cache: path_id → ScanResult.
     /// Populated on the first scan of each file.  On subsequent calls the

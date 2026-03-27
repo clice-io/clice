@@ -119,6 +119,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     // Only these produce non-canonical paths after path::append.
     bool needs_normalize = !is_simple && (filename.find("..") != llvm::StringRef::npos ||
                                           filename.find("./") != llvm::StringRef::npos ||
+                                          filename.find(".\\") != llvm::StringRef::npos ||
                                           filename.find("\\.") != llvm::StringRef::npos);
 
     llvm::SmallString<256> candidate;
