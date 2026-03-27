@@ -349,7 +349,8 @@ TEST_CASE(IncludePathAbsolutize) {
     CommandOptions options;
     options.suppress_logging = true;
     auto result = database.lookup("main.cpp", options).front().arguments;
-    auto argv = print_argv(result);
+    /// Normalize separators for cross-platform assertions.
+    auto argv = path::convert_to_slash(print_argv(result));
 
     /// Relative paths must be resolved against /project/build.
     EXPECT_TRUE(llvm::StringRef(argv).contains("/project/build/include"));
@@ -620,12 +621,14 @@ TEST_CASE(LoadRelativePath) {
     CommandOptions options;
     options.suppress_logging = true;
 
-    /// Lookup by the resolved absolute path.
-    auto results = database.lookup("/project/build/src/main.cpp", options);
+    /// Lookup by the resolved absolute path (use path::join for correct separator).
+    auto path1 = path::join("/project/build", "src/main.cpp");
+    auto results = database.lookup(path1, options);
     ASSERT_EQ(results.size(), 1U);
     EXPECT_TRUE(llvm::StringRef(print_argv(results.front().arguments)).contains("-std=c++20"));
 
-    auto results2 = database.lookup("/other/build/src/main.cpp", options);
+    auto path2 = path::join("/other/build", "src/main.cpp");
+    auto results2 = database.lookup(path2, options);
     ASSERT_EQ(results2.size(), 1U);
     EXPECT_TRUE(llvm::StringRef(print_argv(results2.front().arguments)).contains("-std=c++17"));
 
