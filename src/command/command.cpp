@@ -272,13 +272,16 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
             llvm::BumpPtrAllocator local;
             llvm::StringSaver saver(local);
             llvm::SmallVector<const char*, 32> args;
+            bool malformed = false;
             for(auto arg_val: args_arr) {
                 std::string_view sv;
-                if(!arg_val.get_string().get(sv)) {
-                    args.push_back(saver.save(llvm::StringRef(sv.data(), sv.size())).data());
+                if(arg_val.get_string().get(sv)) {
+                    malformed = true;
+                    break;
                 }
+                args.push_back(saver.save(llvm::StringRef(sv.data(), sv.size())).data());
             }
-            if(!args.empty()) {
+            if(!malformed && !args.empty()) {
                 auto info = save_compilation_info(file_ref, dir_ref, args);
                 auto path_id = paths.intern(file_ref);
                 entries.push_back({path_id, info});
