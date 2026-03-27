@@ -1,24 +1,28 @@
-name: benchmark
+name :
+    benchmark
 
-on:
-  pull_request:
-    branches: [main]
+        on :
+    pull_request :
+    branches :
+    [main]
 
-jobs:
-  benchmark:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
-    runs-on: ${{ matrix.os }}
-    defaults:
+    jobs :
+    benchmark :
+    strategy :
+    fail -
+    fast :
+    false matrix :
+    os :
+    [ ubuntu - 24.04, macos - 15, windows - 2025 ] runs -
+    on : $ {
+    { matrix.os }
+}
+defaults:
       run:
         shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # ── Build scan_benchmark ──
 
       - uses: ./.github/actions/setup-pixi
 
@@ -26,8 +30,6 @@ jobs:
         run: |
           pixi run cmake-config RelWithDebInfo ON
           cmake --build build/RelWithDebInfo --target scan_benchmark
-
-      # ── Clone LLVM and generate CDB ──
 
       - name: Clone LLVM
         run: git clone --depth 1 https://github.com/llvm/llvm-project.git
@@ -40,8 +42,6 @@ jobs:
             -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld;lldb;mlir;polly;flang;bolt" \
             -DLLVM_ENABLE_RUNTIMES="compiler-rt;libcxx;libcxxabi;libunwind" \
             llvm-project/llvm
-
-      # ── Run benchmark ──
 
       - name: Run benchmark
         run: ./build/RelWithDebInfo/bin/scan_benchmark --runs 20 llvm-build/compile_commands.json

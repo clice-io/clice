@@ -278,7 +278,6 @@ int main(int argc, const char** argv) {
 
     std::println("CDB loaded: {} entries in {}ms", count, load_ms);
 
-    // ── Context dedup diagnostic ──────────────────────────────────────
     {
         std::set<const CompilationInfo*> unique_contexts;
         std::set<const CanonicalCommand*> unique_canonicals;
@@ -343,7 +342,6 @@ int main(int argc, const char** argv) {
         }
     }
 
-    // ── Cold start dependency scan benchmark ──────────────────────────────
     std::println("\nRunning {} cold start scan(s)...\n", runs);
 
     PathPool path_pool;

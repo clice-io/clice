@@ -214,7 +214,6 @@ struct ScanCache {
     /// Invalidate per-entry when a file changes on disk.
     llvm::DenseMap<std::uint32_t, ScanResult> scan_results;
 
-    // ── Config extraction cache ──────────────────────────────────────────
     // Populated during the first scan and reused on all subsequent calls
     // when the compilation database has not changed.
 

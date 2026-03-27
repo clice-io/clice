@@ -196,8 +196,27 @@ et::task<> MasterServer::load_workspace() {
     auto count = cdb.load(cdb_path);
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
 
-    // Build dependency graph via wavefront BFS scan.
-    scan_dependency_graph(cdb, path_pool, dependency_graph);
+    auto report = scan_dependency_graph(cdb, path_pool, dependency_graph);
+
+    auto unresolved = report.includes_found - report.includes_resolved;
+    double accuracy =
+        report.includes_found > 0
+            ? 100.0 * static_cast<double>(report.includes_resolved) / report.includes_found
+            : 100.0;
+    LOG_INFO(
+        "Dependency scan: {}ms, {} files ({} source + {} header), " "{} edges, {}/{} resolved ({:.1f}%), {} waves",
+        report.elapsed_ms,
+        report.total_files,
+        report.source_files,
+        report.header_files,
+        report.total_edges,
+        report.includes_resolved,
+        report.includes_found,
+        accuracy,
+        report.waves);
+    if(unresolved > 0) {
+        LOG_WARN("{} unresolved includes", unresolved);
+    }
 }
 
 void MasterServer::fill_compile_args(llvm::StringRef path,

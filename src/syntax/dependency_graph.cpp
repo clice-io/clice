@@ -279,7 +279,6 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     llvm::StringMap<ScanCache::CachedInclude>& include_cache =
         ext_cache ? ext_cache->include_cache : local_include_cache;
 
-    // ── Dir cache pre-population ─────────────────────────────────────
     // Collect all unique search dirs and launch readdir tasks on the
     // thread pool.  Tasks start executing immediately but are NOT awaited
     // here — instead they run concurrently with Wave 0's file scanning
