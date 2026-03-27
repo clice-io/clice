@@ -38,6 +38,12 @@ public:
         return p;
     }
 
+    /// Set visibility mask for option parsing. The default (~0u) accepts all
+    /// options. Pass a narrower mask to exclude option groups — e.g. exclude
+    /// MSVC cl.exe-style /U, /D, /I options that would otherwise misparse
+    /// Unix absolute paths like /Users/... on macOS.
+    void set_visibility(unsigned mask) { visibility_mask = mask; }
+
     /// Parse a single argument at the given index. Defined out-of-line in
     /// argument_parser.cpp to isolate the heavy clang driver option table include.
     std::unique_ptr<llvm::opt::Arg> parse_one(unsigned& index);
@@ -72,6 +78,7 @@ public:
 
 private:
     llvm::BumpPtrAllocator* allocator;
+    unsigned visibility_mask = ~0u;
 
     llvm::ArrayRef<const char*> arguments;
 };
@@ -114,5 +121,11 @@ llvm::StringRef resource_dir();
 
 /// Format an argument list as a human-readable string: "[arg1 arg2 ...]".
 std::string print_argv(llvm::ArrayRef<const char*> args);
+
+/// Return the visibility mask to exclude MSVC cl.exe-style options (/U, /D,
+/// /I, etc.) unless the driver is cl.exe.  This prevents Unix absolute paths
+/// like /Users/... from being misparsed as /U sers/... on macOS/Linux.
+/// Defined out-of-line in argument_parser.cpp (needs ClangVisibility enum).
+unsigned default_visibility(llvm::StringRef driver);
 
 }  // namespace clice

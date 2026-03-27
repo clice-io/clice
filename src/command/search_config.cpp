@@ -37,6 +37,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
 
     llvm::BumpPtrAllocator allocator;
     ArgumentParser parser{&allocator};
+    parser.set_visibility(default_visibility(arguments[0]));
 
     parser.parse(
         llvm::ArrayRef(arguments).drop_front(),

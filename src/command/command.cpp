@@ -104,6 +104,8 @@ object_ptr<CompilationInfo>
 
     bool remove_pch = false;
 
+    parser->set_visibility(default_visibility(arguments[0]));
+
     auto on_error = [&](int index, int count) {
         LOG_WARN("missing argument index: {}, count: {} when parse: {}", index, count, file);
     };
@@ -117,18 +119,6 @@ object_ptr<CompilationInfo>
             /// Discard options irrelevant to frontend.
             if(is_discarded_option(id)) {
                 return;
-            }
-
-            /// On macOS, paths like /Users/... are misinterpreted as MSVC-style
-            /// options (/U, /I, /D, etc.) by the option parser because they start
-            /// with /U.  Detect and discard: if spelling + value reconstructs to
-            /// an absolute path, it was actually a file path, not an option.
-            if(arg->getSpelling().starts_with("/") && arg->getNumValues() == 1) {
-                llvm::SmallString<256> reconstructed(arg->getSpelling());
-                reconstructed += arg->getValue(0);
-                if(llvm::sys::path::is_absolute(reconstructed)) {
-                    return;
-                }
             }
 
             /// Discard codegen-only options.
@@ -541,6 +531,8 @@ CompilationDatabase::ToolchainExtract
     result.key += '\0';
 
     result.query_args.push_back(arguments[0]);
+
+    parser->set_visibility(default_visibility(arguments[0]));
 
     parser->parse(
         llvm::ArrayRef(arguments).drop_front(),

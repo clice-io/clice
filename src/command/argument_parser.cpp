@@ -5,6 +5,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Options.h"
@@ -40,7 +41,7 @@ auto& option_table = driver::getDriverOptTable();
 std::unique_ptr<llvm::opt::Arg> ArgumentParser::parse_one(unsigned& index) {
     assert(!enable_dash_dash_parsing(option_table));
     assert(!enable_grouped_short_options(option_table));
-    return option_table.ParseOneArg(*this, index);
+    return option_table.ParseOneArg(*this, index, opt::Visibility(visibility_mask));
 }
 
 using ID = clang::driver::options::ID;
@@ -237,6 +238,15 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
         os << '"';
     }
     return std::move(os.str());
+}
+
+unsigned default_visibility(llvm::StringRef driver) {
+    namespace options = clang::driver::options;
+    if(llvm::sys::path::stem(driver).equals_insensitive("cl")) {
+        return ~0u;
+    }
+    /// Exclude CLOption to prevent /U, /D, /I from matching Unix paths.
+    return ~static_cast<unsigned>(options::CLOption);
 }
 
 }  // namespace clice
