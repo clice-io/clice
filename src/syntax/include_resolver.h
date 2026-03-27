@@ -35,6 +35,12 @@ struct StatCounters {
 /// contents once via readdir() and do in-memory set lookups thereafter.
 /// This is dramatically faster on Windows where individual stat() calls
 /// are very expensive (~10x slower than Linux).
+///
+/// TODO: add per-directory invalidation for incremental updates (currently
+/// the entire cache must be discarded when files change on disk).
+/// TODO: on case-insensitive filesystems (macOS HFS+/APFS, Windows NTFS),
+/// the readdir-based first-component optimization in resolve_include may
+/// produce false negatives when the #include casing differs from disk.
 struct DirListingCache {
     llvm::StringMap<llvm::StringSet<>> dirs;
 };

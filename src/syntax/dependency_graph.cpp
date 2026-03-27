@@ -59,7 +59,7 @@ llvm::ArrayRef<std::uint32_t> DependencyGraph::get_includes(std::uint32_t path_i
 }
 
 llvm::SmallVector<std::uint32_t> DependencyGraph::get_all_includes(std::uint32_t path_id) const {
-    llvm::DenseSet<std::uint32_t> seen;
+    llvm::DenseMap<std::uint32_t, std::size_t> seen;  // raw_id -> index in result
     llvm::SmallVector<std::uint32_t> result;
 
     auto fc_it = file_configs.find(path_id);
@@ -72,8 +72,12 @@ llvm::SmallVector<std::uint32_t> DependencyGraph::get_all_includes(std::uint32_t
         if(it != includes.end()) {
             for(auto id: it->second) {
                 auto raw_id = id & PATH_ID_MASK;
-                if(seen.insert(raw_id).second) {
+                auto [sit, inserted] = seen.try_emplace(raw_id, result.size());
+                if(inserted) {
                     result.push_back(id);
+                } else if(!(id & CONDITIONAL_FLAG)) {
+                    // Unconditional include wins over conditional.
+                    result[sit->second] = raw_id;
                 }
             }
         }

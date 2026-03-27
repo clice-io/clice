@@ -189,6 +189,9 @@ struct ScanReport {
 ///
 /// Invalidation: callers must clear (or discard) this cache whenever the
 /// compilation database or filesystem state changes.
+///
+/// TODO: add a generation counter or single invalidate() method to prevent
+/// partial clearing from causing inconsistency between inter-dependent fields.
 struct ScanCache {
     /// Directory listing cache: dir path → set of filenames.
     DirListingCache dir_cache;

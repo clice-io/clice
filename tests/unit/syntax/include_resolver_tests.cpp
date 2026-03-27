@@ -344,6 +344,12 @@ TEST_CASE(IncludeNextPropagatesIdx) {
     EXPECT_EQ(result->found_dir_idx, 2u);
 }
 
+// TODO: add tests for:
+// - #include_next crossing segment boundaries (angled→system)
+// - #include_next at last search dir (should return nullopt)
+// - Relative paths with .. components ("../sibling/header.h")
+// - ResolvedSearchConfig overload (the production hot path)
+
 };  // TEST_SUITE(IncludeResolver)
 
 }  // namespace

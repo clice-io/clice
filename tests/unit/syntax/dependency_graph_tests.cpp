@@ -593,6 +593,13 @@ export int value() { return util; }
     EXPECT_GE(graph.edge_count(), 1u);
 }
 
+// TODO: add tests for:
+// - Circular includes (A→B→A) to verify BFS terminates correctly
+// - ScanCache warm runs (pass ScanCache* to scan_dependency_graph twice)
+// - get_all_includes flag merge: same header conditional in one config,
+//   unconditional in another — unconditional should win
+// - set_includes overwrite: calling twice with same (path_id, config_id)
+
 };  // TEST_SUITE(ScanDependencyGraph)
 
 }  // namespace

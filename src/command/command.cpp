@@ -362,6 +362,9 @@ llvm::SmallVector<CompilationContext> CompilationDatabase::lookup(llvm::StringRe
                 append_args(info->patch);
             } else {
                 arguments.assign(cached.begin(), cached.end());
+                // TODO: add an assertion that the last arg is the temp source
+                // file (e.g., contains "query-toolchain") to guard against
+                // future changes in clang cc1 argument ordering.
                 arguments.pop_back();  // remove temp source file
 
                 // Replace resource dir if needed.
