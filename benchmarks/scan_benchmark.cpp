@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
+#include <map>
 #include <numeric>
 #include <print>
 #include <set>
@@ -276,13 +277,66 @@ int main(int argc, const char** argv) {
     // ── Context dedup diagnostic ──────────────────────────────────────
     {
         std::set<const CompilationInfo*> unique_contexts;
+        std::set<const CanonicalCommand*> unique_canonicals;
+        std::set<const char*> unique_dirs;
+        std::map<const CanonicalCommand*, int> canonical_hist;
         for(auto& entry: cdb.get_entries()) {
             unique_contexts.insert(entry.info.ptr);
+            unique_canonicals.insert(entry.info->canonical.ptr);
+            unique_dirs.insert(entry.info->directory);
+            canonical_hist[entry.info->canonical.ptr]++;
         }
         std::println("Context dedup: {} files -> {} unique contexts ({:.1f}x reduction)",
                      count,
                      unique_contexts.size(),
                      static_cast<double>(count) / unique_contexts.size());
+        // Count unique patches by hashing their content.
+        std::set<std::vector<const char*>> unique_patches;
+        for(auto& entry: cdb.get_entries()) {
+            unique_patches.insert(
+                std::vector<const char*>(entry.info->patch.begin(), entry.info->patch.end()));
+        }
+        std::println("  Unique canonicals: {}, unique patches: {}, unique directories: {}",
+                     unique_canonicals.size(),
+                     unique_patches.size(),
+                     unique_dirs.size());
+
+        // Print top-5 canonical commands with their frequency and content.
+        std::vector<std::pair<int, const CanonicalCommand*>> sorted_hist;
+        for(auto& [ptr, cnt]: canonical_hist) {
+            sorted_hist.push_back({cnt, ptr});
+        }
+        std::ranges::sort(sorted_hist,
+                          std::greater{},
+                          &std::pair<int, const CanonicalCommand*>::first);
+        for(int i = 0; i < std::min(5, (int)sorted_hist.size()); i++) {
+            auto [cnt, cmd] = sorted_hist[i];
+            std::string args_str;
+            for(auto arg: cmd->arguments) {
+                if(!args_str.empty())
+                    args_str += ' ';
+                args_str += arg;
+            }
+            std::println("  canonical[{}] ({} files): {}", i, cnt, args_str);
+        }
+
+        // Show sample patch for first and last entry to understand per-file variation.
+        if(!cdb.get_entries().empty()) {
+            auto show_patch = [](const char* label, const CompilationInfo& info) {
+                std::string patch_str;
+                for(auto arg: info.patch) {
+                    if(!patch_str.empty())
+                        patch_str += ' ';
+                    patch_str += arg;
+                }
+                std::println("  {} patch ({} args): {}",
+                             label,
+                             info.patch.size(),
+                             patch_str.substr(0, 200));
+            };
+            show_patch("first", *cdb.get_entries().front().info);
+            show_patch("last", *cdb.get_entries().back().info);
+        }
     }
 
     // ── Cold start dependency scan benchmark ──────────────────────────────
