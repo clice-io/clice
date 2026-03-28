@@ -4,6 +4,40 @@
 namespace clice::testing {
 namespace {
 
+/// Helper that sets up a TestVFS with a main file and optional extra files,
+/// then calls the given scan function with standard C++20 arguments.
+struct ModuleScanFixture {
+    llvm::IntrusiveRefCntPtr<TestVFS> vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    std::string main_path;
+    std::vector<const char*> args;
+
+    /// Create fixture with main file content and optional extra defines.
+    ModuleScanFixture(llvm::StringRef filename,
+                      llvm::StringRef content,
+                      std::initializer_list<const char*> extra_args = {}) {
+        main_path = TestVFS::path(filename);
+        vfs->add(filename, content);
+        args.push_back("clang++");
+        args.push_back("-std=c++20");
+        for(auto a: extra_args) {
+            args.push_back(a);
+        }
+        args.push_back(main_path.c_str());
+    }
+
+    void add_file(llvm::StringRef name, llvm::StringRef content = "") {
+        vfs->add(name, content);
+    }
+
+    ScanResult decl() {
+        return scan_module_decl(args, TestVFS::root(), {}, nullptr, vfs);
+    }
+
+    ScanResult precise() {
+        return scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
+    }
+};
+
 // =============================================================================
 // scan() — module declaration extraction (lexer-based, cppref coverage)
 // =============================================================================
@@ -150,119 +184,94 @@ int f() { return 42; }
 TEST_SUITE(ModuleDeclFallback) {
 
 TEST_CASE(Basic) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", "export module mylib;");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_module_decl(args, TestVFS::root(), {}, nullptr, vfs);
-
+    ModuleScanFixture f("main.cppm", "export module mylib;");
+    auto result = f.decl();
     EXPECT_EQ(result.module_name, "mylib");
     EXPECT_TRUE(result.is_interface_unit);
 }
 
 TEST_CASE(ConditionalWithDefine) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    // Without -DUSE_MODULES: no module declaration.
+    ModuleScanFixture f1("main.cppm", R"(
 #ifdef USE_MODULES
 export module mylib;
 #endif
 )");
-
-    // Without -DUSE_MODULES: no module declaration.
-    auto args1 = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result1 = scan_module_decl(args1, TestVFS::root(), {}, nullptr, vfs);
-    EXPECT_TRUE(result1.module_name.empty());
+    EXPECT_TRUE(f1.decl().module_name.empty());
 
     // With -DUSE_MODULES: module declaration found.
-    auto args2 =
-        std::vector<const char*>{"clang++", "-std=c++20", "-DUSE_MODULES", main_path.c_str()};
-    auto result2 = scan_module_decl(args2, TestVFS::root(), {}, nullptr, vfs);
-    EXPECT_EQ(result2.module_name, "mylib");
-    EXPECT_TRUE(result2.is_interface_unit);
+    ModuleScanFixture f2("main.cppm",
+                         R"(
+#ifdef USE_MODULES
+export module mylib;
+#endif
+)",
+                         {"-DUSE_MODULES"});
+    auto result = f2.decl();
+    EXPECT_EQ(result.module_name, "mylib");
+    EXPECT_TRUE(result.is_interface_unit);
 }
 
 TEST_CASE(ConditionalIfExpr) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    // Without the define: no module.
+    ModuleScanFixture f1("main.cppm", R"(
 #if ENABLE_MODULES >= 1
 export module mylib;
 #endif
 )");
-
-    // Without the define: no module.
-    auto args1 = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result1 = scan_module_decl(args1, TestVFS::root(), {}, nullptr, vfs);
-    EXPECT_TRUE(result1.module_name.empty());
+    EXPECT_TRUE(f1.decl().module_name.empty());
 
     // With the define: module found.
-    auto args2 =
-        std::vector<const char*>{"clang++", "-std=c++20", "-DENABLE_MODULES=1", main_path.c_str()};
-    auto result2 = scan_module_decl(args2, TestVFS::root(), {}, nullptr, vfs);
-    EXPECT_EQ(result2.module_name, "mylib");
-    EXPECT_TRUE(result2.is_interface_unit);
+    ModuleScanFixture f2("main.cppm",
+                         R"(
+#if ENABLE_MODULES >= 1
+export module mylib;
+#endif
+)",
+                         {"-DENABLE_MODULES=1"});
+    auto result = f2.decl();
+    EXPECT_EQ(result.module_name, "mylib");
+    EXPECT_TRUE(result.is_interface_unit);
 }
 
 TEST_CASE(GMFWithConditional) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    ModuleScanFixture f("main.cppm", R"(
 module;
 #include "config.h"
 #ifdef USE_MODULES
 export module mylib;
 #endif
 )");
-    vfs->add("config.h", "#define USE_MODULES 1\n");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_module_decl(args, TestVFS::root(), {}, nullptr, vfs);
+    f.add_file("config.h", "#define USE_MODULES 1\n");
+    auto result = f.decl();
     EXPECT_EQ(result.module_name, "mylib");
     EXPECT_TRUE(result.is_interface_unit);
 }
 
 TEST_CASE(ImplementationUnit) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp", "module mylib;");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_module_decl(args, TestVFS::root(), {}, nullptr, vfs);
+    ModuleScanFixture f("main.cpp", "module mylib;");
+    auto result = f.decl();
     EXPECT_EQ(result.module_name, "mylib");
     EXPECT_FALSE(result.is_interface_unit);
 }
 
 TEST_CASE(DottedName) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", "export module std.io;");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_module_decl(args, TestVFS::root(), {}, nullptr, vfs);
+    ModuleScanFixture f("main.cppm", "export module std.io;");
+    auto result = f.decl();
     EXPECT_EQ(result.module_name, "std.io");
     EXPECT_TRUE(result.is_interface_unit);
 }
 
 TEST_CASE(Partition) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", "export module mylib:core;");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_module_decl(args, TestVFS::root(), {}, nullptr, vfs);
+    ModuleScanFixture f("main.cppm", "export module mylib:core;");
+    auto result = f.decl();
     EXPECT_TRUE(result.module_name.find("mylib") != std::string::npos);
     EXPECT_TRUE(result.is_interface_unit);
 }
 
 TEST_CASE(NoModule) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp", "int main() { return 0; }");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_module_decl(args, TestVFS::root(), {}, nullptr, vfs);
+    ModuleScanFixture f("main.cpp", "int main() { return 0; }");
+    auto result = f.decl();
     EXPECT_TRUE(result.module_name.empty());
     EXPECT_FALSE(result.is_interface_unit);
 }
@@ -276,16 +285,11 @@ TEST_CASE(NoModule) {
 TEST_SUITE(ModuleImportScan) {
 
 TEST_CASE(NamedImport) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    ModuleScanFixture f("main.cppm", R"(
 export module mylib;
 import other;
 )");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
+    auto result = f.precise();
     EXPECT_EQ(result.module_name, "mylib");
     EXPECT_TRUE(result.is_interface_unit);
     ASSERT_EQ(result.modules.size(), 1u);
@@ -293,18 +297,13 @@ import other;
 }
 
 TEST_CASE(MultipleImports) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    ModuleScanFixture f("main.cppm", R"(
 export module mylib;
 import alpha;
 import beta;
 import gamma;
 )");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
+    auto result = f.precise();
     EXPECT_EQ(result.module_name, "mylib");
     ASSERT_EQ(result.modules.size(), 3u);
     EXPECT_EQ(result.modules[0], "alpha");
@@ -313,74 +312,49 @@ import gamma;
 }
 
 TEST_CASE(DottedModuleImport) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    ModuleScanFixture f("main.cppm", R"(
 export module mylib;
 import std.io;
 )");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
+    auto result = f.precise();
     ASSERT_EQ(result.modules.size(), 1u);
     EXPECT_EQ(result.modules[0], "std.io");
 }
 
 TEST_CASE(PartitionImport) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    ModuleScanFixture f("main.cppm", R"(
 export module mylib;
 import :core;
 )");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
+    auto result = f.precise();
     ASSERT_GE(result.modules.size(), 1u);
 }
 
 TEST_CASE(ExportImport) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    ModuleScanFixture f("main.cppm", R"(
 export module mylib;
 export import other;
 )");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
+    auto result = f.precise();
     ASSERT_EQ(result.modules.size(), 1u);
     EXPECT_EQ(result.modules[0], "other");
 }
 
 TEST_CASE(ExportImportPartition) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    ModuleScanFixture f("main.cppm", R"(
 export module mylib;
 export import :core;
 )");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
+    auto result = f.precise();
     ASSERT_GE(result.modules.size(), 1u);
 }
 
 TEST_CASE(ImplementationImport) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("impl.cpp");
-    vfs->add("impl.cpp", R"(
+    ModuleScanFixture f("impl.cpp", R"(
 module mylib;
 import other;
 )");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
+    auto result = f.precise();
     EXPECT_EQ(result.module_name, "mylib");
     EXPECT_FALSE(result.is_interface_unit);
     ASSERT_EQ(result.modules.size(), 1u);
@@ -388,19 +362,14 @@ import other;
 }
 
 TEST_CASE(GMFWithImport) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    ModuleScanFixture f("main.cppm", R"(
 module;
 #include "config.h"
 export module mylib;
 import dep;
 )");
-    vfs->add("config.h", "// config\n");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
+    f.add_file("config.h", "// config\n");
+    auto result = f.precise();
     EXPECT_EQ(result.module_name, "mylib");
     EXPECT_TRUE(result.is_interface_unit);
     ASSERT_EQ(result.modules.size(), 1u);
@@ -408,9 +377,7 @@ import dep;
 }
 
 TEST_CASE(MixedIncludesAndImports) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cppm");
-    vfs->add("main.cppm", R"(
+    ModuleScanFixture f("main.cppm", R"(
 module;
 #include "legacy.h"
 export module mylib;
@@ -418,11 +385,8 @@ import dep_a;
 import dep_b;
 export int f();
 )");
-    vfs->add("legacy.h", "int legacy_func();\n");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
+    f.add_file("legacy.h", "int legacy_func();\n");
+    auto result = f.precise();
     EXPECT_EQ(result.module_name, "mylib");
     ASSERT_GE(result.includes.size(), 1u);
     ASSERT_EQ(result.modules.size(), 2u);
@@ -431,17 +395,12 @@ export int f();
 }
 
 TEST_CASE(NoModule) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp", R"(
+    ModuleScanFixture f("main.cpp", R"(
 #include "header.h"
 int main() { return 0; }
 )");
-    vfs->add("header.h", "int x;\n");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
+    f.add_file("header.h", "int x;\n");
+    auto result = f.precise();
     EXPECT_TRUE(result.module_name.empty());
     EXPECT_FALSE(result.is_interface_unit);
     EXPECT_TRUE(result.modules.empty());
