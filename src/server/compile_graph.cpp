@@ -53,8 +53,12 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
         co_return true;
     }
 
-    // Another task is already compiling this unit — wait for it.
+    // Another task is already compiling this unit — wait for it,
+    // but first check that waiting won't deadlock (cross-branch cycle).
     if(it->second.compiling) {
+        if(has_wait_cycle(path_id, ancestors)) {
+            co_return false;
+        }
         auto& completion = *it->second.completion;
         co_await completion.wait();
         co_return !units.find(path_id)->second.dirty;
@@ -69,21 +73,31 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
     auto* generation = it->second.source.get();
     auto token = generation->token();
 
-    // Compile dependencies sequentially to avoid deadlocks from sibling branches
-    // blocking on each other's completion events (e.g. 1->{2,3}, 2->3, 3->2).
-    for(auto dep_id: deps) {
-        auto result = co_await et::with_token(compile_impl(dep_id, ancestors), token);
+    // Compile all dependencies concurrently.
+    // Deadlocks from cross-branch cycles (e.g. 1->{2,3}, 2->3, 3->2) are
+    // prevented by has_wait_cycle() checking before completion.wait().
+    if(!deps.empty()) {
+        std::vector<et::task<bool, void, et::cancellation>> dep_tasks;
+        dep_tasks.reserve(deps.size());
+        for(auto dep_id: deps) {
+            dep_tasks.push_back(et::with_token(compile_impl(dep_id, ancestors), token));
+        }
+
+        auto results = co_await et::when_all(std::move(dep_tasks));
 
         auto& u = units.find(path_id)->second;
-        if(!result.has_value()) {
+        if(results.is_cancelled()) {
             u.compiling = false;
             u.completion->set();
             co_await et::cancel();
         }
-        if(!*result) {
-            u.compiling = false;
-            u.completion->set();
-            co_return false;
+
+        for(auto ok: *results) {
+            if(!ok) {
+                u.compiling = false;
+                u.completion->set();
+                co_return false;
+            }
         }
     }
 
@@ -173,6 +187,36 @@ llvm::SmallVector<std::uint32_t> CompileGraph::update(std::uint32_t path_id) {
     }
 
     return dirtied;
+}
+
+bool CompileGraph::has_wait_cycle(std::uint32_t target,
+                                  const llvm::DenseSet<std::uint32_t>& ancestors) const {
+    // BFS through the target's dependency chain, following only compiling units.
+    // If any dependency is in our ancestor chain, waiting would deadlock.
+    llvm::SmallVector<std::uint32_t> queue;
+    llvm::DenseSet<std::uint32_t> visited;
+    queue.push_back(target);
+
+    while(!queue.empty()) {
+        auto current = queue.pop_back_val();
+        if(!visited.insert(current).second) {
+            continue;
+        }
+        auto it = units.find(current);
+        if(it == units.end()) {
+            continue;
+        }
+        for(auto dep_id: it->second.dependencies) {
+            if(ancestors.count(dep_id)) {
+                return true;
+            }
+            auto dep_it = units.find(dep_id);
+            if(dep_it != units.end() && dep_it->second.compiling) {
+                queue.push_back(dep_id);
+            }
+        }
+    }
+    return false;
 }
 
 void CompileGraph::cancel_all() {

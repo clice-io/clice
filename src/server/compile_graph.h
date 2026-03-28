@@ -64,6 +64,11 @@ private:
     /// Internal compile with ancestor tracking for cycle detection.
     et::task<bool> compile_impl(std::uint32_t path_id, llvm::DenseSet<std::uint32_t> ancestors);
 
+    /// Check if waiting on `target` would deadlock given our `ancestors` chain.
+    /// Walks the dependency graph through compiling units to see if any dep
+    /// transitively reaches a unit in our ancestor chain.
+    bool has_wait_cycle(std::uint32_t target, const llvm::DenseSet<std::uint32_t>& ancestors) const;
+
     dispatch_fn dispatch;
     resolve_fn resolve;
     llvm::DenseMap<std::uint32_t, CompileUnit> units;
