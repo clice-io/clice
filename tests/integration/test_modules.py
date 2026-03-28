@@ -37,11 +37,11 @@ def _write_cdb(workspace: Path, files: list[str], extra_args: list[str] | None =
         args = ["clang++", "-std=c++20", "-fsyntax-only"]
         if extra_args:
             args.extend(extra_args)
-        args.append(str(workspace / f))
+        args.append((workspace / f).as_posix())
         cdb.append(
             {
-                "directory": str(workspace),
-                "file": str(workspace / f),
+                "directory": workspace.as_posix(),
+                "file": (workspace / f).as_posix(),
                 "arguments": args,
             }
         )
@@ -57,11 +57,11 @@ def _write_cdb_entries(workspace: Path, entries: list[tuple[str, list[str]]]):
     for filename, extra in entries:
         args = ["clang++", "-std=c++20", "-fsyntax-only"]
         args.extend(extra)
-        args.append(str(workspace / filename))
+        args.append((workspace / filename).as_posix())
         cdb.append(
             {
-                "directory": str(workspace),
-                "file": str(workspace / filename),
+                "directory": workspace.as_posix(),
+                "file": (workspace / filename).as_posix(),
                 "arguments": args,
             }
         )

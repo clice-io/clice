@@ -119,9 +119,9 @@ def test_data_dir():
     if main_cpp.exists() and not cdb_path.exists():
         cdb = [
             {
-                "directory": str(hw_dir),
-                "file": str(main_cpp),
-                "arguments": ["clang++", "-std=c++17", "-fsyntax-only", str(main_cpp)],
+                "directory": hw_dir.as_posix(),
+                "file": main_cpp.as_posix(),
+                "arguments": ["clang++", "-std=c++17", "-fsyntax-only", main_cpp.as_posix()],
             }
         ]
         cdb_path.write_text(json.dumps(cdb, indent=2))
