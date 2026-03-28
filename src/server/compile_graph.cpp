@@ -64,33 +64,26 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
     it->second.compiling = true;
     it->second.completion = std::make_unique<et::event>();
 
-    // Copy deps and token before co_await (DenseMap iterator safety).
+    // Copy deps and capture generation before co_await (DenseMap iterator safety).
     auto deps = it->second.dependencies;
-    auto token = it->second.source->token();
+    auto* generation = it->second.source.get();
+    auto token = generation->token();
 
-    // Compile all dependencies in parallel.
-    if(!deps.empty()) {
-        std::vector<et::task<bool, void, et::cancellation>> dep_tasks;
-        dep_tasks.reserve(deps.size());
-        for(auto dep_id: deps) {
-            dep_tasks.push_back(et::with_token(compile_impl(dep_id, ancestors), token));
-        }
-
-        auto results = co_await et::when_all(std::move(dep_tasks));
+    // Compile dependencies sequentially to avoid deadlocks from sibling branches
+    // blocking on each other's completion events (e.g. 1->{2,3}, 2->3, 3->2).
+    for(auto dep_id: deps) {
+        auto result = co_await et::with_token(compile_impl(dep_id, ancestors), token);
 
         auto& u = units.find(path_id)->second;
-        if(results.is_cancelled()) {
+        if(!result.has_value()) {
             u.compiling = false;
             u.completion->set();
             co_await et::cancel();
         }
-
-        for(auto ok: *results) {
-            if(!ok) {
-                u.compiling = false;
-                u.completion->set();
-                co_return false;
-            }
+        if(!*result) {
+            u.compiling = false;
+            u.completion->set();
+            co_return false;
         }
     }
 
@@ -113,8 +106,14 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
         }
     }
 
-    // Success.
+    // Success — only clear dirty if the source hasn't been replaced by update().
     auto& final_unit = units.find(path_id)->second;
+    if(final_unit.source.get() != generation) {
+        // update() replaced our source while dispatch was in flight.
+        final_unit.compiling = false;
+        final_unit.completion->set();
+        co_return false;
+    }
     final_unit.dirty = false;
     final_unit.compiling = false;
     final_unit.completion->set();
@@ -179,6 +178,7 @@ llvm::SmallVector<std::uint32_t> CompileGraph::update(std::uint32_t path_id) {
 void CompileGraph::cancel_all() {
     for(auto& [_, unit]: units) {
         unit.source->cancel();
+        unit.source = std::make_unique<et::cancellation_source>();
     }
 }
 
