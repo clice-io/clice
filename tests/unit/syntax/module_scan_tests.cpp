@@ -321,15 +321,19 @@ import std.io;
     EXPECT_EQ(result.modules[0], "std.io");
 }
 
+// Partition import: clang returns the fully-qualified name "mylib:core"
+// (owning module + ':' + partition name) as a single ModuleIdPath entry.
 TEST_CASE(PartitionImport) {
     ModuleScanFixture f("main.cppm", R"(
 export module mylib;
 import :core;
 )");
     auto result = f.precise();
-    ASSERT_GE(result.modules.size(), 1u);
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "mylib:core");
 }
 
+// Export-import of a named module.
 TEST_CASE(ExportImport) {
     ModuleScanFixture f("main.cppm", R"(
 export module mylib;
@@ -340,15 +344,18 @@ export import other;
     EXPECT_EQ(result.modules[0], "other");
 }
 
+// Export-import of a partition.
 TEST_CASE(ExportImportPartition) {
     ModuleScanFixture f("main.cppm", R"(
 export module mylib;
 export import :core;
 )");
     auto result = f.precise();
-    ASSERT_GE(result.modules.size(), 1u);
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "mylib:core");
 }
 
+// Implementation unit importing a named module.
 TEST_CASE(ImplementationImport) {
     ModuleScanFixture f("impl.cpp", R"(
 module mylib;
@@ -361,6 +368,56 @@ import other;
     EXPECT_EQ(result.modules[0], "other");
 }
 
+// Implementation unit importing a partition of the same module.
+TEST_CASE(ImplementationPartitionImport) {
+    ModuleScanFixture f("impl.cpp", R"(
+module mylib;
+import :utils;
+)");
+    auto result = f.precise();
+    EXPECT_EQ(result.module_name, "mylib");
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "mylib:utils");
+}
+
+// Multiple partition imports.
+TEST_CASE(MultiplePartitionImports) {
+    ModuleScanFixture f("main.cppm", R"(
+export module mylib;
+export import :core;
+import :utils;
+import :io;
+)");
+    auto result = f.precise();
+    ASSERT_EQ(result.modules.size(), 3u);
+    EXPECT_EQ(result.modules[0], "mylib:core");
+    EXPECT_EQ(result.modules[1], "mylib:utils");
+    EXPECT_EQ(result.modules[2], "mylib:io");
+}
+
+// Mixed named module imports and partition imports.
+TEST_CASE(MixedNamedAndPartitionImports) {
+    ModuleScanFixture f("main.cppm", R"(
+export module mylib;
+import other;
+export import :core;
+import another.lib;
+import :utils;
+)");
+    auto result = f.precise();
+    ASSERT_EQ(result.modules.size(), 4u);
+    EXPECT_EQ(result.modules[0], "other");
+    EXPECT_EQ(result.modules[1], "mylib:core");
+    EXPECT_EQ(result.modules[2], "another.lib");
+    EXPECT_EQ(result.modules[3], "mylib:utils");
+}
+
+// NOTE: Header unit imports (import <header>; / import "header";) are not
+// tested here because they require actual header unit compilation support
+// which clang's PreprocessOnlyAction doesn't provide in a VFS-only context.
+// These would hang trying to resolve system headers.
+
+// GMF with imports.
 TEST_CASE(GMFWithImport) {
     ModuleScanFixture f("main.cppm", R"(
 module;
@@ -376,6 +433,7 @@ import dep;
     EXPECT_EQ(result.modules[0], "dep");
 }
 
+// Mixed includes (from GMF) and imports (after module decl).
 TEST_CASE(MixedIncludesAndImports) {
     ModuleScanFixture f("main.cppm", R"(
 module;
@@ -394,6 +452,7 @@ export int f();
     EXPECT_EQ(result.modules[1], "dep_b");
 }
 
+// No module — plain C++ file.
 TEST_CASE(NoModule) {
     ModuleScanFixture f("main.cpp", R"(
 #include "header.h"
@@ -404,6 +463,32 @@ int main() { return 0; }
     EXPECT_TRUE(result.module_name.empty());
     EXPECT_FALSE(result.is_interface_unit);
     EXPECT_TRUE(result.modules.empty());
+}
+
+// Partition interface unit declaring and importing another partition.
+TEST_CASE(PartitionInterfaceImportingPartition) {
+    ModuleScanFixture f("main.cppm", R"(
+export module mylib:ui;
+import :core;
+)");
+    auto result = f.precise();
+    EXPECT_TRUE(result.module_name.find("mylib") != std::string::npos);
+    EXPECT_TRUE(result.is_interface_unit);
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "mylib:core");
+}
+
+// Partition implementation importing another partition.
+TEST_CASE(PartitionImplImportingPartition) {
+    ModuleScanFixture f("impl.cpp", R"(
+module mylib:detail;
+import :core;
+)");
+    auto result = f.precise();
+    EXPECT_TRUE(result.module_name.find("mylib") != std::string::npos);
+    EXPECT_FALSE(result.is_interface_unit);
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "mylib:core");
 }
 
 };  // TEST_SUITE(ModuleImportScan)
