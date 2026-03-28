@@ -94,10 +94,11 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
         }
     }
 
-    // Dispatch the actual compilation, cancellable via this unit's token.
+    // Dispatch the actual compilation, cancellable via the pre-captured token.
+    // Using the token captured before co_await ensures cancellation propagates
+    // correctly even if update() replaces the source during dependency compilation.
     {
-        auto result =
-            co_await et::with_token(dispatch(path_id), units.find(path_id)->second.source->token());
+        auto result = co_await et::with_token(dispatch(path_id), token);
 
         auto& u = units.find(path_id)->second;
         if(!result.has_value()) {

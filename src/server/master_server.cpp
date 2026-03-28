@@ -110,12 +110,16 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
             auto file_path = path_pool.resolve(path_id);
             auto cdb_results =
                 cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
+            bool deps_ok = true;
             if(!cdb_results.empty()) {
                 auto scan_result = scan_precise(cdb_results[0].arguments, cdb_results[0].directory);
                 for(auto& mod_name: scan_result.modules) {
                     auto mod_ids = dependency_graph.lookup_module(mod_name);
                     if(!mod_ids.empty()) {
-                        co_await compile_graph->compile(mod_ids[0]).catch_cancel();
+                        auto r = co_await compile_graph->compile(mod_ids[0]).catch_cancel();
+                        if(!r.has_value() || !*r) {
+                            deps_ok = false;
+                        }
                     }
                 }
                 // Module implementation units (module M; without export) need
@@ -123,9 +127,20 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
                 if(!scan_result.module_name.empty() && !scan_result.is_interface_unit) {
                     auto mod_ids = dependency_graph.lookup_module(scan_result.module_name);
                     if(!mod_ids.empty()) {
-                        co_await compile_graph->compile(mod_ids[0]).catch_cancel();
+                        auto r = co_await compile_graph->compile(mod_ids[0]).catch_cancel();
+                        if(!r.has_value() || !*r) {
+                            deps_ok = false;
+                        }
                     }
                 }
+            }
+            if(!deps_ok) {
+                LOG_WARN("Module dependency build failed for {}, skipping compile", uri);
+                doc_it = documents.find(path_id);
+                if(doc_it != documents.end()) {
+                    doc_it->second.build_running = false;
+                }
+                co_return;
             }
         }
 
@@ -648,6 +663,18 @@ void MasterServer::register_handlers() {
             // Remove stale PCMs for all invalidated units.
             for(auto dirty_id: dirtied) {
                 pcm_paths.erase(dirty_id);
+            }
+            // Schedule rebuilds for dirtied units that are currently open.
+            for(auto dirty_id: dirtied) {
+                if(dirty_id == path_id)
+                    continue;  // The saved file itself is rebuilt by its own didChange.
+                if(documents.count(dirty_id)) {
+                    auto dirty_path = path_pool.resolve(dirty_id);
+                    auto uri = lsp::URI::from_file_path(dirty_path);
+                    if(uri.has_value()) {
+                        schedule_build(dirty_id, uri->str());
+                    }
+                }
             }
         }
 
