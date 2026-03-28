@@ -121,7 +121,12 @@ def test_data_dir():
             {
                 "directory": hw_dir.as_posix(),
                 "file": main_cpp.as_posix(),
-                "arguments": ["clang++", "-std=c++17", "-fsyntax-only", main_cpp.as_posix()],
+                "arguments": [
+                    "clang++",
+                    "-std=c++17",
+                    "-fsyntax-only",
+                    main_cpp.as_posix(),
+                ],
             }
         ]
         cdb_path.write_text(json.dumps(cdb, indent=2))
