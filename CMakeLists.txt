@@ -172,6 +172,7 @@ add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/server/stateless_worker.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/stateful_worker.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/worker_pool.cpp"
+    "${PROJECT_SOURCE_DIR}/src/server/compile_graph.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/master_server.cpp"
     "${PROJECT_SOURCE_DIR}/src/server/config.cpp"
 )
