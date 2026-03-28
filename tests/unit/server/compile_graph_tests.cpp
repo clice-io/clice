@@ -318,6 +318,30 @@ TEST_CASE(CircularDependencyDetection) {
     loop.run();
 }
 
+TEST_CASE(CrossBranchCycleDetection) {
+    et::event_loop loop;
+    // Cross-branch cycle: 1 -> {2, 3}, 2 -> 3, 3 -> 2.
+    // With when_all, sibling branches could deadlock on each other's
+    // completion.wait() without proper deadlock detection.
+    CompileGraph graph(instant_dispatch(),
+                       static_resolver({
+                           {1, {2, 3}},
+                           {2, {3}   },
+                           {3, {2}   }
+    }));
+
+    auto test = [this, &graph]() -> et::task<> {
+        auto result = co_await graph.compile(1).catch_cancel();
+        // Should return false (cycle detected), not deadlock.
+        EXPECT_TRUE(result.has_value());
+        EXPECT_FALSE(*result);
+    };
+
+    auto t = test();
+    loop.schedule(t);
+    loop.run();
+}
+
 TEST_CASE(UpdateResetsResolved) {
     et::event_loop loop;
     std::vector<std::uint32_t> compiled;
