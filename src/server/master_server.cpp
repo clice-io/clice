@@ -15,6 +15,7 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/dependency_graph.h"
+#include "syntax/scan.h"
 
 namespace clice {
 
@@ -103,12 +104,64 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
         doc_it->second.build_requested = false;
         auto gen = doc_it->second.generation;
 
+        // Ensure module dependencies are compiled first.
+        if(compile_graph) {
+            // Scan this file for module imports and compile them.
+            auto file_path = path_pool.resolve(path_id);
+            auto cdb_results =
+                cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
+            bool deps_ok = true;
+            if(!cdb_results.empty()) {
+                auto scan_result = scan_precise(cdb_results[0].arguments, cdb_results[0].directory);
+                for(auto& mod_name: scan_result.modules) {
+                    auto mod_ids = dependency_graph.lookup_module(mod_name);
+                    if(!mod_ids.empty()) {
+                        auto r = co_await compile_graph->compile(mod_ids[0]).catch_cancel();
+                        if(!r.has_value() || !*r) {
+                            deps_ok = false;
+                        }
+                    }
+                }
+                // Module implementation units (module M; without export) need
+                // their interface PCM but don't have an explicit import.
+                if(!scan_result.module_name.empty() && !scan_result.is_interface_unit) {
+                    auto mod_ids = dependency_graph.lookup_module(scan_result.module_name);
+                    if(!mod_ids.empty()) {
+                        auto r = co_await compile_graph->compile(mod_ids[0]).catch_cancel();
+                        if(!r.has_value() || !*r) {
+                            deps_ok = false;
+                        }
+                    }
+                }
+            }
+            if(!deps_ok) {
+                LOG_WARN("Module dependency build failed for {}, skipping compile", uri);
+                doc_it = documents.find(path_id);
+                if(doc_it != documents.end()) {
+                    doc_it->second.build_running = false;
+                }
+                co_return;
+            }
+        }
+
         // Send compile request to stateful worker
         worker::CompileParams params;
         params.path = std::string(path_pool.resolve(path_id));
         params.version = doc_it->second.version;
         params.text = doc_it->second.text;
         fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments);
+
+        // Fill all available PCM paths (clang needs transitive deps).
+        // Skip the file's own PCM — a module interface must not receive its
+        // own precompiled module, or clang reports "multiple module declarations".
+        for(auto& [pid, pcm_path]: pcm_paths) {
+            if(pid == path_id)
+                continue;
+            auto mod_it = path_to_module.find(pid);
+            if(mod_it != path_to_module.end()) {
+                params.pcms[mod_it->second] = pcm_path;
+            }
+        }
 
         LOG_DEBUG("Sending compile: path={}, args={}, gen={}",
                   params.path,
@@ -217,12 +270,86 @@ et::task<> MasterServer::load_workspace() {
     if(unresolved > 0) {
         LOG_WARN("{} unresolved includes", unresolved);
     }
+
+    // Build reverse mapping: path_id -> module name.
+    for(auto& [module_name, path_ids]: dependency_graph.modules()) {
+        for(auto path_id: path_ids) {
+            path_to_module[path_id] = module_name.str();
+        }
+    }
+
+    if(path_to_module.empty()) {
+        LOG_INFO("No C++20 modules detected, skipping CompileGraph");
+        co_return;
+    }
+
+    // Lazy dependency resolver: scans a module file on demand to discover imports.
+    auto resolve = [this](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
+        auto file_path = path_pool.resolve(path_id);
+        auto results = cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
+        if(results.empty()) {
+            return {};
+        }
+
+        auto& ctx = results[0];
+        auto scan_result = scan_precise(ctx.arguments, ctx.directory);
+
+        llvm::SmallVector<std::uint32_t> deps;
+        for(auto& mod_name: scan_result.modules) {
+            auto mod_ids = dependency_graph.lookup_module(mod_name);
+            if(!mod_ids.empty()) {
+                deps.push_back(mod_ids[0]);
+            }
+        }
+        return deps;
+    };
+
+    // Dispatch: sends BuildPCM request to a stateless worker.
+    auto dispatch = [this](std::uint32_t path_id) -> et::task<bool> {
+        auto mod_it = path_to_module.find(path_id);
+        if(mod_it == path_to_module.end()) {
+            co_return false;
+        }
+
+        auto file_path = std::string(path_pool.resolve(path_id));
+        worker::BuildPCMParams pcm_params;
+        pcm_params.file = file_path;
+        fill_compile_args(file_path, pcm_params.directory, pcm_params.arguments);
+        pcm_params.module_name = mod_it->second;
+
+        // Clang needs ALL transitive PCM deps, not just direct imports.
+        for(auto& [pid, pcm_path]: pcm_paths) {
+            auto dep_mod_it = path_to_module.find(pid);
+            if(dep_mod_it != path_to_module.end()) {
+                pcm_params.pcms[dep_mod_it->second] = pcm_path;
+            }
+        }
+
+        auto result = co_await pool.send_stateless(pcm_params);
+        if(!result.has_value() || !result.value().success) {
+            LOG_WARN("BuildPCM failed for module {}: {}",
+                     mod_it->second,
+                     result.has_value() ? result.value().error : result.error().message);
+            co_return false;
+        }
+
+        pcm_paths[path_id] = result.value().pcm_path;
+        LOG_INFO("Built PCM for module {}: {}", mod_it->second, result.value().pcm_path);
+        co_return true;
+    };
+
+    compile_graph = std::make_unique<CompileGraph>(std::move(dispatch), std::move(resolve));
+    LOG_INFO("CompileGraph initialized with {} module(s)", path_to_module.size());
 }
 
 void MasterServer::fill_compile_args(llvm::StringRef path,
                                      std::string& directory,
                                      std::vector<std::string>& arguments) {
     auto results = cdb.lookup(path, {.query_toolchain = true});
+    if(results.empty()) {
+        LOG_WARN("No CDB entry for {}", path);
+        return;
+    }
     auto& ctx = results.front();
     directory = ctx.directory.str();
     arguments.clear();
@@ -527,7 +654,30 @@ void MasterServer::register_handlers() {
         if(lifecycle != ServerLifecycle::Ready)
             return;
 
-        // TODO: Trigger dependent file rebuilds
+        auto path = uri_to_path(params.text_document.uri);
+        auto path_id = path_pool.intern(path);
+
+        // Invalidate this file and cascade to dependents in the compile graph.
+        if(compile_graph) {
+            auto dirtied = compile_graph->update(path_id);
+            // Remove stale PCMs for all invalidated units.
+            for(auto dirty_id: dirtied) {
+                pcm_paths.erase(dirty_id);
+            }
+            // Schedule rebuilds for dirtied units that are currently open.
+            for(auto dirty_id: dirtied) {
+                if(dirty_id == path_id)
+                    continue;  // The saved file itself is rebuilt by its own didChange.
+                if(documents.count(dirty_id)) {
+                    auto dirty_path = path_pool.resolve(dirty_id);
+                    auto uri = lsp::URI::from_file_path(dirty_path);
+                    if(uri.has_value()) {
+                        schedule_build(dirty_id, uri->str());
+                    }
+                }
+            }
+        }
+
         LOG_DEBUG("didSave: {}", params.text_document.uri);
     });
 

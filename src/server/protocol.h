@@ -115,6 +115,7 @@ struct BuildPCMParams {
 struct BuildPCMResult {
     bool success;
     std::string error;
+    std::string pcm_path;
 };
 
 struct IndexParams {

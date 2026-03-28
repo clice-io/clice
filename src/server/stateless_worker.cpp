@@ -122,10 +122,10 @@ int run_stateless_worker_mode() {
 
                 if(unit.completed()) {
                     LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
-                    return {true, ""};
+                    return {true, "", std::string(cp.output_file)};
                 } else {
                     LOG_WARN("BuildPCM failed: module={}, {}ms", params.module_name, timer.ms());
-                    return {false, "PCM compilation failed"};
+                    return {false, "PCM compilation failed", ""};
                 }
             });
             co_return result.value();

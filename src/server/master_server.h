@@ -9,6 +9,7 @@
 #include "eventide/ipc/lsp/protocol.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/serde/serde/raw_value.h"
+#include "server/compile_graph.h"
 #include "server/config.h"
 #include "server/worker_pool.h"
 #include "support/path_pool.h"
@@ -60,6 +61,15 @@ private:
 
     CompilationDatabase cdb;
     DependencyGraph dependency_graph;
+
+    // Module compilation graph (lazy dependency resolution).
+    std::unique_ptr<CompileGraph> compile_graph;
+
+    // path_id -> built PCM output path (set after successful module build).
+    llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
+
+    // path_id -> module name (for files that provide a module interface).
+    llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
     // Document state: path_id -> DocumentState
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
