@@ -513,6 +513,37 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             }
 
             // Record module interface unit mapping.
+            // When the module declaration is inside a conditional directive
+            // (need_preprocess=true), fall back to scan_module_decl() which
+            // runs a lightweight preprocessor pass to resolve the actual
+            // module name. This only applies to source files (wave 0) since
+            // headers cannot contain module declarations.
+            if(scan_result.scan_result.need_preprocess && wave_num == 0) {
+                auto file_path = llvm::StringRef(scan_result.path);
+                auto contexts = cdb.lookup(file_path, {.query_toolchain = true,
+                                                       .suppress_logging = true});
+                if(!contexts.empty()) {
+                    auto& ctx = contexts[0];
+                    auto fallback =
+                        scan_module_decl(ctx.arguments, ctx.directory, /*content=*/{});
+                    if(!fallback.module_name.empty()) {
+                        scan_result.scan_result.module_name = std::move(fallback.module_name);
+                        scan_result.scan_result.is_interface_unit = fallback.is_interface_unit;
+                        // Update cache so warm runs don't re-trigger fallback.
+                        if(ext_cache) {
+                            auto cache_it = ext_cache->scan_results.find(scan_result.path_id);
+                            if(cache_it != ext_cache->scan_results.end()) {
+                                cache_it->second.module_name =
+                                    scan_result.scan_result.module_name;
+                                cache_it->second.is_interface_unit =
+                                    scan_result.scan_result.is_interface_unit;
+                                cache_it->second.need_preprocess = false;
+                            }
+                        }
+                    }
+                }
+            }
+
             if(scan_result.scan_result.is_interface_unit) {
                 graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
             }

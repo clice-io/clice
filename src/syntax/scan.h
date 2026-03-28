@@ -80,6 +80,21 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         SharedScanCache* cache = nullptr,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
 
+/// Lightweight preprocessor-based fallback for resolving module declarations
+/// inside conditional directives (#if/#ifdef). When the quick `scan()` detects
+/// `need_preprocess=true`, this function runs clang's preprocessor to evaluate
+/// the conditions and extract the actual module name.
+///
+/// Much cheaper than `scan_precise()`: stops lexing as soon as the module
+/// declaration is found, so it only processes the file preamble (global module
+/// fragment + conditionals around the module declaration). Only populates
+/// `module_name` and `is_interface_unit` in the returned ScanResult.
+ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
+                            llvm::StringRef directory,
+                            llvm::StringRef content = {},
+                            SharedScanCache* cache = nullptr,
+                            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
+
 /// Compute preamble bound (moved from compile/preamble).
 std::uint32_t compute_preamble_bound(llvm::StringRef content);
 

@@ -375,6 +375,55 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
     return result;
 }
 
+ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
+                            llvm::StringRef directory,
+                            llvm::StringRef content,
+                            SharedScanCache* cache,
+                            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
+    ScanResult result;
+
+    if(!vfs) {
+        vfs = llvm::vfs::createPhysicalFileSystem();
+    }
+
+    auto instance = create_scan_instance(arguments, directory, content, vfs);
+    if(!instance) {
+        return result;
+    }
+
+    auto getter = std::make_unique<ScanDirectivesGetter>(cache, instance->getFileManager());
+    instance->setDependencyDirectivesGetter(std::move(getter));
+
+    if(!instance->createTarget()) {
+        return result;
+    }
+
+    auto action = std::make_unique<clang::PreprocessOnlyAction>();
+
+    if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
+        return result;
+    }
+
+    // Instead of action->Execute() which processes the entire file,
+    // manually lex tokens and stop as soon as the module declaration is found.
+    auto& pp = instance->getPreprocessor();
+    pp.EnterMainSourceFile();
+
+    clang::Token tok;
+    do {
+        pp.Lex(tok);
+        if(pp.isInNamedModule()) {
+            result.module_name = pp.getNamedModuleName();
+            result.is_interface_unit = pp.isInNamedInterfaceUnit();
+            break;
+        }
+    } while(tok.isNot(clang::tok::eof));
+
+    action->EndSourceFile();
+
+    return result;
+}
+
 std::uint32_t compute_preamble_bound(llvm::StringRef content) {
     auto result = compute_preamble_bounds(content);
     if(result.empty()) {
