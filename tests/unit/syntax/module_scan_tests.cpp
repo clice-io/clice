@@ -472,7 +472,7 @@ export module mylib:ui;
 import :core;
 )");
     auto result = f.precise();
-    EXPECT_TRUE(result.module_name.find("mylib") != std::string::npos);
+    EXPECT_EQ(result.module_name, "mylib:ui");
     EXPECT_TRUE(result.is_interface_unit);
     ASSERT_EQ(result.modules.size(), 1u);
     EXPECT_EQ(result.modules[0], "mylib:core");
@@ -485,10 +485,54 @@ module mylib:detail;
 import :core;
 )");
     auto result = f.precise();
-    EXPECT_TRUE(result.module_name.find("mylib") != std::string::npos);
+    EXPECT_EQ(result.module_name, "mylib:detail");
     EXPECT_FALSE(result.is_interface_unit);
     ASSERT_EQ(result.modules.size(), 1u);
     EXPECT_EQ(result.modules[0], "mylib:core");
+}
+
+// Import target is a macro-expanded name.
+// C++20 forbids object-like macros in module DECLARATIONS (export module M;),
+// but clang's preprocessor expands macros in import declarations.
+TEST_CASE(ImportMacroExpandedName) {
+    ModuleScanFixture f("main.cppm", R"(
+export module mylib;
+#define OTHER_MOD other
+import OTHER_MOD;
+)");
+    auto result = f.precise();
+    EXPECT_EQ(result.module_name, "mylib");
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "other");
+}
+
+// Import target from a macro defined on the command line.
+TEST_CASE(ImportMacroFromCommandLine) {
+    ModuleScanFixture f("main.cppm",
+                        R"(
+export module mylib;
+import DEP_MOD;
+)",
+                        {"-DDEP_MOD=dependency"});
+    auto result = f.precise();
+    EXPECT_EQ(result.module_name, "mylib");
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "dependency");
+}
+
+// Import target from a macro defined in GMF header.
+TEST_CASE(ImportMacroFromGMFHeader) {
+    ModuleScanFixture f("main.cppm", R"(
+module;
+#include "deps.h"
+export module mylib;
+import MY_DEP;
+)");
+    f.add_file("deps.h", "#define MY_DEP some_lib\n");
+    auto result = f.precise();
+    EXPECT_EQ(result.module_name, "mylib");
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "some_lib");
 }
 
 };  // TEST_SUITE(ModuleImportScan)
