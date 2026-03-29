@@ -44,6 +44,13 @@ inline CompileGraph::dispatch_fn failing_dispatch() {
     };
 }
 
+/// Dispatch that fails only for specific path_ids.
+inline CompileGraph::dispatch_fn selective_dispatch(llvm::DenseSet<std::uint32_t> fail_ids) {
+    return [fail_ids = std::move(fail_ids)](std::uint32_t path_id) -> et::task<bool> {
+        co_return !fail_ids.count(path_id);
+    };
+}
+
 TEST_SUITE(CompileGraph) {
 
 TEST_CASE(CompileNoDeps) {
@@ -613,6 +620,47 @@ TEST_CASE(UpdateDuringCompile) {
     EXPECT_TRUE(compile_done);
     EXPECT_TRUE(was_cancelled);
     EXPECT_TRUE(graph.is_dirty(1));
+}
+
+TEST_CASE(WhenAllPartialFailure) {
+    et::event_loop loop;
+    // 1 -> {2, 3}. Only unit 3 fails.
+    CompileGraph graph(selective_dispatch({
+                           3
+    }),
+                       static_resolver({{1, {2, 3}}}));
+
+    auto test = [this, &graph]() -> et::task<> {
+        auto result = co_await graph.compile(1).catch_cancel();
+        EXPECT_TRUE(result.has_value());
+        EXPECT_FALSE(*result);
+        // Unit 2 succeeded — should be clean.
+        EXPECT_FALSE(graph.is_dirty(2));
+        // Unit 3 failed — stays dirty.
+        EXPECT_TRUE(graph.is_dirty(3));
+        // Unit 1 was not dispatched — stays dirty.
+        EXPECT_TRUE(graph.is_dirty(1));
+    };
+
+    auto t = test();
+    loop.schedule(t);
+    loop.run();
+}
+
+TEST_CASE(UpdateUnknownPathId) {
+    CompileGraph graph(instant_dispatch(), no_deps());
+
+    // update on a path_id that was never compiled should not crash.
+    auto dirtied = graph.update(999);
+    EXPECT_EQ(dirtied.size(), 0u);
+    EXPECT_FALSE(graph.has_unit(999));
+}
+
+TEST_CASE(EmptyGraphNoCompile) {
+    // Construct and destroy without any compile calls.
+    CompileGraph graph(instant_dispatch(), no_deps());
+    EXPECT_FALSE(graph.has_unit(1));
+    graph.cancel_all();  // Should not crash on empty graph.
 }
 
 };  // TEST_SUITE(CompileGraph)

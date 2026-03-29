@@ -79,7 +79,8 @@ async def _init(client, workspace: Path):
     )
     client.initialized(InitializedParams())
     # Give the server time to load CDB and scan dependency graph.
-    await asyncio.sleep(1.0)
+    # Use a generous sleep to avoid flaky failures on slow CI machines.
+    await asyncio.sleep(2.0)
     return result
 
 
@@ -400,7 +401,7 @@ async def test_global_module_fragment(client, tmp_path):
         "export module GMF;\n"
         "export int wrapped() { return legacy_fn(); }\n"
     )
-    _write_cdb(tmp_path, ["gmf.cppm"], extra_args=["-I", str(tmp_path)])
+    _write_cdb(tmp_path, ["gmf.cppm"], extra_args=["-I", tmp_path.as_posix()])
     await _init(client, tmp_path)
 
     uri, _ = await _open_and_wait(client, tmp_path, "gmf.cppm")
@@ -482,7 +483,7 @@ async def test_gmf_with_import(client, tmp_path):
         tmp_path,
         [
             ("base.cppm", []),
-            ("combined.cppm", ["-I", str(tmp_path)]),
+            ("combined.cppm", ["-I", tmp_path.as_posix()]),
         ],
     )
     await _init(client, tmp_path)
@@ -649,6 +650,15 @@ async def test_module_compile_error(client, tmp_path):
     uri, _ = await _open_and_wait(client, tmp_path, "bad.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) > 0, "Expected diagnostics for undefined symbol"
+    # The error should be on line 2 (0-indexed) where UNDEFINED_SYMBOL is used.
+    error_diag = diags[0]
+    assert error_diag.range.start.line == 2, (
+        f"Expected error on line 2, got line {error_diag.range.start.line}"
+    )
+    # Severity 1 = Error in LSP spec.
+    assert error_diag.severity == 1, (
+        f"Expected severity Error (1), got {error_diag.severity}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -701,7 +711,7 @@ async def test_partition_with_gmf(client, tmp_path):
     _write_cdb_entries(
         tmp_path,
         [
-            ("part_cfg.cppm", ["-I", str(tmp_path)]),
+            ("part_cfg.cppm", ["-I", tmp_path.as_posix()]),
             ("cfg.cppm", []),
         ],
     )
@@ -767,3 +777,64 @@ async def test_hover_on_imported_symbol(client, tmp_path):
     )
     assert hover is not None, "Hover on imported symbol should return info"
     assert hover.contents is not None
+
+
+# ---------------------------------------------------------------------------
+# Plain C++ file with no modules (compile_graph == null path)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_no_modules_plain_cpp(client, tmp_path):
+    """A plain C++ file with no modules should compile normally (no CompileGraph)."""
+    (tmp_path / "plain.cpp").write_text(
+        "int add(int a, int b) { return a + b; }\nint main() { return add(1, 2); }\n"
+    )
+    _write_cdb(tmp_path, ["plain.cpp"])
+    await _init(client, tmp_path)
+
+    uri, _ = await _open_and_wait(client, tmp_path, "plain.cpp")
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
+
+
+# ---------------------------------------------------------------------------
+# Circular module dependency (cycle detection)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_circular_module_dependency(client, tmp_path):
+    """Circular module imports should not hang the server.
+
+    When modules form a cycle (CycA imports CycB, CycB imports CycA),
+    the CompileGraph's cycle detection should prevent deadlock.  The PCM
+    builds will fail, so the server may skip the final compilation and
+    never publish diagnostics.  The key assertion is that the server
+    remains responsive — we verify this by successfully performing a
+    subsequent operation (opening a non-cyclic file).
+    """
+    (tmp_path / "cycle_a.cppm").write_text(
+        "export module CycA;\nimport CycB;\nexport int a() { return 1; }\n"
+    )
+    (tmp_path / "cycle_b.cppm").write_text(
+        "export module CycB;\nimport CycA;\nexport int b() { return 2; }\n"
+    )
+    # Also create a simple non-cyclic file to verify server is still alive.
+    (tmp_path / "ok.cppm").write_text(
+        "export module Ok;\nexport int ok() { return 42; }\n"
+    )
+    _write_cdb(tmp_path, ["cycle_a.cppm", "cycle_b.cppm", "ok.cppm"])
+    await _init(client, tmp_path)
+
+    # Open a cyclic file — the server should not hang.
+    _open(client, tmp_path, "cycle_a.cppm")
+    # Give the server time to attempt (and fail) the cyclic PCM builds.
+    await asyncio.sleep(5.0)
+
+    # Verify the server is still responsive by opening a non-cyclic file.
+    uri_ok, _ = await _open_and_wait(client, tmp_path, "ok.cppm")
+    diags = client.diagnostics.get(uri_ok, [])
+    assert len(diags) == 0, (
+        f"Non-cyclic module should compile fine after cycle attempt, got: {diags}"
+    )

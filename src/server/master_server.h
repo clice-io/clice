@@ -74,8 +74,8 @@ private:
     // Document state: path_id -> DocumentState
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
 
-    // Per-document debounce timers
-    llvm::DenseMap<std::uint32_t, std::unique_ptr<et::timer>> debounce_timers;
+    // Per-document debounce timers (shared_ptr so drain coroutines survive didClose)
+    llvm::DenseMap<std::uint32_t, std::shared_ptr<et::timer>> debounce_timers;
 
     // Helper: convert URI to file path
     std::string uri_to_path(const std::string& uri);
@@ -99,7 +99,7 @@ private:
     et::task<> load_workspace();
 
     // Helper: fill compile arguments from CDB into worker params
-    void fill_compile_args(llvm::StringRef path,
+    bool fill_compile_args(llvm::StringRef path,
                            std::string& directory,
                            std::vector<std::string>& arguments);
 

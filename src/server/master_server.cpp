@@ -78,7 +78,7 @@ void MasterServer::schedule_build(std::uint32_t path_id, const std::string& uri)
     // Create or reset debounce timer
     auto& timer_ptr = debounce_timers[path_id];
     if(!timer_ptr) {
-        timer_ptr = std::make_unique<et::timer>(et::timer::create(loop));
+        timer_ptr = std::make_shared<et::timer>(et::timer::create(loop));
     }
     timer_ptr->start(std::chrono::milliseconds(config.debounce_ms));
 
@@ -89,10 +89,12 @@ void MasterServer::schedule_build(std::uint32_t path_id, const std::string& uri)
 }
 
 et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri) {
-    // Wait for debounce timer
-    auto timer_it = debounce_timers.find(path_id);
-    if(timer_it != debounce_timers.end() && timer_it->second) {
-        co_await timer_it->second->wait();
+    // Wait for debounce timer.  Hold a shared_ptr copy so the timer
+    // stays alive even if didClose erases the map entry mid-wait.
+    if(auto timer_it = debounce_timers.find(path_id);
+       timer_it != debounce_timers.end() && timer_it->second) {
+        auto timer = timer_it->second;
+        co_await timer->wait();
     }
 
     while(true) {
@@ -119,12 +121,13 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
                         auto r = co_await compile_graph->compile(mod_ids[0]).catch_cancel();
                         if(!r.has_value() || !*r) {
                             deps_ok = false;
+                            break;
                         }
                     }
                 }
                 // Module implementation units (module M; without export) need
                 // their interface PCM but don't have an explicit import.
-                if(!scan_result.module_name.empty() && !scan_result.is_interface_unit) {
+                if(deps_ok && !scan_result.module_name.empty() && !scan_result.is_interface_unit) {
                     auto mod_ids = dependency_graph.lookup_module(scan_result.module_name);
                     if(!mod_ids.empty()) {
                         auto r = co_await compile_graph->compile(mod_ids[0]).catch_cancel();
@@ -155,7 +158,11 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
         params.path = std::string(path_pool.resolve(path_id));
         params.version = doc_it->second.version;
         params.text = doc_it->second.text;
-        fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments);
+        if(!fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments)) {
+            doc_it->second.build_running = false;
+            doc_it->second.drain_scheduled = false;
+            co_return;
+        }
 
         // Fill all available PCM paths (clang needs transitive deps).
         // Skip the file's own PCM — a module interface must not receive its
@@ -320,7 +327,9 @@ et::task<> MasterServer::load_workspace() {
         auto file_path = std::string(path_pool.resolve(path_id));
         worker::BuildPCMParams pcm_params;
         pcm_params.file = file_path;
-        fill_compile_args(file_path, pcm_params.directory, pcm_params.arguments);
+        if(!fill_compile_args(file_path, pcm_params.directory, pcm_params.arguments)) {
+            co_return false;
+        }
         pcm_params.module_name = mod_it->second;
 
         // Clang needs ALL transitive PCM deps, not just direct imports.
@@ -348,13 +357,13 @@ et::task<> MasterServer::load_workspace() {
     LOG_INFO("CompileGraph initialized with {} module(s)", path_to_module.size());
 }
 
-void MasterServer::fill_compile_args(llvm::StringRef path,
+bool MasterServer::fill_compile_args(llvm::StringRef path,
                                      std::string& directory,
                                      std::vector<std::string>& arguments) {
     auto results = cdb.lookup(path, {.query_toolchain = true});
     if(results.empty()) {
         LOG_WARN("No CDB entry for {}", path);
-        return;
+        return false;
     }
     auto& ctx = results.front();
     directory = ctx.directory.str();
@@ -362,6 +371,7 @@ void MasterServer::fill_compile_args(llvm::StringRef path,
     for(auto* arg: ctx.arguments) {
         arguments.emplace_back(arg);
     }
+    return true;
 }
 
 et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id, const std::string& uri) {
@@ -440,7 +450,8 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
     wp.path = path;
     wp.version = doc.version;
     wp.text = doc.text;
-    fill_compile_args(path, wp.directory, wp.arguments);
+    if(!fill_compile_args(path, wp.directory, wp.arguments))
+        co_return serde_raw{};
     wp.offset = mapper.to_offset(position);
 
     auto result = co_await pool.send_stateless(wp);
@@ -645,6 +656,11 @@ void MasterServer::register_handlers() {
 
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = path_pool.intern(path);
+
+        // Cancel in-flight module compilations for this file.
+        if(compile_graph && compile_graph->has_unit(path_id)) {
+            compile_graph->update(path_id);
+        }
 
         documents.erase(path_id);
         debounce_timers.erase(path_id);
