@@ -50,8 +50,8 @@ auto hover_range(CompilationUnitRef unit,
     }
 
     return protocol::Range{
-        .start = converter.to_position(range.begin),
-        .end = converter.to_position(range.end),
+        .start = *converter.to_position(range.begin),
+        .end = *converter.to_position(range.end),
     };
 }
 

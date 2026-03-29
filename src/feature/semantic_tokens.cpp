@@ -241,8 +241,8 @@ public:
 
         auto begin = token.range.begin;
         auto end = token.range.end;
-        auto begin_position = converter.to_position(begin);
-        auto end_position = converter.to_position(end);
+        auto begin_position = *converter.to_position(begin);
+        auto end_position = *converter.to_position(end);
         auto begin_line = static_cast<std::uint32_t>(begin_position.line);
         auto begin_char = static_cast<std::uint32_t>(begin_position.character);
         auto end_line = static_cast<std::uint32_t>(end_position.line);

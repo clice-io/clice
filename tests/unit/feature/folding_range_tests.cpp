@@ -52,7 +52,7 @@ auto to_local_range(const protocol::FoldingRange& range) -> LocalSourceRange {
         .character = range.end_character.value_or(0),
     };
 
-    return LocalSourceRange(converter.to_offset(start), converter.to_offset(end));
+    return LocalSourceRange(*converter.to_offset(start), *converter.to_offset(end));
 }
 
 void expect_folding(std::uint32_t index,

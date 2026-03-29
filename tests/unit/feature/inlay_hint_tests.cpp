@@ -28,7 +28,7 @@ void run(llvm::StringRef code, std::source_location location = std::source_locat
     feature::PositionMapper converter(tester.unit->interested_content(),
                                       feature::PositionEncoding::UTF8);
     for(auto& hint: hints) {
-        hints_map[converter.to_offset(hint.position)] = hint;
+        hints_map[*converter.to_offset(hint.position)] = hint;
     }
 
     if(!tester.unit->diagnostics().empty()) {

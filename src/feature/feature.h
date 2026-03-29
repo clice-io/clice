@@ -26,8 +26,8 @@ using eventide::ipc::lsp::parse_position_encoding;
 
 inline auto to_range(const PositionMapper& converter, LocalSourceRange range) -> protocol::Range {
     return protocol::Range{
-        .start = converter.to_position(range.begin),
-        .end = converter.to_position(range.end),
+        .start = *converter.to_position(range.begin),
+        .end = *converter.to_position(range.end),
     };
 }
 

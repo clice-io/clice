@@ -148,8 +148,8 @@ public:
 
         PositionMapper converter(content, encoding);
         auto replace_range = protocol::Range{
-            .start = converter.to_position(prefix.range.begin),
-            .end = converter.to_position(prefix.range.end),
+            .start = *converter.to_position(prefix.range.begin),
+            .end = *converter.to_position(prefix.range.end),
         };
 
         std::vector<protocol::CompletionItem> collected;
