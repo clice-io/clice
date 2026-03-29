@@ -131,42 +131,29 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
 
         // Ensure module dependencies are compiled first.
         if(compile_graph) {
-            // Scan this file for module imports and compile them concurrently.
             auto file_path = path_pool.resolve(path_id);
             auto cdb_results =
                 cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
             bool deps_ok = true;
             if(!cdb_results.empty()) {
                 auto scan_result = scan_precise(cdb_results[0].arguments, cdb_results[0].directory);
-
-                // Collect all dependency path_ids to compile.
-                llvm::SmallVector<std::uint32_t> dep_ids;
                 for(auto& mod_name: scan_result.modules) {
                     auto mod_ids = dependency_graph.lookup_module(mod_name);
                     if(!mod_ids.empty()) {
-                        dep_ids.push_back(mod_ids[0]);
-                    }
-                }
-                // Module implementation units need their interface PCM.
-                if(!scan_result.module_name.empty() && !scan_result.is_interface_unit) {
-                    auto mod_ids = dependency_graph.lookup_module(scan_result.module_name);
-                    if(!mod_ids.empty()) {
-                        dep_ids.push_back(mod_ids[0]);
-                    }
-                }
-
-                // Compile all dependencies concurrently via when_all.
-                if(!dep_ids.empty()) {
-                    std::vector<et::task<bool>> dep_tasks;
-                    dep_tasks.reserve(dep_ids.size());
-                    for(auto dep_id: dep_ids) {
-                        dep_tasks.push_back(compile_graph->compile(dep_id));
-                    }
-                    auto results = co_await et::when_all(std::move(dep_tasks));
-                    for(auto r: results) {
+                        auto r = co_await compile_graph->compile(mod_ids[0]);
                         if(!r) {
                             deps_ok = false;
                             break;
+                        }
+                    }
+                }
+                // Module implementation units need their interface PCM.
+                if(deps_ok && !scan_result.module_name.empty() && !scan_result.is_interface_unit) {
+                    auto mod_ids = dependency_graph.lookup_module(scan_result.module_name);
+                    if(!mod_ids.empty()) {
+                        auto r = co_await compile_graph->compile(mod_ids[0]);
+                        if(!r) {
+                            deps_ok = false;
                         }
                     }
                 }
