@@ -1,5 +1,6 @@
 #include "server/master_server.h"
 
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <variant>
@@ -24,6 +25,32 @@ namespace lsp = eventide::ipc::lsp;
 namespace refl = eventide::refl;
 using et::ipc::RequestResult;
 using RequestContext = et::ipc::JsonPeer::RequestContext;
+
+/// Safely convert an LSP Position to a byte offset, returning std::nullopt
+/// when the position is out of range instead of triggering an assertion.
+std::optional<std::uint32_t> safe_to_offset(std::string_view text,
+                                            lsp::PositionEncoding encoding,
+                                            const protocol::Position& position) {
+    // Count lines to validate position.line.
+    std::uint32_t line_count = 1;
+    for(auto ch: text) {
+        if(ch == '\n')
+            ++line_count;
+    }
+    if(position.line >= line_count)
+        return std::nullopt;
+
+    lsp::PositionMapper mapper(text, encoding);
+    // Clamp character to line length to avoid assertion in to_offset.
+    auto line_start = mapper.line_start(position.line);
+    auto line_end = mapper.line_end_exclusive(position.line);
+    auto line_text = text.substr(line_start, line_end - line_start);
+    auto max_char = mapper.measure(line_text);
+    if(position.character > max_char)
+        return std::nullopt;
+
+    return mapper.to_offset(position);
+}
 
 MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path) :
     loop(loop), peer(peer), pool(loop), self_path(std::move(self_path)) {}
@@ -422,8 +449,10 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri,
 
     auto doc_it = documents.find(path_id);
     if(doc_it != documents.end()) {
-        lsp::PositionMapper mapper(doc_it->second.text, lsp::PositionEncoding::UTF16);
-        wp.offset = mapper.to_offset(position);
+        auto offset = safe_to_offset(doc_it->second.text, lsp::PositionEncoding::UTF16, position);
+        if(!offset)
+            co_return serde_raw{"null"};
+        wp.offset = *offset;
     }
 
     auto result = co_await pool.send_stateful(path_id, wp);
@@ -444,15 +473,17 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
 
     auto& doc = doc_it->second;
 
-    lsp::PositionMapper mapper(doc.text, lsp::PositionEncoding::UTF16);
-
     WorkerParams wp;
     wp.path = path;
     wp.version = doc.version;
     wp.text = doc.text;
     if(!fill_compile_args(path, wp.directory, wp.arguments))
         co_return serde_raw{};
-    wp.offset = mapper.to_offset(position);
+
+    auto offset = safe_to_offset(doc.text, lsp::PositionEncoding::UTF16, position);
+    if(!offset)
+        co_return serde_raw{"null"};
+    wp.offset = *offset;
 
     auto result = co_await pool.send_stateless(wp);
     if(!result.has_value())
@@ -626,11 +657,12 @@ void MasterServer::register_handlers() {
                         // Incremental change: replace range
                         auto& range = c.range;
 
-                        lsp::PositionMapper mapper(doc.text, lsp::PositionEncoding::UTF16);
-                        auto start = mapper.to_offset(range.start);
-                        auto end = mapper.to_offset(range.end);
-                        if(start <= doc.text.size() && end <= doc.text.size() && start <= end) {
-                            doc.text.replace(start, end - start, c.text);
+                        auto start =
+                            safe_to_offset(doc.text, lsp::PositionEncoding::UTF16, range.start);
+                        auto end =
+                            safe_to_offset(doc.text, lsp::PositionEncoding::UTF16, range.end);
+                        if(start && end && *start <= *end) {
+                            doc.text.replace(*start, *end - *start, c.text);
                         }
                     }
                 },

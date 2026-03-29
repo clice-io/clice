@@ -563,11 +563,11 @@ async def test_hover_on_imported_symbol(client):
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
-    # Hover on 'magic_number' (line 1, character 22 = inside 'magic_number()')
+    # Hover on 'magic_number' (line 3, character 11 = start of 'magic_number()')
     hover = await client.text_document_hover_async(
         HoverParams(
             text_document=TextDocumentIdentifier(uri=uri),
-            position=Position(line=1, character=22),
+            position=Position(line=3, character=11),
         )
     )
     assert hover is not None, "Hover on imported symbol should return info"
