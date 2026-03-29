@@ -29,6 +29,12 @@ using RequestContext = et::ipc::JsonPeer::RequestContext;
 MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path) :
     loop(loop), peer(peer), pool(loop), self_path(std::move(self_path)) {}
 
+MasterServer::~MasterServer() {
+    if(compile_graph) {
+        compile_graph->cancel_all();
+    }
+}
+
 std::string MasterServer::uri_to_path(const std::string& uri) {
     auto parsed = lsp::URI::parse(uri);
     if(parsed.has_value()) {

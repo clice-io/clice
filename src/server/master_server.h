@@ -45,6 +45,7 @@ enum class ServerLifecycle : std::uint8_t {
 class MasterServer {
 public:
     MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path);
+    ~MasterServer();
 
     void register_handlers();
 
