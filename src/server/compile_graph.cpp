@@ -70,8 +70,8 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
 
     // Copy deps and capture generation before co_await (DenseMap iterator safety).
     auto deps = it->second.dependencies;
-    auto* generation = it->second.source.get();
-    auto token = generation->token();
+    auto gen = it->second.generation;
+    auto token = it->second.source->token();
 
     // Compile all dependencies concurrently.
     // Deadlocks from cross-branch cycles (e.g. 1->{2,3}, 2->3, 3->2) are
@@ -120,10 +120,10 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
         }
     }
 
-    // Success — only clear dirty if the source hasn't been replaced by update().
+    // Success — only clear dirty if update() hasn't bumped the generation.
     auto& final_unit = units.find(path_id)->second;
-    if(final_unit.source.get() != generation) {
-        // update() replaced our source while dispatch was in flight.
+    if(final_unit.generation != gen) {
+        // update() was called while dispatch was in flight.
         final_unit.compiling = false;
         final_unit.completion->set();
         co_return false;
@@ -178,6 +178,7 @@ llvm::SmallVector<std::uint32_t> CompileGraph::update(std::uint32_t path_id) {
             unit.source = std::make_unique<et::cancellation_source>();
         }
         unit.dirty = true;
+        unit.generation++;
         dirtied.push_back(current);
 
         // Always propagate to dependents.

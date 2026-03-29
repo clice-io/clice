@@ -29,6 +29,10 @@ struct CompileUnit {
     bool dirty = true;
     bool compiling = false;
 
+    /// Monotonic counter bumped by update(); used by compile_impl to detect
+    /// stale completions without ABA risk from raw-pointer comparison.
+    std::uint64_t generation = 0;
+
     std::unique_ptr<et::cancellation_source> source = std::make_unique<et::cancellation_source>();
     std::unique_ptr<et::event> completion;
 };

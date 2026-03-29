@@ -521,6 +521,100 @@ TEST_CASE(DispatchFailureLeavesDepDirty) {
     loop.run();
 }
 
+TEST_CASE(SelfLoop) {
+    et::event_loop loop;
+    // Unit 1 depends on itself.
+    CompileGraph graph(instant_dispatch(),
+                       static_resolver({
+                           {1, {1}}
+    }));
+
+    auto test = [this, &graph]() -> et::task<> {
+        auto result = co_await graph.compile(1).catch_cancel();
+        // Should detect cycle and return false, not deadlock.
+        EXPECT_TRUE(result.has_value());
+        EXPECT_FALSE(*result);
+    };
+
+    auto t = test();
+    loop.schedule(t);
+    loop.run();
+}
+
+TEST_CASE(CancelAllAndRecompile) {
+    et::event_loop loop;
+    std::vector<std::uint32_t> compiled;
+    CompileGraph graph(tracking_dispatch(compiled),
+                       static_resolver({
+                           {1, {2}}
+    }));
+
+    auto test = [this, &graph, &compiled]() -> et::task<> {
+        co_await graph.compile(1).catch_cancel();
+        EXPECT_EQ(compiled.size(), 2u);
+        EXPECT_FALSE(graph.is_dirty(1));
+        EXPECT_FALSE(graph.is_dirty(2));
+
+        // cancel_all + update to mark dirty again.
+        graph.cancel_all();
+        graph.update(2);
+        EXPECT_TRUE(graph.is_dirty(2));
+        EXPECT_TRUE(graph.is_dirty(1));
+
+        // Recompile should succeed normally.
+        auto result = co_await graph.compile(1).catch_cancel();
+        EXPECT_TRUE(result.has_value());
+        EXPECT_TRUE(*result);
+        EXPECT_EQ(compiled.size(), 4u);
+        EXPECT_FALSE(graph.is_dirty(1));
+        EXPECT_FALSE(graph.is_dirty(2));
+    };
+
+    auto t = test();
+    loop.schedule(t);
+    loop.run();
+}
+
+TEST_CASE(UpdateDuringCompile) {
+    et::event_loop loop;
+    et::event gate;
+
+    auto gated_dispatch = [&gate](std::uint32_t) -> et::task<bool> {
+        co_await gate.wait();
+        co_return true;
+    };
+
+    CompileGraph graph(std::move(gated_dispatch), no_deps());
+
+    bool compile_done = false;
+    bool was_cancelled = false;
+
+    // Coroutine 1: compile(1), will suspend inside dispatch waiting on gate.
+    auto compiler = [&graph, &compile_done, &was_cancelled]() -> et::task<> {
+        auto result = co_await graph.compile(1).catch_cancel();
+        compile_done = true;
+        was_cancelled = !result.has_value();
+    };
+
+    // Coroutine 2: update(1) while dispatch is in flight, then unblock gate.
+    auto updater = [&graph, &gate]() -> et::task<> {
+        graph.update(1);
+        gate.set();
+        co_return;
+    };
+
+    auto t1 = compiler();
+    auto t2 = updater();
+    loop.schedule(t1);
+    loop.schedule(t2);
+    loop.run();
+
+    // update() cancelled the source, so compile should have been cancelled.
+    EXPECT_TRUE(compile_done);
+    EXPECT_TRUE(was_cancelled);
+    EXPECT_TRUE(graph.is_dirty(1));
+}
+
 };  // TEST_SUITE(CompileGraph)
 
 }  // namespace
