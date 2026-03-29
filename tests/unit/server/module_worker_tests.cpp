@@ -22,8 +22,9 @@ TEST_SUITE(ModuleWorker) {
 
 TEST_CASE(BuildPCMThenCompileWithImport) {
     // Module interface: produces PCM.
-    TempFile iface("mod_iface.cppm",
-                   "export module Hello;\n" "export const char* hello() { return \"world\"; }\n");
+    TempFile iface(
+        "mod_iface.cppm",
+        "export module Hello;\n" R"(export const char* hello() { return "world"; })" "\n");
 
     // Consumer: imports the module.
     TempFile consumer("consumer.cpp", "import Hello;\n" "int main() { return hello()[0]; }\n");

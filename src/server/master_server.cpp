@@ -690,7 +690,7 @@ void MasterServer::register_handlers() {
             for(auto dirty_id: dirtied) {
                 if(dirty_id == path_id)
                     continue;  // The saved file itself is rebuilt by its own didChange.
-                if(documents.count(dirty_id)) {
+                if(documents.contains(dirty_id)) {
                     auto dirty_path = path_pool.resolve(dirty_id);
                     auto uri = lsp::URI::from_file_path(dirty_path);
                     if(uri.has_value()) {

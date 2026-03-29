@@ -181,7 +181,7 @@ TEST_CASE(SingleModuleNoDeps) {
         auto result = co_await cg.compile(pid_a).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
-        EXPECT_TRUE(env.pcm_paths.count(pid_a));
+        EXPECT_TRUE(env.pcm_paths.contains(pid_a));
     };
     auto t = test();
     loop.schedule(t);
@@ -215,8 +215,8 @@ TEST_CASE(ChainedModules) {
         auto result = co_await cg.compile(pid_b).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
-        EXPECT_TRUE(env.pcm_paths.count(pid_a));
-        EXPECT_TRUE(env.pcm_paths.count(pid_b));
+        EXPECT_TRUE(env.pcm_paths.contains(pid_a));
+        EXPECT_TRUE(env.pcm_paths.contains(pid_b));
     };
     auto t = test();
     loop.schedule(t);
@@ -398,7 +398,7 @@ TEST_CASE(GlobalModuleFragment) {
     env.tmp.touch("legacy.h", "inline int legacy_fn() { return 99; }\n");
     env.tmp.touch("gmf.cppm",
                   "module;\n"
-                  "#include \"legacy.h\"\n"
+                  R"(#include "legacy.h")" "\n"
                   "export module GMF;\n"
                   "export int wrapped() { return legacy_fn(); }\n");
 
@@ -418,7 +418,7 @@ TEST_CASE(GlobalModuleFragment) {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
-        EXPECT_TRUE(env.pcm_paths.count(pid));
+        EXPECT_TRUE(env.pcm_paths.contains(pid));
     };
     auto t = test();
     loop.schedule(t);
@@ -454,7 +454,7 @@ TEST_CASE(PrivateModuleFragment) {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
-        EXPECT_TRUE(env.pcm_paths.count(pid));
+        EXPECT_TRUE(env.pcm_paths.contains(pid));
     };
     auto t = test();
     loop.schedule(t);
@@ -636,7 +636,7 @@ TEST_CASE(GMFWithImport) {
     env.tmp.touch("base.cppm", "export module Base;\n" "export int base() { return 100; }\n");
     env.tmp.touch("combined.cppm",
                   "module;\n"
-                  "#include \"util.h\"\n"
+                  R"(#include "util.h")" "\n"
                   "export module Combined;\n"
                   "import Base;\n"
                   "export int combined() { return base() + util_helper(); }\n");
@@ -900,7 +900,7 @@ TEST_CASE(PartitionWithGMF) {
     env.tmp.touch("config.h", "#define MAX_SIZE 100\n");
     env.tmp.touch("part_cfg.cppm",
                   "module;\n"
-                  "#include \"config.h\"\n"
+                  R"(#include "config.h")" "\n"
                   "export module Cfg:Limits;\n"
                   "export constexpr int max_size = MAX_SIZE;\n");
     env.tmp.touch("cfg.cppm", "export module Cfg;\n" "export import :Limits;\n");
@@ -1153,9 +1153,9 @@ TEST_CASE(CompileFailurePropagation) {
         EXPECT_FALSE(*result);
         // Good module should still have been compiled successfully.
         auto pid_good = env.lookup("Good");
-        EXPECT_TRUE(env.pcm_paths.count(pid_good));
+        EXPECT_TRUE(env.pcm_paths.contains(pid_good));
         // Bad module should NOT have a PCM.
-        EXPECT_FALSE(env.pcm_paths.count(pid_bad));
+        EXPECT_FALSE(env.pcm_paths.contains(pid_bad));
     };
     auto t = test();
     loop.schedule(t);
@@ -1171,7 +1171,8 @@ TEST_CASE(ModuleImplementationUnit) {
     // Module interface unit — produces PCM.
     env.tmp.touch("iface.cppm", "export module Greeter;\n" "export const char* greet();\n");
     // Module implementation unit — consumes PCM, no export.
-    env.tmp.touch("impl.cpp", "module Greeter;\n" "const char* greet() { return \"hello\"; }\n");
+    env.tmp.touch("impl.cpp",
+                  "module Greeter;\n" R"(const char* greet() { return "hello"; })" "\n");
 
     auto json = build_cdb_json({
         {env.tmp.root, env.tmp.path("iface.cppm"), {}},
@@ -1190,7 +1191,7 @@ TEST_CASE(ModuleImplementationUnit) {
         // Build the interface PCM via CompileGraph.
         auto r1 = co_await cg.compile(pid_iface).catch_cancel();
         EXPECT_TRUE(r1.has_value() && *r1);
-        EXPECT_TRUE(env.pcm_paths.count(pid_iface));
+        EXPECT_TRUE(env.pcm_paths.contains(pid_iface));
 
         // Now compile the implementation unit as Content (like a stateful worker would).
         auto impl_path = env.tmp.path("impl.cpp");

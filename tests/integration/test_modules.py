@@ -5,8 +5,9 @@ and module_worker_tests. They test the complete pipeline:
   MasterServer -> CompileGraph -> WorkerPool -> stateless/stateful workers.
 """
 
-import json
 import asyncio
+import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,6 @@ from lsprotocol.types import (
     ClientCapabilities,
     DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams,
     HoverParams,
     InitializeParams,
     InitializedParams,
@@ -24,6 +24,9 @@ from lsprotocol.types import (
     WorkspaceFolder,
 )
 
+# Directory containing pre-written module source files for each test case.
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "modules"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,20 +35,7 @@ from lsprotocol.types import (
 
 def _write_cdb(workspace: Path, files: list[str], extra_args: list[str] | None = None):
     """Generate compile_commands.json for the given source files."""
-    cdb = []
-    for f in files:
-        args = ["clang++", "-std=c++20", "-fsyntax-only"]
-        if extra_args:
-            args.extend(extra_args)
-        args.append((workspace / f).as_posix())
-        cdb.append(
-            {
-                "directory": workspace.as_posix(),
-                "file": (workspace / f).as_posix(),
-                "arguments": args,
-            }
-        )
-    (workspace / "compile_commands.json").write_text(json.dumps(cdb, indent=2))
+    _write_cdb_entries(workspace, [(f, extra_args or []) for f in files])
 
 
 def _write_cdb_entries(workspace: Path, entries: list[tuple[str, list[str]]]):
@@ -113,15 +103,13 @@ async def _open_and_wait(client, workspace: Path, filename: str, timeout: float 
 
 
 @pytest.mark.asyncio
-async def test_single_module_no_deps(client, tmp_path):
+async def test_single_module_no_deps(client):
     """A single module with no imports should compile without errors."""
-    (tmp_path / "mod_a.cppm").write_text(
-        "export module A;\nexport int foo() { return 42; }\n"
-    )
-    _write_cdb(tmp_path, ["mod_a.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "single_module_no_deps"
+    _write_cdb(ws, ["mod_a.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "mod_a.cppm")
+    uri, _ = await _open_and_wait(client, ws, "mod_a.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -132,18 +120,13 @@ async def test_single_module_no_deps(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_chained_modules(client, tmp_path):
+async def test_chained_modules(client):
     """Opening a module that imports another should trigger dependency compilation."""
-    (tmp_path / "mod_a.cppm").write_text(
-        "export module A;\nexport int foo() { return 42; }\n"
-    )
-    (tmp_path / "mod_b.cppm").write_text(
-        "export module B;\nimport A;\nexport int bar() { return foo() + 1; }\n"
-    )
-    _write_cdb(tmp_path, ["mod_a.cppm", "mod_b.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "chained_modules"
+    _write_cdb(ws, ["mod_a.cppm", "mod_b.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "mod_b.cppm")
+    uri, _ = await _open_and_wait(client, ws, "mod_b.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -154,31 +137,13 @@ async def test_chained_modules(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_diamond_modules(client, tmp_path):
+async def test_diamond_modules(client):
     """Diamond dependency graph should compile correctly."""
-    (tmp_path / "base.cppm").write_text(
-        "export module Base;\nexport int base_val() { return 10; }\n"
-    )
-    (tmp_path / "left.cppm").write_text(
-        "export module Left;\n"
-        "import Base;\n"
-        "export int left_val() { return base_val() + 1; }\n"
-    )
-    (tmp_path / "right.cppm").write_text(
-        "export module Right;\n"
-        "import Base;\n"
-        "export int right_val() { return base_val() + 2; }\n"
-    )
-    (tmp_path / "top.cppm").write_text(
-        "export module Top;\n"
-        "import Left;\n"
-        "import Right;\n"
-        "export int top_val() { return left_val() + right_val(); }\n"
-    )
-    _write_cdb(tmp_path, ["base.cppm", "left.cppm", "right.cppm", "top.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "diamond_modules"
+    _write_cdb(ws, ["base.cppm", "left.cppm", "right.cppm", "top.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "top.cppm")
+    uri, _ = await _open_and_wait(client, ws, "top.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -189,16 +154,13 @@ async def test_diamond_modules(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_dotted_module_name(client, tmp_path):
+async def test_dotted_module_name(client):
     """Dotted module names should work correctly."""
-    (tmp_path / "io.cppm").write_text("export module my.io;\nexport void print() {}\n")
-    (tmp_path / "app.cppm").write_text(
-        "export module my.app;\nimport my.io;\nexport void run() { print(); }\n"
-    )
-    _write_cdb(tmp_path, ["io.cppm", "app.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "dotted_module_name"
+    _write_cdb(ws, ["io.cppm", "app.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "app.cppm")
+    uri, _ = await _open_and_wait(client, ws, "app.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -209,18 +171,13 @@ async def test_dotted_module_name(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_module_implementation_unit(client, tmp_path):
+async def test_module_implementation_unit(client):
     """A module implementation unit should compile using the interface PCM."""
-    (tmp_path / "greeter.cppm").write_text(
-        "export module Greeter;\nexport const char* greet();\n"
-    )
-    (tmp_path / "greeter_impl.cpp").write_text(
-        'module Greeter;\nconst char* greet() { return "hello"; }\n'
-    )
-    _write_cdb(tmp_path, ["greeter.cppm", "greeter_impl.cpp"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "module_implementation_unit"
+    _write_cdb(ws, ["greeter.cppm", "greeter_impl.cpp"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "greeter_impl.cpp")
+    uri, _ = await _open_and_wait(client, ws, "greeter_impl.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -231,18 +188,13 @@ async def test_module_implementation_unit(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_consumer_imports_module(client, tmp_path):
+async def test_consumer_imports_module(client):
     """A regular .cpp file that imports a module should get PCM deps compiled."""
-    (tmp_path / "math.cppm").write_text(
-        "export module Math;\nexport int add(int a, int b) { return a + b; }\n"
-    )
-    (tmp_path / "main.cpp").write_text(
-        "import Math;\nint main() { return add(1, 2); }\n"
-    )
-    _write_cdb(tmp_path, ["math.cppm", "main.cpp"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "consumer_imports_module"
+    _write_cdb(ws, ["math.cppm", "main.cpp"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "main.cpp")
+    uri, _ = await _open_and_wait(client, ws, "main.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -253,24 +205,13 @@ async def test_consumer_imports_module(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_module_partitions(client, tmp_path):
+async def test_module_partitions(client):
     """Module partitions should be compiled in correct order."""
-    (tmp_path / "part_a.cppm").write_text(
-        "export module Lib:A;\nexport int a_fn() { return 1; }\n"
-    )
-    (tmp_path / "part_b.cppm").write_text(
-        "export module Lib:B;\nexport int b_fn() { return 2; }\n"
-    )
-    (tmp_path / "lib.cppm").write_text(
-        "export module Lib;\n"
-        "export import :A;\n"
-        "export import :B;\n"
-        "export int lib_fn() { return a_fn() + b_fn(); }\n"
-    )
-    _write_cdb(tmp_path, ["part_a.cppm", "part_b.cppm", "lib.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "module_partitions"
+    _write_cdb(ws, ["part_a.cppm", "part_b.cppm", "lib.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "lib.cppm")
+    uri, _ = await _open_and_wait(client, ws, "lib.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -281,20 +222,13 @@ async def test_module_partitions(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_partition_interface(client, tmp_path):
+async def test_partition_interface(client):
     """A single partition interface re-exported from primary should compile."""
-    (tmp_path / "part.cppm").write_text(
-        "export module M:Part;\nexport int part_fn() { return 5; }\n"
-    )
-    (tmp_path / "primary.cppm").write_text(
-        "export module M;\n"
-        "export import :Part;\n"
-        "export int primary_fn() { return part_fn() + 1; }\n"
-    )
-    _write_cdb(tmp_path, ["part.cppm", "primary.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "partition_interface"
+    _write_cdb(ws, ["part.cppm", "primary.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "primary.cppm")
+    uri, _ = await _open_and_wait(client, ws, "primary.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -305,23 +239,13 @@ async def test_partition_interface(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_partition_chain(client, tmp_path):
+async def test_partition_chain(client):
     """Partition importing another partition within same module."""
-    (tmp_path / "types.cppm").write_text(
-        "export module Sys:Types;\nexport struct Config { int value = 0; };\n"
-    )
-    (tmp_path / "core.cppm").write_text(
-        "export module Sys:Core;\n"
-        "import :Types;\n"
-        "export Config make_config() { return {42}; }\n"
-    )
-    (tmp_path / "sys.cppm").write_text(
-        "export module Sys;\nexport import :Types;\nexport import :Core;\n"
-    )
-    _write_cdb(tmp_path, ["types.cppm", "core.cppm", "sys.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "partition_chain"
+    _write_cdb(ws, ["types.cppm", "core.cppm", "sys.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "sys.cppm")
+    uri, _ = await _open_and_wait(client, ws, "sys.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -332,25 +256,13 @@ async def test_partition_chain(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_re_export(client, tmp_path):
+async def test_re_export(client):
     """Re-exported module symbols should be accessible through the wrapper."""
-    (tmp_path / "core.cppm").write_text(
-        "export module Core;\nexport int core_fn() { return 1; }\n"
-    )
-    (tmp_path / "wrapper.cppm").write_text(
-        "export module Wrapper;\n"
-        "export import Core;\n"
-        "export int wrap_fn() { return core_fn() + 10; }\n"
-    )
-    (tmp_path / "user.cppm").write_text(
-        "export module User;\n"
-        "import Wrapper;\n"
-        "export int use_fn() { return core_fn() + wrap_fn(); }\n"
-    )
-    _write_cdb(tmp_path, ["core.cppm", "wrapper.cppm", "user.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "re_export"
+    _write_cdb(ws, ["core.cppm", "wrapper.cppm", "user.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "user.cppm")
+    uri, _ = await _open_and_wait(client, ws, "user.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -361,27 +273,13 @@ async def test_re_export(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_export_block(client, tmp_path):
+async def test_export_block(client):
     """Module with export block syntax should compile correctly."""
-    (tmp_path / "block.cppm").write_text(
-        "export module Block;\n"
-        "export {\n"
-        "    int alpha() { return 1; }\n"
-        "    int beta() { return 2; }\n"
-        "    namespace ns {\n"
-        "        int gamma() { return 3; }\n"
-        "    }\n"
-        "}\n"
-    )
-    (tmp_path / "consumer.cppm").write_text(
-        "export module Consumer;\n"
-        "import Block;\n"
-        "export int total() { return alpha() + beta() + ns::gamma(); }\n"
-    )
-    _write_cdb(tmp_path, ["block.cppm", "consumer.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "export_block"
+    _write_cdb(ws, ["block.cppm", "consumer.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "consumer.cppm")
+    uri, _ = await _open_and_wait(client, ws, "consumer.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -392,19 +290,13 @@ async def test_export_block(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_global_module_fragment(client, tmp_path):
+async def test_global_module_fragment(client):
     """Module with global module fragment (#include before module decl)."""
-    (tmp_path / "legacy.h").write_text("inline int legacy_fn() { return 99; }\n")
-    (tmp_path / "gmf.cppm").write_text(
-        "module;\n"
-        '#include "legacy.h"\n'
-        "export module GMF;\n"
-        "export int wrapped() { return legacy_fn(); }\n"
-    )
-    _write_cdb(tmp_path, ["gmf.cppm"], extra_args=["-I", tmp_path.as_posix()])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "global_module_fragment"
+    _write_cdb(ws, ["gmf.cppm"], extra_args=["-I", ws.as_posix()])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "gmf.cppm")
+    uri, _ = await _open_and_wait(client, ws, "gmf.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -415,19 +307,13 @@ async def test_global_module_fragment(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_private_module_fragment(client, tmp_path):
+async def test_private_module_fragment(client):
     """Module with private module fragment should compile correctly."""
-    (tmp_path / "priv.cppm").write_text(
-        "export module Priv;\n"
-        "export int public_fn();\n"
-        "module : private;\n"
-        "int public_fn() { return 42; }\n"
-        "int private_helper() { return 7; }\n"
-    )
-    _write_cdb(tmp_path, ["priv.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "private_module_fragment"
+    _write_cdb(ws, ["priv.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "priv.cppm")
+    uri, _ = await _open_and_wait(client, ws, "priv.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -438,24 +324,13 @@ async def test_private_module_fragment(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_export_namespace(client, tmp_path):
+async def test_export_namespace(client):
     """Module with exported namespace should compile correctly."""
-    (tmp_path / "ns.cppm").write_text(
-        "export module NS;\n"
-        "export namespace math {\n"
-        "    int add(int a, int b) { return a + b; }\n"
-        "    int mul(int a, int b) { return a * b; }\n"
-        "}\n"
-    )
-    (tmp_path / "calc.cppm").write_text(
-        "export module Calc;\n"
-        "import NS;\n"
-        "export int compute() { return math::add(3, math::mul(4, 5)); }\n"
-    )
-    _write_cdb(tmp_path, ["ns.cppm", "calc.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "export_namespace"
+    _write_cdb(ws, ["ns.cppm", "calc.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "calc.cppm")
+    uri, _ = await _open_and_wait(client, ws, "calc.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -466,29 +341,19 @@ async def test_export_namespace(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_gmf_with_import(client, tmp_path):
+async def test_gmf_with_import(client):
     """Module with GMF (#include) + import should compile correctly."""
-    (tmp_path / "util.h").write_text("inline int util_helper() { return 7; }\n")
-    (tmp_path / "base.cppm").write_text(
-        "export module Base;\nexport int base() { return 100; }\n"
-    )
-    (tmp_path / "combined.cppm").write_text(
-        "module;\n"
-        '#include "util.h"\n'
-        "export module Combined;\n"
-        "import Base;\n"
-        "export int combined() { return base() + util_helper(); }\n"
-    )
+    ws = _DATA_DIR / "gmf_with_import"
     _write_cdb_entries(
-        tmp_path,
+        ws,
         [
             ("base.cppm", []),
-            ("combined.cppm", ["-I", tmp_path.as_posix()]),
+            ("combined.cppm", ["-I", ws.as_posix()]),
         ],
     )
-    await _init(client, tmp_path)
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "combined.cppm")
+    uri, _ = await _open_and_wait(client, ws, "combined.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -499,18 +364,17 @@ async def test_gmf_with_import(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_independent_modules(client, tmp_path):
+async def test_independent_modules(client):
     """Two independent modules should each compile without errors."""
-    (tmp_path / "x.cppm").write_text("export module X;\nexport int x() { return 1; }\n")
-    (tmp_path / "y.cppm").write_text("export module Y;\nexport int y() { return 2; }\n")
-    _write_cdb(tmp_path, ["x.cppm", "y.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "independent_modules"
+    _write_cdb(ws, ["x.cppm", "y.cppm"])
+    await _init(client, ws)
 
-    uri_x, _ = await _open_and_wait(client, tmp_path, "x.cppm")
+    uri_x, _ = await _open_and_wait(client, ws, "x.cppm")
     diags_x = client.diagnostics.get(uri_x, [])
     assert len(diags_x) == 0, f"Expected no diagnostics for X, got: {diags_x}"
 
-    uri_y, _ = await _open_and_wait(client, tmp_path, "y.cppm")
+    uri_y, _ = await _open_and_wait(client, ws, "y.cppm")
     diags_y = client.diagnostics.get(uri_y, [])
     assert len(diags_y) == 0, f"Expected no diagnostics for Y, got: {diags_y}"
 
@@ -521,24 +385,13 @@ async def test_independent_modules(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_template_export(client, tmp_path):
+async def test_template_export(client):
     """Module with exported templates should compile correctly."""
-    (tmp_path / "tmpl.cppm").write_text(
-        "export module Tmpl;\n"
-        "export template<typename T>\n"
-        "T identity(T x) { return x; }\n"
-        "export template<typename T, typename U>\n"
-        "auto pair_sum(T a, U b) { return a + b; }\n"
-    )
-    (tmp_path / "use_tmpl.cppm").write_text(
-        "export module UseTmpl;\n"
-        "import Tmpl;\n"
-        "export int test() { return identity(42) + pair_sum(1, 2); }\n"
-    )
-    _write_cdb(tmp_path, ["tmpl.cppm", "use_tmpl.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "template_export"
+    _write_cdb(ws, ["tmpl.cppm", "use_tmpl.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "use_tmpl.cppm")
+    uri, _ = await _open_and_wait(client, ws, "use_tmpl.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -549,30 +402,13 @@ async def test_template_export(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_class_export_and_inheritance(client, tmp_path):
+async def test_class_export_and_inheritance(client):
     """Exported class with cross-module inheritance should compile."""
-    (tmp_path / "shape.cppm").write_text(
-        "export module Shape;\n"
-        "export class Shape {\n"
-        "public:\n"
-        "    virtual ~Shape() = default;\n"
-        "    virtual int area() const = 0;\n"
-        "};\n"
-    )
-    (tmp_path / "circle.cppm").write_text(
-        "export module Circle;\n"
-        "import Shape;\n"
-        "export class Circle : public Shape {\n"
-        "    int r;\n"
-        "public:\n"
-        "    Circle(int r) : r(r) {}\n"
-        "    int area() const override { return 3 * r * r; }\n"
-        "};\n"
-    )
-    _write_cdb(tmp_path, ["shape.cppm", "circle.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "class_export_and_inheritance"
+    _write_cdb(ws, ["shape.cppm", "circle.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "circle.cppm")
+    uri, _ = await _open_and_wait(client, ws, "circle.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -585,12 +421,12 @@ async def test_class_export_and_inheritance(client, tmp_path):
 @pytest.mark.asyncio
 async def test_save_recompile(client, tmp_path):
     """Closing and reopening a modified module file should recompile without errors."""
-    (tmp_path / "leaf.cppm").write_text(
-        "export module Leaf;\nexport int leaf() { return 1; }\n"
-    )
-    (tmp_path / "mid.cppm").write_text(
-        "export module Mid;\nimport Leaf;\nexport int mid() { return leaf() + 1; }\n"
-    )
+    # This test mutates source files at runtime, so copy data to tmp_path.
+    src = _DATA_DIR / "save_recompile"
+    for f in src.iterdir():
+        if f.is_file():
+            shutil.copy2(f, tmp_path / f.name)
+
     _write_cdb(tmp_path, ["leaf.cppm", "mid.cppm"])
     await _init(client, tmp_path)
 
@@ -634,20 +470,13 @@ async def test_save_recompile(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_module_compile_error(client, tmp_path):
+async def test_module_compile_error(client):
     """A module with an error should produce diagnostics."""
-    (tmp_path / "good.cppm").write_text(
-        "export module Good;\nexport int good() { return 1; }\n"
-    )
-    (tmp_path / "bad.cppm").write_text(
-        "export module Bad;\n"
-        "import Good;\n"
-        "export int bad() { return UNDEFINED_SYMBOL; }\n"
-    )
-    _write_cdb(tmp_path, ["good.cppm", "bad.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "module_compile_error"
+    _write_cdb(ws, ["good.cppm", "bad.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "bad.cppm")
+    uri, _ = await _open_and_wait(client, ws, "bad.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) > 0, "Expected diagnostics for undefined symbol"
     # The error should be on line 2 (0-indexed) where UNDEFINED_SYMBOL is used.
@@ -667,27 +496,13 @@ async def test_module_compile_error(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_deep_chain(client, tmp_path):
+async def test_deep_chain(client):
     """A 5-level module chain should compile correctly."""
-    (tmp_path / "m1.cppm").write_text(
-        "export module M1;\nexport int f1() { return 1; }\n"
-    )
-    (tmp_path / "m2.cppm").write_text(
-        "export module M2;\nimport M1;\nexport int f2() { return f1() + 1; }\n"
-    )
-    (tmp_path / "m3.cppm").write_text(
-        "export module M3;\nimport M2;\nexport int f3() { return f2() + 1; }\n"
-    )
-    (tmp_path / "m4.cppm").write_text(
-        "export module M4;\nimport M3;\nexport int f4() { return f3() + 1; }\n"
-    )
-    (tmp_path / "m5.cppm").write_text(
-        "export module M5;\nimport M4;\nexport int f5() { return f4() + 1; }\n"
-    )
-    _write_cdb(tmp_path, ["m1.cppm", "m2.cppm", "m3.cppm", "m4.cppm", "m5.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "deep_chain"
+    _write_cdb(ws, ["m1.cppm", "m2.cppm", "m3.cppm", "m4.cppm", "m5.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "m5.cppm")
+    uri, _ = await _open_and_wait(client, ws, "m5.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -698,26 +513,19 @@ async def test_deep_chain(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_partition_with_gmf(client, tmp_path):
+async def test_partition_with_gmf(client):
     """Partition with GMF (#include) should compile correctly."""
-    (tmp_path / "config.h").write_text("#define MAX_SIZE 100\n")
-    (tmp_path / "part_cfg.cppm").write_text(
-        "module;\n"
-        '#include "config.h"\n'
-        "export module Cfg:Limits;\n"
-        "export constexpr int max_size = MAX_SIZE;\n"
-    )
-    (tmp_path / "cfg.cppm").write_text("export module Cfg;\nexport import :Limits;\n")
+    ws = _DATA_DIR / "partition_with_gmf"
     _write_cdb_entries(
-        tmp_path,
+        ws,
         [
-            ("part_cfg.cppm", ["-I", tmp_path.as_posix()]),
+            ("part_cfg.cppm", ["-I", ws.as_posix()]),
             ("cfg.cppm", []),
         ],
     )
-    await _init(client, tmp_path)
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "cfg.cppm")
+    uri, _ = await _open_and_wait(client, ws, "cfg.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -728,21 +536,13 @@ async def test_partition_with_gmf(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_partition_with_external_import(client, tmp_path):
+async def test_partition_with_external_import(client):
     """Partition importing an external module should compile correctly."""
-    (tmp_path / "ext.cppm").write_text(
-        "export module Ext;\nexport int ext_val() { return 99; }\n"
-    )
-    (tmp_path / "part.cppm").write_text(
-        "export module App:Core;\n"
-        "import Ext;\n"
-        "export int core_fn() { return ext_val() + 1; }\n"
-    )
-    (tmp_path / "app.cppm").write_text("export module App;\nexport import :Core;\n")
-    _write_cdb(tmp_path, ["ext.cppm", "part.cppm", "app.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "partition_with_external_import"
+    _write_cdb(ws, ["ext.cppm", "part.cppm", "app.cppm"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "app.cppm")
+    uri, _ = await _open_and_wait(client, ws, "app.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -753,18 +553,13 @@ async def test_partition_with_external_import(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_hover_on_imported_symbol(client, tmp_path):
+async def test_hover_on_imported_symbol(client):
     """Hover on a symbol imported from a module should return info."""
-    (tmp_path / "defs.cppm").write_text(
-        "export module Defs;\nexport int magic_number() { return 42; }\n"
-    )
-    (tmp_path / "use.cpp").write_text(
-        "import Defs;\nint main() { return magic_number(); }\n"
-    )
-    _write_cdb(tmp_path, ["defs.cppm", "use.cpp"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "hover_on_imported_symbol"
+    _write_cdb(ws, ["defs.cppm", "use.cpp"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "use.cpp")
+    uri, _ = await _open_and_wait(client, ws, "use.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -785,15 +580,13 @@ async def test_hover_on_imported_symbol(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_no_modules_plain_cpp(client, tmp_path):
+async def test_no_modules_plain_cpp(client):
     """A plain C++ file with no modules should compile normally (no CompileGraph)."""
-    (tmp_path / "plain.cpp").write_text(
-        "int add(int a, int b) { return a + b; }\nint main() { return add(1, 2); }\n"
-    )
-    _write_cdb(tmp_path, ["plain.cpp"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "no_modules_plain_cpp"
+    _write_cdb(ws, ["plain.cpp"])
+    await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, tmp_path, "plain.cpp")
+    uri, _ = await _open_and_wait(client, ws, "plain.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -804,7 +597,7 @@ async def test_no_modules_plain_cpp(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_circular_module_dependency(client, tmp_path):
+async def test_circular_module_dependency(client):
     """Circular module imports should not hang the server.
 
     When modules form a cycle (CycA imports CycB, CycB imports CycA),
@@ -814,26 +607,17 @@ async def test_circular_module_dependency(client, tmp_path):
     remains responsive — we verify this by successfully performing a
     subsequent operation (opening a non-cyclic file).
     """
-    (tmp_path / "cycle_a.cppm").write_text(
-        "export module CycA;\nimport CycB;\nexport int a() { return 1; }\n"
-    )
-    (tmp_path / "cycle_b.cppm").write_text(
-        "export module CycB;\nimport CycA;\nexport int b() { return 2; }\n"
-    )
-    # Also create a simple non-cyclic file to verify server is still alive.
-    (tmp_path / "ok.cppm").write_text(
-        "export module Ok;\nexport int ok() { return 42; }\n"
-    )
-    _write_cdb(tmp_path, ["cycle_a.cppm", "cycle_b.cppm", "ok.cppm"])
-    await _init(client, tmp_path)
+    ws = _DATA_DIR / "circular_module_dependency"
+    _write_cdb(ws, ["cycle_a.cppm", "cycle_b.cppm", "ok.cppm"])
+    await _init(client, ws)
 
     # Open a cyclic file — the server should not hang.
-    _open(client, tmp_path, "cycle_a.cppm")
+    _open(client, ws, "cycle_a.cppm")
     # Give the server time to attempt (and fail) the cyclic PCM builds.
     await asyncio.sleep(5.0)
 
     # Verify the server is still responsive by opening a non-cyclic file.
-    uri_ok, _ = await _open_and_wait(client, tmp_path, "ok.cppm")
+    uri_ok, _ = await _open_and_wait(client, ws, "ok.cppm")
     diags = client.diagnostics.get(uri_ok, [])
     assert len(diags) == 0, (
         f"Non-cyclic module should compile fine after cycle attempt, got: {diags}"

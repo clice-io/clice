@@ -47,7 +47,7 @@ inline CompileGraph::dispatch_fn failing_dispatch() {
 /// Dispatch that fails only for specific path_ids.
 inline CompileGraph::dispatch_fn selective_dispatch(llvm::DenseSet<std::uint32_t> fail_ids) {
     return [fail_ids = std::move(fail_ids)](std::uint32_t path_id) -> et::task<bool> {
-        co_return !fail_ids.count(path_id);
+        co_return !fail_ids.contains(path_id);
     };
 }
 
