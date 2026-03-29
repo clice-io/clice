@@ -139,10 +139,16 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
                 doc_it = documents.find(path_id);
                 if(doc_it != documents.end()) {
                     doc_it->second.build_running = false;
+                    doc_it->second.drain_scheduled = false;
                 }
                 co_return;
             }
         }
+
+        // Re-lookup document after co_awaits in compile_graph section.
+        doc_it = documents.find(path_id);
+        if(doc_it == documents.end())
+            co_return;
 
         // Send compile request to stateful worker
         worker::CompileParams params;
