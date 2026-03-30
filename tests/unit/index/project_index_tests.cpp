@@ -7,8 +7,6 @@ namespace {
 
 TEST_SUITE(ProjectIndex, Tester) {
 
-
-
 bool build_and_index(llvm::StringRef code, index::TUIndex& out) {
     add_main("main.cpp", code);
     if(!compile()) {
@@ -23,7 +21,8 @@ TEST_CASE(MergeSingleTU) {
     ASSERT_TRUE(build_and_index(R"(
             int foo() { return 42; }
             int bar() { return foo() + 1; }
-        )", tu));
+        )",
+                                tu));
 
     index::ProjectIndex project;
     auto file_ids_map = project.merge(tu);
@@ -44,12 +43,14 @@ TEST_CASE(MergeMultipleTUs) {
     index::TUIndex tu1;
     ASSERT_TRUE(build_and_index(R"(
             int foo() { return 42; }
-        )", tu1));
+        )",
+                                tu1));
 
     index::TUIndex tu2;
     ASSERT_TRUE(build_and_index(R"(
             int bar() { return 99; }
-        )", tu2));
+        )",
+                                tu2));
 
     index::ProjectIndex project;
     project.merge(tu1);
@@ -115,7 +116,8 @@ TEST_CASE(SerializationRoundTrip) {
     ASSERT_TRUE(build_and_index(R"(
             struct Foo { int x; };
             void bar(Foo f) { f.x = 42; }
-        )", tu));
+        )",
+                                tu));
 
     index::ProjectIndex project;
     project.merge(tu);
@@ -138,8 +140,7 @@ TEST_CASE(SerializationRoundTrip) {
     for(auto& [hash, symbol]: project.symbols) {
         ASSERT_TRUE(restored.symbols.contains(hash));
         auto& restored_sym = restored.symbols[hash];
-        ASSERT_EQ(symbol.reference_files.cardinality(),
-                  restored_sym.reference_files.cardinality());
+        ASSERT_EQ(symbol.reference_files.cardinality(), restored_sym.reference_files.cardinality());
     }
 }
 
@@ -147,7 +148,8 @@ TEST_CASE(FileIdsMapCorrectness) {
     index::TUIndex tu;
     ASSERT_TRUE(build_and_index(R"(
             int x = 1;
-        )", tu));
+        )",
+                                tu));
 
     index::ProjectIndex project;
     auto file_ids_map = project.merge(tu);
