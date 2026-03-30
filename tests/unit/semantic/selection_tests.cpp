@@ -625,7 +625,7 @@ TEST_CASE(NullOrInvalid) {
 
 TEST_CASE(InjectedClassName) {
     llvm::StringRef code = "struct $X { int x; };";
-    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+    select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
         ASSERT_EQ(ancestor->kind(), llvm::StringRef("CXXRecordDecl"));
         auto* D = dyn_cast<clang::CXXRecordDecl>(ancestor->get<clang::Decl>());
@@ -681,7 +681,7 @@ TEST_CASE(Implicit) {
     int x = f("$");
   )cpp";
 
-    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+    select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
         ASSERT_EQ(ancestor->kind(), llvm::StringRef("StringLiteral"));
         ASSERT_EQ(ancestor->parent->kind(), llvm::StringRef("ImplicitCastExpr"));
@@ -704,7 +704,7 @@ namespace a {
 void a::foo() { }
   )cpp";
 
-    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+    select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
         ASSERT_FALSE(ancestor->decl_context().isTranslationUnit());
     });
@@ -717,7 +717,7 @@ namespace a {
 void a::f$oo() { }
   )cpp";
 
-    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+    select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
         ASSERT_TRUE(ancestor->decl_context().isTranslationUnit());
     });
@@ -731,7 +731,7 @@ auto lambda = [] {
 };
   )cpp";
 
-    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+    select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
         ASSERT_TRUE(ancestor->decl_context().isFunctionOrMethod());
     });
