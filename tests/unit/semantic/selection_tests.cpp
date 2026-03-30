@@ -221,6 +221,7 @@ TEST_SUITE(SelectionTree, Tester) {
 
 template <typename Callback>
 void select_right(llvm::StringRef code, Callback&& callback) {
+    clear();
     add_main("main.cpp", code);
     ASSERT_TRUE(compile());
     /// ASSERT_TRUE(unit->diagnostics().empty());
@@ -753,12 +754,11 @@ auto Func(Fo$o auto V) -> Fo$o decltype(auto) {
 }
   )cpp";
 
-    Tester tester;
-    tester.add_main("main.cpp", code);
-    ASSERT_TRUE(tester.compile());
+    add_main("main.cpp", code);
+    ASSERT_TRUE(compile());
 
-    for(auto point: tester.nameless_points()) {
-        auto tree = SelectionTree::create_right(*tester.unit, {point, point});
+    for(auto point: nameless_points()) {
+        auto tree = SelectionTree::create_right(*unit, {point, point});
         auto* ancestor = tree.common_ancestor();
         ASSERT_TRUE(ancestor);
         auto* C = ancestor->get<clang::ConceptReference>();
