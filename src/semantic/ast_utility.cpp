@@ -878,6 +878,20 @@ private:
     // Tries to get to the underlying argument by unwrapping implicit nodes and
     // std::forward.
     const static clang::DeclRefExpr* unwrapForward(const clang::Expr* E) {
+        auto is_std_forward = [](const clang::FunctionDecl* Callee) {
+            if(!Callee) {
+                return false;
+            }
+            if(Callee->getBuiltinID() == clang::Builtin::BIforward) {
+                return true;
+            }
+            if(identifier_of(*Callee) != "forward") {
+                return false;
+            }
+            const auto* NS = llvm::dyn_cast<clang::NamespaceDecl>(Callee->getDeclContext());
+            return NS && identifier_of(*NS) == "std";
+        };
+
         E = E->IgnoreImplicitAsWritten();
         // There might be an implicit copy/move constructor call on top of the
         // forwarded arg.
@@ -886,8 +900,7 @@ private:
             if(Const->getConstructor()->isCopyOrMoveConstructor())
                 E = Const->getArg(0)->IgnoreImplicitAsWritten();
         if(const auto* Call = llvm::dyn_cast<clang::CallExpr>(E)) {
-            const auto Callee = Call->getBuiltinCallee();
-            if(Callee == clang::Builtin::BIforward) {
+            if(is_std_forward(Call->getDirectCallee())) {
                 return llvm::dyn_cast<clang::DeclRefExpr>(
                     Call->getArg(0)->IgnoreImplicitAsWritten());
             }

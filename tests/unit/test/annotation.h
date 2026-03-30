@@ -20,7 +20,7 @@ struct AnnotatedSources {
     llvm::StringMap<AnnotatedSource> all_files;
 
     void add_source(llvm::StringRef file, llvm::StringRef content) {
-        all_files.try_emplace(file, AnnotatedSource::from(content));
+        all_files.insert_or_assign(file, AnnotatedSource::from(content));
     }
 
     void add_sources(llvm::StringRef content);

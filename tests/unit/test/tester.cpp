@@ -8,6 +8,8 @@
 namespace clice::testing {
 
 void Tester::prepare(llvm::StringRef standard) {
+    params = CompilationParams();
+    unit.reset();
     vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
 
     for(auto& [file, source]: sources.all_files) {
@@ -145,6 +147,8 @@ LocalSourceRange Tester::range(llvm::StringRef name, llvm::StringRef file) {
 }
 
 void Tester::prepare_driver(llvm::StringRef standard) {
+    params = CompilationParams();
+    unit.reset();
     vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     for(auto& [file, source]: sources.all_files) {
         vfs->add(file, source.content);
