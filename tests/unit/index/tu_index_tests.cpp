@@ -59,7 +59,7 @@ void EXPECT_SELECT(llvm::StringRef pos,
     ASSERT_EQ(dump(occurrences.front().range), dump(expected));
 };
 
-void go_to_definition(llvm::StringRef pos,
+void GO_TO_DEFINITION(llvm::StringRef pos,
                       llvm::StringRef definition,
                       llvm::StringRef file = "",
                       std::source_location location = std::source_location::current()) {
@@ -139,17 +139,17 @@ TEST_CASE(ClassTemplate) {
             $(implicit_full)foo<int, int> a;
         )");
 
-    go_to_definition("primary_decl", "primary");
-    go_to_definition("explicit_primary", "primary");
-    go_to_definition("implicit_primary_1", "primary");
-    go_to_definition("implicit_primary_2", "primary");
-    go_to_definition("partial_spec_decl", "partial_spec");
-    go_to_definition("explicit_partial", "partial_spec");
-    go_to_definition("implicit_partial", "partial_spec");
+    GO_TO_DEFINITION("primary_decl", "primary");
+    GO_TO_DEFINITION("explicit_primary", "primary");
+    GO_TO_DEFINITION("implicit_primary_1", "primary");
+    GO_TO_DEFINITION("implicit_primary_2", "primary");
+    GO_TO_DEFINITION("partial_spec_decl", "partial_spec");
+    GO_TO_DEFINITION("explicit_partial", "partial_spec");
+    GO_TO_DEFINITION("implicit_partial", "partial_spec");
     /// FIXME: Figure forward template declaration.
-    /// go_to_definition("forward_full", "full_spec");
-    go_to_definition("full_spec_decl", "full_spec");
-    go_to_definition("implicit_full", "full_spec");
+    /// GO_TO_DEFINITION("forward_full", "full_spec");
+    GO_TO_DEFINITION("full_spec_decl", "full_spec");
+    GO_TO_DEFINITION("implicit_full", "full_spec");
 }
 
 TEST_CASE(FunctionTemplate) {
@@ -170,13 +170,13 @@ TEST_CASE(FunctionTemplate) {
             }
         )");
 
-    go_to_definition("primary_decl", "primary");
+    GO_TO_DEFINITION("primary_decl", "primary");
     /// FIXME: clang doen't record location info of explicit function instantiation/
     /// See https://github.com/llvm/llvm-project/issues/115418.
-    /// go_to_definition("explicit_primary", "primary");
-    go_to_definition("implicit_primary", "primary");
-    go_to_definition("spec_decl", "spec");
-    go_to_definition("implicit_spec", "spec");
+    /// GO_TO_DEFINITION("explicit_primary", "primary");
+    GO_TO_DEFINITION("implicit_primary", "primary");
+    GO_TO_DEFINITION("spec_decl", "spec");
+    GO_TO_DEFINITION("implicit_spec", "spec");
 }
 
 TEST_CASE(AliasTemplate) {
@@ -187,7 +187,7 @@ TEST_CASE(AliasTemplate) {
             $(implicit_primary)foo<int> a;
         )");
 
-    go_to_definition("implicit_primary", "primary");
+    GO_TO_DEFINITION("implicit_primary", "primary");
 }
 
 TEST_CASE(VarTemplate) {
@@ -220,14 +220,14 @@ TEST_CASE(VarTemplate) {
             }
         )");
 
-    go_to_definition("primary_decl", "primary");
-    /// go_to_definition("explicit_primary", "primary");
-    go_to_definition("implicit_primary_1", "primary");
-    go_to_definition("implicit_primary_2", "primary");
-    go_to_definition("partial_spec_decl", "partial_spec");
+    GO_TO_DEFINITION("primary_decl", "primary");
+    /// GO_TO_DEFINITION("explicit_primary", "primary");
+    GO_TO_DEFINITION("implicit_primary_1", "primary");
+    GO_TO_DEFINITION("implicit_primary_2", "primary");
+    GO_TO_DEFINITION("partial_spec_decl", "partial_spec");
     /// GotoDefinition("explicit_partial", "partial_spec");
-    go_to_definition("implicit_partial", "partial_spec");
-    go_to_definition("implicit_full", "full_spec");
+    GO_TO_DEFINITION("implicit_partial", "partial_spec");
+    GO_TO_DEFINITION("implicit_full", "full_spec");
 }
 
 TEST_CASE(Concept) {
@@ -240,9 +240,9 @@ TEST_CASE(Concept) {
             $(implicit2)foo auto bar = 1;
         )");
 
-    go_to_definition("primary", "primary");
-    go_to_definition("implicit", "primary");
-    go_to_definition("implicit2", "primary");
+    GO_TO_DEFINITION("primary", "primary");
+    GO_TO_DEFINITION("implicit", "primary");
+    GO_TO_DEFINITION("implicit2", "primary");
 }
 
 TEST_CASE(Reference) {

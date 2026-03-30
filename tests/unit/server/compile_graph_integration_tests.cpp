@@ -1,3 +1,4 @@
+#include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
@@ -11,53 +12,6 @@ namespace clice::testing {
 namespace {
 
 namespace et = eventide;
-
-// ============================================================================
-// Helpers (same CDB-building pattern as dependency_graph_tests.cpp)
-// ============================================================================
-
-struct CDBEntry {
-    llvm::StringRef dir;
-    std::string file;
-    std::vector<std::string> extra_args;
-};
-
-std::string json_escape_ig(llvm::StringRef s) {
-    std::string result;
-    result.reserve(s.size());
-    for(char c: s) {
-        if(c == '\\' || c == '"') {
-            result += '\\';
-        }
-        result += c;
-    }
-    return result;
-}
-
-std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
-    std::string json = "[\n";
-    for(std::size_t i = 0; i < entries.size(); ++i) {
-        auto& e = entries[i];
-        if(i > 0) {
-            json += ",\n";
-        }
-        json += R"(  {"directory": ")";
-        json += json_escape_ig(e.dir);
-        json += R"(", "file": ")";
-        json += json_escape_ig(e.file);
-        json += R"(", "arguments": ["clang++", "-std=c++20")";
-        for(auto& arg: e.extra_args) {
-            json += R"(, ")";
-            json += json_escape_ig(arg);
-            json += R"(")";
-        }
-        json += R"(, ")";
-        json += json_escape_ig(e.file);
-        json += R"("]})";
-    }
-    json += "\n]";
-    return json;
-}
 
 void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
     tmp.touch("compile_commands.json", json_content);

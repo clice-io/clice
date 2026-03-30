@@ -46,20 +46,18 @@ struct Bar {
 TEST_CASE(StopCompilation) {
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
 
-    Tester tester;
-
     llvm::StringRef content = R"(
 int main() { return 0; }
 )";
-    tester.add_main("main.cpp", content);
+    add_main("main.cpp", content);
 
-    tester.prepare();
-    tester.params.stop = stop;
+    prepare();
+    params.stop = stop;
 
     // Set stop before compilation starts — verifies the mechanism works.
     stop->store(true);
 
-    auto built = clice::compile(tester.params);
+    auto built = clice::compile(params);
     ASSERT_FALSE(built.completed());
 }
 

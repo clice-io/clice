@@ -221,23 +221,22 @@ TEST_SUITE(SelectionTree, Tester) {
 
 template <typename Callback>
 void select_right(llvm::StringRef code, Callback&& callback) {
-    Tester tester;
-    tester.add_main("main.cpp", code);
-    ASSERT_TRUE(tester.compile());
-    /// ASSERT_TRUE(tester.unit->diagnostics().empty());
+    add_main("main.cpp", code);
+    ASSERT_TRUE(compile());
+    /// ASSERT_TRUE(unit->diagnostics().empty());
 
-    auto points = tester.nameless_points();
+    auto points = nameless_points();
     ASSERT_FALSE(points.empty());
 
     LocalSourceRange selected_range;
     selected_range.begin = points[0];
     selected_range.end = points.size() == 2 ? points[1] : points[0];
-    auto tree = SelectionTree::create_right(*tester.unit, selected_range);
-    std::forward<Callback>(callback)(tester, tree);
+    auto tree = SelectionTree::create_right(*unit, selected_range);
+    std::forward<Callback>(callback)(tree);
 }
 
 void EXPECT_SELECT(llvm::StringRef code, const char* kind) {
-    select_right(code, [&](Tester& tester, SelectionTree& tree) {
+    select_right(code, [&](SelectionTree& tree) {
         auto node = tree.common_ancestor();
         if(!kind) {
             ASSERT_FALSE(node);
@@ -245,21 +244,21 @@ void EXPECT_SELECT(llvm::StringRef code, const char* kind) {
         }
 
         ASSERT_TRUE(node);
-        auto range2 = toHalfOpenFileRange(tester.unit->context().getSourceManager(),
-                                          tester.unit->lang_options(),
+        auto range2 = toHalfOpenFileRange(unit->context().getSourceManager(),
+                                          unit->lang_options(),
                                           node->source_range());
         ASSERT_TRUE(range2.has_value());
 
-        LocalSourceRange range = {
-            tester.unit->file_offset(range2->getBegin()),
-            tester.unit->file_offset(range2->getEnd()),
+        LocalSourceRange local_range = {
+            unit->file_offset(range2->getBegin()),
+            unit->file_offset(range2->getEnd()),
         };
 
         /// llvm::outs() << tree << "\n";
         /// tree.print(llvm::outs(), *node, 2);
 
         ASSERT_EQ(node->kind(), llvm::StringRef(kind));
-        ASSERT_EQ(range, tester.range());
+        ASSERT_EQ(local_range, range());
     });
 }
 

@@ -41,14 +41,13 @@ struct InputFinder : clang::RecursiveASTVisitor<InputFinder> {
 TEST_SUITE(TemplateResolver, Tester) {
 
 void run(llvm::StringRef code) {
-    Tester tester;
-    tester.add_main("main.cpp", code);
-    ASSERT_TRUE(tester.compile());
+    add_main("main.cpp", code);
+    ASSERT_TRUE(compile());
 
-    InputFinder finder(*tester.unit);
-    finder.TraverseAST(tester.unit->context());
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
 
-    auto input = tester.unit->resolver().resolve(finder.input);
+    auto input = unit->resolver().resolve(finder.input);
     auto target = finder.expect;
     ASSERT_FALSE(input.isNull() || target.isNull());
     EXPECT_EQ(input.getCanonicalType(), target.getCanonicalType());

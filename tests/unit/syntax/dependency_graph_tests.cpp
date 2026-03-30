@@ -1,3 +1,4 @@
+#include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
@@ -192,53 +193,6 @@ TEST_CASE(EmptyIncludes) {
 void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
     tmp.touch("compile_commands.json", json_content);
     cdb.load(tmp.path("compile_commands.json"));
-}
-
-/// Helper: build a compile_commands.json array from entries.
-/// Uses "arguments" array form to avoid platform-specific tokenization issues
-/// (e.g. TokenizeGNUCommandLine treating backslashes as escape characters).
-struct CDBEntry {
-    llvm::StringRef dir;
-    std::string file;
-    std::vector<std::string> extra_args;
-};
-
-/// Escape backslashes and quotes for JSON string values.
-std::string json_escape(llvm::StringRef s) {
-    std::string result;
-    result.reserve(s.size());
-    for(char c: s) {
-        if(c == '\\' || c == '"') {
-            result += '\\';
-        }
-        result += c;
-    }
-    return result;
-}
-
-std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
-    std::string json = "[\n";
-    for(std::size_t i = 0; i < entries.size(); ++i) {
-        auto& e = entries[i];
-        if(i > 0) {
-            json += ",\n";
-        }
-        json += R"(  {"directory": ")";
-        json += json_escape(e.dir);
-        json += R"(", "file": ")";
-        json += json_escape(e.file);
-        json += R"(", "arguments": ["clang++", "-std=c++20")";
-        for(auto& arg: e.extra_args) {
-            json += R"(, ")";
-            json += json_escape(arg);
-            json += R"(")";
-        }
-        json += R"(, ")";
-        json += json_escape(e.file);
-        json += R"("]})";
-    }
-    json += "\n]";
-    return json;
 }
 
 TEST_SUITE(ScanDependencyGraph) {
