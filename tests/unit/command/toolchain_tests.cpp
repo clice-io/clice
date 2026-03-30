@@ -15,35 +15,35 @@ using namespace std::string_view_literals;
 
 TEST_SUITE(Toolchain) {
 
-void expect_family(llvm::StringRef name, toolchain::CompilerFamily family) {
+void EXPECT_FAMILY(llvm::StringRef name, toolchain::CompilerFamily family) {
     ASSERT_EQ(toolchain::driver_family(name), family);
 };
 
 TEST_CASE(Family) {
     using enum toolchain::CompilerFamily;
 
-    expect_family("gcc", GCC);
-    expect_family("g++", GCC);
-    expect_family("x86_64-linux-gnu-g++-14", GCC);
-    expect_family("arm-none-eabi-gcc", GCC);
+    EXPECT_FAMILY("gcc", GCC);
+    EXPECT_FAMILY("g++", GCC);
+    EXPECT_FAMILY("x86_64-linux-gnu-g++-14", GCC);
+    EXPECT_FAMILY("arm-none-eabi-gcc", GCC);
 
-    expect_family("clang", Clang);
-    expect_family("clang++", Clang);
-    expect_family("clang.exe", Clang);
-    expect_family("clang++.exe", Clang);
-    expect_family("clang-20", Clang);
-    expect_family("clang-20.exe", Clang);
-    expect_family("clang-cl", ClangCL);
-    expect_family("clang-cl-20", ClangCL);
-    expect_family("clang-cl-20.exe", ClangCL);
+    EXPECT_FAMILY("clang", Clang);
+    EXPECT_FAMILY("clang++", Clang);
+    EXPECT_FAMILY("clang.exe", Clang);
+    EXPECT_FAMILY("clang++.exe", Clang);
+    EXPECT_FAMILY("clang-20", Clang);
+    EXPECT_FAMILY("clang-20.exe", Clang);
+    EXPECT_FAMILY("clang-cl", ClangCL);
+    EXPECT_FAMILY("clang-cl-20", ClangCL);
+    EXPECT_FAMILY("clang-cl-20.exe", ClangCL);
 
-    expect_family("cl.exe", MSVC);
+    EXPECT_FAMILY("cl.exe", MSVC);
 
-    expect_family("zig", Zig);
-    expect_family("zig.exe", Zig);
+    EXPECT_FAMILY("zig", Zig);
+    EXPECT_FAMILY("zig.exe", Zig);
 };
 
-TEST_CASE(GCC, {.skip = !(CIEnvironment && (Windows || Linux))}) {
+TEST_CASE(GCC, skip = !(CIEnvironment && (Windows || Linux))) {
     auto file = fs::createTemporaryFile("clice", "cpp");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
@@ -76,11 +76,11 @@ TEST_CASE(GCC, {.skip = !(CIEnvironment && (Windows || Linux))}) {
     ASSERT_TRUE(unit.diagnostics().empty());
 };
 
-TEST_CASE(MSVC, {.skip = !CIEnvironment}) {
+TEST_CASE(MSVC, skip = !CIEnvironment) {
     // TODO: add MSVC toolchain test when CI provides toolchain.
 }
 
-TEST_CASE(Clang, {.skip = !CIEnvironment}) {
+TEST_CASE(Clang, skip = !CIEnvironment) {
     auto file = fs::createTemporaryFile("clice", "cpp");
     if(!file) {
         LOG_ERROR_RET(void(), "{}", file.error());
@@ -115,7 +115,7 @@ TEST_CASE(Clang, {.skip = !CIEnvironment}) {
     ASSERT_TRUE(unit.diagnostics().empty());
 };
 
-TEST_CASE(Zig, {.skip = !CIEnvironment}) {
+TEST_CASE(Zig, skip = !CIEnvironment) {
     // TODO: add Zig toolchain test when available in CI.
 }
 

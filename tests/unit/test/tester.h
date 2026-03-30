@@ -7,7 +7,6 @@
 #include "test/test.h"
 #include "command/command.h"
 #include "compile/compilation.h"
-#include "eventide/ipc/lsp/protocol.h"
 #include "support/logging.h"
 
 namespace clice::testing {
@@ -19,6 +18,12 @@ struct Tester {
     std::string src_path;
 
     AnnotatedSources sources;
+
+    /// Owns argument strings so that params.arguments (const char*) remains valid.
+    std::vector<std::string> owned_args;
+
+    /// The VFS used for compilation.
+    llvm::IntrusiveRefCntPtr<TestVFS> vfs;
 
     void add_main(llvm::StringRef file, llvm::StringRef content) {
         src_path = file.str();
@@ -34,11 +39,19 @@ struct Tester {
         sources.add_sources(content);
     }
 
+    /// Fast VFS-only path: uses -cc1 directly, no system headers.
     void prepare(llvm::StringRef standard = "-std=c++20");
 
     bool compile(llvm::StringRef standard = "-std=c++20");
 
     bool compile_with_pch(llvm::StringRef standard = "-std=c++20");
+
+    /// Driver path: uses CompilationDatabase + toolchain cache, has system headers.
+    void prepare_driver(llvm::StringRef standard = "-std=c++20");
+
+    bool compile_driver(llvm::StringRef standard = "-std=c++20");
+
+    bool compile_driver_with_pch(llvm::StringRef standard = "-std=c++20");
 
     std::uint32_t operator[](llvm::StringRef file, llvm::StringRef pos) {
         return sources.all_files.lookup(file).offsets.lookup(pos);

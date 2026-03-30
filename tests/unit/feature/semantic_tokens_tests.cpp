@@ -99,9 +99,8 @@ auto decode_relative_tokens(const protocol::SemanticTokens& tokens) -> std::vect
     return result;
 }
 
-TEST_SUITE(SemanticTokens) {
+TEST_SUITE(SemanticTokens, Tester) {
 
-Tester tester;
 protocol::SemanticTokens tokens;
 std::vector<DecodedToken> decoded;
 
@@ -114,24 +113,23 @@ auto modifier_mask(std::initializer_list<SymbolModifiers::Kind> kinds) -> std::u
 }
 
 void run_utf8(llvm::StringRef code) {
-    tester.clear();
-    tester.add_main("main.cpp", code);
-    ASSERT_TRUE(tester.compile_with_pch());
-    tokens = feature::semantic_tokens(*tester.unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(tester.unit->interested_content(), tokens);
+    add_main("main.cpp", code);
+    ASSERT_TRUE(compile_with_pch());
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
 }
 
 auto find_by_range(llvm::StringRef name) -> const DecodedToken* {
-    auto range = tester.range(name);
+    auto expected = range(name);
     for(const auto& token: decoded) {
-        if(token.range == range) {
+        if(token.range == expected) {
             return &token;
         }
     }
     return nullptr;
 }
 
-void expect_token(llvm::StringRef name,
+void EXPECT_TOKEN(llvm::StringRef name,
                   SymbolKind::Kind expected_kind,
                   std::uint32_t expected_modifiers = 0) {
     auto* token = find_by_range(name);
@@ -142,35 +140,50 @@ void expect_token(llvm::StringRef name,
 
 TEST_CASE(BasicLexicalKinds) {
     run_utf8(R"cpp(
-@d0[#include] @h0[<stddef.h>]
 @d1[#define] @m0[FOO]
 @k0[int] main() { @k1[return] 0; }
 @c0[// comment]
 )cpp");
 
-    expect_token("d0", SymbolKind::Directive);
-    expect_token("h0", SymbolKind::Header);
-    expect_token("d1", SymbolKind::Directive);
-    expect_token("m0", SymbolKind::Macro);
-    expect_token("k0", SymbolKind::Keyword);
-    expect_token("k1", SymbolKind::Keyword);
-    expect_token("c0", SymbolKind::Comment);
+    EXPECT_TOKEN("d1", SymbolKind::Directive);
+    EXPECT_TOKEN("m0", SymbolKind::Macro);
+    EXPECT_TOKEN("k0", SymbolKind::Keyword);
+    EXPECT_TOKEN("k1", SymbolKind::Keyword);
+    EXPECT_TOKEN("c0", SymbolKind::Comment);
+}
+
+TEST_CASE(IncludeDirective) {
+    add_file("fake.h", "// fake header\n");
+    add_main("main.cpp", R"cpp(
+@d0[#include] @h0["fake.h"]
+int main() { return 0; }
+)cpp");
+    ASSERT_TRUE(compile_with_pch());
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+
+    EXPECT_TOKEN("d0", SymbolKind::Directive);
+    EXPECT_TOKEN("h0", SymbolKind::Header);
 }
 
 TEST_CASE(LegacyIncludeForms) {
-    run_utf8(R"cpp(
-@i0[#include] @h0[<stddef.h>]
-@i1[#include] @h1["stddef.h"]
-@i2[#] @i3[include] @h2["stddef.h"]
+    add_file("fake.h", "// fake header\n");
+    add_main("main.cpp", R"cpp(
+@i0[#include] @h0["fake.h"]
+@i1[#include] @h1["fake.h"]
+@i2[#] @i3[include] @h2["fake.h"]
 )cpp");
+    ASSERT_TRUE(compile_with_pch());
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
 
-    expect_token("i0", SymbolKind::Directive);
-    expect_token("h0", SymbolKind::Header);
-    expect_token("i1", SymbolKind::Directive);
-    expect_token("h1", SymbolKind::Header);
-    expect_token("i2", SymbolKind::Directive);
-    expect_token("i3", SymbolKind::Directive);
-    expect_token("h2", SymbolKind::Header);
+    EXPECT_TOKEN("i0", SymbolKind::Directive);
+    EXPECT_TOKEN("h0", SymbolKind::Header);
+    EXPECT_TOKEN("i1", SymbolKind::Directive);
+    EXPECT_TOKEN("h1", SymbolKind::Header);
+    EXPECT_TOKEN("i2", SymbolKind::Directive);
+    EXPECT_TOKEN("i3", SymbolKind::Directive);
+    EXPECT_TOKEN("h2", SymbolKind::Header);
 }
 
 TEST_CASE(LegacyComment) {
@@ -179,7 +192,7 @@ TEST_CASE(LegacyComment) {
 int x = 1;
 )cpp");
 
-    expect_token("line", SymbolKind::Comment);
+    EXPECT_TOKEN("line", SymbolKind::Comment);
 }
 
 TEST_CASE(LegacyKeyword) {
@@ -189,8 +202,8 @@ TEST_CASE(LegacyKeyword) {
 }
 )cpp");
 
-    expect_token("k0", SymbolKind::Keyword);
-    expect_token("k1", SymbolKind::Keyword);
+    EXPECT_TOKEN("k0", SymbolKind::Keyword);
+    EXPECT_TOKEN("k1", SymbolKind::Keyword);
 }
 
 TEST_CASE(LegacyMacro) {
@@ -198,8 +211,8 @@ TEST_CASE(LegacyMacro) {
 @directive[#define] @macro[FOO]
 )cpp");
 
-    expect_token("directive", SymbolKind::Directive);
-    expect_token("macro", SymbolKind::Macro);
+    EXPECT_TOKEN("directive", SymbolKind::Directive);
+    EXPECT_TOKEN("macro", SymbolKind::Macro);
 }
 
 TEST_CASE(LegacyFinalAndOverride) {
@@ -219,9 +232,9 @@ struct D : C {
 };
 )cpp");
 
-    expect_token("final", SymbolKind::Keyword);
-    expect_token("override", SymbolKind::Keyword);
-    expect_token("final2", SymbolKind::Keyword);
+    EXPECT_TOKEN("final", SymbolKind::Keyword);
+    EXPECT_TOKEN("override", SymbolKind::Keyword);
+    EXPECT_TOKEN("final2", SymbolKind::Keyword);
 }
 
 TEST_CASE(DeclarationAndTemplateModifiers) {
@@ -244,11 +257,11 @@ int main() {
     auto definition = modifier_mask({SymbolModifiers::Definition});
     auto templated = modifier_mask({SymbolModifiers::Templated});
 
-    expect_token("x1", SymbolKind::Variable, declaration);
-    expect_token("x2", SymbolKind::Variable, definition);
-    expect_token("y1", SymbolKind::Variable, declaration | templated);
-    expect_token("y2", SymbolKind::Variable, definition | templated);
-    expect_token("x3", SymbolKind::Variable, 0);
+    EXPECT_TOKEN("x1", SymbolKind::Variable, declaration);
+    EXPECT_TOKEN("x2", SymbolKind::Variable, definition);
+    EXPECT_TOKEN("y1", SymbolKind::Variable, declaration | templated);
+    EXPECT_TOKEN("y2", SymbolKind::Variable, definition | templated);
+    EXPECT_TOKEN("x3", SymbolKind::Variable, 0);
 }
 
 TEST_CASE(LegacyVarDeclTemplates) {
@@ -281,14 +294,14 @@ int main() {
     auto definition = modifier_mask({SymbolModifiers::Definition});
     auto templated = modifier_mask({SymbolModifiers::Templated});
 
-    expect_token("x1", SymbolKind::Variable, declaration);
-    expect_token("x2", SymbolKind::Variable, definition);
-    expect_token("y1", SymbolKind::Variable, declaration | templated);
-    expect_token("y2", SymbolKind::Variable, definition | templated);
-    expect_token("y3", SymbolKind::Variable, declaration | templated);
-    expect_token("y4", SymbolKind::Variable, definition | templated);
-    expect_token("y5", SymbolKind::Variable, definition);
-    expect_token("x3", SymbolKind::Variable, 0);
+    EXPECT_TOKEN("x1", SymbolKind::Variable, declaration);
+    EXPECT_TOKEN("x2", SymbolKind::Variable, definition);
+    EXPECT_TOKEN("y1", SymbolKind::Variable, declaration | templated);
+    EXPECT_TOKEN("y2", SymbolKind::Variable, definition | templated);
+    EXPECT_TOKEN("y3", SymbolKind::Variable, declaration | templated);
+    EXPECT_TOKEN("y4", SymbolKind::Variable, definition | templated);
+    EXPECT_TOKEN("y5", SymbolKind::Variable, definition);
+    EXPECT_TOKEN("x3", SymbolKind::Variable, 0);
 }
 
 TEST_CASE(LegacyFunctionDecl) {
@@ -312,10 +325,10 @@ int @bar2[bar]() {
     auto definition = modifier_mask({SymbolModifiers::Definition});
     auto templated = modifier_mask({SymbolModifiers::Templated});
 
-    expect_token("foo1", SymbolKind::Function, declaration);
-    expect_token("foo2", SymbolKind::Function, definition);
-    expect_token("bar1", SymbolKind::Function, declaration | templated);
-    expect_token("bar2", SymbolKind::Function, definition | templated);
+    EXPECT_TOKEN("foo1", SymbolKind::Function, declaration);
+    EXPECT_TOKEN("foo2", SymbolKind::Function, definition);
+    EXPECT_TOKEN("bar1", SymbolKind::Function, declaration | templated);
+    EXPECT_TOKEN("bar2", SymbolKind::Function, definition | templated);
 }
 
 TEST_CASE(LegacyRecordDecl) {
@@ -336,35 +349,34 @@ union @c2[C] {};
     auto declaration = modifier_mask({SymbolModifiers::Declaration});
     auto definition = modifier_mask({SymbolModifiers::Definition});
 
-    expect_token("a1", SymbolKind::Class, declaration);
-    expect_token("a2", SymbolKind::Class, definition);
-    expect_token("b1", SymbolKind::Struct, declaration);
-    expect_token("b2", SymbolKind::Struct, definition);
-    expect_token("c1", SymbolKind::Union, declaration);
-    expect_token("c2", SymbolKind::Union, definition);
+    EXPECT_TOKEN("a1", SymbolKind::Class, declaration);
+    EXPECT_TOKEN("a2", SymbolKind::Class, definition);
+    EXPECT_TOKEN("b1", SymbolKind::Struct, declaration);
+    EXPECT_TOKEN("b2", SymbolKind::Struct, definition);
+    EXPECT_TOKEN("c1", SymbolKind::Union, declaration);
+    EXPECT_TOKEN("c2", SymbolKind::Union, definition);
 }
 
 TEST_CASE(UTF16LengthDiffersFromUTF8) {
-    tester.clear();
-    tester.add_main("main.cpp", R"cpp(
+    add_main("main.cpp", R"cpp(
 int main() {
 @lit[u8"你"];
 }
 )cpp");
-    ASSERT_TRUE(tester.compile_with_pch());
+    ASSERT_TRUE(compile_with_pch());
 
-    auto utf8_tokens = feature::semantic_tokens(*tester.unit, feature::PositionEncoding::UTF8);
-    auto utf16_tokens = feature::semantic_tokens(*tester.unit, feature::PositionEncoding::UTF16);
+    auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    auto utf16_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF16);
 
-    auto utf8 = decode_utf8_tokens(tester.unit->interested_content(), utf8_tokens);
+    auto utf8 = decode_utf8_tokens(unit->interested_content(), utf8_tokens);
     auto utf16 = decode_relative_tokens(utf16_tokens);
 
     auto string_type = static_cast<std::uint32_t>(SymbolKind::String);
-    auto range = tester.range("lit");
+    auto lit_range = range("lit");
 
     std::optional<DecodedToken> utf8_token;
     for(const auto& token: utf8) {
-        if(token.range == range && token.type == string_type) {
+        if(token.range == lit_range && token.type == string_type) {
             utf8_token = token;
             break;
         }
@@ -385,16 +397,15 @@ int main() {
 }
 
 TEST_CASE(MultiLineCommentSplitMatchesLegacyConverter) {
-    tester.clear();
-    tester.add_main("main.cpp", R"cpp(
+    add_main("main.cpp", R"cpp(
 int main() {
 /*ab
 cd*/
 }
 )cpp");
-    ASSERT_TRUE(tester.compile_with_pch());
+    ASSERT_TRUE(compile_with_pch());
 
-    auto utf8_tokens = feature::semantic_tokens(*tester.unit, feature::PositionEncoding::UTF8);
+    auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     auto relative = decode_relative_tokens(utf8_tokens);
 
     auto comment_type = static_cast<std::uint32_t>(SymbolKind::Comment);

@@ -11,9 +11,8 @@ namespace {
 
 namespace protocol = eventide::ipc::protocol;
 
-TEST_SUITE(FoldingRange) {
+TEST_SUITE(FoldingRange, Tester) {
 
-Tester tester;
 std::vector<protocol::FoldingRange> ranges;
 
 enum class LegacyKind {
@@ -32,15 +31,13 @@ enum class LegacyKind {
 };
 
 void run(llvm::StringRef code) {
-    tester.clear();
-    tester.add_main("main.cpp", code);
-    ASSERT_TRUE(tester.compile_with_pch());
-    ranges = feature::folding_ranges(*tester.unit, feature::PositionEncoding::UTF8);
+    add_main("main.cpp", code);
+    ASSERT_TRUE(compile_with_pch());
+    ranges = feature::folding_ranges(*unit, feature::PositionEncoding::UTF8);
 }
 
 auto to_local_range(const protocol::FoldingRange& range) -> LocalSourceRange {
-    feature::PositionMapper converter(tester.unit->interested_content(),
-                                      feature::PositionEncoding::UTF8);
+    feature::PositionMapper converter(unit->interested_content(), feature::PositionEncoding::UTF8);
 
     auto start = protocol::Position{
         .line = range.start_line,
@@ -55,14 +52,14 @@ auto to_local_range(const protocol::FoldingRange& range) -> LocalSourceRange {
     return LocalSourceRange(*converter.to_offset(start), *converter.to_offset(end));
 }
 
-void expect_folding(std::uint32_t index,
+void EXPECT_FOLDING(std::uint32_t index,
                     llvm::StringRef begin,
                     llvm::StringRef end,
                     LegacyKind,
                     std::source_location = std::source_location::current()) {
     auto actual = to_local_range(ranges[index]);
-    auto begin_point = tester.point(begin, "main.cpp");
-    auto end_point = tester.point(end, "main.cpp");
+    auto begin_point = point(begin, "main.cpp");
+    auto end_point = point(end, "main.cpp");
 
     ASSERT_EQ(actual.begin, begin_point);
     ASSERT_EQ(actual.end, end_point);
@@ -93,10 +90,10 @@ NS_END$(8)
 )cpp");
 
     ASSERT_EQ(ranges.size(), 4U);
-    expect_folding(0, "1", "2", Namespace);
-    expect_folding(1, "3", "4", Namespace);
-    expect_folding(2, "5", "6", Namespace);
-    expect_folding(3, "7", "8", Namespace);
+    EXPECT_FOLDING(0, "1", "2", Namespace);
+    EXPECT_FOLDING(1, "3", "4", Namespace);
+    EXPECT_FOLDING(2, "5", "6", Namespace);
+    EXPECT_FOLDING(3, "7", "8", Namespace);
 }
 
 TEST_CASE(Enum) {
@@ -118,8 +115,8 @@ enum e3 { D };
 )cpp");
 
     ASSERT_EQ(ranges.size(), 2U);
-    expect_folding(0, "1", "2", Enum);
-    expect_folding(1, "3", "4", Enum);
+    EXPECT_FOLDING(0, "1", "2", Enum);
+    EXPECT_FOLDING(1, "3", "4", Enum);
 }
 
 TEST_CASE(Record) {
@@ -152,12 +149,12 @@ void foo() $(9){
 )cpp");
 
     ASSERT_EQ(ranges.size(), 6U);
-    expect_folding(0, "1", "2", Struct);
-    expect_folding(1, "3", "4", Union);
-    expect_folding(2, "5", "6", Struct);
-    expect_folding(3, "7", "8", Struct);
-    expect_folding(4, "9", "10", FunctionBody);
-    expect_folding(5, "11", "12", Struct);
+    EXPECT_FOLDING(0, "1", "2", Struct);
+    EXPECT_FOLDING(1, "3", "4", Union);
+    EXPECT_FOLDING(2, "5", "6", Struct);
+    EXPECT_FOLDING(3, "7", "8", Struct);
+    EXPECT_FOLDING(4, "9", "10", FunctionBody);
+    EXPECT_FOLDING(5, "11", "12", Struct);
 }
 
 TEST_CASE(Method) {
@@ -185,10 +182,10 @@ struct s3 $(3){
 )cpp");
 
     ASSERT_EQ(ranges.size(), 4U);
-    expect_folding(0, "1", "2", Struct);
-    expect_folding(1, "3", "4", Struct);
-    expect_folding(2, "5", "6", FunctionBody);
-    expect_folding(3, "7", "8", FunctionBody);
+    EXPECT_FOLDING(0, "1", "2", Struct);
+    EXPECT_FOLDING(1, "3", "4", Struct);
+    EXPECT_FOLDING(2, "5", "6", FunctionBody);
+    EXPECT_FOLDING(3, "7", "8", FunctionBody);
 }
 
 TEST_CASE(Lambda) {
@@ -228,13 +225,13 @@ auto l4 = [] $(13)(
 )cpp");
 
     ASSERT_EQ(ranges.size(), 7U);
-    expect_folding(0, "1", "2", LambdaCapture);
-    expect_folding(1, "3", "4", FunctionBody);
-    expect_folding(2, "5", "6", LambdaCapture);
-    expect_folding(3, "7", "8", FunctionBody);
-    expect_folding(4, "9", "10", FunctionBody);
-    expect_folding(5, "11", "12", FunctionBody);
-    expect_folding(6, "13", "14", FunctionBody);
+    EXPECT_FOLDING(0, "1", "2", LambdaCapture);
+    EXPECT_FOLDING(1, "3", "4", FunctionBody);
+    EXPECT_FOLDING(2, "5", "6", LambdaCapture);
+    EXPECT_FOLDING(3, "7", "8", FunctionBody);
+    EXPECT_FOLDING(4, "9", "10", FunctionBody);
+    EXPECT_FOLDING(5, "11", "12", FunctionBody);
+    EXPECT_FOLDING(6, "13", "14", FunctionBody);
 }
 
 TEST_CASE(Function) {
@@ -273,13 +270,13 @@ void k() $(13){
 )cpp");
 
     ASSERT_EQ(ranges.size(), 7U);
-    expect_folding(0, "1", "2", FunctionParams);
-    expect_folding(1, "3", "4", FunctionBody);
-    expect_folding(2, "5", "6", FunctionParams);
-    expect_folding(3, "7", "8", FunctionBody);
-    expect_folding(4, "9", "10", FunctionBody);
-    expect_folding(5, "11", "12", FunctionParams);
-    expect_folding(6, "13", "14", FunctionBody);
+    EXPECT_FOLDING(0, "1", "2", FunctionParams);
+    EXPECT_FOLDING(1, "3", "4", FunctionBody);
+    EXPECT_FOLDING(2, "5", "6", FunctionParams);
+    EXPECT_FOLDING(3, "7", "8", FunctionBody);
+    EXPECT_FOLDING(4, "9", "10", FunctionBody);
+    EXPECT_FOLDING(5, "11", "12", FunctionParams);
+    EXPECT_FOLDING(6, "13", "14", FunctionBody);
 }
 
 TEST_CASE(FunctionCall) {
@@ -302,9 +299,9 @@ int main() $(1){
 )cpp");
 
     ASSERT_EQ(ranges.size(), 3U);
-    expect_folding(0, "1", "6", FunctionBody);
-    expect_folding(1, "2", "3", FunctionCall);
-    expect_folding(2, "4", "5", FunctionCall);
+    EXPECT_FOLDING(0, "1", "6", FunctionBody);
+    EXPECT_FOLDING(1, "2", "3", FunctionCall);
+    EXPECT_FOLDING(2, "4", "5", FunctionCall);
 }
 
 TEST_CASE(CompoundStmt) {
@@ -345,8 +342,8 @@ L l2 = $(3){
 )cpp");
 
     ASSERT_EQ(ranges.size(), 2U);
-    expect_folding(0, "1", "2", Initializer);
-    expect_folding(1, "3", "4", Initializer);
+    EXPECT_FOLDING(0, "1", "2", Initializer);
+    EXPECT_FOLDING(1, "3", "4", Initializer);
 }
 
 TEST_CASE(AccessSpecifier) {
@@ -382,20 +379,20 @@ $(17)PROTECTED$(16)
 }$(12);
 )cpp");
 
-    expect_folding(0, "1", "2", Class);
-    expect_folding(1, "3", "4", AccessSpecifier);
-    expect_folding(2, "4", "5", AccessSpecifier);
-    expect_folding(3, "5", "2", AccessSpecifier);
+    EXPECT_FOLDING(0, "1", "2", Class);
+    EXPECT_FOLDING(1, "3", "4", AccessSpecifier);
+    EXPECT_FOLDING(2, "4", "5", AccessSpecifier);
+    EXPECT_FOLDING(3, "5", "2", AccessSpecifier);
 
-    expect_folding(4, "6", "7", Class);
-    expect_folding(5, "8", "9", AccessSpecifier);
-    expect_folding(6, "9", "10", AccessSpecifier);
-    expect_folding(7, "10", "7", AccessSpecifier);
+    EXPECT_FOLDING(4, "6", "7", Class);
+    EXPECT_FOLDING(5, "8", "9", AccessSpecifier);
+    EXPECT_FOLDING(6, "9", "10", AccessSpecifier);
+    EXPECT_FOLDING(7, "10", "7", AccessSpecifier);
 
-    expect_folding(8, "11", "12", Class);
-    expect_folding(9, "13", "14", AccessSpecifier);
-    expect_folding(10, "15", "16", AccessSpecifier);
-    expect_folding(11, "17", "12", AccessSpecifier);
+    EXPECT_FOLDING(8, "11", "12", Class);
+    EXPECT_FOLDING(9, "13", "14", AccessSpecifier);
+    EXPECT_FOLDING(10, "15", "16", AccessSpecifier);
+    EXPECT_FOLDING(11, "17", "12", AccessSpecifier);
 }
 
 TEST_CASE(Directive) {

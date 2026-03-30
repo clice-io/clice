@@ -8,19 +8,19 @@ namespace {
 
 namespace protocol = eventide::ipc::protocol;
 
-TEST_SUITE(SignatureHelp) {
+TEST_SUITE(SignatureHelp, Tester) {
 
-Tester tester;
 protocol::SignatureHelp help;
 
 void run(llvm::StringRef code) {
-    tester.clear();
-    tester.add_main("main.cpp", code);
-    tester.prepare();
+    add_main("main.cpp", code);
+    prepare();
 
-    tester.params.completion = {"main.cpp", tester.nameless_points()[0]};
+    auto main_path = TestVFS::path("main.cpp");
+    params.completion = {main_path, nameless_points()[0]};
+    params.add_remapped_file(main_path, sources.all_files["main.cpp"].content);
 
-    help = feature::signature_help(tester.params, {});
+    help = feature::signature_help(params, {});
 }
 
 TEST_CASE(Simple) {

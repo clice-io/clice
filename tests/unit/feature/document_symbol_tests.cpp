@@ -13,16 +13,14 @@ namespace {
 
 namespace protocol = eventide::ipc::protocol;
 
-TEST_SUITE(DocumentSymbol) {
+TEST_SUITE(DocumentSymbol, Tester) {
 
-Tester tester;
 std::vector<protocol::DocumentSymbol> symbols;
 
 void run(llvm::StringRef code) {
-    tester.clear();
-    tester.add_main("main.cpp", code);
-    ASSERT_TRUE(tester.compile_with_pch());
-    symbols = feature::document_symbols(*tester.unit, feature::PositionEncoding::UTF8);
+    add_main("main.cpp", code);
+    ASSERT_TRUE(compile_with_pch());
+    symbols = feature::document_symbols(*unit, feature::PositionEncoding::UTF8);
 }
 
 auto total_size(const std::vector<protocol::DocumentSymbol>& nodes) -> std::size_t {

@@ -23,7 +23,7 @@ CommandOptions quiet_options() {
 
 TEST_SUITE(Command) {
 
-void expect_strip(llvm::StringRef argv, llvm::StringRef result) {
+void EXPECT_STRIP(llvm::StringRef argv, llvm::StringRef result) {
     CompilationDatabase database;
     llvm::StringRef file = "main.cpp";
     database.add_command("fake/", file, argv);
@@ -32,21 +32,21 @@ void expect_strip(llvm::StringRef argv, llvm::StringRef result) {
 
 TEST_CASE(DefaultFilters) {
     /// Filter -c, -o and input file.
-    expect_strip("g++ main.cpp", "g++ main.cpp");
-    expect_strip("clang++ -c main.cpp", "clang++ main.cpp");
-    expect_strip("clang++ -o main.o main.cpp", "clang++ main.cpp");
-    expect_strip("clang++ -c -o main.o main.cpp", "clang++ main.cpp");
-    expect_strip("cl.exe /c /Fomain.cpp.o main.cpp", "cl.exe main.cpp");
+    EXPECT_STRIP("g++ main.cpp", "g++ main.cpp");
+    EXPECT_STRIP("clang++ -c main.cpp", "clang++ main.cpp");
+    EXPECT_STRIP("clang++ -o main.o main.cpp", "clang++ main.cpp");
+    EXPECT_STRIP("clang++ -c -o main.o main.cpp", "clang++ main.cpp");
+    EXPECT_STRIP("cl.exe /c /Fomain.cpp.o main.cpp", "cl.exe main.cpp");
 
     /// Filter PCH related.
 
     /// CMake
-    expect_strip("g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx -o main.cpp.o -c main.cpp",
+    EXPECT_STRIP("g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx -o main.cpp.o -c main.cpp",
                  "g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx main.cpp");
-    expect_strip(
+    EXPECT_STRIP(
         "clang++ -Winvalid-pch -Xclang -include-pch -Xclang cmake_pch.hxx.pch -Xclang -include -Xclang cmake_pch.hxx -o main.cpp.o -c main.cpp",
         "clang++ -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx main.cpp");
-    expect_strip("cl.exe /Yufoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp",
+    EXPECT_STRIP("cl.exe /Yufoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp",
                  "cl.exe -include foo.h main.cpp");
 
     /// TODO: Test more commands from other build system.
@@ -232,9 +232,9 @@ TEST_CASE(DependencyScanFilter) {
 
 TEST_CASE(ModuleFilter) {
     /// Module-related options should be stripped.
-    expect_strip("clang++ -std=c++20 -fmodule-file=mod.pcm main.cpp",
+    EXPECT_STRIP("clang++ -std=c++20 -fmodule-file=mod.pcm main.cpp",
                  "clang++ -std=c++20 main.cpp");
-    expect_strip("clang++ -std=c++20 -fprebuilt-module-path=/tmp main.cpp",
+    EXPECT_STRIP("clang++ -std=c++20 -fprebuilt-module-path=/tmp main.cpp",
                  "clang++ -std=c++20 main.cpp");
 };
 
@@ -305,9 +305,9 @@ TEST_CASE(IncludePathAbsolutize) {
 
 TEST_CASE(SemanticOptionsPreserved) {
     /// Flags that affect semantics must survive.
-    expect_strip("clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp",
+    EXPECT_STRIP("clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp",
                  "clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp");
-    expect_strip("clang++ -std=c++20 -Wall -Werror main.cpp",
+    EXPECT_STRIP("clang++ -std=c++20 -Wall -Werror main.cpp",
                  "clang++ -std=c++20 -Wall -Werror main.cpp");
 };
 

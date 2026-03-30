@@ -10,26 +10,23 @@ namespace {
 
 namespace protocol = eventide::ipc::protocol;
 
-TEST_SUITE(Hover) {
+TEST_SUITE(Hover, Tester) {
 
-Tester tester;
 std::optional<protocol::Hover> result;
 
 void run(llvm::StringRef code) {
-    tester.clear();
-    tester.add_main("main.cpp", code);
-    ASSERT_TRUE(tester.compile());
+    add_main("main.cpp", code);
+    ASSERT_TRUE(compile());
 
-    auto points = tester.nameless_points();
+    auto points = nameless_points();
     ASSERT_EQ(points.size(), 1U);
     auto offset = points[0];
-    result = feature::hover(*tester.unit, offset, {}, feature::PositionEncoding::UTF8);
+    result = feature::hover(*unit, offset, {}, feature::PositionEncoding::UTF8);
 }
 
 void compile_only(llvm::StringRef code) {
-    tester.clear();
-    tester.add_main("main.cpp", code);
-    ASSERT_TRUE(tester.compile());
+    add_main("main.cpp", code);
+    ASSERT_TRUE(compile());
 }
 
 TEST_CASE(Namespace) {

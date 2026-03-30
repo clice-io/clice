@@ -11,7 +11,7 @@ TEST_SUITE(ArgumentParser) {
 
 using option = clang::driver::options::ID;
 
-void expect_id(llvm::StringRef command, option opt) {
+void EXPECT_ID(llvm::StringRef command, option opt) {
     auto id = get_option_id(command);
     ASSERT_TRUE(id.has_value());
     ASSERT_EQ(*id, int(opt));
@@ -19,47 +19,47 @@ void expect_id(llvm::StringRef command, option opt) {
 
 TEST_CASE(GetOptionID) {
     /// GroupClass
-    expect_id("-g", option::OPT_g_Flag);
+    EXPECT_ID("-g", option::OPT_g_Flag);
 
     /// InputClass
-    expect_id("main.cpp", option::OPT_INPUT);
+    EXPECT_ID("main.cpp", option::OPT_INPUT);
 
     /// UnknownClass
-    expect_id("--clice", option::OPT_UNKNOWN);
+    EXPECT_ID("--clice", option::OPT_UNKNOWN);
 
     /// FlagClass
-    expect_id("-v", option::OPT_v);
-    expect_id("-c", option::OPT_c);
-    expect_id("-pedantic", option::OPT_pedantic);
-    expect_id("--pedantic", option::OPT_pedantic);
+    EXPECT_ID("-v", option::OPT_v);
+    EXPECT_ID("-c", option::OPT_c);
+    EXPECT_ID("-pedantic", option::OPT_pedantic);
+    EXPECT_ID("--pedantic", option::OPT_pedantic);
 
     /// JoinedClass
-    expect_id("-Wno-unused-variable", option::OPT_W_Joined);
-    expect_id("-W*", option::OPT_W_Joined);
-    expect_id("-W", option::OPT_W_Joined);
+    EXPECT_ID("-Wno-unused-variable", option::OPT_W_Joined);
+    EXPECT_ID("-W*", option::OPT_W_Joined);
+    EXPECT_ID("-W", option::OPT_W_Joined);
 
     /// ValuesClass
 
     /// SeparateClass
-    expect_id("-Xclang", option::OPT_Xclang);
-    /// expect_id(GET_ID("-Xclang -ast-dump") , option::OPT_Xclang);
+    EXPECT_ID("-Xclang", option::OPT_Xclang);
+    /// EXPECT_ID(GET_ID("-Xclang -ast-dump") , option::OPT_Xclang);
 
     /// RemainingArgsClass
 
     /// RemainingArgsJoinedClass
 
     /// CommaJoinedClass
-    expect_id("-Wl,", option::OPT_Wl_COMMA);
+    EXPECT_ID("-Wl,", option::OPT_Wl_COMMA);
 
     /// MultiArgClass
 
     /// JoinedOrSeparateClass
-    expect_id("-o", option::OPT_o);
-    expect_id("-omain.o", option::OPT_o);
-    expect_id("-I", option::OPT_I);
-    expect_id("--include-directory=", option::OPT_I);
-    expect_id("-x", option::OPT_x);
-    expect_id("--language=", option::OPT_x);
+    EXPECT_ID("-o", option::OPT_o);
+    EXPECT_ID("-omain.o", option::OPT_o);
+    EXPECT_ID("-I", option::OPT_I);
+    EXPECT_ID("--include-directory=", option::OPT_I);
+    EXPECT_ID("-x", option::OPT_x);
+    EXPECT_ID("--language=", option::OPT_x);
 
     /// JoinedAndSeparateClass
 };

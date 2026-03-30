@@ -80,10 +80,40 @@ using namespace clice;
 
 TEST_SUITE(Diagnostic) {
 
-TEST_CASE(TargetError) {
+/// Holds VFS-backed CompilationParams with proper string ownership.
+struct DiagParams {
+    llvm::IntrusiveRefCntPtr<TestVFS> vfs;
+    std::vector<std::string> owned_args;
     CompilationParams params;
-    params.arguments = {"clang++", "-target", "aa-bb-cc", "main.cpp"};
-    params.add_remapped_file("main.cpp", "");
+
+    DiagParams(llvm::StringRef content, std::initializer_list<const char*> extra_args = {}) {
+        vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+        vfs->add("main.cpp", content);
+        params.vfs = vfs;
+
+        owned_args.push_back("clang++");
+        owned_args.push_back("-ffreestanding");
+        owned_args.push_back("-Xclang");
+        owned_args.push_back("-undef");
+        for(auto a: extra_args) {
+            owned_args.push_back(a);
+        }
+        owned_args.push_back(TestVFS::path("main.cpp"));
+
+        for(auto& s: owned_args) {
+            params.arguments.push_back(s.c_str());
+        }
+    }
+};
+
+TEST_CASE(TargetError) {
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    vfs->add("main.cpp", "");
+
+    std::string main_path = TestVFS::path("main.cpp");
+    CompilationParams params;
+    params.vfs = vfs;
+    params.arguments = {"clang++", "-target", "aa-bb-cc", main_path.c_str()};
 
     auto unit = compile(params);
     ASSERT_TRUE(unit.setup_fail());
@@ -99,11 +129,9 @@ TEST_CASE(TargetError) {
 }
 
 TEST_CASE(Error) {
-    CompilationParams params;
-    params.arguments = {"clang++", "main.cpp"};
-    params.add_remapped_file("main.cpp", "int main() { return 0 }");
+    DiagParams dp("int main() { return 0 }");
 
-    auto unit = compile(params);
+    auto unit = compile(dp.params);
     ASSERT_TRUE(unit.completed());
     ASSERT_TRUE(unit.diagnostics().size() == 1);
 
@@ -117,11 +145,9 @@ TEST_CASE(Error) {
 };
 
 TEST_CASE(Warning) {
-    CompilationParams params;
-    params.arguments = {"clang++", "-Wall", "-Wunused-variable", "main.cpp"};
-    params.add_remapped_file("main.cpp", "int main() { int x; return 0; }");
+    DiagParams dp("int main() { int x; return 0; }", {"-Wall", "-Wunused-variable"});
 
-    auto unit = compile(params);
+    auto unit = compile(dp.params);
     ASSERT_TRUE(unit.completed());
     ASSERT_EQ(unit.diagnostics().size(), 1);
 
@@ -135,30 +161,25 @@ TEST_CASE(Warning) {
 
 TEST_CASE(PCHError) {
     /// Any error in compilation will result in failure on generating PCH or PCM.
-    CompilationParams params;
-    params.arguments = {"clang++", "main.cpp"};
-    params.output_file = "fake.pch";
-    params.add_remapped_file("main.cpp", R"(
+    DiagParams dp(R"(
 void foo() {}
 void foo() {}
 )");
+    dp.params.output_file = "fake.pch";
 
     PCHInfo info;
-    auto unit = compile(params, info);
+    auto unit = compile(dp.params, info);
     ASSERT_TRUE(unit.fatal_error());
 }
 
 TEST_CASE(ASTError) {
     /// Event fatal error may generate incomplete AST, but it is fine.
-    CompilationParams params;
-    params.arguments = {"clang++", "main.cpp"};
-    params.add_remapped_file("main.cpp", R"(
+    DiagParams dp(R"(
 void foo() {}
 void foo() {}
 )");
 
-    PCHInfo info;
-    auto unit = compile(params);
+    auto unit = compile(dp.params);
     ASSERT_TRUE(unit.completed());
 }
 

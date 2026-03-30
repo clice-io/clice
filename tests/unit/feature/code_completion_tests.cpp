@@ -14,14 +14,22 @@ namespace protocol = eventide::ipc::protocol;
 TEST_SUITE(CodeCompletion) {
 
 std::vector<protocol::CompletionItem> items;
+llvm::IntrusiveRefCntPtr<TestVFS> vfs;
+std::string main_path;
 
 void code_complete(llvm::StringRef code) {
+    vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+
     CompilationParams params;
     auto annotation = AnnotatedSource::from(code);
 
-    params.arguments = {"clang++", "-std=c++20", "main.cpp"};
-    params.completion = {"main.cpp", annotation.offsets.lookup("pos")};
-    params.add_remapped_file("main.cpp", annotation.content);
+    vfs->add("main.cpp", annotation.content);
+    params.vfs = vfs;
+    main_path = TestVFS::path("main.cpp");
+    params.arguments =
+        {"clang++", "-std=c++20", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
+    params.completion = {main_path, annotation.offsets.lookup("pos")};
+    params.add_remapped_file(main_path, annotation.content);
 
     feature::CodeCompletionOptions options = {};
     items = feature::code_complete(params, options, feature::PositionEncoding::UTF8);

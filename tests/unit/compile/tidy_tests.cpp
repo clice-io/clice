@@ -17,10 +17,14 @@ TEST_CASE(FastCheck) {
 }
 
 TEST_CASE(Tidy) {
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    vfs->add("main.cpp", "int main() { return 0 }");
+
+    std::string main_path = TestVFS::path("main.cpp");
     CompilationParams params;
     params.clang_tidy = true;
-    params.arguments = {"clang++", "main.cpp"};
-    params.add_remapped_file("main.cpp", "int main() { return 0 }");
+    params.vfs = vfs;
+    params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
     auto unit = compile(params);
     ASSERT_TRUE(unit.completed());
     ASSERT_FALSE(unit.diagnostics().empty());

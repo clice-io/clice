@@ -11,27 +11,24 @@ namespace {
 
 namespace protocol = eventide::ipc::protocol;
 
-TEST_SUITE(DocumentLink) {
+TEST_SUITE(DocumentLink, Tester) {
 
-Tester tester;
 std::vector<protocol::DocumentLink> links;
 
 void run(llvm::StringRef source) {
-    tester.clear();
-    tester.add_files("main.cpp", source);
-    ASSERT_TRUE(tester.compile());
-    links = feature::document_links(*tester.unit, feature::PositionEncoding::UTF8);
+    add_files("main.cpp", source);
+    ASSERT_TRUE(compile());
+    links = feature::document_links(*unit, feature::PositionEncoding::UTF8);
 }
 
 auto to_local_range(const protocol::Range& range) -> LocalSourceRange {
-    feature::PositionMapper converter(tester.unit->interested_content(),
-                                      feature::PositionEncoding::UTF8);
+    feature::PositionMapper converter(unit->interested_content(), feature::PositionEncoding::UTF8);
     return LocalSourceRange(*converter.to_offset(range.start), *converter.to_offset(range.end));
 }
 
-void expect_link(std::size_t index, llvm::StringRef name, llvm::StringRef path) {
+void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) {
     auto& link = links[index];
-    auto expected = tester.range(name, "main.cpp");
+    auto expected = range(name, "main.cpp");
     auto actual = to_local_range(link.range);
 
     ASSERT_EQ(actual.begin, expected.begin);
@@ -65,12 +62,12 @@ TEST_CASE(Include) {
 )cpp");
 
     ASSERT_EQ(links.size(), 6U);
-    expect_link(0, "0", "test.h");
-    expect_link(1, "1", "test.h");
-    expect_link(2, "2", "pragma_once.h");
-    expect_link(3, "3", "pragma_once.h");
-    expect_link(4, "4", "guard_macro.h");
-    expect_link(5, "5", "guard_macro.h");
+    EXPECT_LINK(0, "0", TestVFS::path("test.h"));
+    EXPECT_LINK(1, "1", TestVFS::path("test.h"));
+    EXPECT_LINK(2, "2", TestVFS::path("pragma_once.h"));
+    EXPECT_LINK(3, "3", TestVFS::path("pragma_once.h"));
+    EXPECT_LINK(4, "4", TestVFS::path("guard_macro.h"));
+    EXPECT_LINK(5, "5", TestVFS::path("guard_macro.h"));
 }
 
 TEST_CASE(HasInclude) {
@@ -88,8 +85,8 @@ TEST_CASE(HasInclude) {
 )cpp");
 
     ASSERT_EQ(links.size(), 2U);
-    expect_link(0, "0", "test.h");
-    expect_link(1, "1", "test.h");
+    EXPECT_LINK(0, "0", TestVFS::path("test.h"));
+    EXPECT_LINK(1, "1", TestVFS::path("test.h"));
 }
 
 };  // TEST_SUITE(DocumentLink)
