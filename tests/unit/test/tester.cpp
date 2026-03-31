@@ -160,7 +160,9 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     CommandOptions options;
     options.query_toolchain = true;
     options.suppress_logging = true;
-    params.arguments = database.lookup(src_path, options).front().arguments;
+    auto commands = database.lookup(src_path, options);
+    assert(!commands.empty() && "lookup failed after add_command");
+    params.arguments = commands.front().arguments;
 
     params.kind = CompilationKind::Content;
 
@@ -197,6 +199,8 @@ bool Tester::compile_driver(llvm::StringRef standard) {
 }
 
 bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
+    params = CompilationParams();
+    unit.reset();
     vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     for(auto& [file, source]: sources.all_files) {
         vfs->add(file, source.content);
@@ -208,7 +212,9 @@ bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
     CommandOptions options;
     options.query_toolchain = true;
     options.suppress_logging = true;
-    params.arguments = database.lookup(src_path, options).front().arguments;
+    auto commands = database.lookup(src_path, options);
+    assert(!commands.empty() && "lookup failed after add_command");
+    params.arguments = commands.front().arguments;
 
     auto pch_path = fs::createTemporaryFile("clice", "pch");
     if(!pch_path) {

@@ -33,8 +33,9 @@ void EXPECT_SELECT(llvm::StringRef pos,
             return occurrence.range.end;
         });
 
-    auto err =
-        std::format("Fail to find symbol for offser: {} range: range: {}", offset, dump(expected));
+    auto err = std::format("Fail to find symbol for offset: {}, expected range: {}",
+                           offset,
+                           dump(expected));
 
     ASSERT_TRUE(it != index.occurrences.end());
 

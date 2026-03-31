@@ -888,8 +888,15 @@ private:
             if(identifier_of(*Callee) != "forward") {
                 return false;
             }
-            const auto* NS = llvm::dyn_cast<clang::NamespaceDecl>(Callee->getDeclContext());
-            return NS && identifier_of(*NS) == "std";
+            // Walk up through inline namespaces (e.g. std::__1::forward).
+            for(const clang::DeclContext* DC = Callee->getDeclContext(); DC; DC = DC->getParent()) {
+                if(const auto* NS = llvm::dyn_cast<clang::NamespaceDecl>(DC)) {
+                    if(identifier_of(*NS) == "std" && NS->getParent()->isTranslationUnit()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         };
 
         E = E->IgnoreImplicitAsWritten();

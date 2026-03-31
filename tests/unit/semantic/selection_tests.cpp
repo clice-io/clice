@@ -668,7 +668,9 @@ void test() {
     add_files("main.cpp", code);
     ASSERT_TRUE(compile());
 
-    auto point = nameless_points("main.cpp")[0];
+    auto points = nameless_points("main.cpp");
+    ASSERT_FALSE(points.empty());
+    auto point = points[0];
     auto tree = SelectionTree::create_right(*unit, {point, point});
     ASSERT_TRUE(unit->diagnostics().empty());
 
