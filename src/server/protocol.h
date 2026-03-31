@@ -97,11 +97,13 @@ struct BuildPCHParams {
     std::string directory;
     std::vector<std::string> arguments;
     std::string content;
+    std::uint32_t preamble_bound = UINT32_MAX;
 };
 
 struct BuildPCHResult {
     bool success;
     std::string error;
+    std::string pch_path;
 };
 
 struct BuildPCMParams {

@@ -7,6 +7,7 @@
 #include "compile/compilation.h"
 #include "support/filesystem.h"
 #include "syntax/scan.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 
@@ -273,6 +274,64 @@ int bar() { return 3; }
 }
 
 };  // TEST_SUITE(Compiler)
+
+TEST_SUITE(PreambleHash) {
+
+TEST_CASE(StableForBodyChanges) {
+    // Same preamble (#include lines) but different body → same hash → PCH reusable.
+    llvm::StringRef v1 = R"cpp(
+#include "a.h"
+#include "b.h"
+int x = 1;
+)cpp";
+    llvm::StringRef v2 = R"cpp(
+#include "a.h"
+#include "b.h"
+int x = 2;
+void foo() {}
+)cpp";
+
+    auto bound1 = compute_preamble_bound(v1);
+    auto bound2 = compute_preamble_bound(v2);
+    EXPECT_EQ(bound1, bound2);
+
+    auto hash1 = llvm::xxh3_64bits(v1.substr(0, bound1));
+    auto hash2 = llvm::xxh3_64bits(v2.substr(0, bound2));
+    EXPECT_EQ(hash1, hash2);
+}
+
+TEST_CASE(ChangesForNewInclude) {
+    // Different preamble (#include added) → different hash → PCH must rebuild.
+    llvm::StringRef v1 = R"cpp(
+#include "a.h"
+int x = 1;
+)cpp";
+    llvm::StringRef v2 = R"cpp(
+#include "a.h"
+#include "b.h"
+int x = 1;
+)cpp";
+
+    auto bound1 = compute_preamble_bound(v1);
+    auto bound2 = compute_preamble_bound(v2);
+    EXPECT_NE(bound1, bound2);
+
+    auto hash1 = llvm::xxh3_64bits(v1.substr(0, bound1));
+    auto hash2 = llvm::xxh3_64bits(v2.substr(0, bound2));
+    EXPECT_NE(hash1, hash2);
+}
+
+TEST_CASE(ZeroBoundNoPCH) {
+    // No preprocessor directives → bound is 0 → PCH should be skipped.
+    llvm::StringRef code = R"cpp(
+int main() { return 0; }
+)cpp";
+
+    auto bound = compute_preamble_bound(code);
+    EXPECT_EQ(bound, 0u);
+}
+
+};  // TEST_SUITE(PreambleHash)
 
 }  // namespace
 

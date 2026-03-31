@@ -102,6 +102,8 @@ TEST_CASE(BuildPCHRequest) {
 
         auto result = co_await w.peer->send_request(params);
         EXPECT_TRUE(result.has_value());
+        EXPECT_TRUE(result.value().success);
+        EXPECT_FALSE(result.value().pch_path.empty());
         test_done = true;
         w.peer->close_output();
     });

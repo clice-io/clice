@@ -18,6 +18,8 @@
 #include "syntax/dependency_graph.h"
 #include "syntax/scan.h"
 
+#include "llvm/Support/xxhash.h"
+
 namespace clice {
 
 namespace protocol = eventide::ipc::protocol;
@@ -179,6 +181,15 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
             if(mod_it != path_to_module.end()) {
                 params.pcms[mod_it->second] = pcm_path;
             }
+        }
+
+        // Build or reuse PCH for preamble acceleration.
+        co_await ensure_pch(path_id, params.path, params.text,
+                            params.directory, params.arguments);
+
+        // Populate PCH info if available.
+        if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
+            params.pch = {pch_it->second, pch_bounds[path_id]};
         }
 
         LOG_DEBUG("Sending compile: path={}, args={}, gen={}",
@@ -379,6 +390,51 @@ bool MasterServer::fill_compile_args(llvm::StringRef path,
     return true;
 }
 
+et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id, llvm::StringRef path,
+                                         const std::string& text,
+                                         const std::string& directory,
+                                         const std::vector<std::string>& arguments) {
+    auto bound = compute_preamble_bound(text);
+    if(bound == 0) {
+        // No preamble directives — PCH would be empty, skip.
+        co_return true;
+    }
+
+    auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(text).substr(0, bound));
+
+    // Reuse existing PCH if preamble content hasn't changed.
+    if(auto it = pch_hashes.find(path_id); it != pch_hashes.end()) {
+        if(it->second == preamble_hash && pch_paths.contains(path_id)) {
+            pch_bounds[path_id] = bound;
+            co_return true;
+        }
+    }
+
+    // Build a new PCH via stateless worker.
+    worker::BuildPCHParams pch_params;
+    pch_params.file = std::string(path);
+    pch_params.directory = directory;
+    pch_params.arguments = arguments;
+    pch_params.content = text;
+    pch_params.preamble_bound = bound;
+
+    LOG_DEBUG("Building PCH for {}, bound={}", path, bound);
+
+    auto result = co_await pool.send_stateless(pch_params);
+    if(!result.has_value() || !result.value().success) {
+        LOG_WARN("PCH build failed for {}: {}", path,
+                 result.has_value() ? result.value().error : result.error().message);
+        co_return false;
+    }
+
+    pch_paths[path_id] = result.value().pch_path;
+    pch_bounds[path_id] = bound;
+    pch_hashes[path_id] = preamble_hash;
+
+    LOG_INFO("PCH built for {}: {}", path, result.value().pch_path);
+    co_return true;
+}
+
 et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id, const std::string& uri) {
     auto doc_it = documents.find(path_id);
     if(doc_it == documents.end())
@@ -458,6 +514,20 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
     wp.text = doc.text;
     if(!fill_compile_args(path, wp.directory, wp.arguments))
         co_return serde_raw{};
+
+    // Ensure PCH is available for stateless compilation (completion/signatureHelp).
+    co_await ensure_pch(path_id, path, wp.text, wp.directory, wp.arguments);
+    if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
+        wp.pch = {pch_it->second, pch_bounds[path_id]};
+    }
+
+    // Fill available PCM paths for module-aware completion.
+    for(auto& [pid, pcm_path]: pcm_paths) {
+        auto mod_it = path_to_module.find(pid);
+        if(mod_it != path_to_module.end()) {
+            wp.pcms[mod_it->second] = pcm_path;
+        }
+    }
 
     lsp::PositionMapper mapper(doc.text, lsp::PositionEncoding::UTF16);
     auto offset = mapper.to_offset(position);
@@ -675,6 +745,9 @@ void MasterServer::register_handlers() {
 
         documents.erase(path_id);
         debounce_timers.erase(path_id);
+        pch_paths.erase(path_id);
+        pch_bounds.erase(path_id);
+        pch_hashes.erase(path_id);
 
         // Clear diagnostics for closed file
         clear_diagnostics(params.text_document.uri);
@@ -710,6 +783,9 @@ void MasterServer::register_handlers() {
                 }
             }
         }
+
+        // Invalidate cached PCH — preamble may have changed after save.
+        pch_hashes.erase(path_id);
 
         LOG_DEBUG("didSave: {}", params.text_document.uri);
     });

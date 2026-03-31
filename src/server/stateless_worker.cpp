@@ -71,12 +71,12 @@ int run_stateless_worker_mode() {
                 CompilationParams cp;
                 cp.kind = CompilationKind::Preamble;
                 fill_args(cp, params.directory, params.arguments);
-                cp.add_remapped_file(params.file, params.content);
+                cp.add_remapped_file(params.file, params.content, params.preamble_bound);
 
                 auto tmp = fs::createTemporaryFile("clice-pch", "pch");
                 if(!tmp) {
                     LOG_ERROR("BuildPCH: failed to create temp file");
-                    return {false, "Failed to create temporary PCH file"};
+                    return {false, "Failed to create temporary PCH file", ""};
                 }
                 cp.output_file = *tmp;
 
@@ -84,11 +84,11 @@ int run_stateless_worker_mode() {
                 auto unit = compile(cp, pch_info);
 
                 if(unit.completed()) {
-                    LOG_INFO("BuildPCH done: file={}, {}ms", params.file, timer.ms());
-                    return {true, ""};
+                    LOG_INFO("BuildPCH done: file={}, output={}, {}ms", params.file, cp.output_file, timer.ms());
+                    return {true, "", std::string(cp.output_file)};
                 } else {
                     LOG_WARN("BuildPCH failed: file={}, {}ms", params.file, timer.ms());
-                    return {false, "PCH compilation failed"};
+                    return {false, "PCH compilation failed", ""};
                 }
             });
             co_return result.value();

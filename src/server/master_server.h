@@ -72,6 +72,15 @@ private:
     // path_id -> module name (for files that provide a module interface).
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
+    // path_id -> built PCH file path.
+    llvm::DenseMap<std::uint32_t, std::string> pch_paths;
+
+    // path_id -> preamble bound (byte offset) used when building the PCH.
+    llvm::DenseMap<std::uint32_t, std::uint32_t> pch_bounds;
+
+    // path_id -> hash of preamble content at PCH build time (for staleness detection).
+    llvm::DenseMap<std::uint32_t, std::uint64_t> pch_hashes;
+
     // Document state: path_id -> DocumentState
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
 
@@ -103,6 +112,12 @@ private:
     bool fill_compile_args(llvm::StringRef path,
                            std::string& directory,
                            std::vector<std::string>& arguments);
+
+    // Build or reuse PCH for a source file. Returns true if PCH is available.
+    et::task<bool> ensure_pch(std::uint32_t path_id, llvm::StringRef path,
+                              const std::string& text,
+                              const std::string& directory,
+                              const std::vector<std::string>& arguments);
 
     // Forwarding helpers for feature requests (RawValue passthrough)
     using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
