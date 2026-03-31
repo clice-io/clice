@@ -33,6 +33,7 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
             pixi run -- sccache --show-stats
+            pixi run -- sccache --stop-server || true
           else
             pixi run -- ccache --show-stats
           fi
