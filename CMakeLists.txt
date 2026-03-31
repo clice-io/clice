@@ -18,6 +18,7 @@ option(CLICE_OFFLINE_BUILD "Disable network downloads during configuration" OFF)
 option(CLICE_ENABLE_TEST "Build unit tests" OFF)
 option(CLICE_CI_ENVIRONMENT "Enable CI-specific configuration" OFF)
 option(CLICE_ENABLE_BENCHMARK "Build benchmarks" OFF)
+option(CLICE_RELEASE "Enable release packaging (LTO + strip + pack)" OFF)
 
 # Global flags that apply to all targets (including FetchContent dependencies).
 if(NOT MSVC)
@@ -44,6 +45,10 @@ if(CLICE_USE_LIBCXX)
     string(APPEND CMAKE_CXX_FLAGS " -stdlib=libc++")
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -stdlib=libc++")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -stdlib=libc++")
+endif()
+
+if(CLICE_RELEASE)
+    set(CLICE_ENABLE_LTO ON)
 endif()
 
 if(CLICE_ENABLE_LTO)
@@ -235,4 +240,79 @@ if(CLICE_ENABLE_BENCHMARK)
         "${PROJECT_SOURCE_DIR}/src"
     )
     target_link_libraries(scan_benchmark PRIVATE clice::core eventide::deco)
+endif()
+
+if(CLICE_RELEASE)
+    set(CLICE_PACK_DIR "${PROJECT_BINARY_DIR}/pack")
+    set(CLICE_SYMBOL_DIR "${PROJECT_BINARY_DIR}/pack-symbol")
+
+    if(WIN32)
+        set(CLICE_ARCHIVE_EXT ".zip")
+    else()
+        set(CLICE_ARCHIVE_EXT ".tar.gz")
+    endif()
+
+    if(WIN32)
+        set(CLICE_EXE_NAME "clice.exe")
+        set(CLICE_SYMBOL_NAME "clice.pdb")
+    elseif(APPLE)
+        set(CLICE_EXE_NAME "clice")
+        set(CLICE_SYMBOL_NAME "clice.dSYM")
+    else()
+        set(CLICE_EXE_NAME "clice")
+        set(CLICE_SYMBOL_NAME "clice.debug")
+    endif()
+
+    if(WIN32)
+        add_custom_target(clice-strip ALL
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}"
+            DEPENDS clice
+            COMMENT "Collecting PDB for clice"
+        )
+    elseif(APPLE)
+        add_custom_target(clice-strip ALL
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}"
+            COMMAND dsymutil "$<TARGET_FILE:clice>" -o "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}"
+            COMMAND strip -x "$<TARGET_FILE:clice>"
+            DEPENDS clice
+            COMMENT "Extracting dSYM and stripping clice"
+        )
+    else()
+        add_custom_target(clice-strip ALL
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}"
+            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug "$<TARGET_FILE:clice>" "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}"
+            COMMAND ${CMAKE_STRIP} --strip-debug --strip-unneeded "$<TARGET_FILE:clice>"
+            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink="${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "$<TARGET_FILE:clice>"
+            DEPENDS clice
+            COMMENT "Extracting debug symbols and stripping clice"
+        )
+    endif()
+
+    add_custom_target(clice-pack ALL
+        DEPENDS clice-strip copy_clang_resource
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${CLICE_PACK_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_PACK_DIR}/clice/bin"
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:clice>" "${CLICE_PACK_DIR}/clice/bin/"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${LLVM_INSTALL_PATH}/lib/clang" "${CLICE_PACK_DIR}/clice/lib/clang"
+        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/docs/clice.toml" "${CLICE_PACK_DIR}/clice/"
+        COMMAND ${CMAKE_COMMAND}
+            -DARCHIVE_DIR="${CLICE_PACK_DIR}/clice"
+            -DOUTPUT="${PROJECT_BINARY_DIR}/clice${CLICE_ARCHIVE_EXT}"
+            -DWORK_DIR="${CLICE_PACK_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/archive.cmake"
+        COMMENT "Packaging clice distribution"
+    )
+
+    add_custom_target(clice-pack-symbol ALL
+        DEPENDS clice-strip
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${CLICE_SYMBOL_DIR}/pack"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}/pack"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "${CLICE_SYMBOL_DIR}/pack/"
+        COMMAND ${CMAKE_COMMAND}
+            -DARCHIVE_DIR="${CLICE_SYMBOL_DIR}/pack"
+            -DOUTPUT="${PROJECT_BINARY_DIR}/clice-symbol${CLICE_ARCHIVE_EXT}"
+            -DWORK_DIR="${CLICE_SYMBOL_DIR}/pack"
+            -P "${PROJECT_SOURCE_DIR}/cmake/archive.cmake"
+        COMMENT "Packaging clice debug symbols"
+    )
 endif()
