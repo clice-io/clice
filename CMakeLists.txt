@@ -32,9 +32,8 @@ endif()
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-fsanitize=address)
 
-    if(MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        # clang-cl: manually link ASan runtime since the MSVC driver
-        # does not pass -fsanitize=address to the linker.
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        # clang-cl (MSVC frontend): manually link ASan runtime.
         execute_process(
             COMMAND ${CMAKE_CXX_COMPILER} --print-resource-dir
             OUTPUT_VARIABLE CLANG_RESOURCE_DIR
@@ -53,7 +52,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
             set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${flag}")
         endforeach()
     else()
-        # clang++/gcc: -fsanitize=address on linker flags works automatically.
+        # GNU frontend (clang++/gcc): -fsanitize=address handles linking automatically.
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -fsanitize=address")
         string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fsanitize=address")
     endif()
