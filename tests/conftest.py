@@ -121,8 +121,10 @@ class CliceClient(BaseLanguageClient):
 
     async def open_and_wait(self, filepath: Path, timeout: float = 60.0):
         """Open a file and wait for compilation diagnostics."""
-        uri, content = self.open(filepath)
-        await self.wait_diagnostics(uri, timeout)
+        uri = filepath.as_uri()
+        event = self.wait_for_diagnostics(uri)
+        _, content = self.open(filepath)
+        await asyncio.wait_for(event.wait(), timeout=timeout)
         return uri, content
 
 

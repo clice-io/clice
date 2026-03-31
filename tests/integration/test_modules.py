@@ -31,20 +31,29 @@ _DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "modules"
 
 def _generate_cdb(workspace: Path):
     """Generate compile_commands.json using CMake with Ninja backend."""
+    cmake = shutil.which("cmake")
+    if cmake is None:
+        raise RuntimeError("cmake executable not found in PATH")
     build_dir = workspace / "build"
     subprocess.run(
         [
-            "cmake",
-            "-G", "Ninja",
+            cmake,
+            "-G",
+            "Ninja",
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-            "-S", str(workspace),
-            "-B", str(build_dir),
+            "-S",
+            str(workspace),
+            "-B",
+            str(build_dir),
         ],
         check=True,
         capture_output=True,
         text=True,
+        timeout=120,
     )
-    shutil.copy2(build_dir / "compile_commands.json", workspace / "compile_commands.json")
+    shutil.copy2(
+        build_dir / "compile_commands.json", workspace / "compile_commands.json"
+    )
 
 
 async def _init(client, workspace: Path):
