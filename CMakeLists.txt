@@ -30,7 +30,8 @@ if(APPLE)
     add_compile_definitions(_LIBCPP_DISABLE_AVAILABILITY=1)
 endif()
 
-if(WIN32)
+if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
+            CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:REF")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,/OPT:REF")
 elseif(APPLE)
@@ -98,7 +99,7 @@ add_library(clice_options INTERFACE)
 
 if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
          CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
-    target_compile_options(clice_options INTERFACE /GR- /EHsc- /Zc:preprocessor)
+    target_compile_options(clice_options INTERFACE /GR- /EHs-c- /Zc:preprocessor)
 else()
     target_compile_options(clice_options INTERFACE
         -fno-rtti

@@ -18,6 +18,9 @@ endif()
 if(WIN32)
     add_custom_target(clice-strip ALL
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_PDB_FILE:clice>"
+            "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}"
         DEPENDS clice
         COMMENT "Collecting PDB for clice"
     )
@@ -54,11 +57,19 @@ add_custom_target(clice-pack ALL
     COMMENT "Packaging clice distribution"
 )
 
+if(APPLE)
+    set(CLICE_COPY_SYMBOL_CMD ${CMAKE_COMMAND} -E copy_directory
+        "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "${CLICE_SYMBOL_DIR}/pack/${CLICE_SYMBOL_NAME}")
+else()
+    set(CLICE_COPY_SYMBOL_CMD ${CMAKE_COMMAND} -E copy
+        "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "${CLICE_SYMBOL_DIR}/pack/")
+endif()
+
 add_custom_target(clice-pack-symbol ALL
     DEPENDS clice-strip
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${CLICE_SYMBOL_DIR}/pack"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}/pack"
-    COMMAND ${CMAKE_COMMAND} -E copy "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "${CLICE_SYMBOL_DIR}/pack/"
+    COMMAND ${CLICE_COPY_SYMBOL_CMD}
     COMMAND ${CMAKE_COMMAND}
         -DOUTPUT="${PROJECT_BINARY_DIR}/clice-symbol${CLICE_ARCHIVE_EXT}"
         -DWORK_DIR="${CLICE_SYMBOL_DIR}/pack"

@@ -3,6 +3,15 @@ name: cmake
 on:
   workflow_call:
 
+env:
+  CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+  SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  SCCACHE_BASEDIRS: ${{ github.workspace }}
+  CCACHE_COMPILERCHECK: content
+  CCACHE_MAXSIZE: 2G
+  SCCACHE_CACHE_SIZE: 2G
+
 jobs:
   build:
     strategy:
@@ -20,10 +29,19 @@ jobs:
       - name: Restore compiler cache
         uses: actions/cache@v4
         with:
-          path: ${{ runner.os == 'Windows' && '~\AppData\Local\Mozilla\sccache' || '~/.cache/ccache' }}
+          path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
           key: ${{ runner.os }}-${{ matrix.build_type }}-ccache-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.build_type }}-ccache-
+
+      - name: Zero cache stats
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -- sccache --zero-stats || true
+          else
+            pixi run -- ccache --zero-stats || true
+          fi
+        shell: bash
 
       - name: Build
         run: pixi run build ${{ matrix.build_type }} ON
