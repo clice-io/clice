@@ -37,6 +37,7 @@ jobs:
       - name: Zero cache stats
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -- sccache --stop-server || true
             pixi run -- sccache --zero-stats || true
           else
             pixi run -- ccache --zero-stats || true
