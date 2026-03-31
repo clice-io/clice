@@ -18,18 +18,18 @@ from lsprotocol.types import (
 
 
 @pytest.mark.asyncio
-async def test_did_open(client, test_data_dir):
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-    client.open(workspace / "main.cpp")
+@pytest.mark.workspace("hello_world")
+async def test_did_open(client, ws):
+    await client.initialize(ws)
+    client.open(ws / "main.cpp")
     await asyncio.sleep(5)
 
 
 @pytest.mark.asyncio
-async def test_did_change(client, test_data_dir):
-    workspace = test_data_dir / "hello_world"
-    await client.initialize(workspace)
-    uri, content = client.open(workspace / "main.cpp")
+@pytest.mark.workspace("hello_world")
+async def test_did_change(client, ws):
+    await client.initialize(ws)
+    uri, content = client.open(ws / "main.cpp")
 
     for i in range(20):
         content += "\n"
@@ -44,18 +44,18 @@ async def test_did_change(client, test_data_dir):
 
 
 @pytest.mark.asyncio
-async def test_clang_tidy(client, test_data_dir):
-    workspace = test_data_dir / "clang_tidy"
-    await client.initialize(workspace)
-    client.open(workspace / "main.cpp")
+@pytest.mark.workspace("clang_tidy")
+async def test_clang_tidy(client, ws):
+    await client.initialize(ws)
+    client.open(ws / "main.cpp")
     await asyncio.sleep(5)
 
 
 @pytest.mark.asyncio
-async def test_hover_save_close(client, test_data_dir):
-    workspace = test_data_dir / "hello_world"
-    main_cpp = workspace / "main.cpp"
-    await client.initialize(workspace)
+@pytest.mark.workspace("hello_world")
+async def test_hover_save_close(client, ws):
+    main_cpp = ws / "main.cpp"
+    await client.initialize(ws)
 
     uri, content = client.open(main_cpp)
 

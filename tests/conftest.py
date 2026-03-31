@@ -1,7 +1,9 @@
 """Fixtures and shared helpers for clice LSP integration tests using pygls LanguageClient."""
 
-import json
 import asyncio
+import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -174,6 +176,45 @@ def test_data_dir():
         cdb_path.write_text(json.dumps(cdb, indent=2))
 
     return data_dir
+
+
+def generate_cdb(workspace: Path):
+    """Generate compile_commands.json using CMake with Ninja backend."""
+    cmake = shutil.which("cmake")
+    if cmake is None:
+        raise RuntimeError("cmake executable not found in PATH")
+    subprocess.run(
+        [
+            cmake,
+            "-G",
+            "Ninja",
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+            "-S",
+            str(workspace),
+            "-B",
+            str(workspace / "build"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+@pytest.fixture
+def ws(request, test_data_dir):
+    """Resolve workspace path from @pytest.mark.workspace("subdir") marker.
+
+    If the workspace contains a CMakeLists.txt, automatically runs cmake
+    to generate compile_commands.json.
+    """
+    marker = request.node.get_closest_marker("workspace")
+    if marker is None:
+        pytest.fail("Test requires @pytest.mark.workspace(...) marker")
+    workspace = test_data_dir / marker.args[0]
+    if (workspace / "CMakeLists.txt").exists():
+        generate_cdb(workspace)
+    return workspace
 
 
 @pytest_asyncio.fixture

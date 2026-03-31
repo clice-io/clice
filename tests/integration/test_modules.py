@@ -7,10 +7,9 @@ and module_worker_tests. They test the complete pipeline:
 
 import asyncio
 import shutil
-import subprocess
-from pathlib import Path
 
 import pytest
+from conftest import generate_cdb
 from lsprotocol.types import (
     DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
@@ -20,40 +19,13 @@ from lsprotocol.types import (
     TextDocumentItem,
 )
 
-# Directory containing pre-written module source files for each test case.
-_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "modules"
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _generate_cdb(workspace: Path):
-    """Generate compile_commands.json using CMake with Ninja backend."""
-    cmake = shutil.which("cmake")
-    if cmake is None:
-        raise RuntimeError("cmake executable not found in PATH")
-    build_dir = workspace / "build"
-    subprocess.run(
-        [
-            cmake,
-            "-G",
-            "Ninja",
-            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-            "-S",
-            str(workspace),
-            "-B",
-            str(build_dir),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-
-
-async def _init(client, workspace: Path):
+async def _init(client, workspace):
     """Initialize the LSP server with a workspace and wait for CDB scan."""
     result = await client.initialize(workspace)
     # Give the server time to load CDB and scan dependency graph.
@@ -67,10 +39,9 @@ async def _init(client, workspace: Path):
 
 
 @pytest.mark.asyncio
-async def test_single_module_no_deps(client):
+@pytest.mark.workspace("modules/single_module_no_deps")
+async def test_single_module_no_deps(client, ws):
     """A single module with no imports should compile without errors."""
-    ws = _DATA_DIR / "single_module_no_deps"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "mod_a.cppm")
@@ -84,10 +55,9 @@ async def test_single_module_no_deps(client):
 
 
 @pytest.mark.asyncio
-async def test_chained_modules(client):
+@pytest.mark.workspace("modules/chained_modules")
+async def test_chained_modules(client, ws):
     """Opening a module that imports another should trigger dependency compilation."""
-    ws = _DATA_DIR / "chained_modules"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "mod_b.cppm")
@@ -101,10 +71,9 @@ async def test_chained_modules(client):
 
 
 @pytest.mark.asyncio
-async def test_diamond_modules(client):
+@pytest.mark.workspace("modules/diamond_modules")
+async def test_diamond_modules(client, ws):
     """Diamond dependency graph should compile correctly."""
-    ws = _DATA_DIR / "diamond_modules"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "top.cppm")
@@ -118,10 +87,9 @@ async def test_diamond_modules(client):
 
 
 @pytest.mark.asyncio
-async def test_dotted_module_name(client):
+@pytest.mark.workspace("modules/dotted_module_name")
+async def test_dotted_module_name(client, ws):
     """Dotted module names should work correctly."""
-    ws = _DATA_DIR / "dotted_module_name"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "app.cppm")
@@ -135,10 +103,9 @@ async def test_dotted_module_name(client):
 
 
 @pytest.mark.asyncio
-async def test_module_implementation_unit(client):
+@pytest.mark.workspace("modules/module_implementation_unit")
+async def test_module_implementation_unit(client, ws):
     """A module implementation unit should compile using the interface PCM."""
-    ws = _DATA_DIR / "module_implementation_unit"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "greeter_impl.cpp")
@@ -152,10 +119,9 @@ async def test_module_implementation_unit(client):
 
 
 @pytest.mark.asyncio
-async def test_consumer_imports_module(client):
+@pytest.mark.workspace("modules/consumer_imports_module")
+async def test_consumer_imports_module(client, ws):
     """A regular .cpp file that imports a module should get PCM deps compiled."""
-    ws = _DATA_DIR / "consumer_imports_module"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "main.cpp")
@@ -169,10 +135,9 @@ async def test_consumer_imports_module(client):
 
 
 @pytest.mark.asyncio
-async def test_module_partitions(client):
+@pytest.mark.workspace("modules/module_partitions")
+async def test_module_partitions(client, ws):
     """Module partitions should be compiled in correct order."""
-    ws = _DATA_DIR / "module_partitions"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "lib.cppm")
@@ -186,10 +151,9 @@ async def test_module_partitions(client):
 
 
 @pytest.mark.asyncio
-async def test_partition_interface(client):
+@pytest.mark.workspace("modules/partition_interface")
+async def test_partition_interface(client, ws):
     """A single partition interface re-exported from primary should compile."""
-    ws = _DATA_DIR / "partition_interface"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "primary.cppm")
@@ -203,10 +167,9 @@ async def test_partition_interface(client):
 
 
 @pytest.mark.asyncio
-async def test_partition_chain(client):
+@pytest.mark.workspace("modules/partition_chain")
+async def test_partition_chain(client, ws):
     """Partition importing another partition within same module."""
-    ws = _DATA_DIR / "partition_chain"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "sys.cppm")
@@ -220,10 +183,9 @@ async def test_partition_chain(client):
 
 
 @pytest.mark.asyncio
-async def test_re_export(client):
+@pytest.mark.workspace("modules/re_export")
+async def test_re_export(client, ws):
     """Re-exported module symbols should be accessible through the wrapper."""
-    ws = _DATA_DIR / "re_export"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "user.cppm")
@@ -237,10 +199,9 @@ async def test_re_export(client):
 
 
 @pytest.mark.asyncio
-async def test_export_block(client):
+@pytest.mark.workspace("modules/export_block")
+async def test_export_block(client, ws):
     """Module with export block syntax should compile correctly."""
-    ws = _DATA_DIR / "export_block"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "consumer.cppm")
@@ -254,10 +215,9 @@ async def test_export_block(client):
 
 
 @pytest.mark.asyncio
-async def test_global_module_fragment(client):
+@pytest.mark.workspace("modules/global_module_fragment")
+async def test_global_module_fragment(client, ws):
     """Module with global module fragment (#include before module decl)."""
-    ws = _DATA_DIR / "global_module_fragment"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "gmf.cppm")
@@ -271,10 +231,9 @@ async def test_global_module_fragment(client):
 
 
 @pytest.mark.asyncio
-async def test_private_module_fragment(client):
+@pytest.mark.workspace("modules/private_module_fragment")
+async def test_private_module_fragment(client, ws):
     """Module with private module fragment should compile correctly."""
-    ws = _DATA_DIR / "private_module_fragment"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "priv.cppm")
@@ -288,10 +247,9 @@ async def test_private_module_fragment(client):
 
 
 @pytest.mark.asyncio
-async def test_export_namespace(client):
+@pytest.mark.workspace("modules/export_namespace")
+async def test_export_namespace(client, ws):
     """Module with exported namespace should compile correctly."""
-    ws = _DATA_DIR / "export_namespace"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "calc.cppm")
@@ -305,10 +263,9 @@ async def test_export_namespace(client):
 
 
 @pytest.mark.asyncio
-async def test_gmf_with_import(client):
+@pytest.mark.workspace("modules/gmf_with_import")
+async def test_gmf_with_import(client, ws):
     """Module with GMF (#include) + import should compile correctly."""
-    ws = _DATA_DIR / "gmf_with_import"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "combined.cppm")
@@ -322,10 +279,9 @@ async def test_gmf_with_import(client):
 
 
 @pytest.mark.asyncio
-async def test_independent_modules(client):
+@pytest.mark.workspace("modules/independent_modules")
+async def test_independent_modules(client, ws):
     """Two independent modules should each compile without errors."""
-    ws = _DATA_DIR / "independent_modules"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri_x, _ = await client.open_and_wait(ws / "x.cppm")
@@ -343,10 +299,9 @@ async def test_independent_modules(client):
 
 
 @pytest.mark.asyncio
-async def test_template_export(client):
+@pytest.mark.workspace("modules/template_export")
+async def test_template_export(client, ws):
     """Module with exported templates should compile correctly."""
-    ws = _DATA_DIR / "template_export"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "use_tmpl.cppm")
@@ -360,10 +315,9 @@ async def test_template_export(client):
 
 
 @pytest.mark.asyncio
-async def test_class_export_and_inheritance(client):
+@pytest.mark.workspace("modules/class_export_and_inheritance")
+async def test_class_export_and_inheritance(client, ws):
     """Exported class with cross-module inheritance should compile."""
-    ws = _DATA_DIR / "class_export_and_inheritance"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "circle.cppm")
@@ -377,15 +331,15 @@ async def test_class_export_and_inheritance(client):
 
 
 @pytest.mark.asyncio
-async def test_save_recompile(client, tmp_path):
+async def test_save_recompile(client, test_data_dir, tmp_path):
     """Closing and reopening a modified module file should recompile without errors."""
     # This test mutates source files at runtime, so copy data to tmp_path.
-    src = _DATA_DIR / "save_recompile"
+    src = test_data_dir / "modules" / "save_recompile"
     for f in src.iterdir():
         if f.is_file():
             shutil.copy2(f, tmp_path / f.name)
 
-    _generate_cdb(tmp_path)
+    generate_cdb(tmp_path)
     await _init(client, tmp_path)
 
     # Open and compile Mid (which triggers Leaf PCM build).
@@ -428,10 +382,9 @@ async def test_save_recompile(client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_module_compile_error(client):
+@pytest.mark.workspace("modules/module_compile_error")
+async def test_module_compile_error(client, ws):
     """A module with an error should produce diagnostics."""
-    ws = _DATA_DIR / "module_compile_error"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "bad.cppm")
@@ -454,10 +407,9 @@ async def test_module_compile_error(client):
 
 
 @pytest.mark.asyncio
-async def test_deep_chain(client):
+@pytest.mark.workspace("modules/deep_chain")
+async def test_deep_chain(client, ws):
     """A 5-level module chain should compile correctly."""
-    ws = _DATA_DIR / "deep_chain"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "m5.cppm")
@@ -471,10 +423,9 @@ async def test_deep_chain(client):
 
 
 @pytest.mark.asyncio
-async def test_partition_with_gmf(client):
+@pytest.mark.workspace("modules/partition_with_gmf")
+async def test_partition_with_gmf(client, ws):
     """Partition with GMF (#include) should compile correctly."""
-    ws = _DATA_DIR / "partition_with_gmf"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "cfg.cppm")
@@ -488,10 +439,9 @@ async def test_partition_with_gmf(client):
 
 
 @pytest.mark.asyncio
-async def test_partition_with_external_import(client):
+@pytest.mark.workspace("modules/partition_with_external_import")
+async def test_partition_with_external_import(client, ws):
     """Partition importing an external module should compile correctly."""
-    ws = _DATA_DIR / "partition_with_external_import"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "app.cppm")
@@ -505,10 +455,9 @@ async def test_partition_with_external_import(client):
 
 
 @pytest.mark.asyncio
-async def test_hover_on_imported_symbol(client):
+@pytest.mark.workspace("modules/hover_on_imported_symbol")
+async def test_hover_on_imported_symbol(client, ws):
     """Hover on a symbol imported from a module should return info."""
-    ws = _DATA_DIR / "hover_on_imported_symbol"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "use.cpp")
@@ -532,10 +481,9 @@ async def test_hover_on_imported_symbol(client):
 
 
 @pytest.mark.asyncio
-async def test_no_modules_plain_cpp(client):
+@pytest.mark.workspace("modules/no_modules_plain_cpp")
+async def test_no_modules_plain_cpp(client, ws):
     """A plain C++ file with no modules should compile normally (no CompileGraph)."""
-    ws = _DATA_DIR / "no_modules_plain_cpp"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "plain.cpp")
@@ -549,7 +497,8 @@ async def test_no_modules_plain_cpp(client):
 
 
 @pytest.mark.asyncio
-async def test_circular_module_dependency(client):
+@pytest.mark.workspace("modules/circular_module_dependency")
+async def test_circular_module_dependency(client, ws):
     """Circular module imports should not hang the server.
 
     When modules form a cycle (CycA imports CycB, CycB imports CycA),
@@ -559,8 +508,6 @@ async def test_circular_module_dependency(client):
     remains responsive — we verify this by successfully performing a
     subsequent operation (opening a non-cyclic file).
     """
-    ws = _DATA_DIR / "circular_module_dependency"
-    _generate_cdb(ws)
     await _init(client, ws)
 
     # Open a cyclic file — the server should not hang.
