@@ -1,10 +1,8 @@
 """File operation tests for the clice LSP server using pygls."""
 
 import asyncio
-from pathlib import Path
 
 import pytest
-from conftest import CliceClient
 from lsprotocol.types import (
     CompletionParams,
     DidChangeTextDocumentParams,
@@ -21,14 +19,14 @@ from lsprotocol.types import (
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
-async def test_did_open(client: CliceClient, workspace: Path):
+async def test_did_open(client, workspace):
     client.open(workspace / "main.cpp")
     await asyncio.sleep(5)
 
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
-async def test_did_change(client: CliceClient, workspace: Path):
+async def test_did_change(client, workspace):
     uri, content = client.open(workspace / "main.cpp")
 
     for i in range(20):
@@ -45,14 +43,14 @@ async def test_did_change(client: CliceClient, workspace: Path):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("clang_tidy")
-async def test_clang_tidy(client: CliceClient, workspace: Path):
+async def test_clang_tidy(client, workspace):
     client.open(workspace / "main.cpp")
     await asyncio.sleep(5)
 
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
-async def test_hover_save_close(client: CliceClient, workspace: Path):
+async def test_hover_save_close(client, workspace):
     main_cpp = workspace / "main.cpp"
 
     uri, content = client.open(main_cpp)
