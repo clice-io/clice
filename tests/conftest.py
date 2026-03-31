@@ -5,6 +5,7 @@ import json
 import shutil
 import subprocess
 import sys
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
@@ -225,7 +226,7 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
 @pytest_asyncio.fixture
 async def client(
     request: pytest.FixtureRequest, executable: Path, workspace: Path | None
-) -> CliceClient:
+) -> AsyncGenerator[CliceClient]:
     """Spawn clice server, auto-initialize if @pytest.mark.workspace is present."""
     config = request.config
     mode = config.getoption("--mode")
