@@ -194,7 +194,7 @@ prettier = "*"
 clang-format = "==21.1.7"
 
 [feature.format.tasks]
-format-cpp = "fd -H -e cpp -e h -e cc -e hpp -x clang-format -i"
+format-cpp = "fd -H -e cpp -e h -e cc -e hpp -e cppm -x clang-format -i"
 format-python = "ruff format ."
 format-lua = "stylua ."
 format-web = "fd -H -e js -e ts -e css -x prettier --write"

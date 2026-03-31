@@ -8,7 +8,6 @@ add_library(test)
 target_sources(test
     PUBLIC
     FILE_SET CXX_MODULES
-    FILES
-    leaf.cppm
-    mid.cppm
+    FILES leaf.cppm mid.cppm
 )
+

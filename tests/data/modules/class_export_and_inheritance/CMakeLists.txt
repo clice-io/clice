@@ -8,7 +8,6 @@ add_library(test)
 target_sources(test
     PUBLIC
     FILE_SET CXX_MODULES
-    FILES
-    shape.cppm
-    circle.cppm
+    FILES shape.cppm circle.cppm
 )
+

@@ -8,7 +8,7 @@ add_library(test)
 target_sources(test
     PUBLIC
     FILE_SET CXX_MODULES
-    FILES
-    gmf.cppm
+    FILES gmf.cppm
 )
 target_include_directories(test PRIVATE ${CMAKE_SOURCE_DIR})
+

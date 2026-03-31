@@ -1,2 +1,5 @@
 export module Ok;
-export int ok() { return 42; }
+
+export int ok() {
+    return 42;
+}

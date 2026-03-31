@@ -8,7 +8,6 @@ add_library(test)
 target_sources(test
     PUBLIC
     FILE_SET CXX_MODULES
-    FILES
-    mod_a.cppm
-    mod_b.cppm
+    FILES mod_a.cppm mod_b.cppm
 )
+

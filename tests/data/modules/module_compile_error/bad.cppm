@@ -1,3 +1,6 @@
 export module Bad;
 import Good;
-export int bad() { return UNDEFINED_SYMBOL; }
+
+export int bad() {
+    return UNDEFINED_SYMBOL;
+}

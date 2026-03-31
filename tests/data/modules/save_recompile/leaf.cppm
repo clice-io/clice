@@ -1,2 +1,5 @@
 export module Leaf;
-export int leaf() { return 1; }
+
+export int leaf() {
+    return 1;
+}

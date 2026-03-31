@@ -1,2 +1,5 @@
 export module A;
-export int foo() { return 42; }
+
+export int foo() {
+    return 42;
+}

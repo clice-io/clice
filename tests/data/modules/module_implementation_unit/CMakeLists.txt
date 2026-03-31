@@ -8,7 +8,6 @@ add_library(test)
 target_sources(test
     PUBLIC
     FILE_SET CXX_MODULES
-    FILES
-    greeter.cppm
-    greeter_impl.cpp
+    FILES greeter.cppm greeter_impl.cpp
 )
+

@@ -1,3 +1,6 @@
 export module my.app;
 import my.io;
-export void run() { print(); }
+
+export void run() {
+    print();
+}

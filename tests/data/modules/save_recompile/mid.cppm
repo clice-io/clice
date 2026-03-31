@@ -1,3 +1,6 @@
 export module Mid;
 import Leaf;
-export int mid() { return leaf() + 1; }
+
+export int mid() {
+    return leaf() + 1;
+}

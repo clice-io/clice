@@ -1,2 +1,5 @@
 export module Base;
-export int base() { return 100; }
+
+export int base() {
+    return 100;
+}

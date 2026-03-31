@@ -8,7 +8,7 @@ add_library(test)
 target_sources(test
     PUBLIC
     FILE_SET CXX_MODULES
-    FILES
-    defs.cppm
+    FILES defs.cppm
 )
 target_sources(test PRIVATE use.cpp)
+

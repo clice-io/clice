@@ -1,2 +1,5 @@
 export module Base;
-export int base_val() { return 10; }
+
+export int base_val() {
+    return 10;
+}

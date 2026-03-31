@@ -1,2 +1,5 @@
 export module X;
-export int x() { return 1; }
+
+export int x() {
+    return 1;
+}

@@ -1,2 +1,5 @@
 export module Defs;
-export int magic_number() { return 42; }
+
+export int magic_number() {
+    return 42;
+}
