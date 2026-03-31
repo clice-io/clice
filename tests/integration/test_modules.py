@@ -6,8 +6,8 @@ and module_worker_tests. They test the complete pipeline:
 """
 
 import asyncio
-import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -29,29 +29,22 @@ _DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "modules"
 # ---------------------------------------------------------------------------
 
 
-def _write_cdb(workspace: Path, files: list[str], extra_args: list[str] | None = None):
-    """Generate compile_commands.json for the given source files."""
-    _write_cdb_entries(workspace, [(f, extra_args or []) for f in files])
-
-
-def _write_cdb_entries(workspace: Path, entries: list[tuple[str, list[str]]]):
-    """Generate compile_commands.json with per-file extra args.
-
-    entries: list of (filename, extra_args) tuples.
-    """
-    cdb = []
-    for filename, extra in entries:
-        args = ["clang++", "-std=c++20", "-fsyntax-only"]
-        args.extend(extra)
-        args.append((workspace / filename).as_posix())
-        cdb.append(
-            {
-                "directory": workspace.as_posix(),
-                "file": (workspace / filename).as_posix(),
-                "arguments": args,
-            }
-        )
-    (workspace / "compile_commands.json").write_text(json.dumps(cdb, indent=2))
+def _generate_cdb(workspace: Path):
+    """Generate compile_commands.json using CMake with Ninja backend."""
+    build_dir = workspace / "build"
+    subprocess.run(
+        [
+            "cmake",
+            "-G", "Ninja",
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+            "-S", str(workspace),
+            "-B", str(build_dir),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    shutil.copy2(build_dir / "compile_commands.json", workspace / "compile_commands.json")
 
 
 async def _init(client, workspace: Path):
@@ -71,7 +64,7 @@ async def _init(client, workspace: Path):
 async def test_single_module_no_deps(client):
     """A single module with no imports should compile without errors."""
     ws = _DATA_DIR / "single_module_no_deps"
-    _write_cdb(ws, ["mod_a.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "mod_a.cppm")
@@ -88,7 +81,7 @@ async def test_single_module_no_deps(client):
 async def test_chained_modules(client):
     """Opening a module that imports another should trigger dependency compilation."""
     ws = _DATA_DIR / "chained_modules"
-    _write_cdb(ws, ["mod_a.cppm", "mod_b.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "mod_b.cppm")
@@ -105,7 +98,7 @@ async def test_chained_modules(client):
 async def test_diamond_modules(client):
     """Diamond dependency graph should compile correctly."""
     ws = _DATA_DIR / "diamond_modules"
-    _write_cdb(ws, ["base.cppm", "left.cppm", "right.cppm", "top.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "top.cppm")
@@ -122,7 +115,7 @@ async def test_diamond_modules(client):
 async def test_dotted_module_name(client):
     """Dotted module names should work correctly."""
     ws = _DATA_DIR / "dotted_module_name"
-    _write_cdb(ws, ["io.cppm", "app.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "app.cppm")
@@ -139,7 +132,7 @@ async def test_dotted_module_name(client):
 async def test_module_implementation_unit(client):
     """A module implementation unit should compile using the interface PCM."""
     ws = _DATA_DIR / "module_implementation_unit"
-    _write_cdb(ws, ["greeter.cppm", "greeter_impl.cpp"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "greeter_impl.cpp")
@@ -156,7 +149,7 @@ async def test_module_implementation_unit(client):
 async def test_consumer_imports_module(client):
     """A regular .cpp file that imports a module should get PCM deps compiled."""
     ws = _DATA_DIR / "consumer_imports_module"
-    _write_cdb(ws, ["math.cppm", "main.cpp"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "main.cpp")
@@ -173,7 +166,7 @@ async def test_consumer_imports_module(client):
 async def test_module_partitions(client):
     """Module partitions should be compiled in correct order."""
     ws = _DATA_DIR / "module_partitions"
-    _write_cdb(ws, ["part_a.cppm", "part_b.cppm", "lib.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "lib.cppm")
@@ -190,7 +183,7 @@ async def test_module_partitions(client):
 async def test_partition_interface(client):
     """A single partition interface re-exported from primary should compile."""
     ws = _DATA_DIR / "partition_interface"
-    _write_cdb(ws, ["part.cppm", "primary.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "primary.cppm")
@@ -207,7 +200,7 @@ async def test_partition_interface(client):
 async def test_partition_chain(client):
     """Partition importing another partition within same module."""
     ws = _DATA_DIR / "partition_chain"
-    _write_cdb(ws, ["types.cppm", "core.cppm", "sys.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "sys.cppm")
@@ -224,7 +217,7 @@ async def test_partition_chain(client):
 async def test_re_export(client):
     """Re-exported module symbols should be accessible through the wrapper."""
     ws = _DATA_DIR / "re_export"
-    _write_cdb(ws, ["core.cppm", "wrapper.cppm", "user.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "user.cppm")
@@ -241,7 +234,7 @@ async def test_re_export(client):
 async def test_export_block(client):
     """Module with export block syntax should compile correctly."""
     ws = _DATA_DIR / "export_block"
-    _write_cdb(ws, ["block.cppm", "consumer.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "consumer.cppm")
@@ -258,7 +251,7 @@ async def test_export_block(client):
 async def test_global_module_fragment(client):
     """Module with global module fragment (#include before module decl)."""
     ws = _DATA_DIR / "global_module_fragment"
-    _write_cdb(ws, ["gmf.cppm"], extra_args=["-I", ws.as_posix()])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "gmf.cppm")
@@ -275,7 +268,7 @@ async def test_global_module_fragment(client):
 async def test_private_module_fragment(client):
     """Module with private module fragment should compile correctly."""
     ws = _DATA_DIR / "private_module_fragment"
-    _write_cdb(ws, ["priv.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "priv.cppm")
@@ -292,7 +285,7 @@ async def test_private_module_fragment(client):
 async def test_export_namespace(client):
     """Module with exported namespace should compile correctly."""
     ws = _DATA_DIR / "export_namespace"
-    _write_cdb(ws, ["ns.cppm", "calc.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "calc.cppm")
@@ -309,13 +302,7 @@ async def test_export_namespace(client):
 async def test_gmf_with_import(client):
     """Module with GMF (#include) + import should compile correctly."""
     ws = _DATA_DIR / "gmf_with_import"
-    _write_cdb_entries(
-        ws,
-        [
-            ("base.cppm", []),
-            ("combined.cppm", ["-I", ws.as_posix()]),
-        ],
-    )
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "combined.cppm")
@@ -332,7 +319,7 @@ async def test_gmf_with_import(client):
 async def test_independent_modules(client):
     """Two independent modules should each compile without errors."""
     ws = _DATA_DIR / "independent_modules"
-    _write_cdb(ws, ["x.cppm", "y.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri_x, _ = await client.open_and_wait(ws / "x.cppm")
@@ -353,7 +340,7 @@ async def test_independent_modules(client):
 async def test_template_export(client):
     """Module with exported templates should compile correctly."""
     ws = _DATA_DIR / "template_export"
-    _write_cdb(ws, ["tmpl.cppm", "use_tmpl.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "use_tmpl.cppm")
@@ -370,7 +357,7 @@ async def test_template_export(client):
 async def test_class_export_and_inheritance(client):
     """Exported class with cross-module inheritance should compile."""
     ws = _DATA_DIR / "class_export_and_inheritance"
-    _write_cdb(ws, ["shape.cppm", "circle.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "circle.cppm")
@@ -392,7 +379,7 @@ async def test_save_recompile(client, tmp_path):
         if f.is_file():
             shutil.copy2(f, tmp_path / f.name)
 
-    _write_cdb(tmp_path, ["leaf.cppm", "mid.cppm"])
+    _generate_cdb(tmp_path)
     await _init(client, tmp_path)
 
     # Open and compile Mid (which triggers Leaf PCM build).
@@ -438,7 +425,7 @@ async def test_save_recompile(client, tmp_path):
 async def test_module_compile_error(client):
     """A module with an error should produce diagnostics."""
     ws = _DATA_DIR / "module_compile_error"
-    _write_cdb(ws, ["good.cppm", "bad.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "bad.cppm")
@@ -464,7 +451,7 @@ async def test_module_compile_error(client):
 async def test_deep_chain(client):
     """A 5-level module chain should compile correctly."""
     ws = _DATA_DIR / "deep_chain"
-    _write_cdb(ws, ["m1.cppm", "m2.cppm", "m3.cppm", "m4.cppm", "m5.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "m5.cppm")
@@ -481,13 +468,7 @@ async def test_deep_chain(client):
 async def test_partition_with_gmf(client):
     """Partition with GMF (#include) should compile correctly."""
     ws = _DATA_DIR / "partition_with_gmf"
-    _write_cdb_entries(
-        ws,
-        [
-            ("part_cfg.cppm", ["-I", ws.as_posix()]),
-            ("cfg.cppm", []),
-        ],
-    )
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "cfg.cppm")
@@ -504,7 +485,7 @@ async def test_partition_with_gmf(client):
 async def test_partition_with_external_import(client):
     """Partition importing an external module should compile correctly."""
     ws = _DATA_DIR / "partition_with_external_import"
-    _write_cdb(ws, ["ext.cppm", "part.cppm", "app.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "app.cppm")
@@ -521,7 +502,7 @@ async def test_partition_with_external_import(client):
 async def test_hover_on_imported_symbol(client):
     """Hover on a symbol imported from a module should return info."""
     ws = _DATA_DIR / "hover_on_imported_symbol"
-    _write_cdb(ws, ["defs.cppm", "use.cpp"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "use.cpp")
@@ -548,7 +529,7 @@ async def test_hover_on_imported_symbol(client):
 async def test_no_modules_plain_cpp(client):
     """A plain C++ file with no modules should compile normally (no CompileGraph)."""
     ws = _DATA_DIR / "no_modules_plain_cpp"
-    _write_cdb(ws, ["plain.cpp"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     uri, _ = await client.open_and_wait(ws / "plain.cpp")
@@ -573,7 +554,7 @@ async def test_circular_module_dependency(client):
     subsequent operation (opening a non-cyclic file).
     """
     ws = _DATA_DIR / "circular_module_dependency"
-    _write_cdb(ws, ["cycle_a.cppm", "cycle_b.cppm", "ok.cppm"])
+    _generate_cdb(ws)
     await _init(client, ws)
 
     # Open a cyclic file — the server should not hang.
