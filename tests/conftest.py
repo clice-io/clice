@@ -194,7 +194,6 @@ def generate_cdb(workspace: Path) -> None:
         "-G",
         "Ninja",
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-        "-DCMAKE_CXX_SCAN_FOR_MODULES=OFF",
         f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
         "-S",
         str(workspace),
