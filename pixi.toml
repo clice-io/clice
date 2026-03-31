@@ -35,10 +35,17 @@ lld = "==20.1.8"
 llvm-tools = "==20.1.8"
 compiler-rt = "==20.1.8"
 
+[feature.build.target.win-64.dependencies]
+sccache = "*"
+
 [feature.build.target.linux-64.dependencies]
 sysroot_linux-64 = "==2.17"
 gcc = "==14.2.0"
 gxx = "==14.2.0"
+ccache = "*"
+
+[feature.build.target.osx-arm64.dependencies]
+ccache = "*"
 
 [feature.build.target.linux-64.activation]
 scripts = ["scripts/activate_linux.sh"]

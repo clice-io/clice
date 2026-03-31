@@ -17,8 +17,26 @@ jobs:
 
       - uses: ./.github/actions/setup-pixi
 
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'Windows' && '~\AppData\Local\Mozilla\sccache' || '~/.cache/ccache' }}
+          key: ${{ runner.os }}-${{ matrix.build_type }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.build_type }}-ccache-
+
       - name: Build
         run: pixi run build ${{ matrix.build_type }} ON
+
+      - name: Print cache stats
+        if: always()
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -- sccache --show-stats
+          else
+            pixi run -- ccache --show-stats
+          fi
+        shell: bash
 
       - name: Unit Test
         run: pixi run unit-test ${{ matrix.build_type }}

@@ -13,6 +13,11 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 
 option(CLICE_ENABLE_LTO "Enable ThinLTO for all targets" OFF)
+option(CLICE_USE_LIBCXX "Use libc++ instead of libstdc++" OFF)
+option(CLICE_OFFLINE_BUILD "Disable network downloads during configuration" OFF)
+option(CLICE_ENABLE_TEST "Build unit tests" OFF)
+option(CLICE_CI_ENVIRONMENT "Enable CI-specific configuration" OFF)
+option(CLICE_ENABLE_BENCHMARK "Build benchmarks" OFF)
 
 # Global flags that apply to all targets (including FetchContent dependencies).
 if(NOT MSVC)
@@ -142,7 +147,6 @@ add_library(clice-core STATIC
     "${PROJECT_SOURCE_DIR}/src/syntax/scan.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/include_resolver.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/dependency_graph.cpp"
-    "${PROJECT_SOURCE_DIR}/src/syntax/include_resolver.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/semantic_tokens.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/document_links.cpp"
     "${PROJECT_SOURCE_DIR}/src/feature/document_symbols.cpp"
@@ -191,10 +195,11 @@ add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
 target_link_libraries(clice PRIVATE clice::core eventide::deco)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-message(STATUS "Copying resource directory for development build")
-file(
-    COPY "${LLVM_INSTALL_PATH}/lib/clang"
-    DESTINATION "${PROJECT_BINARY_DIR}/lib"
+add_custom_target(copy_clang_resource ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${LLVM_INSTALL_PATH}/lib/clang"
+        "${PROJECT_BINARY_DIR}/lib/clang"
+    COMMENT "Copying clang resource directory"
 )
 install(
     DIRECTORY "${LLVM_INSTALL_PATH}/lib/clang"
@@ -222,10 +227,12 @@ if(CLICE_ENABLE_TEST)
     target_link_libraries(unit_tests PRIVATE clice::core eventide::zest eventide::deco)
 endif()
 
-add_executable(scan_benchmark
-    "${PROJECT_SOURCE_DIR}/benchmarks/scan_benchmark.cpp"
-)
-target_include_directories(scan_benchmark PRIVATE
-    "${PROJECT_SOURCE_DIR}/src"
-)
-target_link_libraries(scan_benchmark PRIVATE clice::core eventide::deco)
+if(CLICE_ENABLE_BENCHMARK)
+    add_executable(scan_benchmark
+        "${PROJECT_SOURCE_DIR}/benchmarks/scan_benchmark.cpp"
+    )
+    target_include_directories(scan_benchmark PRIVATE
+        "${PROJECT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(scan_benchmark PRIVATE clice::core eventide::deco)
+endif()
