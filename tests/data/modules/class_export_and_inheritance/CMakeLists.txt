@@ -1,9 +1,14 @@
-cmake_minimum_required(VERSION 3.20)
-project(class_export_and_inheritance CXX)
+cmake_minimum_required(VERSION 3.28)
+project(class_export_and_inheritance LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(SOURCES shape.cppm circle.cppm)
-set_source_files_properties(${SOURCES} PROPERTIES LANGUAGE CXX)
-add_library(test OBJECT ${SOURCES})
+add_library(test)
+target_sources(test
+    PUBLIC
+    FILE_SET CXX_MODULES
+    FILES
+    shape.cppm
+    circle.cppm
+)

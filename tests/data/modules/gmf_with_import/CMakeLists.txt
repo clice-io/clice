@@ -1,10 +1,15 @@
-cmake_minimum_required(VERSION 3.20)
-project(gmf_with_import CXX)
+cmake_minimum_required(VERSION 3.28)
+project(gmf_with_import LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(SOURCES base.cppm combined.cppm)
-set_source_files_properties(${SOURCES} PROPERTIES LANGUAGE CXX)
-add_library(test OBJECT ${SOURCES})
+add_library(test)
+target_sources(test
+    PUBLIC
+    FILE_SET CXX_MODULES
+    FILES
+    base.cppm
+    combined.cppm
+)
 target_include_directories(test PRIVATE ${CMAKE_SOURCE_DIR})

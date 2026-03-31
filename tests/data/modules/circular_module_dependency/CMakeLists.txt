@@ -1,9 +1,15 @@
-cmake_minimum_required(VERSION 3.20)
-project(circular_module_dependency CXX)
+cmake_minimum_required(VERSION 3.28)
+project(circular_module_dependency LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(SOURCES cycle_a.cppm cycle_b.cppm ok.cppm)
-set_source_files_properties(${SOURCES} PROPERTIES LANGUAGE CXX)
-add_library(test OBJECT ${SOURCES})
+add_library(test)
+target_sources(test
+    PUBLIC
+    FILE_SET CXX_MODULES
+    FILES
+    cycle_a.cppm
+    cycle_b.cppm
+    ok.cppm
+)
