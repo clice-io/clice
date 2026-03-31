@@ -17,6 +17,7 @@ from lsprotocol.types import (
     Diagnostic,
     DidOpenTextDocumentParams,
     InitializeParams,
+    InitializeResult,
     InitializedParams,
     ProgressParams,
     PublishDiagnosticsParams,
@@ -27,7 +28,7 @@ from lsprotocol.types import (
 from pygls.lsp.client import BaseLanguageClient
 
 
-def pytest_addoption(parser: pytest.Parser):
+def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--executable",
         required=False,
@@ -57,27 +58,28 @@ def pytest_addoption(parser: pytest.Parser):
 class CliceClient(BaseLanguageClient):
     """Language client that tracks server-sent notifications."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("clice-test-client", "0.1.0")
         self.diagnostics: dict[str, list[Diagnostic]] = {}
         self.diagnostics_events: dict[str, asyncio.Event] = {}
         self.progress_tokens: list[str] = []
         self.progress_events: list[dict] = []
+        self.init_result: InitializeResult | None = None
 
         @self.feature(TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
-        def on_diagnostics(params: PublishDiagnosticsParams):
+        def on_diagnostics(params: PublishDiagnosticsParams) -> None:
             self.diagnostics[params.uri] = list(params.diagnostics)
             if params.uri in self.diagnostics_events:
                 self.diagnostics_events[params.uri].set()
 
         @self.feature(WINDOW_WORK_DONE_PROGRESS_CREATE)
-        def on_create_progress(params: WorkDoneProgressCreateParams):
+        def on_create_progress(params: WorkDoneProgressCreateParams) -> None:
             token = str(params.token) if isinstance(params.token, int) else params.token
             self.progress_tokens.append(token)
             return None
 
         @self.feature(PROGRESS)
-        def on_progress(params: ProgressParams):
+        def on_progress(params: ProgressParams) -> None:
             token = str(params.token) if isinstance(params.token, int) else params.token
             self.progress_events.append({"token": token, "value": params.value})
 
@@ -89,7 +91,7 @@ class CliceClient(BaseLanguageClient):
             self.diagnostics_events[uri].clear()
         return self.diagnostics_events[uri]
 
-    async def initialize(self, workspace: Path):
+    async def initialize(self, workspace: Path) -> InitializeResult:
         """Initialize the LSP server with a workspace folder and return the result."""
         result = await self.initialize_async(
             InitializeParams(
@@ -101,9 +103,10 @@ class CliceClient(BaseLanguageClient):
             )
         )
         self.initialized(InitializedParams())
+        self.init_result = result
         return result
 
-    def open(self, filepath: Path, version: int = 0):
+    def open(self, filepath: Path, version: int = 0) -> tuple[str, str]:
         """Open a text document and return (uri, content)."""
         content = filepath.read_text(encoding="utf-8")
         uri = filepath.as_uri()
@@ -116,12 +119,14 @@ class CliceClient(BaseLanguageClient):
         )
         return uri, content
 
-    async def wait_diagnostics(self, uri: str, timeout: float = 30.0):
+    async def wait_diagnostics(self, uri: str, timeout: float = 30.0) -> None:
         """Wait for diagnostics on the given URI."""
         event = self.wait_for_diagnostics(uri)
         await asyncio.wait_for(event.wait(), timeout=timeout)
 
-    async def open_and_wait(self, filepath: Path, timeout: float = 60.0):
+    async def open_and_wait(
+        self, filepath: Path, timeout: float = 60.0
+    ) -> tuple[str, str]:
         """Open a file and wait for compilation diagnostics."""
         uri = filepath.as_uri()
         event = self.wait_for_diagnostics(uri)
@@ -131,7 +136,7 @@ class CliceClient(BaseLanguageClient):
 
 
 @pytest.fixture(scope="session")
-def executable(request) -> Path:
+def executable(request: pytest.FixtureRequest) -> Path:
     exe = request.config.getoption("--executable")
     if not exe:
         pytest.skip("--executable not provided")
@@ -152,7 +157,7 @@ def executable(request) -> Path:
 
 
 @pytest.fixture(scope="session")
-def test_data_dir():
+def test_data_dir() -> Path:
     path = Path(__file__).parent / "data"
     data_dir = path.resolve()
 
@@ -178,7 +183,7 @@ def test_data_dir():
     return data_dir
 
 
-def generate_cdb(workspace: Path):
+def generate_cdb(workspace: Path) -> None:
     """Generate compile_commands.json using CMake with Ninja backend."""
     cmake = shutil.which("cmake")
     if cmake is None:
@@ -202,24 +207,26 @@ def generate_cdb(workspace: Path):
 
 
 @pytest.fixture
-def ws(request, test_data_dir):
+def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | None:
     """Resolve workspace path from @pytest.mark.workspace("subdir") marker.
 
     If the workspace contains a CMakeLists.txt, automatically runs cmake
-    to generate compile_commands.json.
+    to generate compile_commands.json. Returns None if no marker is present.
     """
     marker = request.node.get_closest_marker("workspace")
     if marker is None:
-        pytest.fail("Test requires @pytest.mark.workspace(...) marker")
-    workspace = test_data_dir / marker.args[0]
-    if (workspace / "CMakeLists.txt").exists():
-        generate_cdb(workspace)
-    return workspace
+        return None
+    path = test_data_dir / marker.args[0]
+    if (path / "CMakeLists.txt").exists():
+        generate_cdb(path)
+    return path
 
 
 @pytest_asyncio.fixture
-async def client(request, executable: Path, test_data_dir: Path):
-    """Spawn clice server, yield pygls client, then shutdown+exit."""
+async def client(
+    request: pytest.FixtureRequest, executable: Path, workspace: Path | None
+) -> CliceClient:
+    """Spawn clice server, auto-initialize if @pytest.mark.workspace is present."""
     config = request.config
     mode = config.getoption("--mode")
 
@@ -231,6 +238,9 @@ async def client(request, executable: Path, test_data_dir: Path):
 
     c = CliceClient()
     await c.start_io(*cmd)
+
+    if workspace is not None:
+        await c.initialize(workspace)
 
     yield c
 

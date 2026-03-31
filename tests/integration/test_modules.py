@@ -7,9 +7,10 @@ and module_worker_tests. They test the complete pipeline:
 
 import asyncio
 import shutil
+from pathlib import Path
 
 import pytest
-from conftest import generate_cdb
+from conftest import CliceClient, generate_cdb
 from lsprotocol.types import (
     DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
@@ -21,30 +22,15 @@ from lsprotocol.types import (
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-async def _init(client, workspace):
-    """Initialize the LSP server with a workspace and wait for CDB scan."""
-    result = await client.initialize(workspace)
-    # Give the server time to load CDB and scan dependency graph.
-    await asyncio.sleep(2.0)
-    return result
-
-
-# ---------------------------------------------------------------------------
 # Single module (no dependencies)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/single_module_no_deps")
-async def test_single_module_no_deps(client, ws):
+async def test_single_module_no_deps(client: CliceClient, workspace: Path):
     """A single module with no imports should compile without errors."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "mod_a.cppm")
+    uri, _ = await client.open_and_wait(workspace / "mod_a.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -56,11 +42,9 @@ async def test_single_module_no_deps(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/chained_modules")
-async def test_chained_modules(client, ws):
+async def test_chained_modules(client: CliceClient, workspace: Path):
     """Opening a module that imports another should trigger dependency compilation."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "mod_b.cppm")
+    uri, _ = await client.open_and_wait(workspace / "mod_b.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -72,11 +56,9 @@ async def test_chained_modules(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/diamond_modules")
-async def test_diamond_modules(client, ws):
+async def test_diamond_modules(client: CliceClient, workspace: Path):
     """Diamond dependency graph should compile correctly."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "top.cppm")
+    uri, _ = await client.open_and_wait(workspace / "top.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -88,11 +70,9 @@ async def test_diamond_modules(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/dotted_module_name")
-async def test_dotted_module_name(client, ws):
+async def test_dotted_module_name(client: CliceClient, workspace: Path):
     """Dotted module names should work correctly."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "app.cppm")
+    uri, _ = await client.open_and_wait(workspace / "app.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -104,11 +84,9 @@ async def test_dotted_module_name(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/module_implementation_unit")
-async def test_module_implementation_unit(client, ws):
+async def test_module_implementation_unit(client: CliceClient, workspace: Path):
     """A module implementation unit should compile using the interface PCM."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "greeter_impl.cpp")
+    uri, _ = await client.open_and_wait(workspace / "greeter_impl.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -120,11 +98,9 @@ async def test_module_implementation_unit(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/consumer_imports_module")
-async def test_consumer_imports_module(client, ws):
+async def test_consumer_imports_module(client: CliceClient, workspace: Path):
     """A regular .cpp file that imports a module should get PCM deps compiled."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "main.cpp")
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -136,11 +112,9 @@ async def test_consumer_imports_module(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/module_partitions")
-async def test_module_partitions(client, ws):
+async def test_module_partitions(client: CliceClient, workspace: Path):
     """Module partitions should be compiled in correct order."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "lib.cppm")
+    uri, _ = await client.open_and_wait(workspace / "lib.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -152,11 +126,9 @@ async def test_module_partitions(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/partition_interface")
-async def test_partition_interface(client, ws):
+async def test_partition_interface(client: CliceClient, workspace: Path):
     """A single partition interface re-exported from primary should compile."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "primary.cppm")
+    uri, _ = await client.open_and_wait(workspace / "primary.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -168,11 +140,9 @@ async def test_partition_interface(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/partition_chain")
-async def test_partition_chain(client, ws):
+async def test_partition_chain(client: CliceClient, workspace: Path):
     """Partition importing another partition within same module."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "sys.cppm")
+    uri, _ = await client.open_and_wait(workspace / "sys.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -184,11 +154,9 @@ async def test_partition_chain(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/re_export")
-async def test_re_export(client, ws):
+async def test_re_export(client: CliceClient, workspace: Path):
     """Re-exported module symbols should be accessible through the wrapper."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "user.cppm")
+    uri, _ = await client.open_and_wait(workspace / "user.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -200,11 +168,9 @@ async def test_re_export(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/export_block")
-async def test_export_block(client, ws):
+async def test_export_block(client: CliceClient, workspace: Path):
     """Module with export block syntax should compile correctly."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "consumer.cppm")
+    uri, _ = await client.open_and_wait(workspace / "consumer.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -216,11 +182,9 @@ async def test_export_block(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/global_module_fragment")
-async def test_global_module_fragment(client, ws):
+async def test_global_module_fragment(client: CliceClient, workspace: Path):
     """Module with global module fragment (#include before module decl)."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "gmf.cppm")
+    uri, _ = await client.open_and_wait(workspace / "gmf.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -232,11 +196,9 @@ async def test_global_module_fragment(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/private_module_fragment")
-async def test_private_module_fragment(client, ws):
+async def test_private_module_fragment(client: CliceClient, workspace: Path):
     """Module with private module fragment should compile correctly."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "priv.cppm")
+    uri, _ = await client.open_and_wait(workspace / "priv.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -248,11 +210,9 @@ async def test_private_module_fragment(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/export_namespace")
-async def test_export_namespace(client, ws):
+async def test_export_namespace(client: CliceClient, workspace: Path):
     """Module with exported namespace should compile correctly."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "calc.cppm")
+    uri, _ = await client.open_and_wait(workspace / "calc.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -264,11 +224,9 @@ async def test_export_namespace(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/gmf_with_import")
-async def test_gmf_with_import(client, ws):
+async def test_gmf_with_import(client: CliceClient, workspace: Path):
     """Module with GMF (#include) + import should compile correctly."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "combined.cppm")
+    uri, _ = await client.open_and_wait(workspace / "combined.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -280,15 +238,13 @@ async def test_gmf_with_import(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/independent_modules")
-async def test_independent_modules(client, ws):
+async def test_independent_modules(client: CliceClient, workspace: Path):
     """Two independent modules should each compile without errors."""
-    await _init(client, ws)
-
-    uri_x, _ = await client.open_and_wait(ws / "x.cppm")
+    uri_x, _ = await client.open_and_wait(workspace / "x.cppm")
     diags_x = client.diagnostics.get(uri_x, [])
     assert len(diags_x) == 0, f"Expected no diagnostics for X, got: {diags_x}"
 
-    uri_y, _ = await client.open_and_wait(ws / "y.cppm")
+    uri_y, _ = await client.open_and_wait(workspace / "y.cppm")
     diags_y = client.diagnostics.get(uri_y, [])
     assert len(diags_y) == 0, f"Expected no diagnostics for Y, got: {diags_y}"
 
@@ -300,11 +256,9 @@ async def test_independent_modules(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/template_export")
-async def test_template_export(client, ws):
+async def test_template_export(client: CliceClient, workspace: Path):
     """Module with exported templates should compile correctly."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "use_tmpl.cppm")
+    uri, _ = await client.open_and_wait(workspace / "use_tmpl.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -316,11 +270,9 @@ async def test_template_export(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/class_export_and_inheritance")
-async def test_class_export_and_inheritance(client, ws):
+async def test_class_export_and_inheritance(client: CliceClient, workspace: Path):
     """Exported class with cross-module inheritance should compile."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "circle.cppm")
+    uri, _ = await client.open_and_wait(workspace / "circle.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -331,7 +283,7 @@ async def test_class_export_and_inheritance(client, ws):
 
 
 @pytest.mark.asyncio
-async def test_save_recompile(client, test_data_dir, tmp_path):
+async def test_save_recompile(client: CliceClient, test_data_dir: Path, tmp_path: Path):
     """Closing and reopening a modified module file should recompile without errors."""
     # This test mutates source files at runtime, so copy data to tmp_path.
     src = test_data_dir / "modules" / "save_recompile"
@@ -340,7 +292,7 @@ async def test_save_recompile(client, test_data_dir, tmp_path):
             shutil.copy2(f, tmp_path / f.name)
 
     generate_cdb(tmp_path)
-    await _init(client, tmp_path)
+    await client.initialize(tmp_path)
 
     # Open and compile Mid (which triggers Leaf PCM build).
     mid_uri, _ = await client.open_and_wait(tmp_path / "mid.cppm")
@@ -383,11 +335,9 @@ async def test_save_recompile(client, test_data_dir, tmp_path):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/module_compile_error")
-async def test_module_compile_error(client, ws):
+async def test_module_compile_error(client: CliceClient, workspace: Path):
     """A module with an error should produce diagnostics."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "bad.cppm")
+    uri, _ = await client.open_and_wait(workspace / "bad.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) > 0, "Expected diagnostics for undefined symbol"
     # The error should be on line 2 (0-indexed) where UNDEFINED_SYMBOL is used.
@@ -408,11 +358,9 @@ async def test_module_compile_error(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/deep_chain")
-async def test_deep_chain(client, ws):
+async def test_deep_chain(client: CliceClient, workspace: Path):
     """A 5-level module chain should compile correctly."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "m5.cppm")
+    uri, _ = await client.open_and_wait(workspace / "m5.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -424,11 +372,9 @@ async def test_deep_chain(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/partition_with_gmf")
-async def test_partition_with_gmf(client, ws):
+async def test_partition_with_gmf(client: CliceClient, workspace: Path):
     """Partition with GMF (#include) should compile correctly."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "cfg.cppm")
+    uri, _ = await client.open_and_wait(workspace / "cfg.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -440,11 +386,9 @@ async def test_partition_with_gmf(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/partition_with_external_import")
-async def test_partition_with_external_import(client, ws):
+async def test_partition_with_external_import(client: CliceClient, workspace: Path):
     """Partition importing an external module should compile correctly."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "app.cppm")
+    uri, _ = await client.open_and_wait(workspace / "app.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -456,11 +400,9 @@ async def test_partition_with_external_import(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/hover_on_imported_symbol")
-async def test_hover_on_imported_symbol(client, ws):
+async def test_hover_on_imported_symbol(client: CliceClient, workspace: Path):
     """Hover on a symbol imported from a module should return info."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "use.cpp")
+    uri, _ = await client.open_and_wait(workspace / "use.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -482,11 +424,9 @@ async def test_hover_on_imported_symbol(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/no_modules_plain_cpp")
-async def test_no_modules_plain_cpp(client, ws):
+async def test_no_modules_plain_cpp(client: CliceClient, workspace: Path):
     """A plain C++ file with no modules should compile normally (no CompileGraph)."""
-    await _init(client, ws)
-
-    uri, _ = await client.open_and_wait(ws / "plain.cpp")
+    uri, _ = await client.open_and_wait(workspace / "plain.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -498,7 +438,7 @@ async def test_no_modules_plain_cpp(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("modules/circular_module_dependency")
-async def test_circular_module_dependency(client, ws):
+async def test_circular_module_dependency(client: CliceClient, workspace: Path):
     """Circular module imports should not hang the server.
 
     When modules form a cycle (CycA imports CycB, CycB imports CycA),
@@ -508,15 +448,13 @@ async def test_circular_module_dependency(client, ws):
     remains responsive — we verify this by successfully performing a
     subsequent operation (opening a non-cyclic file).
     """
-    await _init(client, ws)
-
     # Open a cyclic file — the server should not hang.
-    client.open(ws / "cycle_a.cppm")
+    client.open(workspace / "cycle_a.cppm")
     # Give the server time to attempt (and fail) the cyclic PCM builds.
     await asyncio.sleep(5.0)
 
     # Verify the server is still responsive by opening a non-cyclic file.
-    uri_ok, _ = await client.open_and_wait(ws / "ok.cppm")
+    uri_ok, _ = await client.open_and_wait(workspace / "ok.cppm")
     diags = client.diagnostics.get(uri_ok, [])
     assert len(diags) == 0, (
         f"Non-cyclic module should compile fine after cycle attempt, got: {diags}"

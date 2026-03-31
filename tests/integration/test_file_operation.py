@@ -1,8 +1,10 @@
 """File operation tests for the clice LSP server using pygls."""
 
 import asyncio
+from pathlib import Path
 
 import pytest
+from conftest import CliceClient
 from lsprotocol.types import (
     CompletionParams,
     DidChangeTextDocumentParams,
@@ -19,17 +21,15 @@ from lsprotocol.types import (
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
-async def test_did_open(client, ws):
-    await client.initialize(ws)
-    client.open(ws / "main.cpp")
+async def test_did_open(client: CliceClient, workspace: Path):
+    client.open(workspace / "main.cpp")
     await asyncio.sleep(5)
 
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
-async def test_did_change(client, ws):
-    await client.initialize(ws)
-    uri, content = client.open(ws / "main.cpp")
+async def test_did_change(client: CliceClient, workspace: Path):
+    uri, content = client.open(workspace / "main.cpp")
 
     for i in range(20):
         content += "\n"
@@ -45,17 +45,15 @@ async def test_did_change(client, ws):
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("clang_tidy")
-async def test_clang_tidy(client, ws):
-    await client.initialize(ws)
-    client.open(ws / "main.cpp")
+async def test_clang_tidy(client: CliceClient, workspace: Path):
+    client.open(workspace / "main.cpp")
     await asyncio.sleep(5)
 
 
 @pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
-async def test_hover_save_close(client, ws):
-    main_cpp = ws / "main.cpp"
-    await client.initialize(ws)
+async def test_hover_save_close(client: CliceClient, workspace: Path):
+    main_cpp = workspace / "main.cpp"
 
     uri, content = client.open(main_cpp)
 
