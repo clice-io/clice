@@ -188,20 +188,18 @@ def generate_cdb(workspace: Path) -> None:
     cmake = shutil.which("cmake")
     if cmake is None:
         raise RuntimeError("cmake executable not found in PATH")
-    cxx = shutil.which("clang++")
+    toolchain = Path(__file__).resolve().parent.parent / "cmake" / "toolchain.cmake"
     cmd = [
         cmake,
         "-G",
         "Ninja",
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-        "-DCMAKE_CXX_SCAN_FOR_MODULES=OFF",
+        f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
         "-S",
         str(workspace),
         "-B",
         str(workspace / "build"),
     ]
-    if cxx is not None:
-        cmd.append(f"-DCMAKE_CXX_COMPILER={cxx}")
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if result.returncode != 0:
         raise RuntimeError(f"cmake failed:\n{result.stderr}")
