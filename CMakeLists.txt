@@ -132,52 +132,8 @@ add_custom_command(
 
 add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 
-# Temporary migration-only build graph.
-add_library(clice-core STATIC
-    "${PROJECT_SOURCE_DIR}/src/command/argument_parser.cpp"
-    "${PROJECT_SOURCE_DIR}/src/command/command.cpp"
-    "${PROJECT_SOURCE_DIR}/src/command/search_config.cpp"
-    "${PROJECT_SOURCE_DIR}/src/command/toolchain.cpp"
-    "${PROJECT_SOURCE_DIR}/src/compile/compilation.cpp"
-    "${PROJECT_SOURCE_DIR}/src/compile/compilation_unit.cpp"
-    "${PROJECT_SOURCE_DIR}/src/compile/diagnostic.cpp"
-    "${PROJECT_SOURCE_DIR}/src/compile/directive.cpp"
-    "${PROJECT_SOURCE_DIR}/src/compile/tidy.cpp"
-    "${PROJECT_SOURCE_DIR}/src/support/doxygen.cpp"
-    "${PROJECT_SOURCE_DIR}/src/support/structed_text.cpp"
-    "${PROJECT_SOURCE_DIR}/src/support/fuzzy_matcher.cpp"
-    "${PROJECT_SOURCE_DIR}/src/support/glob_pattern.cpp"
-    "${PROJECT_SOURCE_DIR}/src/support/logging.cpp"
-    "${PROJECT_SOURCE_DIR}/src/syntax/lexer.cpp"
-    "${PROJECT_SOURCE_DIR}/src/syntax/scan.cpp"
-    "${PROJECT_SOURCE_DIR}/src/syntax/include_resolver.cpp"
-    "${PROJECT_SOURCE_DIR}/src/syntax/dependency_graph.cpp"
-    "${PROJECT_SOURCE_DIR}/src/feature/semantic_tokens.cpp"
-    "${PROJECT_SOURCE_DIR}/src/feature/document_links.cpp"
-    "${PROJECT_SOURCE_DIR}/src/feature/document_symbols.cpp"
-    "${PROJECT_SOURCE_DIR}/src/feature/folding_ranges.cpp"
-    "${PROJECT_SOURCE_DIR}/src/feature/code_completion.cpp"
-    "${PROJECT_SOURCE_DIR}/src/feature/hover.cpp"
-    "${PROJECT_SOURCE_DIR}/src/feature/inlay_hints.cpp"
-    "${PROJECT_SOURCE_DIR}/src/feature/signature_help.cpp"
-    "${PROJECT_SOURCE_DIR}/src/feature/formatting.cpp"
-    "${PROJECT_SOURCE_DIR}/src/feature/diagnostics.cpp"
-    "${PROJECT_SOURCE_DIR}/src/semantic/resolver.cpp"
-    "${PROJECT_SOURCE_DIR}/src/semantic/symbol_kind.cpp"
-    "${PROJECT_SOURCE_DIR}/src/semantic/ast_utility.cpp"
-    "${PROJECT_SOURCE_DIR}/src/semantic/selection.cpp"
-    "${PROJECT_SOURCE_DIR}/src/index/include_graph.cpp"
-    "${PROJECT_SOURCE_DIR}/src/index/tu_index.cpp"
-    "${PROJECT_SOURCE_DIR}/src/index/usr_generation.cpp"
-    "${PROJECT_SOURCE_DIR}/src/index/project_index.cpp"
-    "${PROJECT_SOURCE_DIR}/src/index/merged_index.cpp"
-    "${PROJECT_SOURCE_DIR}/src/server/stateless_worker.cpp"
-    "${PROJECT_SOURCE_DIR}/src/server/stateful_worker.cpp"
-    "${PROJECT_SOURCE_DIR}/src/server/worker_pool.cpp"
-    "${PROJECT_SOURCE_DIR}/src/server/compile_graph.cpp"
-    "${PROJECT_SOURCE_DIR}/src/server/master_server.cpp"
-    "${PROJECT_SOURCE_DIR}/src/server/config.cpp"
-)
+file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
+add_library(clice-core STATIC ${CLICE_CORE_SOURCES})
 add_library(clice::core ALIAS clice-core)
 add_dependencies(clice-core generate_flatbuffers_schema)
 
@@ -243,76 +199,5 @@ if(CLICE_ENABLE_BENCHMARK)
 endif()
 
 if(CLICE_RELEASE)
-    set(CLICE_PACK_DIR "${PROJECT_BINARY_DIR}/pack")
-    set(CLICE_SYMBOL_DIR "${PROJECT_BINARY_DIR}/pack-symbol")
-
-    if(WIN32)
-        set(CLICE_ARCHIVE_EXT ".zip")
-    else()
-        set(CLICE_ARCHIVE_EXT ".tar.gz")
-    endif()
-
-    if(WIN32)
-        set(CLICE_EXE_NAME "clice.exe")
-        set(CLICE_SYMBOL_NAME "clice.pdb")
-    elseif(APPLE)
-        set(CLICE_EXE_NAME "clice")
-        set(CLICE_SYMBOL_NAME "clice.dSYM")
-    else()
-        set(CLICE_EXE_NAME "clice")
-        set(CLICE_SYMBOL_NAME "clice.debug")
-    endif()
-
-    if(WIN32)
-        add_custom_target(clice-strip ALL
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}"
-            DEPENDS clice
-            COMMENT "Collecting PDB for clice"
-        )
-    elseif(APPLE)
-        add_custom_target(clice-strip ALL
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}"
-            COMMAND dsymutil "$<TARGET_FILE:clice>" -o "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}"
-            COMMAND strip -x "$<TARGET_FILE:clice>"
-            DEPENDS clice
-            COMMENT "Extracting dSYM and stripping clice"
-        )
-    else()
-        add_custom_target(clice-strip ALL
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}"
-            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug "$<TARGET_FILE:clice>" "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}"
-            COMMAND ${CMAKE_STRIP} --strip-debug --strip-unneeded "$<TARGET_FILE:clice>"
-            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink="${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "$<TARGET_FILE:clice>"
-            DEPENDS clice
-            COMMENT "Extracting debug symbols and stripping clice"
-        )
-    endif()
-
-    add_custom_target(clice-pack ALL
-        DEPENDS clice-strip copy_clang_resource
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${CLICE_PACK_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_PACK_DIR}/clice/bin"
-        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:clice>" "${CLICE_PACK_DIR}/clice/bin/"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${LLVM_INSTALL_PATH}/lib/clang" "${CLICE_PACK_DIR}/clice/lib/clang"
-        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/docs/clice.toml" "${CLICE_PACK_DIR}/clice/"
-        COMMAND ${CMAKE_COMMAND}
-            -DARCHIVE_DIR="${CLICE_PACK_DIR}/clice"
-            -DOUTPUT="${PROJECT_BINARY_DIR}/clice${CLICE_ARCHIVE_EXT}"
-            -DWORK_DIR="${CLICE_PACK_DIR}"
-            -P "${PROJECT_SOURCE_DIR}/cmake/archive.cmake"
-        COMMENT "Packaging clice distribution"
-    )
-
-    add_custom_target(clice-pack-symbol ALL
-        DEPENDS clice-strip
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${CLICE_SYMBOL_DIR}/pack"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}/pack"
-        COMMAND ${CMAKE_COMMAND} -E copy "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "${CLICE_SYMBOL_DIR}/pack/"
-        COMMAND ${CMAKE_COMMAND}
-            -DARCHIVE_DIR="${CLICE_SYMBOL_DIR}/pack"
-            -DOUTPUT="${PROJECT_BINARY_DIR}/clice-symbol${CLICE_ARCHIVE_EXT}"
-            -DWORK_DIR="${CLICE_SYMBOL_DIR}/pack"
-            -P "${PROJECT_SOURCE_DIR}/cmake/archive.cmake"
-        COMMENT "Packaging clice debug symbols"
-    )
+    include("${PROJECT_SOURCE_DIR}/cmake/release.cmake")
 endif()
