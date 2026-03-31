@@ -39,3 +39,7 @@ jobs:
 
       - name: Run benchmark
         run: ./build/RelWithDebInfo/bin/scan_benchmark --runs 20 llvm-build/compile_commands.json
+
+      - name: Stop sccache server
+        if: runner.os == 'Windows'
+        run: pixi run -- sccache --stop-server || true
