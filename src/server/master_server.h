@@ -104,6 +104,9 @@ private:
     // Whether background indexing is currently in progress.
     bool indexing_active = false;
 
+    // Whether a background indexing coroutine has been scheduled (waiting on timer).
+    bool indexing_scheduled = false;
+
     // Timer for idle-triggered background indexing.
     std::shared_ptr<et::timer> index_idle_timer;
 

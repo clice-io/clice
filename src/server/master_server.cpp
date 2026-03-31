@@ -516,13 +516,12 @@ void MasterServer::merge_index_result(const void* tu_index_data, std::size_t siz
 
         if(tu_path_id == main_tu_path_id) {
             // Main file (source file) gets a compilation context with include locations.
+            // Collect ALL include locations with path_ids remapped to project-level ids.
             std::vector<index::IncludeLocation> include_locs;
             for(auto& loc: tu_index.graph.locations) {
-                if(loc.path_id == tu_path_id) {
-                    index::IncludeLocation remapped = loc;
-                    remapped.path_id = file_ids_map[loc.path_id];
-                    include_locs.push_back(remapped);
-                }
+                index::IncludeLocation remapped = loc;
+                remapped.path_id = file_ids_map[loc.path_id];
+                include_locs.push_back(remapped);
             }
             merged.merge(global_path_id, tu_index.built_at, std::move(include_locs), file_idx);
         } else {
@@ -633,10 +632,9 @@ void MasterServer::load_index() {
 }
 
 void MasterServer::schedule_indexing() {
-    if(!config.enable_indexing)
+    if(!config.enable_indexing || indexing_active || indexing_scheduled)
         return;
-    if(indexing_active)
-        return;
+    indexing_scheduled = true;
 
     // Create or reset idle timer.
     if(!index_idle_timer) {
@@ -651,6 +649,7 @@ et::task<> MasterServer::run_background_indexing() {
     if(index_idle_timer) {
         co_await index_idle_timer->wait();
     }
+    indexing_scheduled = false;
 
     if(index_queue_pos >= index_queue.size()) {
         LOG_DEBUG("Background indexing: queue exhausted");
@@ -671,16 +670,22 @@ et::task<> MasterServer::run_background_indexing() {
         // regardless of whether the file is open.
 
         // Check if the index needs update by checking mtime against existing shard.
-        auto proj_path_id = project_index.path_pool.path_id(file_path);
-        auto merged_it = merged_indices.find(proj_path_id);
-        if(merged_it != merged_indices.end()) {
-            // Build path mapping for need_update check.
-            llvm::SmallVector<llvm::StringRef> path_mapping;
-            for(auto& p: project_index.path_pool.paths) {
-                path_mapping.push_back(p);
+        // If the file is not yet in the project_index path pool, it has never been
+        // indexed — always proceed.  Only skip when we already have a shard that is
+        // still fresh.
+        auto cache_it = project_index.path_pool.cache.find(file_path);
+        if(cache_it != project_index.path_pool.cache.end()) {
+            auto proj_path_id = cache_it->second;
+            auto merged_it = merged_indices.find(proj_path_id);
+            if(merged_it != merged_indices.end()) {
+                // Build path mapping for need_update check.
+                llvm::SmallVector<llvm::StringRef> path_mapping;
+                for(auto& p: project_index.path_pool.paths) {
+                    path_mapping.push_back(p);
+                }
+                if(!merged_it->second.need_update(path_mapping))
+                    continue;
             }
-            if(!merged_it->second.need_update(path_mapping))
-                continue;
         }
 
         // Prepare IndexParams for the stateless worker.
@@ -890,9 +895,6 @@ MasterServer::RawResult MasterServer::query_index_relations(const std::string& u
             file_text = (*buf)->getBuffer().str();
         }
 
-        if(file_text.empty())
-            continue;
-
         lsp::PositionMapper file_mapper(file_text, lsp::PositionEncoding::UTF16);
 
         file_merged_it->second.lookup(symbol_hash, kind, [&](const index::Relation& r) {
@@ -1024,9 +1026,6 @@ std::optional<protocol::Location>
                 continue;
             file_text = (*buf)->getBuffer().str();
         }
-        if(file_text.empty())
-            continue;
-
         lsp::PositionMapper file_mapper(file_text, lsp::PositionEncoding::UTF16);
 
         std::optional<protocol::Location> result;
@@ -1537,14 +1536,15 @@ void MasterServer::register_handlers() {
             if(caller_sym_it == project_index.symbols.end())
                 continue;
 
+            if(!def_loc)
+                continue;
+
             protocol::CallHierarchyItem caller_item;
             caller_item.name = caller_sym_it->second.name;
             caller_item.kind = to_lsp_symbol_kind(caller_sym_it->second.kind);
-            if(def_loc) {
-                caller_item.uri = def_loc->uri;
-                caller_item.range = def_loc->range;
-                caller_item.selection_range = def_loc->range;
-            }
+            caller_item.uri = def_loc->uri;
+            caller_item.range = def_loc->range;
+            caller_item.selection_range = def_loc->range;
             caller_item.data = protocol::LSPAny(static_cast<std::int64_t>(caller_hash));
 
             protocol::CallHierarchyIncomingCall call;
@@ -1615,14 +1615,15 @@ void MasterServer::register_handlers() {
             if(callee_sym_it == project_index.symbols.end())
                 continue;
 
+            if(!def_loc)
+                continue;
+
             protocol::CallHierarchyItem callee_item;
             callee_item.name = callee_sym_it->second.name;
             callee_item.kind = to_lsp_symbol_kind(callee_sym_it->second.kind);
-            if(def_loc) {
-                callee_item.uri = def_loc->uri;
-                callee_item.range = def_loc->range;
-                callee_item.selection_range = def_loc->range;
-            }
+            callee_item.uri = def_loc->uri;
+            callee_item.range = def_loc->range;
+            callee_item.selection_range = def_loc->range;
             callee_item.data = protocol::LSPAny(static_cast<std::int64_t>(callee_hash));
 
             protocol::CallHierarchyOutgoingCall call;

@@ -36,18 +36,18 @@ async def test_goto_definition(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     await asyncio.sleep(15)  # Wait for background indexing
 
-    # 'add' call on line 23 (0-indexed), column 12
+    # 'add' call on line 24 (0-indexed), column 12
     result = await client.text_document_definition_async(
         DefinitionParams(
             text_document=_doc(uri),
-            position=Position(line=23, character=12),
+            position=Position(line=24, character=12),
         )
     )
     assert result is not None
     locs = result if isinstance(result, list) else [result]
     assert len(locs) > 0
-    # Definition should point to line 17 where 'int add(...)' is declared
-    assert any(loc.range.start.line == 17 for loc in locs)
+    # Definition should point to line 18 where 'int add(...)' is declared
+    assert any(loc.range.start.line == 18 for loc in locs)
 
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
@@ -63,16 +63,16 @@ async def test_find_references(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     await asyncio.sleep(15)
 
-    # global_var definition on line 29, column 4
+    # global_var definition on line 30 (0-indexed), column 4
     result = await client.text_document_references_async(
         ReferenceParams(
             text_document=_doc(uri),
-            position=Position(line=29, character=4),
+            position=Position(line=30, character=4),
             context=ReferenceContext(include_declaration=True),
         )
     )
     assert result is not None
-    # global_var is declared on line 29 and used on lines 32 and 36
+    # global_var is declared on line 30 and used on lines 33 and 37
     assert len(result) >= 3
 
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
@@ -89,11 +89,11 @@ async def test_call_hierarchy_prepare(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     await asyncio.sleep(15)
 
-    # 'add' definition at line 17, column 4
+    # 'add' definition at line 18 (0-indexed), column 4
     result = await client.text_document_prepare_call_hierarchy_async(
         CallHierarchyPrepareParams(
             text_document=_doc(uri),
-            position=Position(line=17, character=4),
+            position=Position(line=18, character=4),
         )
     )
     assert result is not None
@@ -109,11 +109,11 @@ async def test_call_hierarchy_incoming(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     await asyncio.sleep(15)
 
-    # Prepare call hierarchy for 'add' at line 17, column 4
+    # Prepare call hierarchy for 'add' at line 18 (0-indexed), column 4
     items = await client.text_document_prepare_call_hierarchy_async(
         CallHierarchyPrepareParams(
             text_document=_doc(uri),
-            position=Position(line=17, character=4),
+            position=Position(line=18, character=4),
         )
     )
     assert items and len(items) > 0
@@ -134,11 +134,11 @@ async def test_call_hierarchy_outgoing(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     await asyncio.sleep(15)
 
-    # Prepare call hierarchy for 'compute' at line 22, column 4
+    # Prepare call hierarchy for 'compute' at line 23 (0-indexed), column 4
     items = await client.text_document_prepare_call_hierarchy_async(
         CallHierarchyPrepareParams(
             text_document=_doc(uri),
-            position=Position(line=22, character=4),
+            position=Position(line=23, character=4),
         )
     )
     assert items and len(items) > 0
@@ -164,11 +164,11 @@ async def test_type_hierarchy_prepare(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     await asyncio.sleep(15)
 
-    # 'Dog' at line 7, column 7
+    # 'Dog' at line 8 (0-indexed), column 7
     result = await client.text_document_prepare_type_hierarchy_async(
         TypeHierarchyPrepareParams(
             text_document=_doc(uri),
-            position=Position(line=7, character=7),
+            position=Position(line=8, character=7),
         )
     )
     assert result is not None
@@ -184,11 +184,11 @@ async def test_type_hierarchy_supertypes(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     await asyncio.sleep(15)
 
-    # 'Dog' at line 7, column 7
+    # 'Dog' at line 8 (0-indexed), column 7
     items = await client.text_document_prepare_type_hierarchy_async(
         TypeHierarchyPrepareParams(
             text_document=_doc(uri),
-            position=Position(line=7, character=7),
+            position=Position(line=8, character=7),
         )
     )
     assert items and len(items) > 0

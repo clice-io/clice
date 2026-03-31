@@ -9,7 +9,7 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self, TU
     llvm::SmallVector<std::uint32_t> file_ids_map;
     file_ids_map.resize_for_overwrite(paths.size());
 
-    for(auto i = 0; i < paths.size(); i++) {
+    for(std::uint32_t i = 0; i < paths.size(); i++) {
         file_ids_map[i] = self.path_pool.path_id(paths[i]);
     }
 

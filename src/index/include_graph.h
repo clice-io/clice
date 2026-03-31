@@ -57,7 +57,7 @@ struct IncludeGraph {
         return it->second;
     }
 
-    std::uint32_t path_id(clang::FileID fid) {
+    std::uint32_t path_id(clang::FileID fid) const {
         auto include = include_location_id(fid);
         if(include != -1) {
             return locations[include].path_id;

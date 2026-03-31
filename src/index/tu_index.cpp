@@ -66,7 +66,7 @@ public:
         index.occurrences.emplace_back(range, symbol_id.hash);
 
         Relation relation{
-            .kind = RelationKind::Definition,
+            .kind = kind,
             .range = range,
             .target_symbol = 0,
         };
@@ -235,7 +235,7 @@ void TUIndex::serialize(llvm::raw_ostream& os) const {
     /// Convert FileID-keyed file_indices to path_id-keyed entries.
     llvm::SmallVector<fbs::Offset<binary::TUFileIndexEntry>> file_idx_vec;
     for(auto& [fid, index]: file_indices) {
-        auto pid = const_cast<IncludeGraph&>(graph).path_id(fid);
+        auto pid = graph.path_id(fid);
         file_idx_vec.push_back(serialize_file_index(pid, index));
     }
 
