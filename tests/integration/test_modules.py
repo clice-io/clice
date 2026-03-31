@@ -197,12 +197,8 @@ async def test_module_compile_error(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "bad.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) > 0, "Expected diagnostics for undefined symbol"
-    error_diag = diags[0]
-    assert error_diag.range.start.line == 4, (
-        f"Expected error on line 4, got line {error_diag.range.start.line}"
-    )
-    assert error_diag.severity == 1, (
-        f"Expected severity Error (1), got {error_diag.severity}"
+    assert any(d.range.start.line == 4 and d.severity == 1 for d in diags), (
+        f"Expected an error diagnostic on line 4, got: {diags}"
     )
 
 

@@ -121,7 +121,11 @@ class CliceClient(BaseLanguageClient):
 
     async def wait_diagnostics(self, uri: str, timeout: float = 30.0) -> None:
         """Wait for diagnostics on the given URI."""
+        if uri in self.diagnostics:
+            return
         event = self.wait_for_diagnostics(uri)
+        if uri in self.diagnostics:
+            return
         await asyncio.wait_for(event.wait(), timeout=timeout)
 
     async def open_and_wait(
@@ -215,6 +219,11 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
     marker = request.node.get_closest_marker("workspace")
     if marker is None:
         return None
+    if not marker.args or not isinstance(marker.args[0], str):
+        raise pytest.UsageError(
+            "@pytest.mark.workspace requires a string argument, e.g. "
+            '@pytest.mark.workspace("modules/hello_world")'
+        )
     path = test_data_dir / marker.args[0]
     if (path / "CMakeLists.txt").exists():
         generate_cdb(path)
