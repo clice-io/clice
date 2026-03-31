@@ -188,22 +188,23 @@ def generate_cdb(workspace: Path) -> None:
     cmake = shutil.which("cmake")
     if cmake is None:
         raise RuntimeError("cmake executable not found in PATH")
-    subprocess.run(
-        [
-            cmake,
-            "-G",
-            "Ninja",
-            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-            "-S",
-            str(workspace),
-            "-B",
-            str(workspace / "build"),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    cxx = shutil.which("clang++")
+    cmd = [
+        cmake,
+        "-G",
+        "Ninja",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCMAKE_CXX_SCAN_FOR_MODULES=OFF",
+        "-S",
+        str(workspace),
+        "-B",
+        str(workspace / "build"),
+    ]
+    if cxx is not None:
+        cmd.append(f"-DCMAKE_CXX_COMPILER={cxx}")
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        raise RuntimeError(f"cmake failed:\n{result.stderr}")
 
 
 @pytest.fixture
