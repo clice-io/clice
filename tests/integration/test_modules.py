@@ -51,9 +51,6 @@ def _generate_cdb(workspace: Path):
         text=True,
         timeout=120,
     )
-    shutil.copy2(
-        build_dir / "compile_commands.json", workspace / "compile_commands.json"
-    )
 
 
 async def _init(client, workspace: Path):
