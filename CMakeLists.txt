@@ -56,6 +56,12 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -fsanitize=address")
         string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fsanitize=address")
     endif()
+
+    if(WIN32)
+        # Disable Identical COMDAT Folding in Debug to avoid ASan ODR false positives.
+        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:NOICF")
+        string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,/OPT:NOICF")
+    endif()
 endif()
 
 if(APPLE)
