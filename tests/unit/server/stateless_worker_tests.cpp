@@ -83,7 +83,9 @@ TEST_CASE(SpawnAndExit) {
 }
 
 TEST_CASE(BuildPCHRequest) {
-    TempFile hdr("test_pch.h", "#pragma once\nint pch_global = 42;\n");
+    TempDir tmp;
+    tmp.touch("test_pch.h", "#pragma once\nint pch_global = 42;\n");
+    auto hdr = tmp.path("test_pch.h");
 
     WorkerHandle w;
     ASSERT_TRUE(w.spawn("stateless-worker"));
@@ -92,10 +94,10 @@ TEST_CASE(BuildPCHRequest) {
 
     w.run([&]() -> et::task<> {
         worker::BuildPCHParams params;
-        params.file = hdr.path;
+        params.file = hdr;
         params.directory = "/tmp";
         params.arguments =
-            {"clang++", "-resource-dir", std::string(resource_dir()), "-x", "c++-header", hdr.path};
+            {"clang++", "-resource-dir", std::string(resource_dir()), "-x", "c++-header", hdr};
         params.content = "#pragma once\nint pch_global = 42;\n";
 
         auto result = co_await w.peer->send_request(params);
@@ -108,7 +110,9 @@ TEST_CASE(BuildPCHRequest) {
 }
 
 TEST_CASE(IndexRequest) {
-    TempFile src("test_index.cpp", "int indexed_var = 1;\n");
+    TempDir tmp;
+    tmp.touch("test_index.cpp", "int indexed_var = 1;\n");
+    auto src = tmp.path("test_index.cpp");
 
     WorkerHandle w;
     ASSERT_TRUE(w.spawn("stateless-worker"));
@@ -117,9 +121,9 @@ TEST_CASE(IndexRequest) {
 
     w.run([&]() -> et::task<> {
         worker::IndexParams params;
-        params.file = src.path;
+        params.file = src;
         params.directory = "/tmp";
-        params.arguments = make_args(src.path);
+        params.arguments = make_args(src);
 
         auto result = co_await w.peer->send_request(params);
         EXPECT_TRUE(result.has_value());
@@ -139,8 +143,10 @@ TEST_CASE(IndexRequest) {
 TEST_SUITE(StatelessWorkerExtended) {
 
 TEST_CASE(BuildPCMRequest) {
-    TempFile src("test_module.cppm",
-                 "export module test_module;\nexport int module_func() { return 1; }\n");
+    TempDir tmp;
+    tmp.touch("test_module.cppm",
+              "export module test_module;\nexport int module_func() { return 1; }\n");
+    auto src = tmp.path("test_module.cppm");
 
     WorkerHandle w;
     ASSERT_TRUE(w.spawn("stateless-worker"));
@@ -149,14 +155,14 @@ TEST_CASE(BuildPCMRequest) {
 
     w.run([&]() -> et::task<> {
         worker::BuildPCMParams params;
-        params.file = src.path;
+        params.file = src;
         params.directory = "/tmp";
         params.arguments = {"clang++",
                             "-resource-dir",
                             std::string(resource_dir()),
                             "-std=c++20",
                             "--precompile",
-                            src.path};
+                            src};
         params.module_name = "test_module";
 
         auto result = co_await w.peer->send_request(params);
@@ -170,7 +176,9 @@ TEST_CASE(BuildPCMRequest) {
 
 TEST_CASE(CompletionRequest) {
     std::string text = "int foo = 1;\nint bar = fo";
-    TempFile src("completion_test.cpp", text);
+    TempDir tmp;
+    tmp.touch("completion_test.cpp", text);
+    auto src = tmp.path("completion_test.cpp");
 
     WorkerHandle w;
     ASSERT_TRUE(w.spawn("stateless-worker"));
@@ -179,11 +187,11 @@ TEST_CASE(CompletionRequest) {
 
     w.run([&]() -> et::task<> {
         worker::CompletionParams params;
-        params.path = src.path;
+        params.path = src;
         params.version = 1;
         params.text = text;
         params.directory = "/tmp";
-        params.arguments = make_args(src.path);
+        params.arguments = make_args(src);
         params.offset = 25;  // after "fo" in "int bar = fo" (13 + 12)
 
         auto result = co_await w.peer->send_request(params);
@@ -197,7 +205,9 @@ TEST_CASE(CompletionRequest) {
 
 TEST_CASE(SignatureHelpRequest) {
     std::string text = "void foo(int a, int b) {}\nint main() { foo(";
-    TempFile src("sighelp_test.cpp", text);
+    TempDir tmp;
+    tmp.touch("sighelp_test.cpp", text);
+    auto src = tmp.path("sighelp_test.cpp");
 
     WorkerHandle w;
     ASSERT_TRUE(w.spawn("stateless-worker"));
@@ -206,11 +216,11 @@ TEST_CASE(SignatureHelpRequest) {
 
     w.run([&]() -> et::task<> {
         worker::SignatureHelpParams params;
-        params.path = src.path;
+        params.path = src;
         params.version = 1;
         params.text = text;
         params.directory = "/tmp";
-        params.arguments = make_args(src.path);
+        params.arguments = make_args(src);
         params.offset = 45;  // after "foo(" (26 + 19)
 
         auto result = co_await w.peer->send_request(params);
@@ -224,11 +234,13 @@ TEST_CASE(SignatureHelpRequest) {
 }
 
 TEST_CASE(MultipleStatelessRequests) {
-    std::vector<std::unique_ptr<TempFile>> files;
+    TempDir tmp;
+    std::vector<std::string> paths;
     for(int i = 0; i < 3; i++) {
+        auto name = "multi_index_" + std::to_string(i) + ".cpp";
         auto text = "int idx_var_" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
-        files.push_back(
-            std::make_unique<TempFile>("multi_index_" + std::to_string(i) + ".cpp", text));
+        tmp.touch(name, text);
+        paths.push_back(tmp.path(name));
     }
 
     WorkerHandle w;
@@ -240,9 +252,9 @@ TEST_CASE(MultipleStatelessRequests) {
         // Send multiple index requests to test stateless worker handles them sequentially.
         for(int i = 0; i < 3; i++) {
             worker::IndexParams params;
-            params.file = files[i]->path;
+            params.file = paths[i];
             params.directory = "/tmp";
-            params.arguments = make_args(files[i]->path);
+            params.arguments = make_args(paths[i]);
 
             auto result = co_await w.peer->send_request(params);
             EXPECT_TRUE(result.has_value());

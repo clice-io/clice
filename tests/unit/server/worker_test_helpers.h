@@ -1,8 +1,6 @@
 #pragma once
 
 #include <csignal>
-#include <fstream>
-#include <memory>
 #include <string>
 
 #ifndef _WIN32
@@ -10,6 +8,7 @@
 #include <unistd.h>
 #endif
 
+#include "test/temp_dir.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
 #include "eventide/async/async.h"
@@ -46,31 +45,6 @@ inline std::string clice_binary() {
     llvm::sys::path::append(path, "bin", "clice");
     return std::string(path);
 }
-
-/// RAII temporary file: writes content to disk, removes on destruction.
-struct TempFile {
-    std::string path;
-
-    TempFile(const std::string& name, const std::string& content) {
-        llvm::SmallString<256> tmp_dir;
-        llvm::sys::path::system_temp_directory(true, tmp_dir);
-        llvm::sys::path::append(tmp_dir, "clice_test_" + name);
-        path = std::string(tmp_dir);
-        std::ofstream ofs(path);
-        ofs << content;
-    }
-
-    ~TempFile() {
-        std::remove(path.c_str());
-    }
-
-    std::string uri() const {
-        return "file://" + path;
-    }
-
-    TempFile(const TempFile&) = delete;
-    TempFile& operator=(const TempFile&) = delete;
-};
 
 /// Build compile arguments for a source file, including -resource-dir.
 inline std::vector<std::string> make_args(const std::string& file_path,

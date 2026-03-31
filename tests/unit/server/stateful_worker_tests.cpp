@@ -24,7 +24,9 @@ TEST_CASE(SpawnAndExit) {
 }
 
 TEST_CASE(CompileRequest) {
-    TempFile src("compile_test.cpp", "int main() { return 0; }\n");
+    TempDir tmp;
+    tmp.touch("compile_test.cpp", "int main() { return 0; }\n");
+    auto src = tmp.path("compile_test.cpp");
 
     WorkerHandle w;
     ASSERT_TRUE(w.spawn("stateful-worker"));
@@ -33,11 +35,11 @@ TEST_CASE(CompileRequest) {
 
     w.run([&]() -> et::task<> {
         worker::CompileParams params;
-        params.path = src.path;
+        params.path = src;
         params.version = 1;
         params.text = "int main() { return 0; }\n";
         params.directory = "/tmp";
-        params.arguments = make_args(src.path);
+        params.arguments = make_args(src);
         params.pch = {"", 0};
         params.pcms = {};
 
@@ -76,7 +78,9 @@ TEST_CASE(HoverWithoutCompile) {
 
 TEST_CASE(CompileThenHover) {
     std::string text = "int foo() { return 42; }\nint main() { return foo(); }\n";
-    TempFile src("hover_test.cpp", text);
+    TempDir tmp;
+    tmp.touch("hover_test.cpp", text);
+    auto src = tmp.path("hover_test.cpp");
 
     WorkerHandle w;
     ASSERT_TRUE(w.spawn("stateful-worker"));
@@ -86,11 +90,11 @@ TEST_CASE(CompileThenHover) {
     w.run([&]() -> et::task<> {
         // First compile
         worker::CompileParams cp;
-        cp.path = src.path;
+        cp.path = src;
         cp.version = 1;
         cp.text = text;
         cp.directory = "/tmp";
-        cp.arguments = make_args(src.path);
+        cp.arguments = make_args(src);
 
         auto compile_result = co_await w.peer->send_request(cp);
         CO_ASSERT_TRUE(compile_result.has_value());
@@ -98,7 +102,7 @@ TEST_CASE(CompileThenHover) {
         // After successful compilation, hover should return info.
         // "int foo() { return 42; }\n" is 25 chars, then char 22 on line 1 = offset 47
         worker::HoverParams hp;
-        hp.path = src.path;
+        hp.path = src;
         hp.offset = 47;  // position of 'foo' in 'return foo();'
 
         auto hover_result = co_await w.peer->send_request(hp);
@@ -114,7 +118,9 @@ TEST_CASE(CompileThenHover) {
 }
 
 TEST_CASE(DocumentUpdate) {
-    TempFile src("update_test.cpp", "int x = 1;\n");
+    TempDir tmp;
+    tmp.touch("update_test.cpp", "int x = 1;\n");
+    auto src = tmp.path("update_test.cpp");
 
     WorkerHandle w;
     ASSERT_TRUE(w.spawn("stateful-worker"));
@@ -124,25 +130,25 @@ TEST_CASE(DocumentUpdate) {
     w.run([&]() -> et::task<> {
         // Compile first
         worker::CompileParams cp;
-        cp.path = src.path;
+        cp.path = src;
         cp.version = 1;
         cp.text = "int x = 1;\n";
         cp.directory = "/tmp";
-        cp.arguments = make_args(src.path);
+        cp.arguments = make_args(src);
 
         auto r1 = co_await w.peer->send_request(cp);
         CO_ASSERT_TRUE(r1.has_value());
 
         // Send document update notification
         worker::DocumentUpdateParams up;
-        up.path = src.path;
+        up.path = src;
         up.version = 2;
         up.text = "int x = 2;\nint y = 3;\n";
         w.peer->send_notification(up);
 
         // After update, hover still returns stale AST results (not null).
         worker::HoverParams hp;
-        hp.path = src.path;
+        hp.path = src;
         hp.offset = 4;
 
         auto hover_result = co_await w.peer->send_request(hp);
@@ -299,13 +305,15 @@ TEST_CASE(InlayHintsWithoutCompile) {
 }
 
 TEST_CASE(MultipleSequentialRequests) {
-    TempFile src("seq_test.cpp",
+    TempDir tmp;
+    tmp.touch("seq_test.cpp",
         "int foo(int x) {\n"
         "    return x + 1;\n"
         "}\n"
         "int main() {\n"
         "    return foo(0);\n"
         "}\n");
+    auto src = tmp.path("seq_test.cpp");
 
     WorkerHandle w;
     ASSERT_TRUE(w.spawn("stateful-worker"));
@@ -315,24 +323,24 @@ TEST_CASE(MultipleSequentialRequests) {
     w.run([&]() -> et::task<> {
         // Compile first so feature requests return real data.
         worker::CompileParams cp;
-        cp.path = src.path;
+        cp.path = src;
         cp.version = 1;
         cp.text = "int foo(int x) {\n    return x + 1;\n}\nint main() {\n    return foo(0);\n}\n";
         cp.directory = "/tmp";
-        cp.arguments = make_args(src.path);
+        cp.arguments = make_args(src);
 
         auto cr = co_await w.peer->send_request(cp);
         CO_ASSERT_TRUE(cr.has_value());
 
         // Now send multiple different feature requests sequentially.
         worker::HoverParams hp;
-        hp.path = src.path;
+        hp.path = src;
         hp.offset = 4;  // 'foo' on line 0
         auto r1 = co_await w.peer->send_request(hp);
         EXPECT_TRUE(r1.has_value());
 
         worker::CodeActionParams cap;
-        cap.path = src.path;
+        cap.path = src;
         auto r2 = co_await w.peer->send_request(cap);
         EXPECT_TRUE(r2.has_value());
 
@@ -340,18 +348,18 @@ TEST_CASE(MultipleSequentialRequests) {
         // lines: "int foo(int x) {\n"=17, "    return x + 1;\n"=18, "}\n"=2, "int main() {\n"=14
         // offset = 17+18+2+14+11 = 62
         worker::GoToDefinitionParams gdp;
-        gdp.path = src.path;
+        gdp.path = src;
         gdp.offset = 62;
         auto r3 = co_await w.peer->send_request(gdp);
         EXPECT_TRUE(r3.has_value());
 
         worker::SemanticTokensParams stp;
-        stp.path = src.path;
+        stp.path = src;
         auto r4 = co_await w.peer->send_request(stp);
         EXPECT_TRUE(r4.has_value());
 
         worker::FoldingRangeParams frp;
-        frp.path = src.path;
+        frp.path = src;
         auto r5 = co_await w.peer->send_request(frp);
         EXPECT_TRUE(r5.has_value());
 
@@ -363,12 +371,15 @@ TEST_CASE(MultipleSequentialRequests) {
 }
 
 TEST_CASE(MultipleDocuments) {
-    std::vector<std::unique_ptr<TempFile>> files;
+    TempDir tmp;
+    std::vector<std::string> paths;
     std::vector<std::string> texts;
     for(int i = 0; i < 3; i++) {
+        auto name = "multi_" + std::to_string(i) + ".cpp";
         auto text = "int var_" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
+        tmp.touch(name, text);
+        paths.push_back(tmp.path(name));
         texts.push_back(text);
-        files.push_back(std::make_unique<TempFile>("multi_" + std::to_string(i) + ".cpp", text));
     }
 
     WorkerHandle w;
@@ -380,11 +391,11 @@ TEST_CASE(MultipleDocuments) {
         // Compile 3 different documents.
         for(int i = 0; i < 3; i++) {
             worker::CompileParams cp;
-            cp.path = files[i]->path;
+            cp.path = paths[i];
             cp.version = 1;
             cp.text = texts[i];
             cp.directory = "/tmp";
-            cp.arguments = make_args(files[i]->path);
+            cp.arguments = make_args(paths[i]);
 
             auto result = co_await w.peer->send_request(cp);
             EXPECT_TRUE(result.has_value());
@@ -393,7 +404,7 @@ TEST_CASE(MultipleDocuments) {
         // Hover on each document after compilation.
         for(int i = 0; i < 3; i++) {
             worker::HoverParams hp;
-            hp.path = files[i]->path;
+            hp.path = paths[i];
             hp.offset = 4;  // 'var_N'
 
             auto result = co_await w.peer->send_request(hp);
@@ -436,7 +447,9 @@ TEST_CASE(EvictNotification) {
 }
 
 TEST_CASE(SpawnWithMemoryLimit) {
-    TempFile src("memlimit_test.cpp", "int memlimit_var = 42;\n");
+    TempDir tmp;
+    tmp.touch("memlimit_test.cpp", "int memlimit_var = 42;\n");
+    auto src = tmp.path("memlimit_test.cpp");
 
     WorkerHandle w;
     // Spawn with a specific memory limit to test the CLI flag is accepted.
@@ -447,18 +460,18 @@ TEST_CASE(SpawnWithMemoryLimit) {
     w.run([&]() -> et::task<> {
         // Compile first.
         worker::CompileParams cp;
-        cp.path = src.path;
+        cp.path = src;
         cp.version = 1;
         cp.text = "int memlimit_var = 42;\n";
         cp.directory = "/tmp";
-        cp.arguments = make_args(src.path);
+        cp.arguments = make_args(src);
 
         auto cr = co_await w.peer->send_request(cp);
         EXPECT_TRUE(cr.has_value());
 
         // Feature request should work after compilation.
         worker::HoverParams hp;
-        hp.path = src.path;
+        hp.path = src;
         hp.offset = 4;  // 'memlimit_var'
 
         auto result = co_await w.peer->send_request(hp);

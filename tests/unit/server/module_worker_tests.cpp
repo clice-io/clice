@@ -21,13 +21,15 @@ namespace et = eventide;
 TEST_SUITE(ModuleWorker) {
 
 TEST_CASE(BuildPCMThenCompileWithImport) {
+    TempDir tmp;
     // Module interface: produces PCM.
-    TempFile iface(
-        "mod_iface.cppm",
-        "export module Hello;\n" R"(export const char* hello() { return "world"; })" "\n");
+    tmp.touch("mod_iface.cppm",
+              "export module Hello;\n" R"(export const char* hello() { return "world"; })" "\n");
+    auto iface = tmp.path("mod_iface.cppm");
 
     // Consumer: imports the module.
-    TempFile consumer("consumer.cpp", "import Hello;\n" "int main() { return hello()[0]; }\n");
+    tmp.touch("consumer.cpp", "import Hello;\n" "int main() { return hello()[0]; }\n");
+    auto consumer = tmp.path("consumer.cpp");
 
     // --- Phase 1: Build PCM via stateless worker ---
     WorkerHandle sl;
@@ -38,14 +40,14 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
 
     sl.run([&]() -> et::task<> {
         worker::BuildPCMParams params;
-        params.file = iface.path;
+        params.file = iface;
         params.directory = "/tmp";
         params.arguments = {"clang++",
                             "-resource-dir",
                             std::string(resource_dir()),
                             "-std=c++20",
                             "--precompile",
-                            iface.path};
+                            iface};
         params.module_name = "Hello";
 
         auto result = co_await sl.peer->send_request(params);
@@ -69,7 +71,7 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
 
     sf.run([&]() -> et::task<> {
         worker::CompileParams params;
-        params.path = consumer.path;
+        params.path = consumer;
         params.version = 1;
         params.text = "import Hello;\n" "int main() { return hello()[0]; }\n";
         params.directory = "/tmp";
@@ -78,7 +80,7 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
                             std::string(resource_dir()),
                             "-std=c++20",
                             "-fsyntax-only",
-                            consumer.path};
+                            consumer};
         // Pass the PCM — same as MasterServer fills CompileParams.pcms.
         params.pcms = {
             {"Hello", pcm_path}
@@ -99,15 +101,19 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
 }
 
 TEST_CASE(BuildPCMChainThenCompile) {
+    TempDir tmp;
     // Module A: no deps.
-    TempFile mod_a("chain_a.cppm", "export module A;\n" "export int val_a() { return 1; }\n");
+    tmp.touch("chain_a.cppm", "export module A;\n" "export int val_a() { return 1; }\n");
+    auto mod_a = tmp.path("chain_a.cppm");
     // Module B: imports A.
-    TempFile mod_b("chain_b.cppm",
-                   "export module B;\n"
-                   "import A;\n"
-                   "export int val_b() { return val_a() + 1; }\n");
+    tmp.touch("chain_b.cppm",
+              "export module B;\n"
+              "import A;\n"
+              "export int val_b() { return val_a() + 1; }\n");
+    auto mod_b = tmp.path("chain_b.cppm");
     // Consumer: imports B (transitively needs A).
-    TempFile consumer("chain_consumer.cpp", "import B;\n" "int main() { return val_b(); }\n");
+    tmp.touch("chain_consumer.cpp", "import B;\n" "int main() { return val_b(); }\n");
+    auto consumer = tmp.path("chain_consumer.cpp");
 
     WorkerHandle sl;
     ASSERT_TRUE(sl.spawn("stateless-worker"));
@@ -119,14 +125,14 @@ TEST_CASE(BuildPCMChainThenCompile) {
         // Build PCM for A first.
         {
             worker::BuildPCMParams params;
-            params.file = mod_a.path;
+            params.file = mod_a;
             params.directory = "/tmp";
             params.arguments = {"clang++",
                                 "-resource-dir",
                                 std::string(resource_dir()),
                                 "-std=c++20",
                                 "--precompile",
-                                mod_a.path};
+                                mod_a};
             params.module_name = "A";
 
             auto result = co_await sl.peer->send_request(params);
@@ -137,14 +143,14 @@ TEST_CASE(BuildPCMChainThenCompile) {
         // Build PCM for B, passing A's PCM (transitive dep).
         {
             worker::BuildPCMParams params;
-            params.file = mod_b.path;
+            params.file = mod_b;
             params.directory = "/tmp";
             params.arguments = {"clang++",
                                 "-resource-dir",
                                 std::string(resource_dir()),
                                 "-std=c++20",
                                 "--precompile",
-                                mod_b.path};
+                                mod_b};
             params.module_name = "B";
             params.pcms = {
                 {"A", pcm_a}
@@ -169,7 +175,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
 
     sf.run([&]() -> et::task<> {
         worker::CompileParams params;
-        params.path = consumer.path;
+        params.path = consumer;
         params.version = 1;
         params.text = "import B;\n" "int main() { return val_b(); }\n";
         params.directory = "/tmp";
@@ -178,7 +184,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
                             std::string(resource_dir()),
                             "-std=c++20",
                             "-fsyntax-only",
-                            consumer.path};
+                            consumer};
         // Clang needs ALL transitive PCMs.
         params.pcms = {
             {"A", pcm_a},
@@ -200,10 +206,13 @@ TEST_CASE(BuildPCMChainThenCompile) {
 }
 
 TEST_CASE(ModuleImplementationUnitWithWorker) {
+    TempDir tmp;
     // Module interface.
-    TempFile iface("impl_iface.cppm", "export module Calc;\n" "export int add(int a, int b);\n");
+    tmp.touch("impl_iface.cppm", "export module Calc;\n" "export int add(int a, int b);\n");
+    auto iface = tmp.path("impl_iface.cppm");
     // Module implementation unit (no export).
-    TempFile impl("impl_unit.cpp", "module Calc;\n" "int add(int a, int b) { return a + b; }\n");
+    tmp.touch("impl_unit.cpp", "module Calc;\n" "int add(int a, int b) { return a + b; }\n");
+    auto impl = tmp.path("impl_unit.cpp");
 
     // Build PCM for interface.
     WorkerHandle sl;
@@ -214,14 +223,14 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
 
     sl.run([&]() -> et::task<> {
         worker::BuildPCMParams params;
-        params.file = iface.path;
+        params.file = iface;
         params.directory = "/tmp";
         params.arguments = {"clang++",
                             "-resource-dir",
                             std::string(resource_dir()),
                             "-std=c++20",
                             "--precompile",
-                            iface.path};
+                            iface};
         params.module_name = "Calc";
 
         auto result = co_await sl.peer->send_request(params);
@@ -242,7 +251,7 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
 
     sf.run([&]() -> et::task<> {
         worker::CompileParams params;
-        params.path = impl.path;
+        params.path = impl;
         params.version = 1;
         params.text = "module Calc;\n" "int add(int a, int b) { return a + b; }\n";
         params.directory = "/tmp";
@@ -251,7 +260,7 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
                             std::string(resource_dir()),
                             "-std=c++20",
                             "-fsyntax-only",
-                            impl.path};
+                            impl};
         params.pcms = {
             {"Calc", pcm_path}
         };

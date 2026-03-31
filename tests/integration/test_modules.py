@@ -12,17 +12,14 @@ from pathlib import Path
 
 import pytest
 from lsprotocol.types import (
-    ClientCapabilities,
     DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
     HoverParams,
-    InitializeParams,
-    InitializedParams,
     Position,
     TextDocumentIdentifier,
     TextDocumentItem,
-    WorkspaceFolder,
 )
+from conftest import lsp_initialize, lsp_open, lsp_open_and_wait, lsp_wait_diagnostics
 
 # Directory containing pre-written module source files for each test case.
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "modules"
@@ -59,42 +56,11 @@ def _write_cdb_entries(workspace: Path, entries: list[tuple[str, list[str]]]):
 
 
 async def _init(client, workspace: Path):
-    """Initialize the LSP server with a workspace."""
-    result = await client.initialize_async(
-        InitializeParams(
-            capabilities=ClientCapabilities(),
-            root_uri=workspace.as_uri(),
-            workspace_folders=[WorkspaceFolder(uri=workspace.as_uri(), name="test")],
-        )
-    )
-    client.initialized(InitializedParams())
+    """Initialize the LSP server with a workspace and wait for CDB scan."""
+    result = await lsp_initialize(client, workspace)
     # Give the server time to load CDB and scan dependency graph.
-    # Use a generous sleep to avoid flaky failures on slow CI machines.
     await asyncio.sleep(2.0)
     return result
-
-
-def _open(client, workspace: Path, filename: str, version: int = 0):
-    """Open a file and return its URI."""
-    path = workspace / filename
-    content = path.read_text(encoding="utf-8")
-    uri = path.as_uri()
-    client.text_document_did_open(
-        DidOpenTextDocumentParams(
-            text_document=TextDocumentItem(
-                uri=uri, language_id="cpp", version=version, text=content
-            )
-        )
-    )
-    return uri, content
-
-
-async def _open_and_wait(client, workspace: Path, filename: str, timeout: float = 60.0):
-    """Open a file and wait for compilation diagnostics."""
-    uri, content = _open(client, workspace, filename)
-    event = client.wait_for_diagnostics(uri)
-    await asyncio.wait_for(event.wait(), timeout=timeout)
-    return uri, content
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +75,7 @@ async def test_single_module_no_deps(client):
     _write_cdb(ws, ["mod_a.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "mod_a.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "mod_a.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -126,7 +92,7 @@ async def test_chained_modules(client):
     _write_cdb(ws, ["mod_a.cppm", "mod_b.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "mod_b.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "mod_b.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -143,7 +109,7 @@ async def test_diamond_modules(client):
     _write_cdb(ws, ["base.cppm", "left.cppm", "right.cppm", "top.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "top.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "top.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -160,7 +126,7 @@ async def test_dotted_module_name(client):
     _write_cdb(ws, ["io.cppm", "app.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "app.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "app.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -177,7 +143,7 @@ async def test_module_implementation_unit(client):
     _write_cdb(ws, ["greeter.cppm", "greeter_impl.cpp"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "greeter_impl.cpp")
+    uri, _ = await lsp_open_and_wait(client, ws / "greeter_impl.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -194,7 +160,7 @@ async def test_consumer_imports_module(client):
     _write_cdb(ws, ["math.cppm", "main.cpp"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "main.cpp")
+    uri, _ = await lsp_open_and_wait(client, ws / "main.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -211,7 +177,7 @@ async def test_module_partitions(client):
     _write_cdb(ws, ["part_a.cppm", "part_b.cppm", "lib.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "lib.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "lib.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -228,7 +194,7 @@ async def test_partition_interface(client):
     _write_cdb(ws, ["part.cppm", "primary.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "primary.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "primary.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -245,7 +211,7 @@ async def test_partition_chain(client):
     _write_cdb(ws, ["types.cppm", "core.cppm", "sys.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "sys.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "sys.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -262,7 +228,7 @@ async def test_re_export(client):
     _write_cdb(ws, ["core.cppm", "wrapper.cppm", "user.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "user.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "user.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -279,7 +245,7 @@ async def test_export_block(client):
     _write_cdb(ws, ["block.cppm", "consumer.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "consumer.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "consumer.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -296,7 +262,7 @@ async def test_global_module_fragment(client):
     _write_cdb(ws, ["gmf.cppm"], extra_args=["-I", ws.as_posix()])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "gmf.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "gmf.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -313,7 +279,7 @@ async def test_private_module_fragment(client):
     _write_cdb(ws, ["priv.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "priv.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "priv.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -330,7 +296,7 @@ async def test_export_namespace(client):
     _write_cdb(ws, ["ns.cppm", "calc.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "calc.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "calc.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -353,7 +319,7 @@ async def test_gmf_with_import(client):
     )
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "combined.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "combined.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -370,11 +336,11 @@ async def test_independent_modules(client):
     _write_cdb(ws, ["x.cppm", "y.cppm"])
     await _init(client, ws)
 
-    uri_x, _ = await _open_and_wait(client, ws, "x.cppm")
+    uri_x, _ = await lsp_open_and_wait(client, ws / "x.cppm")
     diags_x = client.diagnostics.get(uri_x, [])
     assert len(diags_x) == 0, f"Expected no diagnostics for X, got: {diags_x}"
 
-    uri_y, _ = await _open_and_wait(client, ws, "y.cppm")
+    uri_y, _ = await lsp_open_and_wait(client, ws / "y.cppm")
     diags_y = client.diagnostics.get(uri_y, [])
     assert len(diags_y) == 0, f"Expected no diagnostics for Y, got: {diags_y}"
 
@@ -391,7 +357,7 @@ async def test_template_export(client):
     _write_cdb(ws, ["tmpl.cppm", "use_tmpl.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "use_tmpl.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "use_tmpl.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -408,7 +374,7 @@ async def test_class_export_and_inheritance(client):
     _write_cdb(ws, ["shape.cppm", "circle.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "circle.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "circle.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -431,12 +397,12 @@ async def test_save_recompile(client, tmp_path):
     await _init(client, tmp_path)
 
     # Open and compile Mid (which triggers Leaf PCM build).
-    mid_uri, _ = await _open_and_wait(client, tmp_path, "mid.cppm")
+    mid_uri, _ = await lsp_open_and_wait(client, tmp_path / "mid.cppm")
     diags = client.diagnostics.get(mid_uri, [])
     assert len(diags) == 0
 
     # Open Leaf and wait for its initial compilation.
-    leaf_uri, _ = _open(client, tmp_path, "leaf.cppm")
+    leaf_uri, _ = lsp_open(client, tmp_path / "leaf.cppm")
     event = client.wait_for_diagnostics(leaf_uri)
     await asyncio.wait_for(event.wait(), timeout=60.0)
 
@@ -476,7 +442,7 @@ async def test_module_compile_error(client):
     _write_cdb(ws, ["good.cppm", "bad.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "bad.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "bad.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) > 0, "Expected diagnostics for undefined symbol"
     # The error should be on line 2 (0-indexed) where UNDEFINED_SYMBOL is used.
@@ -502,7 +468,7 @@ async def test_deep_chain(client):
     _write_cdb(ws, ["m1.cppm", "m2.cppm", "m3.cppm", "m4.cppm", "m5.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "m5.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "m5.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -525,7 +491,7 @@ async def test_partition_with_gmf(client):
     )
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "cfg.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "cfg.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -542,7 +508,7 @@ async def test_partition_with_external_import(client):
     _write_cdb(ws, ["ext.cppm", "part.cppm", "app.cppm"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "app.cppm")
+    uri, _ = await lsp_open_and_wait(client, ws / "app.cppm")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -559,7 +525,7 @@ async def test_hover_on_imported_symbol(client):
     _write_cdb(ws, ["defs.cppm", "use.cpp"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "use.cpp")
+    uri, _ = await lsp_open_and_wait(client, ws / "use.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -586,7 +552,7 @@ async def test_no_modules_plain_cpp(client):
     _write_cdb(ws, ["plain.cpp"])
     await _init(client, ws)
 
-    uri, _ = await _open_and_wait(client, ws, "plain.cpp")
+    uri, _ = await lsp_open_and_wait(client, ws / "plain.cpp")
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no diagnostics, got: {diags}"
 
@@ -612,12 +578,12 @@ async def test_circular_module_dependency(client):
     await _init(client, ws)
 
     # Open a cyclic file — the server should not hang.
-    _open(client, ws, "cycle_a.cppm")
+    lsp_open(client, ws / "cycle_a.cppm")
     # Give the server time to attempt (and fail) the cyclic PCM builds.
     await asyncio.sleep(5.0)
 
     # Verify the server is still responsive by opening a non-cyclic file.
-    uri_ok, _ = await _open_and_wait(client, ws, "ok.cppm")
+    uri_ok, _ = await lsp_open_and_wait(client, ws / "ok.cppm")
     diags = client.diagnostics.get(uri_ok, [])
     assert len(diags) == 0, (
         f"Non-cyclic module should compile fine after cycle attempt, got: {diags}"

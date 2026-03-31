@@ -13,11 +13,6 @@ namespace {
 
 namespace et = eventide;
 
-void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
-    tmp.touch("compile_commands.json", json_content);
-    cdb.load(tmp.path("compile_commands.json"));
-}
-
 /// Build a dispatch_fn that compiles PCMs in-process (no workers).
 /// Clang requires ALL transitive PCM deps (not just direct imports)
 /// in PrebuiltModuleFiles, so we pass every available PCM.

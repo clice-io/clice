@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+#include "test/temp_dir.h"
+#include "command/command.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -53,6 +56,12 @@ inline std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
     }
     json += "\n]";
     return json;
+}
+
+/// Write a compile_commands.json into the temp dir and load it into the given CDB.
+inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
+    tmp.touch("compile_commands.json", json_content);
+    cdb.load(tmp.path("compile_commands.json"));
 }
 
 }  // namespace clice::testing

@@ -1,4 +1,4 @@
-"""Fixtures for clice LSP integration tests using pygls LanguageClient."""
+"""Fixtures and shared helpers for clice LSP integration tests using pygls LanguageClient."""
 
 import json
 import asyncio
@@ -13,10 +13,12 @@ from lsprotocol.types import (
     WINDOW_WORK_DONE_PROGRESS_CREATE,
     ClientCapabilities,
     Diagnostic,
+    DidOpenTextDocumentParams,
     InitializeParams,
     InitializedParams,
     ProgressParams,
     PublishDiagnosticsParams,
+    TextDocumentItem,
     WorkDoneProgressCreateParams,
     WorkspaceFolder,
 )
@@ -174,3 +176,48 @@ async def client(request, executable: Path, test_data_dir: Path):
         await asyncio.sleep(0.1)
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Shared LSP helpers (used across all integration test files)
+# ---------------------------------------------------------------------------
+
+
+async def lsp_initialize(client, workspace: Path):
+    """Initialize the LSP server with a workspace folder and return the result."""
+    result = await client.initialize_async(
+        InitializeParams(
+            capabilities=ClientCapabilities(),
+            root_uri=workspace.as_uri(),
+            workspace_folders=[WorkspaceFolder(uri=workspace.as_uri(), name="test")],
+        )
+    )
+    client.initialized(InitializedParams())
+    return result
+
+
+def lsp_open(client, filepath: Path, version: int = 0):
+    """Open a text document and return (uri, content)."""
+    content = filepath.read_text(encoding="utf-8")
+    uri = filepath.as_uri()
+    client.text_document_did_open(
+        DidOpenTextDocumentParams(
+            text_document=TextDocumentItem(
+                uri=uri, language_id="cpp", version=version, text=content
+            )
+        )
+    )
+    return uri, content
+
+
+async def lsp_wait_diagnostics(client, uri: str, timeout: float = 30.0):
+    """Wait for diagnostics on the given URI."""
+    event = client.wait_for_diagnostics(uri)
+    await asyncio.wait_for(event.wait(), timeout=timeout)
+
+
+async def lsp_open_and_wait(client, filepath: Path, timeout: float = 60.0):
+    """Open a file and wait for compilation diagnostics."""
+    uri, content = lsp_open(client, filepath)
+    await lsp_wait_diagnostics(client, uri, timeout)
+    return uri, content

@@ -4,65 +4,33 @@ import asyncio
 
 import pytest
 from lsprotocol.types import (
-    ClientCapabilities,
     CompletionParams,
     DidChangeTextDocumentParams,
     DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams,
     DidSaveTextDocumentParams,
     HoverParams,
-    InitializeParams,
-    InitializedParams,
     Position,
     SignatureHelpParams,
     TextDocumentContentChangeWholeDocument,
     TextDocumentIdentifier,
-    TextDocumentItem,
     VersionedTextDocumentIdentifier,
-    WorkspaceFolder,
 )
-
-
-async def _init(client, workspace):
-    await client.initialize_async(
-        InitializeParams(
-            capabilities=ClientCapabilities(),
-            root_uri=workspace.as_uri(),
-            workspace_folders=[WorkspaceFolder(uri=workspace.as_uri(), name="test")],
-        )
-    )
-    client.initialized(InitializedParams())
-
-
-def _open(client, path):
-    uri = path.as_uri()
-    content = path.read_text(encoding="utf-8")
-    client.text_document_did_open(
-        DidOpenTextDocumentParams(
-            text_document=TextDocumentItem(
-                uri=uri,
-                language_id="cpp",
-                version=0,
-                text=content,
-            )
-        )
-    )
-    return uri, content
+from conftest import lsp_initialize, lsp_open, lsp_wait_diagnostics
 
 
 @pytest.mark.asyncio
 async def test_did_open(client, test_data_dir):
     workspace = test_data_dir / "hello_world"
-    await _init(client, workspace)
-    _open(client, workspace / "main.cpp")
+    await lsp_initialize(client, workspace)
+    lsp_open(client, workspace / "main.cpp")
     await asyncio.sleep(5)
 
 
 @pytest.mark.asyncio
 async def test_did_change(client, test_data_dir):
     workspace = test_data_dir / "hello_world"
-    await _init(client, workspace)
-    uri, content = _open(client, workspace / "main.cpp")
+    await lsp_initialize(client, workspace)
+    uri, content = lsp_open(client, workspace / "main.cpp")
 
     for i in range(20):
         content += "\n"
@@ -79,8 +47,8 @@ async def test_did_change(client, test_data_dir):
 @pytest.mark.asyncio
 async def test_clang_tidy(client, test_data_dir):
     workspace = test_data_dir / "clang_tidy"
-    await _init(client, workspace)
-    _open(client, workspace / "main.cpp")
+    await lsp_initialize(client, workspace)
+    lsp_open(client, workspace / "main.cpp")
     await asyncio.sleep(5)
 
 
@@ -88,13 +56,12 @@ async def test_clang_tidy(client, test_data_dir):
 async def test_hover_save_close(client, test_data_dir):
     workspace = test_data_dir / "hello_world"
     main_cpp = workspace / "main.cpp"
-    await _init(client, workspace)
+    await lsp_initialize(client, workspace)
 
-    uri, content = _open(client, main_cpp)
+    uri, content = lsp_open(client, main_cpp)
 
     # Wait for initial compilation
-    event = client.wait_for_diagnostics(uri)
-    await asyncio.wait_for(event.wait(), timeout=30.0)
+    await lsp_wait_diagnostics(client, uri)
 
     # Change and save
     content += "\nint saved = 1;\n"

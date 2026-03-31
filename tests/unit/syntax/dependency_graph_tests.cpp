@@ -189,12 +189,6 @@ TEST_CASE(EmptyIncludes) {
 // scan_dependency_graph() integration tests
 // ============================================================================
 
-/// Write a compile_commands.json into the temp dir and load it into the given CDB.
-void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
-    tmp.touch("compile_commands.json", json_content);
-    cdb.load(tmp.path("compile_commands.json"));
-}
-
 TEST_SUITE(ScanDependencyGraph) {
 
 TEST_CASE(EmptyCDB) {
