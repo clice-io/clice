@@ -9,7 +9,6 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
-import pytest_asyncio
 from lsprotocol.types import (
     PROGRESS,
     TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS,
@@ -223,10 +222,10 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
     return path
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def client(
     request: pytest.FixtureRequest, executable: Path, workspace: Path | None
-) -> AsyncGenerator[CliceClient]:
+):
     """Spawn clice server, auto-initialize if @pytest.mark.workspace is present."""
     config = request.config
     mode = config.getoption("--mode")

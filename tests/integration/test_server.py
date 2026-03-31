@@ -26,28 +26,16 @@ from lsprotocol.types import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _doc(uri: str) -> TextDocumentIdentifier:
     return TextDocumentIdentifier(uri=uri)
 
 
-# ---------------------------------------------------------------------------
-# Server info & capabilities
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_server_info(client, workspace):
     assert client.init_result.server_info.name == "clice"
     assert client.init_result.server_info.version == "0.1.0"
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_capabilities(client, workspace):
     caps = client.init_result.capabilities
@@ -61,12 +49,6 @@ async def test_capabilities(client, workspace):
     assert caps.semantic_tokens_provider is not None
 
 
-# ---------------------------------------------------------------------------
-# Initialization & shutdown
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_did_open_close_cycle(client, workspace):
     uri, _ = client.open(workspace / "main.cpp")
@@ -74,13 +56,11 @@ async def test_did_open_close_cycle(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_shutdown_exit(client, workspace):
     await client.shutdown_async(None)
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_feature_requests_after_close(client, workspace):
     uri, _ = client.open(workspace / "main.cpp")
@@ -91,12 +71,6 @@ async def test_feature_requests_after_close(client, workspace):
     assert result is None
 
 
-# ---------------------------------------------------------------------------
-# Document handling
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_incremental_change(client, workspace):
     uri, content = client.open(workspace / "main.cpp")
@@ -113,7 +87,6 @@ async def test_incremental_change(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_diagnostics_received(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
@@ -121,23 +94,15 @@ async def test_diagnostics_received(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-# ---------------------------------------------------------------------------
-# Feature requests (after compilation)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_hover_before_compile(client, workspace):
     uri, _ = client.open(workspace / "main.cpp")
     result = await client.text_document_hover_async(
         HoverParams(text_document=_doc(uri), position=Position(line=0, character=0))
     )
-    # May return null before compilation — that's fine
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_completion_request(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
@@ -149,7 +114,6 @@ async def test_completion_request(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_signature_help_request(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
@@ -161,7 +125,6 @@ async def test_signature_help_request(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_definition_request(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
@@ -173,7 +136,6 @@ async def test_definition_request(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_document_symbol_request(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
@@ -184,7 +146,6 @@ async def test_document_symbol_request(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_folding_range_request(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
@@ -195,7 +156,6 @@ async def test_folding_range_request(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_semantic_tokens_request(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
@@ -206,7 +166,6 @@ async def test_semantic_tokens_request(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_inlay_hint_request(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
@@ -221,7 +180,6 @@ async def test_inlay_hint_request(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_code_action_request(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
@@ -237,7 +195,6 @@ async def test_code_action_request(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_document_link_request(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
@@ -248,12 +205,6 @@ async def test_document_link_request(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-# ---------------------------------------------------------------------------
-# Stress and edge cases
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_rapid_changes_stress(client, workspace):
     uri, content = client.open(workspace / "main.cpp")
@@ -269,7 +220,6 @@ async def test_rapid_changes_stress(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_save_notification(client, workspace):
     uri, _ = client.open(workspace / "main.cpp")
@@ -279,7 +229,6 @@ async def test_save_notification(client, workspace):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_hover_on_unknown_file(client, workspace):
     result = await client.text_document_hover_async(
@@ -291,64 +240,54 @@ async def test_hover_on_unknown_file(client, workspace):
     assert result is None
 
 
-@pytest.mark.asyncio
 @pytest.mark.workspace("hello_world")
 async def test_all_features_after_compile_wait(client, workspace):
-    """After waiting for compilation, exercise all feature requests."""
+    """Exercise all feature requests after compilation completes."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
 
-    # Hover on 'add' (line 0, character 4)
     hover = await client.text_document_hover_async(
         HoverParams(text_document=_doc(uri), position=Position(line=0, character=4))
     )
     assert hover is not None
 
-    # Completion
     completion = await client.text_document_completion_async(
         CompletionParams(
             text_document=_doc(uri), position=Position(line=5, character=18)
         )
     )
 
-    # Signature help
     await client.text_document_signature_help_async(
         SignatureHelpParams(
             text_document=_doc(uri), position=Position(line=0, character=0)
         )
     )
 
-    # Definition on 'add'
     await client.text_document_definition_async(
         DefinitionParams(
             text_document=_doc(uri), position=Position(line=0, character=4)
         )
     )
 
-    # Document symbols
     symbols = await client.text_document_document_symbol_async(
         DocumentSymbolParams(text_document=_doc(uri))
     )
     assert symbols is not None
 
-    # Folding ranges
     folding = await client.text_document_folding_range_async(
         FoldingRangeParams(text_document=_doc(uri))
     )
     assert folding is not None
 
-    # Semantic tokens
     tokens = await client.text_document_semantic_tokens_full_async(
         SemanticTokensParams(text_document=_doc(uri))
     )
     assert tokens is not None
 
-    # Document links
     links = await client.text_document_document_link_async(
         DocumentLinkParams(text_document=_doc(uri))
     )
     assert links is not None
 
-    # Code actions
     await client.text_document_code_action_async(
         CodeActionParams(
             text_document=_doc(uri),
@@ -359,7 +298,6 @@ async def test_all_features_after_compile_wait(client, workspace):
         )
     )
 
-    # Inlay hints
     await client.text_document_inlay_hint_async(
         InlayHintParams(
             text_document=_doc(uri),
