@@ -9,6 +9,9 @@
 #include "eventide/ipc/lsp/protocol.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/serde/serde/raw_value.h"
+#include "index/merged_index.h"
+#include "index/project_index.h"
+#include "semantic/relation_kind.h"
 #include "server/compile_graph.h"
 #include "server/config.h"
 #include "server/worker_pool.h"
@@ -84,6 +87,26 @@ private:
     // path_id -> in-flight PCH build event (later arrivals co_await the same build).
     llvm::DenseMap<std::uint32_t, std::shared_ptr<et::event>> pch_building;
 
+    // === Index state ===
+
+    // Global symbol table and path mapping for the project.
+    index::ProjectIndex project_index;
+
+    // Per-file merged index shards (keyed by project-level path_id).
+    llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
+
+    // Files queued for background indexing (server-level path_ids from CDB).
+    std::vector<std::uint32_t> index_queue;
+
+    // Index of next file to process in index_queue.
+    std::size_t index_queue_pos = 0;
+
+    // Whether background indexing is currently in progress.
+    bool indexing_active = false;
+
+    // Timer for idle-triggered background indexing.
+    std::shared_ptr<et::timer> index_idle_timer;
+
     // Document state: path_id -> DocumentState
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
 
@@ -123,6 +146,21 @@ private:
                               const std::string& directory,
                               const std::vector<std::string>& arguments);
 
+    // Schedule background indexing when idle.
+    void schedule_indexing();
+
+    // Background indexing coroutine: picks files from queue and dispatches to workers.
+    et::task<> run_background_indexing();
+
+    // Merge a TUIndex result into ProjectIndex and MergedIndex shards.
+    void merge_index_result(const void* tu_index_data, std::size_t size);
+
+    // Persist index state to disk.
+    void save_index();
+
+    // Load index state from disk.
+    void load_index();
+
     // Forwarding helpers for feature requests (RawValue passthrough)
     using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
 
@@ -137,6 +175,41 @@ private:
     /// Forward a stateless request with document content and compile args.
     template <typename WorkerParams>
     RawResult forward_stateless(const std::string& uri, const protocol::Position& position);
+
+    /// Query index for symbol relations (GoToDefinition, FindReferences, etc.).
+    /// Returns LSP Location array as RawValue.
+    RawResult query_index_relations(const std::string& uri,
+                                    const protocol::Position& position,
+                                    RelationKind kind);
+
+    /// Information about a symbol at a given position.
+    struct SymbolInfo {
+        index::SymbolHash hash = 0;
+        std::string name;
+        SymbolKind kind;
+        std::string uri;
+        protocol::Range range;
+    };
+
+    /// Look up a symbol at a position, returning its hash, name, kind, and range.
+    et::task<std::optional<SymbolInfo>>
+        lookup_symbol_at_position(const std::string& uri, const protocol::Position& position);
+
+    /// Find the definition location (uri + range) of a symbol by its hash.
+    std::optional<protocol::Location> find_symbol_definition_location(index::SymbolHash hash);
+
+    /// Convert clice::SymbolKind to LSP protocol::SymbolKind.
+    static protocol::SymbolKind to_lsp_symbol_kind(SymbolKind kind);
+
+    /// Build a CallHierarchyItem from a SymbolInfo.
+    protocol::CallHierarchyItem build_call_hierarchy_item(const SymbolInfo& info);
+
+    /// Build a TypeHierarchyItem from a SymbolInfo.
+    protocol::TypeHierarchyItem build_type_hierarchy_item(const SymbolInfo& info);
+
+    /// Re-lookup SymbolInfo from a CallHierarchyItem or TypeHierarchyItem.
+    et::task<std::optional<SymbolInfo>> resolve_hierarchy_item(const std::string& uri,
+                                                               const protocol::Range& range);
 };
 
 }  // namespace clice

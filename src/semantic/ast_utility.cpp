@@ -308,6 +308,12 @@ const clang::NamedDecl* decl_of_impl(const void* T) {
 }
 
 auto decl_of(clang::QualType type) -> const clang::NamedDecl* {
+    // Strip type-sugar that wraps the underlying type without adding a decl
+    // (e.g. ElaboratedType for "struct Foo" vs plain "Foo").
+    if(auto ET = type->getAs<clang::ElaboratedType>()) {
+        type = ET->getNamedType();
+    }
+
     if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
         auto decl = TST->getTemplateName().getAsTemplateDecl();
         if(type->isDependentType()) {

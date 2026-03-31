@@ -19,6 +19,9 @@ struct CliceConfig {
     // Cache directory (empty = default: <workspace>/.clice/)
     std::string cache_dir;
 
+    // Index storage directory (default: <cache_dir>/index/)
+    std::string index_dir;
+
     // Debounce interval for re-compilation after edits (milliseconds)
     int debounce_ms = 200;
 

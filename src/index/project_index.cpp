@@ -15,6 +15,10 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self, TU
 
     for(auto& [symbol_id, symbol]: index.symbols) {
         auto& target_symbol = self.symbols[symbol_id];
+        if(target_symbol.name.empty()) {
+            target_symbol.name = symbol.name;
+            target_symbol.kind = symbol.kind;
+        }
         for(auto ref: symbol.reference_files) {
             target_symbol.reference_files.add(file_ids_map[ref]);
         }
@@ -48,10 +52,12 @@ void ProjectIndex::serialize(this ProjectIndex& self, llvm::raw_ostream& os) {
         buffer.resize_for_overwrite(symbol.reference_files.getSizeInBytes(false));
         symbol.reference_files.write(buffer.data(), false);
 
-        return binary::CreateSymbolEntry(
-            builder,
-            symbol_id,
-            binary::CreateSymbol(builder, symbol.kind.value(), CreateVector(builder, buffer)));
+        return binary::CreateSymbolEntry(builder,
+                                         symbol_id,
+                                         binary::CreateSymbol(builder,
+                                                              CreateString(builder, symbol.name),
+                                                              symbol.kind.value(),
+                                                              CreateVector(builder, buffer)));
     });
 
     auto project_index =
@@ -83,6 +89,7 @@ ProjectIndex ProjectIndex::from(const void* data) {
 
     for(auto entry: *root->symbols()) {
         auto& symbol = index.symbols[entry->symbol_id()];
+        symbol.name = entry->symbol()->name()->str();
         symbol.kind = SymbolKind(static_cast<std::uint8_t>(entry->symbol()->kind()));
         symbol.reference_files = read_bitmap(entry->symbol()->refs());
     }

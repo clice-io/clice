@@ -12,6 +12,8 @@
 #include "semantic/symbol_kind.h"
 #include "support/bitmap.h"
 
+#include "llvm/Support/raw_ostream.h"
+
 namespace clice::index {
 
 using Range = LocalSourceRange;
@@ -77,9 +79,17 @@ struct TUIndex {
 
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
 
+    /// File indices keyed by path_id, populated by from() for deserialized data.
+    /// When built from AST, this is empty and file_indices (keyed by FileID) is used.
+    llvm::DenseMap<std::uint32_t, FileIndex> path_file_indices;
+
     FileIndex main_file_index;
 
     static TUIndex build(CompilationUnitRef unit);
+
+    void serialize(llvm::raw_ostream& os) const;
+
+    static TUIndex from(const void* data);
 };
 
 }  // namespace clice::index

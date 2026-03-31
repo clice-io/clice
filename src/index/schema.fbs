@@ -1,103 +1,170 @@
 namespace clice.index.binary;
 
 struct Range {
-    begin: uint;
-    end: uint;
+    begin : uint;
+    end : uint;
 }
 
 struct Occurrence {
-    range: Range;
-    target: ulong;
+    range : Range;
+    target : ulong;
 }
 
 struct Relation {
-    kind: uint;
-    padding: uint;
-    range: Range;
-    target_symbol: ulong;
+    kind : uint;
+    padding : uint;
+    range : Range;
+    target_symbol : ulong;
 }
 
 table CacheEntry {
-    sha256: string;
-    canonical_id: uint;
+sha256:
+    string;
+canonical_id:
+    uint;
 }
 
 struct IncludeContext {
-    include_id: uint;
-    canonical_id: uint;
+    include_id : uint;
+    canonical_id : uint;
 }
 
 table HeaderContextEntry {
-    path_id: uint;
-    version: uint;
-    includes: [IncludeContext];
+path_id:
+    uint;
+version:
+    uint;
+includes:
+    [IncludeContext];
 }
 
 struct IncludeLocation {
-    path_id: uint;
-    line: uint;
-    include_id: uint;
+    path_id : uint;
+    line : uint;
+    include_id : uint;
 }
 
 table CompilationContextEntry {
-    path_id: uint;
-    version: uint;
-    canonical_id: uint;
-    build_at: ulong;
-    include_locations: [IncludeLocation];
+path_id:
+    uint;
+version:
+    uint;
+canonical_id:
+    uint;
+build_at:
+    ulong;
+include_locations:
+    [IncludeLocation];
 }
 
 table OccurrenceEntry {
-    occurrence: Occurrence;
-    context: [ubyte];
+occurrence:
+    Occurrence;
+context:
+    [ubyte];
 }
 
 table RelationEntry {
-    relation: Relation;
-    context: [ubyte];
+relation:
+    Relation;
+context:
+    [ubyte];
 }
 
 table SymbolRelationsEntry {
-    symbol: ulong;
-    relations: [RelationEntry];
+symbol:
+    ulong;
+relations:
+    [RelationEntry];
 }
 
 table Symbol {
-    kind: ubyte;
-    refs: [ubyte];
+name:
+    string;
+kind:
+    ubyte;
+refs:
+    [ubyte];
 }
 
 table SymbolEntry {
-    symbol_id: ulong;
-    symbol: Symbol;
+symbol_id:
+    ulong;
+symbol:
+    Symbol;
 }
 
 table MergedIndex {
-    max_canonical_id: uint;
+max_canonical_id:
+    uint;
 
-    canonical_cache: [CacheEntry];
+canonical_cache:
+    [CacheEntry];
 
-    header_contexts: [HeaderContextEntry];
+header_contexts:
+    [HeaderContextEntry];
 
-    compilation_contexts: [CompilationContextEntry];
+compilation_contexts:
+    [CompilationContextEntry];
 
-    occurrences: [OccurrenceEntry];
+occurrences:
+    [OccurrenceEntry];
 
-    relations: [SymbolRelationsEntry];
+relations:
+    [SymbolRelationsEntry];
+
+removed:
+    [ubyte];
+}
+
+table TUFileRelationsEntry {
+symbol:
+    ulong;
+relations:
+    [Relation];
+}
+
+table TUFileIndexEntry {
+file_id:
+    uint;
+occurrences:
+    [Occurrence];
+relations:
+    [TUFileRelationsEntry];
+}
+
+table TUIndex {
+built_at:
+    ulong;
+paths:
+    [string];
+locations:
+    [IncludeLocation];
+symbols:
+    [SymbolEntry];
+file_indices:
+    [TUFileIndexEntry];
+main_file_index:
+    TUFileIndexEntry;
 }
 
 table PathEntry {
-    path: string;
-    id: uint;
+path:
+    string;
+id:
+    uint;
 }
 
 struct PathMapEntry {
-    source: uint;
-    index: uint;
+    source : uint;
+    index : uint;
 }
 
 table ProjectIndex {
-    paths: [PathEntry];
-    indices: [PathMapEntry];
-    symbols: [SymbolEntry];
+paths:
+    [PathEntry];
+indices:
+    [PathMapEntry];
+symbols:
+    [SymbolEntry];
 }

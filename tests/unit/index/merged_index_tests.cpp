@@ -199,6 +199,164 @@ TEST_CASE(SerializationRoundTripInMemory) {
     ASSERT_TRUE(found);
 }
 
+TEST_CASE(RemoveCompilationContext) {
+    build_index(R"(
+            int foo() { return 42; }
+            int bar() { return foo(); }
+        )");
+
+    // Merge as a compilation context (using the build_at overload).
+    index::MergedIndex merged;
+    auto fid = unit->interested_file();
+    std::vector<index::IncludeLocation> locations;
+    merged.merge(0, tu_index.built_at, std::move(locations), tu_index.main_file_index);
+
+    // Verify occurrence lookup works before remove.
+    bool found_before = false;
+    for(auto& occ: tu_index.main_file_index.occurrences) {
+        merged.lookup(occ.range.begin, [&](const index::Occurrence& o) {
+            found_before = true;
+            return false;
+        });
+        if(found_before)
+            break;
+    }
+    ASSERT_TRUE(found_before);
+
+    // Remove the compilation context.
+    merged.remove(0);
+
+    // Serialize and verify the removed data round-trips.
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    merged.serialize(os);
+    // Should not crash.
+    auto restored = index::MergedIndex(buf);
+}
+
+TEST_CASE(RemoveHeaderContext) {
+    add_file("header.h", R"(
+            #pragma once
+            inline int shared() { return 1; }
+        )");
+    add_main("main.cpp", R"(
+            #include "header.h"
+            int use() { return shared(); }
+        )");
+    ASSERT_TRUE(compile());
+    tu_index = index::TUIndex::build(*unit);
+
+    // Merge header index as header context.
+    index::MergedIndex merged_header;
+    for(auto& [fid, file_index]: tu_index.file_indices) {
+        merged_header.merge(0, tu_index.graph.include_location_id(fid), file_index);
+    }
+
+    // Remove should not crash.
+    merged_header.remove(0);
+
+    // Serialize after remove should work.
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    merged_header.serialize(os);
+}
+
+TEST_CASE(RemovedBitmapRoundTrip) {
+    build_index(R"(
+            int foo() { return 42; }
+        )");
+
+    // Merge as compilation context.
+    index::MergedIndex merged;
+    std::vector<index::IncludeLocation> locations;
+    merged.merge(0, tu_index.built_at, std::move(locations), tu_index.main_file_index);
+
+    // Remove to populate the removed bitmap.
+    merged.remove(0);
+
+    // Serialize.
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    merged.serialize(os);
+
+    // Deserialize and compare.
+    auto restored = index::MergedIndex(buf);
+    ASSERT_TRUE(merged == restored);
+}
+
+TEST_CASE(LookupFiltersRemoved) {
+    build_index(R"(
+            int $(target)foo() { return 42; }
+        )");
+
+    // Merge as compilation context.
+    index::MergedIndex merged;
+    std::vector<index::IncludeLocation> locations;
+    merged.merge(0, tu_index.built_at, std::move(locations), tu_index.main_file_index);
+
+    // Verify lookup finds something before removal.
+    auto offset = point("target");
+    bool found_before = false;
+    merged.lookup(offset, [&](const index::Occurrence& occ) {
+        if(occ.range.contains(offset))
+            found_before = true;
+        return true;
+    });
+    ASSERT_TRUE(found_before);
+
+    // Remove the compilation context.
+    merged.remove(0);
+
+    // Verify lookup finds nothing after removal.
+    bool found_after = false;
+    merged.lookup(offset, [&](const index::Occurrence& occ) {
+        if(occ.range.contains(offset))
+            found_after = true;
+        return true;
+    });
+    ASSERT_FALSE(found_after);
+}
+
+TEST_CASE(CacheInvalidatedAfterMerge) {
+    build_index(R"(
+            int $(first)foo() { return 42; }
+        )");
+
+    // Merge first TU as header context.
+    index::MergedIndex merged;
+    auto fid = unit->interested_file();
+    merged.merge(0, tu_index.graph.include_location_id(fid), tu_index.main_file_index);
+
+    // Trigger cache build by doing a lookup.
+    auto first_offset = point("first");
+    bool found_first = false;
+    merged.lookup(first_offset, [&](const index::Occurrence& occ) {
+        if(occ.range.contains(first_offset))
+            found_first = true;
+        return true;
+    });
+    ASSERT_TRUE(found_first);
+
+    // Build a second TU with different content.
+    build_index(R"(
+            int $(second)bar() { return 99; }
+        )");
+
+    // Merge second TU.
+    auto fid2 = unit->interested_file();
+    merged.merge(1, tu_index.graph.include_location_id(fid2), tu_index.main_file_index);
+
+    // Verify lookup finds the new occurrence (cache was invalidated).
+    auto second_offset = point("second");
+    bool found_second = false;
+    merged.lookup(second_offset, [&](const index::Occurrence& occ) {
+        if(occ.range.contains(second_offset))
+            found_second = true;
+        return true;
+    });
+    ASSERT_TRUE(found_second);
+}
+
 };  // TEST_SUITE(MergedIndex)
 }  // namespace
 }  // namespace clice::testing

@@ -10,8 +10,11 @@
 #include "eventide/serde/json/serializer.h"
 #include "eventide/serde/serde/raw_value.h"
 #include "feature/feature.h"
+#include "index/tu_index.h"
 #include "server/protocol.h"
 #include "support/logging.h"
+
+#include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
@@ -212,9 +215,17 @@ int run_stateless_worker_mode() {
                 return {false, "Index compilation failed", ""};
             }
 
-            LOG_INFO("Index done: file={}, {}ms", params.file, timer.ms());
-            // TODO: Generate TUIndex from the compilation unit
-            return {true, "", ""};
+            auto tu_index = index::TUIndex::build(unit);
+
+            std::string serialized;
+            llvm::raw_string_ostream os(serialized);
+            tu_index.serialize(os);
+
+            LOG_INFO("Index done: file={}, {} symbols, {}ms",
+                     params.file,
+                     tu_index.symbols.size(),
+                     timer.ms());
+            return {true, "", std::move(serialized)};
         });
         co_return result.value();
     });

@@ -230,6 +230,16 @@ void MergedIndex::load_in_memory(this Self& self) {
         index.compilation_contexts.try_emplace(path, std::move(context));
     }
 
+    // Count ref counts from compilation contexts.
+    for(auto entry: *root->compilation_contexts()) {
+        index.canonical_ref_counts[entry->canonical_id()] += 1;
+    }
+
+    // Deserialize removed bitmap.
+    if(root->removed() && root->removed()->size() > 0) {
+        index.removed = read_bitmap(root->removed());
+    }
+
     for(auto entry: *root->occurrences()) {
         index.occurrences.try_emplace(*safe_cast<Occurrence>(entry->occurrence()),
                                       read_bitmap(entry->context()));
@@ -337,13 +347,22 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
         return std::get<0>(e);
     });
 
+    // Serialize removed bitmap.
+    buffer.clear();
+    if(!index->removed.isEmpty()) {
+        buffer.resize_for_overwrite(index->removed.getSizeInBytes(false));
+        index->removed.write(buffer.data(), false);
+    }
+    auto removed = CreateVector(builder, buffer);
+
     auto merged_index = binary::CreateMergedIndex(builder,
                                                   index->max_canonical_id,
                                                   CreateVector(builder, canonical_cache),
                                                   CreateVector(builder, header_contexts),
                                                   CreateVector(builder, compilation_contexts),
                                                   CreateVector(builder, occurrences),
-                                                  CreateVector(builder, relations));
+                                                  CreateVector(builder, relations),
+                                                  removed);
     builder.Finish(merged_index);
 
     out.write(safe_cast<char>(builder.GetBufferPointer()), builder.GetSize());
@@ -371,6 +390,18 @@ void MergedIndex::lookup(this const Self& self,
 
         while(it != occurrences.end()) {
             if(it->range.contains(offset)) {
+                // Skip occurrences whose canonical_ids are all removed.
+                if(!index.removed.isEmpty()) {
+                    auto bitmap_it = index.occurrences.find(*it);
+                    if(bitmap_it != index.occurrences.end()) {
+                        auto remaining = bitmap_it->second - index.removed;
+                        if(remaining.isEmpty()) {
+                            it++;
+                            continue;
+                        }
+                    }
+                }
+
                 if(!callback(*it)) {
                     break;
                 }
@@ -416,8 +447,16 @@ void MergedIndex::lookup(this const Self& self,
         }
 
         auto& relations = it->second;
-        for(auto& [relation, _]: relations) {
+        for(auto& [relation, bitmap]: relations) {
             if(relation.kind & kind) {
+                // Skip relations whose canonical_ids are all removed.
+                if(!self.impl->removed.isEmpty()) {
+                    auto remaining = bitmap - self.impl->removed;
+                    if(remaining.isEmpty()) {
+                        continue;
+                    }
+                }
+
                 if(!callback(relation)) {
                     break;
                 }
@@ -504,18 +543,33 @@ void MergedIndex::remove(this Self& self, std::uint32_t path_id) {
     self.load_in_memory();
     auto& index = *self.impl;
 
-    auto& includes = index.header_contexts[path_id].includes;
+    // Handle header context removal.
+    auto hc_it = index.header_contexts.find(path_id);
+    if(hc_it != index.header_contexts.end()) {
+        for(auto& [_, canonical_id]: hc_it->second.includes) {
+            auto& ref_counts = index.canonical_ref_counts[canonical_id];
+            ref_counts -= 1;
+            if(ref_counts == 0) {
+                index.removed.add(canonical_id);
+            }
+        }
+        index.header_contexts.erase(hc_it);
+    }
 
-    for(auto& [_, canonical_id]: includes) {
+    // Handle compilation context removal.
+    auto cc_it = index.compilation_contexts.find(path_id);
+    if(cc_it != index.compilation_contexts.end()) {
+        auto canonical_id = cc_it->second.canonical_id;
         auto& ref_counts = index.canonical_ref_counts[canonical_id];
         ref_counts -= 1;
-
         if(ref_counts == 0) {
             index.removed.add(canonical_id);
         }
+        index.compilation_contexts.erase(cc_it);
     }
 
-    includes.clear();
+    // Invalidate cached occurrences.
+    index.occurrences_cache.clear();
 }
 
 void MergedIndex::merge(this Self& self,
@@ -530,6 +584,7 @@ void MergedIndex::merge(this Self& self,
         context.build_at = build_at.count();
         context.include_locations = std::move(include_locations);
     });
+    self.impl->occurrences_cache.clear();
 }
 
 void MergedIndex::merge(this Self& self,
@@ -541,6 +596,7 @@ void MergedIndex::merge(this Self& self,
         auto& context = self.header_contexts[path_id];
         context.includes.emplace_back(include_id, canonical_id);
     });
+    self.impl->occurrences_cache.clear();
 }
 
 bool operator==(MergedIndex& lhs, MergedIndex& rhs) {

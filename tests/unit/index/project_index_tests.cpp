@@ -163,6 +163,43 @@ TEST_CASE(FileIdsMapCorrectness) {
     }
 }
 
+TEST_CASE(NameSurvivesRoundTrip) {
+    index::TUIndex tu;
+    ASSERT_TRUE(build_and_index(R"(
+            int my_variable = 42;
+            void my_function() {}
+        )",
+                                tu));
+
+    index::ProjectIndex project;
+    project.merge(tu);
+
+    // Verify names are populated after merge.
+    bool found_var = false;
+    bool found_func = false;
+    for(auto& [hash, symbol]: project.symbols) {
+        if(symbol.name == "my_variable")
+            found_var = true;
+        if(symbol.name == "my_function")
+            found_func = true;
+    }
+    ASSERT_TRUE(found_var);
+    ASSERT_TRUE(found_func);
+
+    // Serialize and deserialize.
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    project.serialize(os);
+    auto restored = index::ProjectIndex::from(buf.data());
+
+    // Verify names survive round-trip.
+    for(auto& [hash, symbol]: project.symbols) {
+        ASSERT_TRUE(restored.symbols.contains(hash));
+        ASSERT_EQ(restored.symbols[hash].name, symbol.name);
+        ASSERT_EQ(restored.symbols[hash].kind.value(), symbol.kind.value());
+    }
+}
+
 };  // TEST_SUITE(ProjectIndex)
 }  // namespace
 }  // namespace clice::testing

@@ -2,6 +2,7 @@
 
 #include <tuple>
 
+#include "index/serialization.h"
 #include "semantic/ast_utility.h"
 #include "semantic/semantic_visitor.h"
 
@@ -193,6 +194,122 @@ TUIndex TUIndex::build(CompilationUnitRef unit) {
 
     Builder builder(index, unit);
     builder.build();
+
+    return index;
+}
+
+void TUIndex::serialize(llvm::raw_ostream& os) const {
+    fbs::FlatBufferBuilder builder(4096);
+
+    llvm::SmallVector<char, 1024> buffer;
+
+    auto paths =
+        transform(graph.paths, [&](const std::string& p) { return builder.CreateString(p); });
+
+    auto syms = transform(symbols, [&](auto&& value) {
+        auto& [symbol_id, symbol] = value;
+        buffer.clear();
+        buffer.resize_for_overwrite(symbol.reference_files.getSizeInBytes(false));
+        symbol.reference_files.write(buffer.data(), false);
+        return binary::CreateSymbolEntry(builder,
+                                         symbol_id,
+                                         binary::CreateSymbol(builder,
+                                                              CreateString(builder, symbol.name),
+                                                              symbol.kind.value(),
+                                                              CreateVector(builder, buffer)));
+    });
+
+    /// Serialize a single FileIndex into a TUFileIndexEntry.
+    auto serialize_file_index = [&](std::uint32_t fid, const FileIndex& index) {
+        auto occs = CreateStructVector<binary::Occurrence>(builder, index.occurrences);
+        auto rels = transform(index.relations, [&](auto&& value) {
+            auto& [symbol_id, relations] = value;
+            return binary::CreateTUFileRelationsEntry(
+                builder,
+                symbol_id,
+                CreateStructVector<binary::Relation>(builder, relations));
+        });
+        return binary::CreateTUFileIndexEntry(builder, fid, occs, CreateVector(builder, rels));
+    };
+
+    /// Convert FileID-keyed file_indices to path_id-keyed entries.
+    llvm::SmallVector<fbs::Offset<binary::TUFileIndexEntry>> file_idx_vec;
+    for(auto& [fid, index]: file_indices) {
+        auto pid = const_cast<IncludeGraph&>(graph).path_id(fid);
+        file_idx_vec.push_back(serialize_file_index(pid, index));
+    }
+
+    /// Main file is the last path in graph.paths (convention from IncludeGraph).
+    auto main_idx =
+        serialize_file_index(static_cast<std::uint32_t>(graph.paths.size() - 1), main_file_index);
+
+    auto tu_index =
+        binary::CreateTUIndex(builder,
+                              static_cast<std::uint64_t>(built_at.count()),
+                              CreateVector(builder, paths),
+                              CreateStructVector<binary::IncludeLocation>(builder, graph.locations),
+                              CreateVector(builder, syms),
+                              builder.CreateVector(file_idx_vec.data(), file_idx_vec.size()),
+                              main_idx);
+
+    builder.Finish(tu_index);
+    os.write(safe_cast<const char>(builder.GetBufferPointer()), builder.GetSize());
+}
+
+TUIndex TUIndex::from(const void* data) {
+    auto root = fbs::GetRoot<binary::TUIndex>(data);
+
+    TUIndex index;
+    index.built_at = std::chrono::milliseconds(root->built_at());
+
+    for(auto p: *root->paths()) {
+        index.graph.paths.emplace_back(p->str());
+    }
+
+    for(auto loc: *root->locations()) {
+        index.graph.locations.emplace_back(*safe_cast<IncludeLocation>(loc));
+    }
+
+    for(auto entry: *root->symbols()) {
+        auto& symbol = index.symbols[entry->symbol_id()];
+        symbol.name = entry->symbol()->name()->str();
+        symbol.kind = SymbolKind(static_cast<std::uint8_t>(entry->symbol()->kind()));
+        symbol.reference_files = read_bitmap(entry->symbol()->refs());
+    }
+
+    /// Helper to deserialize a TUFileIndexEntry into a FileIndex.
+    auto deserialize_file_index = [](const binary::TUFileIndexEntry* entry) -> FileIndex {
+        FileIndex fi;
+        if(entry->occurrences()) {
+            fi.occurrences.reserve(entry->occurrences()->size());
+            for(auto o: *entry->occurrences()) {
+                fi.occurrences.emplace_back(*safe_cast<Occurrence>(o));
+            }
+        }
+        if(entry->relations()) {
+            for(auto rel_entry: *entry->relations()) {
+                auto& rels = fi.relations[rel_entry->symbol()];
+                if(rel_entry->relations()) {
+                    rels.reserve(rel_entry->relations()->size());
+                    for(auto r: *rel_entry->relations()) {
+                        rels.emplace_back(*safe_cast<Relation>(r));
+                    }
+                }
+            }
+        }
+        return fi;
+    };
+
+    /// Populate path_file_indices keyed by path_id (no clang::FileID needed).
+    if(root->file_indices()) {
+        for(auto entry: *root->file_indices()) {
+            index.path_file_indices[entry->file_id()] = deserialize_file_index(entry);
+        }
+    }
+
+    if(root->main_file_index()) {
+        index.main_file_index = deserialize_file_index(root->main_file_index());
+    }
 
     return index;
 }
