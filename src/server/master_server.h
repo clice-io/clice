@@ -81,6 +81,9 @@ private:
     // path_id -> hash of preamble content at PCH build time (for staleness detection).
     llvm::DenseMap<std::uint32_t, std::uint64_t> pch_hashes;
 
+    // path_id -> in-flight PCH build event (later arrivals co_await the same build).
+    llvm::DenseMap<std::uint32_t, std::shared_ptr<et::event>> pch_building;
+
     // Document state: path_id -> DocumentState
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
 
@@ -114,7 +117,8 @@ private:
                            std::vector<std::string>& arguments);
 
     // Build or reuse PCH for a source file. Returns true if PCH is available.
-    et::task<bool> ensure_pch(std::uint32_t path_id, llvm::StringRef path,
+    et::task<bool> ensure_pch(std::uint32_t path_id,
+                              llvm::StringRef path,
                               const std::string& text,
                               const std::string& directory,
                               const std::vector<std::string>& arguments);

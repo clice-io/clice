@@ -184,8 +184,7 @@ et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri)
         }
 
         // Build or reuse PCH for preamble acceleration.
-        co_await ensure_pch(path_id, params.path, params.text,
-                            params.directory, params.arguments);
+        co_await ensure_pch(path_id, params.path, params.text, params.directory, params.arguments);
 
         // Populate PCH info if available.
         if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
@@ -390,10 +389,11 @@ bool MasterServer::fill_compile_args(llvm::StringRef path,
     return true;
 }
 
-et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id, llvm::StringRef path,
-                                         const std::string& text,
-                                         const std::string& directory,
-                                         const std::vector<std::string>& arguments) {
+et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
+                                        llvm::StringRef path,
+                                        const std::string& text,
+                                        const std::string& directory,
+                                        const std::vector<std::string>& arguments) {
     auto bound = compute_preamble_bound(text);
     if(bound == 0) {
         // No preamble directives — PCH would be empty, skip.
@@ -410,6 +410,17 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id, llvm::StringRef p
         }
     }
 
+    // If another coroutine is already building PCH for this file, wait for it.
+    if(auto it = pch_building.find(path_id); it != pch_building.end()) {
+        co_await it->second->wait();
+        pch_bounds[path_id] = bound;
+        co_return pch_paths.contains(path_id);
+    }
+
+    // Register in-flight build so concurrent requests wait on us.
+    auto completion = std::make_shared<et::event>();
+    pch_building[path_id] = completion;
+
     // Build a new PCH via stateless worker.
     worker::BuildPCHParams pch_params;
     pch_params.file = std::string(path);
@@ -421,8 +432,14 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id, llvm::StringRef p
     LOG_DEBUG("Building PCH for {}, bound={}", path, bound);
 
     auto result = co_await pool.send_stateless(pch_params);
+
+    // Signal waiters and remove in-flight entry.
+    pch_building.erase(path_id);
+    completion->set();
+
     if(!result.has_value() || !result.value().success) {
-        LOG_WARN("PCH build failed for {}: {}", path,
+        LOG_WARN("PCH build failed for {}: {}",
+                 path,
                  result.has_value() ? result.value().error : result.error().message);
         co_return false;
     }
