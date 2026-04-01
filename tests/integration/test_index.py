@@ -55,6 +55,9 @@ async def test_goto_definition(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     assert await _wait_for_index(client), "Index not ready after 30s"
 
+    print(f"[diag] URI: {uri}", flush=True)
+    print(f"[diag] workspace path: {workspace / 'main.cpp'}", flush=True)
+
     # Diagnostic: try multiple positions to understand offset mapping
     for test_line, test_char, label in [
         (24, 12, "add call"),

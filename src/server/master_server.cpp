@@ -864,6 +864,19 @@ MasterServer::RawResult MasterServer::query_index_relations(const std::string& u
         co_return serde_raw{"null"};
     auto offset = *offset_opt;
 
+    LOG_WARN(
+        "[diag] query_index: path='{}' pos=({},{}) offset={} kind={} " "merged_shards={} proj_paths={}",
+        path,
+        position.line,
+        position.character,
+        offset,
+        static_cast<int>(kind),
+        merged_indices.size(),
+        project_index.path_pool.paths.size());
+    for(auto& [pid, mi]: merged_indices) {
+        LOG_WARN("[diag]   shard: proj_id={} path='{}'", pid, project_index.path_pool.path(pid));
+    }
+
     // Find the project-level path_id for this file.
     auto proj_cache_it = project_index.path_pool.find(path);
     if(proj_cache_it == project_index.path_pool.cache.end()) {

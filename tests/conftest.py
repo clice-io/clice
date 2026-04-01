@@ -267,6 +267,18 @@ async def client(
     if hasattr(c, "_server") and c._server is not None and c._server.returncode is None:
         c._server.kill()
 
+    # Dump server stderr for diagnostics (filtered to [diag] lines)
+    try:
+        server = getattr(c, "_server", None)
+        if server and server.stderr:
+            stderr_data = await asyncio.wait_for(server.stderr.read(), timeout=2.0)
+            if stderr_data:
+                for line in stderr_data.decode("utf-8", errors="replace").splitlines():
+                    if "[diag]" in line or "[warn]" in line:
+                        print(f"[server] {line}", flush=True)
+    except Exception:
+        pass
+
     # Stop pygls client (with timeout to avoid hanging)
     try:
         c._stop_event.set()
