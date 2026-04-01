@@ -84,10 +84,14 @@ int run_stateless_worker_mode() {
                 auto unit = compile(cp, pch_info);
 
                 if(unit.completed()) {
-                    LOG_INFO("BuildPCH done: file={}, output={}, {}ms", params.file, cp.output_file, timer.ms());
+                    LOG_INFO("BuildPCH done: file={}, output={}, {}ms",
+                             params.file,
+                             cp.output_file,
+                             timer.ms());
                     return {true, "", std::string(cp.output_file)};
                 } else {
                     LOG_WARN("BuildPCH failed: file={}, {}ms", params.file, timer.ms());
+                    fs::remove(cp.output_file);
                     return {false, "PCH compilation failed", ""};
                 }
             });

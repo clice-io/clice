@@ -413,7 +413,6 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     // If another coroutine is already building PCH for this file, wait for it.
     if(auto it = pch_building.find(path_id); it != pch_building.end()) {
         co_await it->second->wait();
-        pch_bounds[path_id] = bound;
         co_return pch_paths.contains(path_id);
     }
 
@@ -433,15 +432,18 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
 
     auto result = co_await pool.send_stateless(pch_params);
 
-    // Signal waiters and remove in-flight entry.
-    pch_building.erase(path_id);
-    completion->set();
-
     if(!result.has_value() || !result.value().success) {
         LOG_WARN("PCH build failed for {}: {}",
                  path,
                  result.has_value() ? result.value().error : result.error().message);
+        pch_building.erase(path_id);
+        completion->set();
         co_return false;
+    }
+
+    // Delete old PCH temp file before replacing.
+    if(auto old_it = pch_paths.find(path_id); old_it != pch_paths.end()) {
+        fs::remove(old_it->second);
     }
 
     pch_paths[path_id] = result.value().pch_path;
@@ -449,6 +451,10 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     pch_hashes[path_id] = preamble_hash;
 
     LOG_INFO("PCH built for {}: {}", path, result.value().pch_path);
+
+    // Signal waiters after state is fully updated, then remove in-flight entry.
+    pch_building.erase(path_id);
+    completion->set();
     co_return true;
 }
 
@@ -539,7 +545,10 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
     }
 
     // Fill available PCM paths for module-aware completion.
+    // Skip the file's own PCM to avoid "multiple module declarations" errors.
     for(auto& [pid, pcm_path]: pcm_paths) {
+        if(pid == path_id)
+            continue;
         auto mod_it = path_to_module.find(pid);
         if(mod_it != path_to_module.end()) {
             wp.pcms[mod_it->second] = pcm_path;
