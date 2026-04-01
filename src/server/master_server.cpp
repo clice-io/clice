@@ -720,11 +720,18 @@ et::task<> MasterServer::run_background_indexing() {
 
         auto result = co_await pool.send_stateless(params);
         if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
+            LOG_INFO("Background indexing got TUIndex for {}: {} bytes",
+                     file_path,
+                     result.value().tu_index_data.size());
             merge_index_result(result.value().tu_index_data.data(),
                                result.value().tu_index_data.size());
             ++processed;
         } else if(result.has_value() && !result.value().success) {
             LOG_WARN("Background index failed for {}: {}", file_path, result.value().error);
+        } else if(result.has_value() && result.value().tu_index_data.empty()) {
+            LOG_WARN("Background index returned empty TUIndex for {}", file_path);
+        } else {
+            LOG_WARN("Background index IPC error for {}: {}", file_path, result.error().message);
         }
     }
 
