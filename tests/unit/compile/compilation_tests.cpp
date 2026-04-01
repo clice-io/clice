@@ -7,6 +7,7 @@
 #include "compile/compilation.h"
 #include "support/filesystem.h"
 #include "syntax/scan.h"
+
 #include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
