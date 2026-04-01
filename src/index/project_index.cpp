@@ -78,7 +78,11 @@ ProjectIndex ProjectIndex::from(const void* data) {
     auto& pool = index.path_pool;
     pool.paths.resize(root->paths()->size());
     for(auto entry: *root->paths()) {
-        auto k = pool.save(entry->path()->string_view());
+        // Normalize backslashes to forward slashes for cross-platform consistency
+        // (persisted index may contain native-separator paths from Windows).
+        llvm::SmallString<256> normalized(entry->path()->string_view());
+        std::replace(normalized.begin(), normalized.end(), '\\', '/');
+        auto k = pool.save(normalized.str());
         pool.paths[entry->id()] = k;
         pool.cache.try_emplace(k, entry->id());
     }

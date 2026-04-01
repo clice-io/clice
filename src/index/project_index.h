@@ -7,6 +7,7 @@
 #include "index/tu_index.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
@@ -29,6 +30,17 @@ struct PathPool {
 
     auto path_id(llvm::StringRef path) {
         assert(!path.empty());
+
+        // Normalize backslashes to forward slashes so that paths from different
+        // sources (URI decoding, CDB, clang FileManager) compare equal on
+        // Windows where native separators are backslashes.
+        llvm::SmallString<256> normalized;
+        if(path.contains('\\')) {
+            normalized = path;
+            std::replace(normalized.begin(), normalized.end(), '\\', '/');
+            path = normalized;
+        }
+
         auto [it, success] = cache.try_emplace(path, paths.size());
         if(!success) {
             return it->second;
