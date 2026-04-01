@@ -45,9 +45,12 @@ async def test_goto_definition(client, workspace):
     )
     assert result is not None
     locs = result if isinstance(result, list) else [result]
-    assert len(locs) > 0
+    assert len(locs) > 0, f"GoToDefinition returned empty list, result={result}"
     # Definition should point to line 18 where 'int add(...)' is declared
-    assert any(loc.range.start.line == 18 for loc in locs)
+    actual_lines = [loc.range.start.line for loc in locs]
+    assert any(loc.range.start.line == 18 for loc in locs), (
+        f"Expected line 18, got locations: {[(l.uri, l.range.start.line, l.range.start.character) for l in locs]}"
+    )
 
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 

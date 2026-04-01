@@ -324,6 +324,9 @@ et::task<> MasterServer::load_workspace() {
         }
         if(!index_queue.empty()) {
             LOG_INFO("Queued {} files for background indexing", index_queue.size());
+            for(auto sid: index_queue) {
+                LOG_INFO("  queue entry: server_path_id={} path='{}'", sid, path_pool.resolve(sid));
+            }
             schedule_indexing();
         }
     }
@@ -545,9 +548,13 @@ void MasterServer::merge_index_result(const void* tu_index_data, std::size_t siz
     // Merge main file index.
     merge_file_index(main_tu_path_id, tu_index.main_file_index);
 
-    LOG_DEBUG("Merged TUIndex: {} paths, {} symbols",
-              tu_index.graph.paths.size(),
-              tu_index.symbols.size());
+    LOG_INFO("Merged TUIndex: {} paths, {} symbols, {} merged_shards",
+             tu_index.graph.paths.size(),
+             tu_index.symbols.size(),
+             merged_indices.size());
+    for(auto& [pid, _]: merged_indices) {
+        LOG_INFO("  shard proj_path_id={} path='{}'", pid, project_index.path_pool.path(pid));
+    }
 }
 
 void MasterServer::save_index() {
@@ -632,6 +639,13 @@ void MasterServer::load_index() {
 }
 
 void MasterServer::schedule_indexing() {
+    LOG_INFO(
+        "schedule_indexing called: enable={} active={} scheduled={} queue_size={} queue_pos={}",
+        config.enable_indexing,
+        indexing_active,
+        indexing_scheduled,
+        index_queue.size(),
+        index_queue_pos);
     if(!config.enable_indexing || indexing_active || indexing_scheduled)
         return;
     indexing_scheduled = true;
@@ -702,7 +716,7 @@ et::task<> MasterServer::run_background_indexing() {
             }
         }
 
-        LOG_DEBUG("Background indexing: {}", file_path);
+        LOG_INFO("Background indexing: {}", file_path);
 
         auto result = co_await pool.send_stateless(params);
         if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
@@ -845,14 +859,25 @@ MasterServer::RawResult MasterServer::query_index_relations(const std::string& u
 
     // Find the project-level path_id for this file.
     auto proj_cache_it = project_index.path_pool.find(path);
-    if(proj_cache_it == project_index.path_pool.cache.end())
+    if(proj_cache_it == project_index.path_pool.cache.end()) {
+        LOG_WARN("query_index_relations: path '{}' not in project_index (pool has {} entries)",
+                 path,
+                 project_index.path_pool.paths.size());
+        for(auto& [k, v]: project_index.path_pool.cache) {
+            LOG_WARN("  project_index path: '{}' -> {}", k, v);
+        }
         co_return serde_raw{"null"};
+    }
     auto proj_path_id = proj_cache_it->second;
 
     // Lookup occurrence at offset in this file's MergedIndex.
     auto merged_it = merged_indices.find(proj_path_id);
-    if(merged_it == merged_indices.end())
+    if(merged_it == merged_indices.end()) {
+        LOG_WARN("query_index_relations: no MergedIndex for proj_path_id={} (have {} shards)",
+                 proj_path_id,
+                 merged_indices.size());
         co_return serde_raw{"null"};
+    }
 
     index::SymbolHash symbol_hash = 0;
     merged_it->second.lookup(offset, [&](const index::Occurrence& o) {
@@ -860,13 +885,17 @@ MasterServer::RawResult MasterServer::query_index_relations(const std::string& u
         return false;  // stop after first match
     });
 
-    if(symbol_hash == 0)
+    if(symbol_hash == 0) {
+        LOG_WARN("query_index_relations: no occurrence at offset {} in '{}'", offset, path);
         co_return serde_raw{"null"};
+    }
 
     // Get reference files from ProjectIndex.
     auto sym_it = project_index.symbols.find(symbol_hash);
-    if(sym_it == project_index.symbols.end())
+    if(sym_it == project_index.symbols.end()) {
+        LOG_WARN("query_index_relations: symbol {} not in project_index", symbol_hash);
         co_return serde_raw{"null"};
+    }
 
     // Query each referenced file's MergedIndex for relations of the requested kind.
     std::vector<protocol::Location> locations;
@@ -957,14 +986,22 @@ et::task<std::optional<MasterServer::SymbolInfo>>
 
     // Find the project-level path_id for this file.
     auto proj_cache_it = project_index.path_pool.find(path);
-    if(proj_cache_it == project_index.path_pool.cache.end())
+    if(proj_cache_it == project_index.path_pool.cache.end()) {
+        LOG_WARN("lookup_symbol: path '{}' not in project_index (pool has {} entries)",
+                 path,
+                 project_index.path_pool.paths.size());
         co_return std::nullopt;
+    }
     auto proj_path_id = proj_cache_it->second;
 
     // Lookup occurrence at offset in this file's MergedIndex.
     auto merged_it = merged_indices.find(proj_path_id);
-    if(merged_it == merged_indices.end())
+    if(merged_it == merged_indices.end()) {
+        LOG_WARN("lookup_symbol: no MergedIndex for proj_path_id={} (have {} shards)",
+                 proj_path_id,
+                 merged_indices.size());
         co_return std::nullopt;
+    }
 
     index::SymbolHash symbol_hash = 0;
     index::Range occ_range{};
@@ -974,8 +1011,10 @@ et::task<std::optional<MasterServer::SymbolInfo>>
         return false;  // stop after first match
     });
 
-    if(symbol_hash == 0)
+    if(symbol_hash == 0) {
+        LOG_WARN("lookup_symbol: no occurrence at offset {} in '{}'", offset, path);
         co_return std::nullopt;
+    }
 
     // Get symbol info from ProjectIndex.
     auto sym_it = project_index.symbols.find(symbol_hash);
