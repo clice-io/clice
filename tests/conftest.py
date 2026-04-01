@@ -228,6 +228,10 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
     path = test_data_dir / marker.args[0]
     if (path / "CMakeLists.txt").exists():
         generate_cdb(path)
+    # Clean up persisted index/cache so each test starts fresh.
+    clice_dir = path / ".clice"
+    if clice_dir.exists():
+        shutil.rmtree(clice_dir)
     return path
 
 
