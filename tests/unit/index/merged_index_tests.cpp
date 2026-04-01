@@ -54,7 +54,7 @@ TEST_CASE(Serialization) {
     auto& graph = tu_index.graph;
     for(auto& [fid, index]: tu_index.file_indices) {
         llvm::StringRef path = graph.paths[graph.path_id(fid)];
-        merged_indices[path].merge(0, graph.include_location_id(fid), index);
+        merged_indices[path].merge(0, graph.include_location_id(fid), index, {});
     }
 
     for(auto& [path, merged]: merged_indices) {
@@ -77,7 +77,7 @@ TEST_CASE(LookupByOffset) {
     // Merge the main file index into a MergedIndex.
     index::MergedIndex merged;
     auto fid = unit->interested_file();
-    merged.merge(0, tu_index.graph.include_location_id(fid), tu_index.main_file_index);
+    merged.merge(0, tu_index.graph.include_location_id(fid), tu_index.main_file_index, {});
 
     // Lookup at the reference offset should find an occurrence.
     auto ref_offset = point("ref");
@@ -99,7 +99,7 @@ TEST_CASE(LookupBySymbolAndKind) {
 
     index::MergedIndex merged;
     auto fid = unit->interested_file();
-    merged.merge(0, tu_index.graph.include_location_id(fid), tu_index.main_file_index);
+    merged.merge(0, tu_index.graph.include_location_id(fid), tu_index.main_file_index, {});
 
     // Find the target_func symbol hash via occurrence lookup.
     auto target_offset = point("target");
@@ -148,10 +148,10 @@ TEST_CASE(MultipleMergesDedup) {
     // Merge header indices from both TUs into same MergedIndex.
     index::MergedIndex merged_header;
     for(auto& [fid, file_index]: tu_a.file_indices) {
-        merged_header.merge(0, tu_a.graph.include_location_id(fid), file_index);
+        merged_header.merge(0, tu_a.graph.include_location_id(fid), file_index, {});
     }
     for(auto& [fid, file_index]: tu_b.file_indices) {
-        merged_header.merge(1, tu_b.graph.include_location_id(fid), file_index);
+        merged_header.merge(1, tu_b.graph.include_location_id(fid), file_index, {});
     }
 
     // Serialize and deserialize to verify dedup survives round-trip.
@@ -173,7 +173,7 @@ TEST_CASE(SerializationRoundTripInMemory) {
     index::MergedIndex merged;
     auto fid = unit->interested_file();
     auto include_id = tu_index.graph.include_location_id(fid);
-    merged.merge(0, include_id, tu_index.main_file_index);
+    merged.merge(0, include_id, tu_index.main_file_index, {});
 
     // Serialize.
     llvm::SmallString<4096> buf;
@@ -209,7 +209,7 @@ TEST_CASE(RemoveCompilationContext) {
     index::MergedIndex merged;
     auto fid = unit->interested_file();
     std::vector<index::IncludeLocation> locations;
-    merged.merge(0, tu_index.built_at, std::move(locations), tu_index.main_file_index);
+    merged.merge(0, tu_index.built_at, std::move(locations), tu_index.main_file_index, {});
 
     // Verify occurrence lookup works before remove.
     bool found_before = false;
@@ -249,7 +249,7 @@ TEST_CASE(RemoveHeaderContext) {
     // Merge header index as header context.
     index::MergedIndex merged_header;
     for(auto& [fid, file_index]: tu_index.file_indices) {
-        merged_header.merge(0, tu_index.graph.include_location_id(fid), file_index);
+        merged_header.merge(0, tu_index.graph.include_location_id(fid), file_index, {});
     }
 
     // Remove should not crash.
@@ -269,7 +269,7 @@ TEST_CASE(RemovedBitmapRoundTrip) {
     // Merge as compilation context.
     index::MergedIndex merged;
     std::vector<index::IncludeLocation> locations;
-    merged.merge(0, tu_index.built_at, std::move(locations), tu_index.main_file_index);
+    merged.merge(0, tu_index.built_at, std::move(locations), tu_index.main_file_index, {});
 
     // Remove to populate the removed bitmap.
     merged.remove(0);
@@ -292,7 +292,7 @@ TEST_CASE(LookupFiltersRemoved) {
     // Merge as compilation context.
     index::MergedIndex merged;
     std::vector<index::IncludeLocation> locations;
-    merged.merge(0, tu_index.built_at, std::move(locations), tu_index.main_file_index);
+    merged.merge(0, tu_index.built_at, std::move(locations), tu_index.main_file_index, {});
 
     // Verify lookup finds something before removal.
     auto offset = point("target");
@@ -325,7 +325,7 @@ TEST_CASE(CacheInvalidatedAfterMerge) {
     // Merge first TU as header context.
     index::MergedIndex merged;
     auto fid = unit->interested_file();
-    merged.merge(0, tu_index.graph.include_location_id(fid), tu_index.main_file_index);
+    merged.merge(0, tu_index.graph.include_location_id(fid), tu_index.main_file_index, {});
 
     // Trigger cache build by doing a lookup.
     auto first_offset = point("first");
@@ -344,7 +344,7 @@ TEST_CASE(CacheInvalidatedAfterMerge) {
 
     // Merge second TU.
     auto fid2 = unit->interested_file();
-    merged.merge(1, tu_index.graph.include_location_id(fid2), tu_index.main_file_index);
+    merged.merge(1, tu_index.graph.include_location_id(fid2), tu_index.main_file_index, {});
 
     // Verify lookup finds the new occurrence (cache was invalidated).
     auto second_offset = point("second");

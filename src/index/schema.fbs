@@ -115,6 +115,9 @@ relations:
 
 removed:
     [ubyte];
+
+content:
+    string;
 }
 
 table TUFileRelationsEntry {

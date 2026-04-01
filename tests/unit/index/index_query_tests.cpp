@@ -35,14 +35,15 @@ void build_and_merge(llvm::StringRef code,
     merged_indices[main_global_id].merge(main_global_id,
                                          tu_index.built_at,
                                          std::move(include_locs),
-                                         tu_index.main_file_index);
+                                         tu_index.main_file_index,
+                                         {});
 
     // Merge header file indices.
     for(auto& [fid, file_idx]: tu_index.file_indices) {
         auto tu_pid = tu_index.graph.path_id(fid);
         auto global_pid = file_ids_map[tu_pid];
         auto include_id = tu_index.graph.include_location_id(fid);
-        merged_indices[global_pid].merge(global_pid, include_id, file_idx);
+        merged_indices[global_pid].merge(global_pid, include_id, file_idx, {});
     }
 }
 
@@ -336,14 +337,15 @@ TEST_CASE(CrossFileQuery) {
     merged_indices[main_global_id].merge(main_global_id,
                                          tu_index.built_at,
                                          std::move(include_locs),
-                                         tu_index.main_file_index);
+                                         tu_index.main_file_index,
+                                         {});
 
     // Merge header file indices.
     for(auto& [fid, file_idx]: tu_index.file_indices) {
         auto tu_pid = tu_index.graph.path_id(fid);
         auto global_pid = file_ids_map[tu_pid];
         auto include_id = tu_index.graph.include_location_id(fid);
-        merged_indices[global_pid].merge(global_pid, include_id, file_idx);
+        merged_indices[global_pid].merge(global_pid, include_id, file_idx, {});
     }
 
     // Query: from usage in main.cpp, find the symbol via merged index.

@@ -526,7 +526,20 @@ void MasterServer::merge_index_result(const void* tu_index_data, std::size_t siz
                 remapped.path_id = file_ids_map[loc.path_id];
                 include_locs.push_back(remapped);
             }
-            merged.merge(global_path_id, tu_index.built_at, std::move(include_locs), file_idx);
+            // Read the file content from disk for position mapping in queries.
+            auto file_path = project_index.path_pool.path(global_path_id);
+            llvm::StringRef file_content;
+            std::string file_content_storage;
+            auto buf = llvm::MemoryBuffer::getFile(file_path);
+            if(buf) {
+                file_content_storage = (*buf)->getBuffer().str();
+                file_content = file_content_storage;
+            }
+            merged.merge(global_path_id,
+                         tu_index.built_at,
+                         std::move(include_locs),
+                         file_idx,
+                         file_content);
         } else {
             // Header files get a header context keyed by include location.
             std::uint32_t include_id = 0;
@@ -536,7 +549,16 @@ void MasterServer::merge_index_result(const void* tu_index_data, std::size_t siz
                     break;
                 }
             }
-            merged.merge(global_path_id, include_id, file_idx);
+            // Read header file content for position mapping in queries.
+            auto header_path = project_index.path_pool.path(global_path_id);
+            llvm::StringRef header_content;
+            std::string header_content_storage;
+            auto header_buf = llvm::MemoryBuffer::getFile(header_path);
+            if(header_buf) {
+                header_content_storage = (*header_buf)->getBuffer().str();
+                header_content = header_content_storage;
+            }
+            merged.merge(global_path_id, include_id, file_idx, header_content);
         }
     };
 
@@ -911,20 +933,12 @@ MasterServer::RawResult MasterServer::query_index_relations(const std::string& u
             continue;
         auto file_uri_str = file_uri->str();
 
-        // Get file content for offset-to-position conversion.
-        auto file_server_id = path_pool.intern(file_path);
-        auto file_doc_it = documents.find(file_server_id);
-        std::string file_text;
-        if(file_doc_it != documents.end()) {
-            file_text = file_doc_it->second.text;
-        } else {
-            auto buf = llvm::MemoryBuffer::getFile(file_path);
-            if(!buf)
-                continue;
-            file_text = (*buf)->getBuffer().str();
-        }
+        // Use stored content from MergedIndex for offset-to-position conversion.
+        auto file_content = file_merged_it->second.content();
+        if(file_content.empty())
+            continue;
 
-        lsp::PositionMapper file_mapper(file_text, lsp::PositionEncoding::UTF16);
+        lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
 
         file_merged_it->second.lookup(symbol_hash, kind, [&](const index::Relation& r) {
             auto start = file_mapper.to_position(r.range.begin);
@@ -1053,19 +1067,11 @@ std::optional<protocol::Location>
         if(!file_uri)
             continue;
 
-        // Read file content for offset-to-position conversion.
-        auto file_server_id = path_pool.intern(file_path);
-        auto file_doc_it = documents.find(file_server_id);
-        std::string file_text;
-        if(file_doc_it != documents.end()) {
-            file_text = file_doc_it->second.text;
-        } else {
-            auto buf = llvm::MemoryBuffer::getFile(file_path);
-            if(!buf)
-                continue;
-            file_text = (*buf)->getBuffer().str();
-        }
-        lsp::PositionMapper file_mapper(file_text, lsp::PositionEncoding::UTF16);
+        // Use stored content from MergedIndex for offset-to-position conversion.
+        auto file_content = file_merged_it->second.content();
+        if(file_content.empty())
+            continue;
+        lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
 
         std::optional<protocol::Location> result;
         file_merged_it->second.lookup(hash,
@@ -1538,22 +1544,12 @@ void MasterServer::register_handlers() {
             if(file_merged_it == merged_indices.end())
                 continue;
 
-            auto file_path = project_index.path_pool.path(file_id);
-            auto file_server_id = path_pool.intern(file_path);
-            auto file_doc_it = documents.find(file_server_id);
-            std::string file_text;
-            if(file_doc_it != documents.end()) {
-                file_text = file_doc_it->second.text;
-            } else {
-                auto buf = llvm::MemoryBuffer::getFile(file_path);
-                if(!buf)
-                    continue;
-                file_text = (*buf)->getBuffer().str();
-            }
-            if(file_text.empty())
+            // Use stored content from MergedIndex for offset-to-position conversion.
+            auto file_content = file_merged_it->second.content();
+            if(file_content.empty())
                 continue;
 
-            lsp::PositionMapper file_mapper(file_text, lsp::PositionEncoding::UTF16);
+            lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
 
             file_merged_it->second.lookup(info->hash,
                                           RelationKind::Caller,
@@ -1617,22 +1613,12 @@ void MasterServer::register_handlers() {
             if(file_merged_it == merged_indices.end())
                 continue;
 
-            auto file_path = project_index.path_pool.path(file_id);
-            auto file_server_id = path_pool.intern(file_path);
-            auto file_doc_it = documents.find(file_server_id);
-            std::string file_text;
-            if(file_doc_it != documents.end()) {
-                file_text = file_doc_it->second.text;
-            } else {
-                auto buf = llvm::MemoryBuffer::getFile(file_path);
-                if(!buf)
-                    continue;
-                file_text = (*buf)->getBuffer().str();
-            }
-            if(file_text.empty())
+            // Use stored content from MergedIndex for offset-to-position conversion.
+            auto file_content = file_merged_it->second.content();
+            if(file_content.empty())
                 continue;
 
-            lsp::PositionMapper file_mapper(file_text, lsp::PositionEncoding::UTF16);
+            lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
 
             file_merged_it->second.lookup(info->hash,
                                           RelationKind::Callee,

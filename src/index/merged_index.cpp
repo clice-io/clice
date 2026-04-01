@@ -253,6 +253,10 @@ void MergedIndex::load_in_memory(this Self& self) {
         }
     }
 
+    if(root->content()) {
+        index.content = root->content()->str();
+    }
+
     self.buffer.reset();
 }
 
@@ -355,6 +359,8 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
     }
     auto removed = CreateVector(builder, buffer);
 
+    auto content_offset = CreateString(builder, index->content);
+
     auto merged_index = binary::CreateMergedIndex(builder,
                                                   index->max_canonical_id,
                                                   CreateVector(builder, canonical_cache),
@@ -362,7 +368,8 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                                   CreateVector(builder, compilation_contexts),
                                                   CreateVector(builder, occurrences),
                                                   CreateVector(builder, relations),
-                                                  removed);
+                                                  removed,
+                                                  content_offset);
     builder.Finish(merged_index);
 
     out.write(safe_cast<char>(builder.GetBufferPointer()), builder.GetSize());
@@ -576,8 +583,10 @@ void MergedIndex::merge(this Self& self,
                         std::uint32_t path_id,
                         std::chrono::milliseconds build_at,
                         std::vector<IncludeLocation> include_locations,
-                        FileIndex& index) {
+                        FileIndex& index,
+                        llvm::StringRef content) {
     self.load_in_memory();
+    self.impl->content = content.str();
     self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
         auto& context = self.compilation_contexts[path_id];
         context.canonical_id = canonical_id;
@@ -590,13 +599,29 @@ void MergedIndex::merge(this Self& self,
 void MergedIndex::merge(this Self& self,
                         std::uint32_t path_id,
                         std::uint32_t include_id,
-                        FileIndex& index) {
+                        FileIndex& index,
+                        llvm::StringRef content) {
     self.load_in_memory();
+    if(self.impl->content.empty() && !content.empty()) {
+        self.impl->content = content.str();
+    }
     self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
         auto& context = self.header_contexts[path_id];
         context.includes.emplace_back(include_id, canonical_id);
     });
     self.impl->occurrences_cache.clear();
+}
+
+llvm::StringRef MergedIndex::content(this const Self& self) {
+    if(self.impl) {
+        return self.impl->content;
+    } else if(self.buffer) {
+        auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
+        if(root->content()) {
+            return root->content()->string_view();
+        }
+    }
+    return {};
 }
 
 bool operator==(MergedIndex& lhs, MergedIndex& rhs) {

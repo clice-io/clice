@@ -64,15 +64,23 @@ public:
     /// Remove the index of specific path id.
     void remove(this Self& self, std::uint32_t path_id);
 
+    /// Get the stored source content for position mapping.
+    llvm::StringRef content(this const Self& self);
+
     /// Merge the index with given compilation context.
     void merge(this Self& self,
                std::uint32_t path_id,
                std::chrono::milliseconds build_at,
                std::vector<IncludeLocation> include_locations,
-               FileIndex& index);
+               FileIndex& index,
+               llvm::StringRef content);
 
     /// Merge the index with given header context.
-    void merge(this Self& self, std::uint32_t path_id, std::uint32_t include_id, FileIndex& index);
+    void merge(this Self& self,
+               std::uint32_t path_id,
+               std::uint32_t include_id,
+               FileIndex& index,
+               llvm::StringRef content);
 
     friend bool operator==(MergedIndex& lhs, MergedIndex& rhs);
 
