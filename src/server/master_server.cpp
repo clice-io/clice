@@ -864,28 +864,10 @@ MasterServer::RawResult MasterServer::query_index_relations(const std::string& u
         co_return serde_raw{"null"};
     auto offset = *offset_opt;
 
-    LOG_WARN(
-        "[diag] query_index: path='{}' pos=({},{}) offset={} kind={} " "merged_shards={} proj_paths={}",
-        path,
-        position.line,
-        position.character,
-        offset,
-        static_cast<int>(kind),
-        merged_indices.size(),
-        project_index.path_pool.paths.size());
-    for(auto& [pid, mi]: merged_indices) {
-        LOG_WARN("[diag]   shard: proj_id={} path='{}'", pid, project_index.path_pool.path(pid));
-    }
-
     // Find the project-level path_id for this file.
     auto proj_cache_it = project_index.path_pool.find(path);
     if(proj_cache_it == project_index.path_pool.cache.end()) {
-        LOG_WARN("query_index_relations: path '{}' not in project_index (pool has {} entries)",
-                 path,
-                 project_index.path_pool.paths.size());
-        for(auto& [k, v]: project_index.path_pool.cache) {
-            LOG_WARN("  project_index path: '{}' -> {}", k, v);
-        }
+        LOG_DEBUG("query_index_relations: path '{}' not in project_index", path);
         co_return serde_raw{"null"};
     }
     auto proj_path_id = proj_cache_it->second;
@@ -893,9 +875,7 @@ MasterServer::RawResult MasterServer::query_index_relations(const std::string& u
     // Lookup occurrence at offset in this file's MergedIndex.
     auto merged_it = merged_indices.find(proj_path_id);
     if(merged_it == merged_indices.end()) {
-        LOG_WARN("query_index_relations: no MergedIndex for proj_path_id={} (have {} shards)",
-                 proj_path_id,
-                 merged_indices.size());
+        LOG_DEBUG("query_index_relations: no MergedIndex for proj_path_id={}", proj_path_id);
         co_return serde_raw{"null"};
     }
 
@@ -906,14 +886,14 @@ MasterServer::RawResult MasterServer::query_index_relations(const std::string& u
     });
 
     if(symbol_hash == 0) {
-        LOG_WARN("query_index_relations: no occurrence at offset {} in '{}'", offset, path);
+        LOG_DEBUG("query_index_relations: no occurrence at offset {} in '{}'", offset, path);
         co_return serde_raw{"null"};
     }
 
     // Get reference files from ProjectIndex.
     auto sym_it = project_index.symbols.find(symbol_hash);
     if(sym_it == project_index.symbols.end()) {
-        LOG_WARN("query_index_relations: symbol {} not in project_index", symbol_hash);
+        LOG_DEBUG("query_index_relations: symbol {} not in project_index", symbol_hash);
         co_return serde_raw{"null"};
     }
 

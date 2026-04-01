@@ -1,2 +1,6 @@
 # SCM syntax highlighting & preventing 3-way merges
 pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
+
+# Force LF line endings for test data so that byte offsets from clang
+# (which reads from disk) match the content sent by didOpen in tests.
+tests/data/** text eol=lf

@@ -108,7 +108,8 @@ class CliceClient(BaseLanguageClient):
 
     def open(self, filepath: Path, version: int = 0) -> tuple[str, str]:
         """Open a text document and return (uri, content)."""
-        content = filepath.read_text(encoding="utf-8")
+        # Read in binary mode to preserve CRLF on Windows, matching real LSP clients.
+        content = filepath.read_bytes().decode("utf-8")
         uri = filepath.as_uri()
         self.text_document_did_open(
             DidOpenTextDocumentParams(
@@ -267,14 +268,14 @@ async def client(
     if hasattr(c, "_server") and c._server is not None and c._server.returncode is None:
         c._server.kill()
 
-    # Dump server stderr for diagnostics (filtered to [diag] lines)
+    # Dump server stderr warnings for diagnostics.
     try:
         server = getattr(c, "_server", None)
         if server and server.stderr:
             stderr_data = await asyncio.wait_for(server.stderr.read(), timeout=2.0)
             if stderr_data:
                 for line in stderr_data.decode("utf-8", errors="replace").splitlines():
-                    if "[diag]" in line or "[warn]" in line:
+                    if "[warn]" in line or "[error]" in line:
                         print(f"[server] {line}", flush=True)
     except Exception:
         pass
