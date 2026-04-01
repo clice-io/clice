@@ -31,6 +31,14 @@ async def _wait_for_index(client, timeout=30):
     for _ in range(timeout):
         result = await client.workspace_symbol_async(WorkspaceSymbolParams(query="add"))
         if result and any(s.name == "add" for s in result):
+            # Print diagnostic: check if definition query works
+            print(
+                f"[diag] workspace_symbol found 'add', symbols: {[s.name for s in result]}",
+                flush=True,
+            )
+            for s in result:
+                if s.name == "add":
+                    print(f"[diag] 'add' location: {s.location}", flush=True)
             return True
         await asyncio.sleep(1)
     return False
@@ -46,6 +54,49 @@ async def test_goto_definition(client, workspace):
     """Test GoToDefinition navigates from a call site to the function definition."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     assert await _wait_for_index(client), "Index not ready after 30s"
+
+    # Diagnostic: try multiple positions to understand offset mapping
+    for test_line, test_char, label in [
+        (24, 12, "add call"),
+        (18, 4, "add def"),
+        (0, 0, "origin"),
+    ]:
+        diag = await client.text_document_definition_async(
+            DefinitionParams(
+                text_document=_doc(uri),
+                position=Position(line=test_line, character=test_char),
+            )
+        )
+        if diag:
+            dlocs = diag if isinstance(diag, list) else [diag]
+            print(
+                f"[diag] GoToDef at ({test_line},{test_char}) '{label}': "
+                f"{[(l.range.start.line, l.range.start.character) for l in dlocs]}",
+                flush=True,
+            )
+        else:
+            print(
+                f"[diag] GoToDef at ({test_line},{test_char}) '{label}': None",
+                flush=True,
+            )
+
+    # Also try references
+    ref_diag = await client.text_document_references_async(
+        ReferenceParams(
+            text_document=_doc(uri),
+            position=Position(line=30, character=4),
+            context=ReferenceContext(include_declaration=True),
+        )
+    )
+    print(f"[diag] FindRefs at (30,4) 'global_var': {ref_diag}", flush=True)
+
+    # Print file content line count to check CRLF
+    content = (workspace / "main.cpp").read_text(encoding="utf-8")
+    print(
+        f"[diag] File has {len(content.splitlines())} lines, {len(content)} bytes, "
+        f"CRLF={chr(13) in content}",
+        flush=True,
+    )
 
     # 'add' call on line 24 (0-indexed), column 12
     result = await client.text_document_definition_async(
