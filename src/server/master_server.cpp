@@ -673,7 +673,7 @@ et::task<> MasterServer::run_background_indexing() {
         // If the file is not yet in the project_index path pool, it has never been
         // indexed — always proceed.  Only skip when we already have a shard that is
         // still fresh.
-        auto cache_it = project_index.path_pool.cache.find(file_path);
+        auto cache_it = project_index.path_pool.find(file_path);
         if(cache_it != project_index.path_pool.cache.end()) {
             auto proj_path_id = cache_it->second;
             auto merged_it = merged_indices.find(proj_path_id);
@@ -844,7 +844,7 @@ MasterServer::RawResult MasterServer::query_index_relations(const std::string& u
     auto offset = *offset_opt;
 
     // Find the project-level path_id for this file.
-    auto proj_cache_it = project_index.path_pool.cache.find(path);
+    auto proj_cache_it = project_index.path_pool.find(path);
     if(proj_cache_it == project_index.path_pool.cache.end())
         co_return serde_raw{"null"};
     auto proj_path_id = proj_cache_it->second;
@@ -956,7 +956,7 @@ et::task<std::optional<MasterServer::SymbolInfo>>
     auto offset = *offset_opt;
 
     // Find the project-level path_id for this file.
-    auto proj_cache_it = project_index.path_pool.cache.find(path);
+    auto proj_cache_it = project_index.path_pool.find(path);
     if(proj_cache_it == project_index.path_pool.cache.end())
         co_return std::nullopt;
     auto proj_path_id = proj_cache_it->second;

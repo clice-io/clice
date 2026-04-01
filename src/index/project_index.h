@@ -55,6 +55,18 @@ struct PathPool {
     llvm::StringRef path(std::uint32_t id) {
         return paths[id];
     }
+
+    /// Look up a path in the cache, normalizing backslashes first.
+    /// Returns cache.end() if the path is not interned.
+    auto find(llvm::StringRef path) {
+        llvm::SmallString<256> normalized;
+        if(path.contains('\\')) {
+            normalized = path;
+            std::replace(normalized.begin(), normalized.end(), '\\', '/');
+            path = normalized;
+        }
+        return cache.find(path);
+    }
 };
 
 struct FileInfo {
