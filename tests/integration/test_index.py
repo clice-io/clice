@@ -59,7 +59,7 @@ async def test_goto_definition(client, workspace):
     # Definition should point to line 18 where 'int add(...)' is declared
     assert any(loc.range.start.line == 18 for loc in locs), (
         f"Expected line 18, got locations:"
-        f" {[(l.uri, l.range.start.line, l.range.start.character) for l in locs]}"
+        f" {[(loc.uri, loc.range.start.line, loc.range.start.character) for loc in locs]}"
     )
 
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))

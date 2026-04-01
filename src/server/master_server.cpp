@@ -1120,8 +1120,27 @@ protocol::TypeHierarchyItem MasterServer::build_type_hierarchy_item(const Symbol
 }
 
 et::task<std::optional<MasterServer::SymbolInfo>>
-    MasterServer::resolve_hierarchy_item(const std::string& uri, const protocol::Range& range) {
-    // Re-lookup the symbol at the item's start position.
+    MasterServer::resolve_hierarchy_item(const std::string& uri,
+                                         const protocol::Range& range,
+                                         const std::optional<protocol::LSPAny>& data) {
+    // Try to extract symbol hash from the stored data field first.
+    if(data) {
+        if(auto* int_val = std::get_if<std::int64_t>(&*data)) {
+            auto hash = static_cast<index::SymbolHash>(*int_val);
+            auto sym_it = project_index.symbols.find(hash);
+            if(sym_it != project_index.symbols.end()) {
+                SymbolInfo info;
+                info.hash = hash;
+                info.name = sym_it->second.name;
+                info.kind = sym_it->second.kind;
+                info.uri = uri;
+                info.range = range;
+                co_return info;
+            }
+        }
+    }
+
+    // Fallback: re-lookup from position (requires document to be open).
     co_return co_await lookup_symbol_at_position(uri, range.start);
 }
 
@@ -1524,7 +1543,8 @@ void MasterServer::register_handlers() {
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
         // Re-lookup the symbol from the item.
-        auto info = co_await resolve_hierarchy_item(params.item.uri, params.item.range);
+        auto info =
+            co_await resolve_hierarchy_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
 
@@ -1596,7 +1616,8 @@ void MasterServer::register_handlers() {
     // --- callHierarchy/outgoingCalls ---
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
-        auto info = co_await resolve_hierarchy_item(params.item.uri, params.item.range);
+        auto info =
+            co_await resolve_hierarchy_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
 
@@ -1684,7 +1705,8 @@ void MasterServer::register_handlers() {
     // --- typeHierarchy/supertypes ---
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
-        auto info = co_await resolve_hierarchy_item(params.item.uri, params.item.range);
+        auto info =
+            co_await resolve_hierarchy_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
 
@@ -1734,7 +1756,8 @@ void MasterServer::register_handlers() {
     // --- typeHierarchy/subtypes ---
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
-        auto info = co_await resolve_hierarchy_item(params.item.uri, params.item.range);
+        auto info =
+            co_await resolve_hierarchy_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
 

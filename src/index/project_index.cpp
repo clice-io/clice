@@ -93,9 +93,12 @@ ProjectIndex ProjectIndex::from(const void* data) {
 
     for(auto entry: *root->symbols()) {
         auto& symbol = index.symbols[entry->symbol_id()];
-        symbol.name = entry->symbol()->name()->str();
-        symbol.kind = SymbolKind(static_cast<std::uint8_t>(entry->symbol()->kind()));
-        symbol.reference_files = read_bitmap(entry->symbol()->refs());
+        auto* fb_symbol = entry->symbol();
+        if(auto* name = fb_symbol->name()) {
+            symbol.name = name->str();
+        }
+        symbol.kind = SymbolKind(static_cast<std::uint8_t>(fb_symbol->kind()));
+        symbol.reference_files = read_bitmap(fb_symbol->refs());
     }
 
     return index;

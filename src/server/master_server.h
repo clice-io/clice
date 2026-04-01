@@ -210,9 +210,12 @@ private:
     /// Build a TypeHierarchyItem from a SymbolInfo.
     protocol::TypeHierarchyItem build_type_hierarchy_item(const SymbolInfo& info);
 
-    /// Re-lookup SymbolInfo from a CallHierarchyItem or TypeHierarchyItem.
-    et::task<std::optional<SymbolInfo>> resolve_hierarchy_item(const std::string& uri,
-                                                               const protocol::Range& range);
+    /// Resolve SymbolInfo from a hierarchy item's stored data (symbol hash).
+    /// Falls back to position-based lookup if data is missing.
+    et::task<std::optional<SymbolInfo>>
+        resolve_hierarchy_item(const std::string& uri,
+                               const protocol::Range& range,
+                               const std::optional<protocol::LSPAny>& data);
 };
 
 }  // namespace clice
