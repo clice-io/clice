@@ -396,7 +396,13 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
                                         const std::vector<std::string>& arguments) {
     auto bound = compute_preamble_bound(text);
     if(bound == 0) {
-        // No preamble directives — PCH would be empty, skip.
+        // No preamble directives — PCH would be empty. Clear any stale entry.
+        if(auto old_it = pch_paths.find(path_id); old_it != pch_paths.end()) {
+            fs::remove(old_it->second);
+        }
+        pch_paths.erase(path_id);
+        pch_bounds.erase(path_id);
+        pch_hashes.erase(path_id);
         co_return true;
     }
 
@@ -555,7 +561,7 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
         }
     }
 
-    lsp::PositionMapper mapper(doc.text, lsp::PositionEncoding::UTF16);
+    lsp::PositionMapper mapper(wp.text, lsp::PositionEncoding::UTF16);
     auto offset = mapper.to_offset(position);
     if(!offset)
         co_return serde_raw{"null"};
@@ -810,8 +816,9 @@ void MasterServer::register_handlers() {
             }
         }
 
-        // Invalidate cached PCH — preamble may have changed after save.
-        pch_hashes.erase(path_id);
+        // Invalidate all cached PCH hashes — the saved file may be a header
+        // included by other TUs, so we must force rebuild for all open documents.
+        pch_hashes.clear();
 
         LOG_DEBUG("didSave: {}", params.text_document.uri);
     });
