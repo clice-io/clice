@@ -2,9 +2,20 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "pixi: build Debug",
+      "label": "cmake: configure Debug",
       "type": "shell",
-      "command": "pixi run build Debug",
+      "command": "cmake",
+      "args": [
+        "-S",
+        "${workspaceFolder}",
+        "-B",
+        "${workspaceFolder}/build/Debug",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_TOOLCHAIN_FILE=${workspaceFolder}/cmake/toolchain.cmake",
+        "-DCLICE_ENABLE_TEST=ON"
+      ],
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -12,9 +23,32 @@
       "problemMatcher": []
     },
     {
-      "label": "pixi: build RelWithDebInfo",
+      "label": "cmake: build Debug",
       "type": "shell",
-      "command": "pixi run build RelWithDebInfo",
+      "command": "cmake",
+      "args": ["--build", "${workspaceFolder}/build/Debug"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "cmake: configure Debug",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "cmake: configure RelWithDebInfo",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-S",
+        "${workspaceFolder}",
+        "-B",
+        "${workspaceFolder}/build/RelWithDebInfo",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_TOOLCHAIN_FILE=${workspaceFolder}/cmake/toolchain.cmake",
+        "-DCLICE_ENABLE_TEST=ON"
+      ],
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -22,22 +56,36 @@
       "problemMatcher": []
     },
     {
-      "label": "pixi: install vscode deps",
+      "label": "cmake: build RelWithDebInfo",
       "type": "shell",
-      "command": "pixi run install-vscode",
+      "command": "cmake",
+      "args": ["--build", "${workspaceFolder}/build/RelWithDebInfo"],
       "options": {
         "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "cmake: configure RelWithDebInfo",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "npm: install vscode deps",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["install"],
+      "options": {
+        "cwd": "${workspaceFolder}/editors/vscode"
       },
       "problemMatcher": []
     },
     {
-      "label": "pixi: watch vscode ext",
+      "label": "npm: watch vscode ext",
       "type": "shell",
-      "command": "pixi run -e node pnpm --dir ./editors/vscode run watch",
+      "command": "pnpm",
+      "args": ["run", "watch"],
       "options": {
-        "cwd": "${workspaceFolder}"
+        "cwd": "${workspaceFolder}/editors/vscode"
       },
-      "dependsOn": "pixi: install vscode deps",
+      "dependsOn": "npm: install vscode deps",
       "problemMatcher": "$ts-webpack-watch",
       "isBackground": true,
       "presentation": {
@@ -46,13 +94,14 @@
       }
     },
     {
-      "label": "pixi: package vscode ext",
+      "label": "npm: package vscode ext",
       "type": "shell",
-      "command": "pixi run build-vscode",
+      "command": "pnpm",
+      "args": ["run", "package"],
       "options": {
-        "cwd": "${workspaceFolder}"
+        "cwd": "${workspaceFolder}/editors/vscode"
       },
-      "dependsOn": "pixi: install vscode deps",
+      "dependsOn": "npm: install vscode deps",
       "problemMatcher": []
     }
   ]

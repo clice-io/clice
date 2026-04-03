@@ -8,7 +8,7 @@
       "program": "${workspaceFolder}/build/Debug/bin/clice",
       "args": ["--mode=socket", "--port=50051"],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "pixi: build Debug"
+      "preLaunchTask": "cmake: build Debug"
     },
     {
       "type": "lldb",
@@ -17,7 +17,7 @@
       "program": "${workspaceFolder}/build/RelWithDebInfo/bin/clice",
       "args": ["--mode=socket", "--port=50051"],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "pixi: build RelWithDebInfo"
+      "preLaunchTask": "cmake: build RelWithDebInfo"
     },
     {
       "name": "VSCode Extension (pipe)",
@@ -33,7 +33,7 @@
         "CLICE_MODE": "pipe"
       },
       "outFiles": ["${workspaceFolder}/editors/vscode/dist/**/*.js"],
-      "preLaunchTask": "pixi: watch vscode ext"
+      "preLaunchTask": "npm: watch vscode ext"
     },
     {
       "name": "VSCode Extension (socket)",
@@ -49,7 +49,7 @@
         "CLICE_MODE": "socket"
       },
       "outFiles": ["${workspaceFolder}/editors/vscode/dist/**/*.js"],
-      "preLaunchTask": "pixi: watch vscode ext"
+      "preLaunchTask": "npm: watch vscode ext"
     },
     {
       "type": "lldb",
@@ -58,7 +58,7 @@
       "program": "${workspaceFolder}/build/Debug/bin/unit_tests",
       "args": ["--test-dir=./tests/data", "--test-filter=${input:filter}"],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "pixi: build Debug"
+      "preLaunchTask": "cmake: build Debug"
     },
     {
       "type": "lldb",
@@ -67,7 +67,7 @@
       "program": "${workspaceFolder}/build/RelWithDebInfo/bin/unit_tests",
       "args": ["--test-dir=./tests/data", "--test-filter=${input:filter}"],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "pixi: build RelWithDebInfo"
+      "preLaunchTask": "cmake: build RelWithDebInfo"
     }
   ],
   "compounds": [
