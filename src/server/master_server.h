@@ -138,6 +138,16 @@ private:
                               const std::string& directory,
                               const std::vector<std::string>& arguments);
 
+    // Compile module dependencies, build/reuse PCH, and fill PCM paths into
+    // the given fields. Shared by ensure_compiled() and forward_stateless().
+    et::task<bool> ensure_deps(std::uint32_t path_id,
+                               llvm::StringRef path,
+                               const std::string& text,
+                               const std::string& directory,
+                               const std::vector<std::string>& arguments,
+                               std::pair<std::string, uint32_t>& pch,
+                               std::unordered_map<std::string, std::string>& pcms);
+
     // Schedule background indexing when idle.
     void schedule_indexing();
 

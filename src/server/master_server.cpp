@@ -337,6 +337,43 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     co_return true;
 }
 
+/// Compile module dependencies, build/reuse PCH, and fill PCM paths.
+/// Shared preparation step used by both ensure_compiled() (stateful path)
+/// and forward_stateless() (completion/signatureHelp path).
+et::task<bool> MasterServer::ensure_deps(std::uint32_t path_id,
+                                         llvm::StringRef path,
+                                         const std::string& text,
+                                         const std::string& directory,
+                                         const std::vector<std::string>& arguments,
+                                         std::pair<std::string, uint32_t>& pch,
+                                         std::unordered_map<std::string, std::string>& pcms) {
+    // Compile C++20 module dependencies (PCMs).
+    if(compile_graph && !co_await compile_graph->compile_deps(path_id)) {
+        co_return false;
+    }
+
+    // Build or reuse PCH.
+    auto pch_ok = co_await ensure_pch(path_id, path, text, directory, arguments);
+    if(pch_ok) {
+        if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
+            pch = {pch_it->second, pch_bounds[path_id]};
+        }
+    }
+
+    // Fill all available PCM paths so clang can resolve transitive imports.
+    // Exclude the file's own PCM to avoid "multiple module declarations".
+    for(auto& [pid, pcm_path]: pcm_paths) {
+        if(pid == path_id)
+            continue;
+        auto mod_it = path_to_module.find(pid);
+        if(mod_it != path_to_module.end()) {
+            pcms[mod_it->second] = pcm_path;
+        }
+    }
+
+    co_return true;
+}
+
 /// Pull-based compilation entry point for user-opened files.
 ///
 /// Called lazily by forward_stateful() / forward_stateless() before every
@@ -388,57 +425,37 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
-    // ── Phase 1: Compile C++20 module dependencies (PCMs) ───────────────
-    //
-    // compile_deps() resolves the file's imports (via resolve_fn which calls
-    // scan_precise), recursively compiles all transitive module dependencies,
-    // but does NOT compile the file itself (it may be a plain .cpp).
-    // Module implementation units' implicit dependency on their interface
-    // unit is also handled by resolve_fn.
-    if(compile_graph && !co_await compile_graph->compile_deps(path_id)) {
-        LOG_WARN("Module dependency build failed for {}, skipping compile", uri_str);
-        co_return false;
-    }
-
     // After co_await suspension points the iterator may be invalidated (the
     // documents map could have been modified by didClose on another file).
-    it = documents.find(path_id);
-    if(it == documents.end())
-        co_return false;
+    auto recheck = [&]() -> bool {
+        it = documents.find(path_id);
+        return it != documents.end();
+    };
 
-    // ── Phase 2: Prepare CompileParams ──────────────────────────────────
+    // ── Phase 1–3: Module deps, PCH, PCM paths ─────────────────────────
     worker::CompileParams params;
     params.path = file_path;
+    if(!recheck())
+        co_return false;
     params.version = it->second.version;
     params.text = it->second.text;
     if(!fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments)) {
         co_return false;
     }
 
-    // Provide all available PCM paths so clang can resolve transitive imports.
-    // We must exclude the file's own PCM — feeding a module interface its own
-    // precompiled output causes clang to emit "multiple module declarations".
-    for(auto& [pid, pcm_path]: pcm_paths) {
-        if(pid == path_id)
-            continue;
-        auto mod_it = path_to_module.find(pid);
-        if(mod_it != path_to_module.end()) {
-            params.pcms[mod_it->second] = pcm_path;
-        }
+    if(!co_await ensure_deps(path_id,
+                             params.path,
+                             params.text,
+                             params.directory,
+                             params.arguments,
+                             params.pch,
+                             params.pcms)) {
+        LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
+        co_return false;
     }
 
-    // ── Phase 3: Precompiled header ─────────────────────────────────────
-    //
-    // Build or reuse a PCH covering the file's preamble (#include block).
-    // ensure_pch() uses content-hash comparison to avoid redundant rebuilds
-    // and deduplicates concurrent requests for the same file.
-    auto pch_ok =
-        co_await ensure_pch(path_id, params.path, params.text, params.directory, params.arguments);
-    if(pch_ok) {
-        if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
-            params.pch = {pch_it->second, pch_bounds[path_id]};
-        }
-    }
+    if(!recheck())
+        co_return false;
 
     // ── Phase 4: Dispatch to stateful worker ────────────────────────────
     //
@@ -822,26 +839,9 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
     if(!fill_compile_args(path, wp.directory, wp.arguments))
         co_return serde_raw{};
 
-    // Ensure module dependencies are compiled before stateless requests.
-    if(compile_graph && !co_await compile_graph->compile_deps(path_id)) {
+    // Ensure module deps, PCH, and PCM paths are ready for stateless compilation.
+    if(!co_await ensure_deps(path_id, path, wp.text, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
         co_return serde_raw{};
-    }
-
-    // Ensure PCH is available for stateless compilation (completion/signatureHelp).
-    co_await ensure_pch(path_id, path, wp.text, wp.directory, wp.arguments);
-    if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
-        wp.pch = {pch_it->second, pch_bounds[path_id]};
-    }
-
-    // Fill available PCM paths for module-aware completion.
-    // Skip the file's own PCM to avoid "multiple module declarations" errors.
-    for(auto& [pid, pcm_path]: pcm_paths) {
-        if(pid == path_id)
-            continue;
-        auto mod_it = path_to_module.find(pid);
-        if(mod_it != path_to_module.end()) {
-            wp.pcms[mod_it->second] = pcm_path;
-        }
     }
 
     lsp::PositionMapper mapper(wp.text, lsp::PositionEncoding::UTF16);
