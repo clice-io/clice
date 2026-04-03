@@ -39,6 +39,10 @@ auto encode_modifiers(std::uint32_t modifiers) -> std::uint32_t {
     return modifiers;
 }
 
+bool is_dependent(const clang::Decl* D) {
+    return isa<clang::UnresolvedUsingValueDecl>(D);
+}
+
 class SemanticTokensCollector : public SemanticVisitor<SemanticTokensCollector> {
 public:
     explicit SemanticTokensCollector(CompilationUnitRef unit) : SemanticVisitor(unit, true) {}
@@ -55,14 +59,48 @@ public:
                               clang::SourceLocation location) {
         std::uint32_t modifiers = 0;
         if(relation.is_one_of(RelationKind::Definition)) {
+            // clangd add both Declaration and Definition modifiers for definitions.
+            add_modifier(modifiers, SymbolModifiers::Declaration);
             add_modifier(modifiers, SymbolModifiers::Definition);
         } else if(relation.is_one_of(RelationKind::Declaration)) {
             add_modifier(modifiers, SymbolModifiers::Declaration);
         }
 
+        // todo: clangd implementations
+        // if (auto Mod = scopeModifier(Decl))
+        //     Tok.addModifier(*Mod);
+
+        // const auto SymbolTags = computeSymbolTags(*Decl);
+
+        // static const thread_local llvm::DenseMap<SymbolTag,
+        //                                         HighlightingModifier>
+        //     TagModifierMap = {
+        //         {SymbolTag::Deprecated, HighlightingModifier::Deprecated},
+        //         {SymbolTag::ReadOnly, HighlightingModifier::Readonly},
+        //         {SymbolTag::Static, HighlightingModifier::Static},
+        //         {SymbolTag::Virtual, HighlightingModifier::Virtual},
+        //         {SymbolTag::Abstract, HighlightingModifier::Abstract},
+        //         // Declaration and Definition are handled separately below.
+        //     };
+
+        // for (const auto &[Tag, Modifier] : TagModifierMap) {
+        // if (SymbolTags & toSymbolTagBitmask(Tag))
+        //     Tok.addModifier(Modifier);
+        // }
+
         if(ast::is_templated(decl)) {
             add_modifier(modifiers, SymbolModifiers::Templated);
         }
+
+        if(is_dependent(decl))
+            add_modifier(modifiers, SymbolModifiers::DependentName);
+
+        // todo: clangd implementations
+        // if (isDefaultLibrary(Decl))
+        // Tok.addModifier(HighlightingModifier::DefaultLibrary);
+
+        // if (isa<CXXConstructorDecl>(Decl))
+        // Tok.addModifier(HighlightingModifier::ConstructorOrDestructor);
 
         add_token(location, SymbolKind::from(decl), modifiers);
     }
@@ -79,6 +117,10 @@ public:
 
         add_token(location, SymbolKind::Macro, modifiers);
     }
+
+    // handleModuleOccurrence
+
+    // handleRelation
 
     void handleAttrOccurrence(const clang::Attr* attr, clang::SourceRange range) {
         auto [begin, end] = range;
