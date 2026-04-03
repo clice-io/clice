@@ -59,17 +59,19 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
     // For deps-only mode, compile dependencies concurrently and return.
     if(!dispatch_self) {
         auto deps = it->second.dependencies;
-        if(!deps.empty()) {
-            std::vector<et::task<bool>> dep_tasks;
-            dep_tasks.reserve(deps.size());
-            for(auto dep_id: deps) {
-                dep_tasks.push_back(compile_impl(dep_id, ancestors));
-            }
-            auto results = co_await et::when_all(std::move(dep_tasks));
-            for(auto ok: results) {
-                if(!ok) {
-                    co_return false;
-                }
+        if(deps.empty()) {
+            co_return true;
+        }
+
+        std::vector<et::task<bool>> dep_tasks;
+        dep_tasks.reserve(deps.size());
+        for(auto dep_id: deps) {
+            dep_tasks.push_back(compile_impl(dep_id, ancestors));
+        }
+        auto results = co_await et::when_all(std::move(dep_tasks));
+        for(auto ok: results) {
+            if(!ok) {
+                co_return false;
             }
         }
         co_return true;
@@ -91,9 +93,16 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
         co_return !units.find(path_id)->second.dirty;
     }
 
-    // Begin compilation.
+    // Begin compilation. The finish lambda ensures compiling/completion state
+    // is always cleaned up, regardless of how the function exits.
     it->second.compiling = true;
     it->second.completion = std::make_unique<et::event>();
+
+    auto finish = [&, path_id] {
+        auto& u = units.find(path_id)->second;
+        u.compiling = false;
+        u.completion->set();
+    };
 
     // Copy deps and capture generation before co_await (DenseMap iterator safety).
     auto deps = it->second.dependencies;
@@ -112,52 +121,41 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
 
         auto results = co_await et::when_all(std::move(dep_tasks));
 
-        auto& u = units.find(path_id)->second;
         if(results.is_cancelled()) {
-            u.compiling = false;
-            u.completion->set();
+            finish();
             co_await et::cancel();
         }
 
         for(auto ok: *results) {
             if(!ok) {
-                u.compiling = false;
-                u.completion->set();
+                finish();
                 co_return false;
             }
         }
     }
 
     // Dispatch the actual compilation, cancellable via the pre-captured token.
-    // Using the token captured before co_await ensures cancellation propagates
-    // correctly even if update() replaces the source during dependency compilation.
-    {
-        auto result = co_await et::with_token(dispatch(path_id), token);
+    auto result = co_await et::with_token(dispatch(path_id), token);
 
-        auto& u = units.find(path_id)->second;
-        if(!result.has_value()) {
-            u.compiling = false;
-            u.completion->set();
-            co_await et::cancel();
-        }
-        if(!*result) {
-            u.compiling = false;
-            u.completion->set();
-            co_return false;
-        }
+    if(!result.has_value()) {
+        finish();
+        co_await et::cancel();
+    }
+
+    if(!*result) {
+        finish();
+        co_return false;
     }
 
     // Success — only clear dirty if update() hasn't bumped the generation.
     auto& final_unit = units.find(path_id)->second;
     if(final_unit.generation != gen) {
-        // update() was called while dispatch was in flight.
-        final_unit.compiling = false;
-        final_unit.completion->set();
+        finish();
         co_return false;
     }
+
     final_unit.dirty = false;
-    final_unit.compiling = false;
-    final_unit.completion->set();
+    finish();
     co_return true;
 }
 

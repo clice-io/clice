@@ -395,12 +395,9 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
     // but does NOT compile the file itself (it may be a plain .cpp).
     // Module implementation units' implicit dependency on their interface
     // unit is also handled by resolve_fn.
-    if(compile_graph) {
-        bool deps_ok = co_await compile_graph->compile_deps(path_id);
-        if(!deps_ok) {
-            LOG_WARN("Module dependency build failed for {}, skipping compile", uri_str);
-            co_return false;
-        }
+    if(compile_graph && !co_await compile_graph->compile_deps(path_id)) {
+        LOG_WARN("Module dependency build failed for {}, skipping compile", uri_str);
+        co_return false;
     }
 
     // After co_await suspension points the iterator may be invalidated (the
@@ -476,15 +473,15 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
         co_return true;
     }
 
-    if(result.has_value()) {
-        publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
-    } else {
+    if(!result.has_value()) {
         LOG_WARN("Compile failed for {}: {}", uri_str, result.error().message);
         // Clear stale diagnostics so the editor doesn't show errors from a
         // previous successful compilation that no longer apply.
         clear_diagnostics(uri_str);
+        co_return false;
     }
 
+    publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
     doc2.ast_dirty = false;
     schedule_indexing();
     co_return true;
