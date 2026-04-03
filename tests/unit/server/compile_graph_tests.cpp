@@ -1,3 +1,5 @@
+#include <optional>
+
 #include "test/test.h"
 #include "server/compile_graph.h"
 
@@ -54,36 +56,44 @@ inline CompileGraph::dispatch_fn selective_dispatch(llvm::DenseSet<std::uint32_t
 
 TEST_SUITE(CompileGraph) {
 
-TEST_CASE(CompileNoDeps) {
+std::vector<std::uint32_t> compiled;
+std::optional<CompileGraph> graph;
+
+void setup() {
+    compiled.clear();
+    graph.reset();
+}
+
+template <typename F>
+void execute(F&& fn) {
     et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
-    CompileGraph graph(tracking_dispatch(compiled), no_deps());
-
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
-        EXPECT_TRUE(result.has_value());
-        EXPECT_TRUE(*result);
-        EXPECT_EQ(compiled.size(), 1u);
-        EXPECT_EQ(compiled[0], 1u);
-        EXPECT_FALSE(graph.is_dirty(1));
-    };
-
-    auto t = test();
+    auto t = fn();
     loop.schedule(t);
     loop.run();
 }
 
+TEST_CASE(CompileNoDeps) {
+    graph.emplace(tracking_dispatch(compiled), no_deps());
+
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
+        EXPECT_TRUE(result.has_value());
+        EXPECT_TRUE(*result);
+        EXPECT_EQ(compiled.size(), 1u);
+        EXPECT_EQ(compiled[0], 1u);
+        EXPECT_FALSE(graph->is_dirty(1));
+    });
+}
+
 TEST_CASE(CompileWithDependency) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // Unit 1 depends on unit 2.
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {1, {2}}
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {1, {2}}
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
         // Both 2 (dep) and 1 (self) should be compiled, in that order.
@@ -91,27 +101,21 @@ TEST_CASE(CompileWithDependency) {
         auto pos2 = ranges::find(compiled, 2u);
         auto pos1 = ranges::find(compiled, 1u);
         EXPECT_TRUE(pos2 < pos1);
-        EXPECT_FALSE(graph.is_dirty(1));
-        EXPECT_FALSE(graph.is_dirty(2));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        EXPECT_FALSE(graph->is_dirty(1));
+        EXPECT_FALSE(graph->is_dirty(2));
+    });
 }
 
 TEST_CASE(CompileChain) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // Chain: 1 -> 2 -> 3.
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {1, {2}},
-                           {2, {3}}
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {1, {2}},
+                      {2, {3}}
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
         EXPECT_EQ(compiled.size(), 3u);
@@ -121,238 +125,184 @@ TEST_CASE(CompileChain) {
         auto pos1 = ranges::find(compiled, 1u);
         EXPECT_TRUE(pos3 < pos2);
         EXPECT_TRUE(pos2 < pos1);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(DiamondDependency) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // Diamond: 1 -> {2, 3}, 2 -> 4, 3 -> 4.
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {1, {2, 3}},
-                           {2, {4}   },
-                           {3, {4}   }
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {1, {2, 3}},
+                      {2, {4}   },
+                      {3, {4}   }
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
         // Unit 4 should be compiled exactly once (dedup).
         auto count4 = ranges::count(compiled, 4u);
         EXPECT_EQ(count4, 1);
-        EXPECT_FALSE(graph.is_dirty(2));
-        EXPECT_FALSE(graph.is_dirty(3));
-        EXPECT_FALSE(graph.is_dirty(4));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        EXPECT_FALSE(graph->is_dirty(2));
+        EXPECT_FALSE(graph->is_dirty(3));
+        EXPECT_FALSE(graph->is_dirty(4));
+    });
 }
 
 TEST_CASE(UpdateInvalidates) {
-    et::event_loop loop;
     // 1 -> 2.
-    CompileGraph graph(instant_dispatch(),
-                       static_resolver({
-                           {1, {2}}
+    graph.emplace(instant_dispatch(),
+                  static_resolver({
+                      {1, {2}}
     }));
 
-    auto test = [this, &graph]() -> et::task<> {
-        co_await graph.compile(1).catch_cancel();
-        EXPECT_FALSE(graph.is_dirty(2));
-        EXPECT_FALSE(graph.is_dirty(1));
+    execute([&]() -> et::task<> {
+        co_await graph->compile(1).catch_cancel();
+        EXPECT_FALSE(graph->is_dirty(2));
+        EXPECT_FALSE(graph->is_dirty(1));
 
-        graph.update(2);
-        EXPECT_TRUE(graph.is_dirty(2));
+        graph->update(2);
+        EXPECT_TRUE(graph->is_dirty(2));
         // Cascade: 1 depends on 2, so 1 should also be dirty.
-        EXPECT_TRUE(graph.is_dirty(1));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        EXPECT_TRUE(graph->is_dirty(1));
+    });
 }
 
 TEST_CASE(UpdateCascade) {
-    et::event_loop loop;
     // Chain: 1 -> 2 -> 3.
-    CompileGraph graph(instant_dispatch(),
-                       static_resolver({
-                           {1, {2}},
-                           {2, {3}}
+    graph.emplace(instant_dispatch(),
+                  static_resolver({
+                      {1, {2}},
+                      {2, {3}}
     }));
 
-    auto test = [this, &graph]() -> et::task<> {
-        co_await graph.compile(1).catch_cancel();
-        EXPECT_FALSE(graph.is_dirty(2));
-        EXPECT_FALSE(graph.is_dirty(3));
+    execute([&]() -> et::task<> {
+        co_await graph->compile(1).catch_cancel();
+        EXPECT_FALSE(graph->is_dirty(2));
+        EXPECT_FALSE(graph->is_dirty(3));
 
         // Update leaf (3) — should cascade to 2 and 1.
-        graph.update(3);
-        EXPECT_TRUE(graph.is_dirty(3));
-        EXPECT_TRUE(graph.is_dirty(2));
-        EXPECT_TRUE(graph.is_dirty(1));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        graph->update(3);
+        EXPECT_TRUE(graph->is_dirty(3));
+        EXPECT_TRUE(graph->is_dirty(2));
+        EXPECT_TRUE(graph->is_dirty(1));
+    });
 }
 
 TEST_CASE(CompileAfterUpdate) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // 1 -> 2.
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {1, {2}}
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {1, {2}}
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(compiled.size(), 2u);
 
-        graph.update(2);
-        co_await graph.compile(1).catch_cancel();
+        graph->update(2);
+        co_await graph->compile(1).catch_cancel();
         // 2 and 1 should be recompiled.
         EXPECT_EQ(compiled.size(), 4u);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(DispatchFailure) {
-    et::event_loop loop;
     // 1 -> 2. Dispatch always fails.
-    CompileGraph graph(failing_dispatch(),
-                       static_resolver({
-                           {1, {2}}
+    graph.emplace(failing_dispatch(),
+                  static_resolver({
+                      {1, {2}}
     }));
 
-    auto test = [this, &graph]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
         // Dep 2 failed, so it stays dirty.
-        EXPECT_TRUE(graph.is_dirty(2));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        EXPECT_TRUE(graph->is_dirty(2));
+    });
 }
 
 TEST_CASE(CancelAll) {
-    CompileGraph graph(instant_dispatch(), no_deps());
+    graph.emplace(instant_dispatch(), no_deps());
     // Just verify it doesn't crash.
-    graph.cancel_all();
+    graph->cancel_all();
 }
 
 TEST_CASE(SecondCompileSkips) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
-    CompileGraph graph(tracking_dispatch(compiled), no_deps());
+    graph.emplace(tracking_dispatch(compiled), no_deps());
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(compiled.size(), 1u);
         // Second compile should skip (already clean).
-        co_await graph.compile(1).catch_cancel();
+        co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(compiled.size(), 1u);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(CascadeThroughAlreadyDirty) {
-    et::event_loop loop;
     // Chain: 1 -> 2 -> 3.
-    CompileGraph graph(instant_dispatch(),
-                       static_resolver({
-                           {1, {2}},
-                           {2, {3}}
+    graph.emplace(instant_dispatch(),
+                  static_resolver({
+                      {1, {2}},
+                      {2, {3}}
     }));
 
-    auto test = [this, &graph]() -> et::task<> {
-        co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        co_await graph->compile(1).catch_cancel();
 
         // Update node 2: marks 2 and 1 dirty.
-        graph.update(2);
-        EXPECT_TRUE(graph.is_dirty(1));
-        EXPECT_TRUE(graph.is_dirty(2));
-        EXPECT_FALSE(graph.is_dirty(3));
+        graph->update(2);
+        EXPECT_TRUE(graph->is_dirty(1));
+        EXPECT_TRUE(graph->is_dirty(2));
+        EXPECT_FALSE(graph->is_dirty(3));
 
         // Now update node 3: must cascade through already-dirty 2 to reach 1.
-        graph.update(3);
-        EXPECT_TRUE(graph.is_dirty(3));
-        EXPECT_TRUE(graph.is_dirty(2));
-        EXPECT_TRUE(graph.is_dirty(1));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        graph->update(3);
+        EXPECT_TRUE(graph->is_dirty(3));
+        EXPECT_TRUE(graph->is_dirty(2));
+        EXPECT_TRUE(graph->is_dirty(1));
+    });
 }
 
 TEST_CASE(CircularDependencyDetection) {
-    et::event_loop loop;
     // Cycle: 1 -> 2 -> 1.
-    CompileGraph graph(instant_dispatch(),
-                       static_resolver({
-                           {1, {2}},
-                           {2, {1}}
+    graph.emplace(instant_dispatch(),
+                  static_resolver({
+                      {1, {2}},
+                      {2, {1}}
     }));
 
-    auto test = [this, &graph]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
         // Should return false (cycle detected), not deadlock.
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(CrossBranchCycleDetection) {
-    et::event_loop loop;
     // Cross-branch cycle: 1 -> {2, 3}, 2 -> 3, 3 -> 2.
     // With when_all, sibling branches could deadlock on each other's
     // completion.wait() without proper deadlock detection.
-    CompileGraph graph(instant_dispatch(),
-                       static_resolver({
-                           {1, {2, 3}},
-                           {2, {3}   },
-                           {3, {2}   }
+    graph.emplace(instant_dispatch(),
+                  static_resolver({
+                      {1, {2, 3}},
+                      {2, {3}   },
+                      {3, {2}   }
     }));
 
-    auto test = [this, &graph]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
         // Should return false (cycle detected), not deadlock.
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(UpdateResetsResolved) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     int resolve_count = 0;
     // 1 depends on {2} initially; after update, depends on {3}.
     bool updated = false;
@@ -365,34 +315,28 @@ TEST_CASE(UpdateResetsResolved) {
         return {};
     };
 
-    CompileGraph graph(tracking_dispatch(compiled), std::move(resolver));
+    graph.emplace(tracking_dispatch(compiled), std::move(resolver));
 
-    auto test = [this, &graph, &compiled, &resolve_count, &updated]() -> et::task<> {
+    execute([&]() -> et::task<> {
         // First compile: resolves 1 -> {2}.
-        co_await graph.compile(1).catch_cancel();
+        co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(resolve_count, 1);
         EXPECT_EQ(compiled.size(), 2u);  // 2, then 1
 
         // Update node 1: resets resolved, changes deps.
         updated = true;
-        graph.update(1);
+        graph->update(1);
 
         // Recompile: should re-resolve 1 -> {3}.
-        co_await graph.compile(1).catch_cancel();
+        co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(resolve_count, 2);
         // New dep 3 should be compiled, then 1 recompiled.
         auto tail = compiled | std::views::drop(2);
         EXPECT_TRUE(ranges::find(tail, 3u) != tail.end());
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(UpdateCleansBackEdges) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     bool updated = false;
     auto resolver = [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         if(path_id == 1) {
@@ -403,185 +347,149 @@ TEST_CASE(UpdateCleansBackEdges) {
         return {};
     };
 
-    CompileGraph graph(tracking_dispatch(compiled), std::move(resolver));
+    graph.emplace(tracking_dispatch(compiled), std::move(resolver));
 
-    auto test = [this, &graph, &compiled, &updated]() -> et::task<> {
+    execute([&]() -> et::task<> {
         // First compile: 1 -> {2}.
-        co_await graph.compile(1).catch_cancel();
-        EXPECT_FALSE(graph.is_dirty(1));
+        co_await graph->compile(1).catch_cancel();
+        EXPECT_FALSE(graph->is_dirty(1));
 
         // Update 1: resets resolved, removes dep on 2.
         updated = true;
-        graph.update(1);
+        graph->update(1);
 
         // Recompile: 1 has no deps now.
-        co_await graph.compile(1).catch_cancel();
-        EXPECT_FALSE(graph.is_dirty(1));
+        co_await graph->compile(1).catch_cancel();
+        EXPECT_FALSE(graph->is_dirty(1));
 
         // Now update 2: should NOT cascade to 1 (back-edge was removed).
-        graph.update(2);
-        EXPECT_TRUE(graph.is_dirty(2));
-        EXPECT_FALSE(graph.is_dirty(1));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        graph->update(2);
+        EXPECT_TRUE(graph->is_dirty(2));
+        EXPECT_FALSE(graph->is_dirty(1));
+    });
 }
 
 TEST_CASE(DiamondUpdateCascade) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // Diamond: 1 -> {2, 3}, 2 -> 4, 3 -> 4.
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {1, {2, 3}},
-                           {2, {4}   },
-                           {3, {4}   }
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {1, {2, 3}},
+                      {2, {4}   },
+                      {3, {4}   }
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        co_await graph.compile(1).catch_cancel();
-        EXPECT_FALSE(graph.is_dirty(1));
-        EXPECT_FALSE(graph.is_dirty(4));
+    execute([&]() -> et::task<> {
+        co_await graph->compile(1).catch_cancel();
+        EXPECT_FALSE(graph->is_dirty(1));
+        EXPECT_FALSE(graph->is_dirty(4));
 
         // Update leaf 4: should cascade to 2, 3, and 1.
-        graph.update(4);
-        EXPECT_TRUE(graph.is_dirty(4));
-        EXPECT_TRUE(graph.is_dirty(2));
-        EXPECT_TRUE(graph.is_dirty(3));
-        EXPECT_TRUE(graph.is_dirty(1));
+        graph->update(4);
+        EXPECT_TRUE(graph->is_dirty(4));
+        EXPECT_TRUE(graph->is_dirty(2));
+        EXPECT_TRUE(graph->is_dirty(3));
+        EXPECT_TRUE(graph->is_dirty(1));
 
         compiled.clear();
-        auto result = co_await graph.compile(1).catch_cancel();
+        auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value() && *result);
         // Unit 4 should still be compiled exactly once (dedup on recompile).
         auto count4 = ranges::count(compiled, 4u);
         EXPECT_EQ(count4, 1);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(UpdateReturnsAllDirtied) {
-    et::event_loop loop;
     // Chain: 1 -> 2 -> 3.
-    CompileGraph graph(instant_dispatch(),
-                       static_resolver({
-                           {1, {2}},
-                           {2, {3}}
+    graph.emplace(instant_dispatch(),
+                  static_resolver({
+                      {1, {2}},
+                      {2, {3}}
     }));
 
-    auto test = [this, &graph]() -> et::task<> {
-        co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        co_await graph->compile(1).catch_cancel();
 
-        auto dirtied = graph.update(3);
+        auto dirtied = graph->update(3);
         // Should return 3, 2, 1 (all dirtied nodes).
         EXPECT_EQ(dirtied.size(), 3u);
         EXPECT_TRUE(llvm::find(dirtied, 1u) != dirtied.end());
         EXPECT_TRUE(llvm::find(dirtied, 2u) != dirtied.end());
         EXPECT_TRUE(llvm::find(dirtied, 3u) != dirtied.end());
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(HasUnitAndIsCompiling) {
-    et::event_loop loop;
-    CompileGraph graph(instant_dispatch(), no_deps());
+    graph.emplace(instant_dispatch(), no_deps());
 
-    auto test = [this, &graph]() -> et::task<> {
-        EXPECT_FALSE(graph.has_unit(1));
-        EXPECT_FALSE(graph.is_compiling(1));
+    execute([&]() -> et::task<> {
+        EXPECT_FALSE(graph->has_unit(1));
+        EXPECT_FALSE(graph->is_compiling(1));
 
-        co_await graph.compile(1).catch_cancel();
-        EXPECT_TRUE(graph.has_unit(1));
-        EXPECT_FALSE(graph.is_compiling(1));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        co_await graph->compile(1).catch_cancel();
+        EXPECT_TRUE(graph->has_unit(1));
+        EXPECT_FALSE(graph->is_compiling(1));
+    });
 }
 
 TEST_CASE(FailureLeavesDepsDirty) {
-    et::event_loop loop;
     // 1 -> 2. Dispatch always fails.
-    CompileGraph graph(failing_dispatch(),
-                       static_resolver({
-                           {1, {2}}
+    graph.emplace(failing_dispatch(),
+                  static_resolver({
+                      {1, {2}}
     }));
 
-    auto test = [this, &graph]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
         // Both dep and self should stay dirty.
-        EXPECT_TRUE(graph.is_dirty(2));
-        EXPECT_TRUE(graph.is_dirty(1));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        EXPECT_TRUE(graph->is_dirty(2));
+        EXPECT_TRUE(graph->is_dirty(1));
+    });
 }
 
 TEST_CASE(SelfLoop) {
-    et::event_loop loop;
     // Unit 1 depends on itself.
-    CompileGraph graph(instant_dispatch(),
-                       static_resolver({
-                           {1, {1}}
+    graph.emplace(instant_dispatch(),
+                  static_resolver({
+                      {1, {1}}
     }));
 
-    auto test = [this, &graph]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
         // Should detect cycle and return false, not deadlock.
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(CancelAllAndRecompile) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {1, {2}}
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {1, {2}}
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(compiled.size(), 2u);
-        EXPECT_FALSE(graph.is_dirty(1));
-        EXPECT_FALSE(graph.is_dirty(2));
+        EXPECT_FALSE(graph->is_dirty(1));
+        EXPECT_FALSE(graph->is_dirty(2));
 
         // cancel_all + update to mark dirty again.
-        graph.cancel_all();
-        graph.update(2);
-        EXPECT_TRUE(graph.is_dirty(2));
-        EXPECT_TRUE(graph.is_dirty(1));
+        graph->cancel_all();
+        graph->update(2);
+        EXPECT_TRUE(graph->is_dirty(2));
+        EXPECT_TRUE(graph->is_dirty(1));
 
         // Recompile should succeed normally.
-        auto result = co_await graph.compile(1).catch_cancel();
+        auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
         EXPECT_EQ(compiled.size(), 4u);
-        EXPECT_FALSE(graph.is_dirty(1));
-        EXPECT_FALSE(graph.is_dirty(2));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        EXPECT_FALSE(graph->is_dirty(1));
+        EXPECT_FALSE(graph->is_dirty(2));
+    });
 }
 
 TEST_CASE(UpdateDuringCompile) {
@@ -593,21 +501,21 @@ TEST_CASE(UpdateDuringCompile) {
         co_return true;
     };
 
-    CompileGraph graph(std::move(gated_dispatch), no_deps());
+    graph.emplace(std::move(gated_dispatch), no_deps());
 
     bool compile_done = false;
     bool was_cancelled = false;
 
     // Coroutine 1: compile(1), will suspend inside dispatch waiting on gate.
-    auto compiler = [&graph, &compile_done, &was_cancelled]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
+    auto compiler = [&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
         compile_done = true;
         was_cancelled = !result.has_value();
     };
 
     // Coroutine 2: update(1) while dispatch is in flight, then unblock gate.
-    auto updater = [&graph, &gate]() -> et::task<> {
-        graph.update(1);
+    auto updater = [&]() -> et::task<> {
+        graph->update(1);
         gate.set();
         co_return;
     };
@@ -621,79 +529,66 @@ TEST_CASE(UpdateDuringCompile) {
     // update() cancelled the source, so compile should have been cancelled.
     EXPECT_TRUE(compile_done);
     EXPECT_TRUE(was_cancelled);
-    EXPECT_TRUE(graph.is_dirty(1));
+    EXPECT_TRUE(graph->is_dirty(1));
 }
 
 TEST_CASE(WhenAllPartialFailure) {
-    et::event_loop loop;
     // 1 -> {2, 3}. Only unit 3 fails.
-    CompileGraph graph(selective_dispatch({
-                           3
+    graph.emplace(selective_dispatch({
+                      3
     }),
-                       static_resolver({{1, {2, 3}}}));
+                  static_resolver({{1, {2, 3}}}));
 
-    auto test = [this, &graph]() -> et::task<> {
-        auto result = co_await graph.compile(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
         // Unit 2 succeeded — should be clean.
-        EXPECT_FALSE(graph.is_dirty(2));
+        EXPECT_FALSE(graph->is_dirty(2));
         // Unit 3 failed — stays dirty.
-        EXPECT_TRUE(graph.is_dirty(3));
+        EXPECT_TRUE(graph->is_dirty(3));
         // Unit 1 was not dispatched — stays dirty.
-        EXPECT_TRUE(graph.is_dirty(1));
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+        EXPECT_TRUE(graph->is_dirty(1));
+    });
 }
 
 TEST_CASE(UpdateUnknownPathId) {
-    CompileGraph graph(instant_dispatch(), no_deps());
+    graph.emplace(instant_dispatch(), no_deps());
 
     // update on a path_id that was never compiled should not crash.
-    auto dirtied = graph.update(999);
+    auto dirtied = graph->update(999);
     EXPECT_EQ(dirtied.size(), 0u);
-    EXPECT_FALSE(graph.has_unit(999));
+    EXPECT_FALSE(graph->has_unit(999));
 }
 
 TEST_CASE(EmptyGraphNoCompile) {
     // Construct and destroy without any compile calls.
-    CompileGraph graph(instant_dispatch(), no_deps());
-    EXPECT_FALSE(graph.has_unit(1));
-    graph.cancel_all();  // Should not crash on empty graph.
+    graph.emplace(instant_dispatch(), no_deps());
+    EXPECT_FALSE(graph->has_unit(1));
+    graph->cancel_all();  // Should not crash on empty graph.
 }
 
 TEST_CASE(CompileDepsNoDeps) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
-    CompileGraph graph(tracking_dispatch(compiled), no_deps());
+    graph.emplace(tracking_dispatch(compiled), no_deps());
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        auto result = co_await graph.compile_deps(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile_deps(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
         // No dependencies, so nothing should be dispatched.
         EXPECT_EQ(compiled.size(), 0u);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(CompileDepsWithDependency) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // Unit 1 depends on unit 2.
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {1, {2}}
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {1, {2}}
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        auto result = co_await graph.compile_deps(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile_deps(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
         // Only dep 2 should be compiled, NOT unit 1 itself.
@@ -701,25 +596,19 @@ TEST_CASE(CompileDepsWithDependency) {
         EXPECT_EQ(compiled[0], 2u);
         auto pos1 = ranges::find(compiled, 1u);
         EXPECT_TRUE(pos1 == compiled.end());
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(CompileDepsChain) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // Chain: 1 -> 2 -> 3.
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {1, {2}},
-                           {2, {3}}
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {1, {2}},
+                      {2, {3}}
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        auto result = co_await graph.compile_deps(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile_deps(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
         // Deps 2 and 3 should be compiled, but NOT unit 1.
@@ -727,26 +616,20 @@ TEST_CASE(CompileDepsChain) {
         EXPECT_TRUE(ranges::find(compiled, 3u) != compiled.end());
         EXPECT_TRUE(ranges::find(compiled, 2u) != compiled.end());
         EXPECT_TRUE(ranges::find(compiled, 1u) == compiled.end());
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(CompileDepsDiamond) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // Diamond: 1 -> {2, 3}, 2 -> 4, 3 -> 4.
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {1, {2, 3}},
-                           {2, {4}   },
-                           {3, {4}   }
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {1, {2, 3}},
+                      {2, {4}   },
+                      {3, {4}   }
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        auto result = co_await graph.compile_deps(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile_deps(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
         // Deps 2, 3, 4 should be compiled, but NOT unit 1.
@@ -757,81 +640,63 @@ TEST_CASE(CompileDepsDiamond) {
         // Unit 4 should be compiled exactly once (dedup).
         auto count4 = ranges::count(compiled, 4u);
         EXPECT_EQ(count4, 1);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(CompileDepsFailure) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // 1 -> 2. Dispatch fails for unit 2.
-    auto fail_and_track = [&compiled](std::uint32_t path_id) -> et::task<bool> {
+    auto fail_and_track = [&](std::uint32_t path_id) -> et::task<bool> {
         compiled.push_back(path_id);
         co_return false;
     };
 
-    CompileGraph graph(std::move(fail_and_track),
-                       static_resolver({
-                           {1, {2}}
+    graph.emplace(std::move(fail_and_track),
+                  static_resolver({
+                      {1, {2}}
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        auto result = co_await graph.compile_deps(1).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile_deps(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
         // Unit 1 should NOT be dispatched at all.
         EXPECT_TRUE(ranges::find(compiled, 1u) == compiled.end());
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(CompileDepsPlainCpp) {
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // Simulates a plain .cpp file (unit 10) that imports a module (unit 20).
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {10, {20}}
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {10, {20}}
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
-        auto result = co_await graph.compile_deps(10).catch_cancel();
+    execute([&]() -> et::task<> {
+        auto result = co_await graph->compile_deps(10).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
         // Only dep 20 should be compiled, NOT the .cpp file itself.
         EXPECT_EQ(compiled.size(), 1u);
         EXPECT_EQ(compiled[0], 20u);
         EXPECT_TRUE(ranges::find(compiled, 10u) == compiled.end());
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(CompileDepsConcurrentDedup) {
     // Two concurrent compile_deps calls with overlapping dependencies.
     // Each dep should be dispatched exactly once (no duplicate compilation).
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     // Unit 1 depends on {3, 4}, unit 2 depends on {3, 5}.
     // Dep 3 is shared — must be compiled only once.
-    CompileGraph graph(tracking_dispatch(compiled),
-                       static_resolver({
-                           {1, {3, 4}},
-                           {2, {3, 5}},
+    graph.emplace(tracking_dispatch(compiled),
+                  static_resolver({
+                      {1, {3, 4}},
+                      {2, {3, 5}},
     }));
 
-    auto test = [this, &graph, &compiled]() -> et::task<> {
+    execute([&]() -> et::task<> {
         // Launch both compile_deps concurrently.
-        auto t1 = graph.compile_deps(1);
-        auto t2 = graph.compile_deps(2);
+        auto t1 = graph->compile_deps(1);
+        auto t2 = graph->compile_deps(2);
         auto results = co_await et::when_all(std::move(t1), std::move(t2));
 
         auto [r1, r2] = results;
@@ -845,18 +710,12 @@ TEST_CASE(CompileDepsConcurrentDedup) {
         EXPECT_EQ(compiled[0], 3u);
         EXPECT_EQ(compiled[1], 4u);
         EXPECT_EQ(compiled[2], 5u);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 TEST_CASE(CompileDepsResolveOnce) {
     // Verify that resolve_fn is called at most once per unit,
     // even when multiple compile_deps requests touch the same dependency.
-    et::event_loop loop;
-    std::vector<std::uint32_t> compiled;
     int resolve_count = 0;
 
     auto resolve = [&resolve_count](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
@@ -866,11 +725,11 @@ TEST_CASE(CompileDepsResolveOnce) {
         return {};
     };
 
-    CompileGraph graph(tracking_dispatch(compiled), std::move(resolve));
+    graph.emplace(tracking_dispatch(compiled), std::move(resolve));
 
-    auto test = [this, &graph, &compiled, &resolve_count]() -> et::task<> {
-        auto t1 = graph.compile_deps(1);
-        auto t2 = graph.compile_deps(2);
+    execute([&]() -> et::task<> {
+        auto t1 = graph->compile_deps(1);
+        auto t2 = graph->compile_deps(2);
         auto results = co_await et::when_all(std::move(t1), std::move(t2));
 
         auto [r1, r2] = results;
@@ -883,11 +742,7 @@ TEST_CASE(CompileDepsResolveOnce) {
 
         // resolve_fn called for units 1, 2, 3 — each at most once (3 total).
         EXPECT_EQ(resolve_count, 3);
-    };
-
-    auto t = test();
-    loop.schedule(t);
-    loop.run();
+    });
 }
 
 };  // TEST_SUITE(CompileGraph)
