@@ -91,7 +91,9 @@ int run_stateless_worker_mode() {
                              params.file,
                              cp.output_file,
                              timer.ms());
-                    return {true, "", std::string(cp.output_file)};
+                    worker::BuildPCHResult pch_result{true, "", std::string(cp.output_file)};
+                    pch_result.deps = pch_info.deps;
+                    return pch_result;
                 } else {
                     LOG_WARN("BuildPCH failed: file={}, {}ms", params.file, timer.ms());
                     fs::remove(cp.output_file);
@@ -129,7 +131,9 @@ int run_stateless_worker_mode() {
 
                 if(unit.completed()) {
                     LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
-                    return {true, "", std::string(cp.output_file)};
+                    worker::BuildPCMResult pcm_result{true, "", std::string(cp.output_file)};
+                    pcm_result.deps = pcm_info.deps;
+                    return pcm_result;
                 } else {
                     LOG_WARN("BuildPCM failed: module={}, {}ms", params.module_name, timer.ms());
                     return {false, "PCM compilation failed", ""};

@@ -20,6 +20,7 @@
 #include "syntax/dependency_graph.h"
 #include "syntax/scan.h"
 
+#include "llvm/Support/Chrono.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 
@@ -30,6 +31,41 @@ namespace lsp = eventide::ipc::lsp;
 namespace refl = eventide::refl;
 using et::ipc::RequestResult;
 using RequestContext = et::ipc::JsonPeer::RequestContext;
+
+/// Capture mtime for each dependency file. Returns the snapshot.
+static DepsSnapshot capture_deps_snapshot(const std::vector<std::string>& deps) {
+    DepsSnapshot snap;
+    snap.files = deps;
+    snap.mtimes.reserve(deps.size());
+    for(auto& file: deps) {
+        llvm::sys::fs::file_status status;
+        if(auto ec = llvm::sys::fs::status(file, status); !ec) {
+            snap.mtimes.push_back(llvm::sys::toTimeT(status.getLastModificationTime()));
+        } else {
+            snap.mtimes.push_back(0);
+        }
+    }
+    return snap;
+}
+
+/// Check if any dependency file has changed since the snapshot was taken.
+static bool deps_changed(const DepsSnapshot& snap) {
+    for(std::size_t i = 0; i < snap.files.size(); ++i) {
+        llvm::sys::fs::file_status status;
+        if(auto ec = llvm::sys::fs::status(snap.files[i], status); !ec) {
+            auto current_mtime = llvm::sys::toTimeT(status.getLastModificationTime());
+            if(current_mtime != snap.mtimes[i]) {
+                return true;
+            }
+        } else {
+            // File disappeared — definitely changed.
+            if(snap.mtimes[i] != 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path) :
     loop(loop), peer(peer), pool(loop), self_path(std::move(self_path)) {}
@@ -284,8 +320,13 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     // Reuse existing PCH if preamble content hasn't changed.
     if(auto it = pch_hashes.find(path_id); it != pch_hashes.end()) {
         if(it->second == preamble_hash && pch_paths.contains(path_id)) {
-            pch_bounds[path_id] = bound;
-            co_return true;
+            // Also verify that no dependency file has changed since the PCH was built.
+            auto pch_deps_it = pch_deps.find(path_id);
+            if(pch_deps_it != pch_deps.end() && !deps_changed(pch_deps_it->second)) {
+                pch_bounds[path_id] = bound;
+                co_return true;  // PCH is still valid
+            }
+            // Fall through to rebuild
         }
     }
 
@@ -328,6 +369,7 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     pch_paths[path_id] = result.value().pch_path;
     pch_bounds[path_id] = bound;
     pch_hashes[path_id] = preamble_hash;
+    pch_deps[path_id] = capture_deps_snapshot(result.value().deps);
 
     LOG_INFO("PCH built for {}: {}", path, result.value().pch_path);
 
@@ -410,9 +452,27 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
 
     auto& doc = it->second;
 
-    // Fast path: AST is already up-to-date, nothing to do.
+    // Fast path: AST was previously compiled successfully.
+    // Check if any dependency file has changed since the last compilation.
+    // We check both AST deps (body includes) and PCH deps (preamble includes),
+    // because when PCH is active the preamble headers are baked into the PCH
+    // and won't appear in the AST's directive list.
     if(!doc.ast_dirty) {
-        co_return true;
+        bool changed = false;
+        auto ast_deps_it = ast_deps.find(path_id);
+        if(ast_deps_it != ast_deps.end() && deps_changed(ast_deps_it->second)) {
+            changed = true;
+        }
+        if(!changed) {
+            auto pch_deps_it = pch_deps.find(path_id);
+            if(pch_deps_it != pch_deps.end() && deps_changed(pch_deps_it->second)) {
+                changed = true;
+            }
+        }
+        if(!changed) {
+            co_return true;
+        }
+        doc.ast_dirty = true;
     }
 
     // Snapshot the generation counter *before* any co_await.  After compilation
@@ -502,6 +562,9 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
 
     publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
     doc2.ast_dirty = false;
+    if(result.has_value()) {
+        ast_deps[path_id] = capture_deps_snapshot(result.value().deps);
+    }
     schedule_indexing();
     co_return true;
 }
@@ -1347,6 +1410,8 @@ void MasterServer::register_handlers() {
         pch_paths.erase(path_id);
         pch_bounds.erase(path_id);
         pch_hashes.erase(path_id);
+        ast_deps.erase(path_id);
+        pch_deps.erase(path_id);
 
         // Clear diagnostics for closed file
         clear_diagnostics(params.text_document.uri);
@@ -1376,16 +1441,6 @@ void MasterServer::register_handlers() {
                     doc_it->second.ast_dirty = true;
                 }
             }
-        }
-
-        // Invalidate all cached PCH hashes — the saved file may be a header
-        // included by other TUs, so we must force rebuild for all open documents.
-        pch_hashes.clear();
-
-        // A saved header may be included by any open TU. Since pch_hashes
-        // were cleared, all cached ASTs are potentially stale.
-        for(auto& [_, doc]: documents) {
-            doc.ast_dirty = true;
         }
 
         // Trigger background indexing after save.

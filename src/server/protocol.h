@@ -32,6 +32,7 @@ struct CompileResult {
     /// Diagnostics serialized as JSON (RawValue) to avoid bincode/serde annotation conflicts.
     eventide::serde::RawValue diagnostics;
     std::size_t memory_usage;
+    std::vector<std::string> deps;
 };
 
 struct HoverParams {
@@ -104,6 +105,7 @@ struct BuildPCHResult {
     bool success;
     std::string error;
     std::string pch_path;
+    std::vector<std::string> deps;
 };
 
 struct BuildPCMParams {
@@ -118,6 +120,7 @@ struct BuildPCMResult {
     bool success;
     std::string error;
     std::string pcm_path;
+    std::vector<std::string> deps;
 };
 
 struct IndexParams {

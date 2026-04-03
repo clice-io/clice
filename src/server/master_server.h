@@ -35,6 +35,14 @@ struct DocumentState {
     bool ast_dirty = true;
 };
 
+/// Snapshot of dependency file mtimes taken after a successful compilation.
+/// Used by ensure_compiled/ensure_pch to detect stale results without
+/// requiring didSave to mark everything dirty.
+struct DepsSnapshot {
+    std::vector<std::string> files;
+    std::vector<std::int64_t> mtimes;  // mtime at compilation time
+};
+
 enum class ServerLifecycle : std::uint8_t {
     Uninitialized,
     Initialized,
@@ -110,6 +118,12 @@ private:
 
     // Document state: path_id -> DocumentState
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
+
+    /// Per-file dependency snapshots from last successful AST compilation.
+    llvm::DenseMap<std::uint32_t, DepsSnapshot> ast_deps;
+
+    /// Per-file dependency snapshots from last successful PCH build.
+    llvm::DenseMap<std::uint32_t, DepsSnapshot> pch_deps;
 
     // Helper: convert URI to file path
     std::string uri_to_path(const std::string& uri);

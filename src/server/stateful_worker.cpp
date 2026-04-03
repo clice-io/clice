@@ -204,6 +204,7 @@ void StatefulWorker::register_handlers() {
                     LOG_WARN("Compile incomplete: path={}, {}ms", params.path, timer.ms());
                 }
                 result.memory_usage = 0;  // TODO: query actual memory
+                result.deps = doc.unit.deps();
                 return result;
             });
 
