@@ -7,8 +7,7 @@
       "name": "Debug clice",
       "program": "${workspaceFolder}/build/Debug/bin/clice",
       "args": ["--mode=socket", "--port=50051"],
-      "cwd": "${workspaceFolder}",
-      "preLaunchTask": "cmake: build Debug"
+      "cwd": "${workspaceFolder}"
     },
     {
       "type": "lldb",
@@ -16,8 +15,7 @@
       "name": "Debug clice (socket, RelWithDebInfo)",
       "program": "${workspaceFolder}/build/RelWithDebInfo/bin/clice",
       "args": ["--mode=socket", "--port=50051"],
-      "cwd": "${workspaceFolder}",
-      "preLaunchTask": "cmake: build RelWithDebInfo"
+      "cwd": "${workspaceFolder}"
     },
     {
       "name": "VSCode Extension (pipe)",
@@ -57,8 +55,7 @@
       "name": "Unit Test",
       "program": "${workspaceFolder}/build/Debug/bin/unit_tests",
       "args": ["--test-dir=./tests/data", "--test-filter=${input:filter}"],
-      "cwd": "${workspaceFolder}",
-      "preLaunchTask": "cmake: build Debug"
+      "cwd": "${workspaceFolder}"
     },
     {
       "type": "lldb",
@@ -66,8 +63,7 @@
       "name": "Release Unit Test",
       "program": "${workspaceFolder}/build/RelWithDebInfo/bin/unit_tests",
       "args": ["--test-dir=./tests/data", "--test-filter=${input:filter}"],
-      "cwd": "${workspaceFolder}",
-      "preLaunchTask": "cmake: build RelWithDebInfo"
+      "cwd": "${workspaceFolder}"
     }
   ],
   "compounds": [
