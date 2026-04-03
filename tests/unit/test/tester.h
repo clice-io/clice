@@ -40,18 +40,22 @@ struct Tester {
     }
 
     /// Fast VFS-only path: uses -cc1 directly, no system headers.
-    void prepare(llvm::StringRef standard = "-std=c++20");
+    void prepare(llvm::StringRef standard = "-std=c++20", llvm::StringRef language = "c++");
 
-    bool compile(llvm::StringRef standard = "-std=c++20");
+    bool compile(llvm::StringRef standard = "-std=c++20", llvm::StringRef language = "c++");
 
-    bool compile_with_pch(llvm::StringRef standard = "-std=c++20");
+    bool compile_with_pch(llvm::StringRef standard = "-std=c++20",
+                          llvm::StringRef language = "c++");
 
     /// Driver path: uses CompilationDatabase + toolchain cache, has system headers.
-    void prepare_driver(llvm::StringRef standard = "-std=c++20");
+    void prepare_driver(llvm::StringRef standard = "-std=c++20",
+                        llvm::StringRef language = "c++");
 
-    bool compile_driver(llvm::StringRef standard = "-std=c++20");
+    bool compile_driver(llvm::StringRef standard = "-std=c++20",
+                        llvm::StringRef language = "c++");
 
-    bool compile_driver_with_pch(llvm::StringRef standard = "-std=c++20");
+    bool compile_driver_with_pch(llvm::StringRef standard = "-std=c++20",
+                                 llvm::StringRef language = "c++");
 
     std::uint32_t operator[](llvm::StringRef file, llvm::StringRef pos) {
         return sources.all_files.lookup(file).offsets.lookup(pos);

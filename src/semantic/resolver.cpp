@@ -362,7 +362,7 @@ public:
     /// Look up the name in the given nested name specifier.
     lookup_result lookup(const clang::NestedNameSpecifier* NNS, clang::DeclarationName name) {
         if(!NNS) {
-            return lookup_result();
+            return sema.getASTContext().getTranslationUnitDecl()->lookup(name);
         }
 
         /// Search the resolved entities first.

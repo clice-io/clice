@@ -2,10 +2,10 @@
 
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/SourceManager.h"
+#include "clang/Sema/Sema.h"
 
 namespace clang {
-
-class Sema;
 
 }
 
@@ -39,6 +39,10 @@ public:
 
     /// Look up the name in the given nested name specifier.
     lookup_result lookup(const clang::NestedNameSpecifier* NNS, clang::DeclarationName name);
+
+    lookup_result lookup(clang::DeclarationName name) {
+        return sema.getASTContext().getTranslationUnitDecl()->lookup(name);
+    }
 
     lookup_result lookup(const clang::DependentNameType* type) {
         return lookup(type->getQualifier(), type->getIdentifier());
@@ -94,6 +98,19 @@ public:
 private:
     clang::Sema& sema;
     llvm::DenseMap<const void*, clang::QualType> resolved;
+
+public:
+    auto source_manager() -> clang::SourceManager& {
+        return sema.getSourceManager();
+    }
+
+    auto lang_options() const -> const clang::LangOptions& {
+        return sema.getLangOpts();
+    }
+
+    auto ast_context() -> clang::ASTContext& {
+        return sema.getASTContext();
+    }
 };
 
 }  // namespace clice

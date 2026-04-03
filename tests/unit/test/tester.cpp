@@ -7,7 +7,7 @@
 
 namespace clice::testing {
 
-void Tester::prepare(llvm::StringRef standard) {
+void Tester::prepare(llvm::StringRef standard, llvm::StringRef language) {
     params = CompilationParams();
     unit.reset();
     vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
@@ -28,7 +28,7 @@ void Tester::prepare(llvm::StringRef standard) {
     owned_args.push_back("-fms-extensions");
     owned_args.push_back("-fsyntax-only");
     owned_args.push_back("-x");
-    owned_args.push_back("c++");
+    owned_args.push_back(language.str());
     owned_args.push_back(TestVFS::path(src_path));
 
     params.arguments.clear();
@@ -40,8 +40,8 @@ void Tester::prepare(llvm::StringRef standard) {
     params.vfs = vfs;
 }
 
-bool Tester::compile(llvm::StringRef standard) {
-    prepare(standard);
+bool Tester::compile(llvm::StringRef standard, llvm::StringRef language) {
+    prepare(standard, language);
 
     auto built = clice::compile(params);
     if(!built.completed()) {
@@ -55,8 +55,8 @@ bool Tester::compile(llvm::StringRef standard) {
     return true;
 }
 
-bool Tester::compile_with_pch(llvm::StringRef standard) {
-    prepare(standard);
+bool Tester::compile_with_pch(llvm::StringRef standard, llvm::StringRef language) {
+    prepare(standard, language);
 
     auto pch_path = fs::createTemporaryFile("clice", "pch");
     if(!pch_path) {
@@ -146,7 +146,7 @@ LocalSourceRange Tester::range(llvm::StringRef name, llvm::StringRef file) {
     return ranges.lookup(name);
 }
 
-void Tester::prepare_driver(llvm::StringRef standard) {
+void Tester::prepare_driver(llvm::StringRef standard, llvm::StringRef language) {
     params = CompilationParams();
     unit.reset();
     vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
@@ -154,7 +154,8 @@ void Tester::prepare_driver(llvm::StringRef standard) {
         vfs->add(file, source.content);
     }
 
-    auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
+    auto command =
+        std::format("clang++ {} {} -fms-extensions -x {}", standard, src_path, language.str());
     database.add_command("fake", src_path, command);
 
     CommandOptions options;
@@ -183,8 +184,8 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     }
 }
 
-bool Tester::compile_driver(llvm::StringRef standard) {
-    prepare_driver(standard);
+bool Tester::compile_driver(llvm::StringRef standard, llvm::StringRef language) {
+    prepare_driver(standard, language);
 
     auto built = clice::compile(params);
     if(!built.completed()) {
@@ -198,7 +199,7 @@ bool Tester::compile_driver(llvm::StringRef standard) {
     return true;
 }
 
-bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
+bool Tester::compile_driver_with_pch(llvm::StringRef standard, llvm::StringRef language) {
     params = CompilationParams();
     unit.reset();
     vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
@@ -206,7 +207,8 @@ bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
         vfs->add(file, source.content);
     }
 
-    auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
+    auto command =
+        std::format("clang++ {} {} -fms-extensions -x {}", standard, src_path, language.str());
     database.add_command("fake", src_path, command);
 
     CommandOptions options;

@@ -37,6 +37,10 @@ std::string name_of(const clang::NamedDecl* decl);
 
 std::string display_name_of(const clang::NamedDecl* decl);
 
+clang::NestedNameSpecifierLoc get_qualifier_loc(const clang::NamedDecl* decl);
+
+std::string print_template_specialization_args(const clang::NamedDecl* decl);
+
 /// To response go-to-type-definition request. Some decls actually have a type
 /// for example the result of `typeof(var)` is the type of `var`. This function
 /// returns the type for the decl if any.
