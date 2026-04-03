@@ -10,14 +10,14 @@ namespace et = eventide;
 namespace ranges = std::ranges;
 
 /// A resolve_fn that always returns no dependencies.
-inline CompileGraph::resolve_fn no_deps() {
+CompileGraph::resolve_fn no_deps() {
     return [](std::uint32_t) -> llvm::SmallVector<std::uint32_t> {
         return {};
     };
 }
 
 /// A resolve_fn backed by a static adjacency map.
-inline CompileGraph::resolve_fn
+CompileGraph::resolve_fn
     static_resolver(llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> adj) {
     return [adj = std::move(adj)](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         auto it = adj.find(path_id);
@@ -28,27 +28,27 @@ inline CompileGraph::resolve_fn
     };
 }
 
-inline CompileGraph::dispatch_fn instant_dispatch() {
+CompileGraph::dispatch_fn instant_dispatch() {
     return [](std::uint32_t) -> et::task<bool> {
         co_return true;
     };
 }
 
-inline CompileGraph::dispatch_fn tracking_dispatch(std::vector<std::uint32_t>& compiled) {
+CompileGraph::dispatch_fn tracking_dispatch(std::vector<std::uint32_t>& compiled) {
     return [&compiled](std::uint32_t path_id) -> et::task<bool> {
         compiled.push_back(path_id);
         co_return true;
     };
 }
 
-inline CompileGraph::dispatch_fn failing_dispatch() {
+CompileGraph::dispatch_fn failing_dispatch() {
     return [](std::uint32_t) -> et::task<bool> {
         co_return false;
     };
 }
 
 /// Dispatch that fails only for specific path_ids.
-inline CompileGraph::dispatch_fn selective_dispatch(llvm::DenseSet<std::uint32_t> fail_ids) {
+CompileGraph::dispatch_fn selective_dispatch(llvm::DenseSet<std::uint32_t> fail_ids) {
     return [fail_ids = std::move(fail_ids)](std::uint32_t path_id) -> et::task<bool> {
         co_return !fail_ids.contains(path_id);
     };
@@ -58,11 +58,6 @@ TEST_SUITE(CompileGraph) {
 
 std::vector<std::uint32_t> compiled;
 std::optional<CompileGraph> graph;
-
-void setup() {
-    compiled.clear();
-    graph.reset();
-}
 
 template <typename F>
 void execute(F&& fn) {
