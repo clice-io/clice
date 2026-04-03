@@ -96,6 +96,56 @@ struct SymbolModifiers {
 
         /// Represents that the symbol is a template(e.g. class template or function template).
         Templated = 1u << 5,
+
+        /// Represents that the symbol is deprecated.
+        Deprecated = 1u << 6,
+
+        /// Represents that the symbol is deduced.
+        Deduced = 1u << 7,
+
+        /// Represents that the symbol is readonly.
+        Readonly = 1u << 8,
+
+        /// Represents that the symbol is static.
+        Static = 1u << 9,
+
+        /// Represents that the symbol is abstract.
+        Abstract = 1u << 10,
+
+        /// Represents that the symbol is virtual.
+        Virtual = 1u << 11,
+
+        /// Represents that the symbol is a dependent name.
+        DependentName = 1u << 12,
+
+        /// Represents that the symbol comes from the default library.
+        DefaultLibrary = 1u << 13,
+
+        /// Represents that the symbol is used through a mutable reference.
+        UsedAsMutableReference = 1u << 14,
+
+        /// Represents that the symbol is used through a mutable pointer.
+        UsedAsMutablePointer = 1u << 15,
+
+        /// Represents that the symbol is a constructor or destructor.
+        ConstructorOrDestructor = 1u << 16,
+
+        /// Represents that the symbol is user-defined.
+        UserDefined = 1u << 17,
+
+        /// Represents that the symbol is function-scoped.
+        FunctionScope = 1u << 18,
+
+        /// Represents that the symbol is class-scoped.
+        ClassScope = 1u << 19,
+
+        /// Represents that the symbol is file-scoped.
+        FileScope = 1u << 20,
+
+        /// Represents that the symbol is global-scoped.
+        GlobalScope = 1u << 21,
+
+        LastModifier = GlobalScope,
     };
 
     constexpr SymbolModifiers() = default;

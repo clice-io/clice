@@ -50,6 +50,36 @@ async def test_capabilities(client, workspace):
 
 
 @pytest.mark.workspace("hello_world")
+async def test_semantic_token_modifier_legend(client, workspace):
+    legend = client.init_result.capabilities.semantic_tokens_provider.legend
+    assert legend is not None
+    assert list(legend.token_modifiers) == [
+        "declaration",
+        "definition",
+        "const",
+        "overloaded",
+        "typed",
+        "templated",
+        "deprecated",
+        "deduced",
+        "readonly",
+        "static",
+        "abstract",
+        "virtual",
+        "dependentName",
+        "defaultLibrary",
+        "usedAsMutableReference",
+        "usedAsMutablePointer",
+        "constructorOrDestructor",
+        "userDefined",
+        "functionScope",
+        "classScope",
+        "fileScope",
+        "globalScope",
+    ]
+
+
+@pytest.mark.workspace("hello_world")
 async def test_did_open_close_cycle(client, workspace):
     uri, _ = client.open(workspace / "main.cpp")
     await asyncio.sleep(0.5)
