@@ -1,0 +1,59 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "pixi: build Debug",
+      "type": "shell",
+      "command": "pixi run build Debug",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "pixi: build RelWithDebInfo",
+      "type": "shell",
+      "command": "pixi run build RelWithDebInfo",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "pixi: install vscode deps",
+      "type": "shell",
+      "command": "pixi run install-vscode",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "pixi: watch vscode ext",
+      "type": "shell",
+      "command": "pixi run -e node pnpm --dir ./editors/vscode run watch",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "pixi: install vscode deps",
+      "problemMatcher": "$ts-webpack-watch",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "never",
+        "group": "watchers"
+      }
+    },
+    {
+      "label": "pixi: package vscode ext",
+      "type": "shell",
+      "command": "pixi run build-vscode",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "pixi: install vscode deps",
+      "problemMatcher": []
+    }
+  ]
+}

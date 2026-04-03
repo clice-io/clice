@@ -1,0 +1,87 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug clice",
+      "program": "${workspaceFolder}/build/Debug/bin/clice",
+      "args": ["--mode=socket", "--port=50051"],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "pixi: build Debug"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug clice (socket, RelWithDebInfo)",
+      "program": "${workspaceFolder}/build/RelWithDebInfo/bin/clice",
+      "args": ["--mode=socket", "--port=50051"],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "pixi: build RelWithDebInfo"
+    },
+    {
+      "name": "VSCode Extension (pipe)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--disable-extension=llvm-vs-code-extensions.vscode-clangd",
+        "--disable-extension=ms-vscode.cpptools",
+        "--disable-extension=ms-vscode.cpptools-extension-pack",
+        "--extensionDevelopmentPath=${workspaceFolder}/editors/vscode"
+      ],
+      "env": {
+        "CLICE_MODE": "pipe"
+      },
+      "outFiles": ["${workspaceFolder}/editors/vscode/dist/**/*.js"],
+      "preLaunchTask": "pixi: watch vscode ext"
+    },
+    {
+      "name": "VSCode Extension (socket)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--disable-extension=llvm-vs-code-extensions.vscode-clangd",
+        "--disable-extension=ms-vscode.cpptools",
+        "--disable-extension=ms-vscode.cpptools-extension-pack",
+        "--extensionDevelopmentPath=${workspaceFolder}/editors/vscode"
+      ],
+      "env": {
+        "CLICE_MODE": "socket"
+      },
+      "outFiles": ["${workspaceFolder}/editors/vscode/dist/**/*.js"],
+      "preLaunchTask": "pixi: watch vscode ext"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Unit Test",
+      "program": "${workspaceFolder}/build/Debug/bin/unit_tests",
+      "args": ["--test-dir=./tests/data", "--test-filter=${input:filter}"],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "pixi: build Debug"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Release Unit Test",
+      "program": "${workspaceFolder}/build/RelWithDebInfo/bin/unit_tests",
+      "args": ["--test-dir=./tests/data", "--test-filter=${input:filter}"],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "pixi: build RelWithDebInfo"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "clice + VSCode Extension (socket)",
+      "configurations": ["Debug clice", "VSCode Extension (socket)"],
+      "stopAll": true
+    }
+  ],
+  "inputs": [
+    {
+      "id": "filter",
+      "type": "promptString",
+      "description": "Unit Test Filter"
+    }
+  ]
+}
