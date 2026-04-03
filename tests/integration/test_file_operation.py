@@ -7,7 +7,6 @@ from lsprotocol.types import (
     CompletionParams,
     DidChangeTextDocumentParams,
     DidCloseTextDocumentParams,
-    DidSaveTextDocumentParams,
     HoverParams,
     Position,
     SignatureHelpParams,
@@ -51,26 +50,7 @@ async def test_hover_save_close(client, workspace):
 
     uri, content = client.open(main_cpp)
 
-    # Wait for initial compilation
-    await client.wait_diagnostics(uri)
-
-    # Change and save
-    content += "\nint saved = 1;\n"
-    event = client.wait_for_diagnostics(uri)
-    client.text_document_did_change(
-        DidChangeTextDocumentParams(
-            text_document=VersionedTextDocumentIdentifier(uri=uri, version=1),
-            content_changes=[TextDocumentContentChangeWholeDocument(text=content)],
-        )
-    )
-    client.text_document_did_save(
-        DidSaveTextDocumentParams(text_document=TextDocumentIdentifier(uri=uri))
-    )
-
-    # Wait for recompilation
-    await asyncio.wait_for(event.wait(), timeout=30.0)
-
-    # Hover on 'add'
+    # Hover on 'add' — this triggers ensure_compiled() which compiles the file
     hover = await client.text_document_hover_async(
         HoverParams(
             text_document=TextDocumentIdentifier(uri=uri),

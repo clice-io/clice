@@ -75,167 +75,6 @@ void MasterServer::clear_diagnostics(const std::string& uri) {
     peer.send_notification(params);
 }
 
-void MasterServer::schedule_build(std::uint32_t path_id, const std::string& uri) {
-    auto it = documents.find(path_id);
-    if(it == documents.end())
-        return;
-
-    auto& doc = it->second;
-
-    if(doc.build_running) {
-        doc.build_requested = true;
-        return;
-    }
-
-    // Create or reset debounce timer
-    auto& timer_ptr = debounce_timers[path_id];
-    if(!timer_ptr) {
-        timer_ptr = std::make_shared<et::timer>(et::timer::create(loop));
-    }
-    timer_ptr->start(std::chrono::milliseconds(config.debounce_ms));
-
-    if(!doc.drain_scheduled) {
-        doc.drain_scheduled = true;
-        loop.schedule(run_build_drain(path_id, uri));
-    }
-}
-
-et::task<> MasterServer::run_build_drain(std::uint32_t path_id, std::string uri) {
-    // Wait for debounce timer.  Hold a shared_ptr copy so the timer
-    // stays alive even if didClose erases the map entry mid-wait.
-    if(auto timer_it = debounce_timers.find(path_id);
-       timer_it != debounce_timers.end() && timer_it->second) {
-        auto timer = timer_it->second;
-        co_await timer->wait();
-    }
-
-    while(true) {
-        auto doc_it = documents.find(path_id);
-        if(doc_it == documents.end())
-            co_return;
-
-        doc_it->second.build_running = true;
-        doc_it->second.build_requested = false;
-        auto gen = doc_it->second.generation;
-
-        // Ensure module dependencies are compiled first.
-        if(compile_graph) {
-            auto file_path = path_pool.resolve(path_id);
-            auto cdb_results =
-                cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
-            bool deps_ok = true;
-            if(!cdb_results.empty()) {
-                auto scan_result = scan_precise(cdb_results[0].arguments, cdb_results[0].directory);
-                for(auto& mod_name: scan_result.modules) {
-                    auto mod_ids = dependency_graph.lookup_module(mod_name);
-                    if(!mod_ids.empty()) {
-                        auto r = co_await compile_graph->compile(mod_ids[0]);
-                        if(!r) {
-                            deps_ok = false;
-                            break;
-                        }
-                    }
-                }
-                // Module implementation units need their interface PCM.
-                if(deps_ok && !scan_result.module_name.empty() && !scan_result.is_interface_unit) {
-                    auto mod_ids = dependency_graph.lookup_module(scan_result.module_name);
-                    if(!mod_ids.empty()) {
-                        auto r = co_await compile_graph->compile(mod_ids[0]);
-                        if(!r) {
-                            deps_ok = false;
-                        }
-                    }
-                }
-            }
-            if(!deps_ok) {
-                LOG_WARN("Module dependency build failed for {}, skipping compile", uri);
-                doc_it = documents.find(path_id);
-                if(doc_it != documents.end()) {
-                    doc_it->second.build_running = false;
-                    doc_it->second.drain_scheduled = false;
-                }
-                co_return;
-            }
-        }
-
-        // Re-lookup document after co_awaits in compile_graph section.
-        doc_it = documents.find(path_id);
-        if(doc_it == documents.end())
-            co_return;
-
-        // Send compile request to stateful worker
-        worker::CompileParams params;
-        params.path = std::string(path_pool.resolve(path_id));
-        params.version = doc_it->second.version;
-        params.text = doc_it->second.text;
-        if(!fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments)) {
-            doc_it->second.build_running = false;
-            doc_it->second.drain_scheduled = false;
-            co_return;
-        }
-
-        // Fill all available PCM paths (clang needs transitive deps).
-        // Skip the file's own PCM — a module interface must not receive its
-        // own precompiled module, or clang reports "multiple module declarations".
-        for(auto& [pid, pcm_path]: pcm_paths) {
-            if(pid == path_id)
-                continue;
-            auto mod_it = path_to_module.find(pid);
-            if(mod_it != path_to_module.end()) {
-                params.pcms[mod_it->second] = pcm_path;
-            }
-        }
-
-        // Build or reuse PCH for preamble acceleration.
-        co_await ensure_pch(path_id, params.path, params.text, params.directory, params.arguments);
-
-        // Populate PCH info if available.
-        if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
-            params.pch = {pch_it->second, pch_bounds[path_id]};
-        }
-
-        LOG_DEBUG("Sending compile: path={}, args={}, gen={}",
-                  params.path,
-                  params.arguments.size(),
-                  gen);
-
-        auto result = co_await pool.send_stateful(path_id, params);
-
-        // Re-lookup document (may have been closed during compile)
-        doc_it = documents.find(path_id);
-        if(doc_it == documents.end())
-            co_return;
-
-        auto& doc2 = doc_it->second;
-
-        if(result.has_value()) {
-            // Only publish diagnostics if the generation hasn't changed
-            if(doc2.generation == gen) {
-                publish_diagnostics(uri, doc2.version, result.value().diagnostics);
-            } else {
-                LOG_DEBUG("Generation mismatch ({} vs {}), dropping diagnostics for {}",
-                          doc2.generation,
-                          gen,
-                          uri);
-            }
-        } else {
-            LOG_WARN("Compile failed for {}: {}", uri, result.error().message);
-            // Publish empty diagnostics so stale errors don't linger
-            clear_diagnostics(uri);
-        }
-
-        // Check if more builds were requested while compiling
-        if(!doc2.build_requested) {
-            doc2.build_running = false;
-            doc2.drain_scheduled = false;
-            // Trigger background indexing after successful compile settles.
-            schedule_indexing();
-            co_return;
-        }
-        // Loop continues for the next build
-    }
-}
-
 et::task<> MasterServer::load_workspace() {
     if(workspace_root.empty())
         co_return;
@@ -354,6 +193,15 @@ et::task<> MasterServer::load_workspace() {
                 deps.push_back(mod_ids[0]);
             }
         }
+
+        // Module implementation units implicitly depend on their interface unit.
+        if(!scan_result.module_name.empty() && !scan_result.is_interface_unit) {
+            auto mod_ids = dependency_graph.lookup_module(scan_result.module_name);
+            if(!mod_ids.empty()) {
+                deps.push_back(mod_ids[0]);
+            }
+        }
+
         return deps;
     };
 
@@ -489,14 +337,156 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     co_return true;
 }
 
-et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id, const std::string& uri) {
-    auto doc_it = documents.find(path_id);
-    if(doc_it == documents.end())
+/// Pull-based compilation entry point for user-opened files.
+///
+/// Called lazily by forward_stateful() / forward_stateless() before every
+/// feature request (hover, semantic tokens, etc.). Guarantees that when it
+/// returns true the stateful worker assigned to `path_id` holds an up-to-date
+/// AST and diagnostics have been published to the client.
+///
+/// Lifecycle overview (pull-based model):
+///
+///   didOpen / didChange          – only update DocumentState, mark ast_dirty
+///   didSave                      – mark dependents dirty, queue indexing
+///   feature request arrives      – calls ensure_compiled() first
+///     1. Fast-path exit if AST is already clean (!ast_dirty).
+///     2. Compile any C++20 module dependencies (PCMs) via CompileGraph.
+///     3. Build / reuse the precompiled header (PCH) via ensure_pch().
+///     4. Send CompileParams to the stateful worker, which builds the AST.
+///     5. On success: publish diagnostics, clear ast_dirty, schedule indexing.
+///     6. On generation mismatch (user edited during compile): keep dirty,
+///        the next feature request will trigger another compile cycle.
+///
+/// Only the opened file itself is remapped (its in-memory text is sent to the
+/// worker); every other file is read from disk by the compiler.
+///
+/// Concurrency: multiple concurrent feature requests for the same file will
+/// each call ensure_compiled(). The first one triggers the actual compilation;
+/// subsequent ones observe ast_dirty == false after the first completes and
+/// take the fast path. This is safe because forward_stateful serialises
+/// requests per worker slot.
+et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
+    auto it = documents.find(path_id);
+    if(it == documents.end()) {
+        co_return false;
+    }
+
+    auto& doc = it->second;
+
+    // Fast path: AST is already up-to-date, nothing to do.
+    if(!doc.ast_dirty) {
+        co_return true;
+    }
+
+    // Snapshot the generation counter *before* any co_await.  After compilation
+    // we compare it with the current value to detect edits that arrived while
+    // we were suspended — if they differ, the result is stale and we must not
+    // mark the AST as clean.
+    auto gen = doc.generation;
+
+    auto file_path = std::string(path_pool.resolve(path_id));
+    auto uri = lsp::URI::from_file_path(file_path);
+    std::string uri_str = uri.has_value() ? uri->str() : file_path;
+
+    // ── Phase 1: Compile C++20 module dependencies (PCMs) ───────────────
+    //
+    // compile_deps() resolves the file's imports (via resolve_fn which calls
+    // scan_precise), recursively compiles all transitive module dependencies,
+    // but does NOT compile the file itself (it may be a plain .cpp).
+    // Module implementation units' implicit dependency on their interface
+    // unit is also handled by resolve_fn.
+    if(compile_graph) {
+        bool deps_ok = co_await compile_graph->compile_deps(path_id);
+        if(!deps_ok) {
+            LOG_WARN("Module dependency build failed for {}, skipping compile", uri_str);
+            co_return false;
+        }
+    }
+
+    // After co_await suspension points the iterator may be invalidated (the
+    // documents map could have been modified by didClose on another file).
+    it = documents.find(path_id);
+    if(it == documents.end())
         co_return false;
 
-    // If the document has never been compiled, schedule a build and wait
-    // For now, just return true - the worker may already have an AST
-    // from a previous compile, or the feature request will return empty results.
+    // ── Phase 2: Prepare CompileParams ──────────────────────────────────
+    worker::CompileParams params;
+    params.path = file_path;
+    params.version = it->second.version;
+    params.text = it->second.text;
+    if(!fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments)) {
+        co_return false;
+    }
+
+    // Provide all available PCM paths so clang can resolve transitive imports.
+    // We must exclude the file's own PCM — feeding a module interface its own
+    // precompiled output causes clang to emit "multiple module declarations".
+    for(auto& [pid, pcm_path]: pcm_paths) {
+        if(pid == path_id)
+            continue;
+        auto mod_it = path_to_module.find(pid);
+        if(mod_it != path_to_module.end()) {
+            params.pcms[mod_it->second] = pcm_path;
+        }
+    }
+
+    // ── Phase 3: Precompiled header ─────────────────────────────────────
+    //
+    // Build or reuse a PCH covering the file's preamble (#include block).
+    // ensure_pch() uses content-hash comparison to avoid redundant rebuilds
+    // and deduplicates concurrent requests for the same file.
+    co_await ensure_pch(path_id, params.path, params.text, params.directory, params.arguments);
+
+    if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
+        params.pch = {pch_it->second, pch_bounds[path_id]};
+    }
+
+    // ── Phase 4: Dispatch to stateful worker ────────────────────────────
+    //
+    // The stateful worker receives the full document text and compile args,
+    // builds the AST, and caches it for subsequent feature requests.  The
+    // response carries diagnostics collected during compilation.
+    LOG_DEBUG("Sending compile: path={}, args={}, gen={}",
+              params.path,
+              params.arguments.size(),
+              gen);
+
+    auto result = co_await pool.send_stateful(path_id, params);
+
+    // Re-lookup: the document may have been closed while we were compiling.
+    it = documents.find(path_id);
+    if(it == documents.end())
+        co_return false;
+
+    auto& doc2 = it->second;
+
+    // ── Phase 5: Handle result ──────────────────────────────────────────
+    //
+    // Generation mismatch means the user edited the file while we compiled.
+    // The AST we just built corresponds to an older version of the text, so
+    // we discard the diagnostics and leave ast_dirty == true.  The next
+    // feature request will trigger another compile cycle with the latest text.
+    if(doc2.generation != gen) {
+        if(result.has_value()) {
+            LOG_DEBUG("Generation mismatch ({} vs {}), dropping diagnostics for {}",
+                      doc2.generation,
+                      gen,
+                      uri_str);
+        }
+        co_return true;
+    }
+
+    if(result.has_value()) {
+        publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
+    } else {
+        LOG_WARN("Compile failed for {}: {}", uri_str, result.error().message);
+        // Clear stale diagnostics so the editor doesn't show errors from a
+        // previous successful compilation that no longer apply.
+        clear_diagnostics(uri_str);
+    }
+
+    doc2.ast_dirty = false;
+    schedule_indexing();
     co_return true;
 }
 
@@ -775,7 +765,7 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    if(!co_await ensure_compiled(path_id, uri))
+    if(!co_await ensure_compiled(path_id))
         co_return serde_raw{"null"};
 
     WorkerParams wp;
@@ -793,7 +783,7 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri,
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    if(!co_await ensure_compiled(path_id, uri))
+    if(!co_await ensure_compiled(path_id))
         co_return serde_raw{"null"};
 
     WorkerParams wp;
@@ -1224,10 +1214,9 @@ void MasterServer::register_handlers() {
         // Load configuration from workspace
         config = CliceConfig::load_from_workspace(workspace_root);
 
-        LOG_INFO("Server ready (stateful={}, stateless={}, debounce={}ms, idle={}ms)",
+        LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
                  config.stateful_worker_count,
                  config.stateless_worker_count,
-                 config.debounce_ms,
                  config.idle_timeout_ms);
 
         // Start worker pool
@@ -1286,8 +1275,6 @@ void MasterServer::register_handlers() {
         doc.generation++;
 
         LOG_DEBUG("didOpen: {} (v{})", path, td.version);
-
-        schedule_build(path_id, td.uri);
     });
 
     // === textDocument/didChange ===
@@ -1329,6 +1316,7 @@ void MasterServer::register_handlers() {
         }
 
         doc.generation++;
+        doc.ast_dirty = true;
 
         // Notify the owning stateful worker so it marks the document dirty
         worker::DocumentUpdateParams update;
@@ -1336,8 +1324,6 @@ void MasterServer::register_handlers() {
         update.version = doc.version;
         update.text = doc.text;
         pool.notify_stateful(path_id, update);
-
-        schedule_build(path_id, params.text_document.uri);
     });
 
     // === textDocument/didClose ===
@@ -1354,7 +1340,6 @@ void MasterServer::register_handlers() {
         }
 
         documents.erase(path_id);
-        debounce_timers.erase(path_id);
         pch_paths.erase(path_id);
         pch_bounds.erase(path_id);
         pch_hashes.erase(path_id);
@@ -1380,16 +1365,13 @@ void MasterServer::register_handlers() {
             for(auto dirty_id: dirtied) {
                 pcm_paths.erase(dirty_id);
             }
-            // Schedule rebuilds for dirtied units that are currently open.
+            // Mark ast_dirty for open documents that depend on the saved file.
             for(auto dirty_id: dirtied) {
                 if(dirty_id == path_id)
-                    continue;  // The saved file itself is rebuilt by its own didChange.
-                if(documents.contains(dirty_id)) {
-                    auto dirty_path = path_pool.resolve(dirty_id);
-                    auto uri = lsp::URI::from_file_path(dirty_path);
-                    if(uri.has_value()) {
-                        schedule_build(dirty_id, uri->str());
-                    }
+                    continue;
+                auto doc_it = documents.find(dirty_id);
+                if(doc_it != documents.end()) {
+                    doc_it->second.ast_dirty = true;
                 }
             }
         }
@@ -1397,6 +1379,9 @@ void MasterServer::register_handlers() {
         // Invalidate all cached PCH hashes — the saved file may be a header
         // included by other TUs, so we must force rebuild for all open documents.
         pch_hashes.clear();
+
+        // Trigger background indexing after save.
+        schedule_indexing();
 
         LOG_DEBUG("didSave: {}", params.text_document.uri);
     });

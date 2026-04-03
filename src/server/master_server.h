@@ -32,9 +32,7 @@ struct DocumentState {
     int version = 0;
     std::string text;
     std::uint64_t generation = 0;
-    bool build_running = false;
-    bool build_requested = false;
-    bool drain_scheduled = false;
+    bool ast_dirty = true;
 };
 
 enum class ServerLifecycle : std::uint8_t {
@@ -113,9 +111,6 @@ private:
     // Document state: path_id -> DocumentState
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
 
-    // Per-document debounce timers (shared_ptr so drain coroutines survive didClose)
-    llvm::DenseMap<std::uint32_t, std::shared_ptr<et::timer>> debounce_timers;
-
     // Helper: convert URI to file path
     std::string uri_to_path(const std::string& uri);
 
@@ -125,14 +120,8 @@ private:
                              const eventide::serde::RawValue& diagnostics_json);
     void clear_diagnostics(const std::string& uri);
 
-    // Schedule a build after debounce
-    void schedule_build(std::uint32_t path_id, const std::string& uri);
-
-    // Build drain coroutine: waits for debounce, then runs compile loop
-    et::task<> run_build_drain(std::uint32_t path_id, std::string uri);
-
     // Ensure a file has been compiled before servicing feature requests
-    et::task<bool> ensure_compiled(std::uint32_t path_id, const std::string& uri);
+    et::task<bool> ensure_compiled(std::uint32_t path_id);
 
     // Load CDB and build initial include graph
     et::task<> load_workspace();

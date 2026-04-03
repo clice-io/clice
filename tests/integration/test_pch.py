@@ -1,7 +1,5 @@
 """Integration tests for PCH (precompiled header) functionality in MasterServer."""
 
-import asyncio
-
 import pytest
 from lsprotocol.types import (
     CompletionParams,
@@ -37,15 +35,16 @@ async def test_pch_body_edit_triggers_recompile(client, workspace):
 
     # Edit only the function body — preamble (#include "common.h") unchanged.
     new_content = content.replace("return result;", "return result + 1;")
-    event = client.wait_for_diagnostics(uri)
     client.text_document_did_change(
         DidChangeTextDocumentParams(
             text_document=VersionedTextDocumentIdentifier(uri=uri, version=1),
             content_changes=[TextDocumentContentChangeWholeDocument(text=new_content)],
         )
     )
-    # The key assertion: recompilation completes (diagnostics event fires).
-    await asyncio.wait_for(event.wait(), timeout=30.0)
+    # Send hover to trigger recompilation via pull-based model.
+    await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=0, character=0))
+    )
     assert uri in client.diagnostics
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
@@ -83,16 +82,14 @@ async def test_completion_with_pch(client, workspace):
     lines = new_content.split("\n")
     last_line = len(lines) - 1
 
-    event = client.wait_for_diagnostics(uri)
     client.text_document_did_change(
         DidChangeTextDocumentParams(
             text_document=VersionedTextDocumentIdentifier(uri=uri, version=1),
             content_changes=[TextDocumentContentChangeWholeDocument(text=new_content)],
         )
     )
-    # Brief wait for the change to be processed.
-    await asyncio.sleep(1.0)
 
+    # The completion request itself triggers compilation via ensure_compiled().
     result = await client.text_document_completion_async(
         CompletionParams(
             text_document=_doc(uri),

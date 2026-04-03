@@ -25,8 +25,19 @@ def _doc(uri: str) -> TextDocumentIdentifier:
     return TextDocumentIdentifier(uri=uri)
 
 
-async def _wait_for_index(client, timeout=30):
-    """Poll workspace/symbol until indexing is ready (symbols appear)."""
+async def _wait_for_index(client, uri, timeout=30):
+    """Trigger compilation via a hover request, then poll workspace/symbol until
+    indexing is ready (symbols appear)."""
+    from lsprotocol.types import HoverParams
+
+    # Send a hover request to trigger ensure_compiled() → compilation → indexing
+    await client.text_document_hover_async(
+        HoverParams(
+            text_document=_doc(uri),
+            position=Position(line=0, character=0),
+        )
+    )
+
     for _ in range(timeout):
         result = await client.workspace_symbol_async(WorkspaceSymbolParams(query="add"))
         if result and any(s.name == "add" for s in result):
@@ -44,7 +55,7 @@ async def _wait_for_index(client, timeout=30):
 async def test_goto_definition(client, workspace):
     """Test GoToDefinition navigates from a call site to the function definition."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    assert await _wait_for_index(client), "Index not ready after 30s"
+    assert await _wait_for_index(client, uri), "Index not ready after 30s"
 
     # 'add' call on line 24 (0-indexed), column 12
     result = await client.text_document_definition_async(
@@ -74,7 +85,7 @@ async def test_goto_definition(client, workspace):
 async def test_find_references(client, workspace):
     """Test FindReferences returns all usages of global_var."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    assert await _wait_for_index(client), "Index not ready after 30s"
+    assert await _wait_for_index(client, uri), "Index not ready after 30s"
 
     # global_var definition on line 30 (0-indexed), column 4
     result = await client.text_document_references_async(
@@ -103,7 +114,7 @@ async def test_find_references(client, workspace):
 async def test_call_hierarchy_prepare(client, workspace):
     """Test prepareCallHierarchy returns a CallHierarchyItem for 'add'."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    assert await _wait_for_index(client), "Index not ready after 30s"
+    assert await _wait_for_index(client, uri), "Index not ready after 30s"
 
     # 'add' definition at line 18 (0-indexed), column 4
     result = await client.text_document_prepare_call_hierarchy_async(
@@ -123,7 +134,7 @@ async def test_call_hierarchy_prepare(client, workspace):
 async def test_call_hierarchy_incoming(client, workspace):
     """Test incomingCalls shows compute() calls add()."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    assert await _wait_for_index(client), "Index not ready after 30s"
+    assert await _wait_for_index(client, uri), "Index not ready after 30s"
 
     # Prepare call hierarchy for 'add' at line 18 (0-indexed), column 4
     items = await client.text_document_prepare_call_hierarchy_async(
@@ -150,7 +161,7 @@ async def test_call_hierarchy_incoming(client, workspace):
 async def test_call_hierarchy_outgoing(client, workspace):
     """Test outgoingCalls shows compute() calls add()."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    assert await _wait_for_index(client), "Index not ready after 30s"
+    assert await _wait_for_index(client, uri), "Index not ready after 30s"
 
     # Prepare call hierarchy for 'compute' at line 23 (0-indexed), column 4
     items = await client.text_document_prepare_call_hierarchy_async(
@@ -180,7 +191,7 @@ async def test_call_hierarchy_outgoing(client, workspace):
 async def test_type_hierarchy_prepare(client, workspace):
     """Test prepareTypeHierarchy returns a TypeHierarchyItem for 'Dog'."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    assert await _wait_for_index(client), "Index not ready after 30s"
+    assert await _wait_for_index(client, uri), "Index not ready after 30s"
 
     # 'Dog' at line 8 (0-indexed), column 7
     result = await client.text_document_prepare_type_hierarchy_async(
@@ -200,7 +211,7 @@ async def test_type_hierarchy_prepare(client, workspace):
 async def test_type_hierarchy_supertypes(client, workspace):
     """Test supertypes of Dog includes Animal."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    assert await _wait_for_index(client), "Index not ready after 30s"
+    assert await _wait_for_index(client, uri), "Index not ready after 30s"
 
     # 'Dog' at line 8 (0-indexed), column 7
     items = await client.text_document_prepare_type_hierarchy_async(
@@ -227,7 +238,7 @@ async def test_type_hierarchy_supertypes(client, workspace):
 async def test_type_hierarchy_subtypes(client, workspace):
     """Test subtypes of Animal includes Dog and Cat."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    assert await _wait_for_index(client), "Index not ready after 30s"
+    assert await _wait_for_index(client, uri), "Index not ready after 30s"
 
     # 'Animal' at line 1, column 7
     items = await client.text_document_prepare_type_hierarchy_async(
@@ -258,7 +269,7 @@ async def test_type_hierarchy_subtypes(client, workspace):
 async def test_workspace_symbol(client, workspace):
     """Test workspace/symbol finds symbols by query string."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    assert await _wait_for_index(client), "Index not ready after 30s"
+    assert await _wait_for_index(client, uri), "Index not ready after 30s"
 
     result = await client.workspace_symbol_async(WorkspaceSymbolParams(query="add"))
     assert result is not None
@@ -272,7 +283,7 @@ async def test_workspace_symbol(client, workspace):
 async def test_workspace_symbol_class(client, workspace):
     """Test workspace/symbol finds class symbols."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    assert await _wait_for_index(client), "Index not ready after 30s"
+    assert await _wait_for_index(client, uri), "Index not ready after 30s"
 
     result = await client.workspace_symbol_async(WorkspaceSymbolParams(query="Animal"))
     assert result is not None

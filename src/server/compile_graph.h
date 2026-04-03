@@ -50,6 +50,10 @@ public:
     /// Compile a unit and all its transitive dependencies.
     et::task<bool> compile(std::uint32_t path_id);
 
+    /// Compile all transitive module dependencies of path_id, but NOT path_id itself.
+    /// Used for non-module files (plain .cpp) that import modules.
+    et::task<bool> compile_deps(std::uint32_t path_id);
+
     /// Mark path_id and all transitive dependents as dirty,
     /// cancelling any in-progress compilations.
     /// Returns the set of all path_ids that were marked dirty.
@@ -66,7 +70,9 @@ private:
     void ensure_resolved(std::uint32_t path_id);
 
     /// Internal compile with ancestor tracking for cycle detection.
-    et::task<bool> compile_impl(std::uint32_t path_id, llvm::DenseSet<std::uint32_t> ancestors);
+    et::task<bool> compile_impl(std::uint32_t path_id,
+                                llvm::DenseSet<std::uint32_t> ancestors,
+                                bool dispatch_self = true);
 
     /// Check if waiting on `target` would deadlock given our `ancestors` chain.
     /// Walks the dependency graph through compiling units to see if any dep

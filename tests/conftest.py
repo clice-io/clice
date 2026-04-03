@@ -7,6 +7,7 @@ import subprocess
 import sys
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 from lsprotocol.types import (
@@ -16,11 +17,14 @@ from lsprotocol.types import (
     ClientCapabilities,
     Diagnostic,
     DidOpenTextDocumentParams,
+    HoverParams,
     InitializeParams,
     InitializeResult,
     InitializedParams,
+    Position,
     ProgressParams,
     PublishDiagnosticsParams,
+    TextDocumentIdentifier,
     TextDocumentItem,
     WorkDoneProgressCreateParams,
     WorkspaceFolder,
@@ -68,9 +72,10 @@ class CliceClient(BaseLanguageClient):
 
         @self.feature(TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
         def on_diagnostics(params: PublishDiagnosticsParams) -> None:
-            self.diagnostics[params.uri] = list(params.diagnostics)
-            if params.uri in self.diagnostics_events:
-                self.diagnostics_events[params.uri].set()
+            uri = self._normalize_uri(params.uri)
+            self.diagnostics[uri] = list(params.diagnostics)
+            if uri in self.diagnostics_events:
+                self.diagnostics_events[uri].set()
 
         @self.feature(WINDOW_WORK_DONE_PROGRESS_CREATE)
         def on_create_progress(params: WorkDoneProgressCreateParams) -> None:
@@ -83,8 +88,14 @@ class CliceClient(BaseLanguageClient):
             token = str(params.token) if isinstance(params.token, int) else params.token
             self.progress_events.append({"token": token, "value": params.value})
 
+    @staticmethod
+    def _normalize_uri(uri: str) -> str:
+        """Decode percent-encoded URIs so encoded and unencoded forms match."""
+        return unquote(uri)
+
     def wait_for_diagnostics(self, uri: str) -> asyncio.Event:
         """Get or create an event that fires when diagnostics arrive for uri."""
+        uri = self._normalize_uri(uri)
         if uri not in self.diagnostics_events:
             self.diagnostics_events[uri] = asyncio.Event()
         else:
@@ -110,7 +121,7 @@ class CliceClient(BaseLanguageClient):
         """Open a text document and return (uri, content)."""
         # Read in binary mode to preserve CRLF on Windows, matching real LSP clients.
         content = filepath.read_bytes().decode("utf-8")
-        uri = filepath.as_uri()
+        uri = self._normalize_uri(filepath.as_uri())
         self.text_document_did_open(
             DidOpenTextDocumentParams(
                 text_document=TextDocumentItem(
@@ -122,6 +133,7 @@ class CliceClient(BaseLanguageClient):
 
     async def wait_diagnostics(self, uri: str, timeout: float = 30.0) -> None:
         """Wait for diagnostics on the given URI."""
+        uri = self._normalize_uri(uri)
         if uri in self.diagnostics:
             return
         event = self.wait_for_diagnostics(uri)
@@ -132,10 +144,24 @@ class CliceClient(BaseLanguageClient):
     async def open_and_wait(
         self, filepath: Path, timeout: float = 60.0
     ) -> tuple[str, str]:
-        """Open a file and wait for compilation diagnostics."""
-        uri = filepath.as_uri()
+        """Open a file and trigger compilation by sending a hover request.
+
+        With the pull-based compilation model, compilation is triggered
+        by feature requests (hover, completion, etc.) via ensure_compiled(),
+        not by didOpen. This method opens the file and sends a hover request
+        to trigger compilation, which publishes diagnostics as a side effect.
+        """
+        uri, content = self.open(filepath)
         event = self.wait_for_diagnostics(uri)
-        _, content = self.open(filepath)
+        # Send hover to trigger pull-based compilation (ensure_compiled).
+        # This causes the server to compile the file and publish diagnostics.
+        await self.text_document_hover_async(
+            HoverParams(
+                text_document=TextDocumentIdentifier(uri=uri),
+                position=Position(line=0, character=0),
+            )
+        )
+        # Wait for diagnostics notification to be processed by the client.
         await asyncio.wait_for(event.wait(), timeout=timeout)
         return uri, content
 
