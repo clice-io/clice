@@ -190,12 +190,14 @@ async def test_save_recompile(client, test_data_dir, tmp_path):
         )
     )
     # Send hover to trigger recompilation via pull-based model.
+    event = client.wait_for_diagnostics(leaf_uri)
     await client.text_document_hover_async(
         HoverParams(
             text_document=TextDocumentIdentifier(uri=leaf_uri),
             position=Position(line=0, character=0),
         )
     )
+    await asyncio.wait_for(event.wait(), timeout=30.0)
 
     diags = client.diagnostics.get(leaf_uri, [])
     assert len(diags) == 0, f"Expected no diagnostics after save, got: {diags}"

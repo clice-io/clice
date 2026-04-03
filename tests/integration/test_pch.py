@@ -1,5 +1,7 @@
 """Integration tests for PCH (precompiled header) functionality in MasterServer."""
 
+import asyncio
+
 import pytest
 from lsprotocol.types import (
     CompletionParams,
@@ -42,9 +44,11 @@ async def test_pch_body_edit_triggers_recompile(client, workspace):
         )
     )
     # Send hover to trigger recompilation via pull-based model.
+    event = client.wait_for_diagnostics(uri)
     await client.text_document_hover_async(
         HoverParams(text_document=_doc(uri), position=Position(line=0, character=0))
     )
+    await asyncio.wait_for(event.wait(), timeout=30.0)
     assert uri in client.diagnostics
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 

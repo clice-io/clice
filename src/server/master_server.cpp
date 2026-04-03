@@ -432,10 +432,12 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
     // Build or reuse a PCH covering the file's preamble (#include block).
     // ensure_pch() uses content-hash comparison to avoid redundant rebuilds
     // and deduplicates concurrent requests for the same file.
-    co_await ensure_pch(path_id, params.path, params.text, params.directory, params.arguments);
-
-    if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
-        params.pch = {pch_it->second, pch_bounds[path_id]};
+    auto pch_ok =
+        co_await ensure_pch(path_id, params.path, params.text, params.directory, params.arguments);
+    if(pch_ok) {
+        if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
+            params.pch = {pch_it->second, pch_bounds[path_id]};
+        }
     }
 
     // ── Phase 4: Dispatch to stateful worker ────────────────────────────
@@ -470,7 +472,7 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
                       gen,
                       uri_str);
         }
-        co_return true;
+        co_return false;
     }
 
     if(!result.has_value()) {
@@ -819,6 +821,11 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
     wp.text = doc.text;
     if(!fill_compile_args(path, wp.directory, wp.arguments))
         co_return serde_raw{};
+
+    // Ensure module dependencies are compiled before stateless requests.
+    if(compile_graph && !co_await compile_graph->compile_deps(path_id)) {
+        co_return serde_raw{};
+    }
 
     // Ensure PCH is available for stateless compilation (completion/signatureHelp).
     co_await ensure_pch(path_id, path, wp.text, wp.directory, wp.arguments);
@@ -1364,8 +1371,6 @@ void MasterServer::register_handlers() {
             }
             // Mark ast_dirty for open documents that depend on the saved file.
             for(auto dirty_id: dirtied) {
-                if(dirty_id == path_id)
-                    continue;
                 auto doc_it = documents.find(dirty_id);
                 if(doc_it != documents.end()) {
                     doc_it->second.ast_dirty = true;
@@ -1376,6 +1381,12 @@ void MasterServer::register_handlers() {
         // Invalidate all cached PCH hashes — the saved file may be a header
         // included by other TUs, so we must force rebuild for all open documents.
         pch_hashes.clear();
+
+        // A saved header may be included by any open TU. Since pch_hashes
+        // were cleared, all cached ASTs are potentially stale.
+        for(auto& [_, doc]: documents) {
+            doc.ast_dirty = true;
+        }
 
         // Trigger background indexing after save.
         schedule_indexing();

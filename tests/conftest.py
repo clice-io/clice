@@ -72,10 +72,16 @@ class CliceClient(BaseLanguageClient):
 
         @self.feature(TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
         def on_diagnostics(params: PublishDiagnosticsParams) -> None:
-            uri = self._normalize_uri(params.uri)
-            self.diagnostics[uri] = list(params.diagnostics)
-            if uri in self.diagnostics_events:
-                self.diagnostics_events[uri].set()
+            raw_uri = params.uri
+            normalized = self._normalize_uri(raw_uri)
+            diags = list(params.diagnostics)
+            # Store under both raw and normalized forms.
+            self.diagnostics[raw_uri] = diags
+            if raw_uri != normalized:
+                self.diagnostics[normalized] = diags
+            for key in (raw_uri, normalized):
+                if key in self.diagnostics_events:
+                    self.diagnostics_events[key].set()
 
         @self.feature(WINDOW_WORK_DONE_PROGRESS_CREATE)
         def on_create_progress(params: WorkDoneProgressCreateParams) -> None:
@@ -118,18 +124,21 @@ class CliceClient(BaseLanguageClient):
         return result
 
     def open(self, filepath: Path, version: int = 0) -> tuple[str, str]:
-        """Open a text document and return (uri, content)."""
-        # Read in binary mode to preserve CRLF on Windows, matching real LSP clients.
+        """Open a text document and return (normalized_uri, content).
+
+        Sends the percent-encoded URI on the wire (RFC 3986), but returns
+        the normalized (decoded) form for internal lookups.
+        """
         content = filepath.read_bytes().decode("utf-8")
-        uri = self._normalize_uri(filepath.as_uri())
+        wire_uri = filepath.as_uri()
         self.text_document_did_open(
             DidOpenTextDocumentParams(
                 text_document=TextDocumentItem(
-                    uri=uri, language_id="cpp", version=version, text=content
+                    uri=wire_uri, language_id="cpp", version=version, text=content
                 )
             )
         )
-        return uri, content
+        return self._normalize_uri(wire_uri), content
 
     async def wait_diagnostics(self, uri: str, timeout: float = 30.0) -> None:
         """Wait for diagnostics on the given URI."""
