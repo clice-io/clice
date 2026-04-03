@@ -6,6 +6,7 @@
 #include "eventide/async/async.h"
 #include "eventide/deco/deco.h"
 #include "eventide/ipc/peer.h"
+#include "eventide/ipc/recording_transport.h"
 #include "eventide/ipc/transport.h"
 #include "server/master_server.h"
 #include "server/stateful_worker.h"
@@ -38,6 +39,14 @@ struct Options {
            required = false;)
     <std::uint64_t> worker_memory_limit;
 
+    DecoKV(names = {"--log-level"}; help = "Log level: trace, debug, info, warn, error, off";
+           required = false;)
+    <std::string> log_level = "info";
+
+    DecoKV(names = {"--record"}; help = "Record LSP input to file for replay testing";
+           required = false;)
+    <std::string> record;
+
     DecoFlag(names = {"-h", "--help"}; help = "Show help message"; required = false;)
     help;
 
@@ -66,6 +75,17 @@ int main(int argc, const char** argv) {
     if(opts.version.value_or(false)) {
         std::println("clice version 0.1.0");
         return 0;
+    }
+
+    if(opts.log_level.has_value()) {
+        auto level = spdlog::level::from_str(*opts.log_level);
+        if(level == spdlog::level::off && *opts.log_level != "off") {
+            std::println(stderr,
+                         "unknown log level '{}', valid: trace, debug, info, warn, error, off",
+                         *opts.log_level);
+            return 1;
+        }
+        clice::logging::options.level = level;
     }
 
     if(!opts.mode.has_value()) {
@@ -98,12 +118,20 @@ int main(int argc, const char** argv) {
             return 1;
         }
 
-        et::ipc::JsonPeer peer(loop, std::move(*transport));
+        std::unique_ptr<et::ipc::Transport> final_transport = std::move(*transport);
+        if(opts.record.has_value()) {
+            final_transport =
+                std::make_unique<et::ipc::RecordingTransport>(std::move(final_transport),
+                                                              *opts.record);
+        }
+
+        et::ipc::JsonPeer peer(loop, std::move(final_transport));
         clice::MasterServer server(loop, peer, std::move(self_path));
         server.register_handlers();
 
         loop.schedule(peer.run());
-        return loop.run();
+        loop.run();
+        return 0;
     }
 
     if(mode == "socket") {
@@ -133,7 +161,12 @@ int main(int argc, const char** argv) {
 
             LOG_INFO("Client connected");
 
-            auto transport = std::make_unique<et::ipc::StreamTransport>(std::move(client.value()));
+            std::unique_ptr<et::ipc::Transport> transport =
+                std::make_unique<et::ipc::StreamTransport>(std::move(client.value()));
+            if(opts.record.has_value()) {
+                transport = std::make_unique<et::ipc::RecordingTransport>(std::move(transport),
+                                                                          *opts.record);
+            }
             et::ipc::JsonPeer peer(loop, std::move(transport));
             clice::MasterServer server(loop, peer, std::string(self_path));
             server.register_handlers();
@@ -144,7 +177,8 @@ int main(int argc, const char** argv) {
         };
 
         loop.schedule(task());
-        return loop.run();
+        loop.run();
+        return 0;
     }
 
     LOG_ERROR("unknown mode '{}'", mode);

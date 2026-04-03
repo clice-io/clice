@@ -62,7 +62,12 @@
         }
       }
     },
-    "commands": [],
+    "commands": [
+      {
+        "command": "clice.restart",
+        "title": "Clice: Restart Language Server"
+      }
+    ],
     "semanticTokenTypes": [
       {
         "id": "character",

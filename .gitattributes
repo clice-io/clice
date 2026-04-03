@@ -4,3 +4,6 @@ pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
 # Force LF line endings for test data so that byte offsets from clang
 # (which reads from disk) match the content sent by didOpen in tests.
 tests/data/** text eol=lf
+
+# Treat trace files as binary to suppress text diffs
+tests/smoke/*.jsonl linguist-generated=true binary

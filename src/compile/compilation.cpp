@@ -328,6 +328,8 @@ CompilationUnit run_clang(CompilationParams& params,
                           std::unique_ptr<clang::FrontendAction> action,
                           llvm::function_ref<void(clang::CompilerInstance&)> before_execute = {},
                           llvm::function_ref<void(CompilationUnitRef)> after_execute = {}) {
+    LOG_DEBUG("Compile command: {}", print_argv(params.arguments));
+
     auto self = new CompilationUnitRef::Self();
     self->kind = params.kind;
     self->stop = std::move(params.stop);

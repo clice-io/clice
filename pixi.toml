@@ -105,6 +105,13 @@ pytest -s --log-cli-level=INFO tests/integration \
     --executable=./build/{{ type }}/bin/clice
 """
 
+[feature.test.tasks.smoke-test]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cmd = """
+python tests/replay.py tests/smoke/*.jsonl \
+    --clice=./build/{{ type }}/bin/clice
+"""
+
 [feature.test.tasks.test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 depends-on = [

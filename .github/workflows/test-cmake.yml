@@ -53,6 +53,10 @@ jobs:
       - name: Integration Test
         run: pixi run integration-test ${{ matrix.build_type }}
 
+      - name: Smoke Test
+        if: success() || failure()
+        run: pixi run smoke-test ${{ matrix.build_type }}
+
       - name: Print cache stats and stop server
         if: always()
         run: |
