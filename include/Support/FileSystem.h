@@ -149,7 +149,7 @@ inline std::string toPath(llvm::StringRef uri) {
 
     llvm::SmallString<128> result;
     if(auto err = fs::real_path(decoded, result)) {
-        std::println("Failed to get real path: {}, Input is {}\n", err.message(), decoded);
+        std::println(stderr, "Failed to get real path: {}, Input is {}\n", err.message(), decoded);
         std::abort();
     }
 
