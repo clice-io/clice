@@ -15,9 +15,6 @@ jobs:
         include:
           # ── Native builds ──────────────────────────────────────────────
           - os: windows-2025
-            llvm_mode: Debug
-            lto: OFF
-          - os: windows-2025
             llvm_mode: RelWithDebInfo
             lto: OFF
           - os: windows-2025
