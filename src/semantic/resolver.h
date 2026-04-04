@@ -87,10 +87,6 @@ public:
         return lookup(decl->getQualifier(), decl->getDeclName());
     }
 
-#ifndef NDEBUG
-    static inline bool debug = false;
-#endif
-
 private:
     clang::Sema& sema;
     llvm::DenseMap<const void*, clang::QualType> resolved;
