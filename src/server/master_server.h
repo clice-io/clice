@@ -35,12 +35,22 @@ struct DocumentState {
     bool ast_dirty = true;
 };
 
-/// Snapshot of dependency file mtimes taken after a successful compilation.
-/// Used by ensure_compiled/ensure_pch to detect stale results without
-/// requiring didSave to mark everything dirty.
+/// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
+///
+/// Layer 1 (fast): compare each file's current mtime against build_at.
+///   If all mtimes <= build_at, the artifact is fresh (zero I/O beyond stat).
+///
+/// Layer 2 (precise): for files whose mtime changed, re-hash their content
+///   and compare against the stored hash.  If the hash matches, the file was
+///   "touched" but not actually modified — skip the rebuild.
+///
+/// This avoids unnecessary recompilation from timestamp-only changes (e.g.
+/// git checkout, touch, backup restore) while remaining cheap in the common
+/// case where nothing changed.
 struct DepsSnapshot {
     std::vector<std::string> files;
-    std::vector<std::int64_t> mtimes;  // mtime at compilation time
+    std::vector<std::uint64_t> hashes;  // xxh3_64bits of file content at build time
+    std::int64_t build_at = 0;          // time_t when this snapshot was captured
 };
 
 enum class ServerLifecycle : std::uint8_t {

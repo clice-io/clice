@@ -33,36 +33,54 @@ using et::ipc::RequestResult;
 using RequestContext = et::ipc::JsonPeer::RequestContext;
 
 /// Capture mtime for each dependency file. Returns the snapshot.
+/// Hash a file's content using xxh3_64bits. Returns 0 on read failure.
+static std::uint64_t hash_file(llvm::StringRef path) {
+    auto buf = llvm::MemoryBuffer::getFile(path);
+    if(!buf)
+        return 0;
+    return llvm::xxh3_64bits((*buf)->getBuffer());
+}
+
+/// Capture a two-layer staleness snapshot after a successful compilation.
+/// Hashes every dependency file's content and records the current time.
 static DepsSnapshot capture_deps_snapshot(const std::vector<std::string>& deps) {
     DepsSnapshot snap;
     snap.files = deps;
-    snap.mtimes.reserve(deps.size());
+    snap.hashes.reserve(deps.size());
     for(auto& file: deps) {
-        llvm::sys::fs::file_status status;
-        if(auto ec = llvm::sys::fs::status(file, status); !ec) {
-            snap.mtimes.push_back(llvm::sys::toTimeT(status.getLastModificationTime()));
-        } else {
-            snap.mtimes.push_back(0);
-        }
+        snap.hashes.push_back(hash_file(file));
     }
+    snap.build_at = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     return snap;
 }
 
-/// Check if any dependency file has changed since the snapshot was taken.
+/// Two-layer staleness check.
+///
+/// Layer 1 (fast): stat each dep file, compare mtime against build_at.
+///   If all mtimes <= build_at → nothing changed, return false immediately.
+///
+/// Layer 2 (precise): for files with mtime > build_at, re-hash their content.
+///   If the hash matches the stored hash → file was touched but not modified.
+///   If any hash differs → truly changed, return true.
 static bool deps_changed(const DepsSnapshot& snap) {
     for(std::size_t i = 0; i < snap.files.size(); ++i) {
         llvm::sys::fs::file_status status;
-        if(auto ec = llvm::sys::fs::status(snap.files[i], status); !ec) {
-            auto current_mtime = llvm::sys::toTimeT(status.getLastModificationTime());
-            if(current_mtime != snap.mtimes[i]) {
-                return true;
-            }
-        } else {
+        if(auto ec = llvm::sys::fs::status(snap.files[i], status)) {
             // File disappeared — definitely changed.
-            if(snap.mtimes[i] != 0) {
+            if(snap.hashes[i] != 0)
                 return true;
-            }
+            continue;
         }
+
+        // Layer 1: mtime check (cheap, stat only).
+        auto current_mtime = llvm::sys::toTimeT(status.getLastModificationTime());
+        if(current_mtime <= snap.build_at)
+            continue;
+
+        // Layer 2: mtime is newer — re-hash content to confirm actual change.
+        auto current_hash = hash_file(snap.files[i]);
+        if(current_hash != snap.hashes[i])
+            return true;
     }
     return false;
 }
