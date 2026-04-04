@@ -269,6 +269,9 @@ def main():
 
     if sys.platform == "win32":
         is_shared = "OFF"
+        cmake_args.append("-DLLVM_USE_LINKER=lld-link")
+    else:
+        cmake_args.append("-DLLVM_USE_LINKER=lld")
     cmake_args.append(f"-DBUILD_SHARED_LIBS={is_shared}")
 
     if lto_enabled:
