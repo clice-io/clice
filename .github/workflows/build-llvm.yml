@@ -148,7 +148,7 @@ jobs:
             EXE_EXT=".exe"
           fi
           ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
-          uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
+          pip install uv && uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
 
       # Prune is only supported for native builds (requires linking clice to test).
       # Cross-compiled targets reuse the native prune manifest of the same OS.
