@@ -198,10 +198,28 @@ def main():
     cmake_args = [
         "-G",
         "Ninja",
-        f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file.as_posix()}",
         f"-DCMAKE_INSTALL_PREFIX={install_prefix}",
-        "-DCMAKE_C_FLAGS=-w",
-        "-DCMAKE_CXX_FLAGS=-w",
+    ]
+
+    if sys.platform == "win32":
+        # Use clang-cl (MSVC driver) on Windows so that LLVM's CMake
+        # generates correct MSVC-style linker flags for LTO, etc.
+        cmake_args += [
+            "-DCMAKE_C_COMPILER=clang-cl",
+            "-DCMAKE_CXX_COMPILER=clang-cl",
+            "-DCMAKE_C_FLAGS=-w",
+            "-DCMAKE_CXX_FLAGS=-w",
+            "-DLLVM_USE_LINKER=lld-link",
+        ]
+    else:
+        cmake_args += [
+            f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file.as_posix()}",
+            "-DCMAKE_C_FLAGS=-w",
+            "-DCMAKE_CXX_FLAGS=-w",
+            "-DLLVM_USE_LINKER=lld",
+        ]
+
+    cmake_args += [
         "-DLLVM_ENABLE_ZLIB=OFF",
         "-DLLVM_ENABLE_ZSTD=OFF",
         "-DLLVM_ENABLE_LIBXML2=OFF",
@@ -269,9 +287,6 @@ def main():
 
     if sys.platform == "win32":
         is_shared = "OFF"
-        cmake_args.append("-DLLVM_USE_LINKER=lld-link")
-    else:
-        cmake_args.append("-DLLVM_USE_LINKER=lld")
     cmake_args.append(f"-DBUILD_SHARED_LIBS={is_shared}")
 
     if lto_enabled:
