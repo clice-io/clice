@@ -52,10 +52,10 @@ struct DocumentState {
 /// case where nothing changed.
 struct DepsSnapshot {
     /// File path IDs interned via PathPool.
-    std::vector<std::uint32_t> path_ids;
+    llvm::SmallVector<std::uint32_t> path_ids;
 
     /// xxh3_64bits of file content at build time.
-    std::vector<std::uint64_t> hashes;
+    llvm::SmallVector<std::uint64_t> hashes;
 
     /// time_t when this snapshot was captured.
     std::int64_t build_at = 0;

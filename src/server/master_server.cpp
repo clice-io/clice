@@ -43,7 +43,7 @@ static std::uint64_t hash_file(llvm::StringRef path) {
 
 /// Capture a two-layer staleness snapshot after a successful compilation.
 /// Interns dependency paths into the PathPool and hashes each file's content.
-static DepsSnapshot capture_deps_snapshot(PathPool& pool, const std::vector<std::string>& deps) {
+static DepsSnapshot capture_deps_snapshot(PathPool& pool, llvm::ArrayRef<std::string> deps) {
     DepsSnapshot snap;
     snap.path_ids.reserve(deps.size());
     snap.hashes.reserve(deps.size());
