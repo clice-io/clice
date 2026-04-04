@@ -30,8 +30,11 @@ namespace protocol = et::ipc::protocol;
 
 struct DocumentState {
     int version = 0;
+
     std::string text;
+
     std::uint64_t generation = 0;
+
     bool ast_dirty = true;
 };
 
@@ -48,9 +51,32 @@ struct DocumentState {
 /// git checkout, touch, backup restore) while remaining cheap in the common
 /// case where nothing changed.
 struct DepsSnapshot {
-    std::vector<std::uint32_t> path_ids;  // interned via PathPool
-    std::vector<std::uint64_t> hashes;    // xxh3_64bits of file content at build time
-    std::int64_t build_at = 0;            // time_t when this snapshot was captured
+    /// File path IDs interned via PathPool.
+    std::vector<std::uint32_t> path_ids;
+
+    /// xxh3_64bits of file content at build time.
+    std::vector<std::uint64_t> hashes;
+
+    /// time_t when this snapshot was captured.
+    std::int64_t build_at = 0;
+};
+
+/// Cached PCH state for a single source file.
+struct PCHState {
+    /// Built PCH file path.
+    std::string path;
+
+    /// Preamble byte offset used when building.
+    std::uint32_t bound = 0;
+
+    /// xxh3 hash of preamble content.
+    std::uint64_t hash = 0;
+
+    /// Dependency snapshot for staleness detection.
+    DepsSnapshot deps;
+
+    /// Non-null while a build is in flight.
+    std::shared_ptr<et::event> building;
 };
 
 enum class ServerLifecycle : std::uint8_t {
@@ -90,15 +116,6 @@ private:
 
     // path_id -> module name (for files that provide a module interface).
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
-
-    /// Cached PCH state for a single source file.
-    struct PCHState {
-        std::string path;                     // Built PCH file path.
-        std::uint32_t bound = 0;              // Preamble byte offset used when building.
-        std::uint64_t hash = 0;               // xxh3 hash of preamble content.
-        DepsSnapshot deps;                    // Dependency snapshot for staleness detection.
-        std::shared_ptr<et::event> building;  // Non-null while a build is in flight.
-    };
 
     llvm::DenseMap<std::uint32_t, PCHState> pch_states;
 
