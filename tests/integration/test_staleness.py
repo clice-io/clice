@@ -188,9 +188,7 @@ async def test_header_replaced_with_different_content(client, tmp_path):
     # Replace header — delete and recreate with a breaking change.
     await asyncio.sleep(1.1)
     (tmp_path / "header.h").unlink()
-    (tmp_path / "header.h").write_text(
-        "inline int renamed_value() { return 1; }\n"
-    )
+    (tmp_path / "header.h").write_text("inline int renamed_value() { return 1; }\n")
 
     # main.cpp still calls value() which no longer exists → error.
     event = client.wait_for_diagnostics(uri)
@@ -367,7 +365,9 @@ async def test_didchange_preamble_edit_recompiles(client, tmp_path):
 
     # Should compile cleanly — from_b() is available via b.h.
     diags = client.diagnostics.get(uri, [])
-    assert len(diags) == 0, f"Expected clean compile after preamble switch, got: {diags}"
+    assert len(diags) == 0, (
+        f"Expected clean compile after preamble switch, got: {diags}"
+    )
 
 
 async def test_didclose_then_reopen(client, tmp_path):
@@ -381,9 +381,7 @@ async def test_didclose_then_reopen(client, tmp_path):
     assert len(client.diagnostics.get(uri, [])) == 0
 
     # Close the file.
-    client.text_document_did_close(
-        DidCloseTextDocumentParams(text_document=_doc(uri))
-    )
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
     # Modify on disk while closed.
     await asyncio.sleep(1.1)
@@ -403,9 +401,7 @@ async def test_didclose_clears_hover(client, tmp_path):
 
     uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
 
-    client.text_document_did_close(
-        DidCloseTextDocumentParams(text_document=_doc(uri))
-    )
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 
     hover = await client.text_document_hover_async(
         HoverParams(text_document=_doc(uri), position=Position(line=0, character=4))
@@ -430,9 +426,7 @@ async def test_didsave_triggers_recompile_for_dependents(client, tmp_path):
     (tmp_path / "header.h").write_text("inline int value() { return }\n")  # broken
     client.text_document_did_save(
         DidSaveTextDocumentParams(
-            text_document=TextDocumentIdentifier(
-                uri=(tmp_path / "header.h").as_uri()
-            )
+            text_document=TextDocumentIdentifier(uri=(tmp_path / "header.h").as_uri())
         )
     )
 
