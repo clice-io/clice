@@ -148,6 +148,21 @@ public:
     SubstituteOnly(clang::Sema& sema, InstantiationStack& stack) :
         Base(sema), context(sema.getASTContext()), stack(stack) {}
 
+    using Base::TransformType;
+
+    clang::QualType TransformType(clang::QualType type) {
+        if(type.isNull() || !type->isDependentType()) {
+            return type;
+        }
+        if(depth > 16) {
+            return type;
+        }
+        ++depth;
+        auto result = Base::TransformType(type);
+        --depth;
+        return result.isNull() ? type : result;
+    }
+
     /// Desugar dependent typedefs to expose template parameters for substitution.
     clang::QualType TransformTypedefType(clang::TypeLocBuilder& TLB, clang::TypedefTypeLoc TL) {
         if(auto* TND = TL.getTypedefNameDecl()) {
@@ -237,6 +252,7 @@ public:
 private:
     clang::ASTContext& context;
     InstantiationStack& stack;
+    unsigned depth = 0;
 };
 
 /// The core class that performs pseudo template instantiation.
@@ -521,6 +537,24 @@ public:
     lookup_result lookup(clang::ClassTemplateDecl* CTD,
                          clang::DeclarationName name,
                          TemplateArguments visibleArguments) {
+        // Detect recursive lookup of the same CTD + name.
+        // e.g. callback_traits<F> : callback_traits<decltype(&F::operator())>
+        // would infinitely recurse through lookupInBases.
+        auto ctd_key = std::make_pair(static_cast<const void*>(CTD), name.getAsOpaquePtr());
+        if(!active_ctd_lookups.insert(ctd_key).second) {
+            return lookup_result();
+        }
+
+        // RAII: erase key on all exit paths.
+        struct CtdGuard {
+            llvm::DenseSet<std::pair<const void*, void*>>& set;
+            std::pair<const void*, void*> key;
+
+            ~CtdGuard() {
+                set.erase(key);
+            }
+        } ctd_guard{active_ctd_lookups, ctd_key};
+
         llvm::SmallVector<clang::TemplateArgument, 4> arguments;
         if(!checkTemplateArguments(CTD, visibleArguments, arguments)) {
             return lookup_result();
@@ -658,7 +692,7 @@ public:
         if(type.isNull() || !type->isDependentType()) {
             return type;
         }
-        if(depth > 64) {
+        if(depth > 16) {
             return type;
         }
         ++depth;
@@ -967,6 +1001,7 @@ private:
     InstantiationStack stack;
     llvm::DenseMap<const void*, clang::QualType>& resolved;
     llvm::SmallPtrSet<const void*, 8> active_resolutions;
+    llvm::DenseSet<std::pair<const void*, void*>> active_ctd_lookups;
     unsigned depth = 0;
     unsigned indent = 0;
 
