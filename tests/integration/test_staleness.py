@@ -12,10 +12,14 @@ import shutil
 
 import pytest
 from lsprotocol.types import (
+    DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams,
     DidSaveTextDocumentParams,
     HoverParams,
     Position,
+    TextDocumentContentChangeWholeDocument,
     TextDocumentIdentifier,
+    VersionedTextDocumentIdentifier,
 )
 
 
@@ -41,6 +45,11 @@ def _doc(uri: str) -> TextDocumentIdentifier:
     return TextDocumentIdentifier(uri=uri)
 
 
+# =========================================================================
+# Staleness detection tests
+# =========================================================================
+
+
 async def test_header_change_invalidates_ast(client, tmp_path):
     """Modifying a header on disk should cause recompilation on next hover,
     even though didSave was never called (mtime-based detection)."""
@@ -58,7 +67,6 @@ async def test_header_change_invalidates_ast(client, tmp_path):
     assert len(diags) == 0, f"Expected clean compile, got: {diags}"
 
     # Modify header on disk — introduce an error.
-    # Sleep briefly to ensure mtime changes (filesystem granularity).
     # Ensure mtime advances past filesystem granularity (1s on some FSes).
     await asyncio.sleep(1.1)
     (tmp_path / "header.h").write_text(
@@ -129,6 +137,314 @@ async def test_no_change_skips_recompile(client, tmp_path):
     )
     # "main" should be hoverable.
     assert hover is not None
+
+
+async def test_touch_without_content_change_skips_recompile(client, tmp_path):
+    """Layer 2: touching a header (mtime changes) without modifying content
+    should NOT trigger recompilation — the hash check catches this."""
+    (tmp_path / "header.h").write_text("inline int value() { return 1; }\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { return value(); }\n'
+    )
+    _write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) == 0
+
+    # Touch the header — mtime changes but content stays the same.
+    await asyncio.sleep(1.1)
+    original_content = (tmp_path / "header.h").read_text()
+    (tmp_path / "header.h").write_text(original_content)
+
+    # Hover triggers ensure_compiled which runs deps_changed.
+    # Layer 2 hash confirms nothing actually changed → cached AST reused.
+    # Hover on "main" (line 1, col 4) which should be hoverable.
+    hover = await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=1, character=4))
+    )
+    assert hover is not None
+
+    # No new diagnostics should appear — the file is still clean.
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) == 0
+
+
+async def test_header_replaced_with_different_content(client, tmp_path):
+    """Replacing a header file with different content should be detected
+    and trigger recompilation reflecting the new content."""
+    (tmp_path / "header.h").write_text("inline int value() { return 1; }\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { return value(); }\n'
+    )
+    _write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) == 0
+
+    # Replace header — delete and recreate with a breaking change.
+    await asyncio.sleep(1.1)
+    (tmp_path / "header.h").unlink()
+    (tmp_path / "header.h").write_text(
+        "inline int renamed_value() { return 1; }\n"
+    )
+
+    # main.cpp still calls value() which no longer exists → error.
+    event = client.wait_for_diagnostics(uri)
+    await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=0, character=0))
+    )
+    await asyncio.wait_for(event.wait(), timeout=60.0)
+
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) > 0, "Expected diagnostics after header replacement"
+
+
+async def test_fix_error_clears_diagnostics(client, tmp_path):
+    """After introducing and fixing an error in a header, diagnostics
+    should clear on the next recompilation cycle."""
+    (tmp_path / "header.h").write_text("inline int value() { return }\n")  # broken
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { return value(); }\n'
+    )
+    _write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    # First compile — should produce diagnostics.
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) > 0, "Expected diagnostics from broken header"
+
+    # Fix the header.
+    await asyncio.sleep(1.1)
+    (tmp_path / "header.h").write_text("inline int value() { return 1; }\n")
+
+    # Hover triggers recompilation — diagnostics should clear.
+    event = client.wait_for_diagnostics(uri)
+    await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=0, character=0))
+    )
+    await asyncio.wait_for(event.wait(), timeout=60.0)
+
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) == 0, f"Expected clean compile after fix, got: {diags}"
+
+
+async def test_multiple_files_share_header(client, tmp_path):
+    """When a shared header changes, all open files that depend on it
+    should detect the staleness independently."""
+    (tmp_path / "shared.h").write_text("inline int shared() { return 1; }\n")
+    (tmp_path / "a.cpp").write_text(
+        '#include "shared.h"\nint fa() { return shared(); }\n'
+    )
+    (tmp_path / "b.cpp").write_text(
+        '#include "shared.h"\nint fb() { return shared(); }\n'
+    )
+    _write_cdb(tmp_path, ["a.cpp", "b.cpp"])
+    await client.initialize(tmp_path)
+
+    uri_a, _ = await client.open_and_wait(tmp_path / "a.cpp")
+    uri_b, _ = await client.open_and_wait(tmp_path / "b.cpp")
+    assert len(client.diagnostics.get(uri_a, [])) == 0
+    assert len(client.diagnostics.get(uri_b, [])) == 0
+
+    # Break the shared header.
+    await asyncio.sleep(1.1)
+    (tmp_path / "shared.h").write_text("inline int shared() { return }\n")
+
+    # Both files should get diagnostics after hover.
+    event_a = client.wait_for_diagnostics(uri_a)
+    await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri_a), position=Position(line=0, character=0))
+    )
+    await asyncio.wait_for(event_a.wait(), timeout=60.0)
+    assert len(client.diagnostics.get(uri_a, [])) > 0, "File A should have diagnostics"
+
+    event_b = client.wait_for_diagnostics(uri_b)
+    await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri_b), position=Position(line=0, character=0))
+    )
+    await asyncio.wait_for(event_b.wait(), timeout=60.0)
+    assert len(client.diagnostics.get(uri_b, [])) > 0, "File B should have diagnostics"
+
+
+async def test_transitive_header_change(client, tmp_path):
+    """A change to a transitively included header should be detected."""
+    (tmp_path / "base.h").write_text("inline int base() { return 1; }\n")
+    (tmp_path / "mid.h").write_text('#include "base.h"\n')
+    (tmp_path / "main.cpp").write_text(
+        '#include "mid.h"\nint main() { return base(); }\n'
+    )
+    _write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    assert len(client.diagnostics.get(uri, [])) == 0
+
+    # Modify the transitive dep (base.h).
+    await asyncio.sleep(1.1)
+    (tmp_path / "base.h").write_text("inline int base() { return }\n")  # broken
+
+    event = client.wait_for_diagnostics(uri)
+    await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=0, character=0))
+    )
+    await asyncio.wait_for(event.wait(), timeout=60.0)
+
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) > 0, "Expected diagnostics from transitive header change"
+
+
+# =========================================================================
+# didChange / didOpen / didSave / didClose lifecycle tests
+# =========================================================================
+
+
+async def test_didchange_body_edit_recompiles(client, tmp_path):
+    """Editing the body (not preamble) via didChange should trigger
+    recompilation and update diagnostics."""
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
+    _write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    assert len(client.diagnostics.get(uri, [])) == 0
+
+    # Introduce a body error via didChange.
+    event = client.wait_for_diagnostics(uri)
+    client.text_document_did_change(
+        DidChangeTextDocumentParams(
+            text_document=VersionedTextDocumentIdentifier(uri=uri, version=1),
+            content_changes=[
+                TextDocumentContentChangeWholeDocument(
+                    text="int main() { return }\n"  # missing expression
+                )
+            ],
+        )
+    )
+    await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=0, character=4))
+    )
+    await asyncio.wait_for(event.wait(), timeout=30.0)
+
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) > 0, "Expected diagnostics after body error"
+
+
+async def test_didchange_preamble_edit_recompiles(client, tmp_path):
+    """Changing a preamble #include via didChange should trigger PCH rebuild
+    and recompilation reflecting the new header's declarations."""
+    (tmp_path / "a.h").write_text("#pragma once\ninline int from_a() { return 1; }\n")
+    (tmp_path / "b.h").write_text("#pragma once\ninline int from_b() { return 2; }\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "a.h"\nint main() { return from_a(); }\n'
+    )
+    _write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    assert len(client.diagnostics.get(uri, [])) == 0
+
+    # Switch from a.h to b.h and call from_b() instead.
+    event = client.wait_for_diagnostics(uri)
+    client.text_document_did_change(
+        DidChangeTextDocumentParams(
+            text_document=VersionedTextDocumentIdentifier(uri=uri, version=1),
+            content_changes=[
+                TextDocumentContentChangeWholeDocument(
+                    text='#include "b.h"\nint main() { return from_b(); }\n'
+                )
+            ],
+        )
+    )
+    await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=1, character=4))
+    )
+    await asyncio.wait_for(event.wait(), timeout=30.0)
+
+    # Should compile cleanly — from_b() is available via b.h.
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) == 0, f"Expected clean compile after preamble switch, got: {diags}"
+
+
+async def test_didclose_then_reopen(client, tmp_path):
+    """Closing and reopening a file should work correctly — the server
+    should not retain stale state from the previous session."""
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
+    _write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    assert len(client.diagnostics.get(uri, [])) == 0
+
+    # Close the file.
+    client.text_document_did_close(
+        DidCloseTextDocumentParams(text_document=_doc(uri))
+    )
+
+    # Modify on disk while closed.
+    await asyncio.sleep(1.1)
+    (tmp_path / "main.cpp").write_text("int main() { return }\n")  # broken
+
+    # Reopen — should compile the new (broken) content from disk.
+    uri2, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    diags = client.diagnostics.get(uri2, [])
+    assert len(diags) > 0, "Expected diagnostics after reopen with broken content"
+
+
+async def test_didclose_clears_hover(client, tmp_path):
+    """After didClose, hover on the closed file should return None."""
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
+    _write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+
+    client.text_document_did_close(
+        DidCloseTextDocumentParams(text_document=_doc(uri))
+    )
+
+    hover = await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=0, character=4))
+    )
+    assert hover is None, "Hover on closed file should return None"
+
+
+async def test_didsave_triggers_recompile_for_dependents(client, tmp_path):
+    """didSave on a header file should mark dependent documents dirty."""
+    (tmp_path / "header.h").write_text("inline int value() { return 1; }\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { return value(); }\n'
+    )
+    _write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    assert len(client.diagnostics.get(uri, [])) == 0
+
+    # Modify header on disk and send didSave.
+    await asyncio.sleep(1.1)
+    (tmp_path / "header.h").write_text("inline int value() { return }\n")  # broken
+    client.text_document_did_save(
+        DidSaveTextDocumentParams(
+            text_document=TextDocumentIdentifier(
+                uri=(tmp_path / "header.h").as_uri()
+            )
+        )
+    )
+
+    # Hover should detect the change and recompile.
+    event = client.wait_for_diagnostics(uri)
+    await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=0, character=0))
+    )
+    await asyncio.wait_for(event.wait(), timeout=60.0)
+
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) > 0, "Expected diagnostics after didSave on broken header"
 
 
 async def test_didsave_with_module_deps(client, test_data_dir, tmp_path):

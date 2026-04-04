@@ -172,8 +172,6 @@ void StatefulWorker::register_handlers() {
             }
 
             auto compile_result = co_await et::queue([&]() -> worker::CompileResult {
-                LOG_DEBUG("Compiling: path={}, {} args", params.path, doc.arguments.size());
-
                 ScopedTimer timer;
 
                 CompilationParams cp;
