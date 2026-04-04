@@ -1382,22 +1382,13 @@ void MasterServer::register_handlers() {
                                                 protocol::TextDocumentContentChangeWholeDocument>) {
                         doc.text = c.text;
                     } else {
+                        // Incremental change: replace range
                         auto& range = c.range;
-                        // Workaround: eventide variant deserialization always
-                        // picks TextDocumentContentChangePartial (index 0).
-                        // When the client sends a whole-document change (no range
-                        // in JSON), the range defaults to {0,0}-{0,0}.  Detect
-                        // this and treat as a full replacement.
-                        if(range.start.line == 0 && range.start.character == 0 &&
-                           range.end.line == 0 && range.end.character == 0) {
-                            doc.text = c.text;
-                        } else {
-                            lsp::PositionMapper mapper(doc.text, lsp::PositionEncoding::UTF16);
-                            auto start = mapper.to_offset(range.start);
-                            auto end = mapper.to_offset(range.end);
-                            if(start && end && *start <= *end) {
-                                doc.text.replace(*start, *end - *start, c.text);
-                            }
+                        lsp::PositionMapper mapper(doc.text, lsp::PositionEncoding::UTF16);
+                        auto start = mapper.to_offset(range.start);
+                        auto end = mapper.to_offset(range.end);
+                        if(start && end && *start <= *end) {
+                            doc.text.replace(*start, *end - *start, c.text);
                         }
                     }
                 },
