@@ -7,19 +7,22 @@
 
 namespace {
 
-constexpr auto kv_both =
-    static_cast<char>(deco::decl::KVStyle::Joined | deco::decl::KVStyle::Separate);
+constexpr auto kv_style = static_cast<char>(deco::decl::KVStyle::Joined) |
+                          static_cast<char>(deco::decl::KVStyle::Separate);
 
 struct TestOptions {
-    DecoKVStyled(kv_both, names = {"--test-filter"}; help = "Filter tests by name";
+    DecoKVStyled(kv_style, names = {"--test-filter", "--test-filter="};
+                 help = "Filter tests by name";
                  required = false;)
     <std::string> test_filter;
 
-    DecoKVStyled(kv_both, names = {"--log-level"}; help = "Log level: trace/debug/info/warn/err";
+    DecoKVStyled(kv_style, names = {"--log-level", "--log-level="};
+                 help = "Log level: trace/debug/info/warn/err";
                  required = false;)
     <std::string> log_level;
 
-    DecoKVStyled(kv_both, names = {"--test-dir"}; help = "Test data directory"; required = false;)
+    DecoKVStyled(kv_style, names = {"--test-dir", "--test-dir="}; help = "Test data directory";
+                 required = false;)
     <std::string> test_dir;
 };
 
