@@ -48,9 +48,9 @@ struct DocumentState {
 /// git checkout, touch, backup restore) while remaining cheap in the common
 /// case where nothing changed.
 struct DepsSnapshot {
-    std::vector<std::string> files;
-    std::vector<std::uint64_t> hashes;  // xxh3_64bits of file content at build time
-    std::int64_t build_at = 0;          // time_t when this snapshot was captured
+    std::vector<std::uint32_t> path_ids;  // interned via PathPool
+    std::vector<std::uint64_t> hashes;    // xxh3_64bits of file content at build time
+    std::int64_t build_at = 0;            // time_t when this snapshot was captured
 };
 
 enum class ServerLifecycle : std::uint8_t {

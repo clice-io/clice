@@ -42,12 +42,13 @@ static std::uint64_t hash_file(llvm::StringRef path) {
 }
 
 /// Capture a two-layer staleness snapshot after a successful compilation.
-/// Hashes every dependency file's content and records the current time.
-static DepsSnapshot capture_deps_snapshot(const std::vector<std::string>& deps) {
+/// Interns dependency paths into the PathPool and hashes each file's content.
+static DepsSnapshot capture_deps_snapshot(PathPool& pool, const std::vector<std::string>& deps) {
     DepsSnapshot snap;
-    snap.files = deps;
+    snap.path_ids.reserve(deps.size());
     snap.hashes.reserve(deps.size());
     for(auto& file: deps) {
+        snap.path_ids.push_back(pool.intern(file));
         snap.hashes.push_back(hash_file(file));
     }
     snap.build_at = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -62,10 +63,11 @@ static DepsSnapshot capture_deps_snapshot(const std::vector<std::string>& deps) 
 /// Layer 2 (precise): for files with mtime > build_at, re-hash their content.
 ///   If the hash matches the stored hash → file was touched but not modified.
 ///   If any hash differs → truly changed, return true.
-static bool deps_changed(const DepsSnapshot& snap) {
-    for(std::size_t i = 0; i < snap.files.size(); ++i) {
+static bool deps_changed(const PathPool& pool, const DepsSnapshot& snap) {
+    for(std::size_t i = 0; i < snap.path_ids.size(); ++i) {
+        auto path = pool.resolve(snap.path_ids[i]);
         llvm::sys::fs::file_status status;
-        if(auto ec = llvm::sys::fs::status(snap.files[i], status)) {
+        if(auto ec = llvm::sys::fs::status(path, status)) {
             // File disappeared — definitely changed.
             if(snap.hashes[i] != 0)
                 return true;
@@ -78,7 +80,7 @@ static bool deps_changed(const DepsSnapshot& snap) {
             continue;
 
         // Layer 2: mtime is newer — re-hash content to confirm actual change.
-        auto current_hash = hash_file(snap.files[i]);
+        auto current_hash = hash_file(path);
         if(current_hash != snap.hashes[i])
             return true;
     }
@@ -340,7 +342,7 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
         if(it->second == preamble_hash && pch_paths.contains(path_id)) {
             // Also verify that no dependency file has changed since the PCH was built.
             auto pch_deps_it = pch_deps.find(path_id);
-            if(pch_deps_it != pch_deps.end() && !deps_changed(pch_deps_it->second)) {
+            if(pch_deps_it != pch_deps.end() && !deps_changed(path_pool, pch_deps_it->second)) {
                 pch_bounds[path_id] = bound;
                 co_return true;  // PCH is still valid
             }
@@ -387,7 +389,7 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     pch_paths[path_id] = result.value().pch_path;
     pch_bounds[path_id] = bound;
     pch_hashes[path_id] = preamble_hash;
-    pch_deps[path_id] = capture_deps_snapshot(result.value().deps);
+    pch_deps[path_id] = capture_deps_snapshot(path_pool, result.value().deps);
 
     LOG_INFO("PCH built for {}: {}", path, result.value().pch_path);
 
@@ -478,12 +480,12 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
     if(!doc.ast_dirty) {
         bool changed = false;
         auto ast_deps_it = ast_deps.find(path_id);
-        if(ast_deps_it != ast_deps.end() && deps_changed(ast_deps_it->second)) {
+        if(ast_deps_it != ast_deps.end() && deps_changed(path_pool, ast_deps_it->second)) {
             changed = true;
         }
         if(!changed) {
             auto pch_deps_it = pch_deps.find(path_id);
-            if(pch_deps_it != pch_deps.end() && deps_changed(pch_deps_it->second)) {
+            if(pch_deps_it != pch_deps.end() && deps_changed(path_pool, pch_deps_it->second)) {
                 changed = true;
             }
         }
@@ -581,7 +583,7 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
     publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
     doc2.ast_dirty = false;
     if(result.has_value()) {
-        ast_deps[path_id] = capture_deps_snapshot(result.value().deps);
+        ast_deps[path_id] = capture_deps_snapshot(path_pool, result.value().deps);
     }
     schedule_indexing();
     co_return true;
