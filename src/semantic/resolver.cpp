@@ -9,6 +9,24 @@
 #include "clang/Sema/TemplateDeduction.h"
 #include "clang/Sema/TreeTransform.h"
 
+/// Template Resolver — pseudo-instantiation of dependent C++ types.
+///
+/// Architecture:
+///   PseudoInstantiator (TreeTransform) — heuristic lookup in primary templates/partial specs
+///     ├─ TransformDependentNameType       — lookup member in template, substitute, recurse
+///     ├─ TransformDependentTemplateSPTType — resolve DTST via hole()/lookup, CTD→TST
+///     ├─ TransformTemplateTypeParmType     — substitute from stack (+ default arg fallback)
+///     ├─ TransformTypedefType              — delegate to SubstituteOnly (no lookup)
+///     └─ TransformType                     — depth guard + null safety
+///
+///   SubstituteOnly (TreeTransform) — Phase 2: typedef expansion + param substitution only
+///     Does NOT override TransformDependentNameType → no heuristic lookup → breaks cycles.
+///
+/// Key invariant: Phase 2 (SubstituteOnly) must NEVER trigger Phase 1 (heuristic lookup).
+/// Violating this causes typedef ↔ lookup infinite cycles.
+///
+/// See docs: temp/template-resolver-analysis.md, temp/resolver-vector-pipeline.md
+
 namespace clice {
 
 namespace {
@@ -16,6 +34,9 @@ namespace {
 template <typename T>
 constexpr inline bool dependent_false = false;
 
+/// Walk from `decl` up to the TranslationUnit, collecting template parameter lists
+/// at each enclosing template context. Used to build outer context frames for
+/// deduceTemplateArguments when the stack is empty.
 template <typename Callback>
 void visitTemplateDeclContexts(clang::Decl* decl, const Callback& callback) {
     while(true) {
@@ -100,7 +121,14 @@ struct InstantiationStack {
         return data;
     }
 
-    /// Look up a TemplateTypeParmType by matching depth against stack frames.
+    /// Look up a template type parameter in the stack by matching its depth against
+    /// each frame's template parameter list depth. Searches from innermost (top) to
+    /// outermost (bottom). Returns nullptr if no matching frame or index out of range.
+    ///
+    /// IMPORTANT: depth alone identifies the template "level", not the specific template.
+    /// Different templates at the same depth (e.g. vector and test both at depth 0) will
+    /// match the FIRST frame found. Callers must ensure the stack only contains relevant
+    /// frames when calling this.
     const clang::TemplateArgument* findArgument(const clang::TemplateTypeParmType* T) const {
         auto depth = T->getDepth();
         auto index = T->getIndex();
@@ -138,9 +166,16 @@ static clang::QualType getDeclType(clang::Decl* decl) {
     return clang::QualType();
 }
 
-/// Substitution-only transform: expands typedefs and substitutes template parameters
-/// from the InstantiationStack, but does NOT do lookup on DependentNameTypes.
-/// This breaks the typedef <-> lookup cycle.
+/// Phase 2 substitution transform. Expands typedefs and substitutes template parameters
+/// from the InstantiationStack, but does NOT override TransformDependentNameType.
+///
+/// This is critical: the base class TransformDependentNameType just substitutes params
+/// in the qualifier and rebuilds the DependentNameType — it does NOT do our heuristic
+/// lookup. This breaks the typedef ↔ lookup cycle that would occur if typedef expansion
+/// triggered PseudoInstantiator's TransformDependentNameType.
+///
+/// Handles: TypedefType, ElaboratedType, InjectedClassNameType, alias TST, TTPT.
+/// Does NOT handle: multi-element pack expansion, NTTP, template template params.
 class SubstituteOnly : public clang::TreeTransform<SubstituteOnly> {
     using Base = clang::TreeTransform<SubstituteOnly>;
 
@@ -234,6 +269,9 @@ public:
                 }
             }
 
+            // TODO(pack): Only handles single-element packs (common pack forwarding case).
+            // Multi-element packs (e.g. Us... = {int, float}) are not expanded here and
+            // will fall through to return the original type.
             if(!type.isNull()) {
                 TLB.pushTrivial(context, type, TL.getNameLoc());
                 return type;
@@ -255,9 +293,18 @@ private:
     unsigned depth = 0;
 };
 
-/// The core class that performs pseudo template instantiation.
-/// Uses SubstituteOnly for typedef expansion/parameter substitution,
-/// and does lookup only in TransformDependentNameType/TransformDependentTemplateSpecializationType.
+/// The core pseudo-instantiation engine. Extends TreeTransform to resolve dependent
+/// names by looking up members in primary templates and partial specializations —
+/// a capability clang's own TemplateInstantiator does not have.
+///
+/// Resolution flow for `typename A<T>::type`:
+///   1. TransformDependentNameType intercepts the DependentNameType
+///   2. lookup(A<T>, "type") → deduceTemplateArguments → find member decl
+///   3. substitute(underlying_type) → SubstituteOnly expands typedefs + substitutes params
+///   4. Pop lookup frames, then TransformType on result for further resolution
+///
+/// Uses SubstituteOnly for Phase 2 to avoid typedef ↔ lookup cycles.
+/// Uses active_resolutions / active_ctd_lookups for cycle detection.
 class PseudoInstantiator : public clang::TreeTransform<PseudoInstantiator> {
 public:
     using Base = clang::TreeTransform<PseudoInstantiator>;
@@ -283,6 +330,10 @@ public:
         return result.isNull() ? type : result;
     }
 
+    /// Verify that `arguments` match `TD`'s parameter list, filling in default
+    /// template arguments where needed. Default args are substituted using the
+    /// current stack (via SubstituteOnly), so parameters already provided can
+    /// appear in default expressions (e.g. `allocator<_Tp>` for vector's `_Alloc`).
     bool checkTemplateArguments(clang::TemplateDecl* TD,
                                 TemplateArguments& arguments,
                                 llvm::SmallVectorImpl<clang::TemplateArgument>& out) {
@@ -358,7 +409,11 @@ public:
             return false;
         }
 
-        /// made up class template context.
+        /// If the stack is empty, we need to fabricate outer template contexts so that
+        /// parameter depth/index in the deduced result can be correctly mapped. Walk
+        /// up through enclosing template declarations and push their injected args.
+        /// This handles cases like resolving members of a class template that is
+        /// itself nested inside other templates.
         if(stack.empty()) {
             visitTemplateDeclContexts(llvm::dyn_cast<clang::Decl>(decl->getDeclContext()),
                                       [&](clang::Decl* decl, clang::TemplateParameterList* params) {
@@ -408,12 +463,20 @@ public:
 
     using lookup_result = clang::DeclContext::lookup_result;
 
+    /// When DeclContext::lookup returns multiple declarations (e.g. a member in
+    /// both a base class and derived class), take the last one. This heuristic
+    /// favors the most-derived declaration, though the ordering depends on clang's
+    /// internal DeclContext storage.
     clang::Decl* preferred(lookup_result members) {
         clang::Decl* decl = nullptr;
         std::ranges::for_each(members, [&](auto member) { decl = member; });
         return decl;
     }
 
+    /// Look up `name` in the given type. First transforms the type (to substitute
+    /// any template parameters in it), then extracts the ClassTemplateDecl or
+    /// TypeAliasTemplateDecl from the resulting TST/DTST and dispatches to the
+    /// appropriate lookup overload.
     lookup_result lookup(clang::QualType type, clang::DeclarationName name) {
         clang::Decl* TD = nullptr;
         llvm::ArrayRef<clang::TemplateArgument> args;
@@ -473,6 +536,10 @@ public:
             return lookup(iter->second, name);
         }
 
+        // Handle each NestedNameSpecifier kind:
+        // - Identifier: dependent name in NNS chain (e.g. `base::type::inner`), resolve recursively
+        // - TypeSpec: concrete or dependent type used as qualifier (e.g. `vector<T>::`)
+        // - Global/Namespace/NamespaceAlias/Super: not dependent, cannot resolve further
         switch(NNS->getKind()) {
             case clang::NestedNameSpecifier::Identifier: {
                 auto stackSize = stack.data.size();
@@ -506,6 +573,13 @@ public:
         return lookup_result();
     }
 
+    /// Search for `name` in the dependent base classes of `CRD`. Each base type
+    /// is substituted (to resolve template params in it) then looked up.
+    ///
+    /// IMPORTANT: when a member is found, stack frames pushed during the lookup
+    /// are intentionally left intact. The caller (TransformDependentNameType)
+    /// needs them to substitute the found decl's underlying type. The caller
+    /// is responsible for popping frames after substitution.
     lookup_result lookupInBases(clang::CXXRecordDecl* CRD, clang::DeclarationName name) {
         if(!CRD->hasDefinition()) {
             return lookup_result();
@@ -611,7 +685,20 @@ public:
         return lookup_result();
     }
 
-    /// FIXME: Use a general method to dig holes.
+    /// Short-circuit resolution for `std::allocator_traits::rebind_alloc`.
+    ///
+    /// libstdc++'s allocator rebind chain (vector → __alloc_traits → allocator_traits →
+    /// allocator::rebind) creates deeply nested dependent types that are hard to resolve
+    /// generically. This function intercepts `allocator_traits<Alloc>::rebind_alloc<T>`
+    /// and attempts direct resolution.
+    ///
+    /// Strategy:
+    ///   1. Try Alloc::rebind<T>::other (the standard allocator rebind protocol)
+    ///   2. If that fails (e.g. C++20 removed allocator::rebind), fall back to
+    ///      replacing the first template argument: allocator<U> → allocator<T>
+    ///
+    /// TODO: Replace with a general mechanism for resolving well-known standard
+    /// library patterns, or improve the resolver to handle these chains naturally.
     clang::QualType hole(clang::NestedNameSpecifier* NNS,
                          const clang::IdentifierInfo* member,
                          TemplateArguments arguments) {
@@ -688,6 +775,11 @@ public:
 public:
     using Base::TransformType;
 
+    /// Entry point for all type transformations. Guards against:
+    /// - Null types (return as-is)
+    /// - Non-dependent types (no transformation needed)
+    /// - Excessive recursion depth (bail out to prevent stack overflow)
+    /// - Null results from base transform (return original type instead)
     clang::QualType TransformType(clang::QualType type) {
         if(type.isNull() || !type->isDependentType()) {
             return type;
@@ -709,6 +801,7 @@ public:
                                                   bool = false) {
         auto* T = TL.getTypePtr();
 
+        // First, try to find a substitution in the instantiation stack.
         if(auto* arg = stack.findArgument(T)) {
             clang::QualType type;
 
@@ -730,6 +823,10 @@ public:
             return TL.getType();
         }
 
+        // No stack substitution available. Fall back to using the parameter's
+        // default argument if one exists. This enables resolution chains like:
+        //   template<typename T, typename Alloc = allocator<T>> struct vector;
+        // where Alloc's default depends on T.
         if(clang::TemplateTypeParmDecl* TTPD = TL.getDecl()) {
             if(TTPD->hasDefaultArgument()) {
                 const clang::TemplateArgument& argument = TTPD->getDefaultArgument().getArgument();
@@ -962,7 +1059,10 @@ public:
         return fallback;
     }
 
-    /// Desugar dependent typedefs via SubstituteOnly (no lookup, no cycle risk).
+    /// Desugar dependent typedefs by delegating to SubstituteOnly.
+    /// This is called by PseudoInstantiator (not by SubstituteOnly itself, which has
+    /// its own TransformTypedefType). Using substitute() here ensures that typedef
+    /// expansion does NOT trigger heuristic lookup, preventing the typedef ↔ lookup cycle.
     clang::QualType TransformTypedefType(clang::TypeLocBuilder& TLB, clang::TypedefTypeLoc TL) {
         if(auto* TND = TL.getTypedefNameDecl()) {
             auto underlying = TND->getUnderlyingType();
@@ -980,6 +1080,9 @@ public:
         return Base::TransformTypedefType(TLB, TL);
     }
 
+    /// Attempt to resolve decltype expressions that reference variables.
+    /// Only handles the simple case of `decltype(var)` where `var` is a VarDecl.
+    /// TODO: Handle more complex decltype expressions (member access, function calls, etc.)
     clang::QualType TransformDecltypeType(clang::TypeLocBuilder& TLB, clang::DecltypeTypeLoc TL) {
         auto expr = TL.getTypePtr()->getUnderlyingExpr();
         if(auto DRE = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
@@ -994,6 +1097,8 @@ public:
 
         return Base::TransformDecltypeType(TLB, TL);
     }
+
+    // --- State ---
 
 private:
     clang::Sema& sema;

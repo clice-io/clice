@@ -17,6 +17,9 @@ namespace clice {
 /// completion, you cannot get go-to-definition, etc. To avoid this, we just use
 /// some heuristics to simplify the dependent names as normal type/expression.
 /// For example, `std::vector<T>::value_type` can be simplified as `T`.
+///
+/// Thread safety: NOT thread-safe. Each compilation unit should have its own resolver.
+/// The `resolved` cache persists across multiple resolve() calls on the same unit.
 class TemplateResolver {
 public:
     TemplateResolver(clang::Sema& sema) : sema(sema) {}
@@ -27,7 +30,7 @@ public:
 
     void resolve(clang::UnresolvedLookupExpr* expr);
 
-    // TODO: use a relative clear way to resolve `UnresolvedLookupExpr`.
+    // TODO: Use a clearer approach for resolving UnresolvedLookupExpr.
 
     void resolve(clang::UnresolvedUsingType* type);
 
@@ -50,7 +53,7 @@ public:
         if(identifier) {
             return lookup(template_name.getQualifier(), identifier);
         } else {
-            /// FIXME: Operators does't have a name.
+            /// TODO: Operators don't have an IdentifierInfo; need DeclarationName-based lookup.
             return {};
         }
     }
@@ -60,7 +63,7 @@ public:
     }
 
     lookup_result lookup(const clang::UnresolvedLookupExpr* expr) {
-        /// FIXME:
+        /// TODO: Only returns the first TemplateDecl; should handle overloaded lookups.
         for(auto decl: expr->decls()) {
             if(auto TD = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
                 return lookup_result(TD);
@@ -74,7 +77,7 @@ public:
         return {};
     }
 
-    /// TODO:
+    /// TODO: Implement dependent member expression lookup (e.g. `x.template foo<T>()`).
     lookup_result lookup(clang::CXXDependentScopeMemberExpr* expr) {
         return {};
     }
