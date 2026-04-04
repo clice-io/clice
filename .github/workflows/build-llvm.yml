@@ -12,6 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # ── Native builds ──────────────────────────────────────────────
           - os: windows-2025
             llvm_mode: Debug
             lto: OFF
@@ -39,6 +40,38 @@ jobs:
           - os: macos-15
             llvm_mode: RelWithDebInfo
             lto: ON
+
+          # ── Cross-compilation builds ───────────────────────────────────
+          # macOS x64 (from arm64 macos-15)
+          - os: macos-15
+            llvm_mode: RelWithDebInfo
+            lto: OFF
+            target_triple: x86_64-apple-darwin
+          - os: macos-15
+            llvm_mode: RelWithDebInfo
+            lto: ON
+            target_triple: x86_64-apple-darwin
+
+          # Linux aarch64 (from x64 ubuntu-24.04)
+          - os: ubuntu-24.04
+            llvm_mode: RelWithDebInfo
+            lto: OFF
+            target_triple: aarch64-linux-gnu
+          - os: ubuntu-24.04
+            llvm_mode: RelWithDebInfo
+            lto: ON
+            target_triple: aarch64-linux-gnu
+
+          # Windows arm64 (from x64 windows-2025)
+          - os: windows-2025
+            llvm_mode: RelWithDebInfo
+            lto: OFF
+            target_triple: aarch64-pc-windows-msvc
+          - os: windows-2025
+            llvm_mode: RelWithDebInfo
+            lto: ON
+            target_triple: aarch64-pc-windows-msvc
+
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -76,17 +109,27 @@ jobs:
           cache: true
           locked: true
 
-      - name: Clone llvm-project (21.1.4)
+      - name: Clone llvm-project (21.1.8)
         shell: bash
         run: |
-          git clone --branch llvmorg-21.1.4 --depth 1 https://github.com/llvm/llvm-project.git .llvm
+          git clone --branch llvmorg-21.1.8 --depth 1 https://github.com/llvm/llvm-project.git .llvm
 
       - name: Build LLVM (install-distribution)
         shell: bash
         run: |
-          pixi run build-llvm --llvm-src=.llvm --mode="${{ matrix.llvm_mode }}" --lto="${{ matrix.lto }}" --build-dir=build
+          EXTRA_ARGS=""
+          if [[ -n "${{ matrix.target_triple }}" ]]; then
+            EXTRA_ARGS="--target-triple=${{ matrix.target_triple }}"
+          fi
+          pixi run build-llvm \
+            --llvm-src=.llvm \
+            --mode="${{ matrix.llvm_mode }}" \
+            --lto="${{ matrix.lto }}" \
+            --build-dir=build \
+            ${EXTRA_ARGS}
 
       - name: Build clice using installed LLVM
+        if: ${{ !matrix.target_triple }}
         shell: bash
         run: |
           cmake -B build -G Ninja \
@@ -99,6 +142,7 @@ jobs:
           cmake --build build
 
       - name: Run tests
+        if: ${{ !matrix.target_triple }}
         shell: bash
         run: |
           EXE_EXT=""
@@ -108,8 +152,10 @@ jobs:
           ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
           uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
 
+      # Prune is only supported for native builds (requires linking clice to test).
+      # Cross-compiled targets reuse the native prune manifest of the same OS.
       - name: Prune LLVM static libraries (Debug/RelWithDebInfo no LTO)
-        if: matrix.llvm_mode == 'Debug' || (matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF')
+        if: (!matrix.target_triple) && (matrix.llvm_mode == 'Debug' || (matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'))
         shell: bash
         run: |
           MANIFEST="pruned-libs-${{ matrix.os }}.json"
@@ -123,7 +169,7 @@ jobs:
             --manifest "${MANIFEST}"
 
       - name: Upload pruned-libs manifest
-        if: matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'
+        if: (!matrix.target_triple) && matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'
         uses: actions/upload-artifact@v4
         with:
           name: llvm-pruned-libs-${{ matrix.os }}
@@ -131,8 +177,28 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-      - name: Apply pruned-libs manifest (RelWithDebInfo + LTO)
-        if: matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'ON'
+      - name: Apply pruned-libs manifest (RelWithDebInfo + LTO, native only)
+        if: (!matrix.target_triple) && matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'ON'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MANIFEST="pruned-libs-${{ matrix.os }}.json"
+          python3 scripts/prune-llvm-bin.py \
+            --action apply \
+            --manifest "${MANIFEST}" \
+            --install-dir ".llvm/build-install/lib" \
+            --build-dir "build" \
+            --gh-run-id "${{ github.run_id }}" \
+            --gh-artifact "llvm-pruned-libs-${{ matrix.os }}" \
+            --gh-download-dir "artifacts" \
+            --max-attempts 60 \
+            --sleep-seconds 60
+
+      # For cross-compiled LTO builds, apply the native prune manifest.
+      # The unused library set is arch-independent (same API surface).
+      - name: Apply pruned-libs manifest (cross-compile + LTO)
+        if: matrix.target_triple && matrix.lto == 'ON'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -157,16 +223,28 @@ jobs:
             MODE_TAG="debug"
           fi
 
-          ARCH="x64"
-          PLATFORM="linux"
-          TOOLCHAIN="gnu"
-          if [[ "${{ matrix.os }}" == windows-* ]]; then
-            PLATFORM="windows"
-            TOOLCHAIN="msvc"
-          elif [[ "${{ matrix.os }}" == macos-* ]]; then
-            ARCH="arm64"
-            PLATFORM="macos"
-            TOOLCHAIN="clang"
+          # Determine arch/platform/toolchain from target triple or runner OS
+          if [[ -n "${{ matrix.target_triple }}" ]]; then
+            case "${{ matrix.target_triple }}" in
+              x86_64-apple-darwin)
+                ARCH="x64"; PLATFORM="macos"; TOOLCHAIN="clang" ;;
+              aarch64-linux-gnu)
+                ARCH="aarch64"; PLATFORM="linux"; TOOLCHAIN="gnu" ;;
+              aarch64-pc-windows-msvc)
+                ARCH="aarch64"; PLATFORM="windows"; TOOLCHAIN="msvc" ;;
+            esac
+          else
+            ARCH="x64"
+            PLATFORM="linux"
+            TOOLCHAIN="gnu"
+            if [[ "${{ matrix.os }}" == windows-* ]]; then
+              PLATFORM="windows"
+              TOOLCHAIN="msvc"
+            elif [[ "${{ matrix.os }}" == macos-* ]]; then
+              ARCH="arm64"
+              PLATFORM="macos"
+              TOOLCHAIN="clang"
+            fi
           fi
 
           SUFFIX=""

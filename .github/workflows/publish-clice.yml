@@ -9,6 +9,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # ── Native builds ──────────────────────────────────────────────
           - os: windows-2025
             artifact_name: clice.zip
             asset_name: clice-x64-windows-msvc.zip
@@ -27,6 +28,28 @@ jobs:
             symbol_artifact_name: clice-symbol.tar.gz
             symbol_asset_name: clice-arm64-macos-darwin-symbol.tar.gz
 
+          # ── Cross-compilation builds ───────────────────────────────────
+          - os: macos-15
+            target_triple: x86_64-apple-darwin
+            artifact_name: clice.tar.gz
+            asset_name: clice-x86_64-macos-darwin.tar.gz
+            symbol_artifact_name: clice-symbol.tar.gz
+            symbol_asset_name: clice-x86_64-macos-darwin-symbol.tar.gz
+
+          - os: ubuntu-24.04
+            target_triple: aarch64-linux-gnu
+            artifact_name: clice.tar.gz
+            asset_name: clice-aarch64-linux-gnu.tar.gz
+            symbol_artifact_name: clice-symbol.tar.gz
+            symbol_asset_name: clice-aarch64-linux-gnu-symbol.tar.gz
+
+          - os: windows-2025
+            target_triple: aarch64-pc-windows-msvc
+            artifact_name: clice.zip
+            asset_name: clice-aarch64-windows-msvc.zip
+            symbol_artifact_name: clice-symbol.zip
+            symbol_asset_name: clice-aarch64-windows-msvc-symbol.zip
+
     runs-on: ${{ matrix.os }}
 
     defaults:
@@ -41,8 +64,19 @@ jobs:
         with:
           environments: package
 
-      - name: Package
+      - name: Package (native)
+        if: ${{ !matrix.target_triple }}
         run: pixi run package
+
+      - name: Package (cross-compile)
+        if: ${{ matrix.target_triple }}
+        run: |
+          cmake -B build/RelWithDebInfo -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
+            -DCLICE_RELEASE=ON \
+            -DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}
+          cmake --build build/RelWithDebInfo
 
       - name: Upload Main Package to Release
         if: startsWith(github.ref, 'refs/tags/v')

@@ -264,6 +264,7 @@ def main() -> None:
     parser.add_argument("--install-path")
     parser.add_argument("--enable-lto", action="store_true")
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--target-platform", help="Override platform for cross-compilation (e.g. macosx, linux, windows)")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -275,8 +276,8 @@ def main() -> None:
     )
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     build_type = args.build_type
-    platform_name = detect_platform()
-    log(f"Platform detected: {platform_name}, normalized build type: {build_type}")
+    platform_name = args.target_platform if args.target_platform else detect_platform()
+    log(f"Platform: {platform_name}, normalized build type: {build_type}")
     manifest = read_manifest(Path(args.manifest))
 
     binary_dir = Path(args.binary_dir).resolve()

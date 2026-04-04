@@ -1,5 +1,29 @@
 cmake_minimum_required(VERSION 3.30)
 
+# Cross-compilation support via CLICE_TARGET_TRIPLE.
+# Examples:
+#   -DCLICE_TARGET_TRIPLE=x86_64-apple-darwin      (macOS x64 from arm64)
+#   -DCLICE_TARGET_TRIPLE=aarch64-linux-gnu         (Linux arm64 from x64)
+#   -DCLICE_TARGET_TRIPLE=aarch64-pc-windows-msvc   (Windows arm64 from x64)
+if(DEFINED CLICE_TARGET_TRIPLE)
+    if(CLICE_TARGET_TRIPLE MATCHES "^x86_64-apple-darwin")
+        set(CMAKE_OSX_ARCHITECTURES "x86_64" CACHE STRING "")
+    elseif(CLICE_TARGET_TRIPLE MATCHES "^aarch64-.*-linux")
+        set(CMAKE_SYSTEM_NAME Linux)
+        set(CMAKE_SYSTEM_PROCESSOR aarch64)
+        set(CMAKE_C_COMPILER_TARGET "aarch64-linux-gnu" CACHE STRING "")
+        set(CMAKE_CXX_COMPILER_TARGET "aarch64-linux-gnu" CACHE STRING "")
+        if(DEFINED ENV{CONDA_PREFIX} AND NOT DEFINED CMAKE_SYSROOT)
+            set(CMAKE_SYSROOT "$ENV{CONDA_PREFIX}/aarch64-conda-linux-gnu/sysroot" CACHE PATH "")
+        endif()
+    elseif(CLICE_TARGET_TRIPLE MATCHES "^aarch64-.*-windows")
+        set(CMAKE_SYSTEM_NAME Windows)
+        set(CMAKE_SYSTEM_PROCESSOR ARM64)
+        set(CMAKE_C_COMPILER_TARGET "aarch64-pc-windows-msvc" CACHE STRING "")
+        set(CMAKE_CXX_COMPILER_TARGET "aarch64-pc-windows-msvc" CACHE STRING "")
+    endif()
+endif()
+
 set(CMAKE_C_COMPILER clang CACHE STRING "")
 set(CMAKE_CXX_COMPILER clang++ CACHE STRING "")
 

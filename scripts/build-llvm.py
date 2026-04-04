@@ -48,6 +48,10 @@ def main():
         "--build-dir",
         help="Custom build directory (relative to project root or absolute)",
     )
+    parser.add_argument(
+        "--target-triple",
+        help="Cross-compilation target triple (e.g. x86_64-apple-darwin, aarch64-linux-gnu, aarch64-pc-windows-msvc)",
+    )
 
     args = parser.parse_args()
 
@@ -85,6 +89,7 @@ def main():
     print("--- Configuration ---")
     print(f"Mode:           {args.mode}")
     print(f"LTO:            {args.lto}")
+    print(f"Target Triple:  {args.target_triple or '(native)'}")
     print(f"Root:           {project_root}")
     print(f"Build Dir:      {build_dir}")
     print(f"Install Prefix: {install_prefix}")
@@ -271,6 +276,9 @@ def main():
         cmake_args.append("-DLLVM_ENABLE_LTO=Thin")
     else:
         cmake_args.append("-DLLVM_ENABLE_LTO=OFF")
+
+    if args.target_triple:
+        cmake_args.append(f"-DCLICE_TARGET_TRIPLE={args.target_triple}")
 
     build_dir.mkdir(exist_ok=True)
 

@@ -41,6 +41,7 @@ sccache = "*"
 
 [feature.build.target.linux-64.dependencies]
 sysroot_linux-64 = "==2.17"
+sysroot_linux-aarch64 = "==2.17"
 gcc = "==14.2.0"
 gxx = "==14.2.0"
 ccache = "*"
