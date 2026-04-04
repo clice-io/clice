@@ -1,6 +1,7 @@
 name: build llvm
 
 on:
+  workflow_dispatch:
   pull_request:
     # if you want to run this workflow, change the branch name to main,
     # if you want to turn off it, change it to non existent branch.
