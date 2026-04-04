@@ -1,48 +1,47 @@
-#include <cstdio>
-#include <cstring>
 #include <string>
 #include <string_view>
 
+#include "eventide/deco/deco.h"
 #include "eventide/zest/zest.h"
 #include "support/logging.h"
 
-static std::string_view find_arg(int argc, const char** argv, const char* name) {
-    for(int i = 1; i < argc; ++i) {
-        // --name=value
-        auto len = std::strlen(name);
-        if(std::strncmp(argv[i], name, len) == 0 && argv[i][len] == '=') {
-            return argv[i] + len + 1;
-        }
-        // --name value (reject if next token looks like another option)
-        if(std::strcmp(argv[i], name) == 0 && i + 1 < argc &&
-           std::strncmp(argv[i + 1], "--", 2) != 0) {
-            return argv[i + 1];
-        }
-    }
-    return {};
-}
+namespace {
+
+struct TestOptions {
+    DecoKV(names = {"--test-filter"}; help = "Filter tests by name"; required = false;)
+    <std::string> test_filter;
+
+    DecoKV(names = {"--log-level"}; help = "Log level: trace/debug/info/warn/err";
+           required = false;)
+    <std::string> log_level;
+
+    DecoKV(names = {"--test-dir"}; help = "Test data directory"; required = false;)
+    <std::string> test_dir;
+};
+
+}  // namespace
 
 int main(int argc, const char** argv) {
-    auto filter = find_arg(argc, argv, "--test-filter");
-    auto log_level = find_arg(argc, argv, "--log-level");
+    auto args = deco::util::argvify(argc, argv);
+    auto parsed = deco::cli::parse<TestOptions>(args);
 
-    if(!log_level.empty()) {
-        if(log_level == "trace") {
+    std::string_view filter = {};
+    if(parsed.has_value() && parsed->options.test_filter.has_value()) {
+        filter = *parsed->options.test_filter;
+    }
+
+    if(parsed.has_value() && parsed->options.log_level.has_value()) {
+        auto level = *parsed->options.log_level;
+        if(level == "trace") {
             clice::logging::options.level = clice::logging::Level::trace;
-        } else if(log_level == "debug") {
+        } else if(level == "debug") {
             clice::logging::options.level = clice::logging::Level::debug;
-        } else if(log_level == "info") {
+        } else if(level == "info") {
             clice::logging::options.level = clice::logging::Level::info;
-        } else if(log_level == "warn") {
+        } else if(level == "warn") {
             clice::logging::options.level = clice::logging::Level::warn;
-        } else if(log_level == "err") {
+        } else if(level == "err") {
             clice::logging::options.level = clice::logging::Level::err;
-        } else {
-            std::fprintf(stderr,
-                         "Unknown --log-level '%.*s'. " "Valid: trace, debug, info, warn, err\n",
-                         static_cast<int>(log_level.size()),
-                         log_level.data());
-            return 1;
         }
     }
 

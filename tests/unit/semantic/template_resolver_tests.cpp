@@ -331,7 +331,7 @@ TEST_CASE(InnerDependentMemberClass) {
     )code");
 }
 
-TEST_CASE(InnerDependentPartialMemberClass) {
+TEST_CASE(InnerPartialMember) {
     run(R"code(
         template <typename... Ts>
         struct type_list {};
@@ -555,7 +555,7 @@ TEST_CASE(MultipleInheritance) {
     )code");
 }
 
-TEST_CASE(MultipleInheritanceSecondBase) {
+TEST_CASE(SecondBaseInheritance) {
     run(R"code(
         template <typename T>
         struct Base1 {
@@ -720,7 +720,7 @@ TEST_CASE(DependentReturnType) {
     )code");
 }
 
-TEST_CASE(DependentReturnTypeRvalue) {
+TEST_CASE(RvalueRefRemoval) {
     run(R"code(
         template <typename T>
         struct remove_reference {
@@ -768,7 +768,7 @@ TEST_CASE(AddPointer) {
 // TODO: enable_if<true, X> requires NTTP partial specialization matching.
 // TEST_CASE(EnableIfLike) { ... }
 
-TEST_CASE(NestedDependentLookup) {
+TEST_CASE(NestedLookup) {
     // Two levels of dependent lookup: A<T>::B<T>::type
     run(R"code(
         template <typename... Ts>

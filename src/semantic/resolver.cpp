@@ -320,9 +320,9 @@ public:
 
     PseudoInstantiator(clang::Sema& sema,
                        llvm::DenseMap<const void*, clang::QualType>& resolved,
-                       unsigned parentIndent = 0) :
+                       unsigned parent_indent = 0) :
         Base(sema), sema(sema), context(sema.getASTContext()), resolved(resolved),
-        indent(parentIndent) {}
+        indent(parent_indent) {}
 
 public:
     /// Use SubstituteOnly to expand typedefs and substitute parameters without doing lookup.
@@ -551,13 +551,13 @@ public:
         // - Global/Namespace/NamespaceAlias/Super: not dependent, cannot resolve further
         switch(NNS->getKind()) {
             case clang::NestedNameSpecifier::Identifier: {
-                auto stackSize = stack.data.size();
+                auto stack_size = stack.data.size();
                 auto* decl = preferred(lookup(NNS->getPrefix(), NNS->getAsIdentifier()));
                 auto type = getDeclType(decl);
                 if(!type.isNull()) {
                     type = substitute(type);
                 }
-                while(stack.data.size() > stackSize) {
+                while(stack.data.size() > stack_size) {
                     stack.pop();
                 }
                 if(!type.isNull()) {
@@ -596,7 +596,7 @@ public:
 
         for(auto base: CRD->bases()) {
             if(auto type = base.getType(); type->isDependentType()) {
-                auto stackSize = stack.data.size();
+                auto stack_size = stack.data.size();
                 auto resolved_type = substitute(type);
                 if(!resolved_type.isNull()) {
                     if(auto members = lookup(resolved_type, name); !members.empty()) {
@@ -608,7 +608,7 @@ public:
                         return members;
                     }
                 }
-                while(stack.data.size() > stackSize) {
+                while(stack.data.size() > stack_size) {
                     stack.pop();
                 }
             }
@@ -898,26 +898,26 @@ public:
         }
 
         auto* NNS = NNSLoc.getNestedNameSpecifier();
-        auto stackSize = stack.data.size();
+        auto stack_size = stack.data.size();
         auto* decl = preferred(lookup(NNS, DNT->getIdentifier()));
         auto type = getDeclType(decl);
 
         clang::QualType result;
         if(!type.isNull()) {
             if(decl) {
-                const char* declKind = "decl";
+                const char* decl_kind = "decl";
                 if(llvm::isa<clang::TypedefNameDecl>(decl))
-                    declKind = "typedef";
+                    decl_kind = "typedef";
                 else if(llvm::isa<clang::RecordDecl>(decl))
-                    declKind = "record";
-                auto declName = llvm::dyn_cast<clang::NamedDecl>(decl)
-                                    ? llvm::dyn_cast<clang::NamedDecl>(decl)->getNameAsString()
-                                    : "?";
+                    decl_kind = "record";
+                auto decl_name = llvm::dyn_cast<clang::NamedDecl>(decl)
+                                     ? llvm::dyn_cast<clang::NamedDecl>(decl)->getNameAsString()
+                                     : "?";
                 LOG_DEBUG(
                     "{}" "found {} '{}' = '{}'",
                     pad(),
-                    declKind,
-                    declName,
+                    decl_kind,
+                    decl_name,
                     type.getAsString());
             }
 
@@ -929,7 +929,7 @@ public:
             // used the full stack for parameter substitution. TransformType should only
             // see the outer context to avoid polluting free variables (e.g. T) with
             // mappings from intermediate lookup frames.
-            while(stack.data.size() > stackSize) {
+            while(stack.data.size() > stack_size) {
                 stack.pop();
             }
 
@@ -938,7 +938,7 @@ public:
                 result = TransformType(result);
             }
         } else {
-            while(stack.data.size() > stackSize) {
+            while(stack.data.size() > stack_size) {
                 stack.pop();
             }
         }
@@ -1022,13 +1022,13 @@ public:
             return result;
         }
 
-        auto stackSize = stack.data.size();
+        auto stack_size = stack.data.size();
         if(auto* decl = preferred(lookup(NNS, name))) {
             if(auto* TATD = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(decl)) {
                 if(deduceTemplateArguments(TATD, arguments)) {
                     auto type = substitute(TATD->getTemplatedDecl()->getUnderlyingType());
                     // Pop lookup frames before further resolution.
-                    while(stack.data.size() > stackSize) {
+                    while(stack.data.size() > stack_size) {
                         stack.pop();
                     }
                     if(!type.isNull() && type->isDependentType()) {
@@ -1061,7 +1061,7 @@ public:
                 return result;
             }
         }
-        while(stack.data.size() > stackSize) {
+        while(stack.data.size() > stack_size) {
             stack.pop();
         }
 
