@@ -59,8 +59,8 @@ public:
                               clang::SourceLocation location) {
         std::uint32_t modifiers = 0;
         if(relation.is_one_of(RelationKind::Definition)) {
-            // clangd add both Declaration and Definition modifiers for definitions.
-            add_modifier(modifiers, SymbolModifiers::Declaration);
+            // todo: clangd add both Declaration and Definition modifiers for definitions.
+            // add_modifier(modifiers, SymbolModifiers::Declaration);
             add_modifier(modifiers, SymbolModifiers::Definition);
         } else if(relation.is_one_of(RelationKind::Declaration)) {
             add_modifier(modifiers, SymbolModifiers::Declaration);
