@@ -459,8 +459,10 @@ TEST_CASE(BasePackExpansion) {
 // --- Robustness tests for edge cases found during stress testing ---
 
 TEST_CASE(RecursiveBaseClass) {
-    // callback_traits<F> : callback_traits<decltype(&F::operator())>
-    // Should not infinite recurse — CTD cycle detection should bail out.
+    // Regression test: callback_traits<F> inherits callback_traits<decltype(&F::operator())>,
+    // creating infinite recursion through lookupInBases. CTD cycle detection must bail out.
+    // We set input = expect because the resolver cannot fully resolve this pattern;
+    // the test verifies it doesn't crash or hang.
     run(R"code(
         template <typename F>
         struct callback_traits : callback_traits<decltype(&F::operator())> {};

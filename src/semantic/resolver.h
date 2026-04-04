@@ -22,7 +22,7 @@ namespace clice {
 /// The `resolved` cache persists across multiple resolve() calls on the same unit.
 class TemplateResolver {
 public:
-    TemplateResolver(clang::Sema& sema) : sema(sema) {}
+    explicit TemplateResolver(clang::Sema& sema) : sema(sema) {}
 
     clang::QualType resolve(clang::QualType type);
 
@@ -78,7 +78,7 @@ public:
     }
 
     /// TODO: Implement dependent member expression lookup (e.g. `x.template foo<T>()`).
-    lookup_result lookup(clang::CXXDependentScopeMemberExpr* expr) {
+    lookup_result lookup(const clang::CXXDependentScopeMemberExpr* expr) {
         return {};
     }
 
@@ -86,7 +86,7 @@ public:
         return lookup(decl->getQualifier(), decl->getDeclName());
     }
 
-    lookup_result resolve(const clang::UnresolvedUsingTypenameDecl* decl) {
+    lookup_result lookup(const clang::UnresolvedUsingTypenameDecl* decl) {
         return lookup(decl->getQualifier(), decl->getDeclName());
     }
 

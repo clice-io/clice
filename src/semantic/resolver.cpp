@@ -63,6 +63,8 @@ void visitTemplateDeclContexts(clang::Decl* decl, const Callback& callback) {
         }
 
         decl = llvm::dyn_cast<clang::Decl>(decl->getDeclContext());
+        if(!decl)
+            break;
     }
 }
 
@@ -85,6 +87,9 @@ public:
         auto TTPT = TL.getTypePtr();
         if(!TTPT->getDecl()) {
             auto depth = TTPT->getDepth();
+            if(depth >= lists.size()) {
+                return TLB.push<clang::TemplateTypeParmTypeLoc>(type).getType();
+            }
             auto index = TTPT->getIndex();
             auto isPack = TTPT->isParameterPack();
             auto param = llvm::cast<clang::TemplateTypeParmDecl>(lists[depth]->getParam(index));
@@ -346,6 +351,10 @@ public:
         if(out.size() != list->size()) {
             for(auto i = out.size(); i < list->size(); ++i) {
                 auto param = list->getParam(i);
+                // TODO(nttp): Only TemplateTypeParmDecl default arguments are handled.
+                // NonTypeTemplateParmDecl and TemplateTemplateParmDecl defaults are skipped,
+                // causing checkTemplateArguments to return false for templates like:
+                //   template<typename T, int N = 0> struct S;
                 auto TTPD = llvm::dyn_cast<clang::TemplateTypeParmDecl>(param);
                 if(TTPD && TTPD->hasDefaultArgument()) {
                     auto type = TTPD->getDefaultArgument().getArgument().getAsType();
@@ -712,6 +721,8 @@ public:
         }
 
         auto TD = TST->getTemplateName().getAsTemplateDecl();
+        if(!TD)
+            return clang::QualType();
         if(!TD->getDeclContext()->isStdNamespace()) {
             return clang::QualType();
         }
@@ -723,6 +734,8 @@ public:
             auto Alloc = TST->template_arguments()[0].getAsType();
 
             if(member->getName() == "rebind_alloc") {
+                if(arguments.empty())
+                    return clang::QualType();
                 auto T = arguments[0].getAsType();
 
                 auto prefix =
