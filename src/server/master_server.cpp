@@ -1053,7 +1053,7 @@ protocol::SymbolKind MasterServer::to_lsp_symbol_kind(SymbolKind kind) {
     }
 }
 
-et::task<std::optional<MasterServer::SymbolInfo>>
+et::task<std::optional<SymbolInfo>>
     MasterServer::lookup_symbol_at_position(const std::string& uri,
                                             const protocol::Position& position) {
     auto path = uri_to_path(uri);
@@ -1191,7 +1191,7 @@ protocol::TypeHierarchyItem MasterServer::build_type_hierarchy_item(const Symbol
     return item;
 }
 
-et::task<std::optional<MasterServer::SymbolInfo>>
+et::task<std::optional<SymbolInfo>>
     MasterServer::resolve_hierarchy_item(const std::string& uri,
                                          const protocol::Range& range,
                                          const std::optional<protocol::LSPAny>& data) {
