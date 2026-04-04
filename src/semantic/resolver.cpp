@@ -1,5 +1,6 @@
 #include "semantic/resolver.h"
 
+#include <format>
 #include <ranges>
 
 #include "support/logging.h"
@@ -249,8 +250,11 @@ public:
 
     using TemplateDeductionInfo = clang::sema::TemplateDeductionInfo;
 
-    PseudoInstantiator(clang::Sema& sema, llvm::DenseMap<const void*, clang::QualType>& resolved) :
-        Base(sema), sema(sema), context(sema.getASTContext()), resolved(resolved) {}
+    PseudoInstantiator(clang::Sema& sema,
+                       llvm::DenseMap<const void*, clang::QualType>& resolved,
+                       unsigned parentIndent = 0) :
+        Base(sema), sema(sema), context(sema.getASTContext()), resolved(resolved),
+        indent(parentIndent) {}
 
 public:
     /// Use SubstituteOnly to expand typedefs and substitute parameters without doing lookup.
@@ -287,6 +291,11 @@ public:
                         return false;
                     }
 
+                    LOG_DEBUG(
+                        "{}" "default arg: '{}' = '{}'",
+                        pad(),
+                        TTPD->getNameAsString(),
+                        result.getAsString());
                     out.emplace_back(result);
                 }
             }
@@ -346,6 +355,38 @@ public:
         llvm::SmallVector<clang::TemplateArgument, 4> output(deduced.begin(), deduced.end());
         stack.push(decl, output);
 
+        LOG_DEBUG(
+            "{}deduce {}: {{{}}}",
+            pad(),
+            [&] {
+                const char* kind = "primary";
+                if constexpr(std::is_same_v<Decl, clang::ClassTemplatePartialSpecializationDecl>)
+                    kind = "partial";
+                else if constexpr(std::is_same_v<Decl, clang::TypeAliasTemplateDecl>)
+                    kind = "alias";
+                return kind;
+            }(),
+            [&] {
+                std::string mapping;
+                for(unsigned j = 0; j < output.size(); ++j) {
+                    if(j > 0)
+                        mapping += ", ";
+                    if(j < list->size()) {
+                        mapping += list->getParam(j)->getNameAsString();
+                        mapping += "=";
+                    }
+                    if(output[j].getKind() == clang::TemplateArgument::Type) {
+                        mapping += "'";
+                        mapping += output[j].getAsType().getAsString();
+                        mapping += "'";
+                    } else if(output[j].getKind() == clang::TemplateArgument::Pack)
+                        mapping += "<pack>";
+                    else
+                        mapping += "<non-type>";
+                }
+                return mapping;
+            }());
+
         return true;
     }
 
@@ -370,6 +411,12 @@ public:
             TD = TST->getTemplateName().getAsTemplateDecl();
             args = TST->template_arguments();
         } else if(auto DTST = type->getAs<clang::DependentTemplateSpecializationType>()) {
+            // If this DTST was already resolved (possibly to itself when unresolvable),
+            // skip the redundant lookup.
+            if(resolved.count(DTST)) {
+                return lookup_result();
+            }
+
             auto& template_name = DTST->getDependentTemplateName();
             auto name = template_name.getName().getIdentifier();
             if(!name) {
@@ -385,8 +432,6 @@ public:
         if(!TD) {
             return lookup_result();
         }
-
-        LOG_DEBUG("resolver: lookup '{}' in '{}'", name.getAsString(), type.getAsString());
 
         if(auto CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(TD)) {
             return lookup(CTD, name, args);
@@ -456,6 +501,11 @@ public:
                 auto resolved_type = substitute(type);
                 if(!resolved_type.isNull()) {
                     if(auto members = lookup(resolved_type, name); !members.empty()) {
+                        LOG_DEBUG(
+                            "{}" "found '{}' via base '{}'",
+                            pad(),
+                            name.getAsString(),
+                            resolved_type.getAsString());
                         return members;
                     }
                 }
@@ -479,13 +529,25 @@ public:
         llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*> partials;
         CTD->getPartialSpecializations(partials);
 
+        LOG_DEBUG(
+            "{}" "lookup '{}' in '{}' (partials={})",
+            pad(),
+            name.getAsString(),
+            CTD->getNameAsString(),
+            partials.size());
+        ++indent;
         for(auto partial: partials) {
             if(deduceTemplateArguments(partial, arguments)) {
+                LOG_DEBUG("{}" "matched partial '{}'", pad(), partial->getNameAsString());
                 if(auto members = partial->lookup(name); !members.empty()) {
+                    LOG_DEBUG("{}" "found in 'partial'", pad());
+                    --indent;
                     return members;
                 }
 
                 if(auto members = lookupInBases(partial, name); !members.empty()) {
+                    LOG_DEBUG("{}" "found in 'base'", pad());
+                    --indent;
                     return members;
                 }
 
@@ -494,18 +556,24 @@ public:
         }
 
         if(deduceTemplateArguments(CTD, arguments)) {
+            LOG_DEBUG("{}using primary template", pad());
             auto CRD = CTD->getTemplatedDecl();
             if(auto members = CRD->lookup(name); !members.empty()) {
+                LOG_DEBUG("{}" "found in 'primary'", pad());
+                --indent;
                 return members;
             }
 
             if(auto members = lookupInBases(CRD, name); !members.empty()) {
+                LOG_DEBUG("{}" "found in 'base'", pad());
+                --indent;
                 return members;
             }
 
             stack.pop();
         }
 
+        --indent;
         return lookup_result();
     }
 
@@ -553,8 +621,12 @@ public:
                                                         prefix,
                                                         other);
 
-                auto result = PseudoInstantiator(sema, resolved).TransformType(DNT);
+                auto result = PseudoInstantiator(sema, resolved, indent).TransformType(DNT);
                 if(!result.isNull() && !result->isDependentType()) {
+                    LOG_DEBUG(
+                        "{}" "hole: 'allocator_traits::rebind_alloc' → '{}'",
+                        pad(),
+                        result.getAsString());
                     return result;
                 }
 
@@ -564,9 +636,14 @@ public:
                     for(auto& arg: replaceArguments) {
                         canonicalArguments.emplace_back(context.getCanonicalTemplateArgument(arg));
                     }
-                    return context.getTemplateSpecializationType(TST->getTemplateName(),
-                                                                 replaceArguments,
-                                                                 canonicalArguments);
+                    auto result = context.getTemplateSpecializationType(TST->getTemplateName(),
+                                                                        replaceArguments,
+                                                                        canonicalArguments);
+                    LOG_DEBUG(
+                        "{}" "hole: 'allocator_traits::rebind_alloc' → '{}'",
+                        pad(),
+                        result.getAsString());
+                    return result;
                 }
             }
         }
@@ -582,11 +659,9 @@ public:
             return type;
         }
         if(depth > 64) {
-            LOG_DEBUG("resolver: depth limit for '{}'", type.getAsString());
             return type;
         }
         ++depth;
-        LOG_DEBUG("resolver: TransformType [depth={}] '{}'", depth, type.getAsString());
         auto result = Base::TransformType(type);
         --depth;
         if(result.isNull()) {
@@ -599,20 +674,14 @@ public:
                                                   clang::TemplateTypeParmTypeLoc TL,
                                                   bool = false) {
         auto* T = TL.getTypePtr();
-        LOG_DEBUG("resolver: TTPT d={} i={} pack={}",
-                  T->getDepth(),
-                  T->getIndex(),
-                  T->isParameterPack());
 
         if(auto* arg = stack.findArgument(T)) {
             clang::QualType type;
 
             if(arg->getKind() == clang::TemplateArgument::Type) {
                 type = arg->getAsType();
-                LOG_DEBUG("resolver: TTPT found Type arg '{}'", type.getAsString());
             } else if(arg->getKind() == clang::TemplateArgument::Pack) {
                 auto pack = arg->getPackAsArray();
-                LOG_DEBUG("resolver: TTPT found Pack size={}", pack.size());
                 if(pack.size() == 1 && pack[0].getKind() == clang::TemplateArgument::Type) {
                     type = pack[0].getAsType();
                 }
@@ -648,18 +717,21 @@ public:
                                                clang::DependentNameTypeLoc TL,
                                                bool DeducedTSTContext = false) {
         auto* DNT = TL.getTypePtr();
-        LOG_DEBUG("resolver: DNT '{}'", clang::QualType(DNT, 0).getAsString());
+        LOG_DEBUG("{}" "resolve '{}'", pad(), clang::QualType(DNT, 0).getAsString());
+        ++indent;
 
         // Check cache.
         if(auto iter = resolved.find(DNT); iter != resolved.end()) {
+            LOG_DEBUG("{}" "→ '{}' (cached)", pad(), iter->second.getAsString());
+            --indent;
             TLB.pushTrivial(context, iter->second, {});
             return iter->second;
         }
 
         // Cycle detection: if we're already resolving this DNT, bail out.
         if(!active_resolutions.insert(DNT).second) {
-            LOG_DEBUG("resolver: cycle detected for DNT '{}'",
-                      clang::QualType(DNT, 0).getAsString());
+            LOG_DEBUG("{}→ <cycle detected, returning original>", pad());
+            --indent;
             auto original = clang::QualType(DNT, 0);
             auto NewTL = TLB.push<clang::DependentNameTypeLoc>(original);
             NewTL.setElaboratedKeywordLoc(TL.getElaboratedKeywordLoc());
@@ -671,6 +743,8 @@ public:
         auto NNSLoc = TransformNestedNameSpecifierLoc(TL.getQualifierLoc());
         if(!NNSLoc) {
             active_resolutions.erase(DNT);
+            LOG_DEBUG("{}→ <unresolved>", pad());
+            --indent;
             auto original = clang::QualType(DNT, 0);
             auto NewTL = TLB.push<clang::DependentNameTypeLoc>(original);
             NewTL.setElaboratedKeywordLoc(TL.getElaboratedKeywordLoc());
@@ -686,11 +760,26 @@ public:
 
         clang::QualType result;
         if(!type.isNull()) {
-            LOG_DEBUG("resolver:   found decl, underlying: '{}'", type.getAsString());
+            if(decl) {
+                const char* declKind = "decl";
+                if(llvm::isa<clang::TypedefNameDecl>(decl))
+                    declKind = "typedef";
+                else if(llvm::isa<clang::RecordDecl>(decl))
+                    declKind = "record";
+                auto declName = llvm::dyn_cast<clang::NamedDecl>(decl)
+                                    ? llvm::dyn_cast<clang::NamedDecl>(decl)->getNameAsString()
+                                    : "?";
+                LOG_DEBUG(
+                    "{}" "found {} '{}' = '{}'",
+                    pad(),
+                    declKind,
+                    declName,
+                    type.getAsString());
+            }
 
             // Step 1: substitute params (expand typedefs, no lookup).
             result = substitute(type);
-            LOG_DEBUG("resolver:   after substitute: '{}'", result.getAsString());
+            LOG_DEBUG("{}" "substitute → '{}'", pad(), result.getAsString());
 
             // Pop lookup frames BEFORE further resolution. The substitute step already
             // used the full stack for parameter substitution. TransformType should only
@@ -703,8 +792,6 @@ public:
             // Step 2: if still dependent, do full transform (may trigger more lookups).
             if(!result.isNull() && result->isDependentType()) {
                 result = TransformType(result);
-                LOG_DEBUG("resolver:   after TransformType: '{}'",
-                          result.isNull() ? "<null>" : result.getAsString());
             }
         } else {
             while(stack.data.size() > stackSize) {
@@ -715,11 +802,15 @@ public:
         active_resolutions.erase(DNT);
 
         if(!result.isNull()) {
+            LOG_DEBUG("{}" "→ '{}'", pad(), result.getAsString());
+            --indent;
             resolved.try_emplace(DNT, result);
             TLB.pushTrivial(context, result, {});
             return result;
         }
 
+        LOG_DEBUG("{}→ <unresolved>", pad());
+        --indent;
         auto original = clang::QualType(DNT, 0);
         auto NewTL = TLB.push<clang::DependentNameTypeLoc>(original);
         NewTL.setElaboratedKeywordLoc(TL.getElaboratedKeywordLoc());
@@ -741,14 +832,19 @@ public:
         clang::TypeLocBuilder& TLB,
         clang::DependentTemplateSpecializationTypeLoc TL) {
         auto* DTST = TL.getTypePtr();
+        LOG_DEBUG("{}" "resolve DTST '{}'", pad(), clang::QualType(DTST, 0).getAsString());
+        ++indent;
 
         if(auto iter = resolved.find(DTST); iter != resolved.end()) {
+            --indent;
             TLB.pushTrivial(context, iter->second, {});
             return iter->second;
         }
 
         auto NNSLoc = TransformNestedNameSpecifierLoc(TL.getQualifierLoc());
         if(!NNSLoc) {
+            LOG_DEBUG("{}→ <unresolved DTST>", pad());
+            --indent;
             return rebuildDTST(TLB, TL);
         }
         auto* NNS = NNSLoc.getNestedNameSpecifier();
@@ -757,6 +853,8 @@ public:
         using iterator = clang::TemplateArgumentLocContainerIterator<
             clang::DependentTemplateSpecializationTypeLoc>;
         if(TransformTemplateArguments(iterator(TL, 0), iterator(TL, TL.getNumArgs()), info)) {
+            LOG_DEBUG("{}→ <unresolved DTST>", pad());
+            --indent;
             return rebuildDTST(TLB, TL);
         }
 
@@ -767,10 +865,14 @@ public:
 
         auto* name = DTST->getDependentTemplateName().getName().getIdentifier();
         if(!name) {
+            LOG_DEBUG("{}→ <unresolved DTST>", pad());
+            --indent;
             return rebuildDTST(TLB, TL);
         }
 
         if(auto result = hole(NNS, name, arguments); !result.isNull()) {
+            LOG_DEBUG("{}" "hole: '{}' → '{}'", pad(), name->getName().str(), result.getAsString());
+            --indent;
             resolved.try_emplace(DTST, result);
             TLB.pushTrivial(context, result, {});
             return result;
@@ -789,6 +891,8 @@ public:
                         type = TransformType(type);
                     }
                     if(!type.isNull()) {
+                        LOG_DEBUG("{}" "→ '{}' (alias)", pad(), type.getAsString());
+                        --indent;
                         resolved.try_emplace(DTST, type);
                         TLB.pushTrivial(context, type, {});
                         return type;
@@ -806,9 +910,8 @@ public:
                     canonArgs.push_back(context.getCanonicalTemplateArgument(arg));
                 }
                 auto result = context.getTemplateSpecializationType(TN, arguments, canonArgs);
-                LOG_DEBUG("resolver: DTST resolved CTD '{}' → '{}'",
-                          CTD->getNameAsString(),
-                          result.getAsString());
+                LOG_DEBUG("{}" "→ TST '{}' (class)", pad(), result.getAsString());
+                --indent;
                 resolved.try_emplace(DTST, result);
                 TLB.pushTrivial(context, result, {});
                 return result;
@@ -818,7 +921,11 @@ public:
             stack.pop();
         }
 
-        return rebuildDTST(TLB, TL);
+        LOG_DEBUG("{}→ <unresolved DTST>", pad());
+        --indent;
+        auto fallback = rebuildDTST(TLB, TL);
+        resolved.try_emplace(DTST, fallback);
+        return fallback;
     }
 
     /// Desugar dependent typedefs via SubstituteOnly (no lookup, no cycle risk).
@@ -826,9 +933,6 @@ public:
         if(auto* TND = TL.getTypedefNameDecl()) {
             auto underlying = TND->getUnderlyingType();
             if(underlying->isDependentType()) {
-                LOG_DEBUG("resolver: TransformTypedefType '{}' -> '{}'",
-                          TND->getNameAsString(),
-                          underlying.getAsString());
                 auto type = substitute(underlying);
                 if(!type.isNull()) {
                     if(auto ET = llvm::dyn_cast<clang::ElaboratedType>(type)) {
@@ -864,6 +968,11 @@ private:
     llvm::DenseMap<const void*, clang::QualType>& resolved;
     llvm::SmallPtrSet<const void*, 8> active_resolutions;
     unsigned depth = 0;
+    unsigned indent = 0;
+
+    std::string pad() const {
+        return std::string(indent * 2, ' ');
+    }
 };
 
 }  // namespace
