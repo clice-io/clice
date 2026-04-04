@@ -1403,7 +1403,6 @@ void MasterServer::register_handlers() {
         worker::DocumentUpdateParams update;
         update.path = path;
         update.version = doc.version;
-        update.text = doc.text;
         pool.notify_stateful(path_id, update);
     });
 

@@ -141,7 +141,6 @@ struct IndexResult {
 struct DocumentUpdateParams {
     std::string path;
     int version;
-    std::string text;
 };
 
 struct EvictParams {

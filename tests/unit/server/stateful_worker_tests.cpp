@@ -139,11 +139,11 @@ TEST_CASE(DocumentUpdate) {
         auto r1 = co_await w.peer->send_request(cp);
         CO_ASSERT_TRUE(r1.has_value());
 
-        // Send document update notification
+        // Send document update notification (marks doc dirty, text comes
+        // with next Compile request).
         worker::DocumentUpdateParams up;
         up.path = src;
         up.version = 2;
-        up.text = "int x = 2;\nint y = 3;\n";
         w.peer->send_notification(up);
 
         // After update, hover still returns stale AST results (not null).

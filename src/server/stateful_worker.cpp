@@ -154,6 +154,13 @@ void StatefulWorker::register_handlers() {
             LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
 
             auto& doc = get_or_create(params.path);
+            touch_lru(params.path);
+
+            co_await doc.strand.lock();
+
+            // Copy params to doc AFTER acquiring the strand lock, so that
+            // concurrent Compile requests waiting on the strand don't
+            // overwrite our fields before we use them.
             doc.version = params.version;
             doc.text = params.text;
             doc.directory = params.directory;
@@ -163,10 +170,6 @@ void StatefulWorker::register_handlers() {
             for(auto& [name, pcm_path]: params.pcms) {
                 doc.pcms.try_emplace(name, pcm_path);
             }
-
-            touch_lru(params.path);
-
-            co_await doc.strand.lock();
 
             auto compile_result = co_await et::queue([&]() -> worker::CompileResult {
                 LOG_DEBUG("Compiling: path={}, {} args", params.path, doc.arguments.size());
@@ -218,6 +221,11 @@ void StatefulWorker::register_handlers() {
         });
 
     // === DocumentUpdate ===
+    // Only mark the document dirty — do NOT update doc.text or doc.version
+    // here.  The et::queue compilation work may be reading doc.text on the
+    // thread pool concurrently, so writing it from the event loop would be
+    // a data race.  The next Compile request will bring the correct text
+    // and update it inside the strand lock.
     peer.on_notification([this](const worker::DocumentUpdateParams& params) {
         LOG_TRACE("DocumentUpdate: path={}, version={}", params.path, params.version);
 
@@ -227,10 +235,7 @@ void StatefulWorker::register_handlers() {
             return;
         }
 
-        auto& doc = *it->second;
-        doc.version = params.version;
-        doc.text = params.text;
-        doc.dirty.store(true, std::memory_order_release);
+        it->second->dirty.store(true, std::memory_order_release);
     });
 
     // === Evict ===
