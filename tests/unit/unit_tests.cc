@@ -13,8 +13,9 @@ static std::string_view find_arg(int argc, const char** argv, const char* name) 
         if(std::strncmp(argv[i], name, len) == 0 && argv[i][len] == '=') {
             return argv[i] + len + 1;
         }
-        // --name value
-        if(std::strcmp(argv[i], name) == 0 && i + 1 < argc) {
+        // --name value (reject if next token looks like another option)
+        if(std::strcmp(argv[i], name) == 0 && i + 1 < argc &&
+           std::strncmp(argv[i + 1], "--", 2) != 0) {
             return argv[i + 1];
         }
     }
@@ -36,6 +37,12 @@ int main(int argc, const char** argv) {
             clice::logging::options.level = clice::logging::Level::warn;
         } else if(log_level == "err") {
             clice::logging::options.level = clice::logging::Level::err;
+        } else {
+            std::fprintf(stderr,
+                         "Unknown --log-level '%.*s'. " "Valid: trace, debug, info, warn, err\n",
+                         static_cast<int>(log_level.size()),
+                         log_level.data());
+            return 1;
         }
     }
 

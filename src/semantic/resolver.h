@@ -92,6 +92,13 @@ public:
 
 private:
     clang::Sema& sema;
+
+    /// Cache of resolved dependent types, keyed by AST node pointer.
+    /// Shared across resolve() calls within the same TU for performance.
+    /// This is safe because a given AST node (DependentNameType*, etc.) has a
+    /// unique identity within the TU — the same pointer always refers to the same
+    /// syntactic occurrence. Different syntactic occurrences of the "same" type
+    /// have different AST node pointers.
     llvm::DenseMap<const void*, clang::QualType> resolved;
 };
 
