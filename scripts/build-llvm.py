@@ -236,7 +236,6 @@ def main():
         "-DCMAKE_JOB_POOL_LINK=console",
         "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
         "-DLLVM_TARGETS_TO_BUILD=all",
-        "-DLLVM_USE_LINKER=lld",
         "-DLLVM_DISABLE_ASSEMBLY_FILES=ON",
         # Distribution
         f"-DLLVM_DISTRIBUTION_COMPONENTS={components_joined}",
