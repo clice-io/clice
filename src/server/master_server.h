@@ -91,17 +91,16 @@ private:
     // path_id -> module name (for files that provide a module interface).
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
-    // path_id -> built PCH file path.
-    llvm::DenseMap<std::uint32_t, std::string> pch_paths;
+    /// Cached PCH state for a single source file.
+    struct PCHState {
+        std::string path;                     // Built PCH file path.
+        std::uint32_t bound = 0;              // Preamble byte offset used when building.
+        std::uint64_t hash = 0;               // xxh3 hash of preamble content.
+        DepsSnapshot deps;                    // Dependency snapshot for staleness detection.
+        std::shared_ptr<et::event> building;  // Non-null while a build is in flight.
+    };
 
-    // path_id -> preamble bound (byte offset) used when building the PCH.
-    llvm::DenseMap<std::uint32_t, std::uint32_t> pch_bounds;
-
-    // path_id -> hash of preamble content at PCH build time (for staleness detection).
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pch_hashes;
-
-    // path_id -> in-flight PCH build event (later arrivals co_await the same build).
-    llvm::DenseMap<std::uint32_t, std::shared_ptr<et::event>> pch_building;
+    llvm::DenseMap<std::uint32_t, PCHState> pch_states;
 
     // === Index state ===
 
@@ -131,9 +130,6 @@ private:
 
     /// Per-file dependency snapshots from last successful AST compilation.
     llvm::DenseMap<std::uint32_t, DepsSnapshot> ast_deps;
-
-    /// Per-file dependency snapshots from last successful PCH build.
-    llvm::DenseMap<std::uint32_t, DepsSnapshot> pch_deps;
 
     // Helper: convert URI to file path
     std::string uri_to_path(const std::string& uri);

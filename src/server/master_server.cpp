@@ -326,39 +326,34 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     auto bound = compute_preamble_bound(text);
     if(bound == 0) {
         // No preamble directives — PCH would be empty. Clear any stale entry.
-        if(auto old_it = pch_paths.find(path_id); old_it != pch_paths.end()) {
-            fs::remove(old_it->second);
+        auto it = pch_states.find(path_id);
+        if(it != pch_states.end()) {
+            fs::remove(it->second.path);
+            pch_states.erase(it);
         }
-        pch_paths.erase(path_id);
-        pch_bounds.erase(path_id);
-        pch_hashes.erase(path_id);
         co_return true;
     }
 
     auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(text).substr(0, bound));
 
-    // Reuse existing PCH if preamble content hasn't changed.
-    if(auto it = pch_hashes.find(path_id); it != pch_hashes.end()) {
-        if(it->second == preamble_hash && pch_paths.contains(path_id)) {
-            // Also verify that no dependency file has changed since the PCH was built.
-            auto pch_deps_it = pch_deps.find(path_id);
-            if(pch_deps_it != pch_deps.end() && !deps_changed(path_pool, pch_deps_it->second)) {
-                pch_bounds[path_id] = bound;
-                co_return true;  // PCH is still valid
-            }
-            // Fall through to rebuild
+    // Reuse existing PCH if preamble content and deps haven't changed.
+    if(auto it = pch_states.find(path_id); it != pch_states.end()) {
+        auto& st = it->second;
+        if(st.hash == preamble_hash && !st.path.empty() && !deps_changed(path_pool, st.deps)) {
+            st.bound = bound;
+            co_return true;
         }
     }
 
     // If another coroutine is already building PCH for this file, wait for it.
-    if(auto it = pch_building.find(path_id); it != pch_building.end()) {
-        co_await it->second->wait();
-        co_return pch_paths.contains(path_id);
+    if(auto it = pch_states.find(path_id); it != pch_states.end() && it->second.building) {
+        co_await it->second.building->wait();
+        co_return !pch_states[path_id].path.empty();
     }
 
     // Register in-flight build so concurrent requests wait on us.
     auto completion = std::make_shared<et::event>();
-    pch_building[path_id] = completion;
+    pch_states[path_id].building = completion;
 
     // Build a new PCH via stateless worker.
     worker::BuildPCHParams pch_params;
@@ -376,25 +371,25 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
         LOG_WARN("PCH build failed for {}: {}",
                  path,
                  result.has_value() ? result.value().error : result.error().message);
-        pch_building.erase(path_id);
+        pch_states[path_id].building.reset();
         completion->set();
         co_return false;
     }
 
     // Delete old PCH temp file before replacing.
-    if(auto old_it = pch_paths.find(path_id); old_it != pch_paths.end()) {
-        fs::remove(old_it->second);
+    auto& st = pch_states[path_id];
+    if(!st.path.empty()) {
+        fs::remove(st.path);
     }
 
-    pch_paths[path_id] = result.value().pch_path;
-    pch_bounds[path_id] = bound;
-    pch_hashes[path_id] = preamble_hash;
-    pch_deps[path_id] = capture_deps_snapshot(path_pool, result.value().deps);
+    st.path = result.value().pch_path;
+    st.bound = bound;
+    st.hash = preamble_hash;
+    st.deps = capture_deps_snapshot(path_pool, result.value().deps);
+    st.building.reset();
 
     LOG_INFO("PCH built for {}: {}", path, result.value().pch_path);
 
-    // Signal waiters after state is fully updated, then remove in-flight entry.
-    pch_building.erase(path_id);
     completion->set();
     co_return true;
 }
@@ -417,8 +412,8 @@ et::task<bool> MasterServer::ensure_deps(std::uint32_t path_id,
     // Build or reuse PCH.
     auto pch_ok = co_await ensure_pch(path_id, path, text, directory, arguments);
     if(pch_ok) {
-        if(auto pch_it = pch_paths.find(path_id); pch_it != pch_paths.end()) {
-            pch = {pch_it->second, pch_bounds[path_id]};
+        if(auto pch_it = pch_states.find(path_id); pch_it != pch_states.end()) {
+            pch = {pch_it->second.path, pch_it->second.bound};
         }
     }
 
@@ -484,8 +479,8 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
             changed = true;
         }
         if(!changed) {
-            auto pch_deps_it = pch_deps.find(path_id);
-            if(pch_deps_it != pch_deps.end() && deps_changed(path_pool, pch_deps_it->second)) {
+            auto pch_it = pch_states.find(path_id);
+            if(pch_it != pch_states.end() && deps_changed(path_pool, pch_it->second.deps)) {
                 changed = true;
             }
         }
@@ -1427,11 +1422,8 @@ void MasterServer::register_handlers() {
         }
 
         documents.erase(path_id);
-        pch_paths.erase(path_id);
-        pch_bounds.erase(path_id);
-        pch_hashes.erase(path_id);
+        pch_states.erase(path_id);
         ast_deps.erase(path_id);
-        pch_deps.erase(path_id);
 
         // Clear diagnostics for closed file
         clear_diagnostics(params.text_document.uri);
