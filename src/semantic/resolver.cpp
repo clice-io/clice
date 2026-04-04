@@ -36,9 +36,9 @@ constexpr inline bool dependent_false = false;
 
 /// Walk from `decl` up to the TranslationUnit, collecting template parameter lists
 /// at each enclosing template context. Used to build outer context frames for
-/// deduceTemplateArguments when the stack is empty.
+/// deduce_template_arguments when the stack is empty.
 template <typename Callback>
-void visitTemplateDeclContexts(clang::Decl* decl, const Callback& callback) {
+void visit_template_decl_contexts(clang::Decl* decl, const Callback& callback) {
     while(true) {
         if(llvm::isa<clang::TranslationUnitDecl>(decl)) {
             break;
@@ -73,10 +73,10 @@ class ResugarOnly : public clang::TreeTransform<ResugarOnly> {
 public:
     ResugarOnly(clang::Sema& sema, clang::Decl* decl) :
         TreeTransform(sema), context(sema.getASTContext()) {
-        visitTemplateDeclContexts(decl,
-                                  [&](clang::Decl* decl, clang::TemplateParameterList* params) {
-                                      lists.push_back(params);
-                                  });
+        visit_template_decl_contexts(decl,
+                                     [&](clang::Decl* decl, clang::TemplateParameterList* params) {
+                                         lists.push_back(params);
+                                     });
         std::ranges::reverse(lists);
     }
 
@@ -134,7 +134,7 @@ struct InstantiationStack {
     /// Different templates at the same depth (e.g. vector and test both at depth 0) will
     /// match the FIRST frame found. Callers must ensure the stack only contains relevant
     /// frames when calling this.
-    const clang::TemplateArgument* findArgument(const clang::TemplateTypeParmType* T) const {
+    const clang::TemplateArgument* find_argument(const clang::TemplateTypeParmType* T) const {
         auto depth = T->getDepth();
         auto index = T->getIndex();
         for(auto it = data.rbegin(); it != data.rend(); ++it) {
@@ -161,7 +161,7 @@ struct InstantiationStack {
 };
 
 /// Helper to extract underlying type from a Decl.
-static clang::QualType getDeclType(clang::Decl* decl) {
+static clang::QualType get_decl_type(clang::Decl* decl) {
     if(!decl)
         return clang::QualType();
     if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(decl))
@@ -262,7 +262,7 @@ public:
                                                   bool = false) {
         auto* T = TL.getTypePtr();
 
-        if(auto* arg = stack.findArgument(T)) {
+        if(auto* arg = stack.find_argument(T)) {
             clang::QualType type;
 
             if(arg->getKind() == clang::TemplateArgument::Type) {
@@ -304,7 +304,7 @@ private:
 ///
 /// Resolution flow for `typename A<T>::type`:
 ///   1. TransformDependentNameType intercepts the DependentNameType
-///   2. lookup(A<T>, "type") → deduceTemplateArguments → find member decl
+///   2. lookup(A<T>, "type") → deduce_template_arguments → find member decl
 ///   3. substitute(underlying_type) → SubstituteOnly expands typedefs + substitutes params
 ///   4. Pop lookup frames, then TransformType on result for further resolution
 ///
@@ -339,9 +339,9 @@ public:
     /// template arguments where needed. Default args are substituted using the
     /// current stack (via SubstituteOnly), so parameters already provided can
     /// appear in default expressions (e.g. `allocator<_Tp>` for vector's `_Alloc`).
-    bool checkTemplateArguments(clang::TemplateDecl* TD,
-                                TemplateArguments& arguments,
-                                llvm::SmallVectorImpl<clang::TemplateArgument>& out) {
+    bool check_template_arguments(clang::TemplateDecl* TD,
+                                  TemplateArguments& arguments,
+                                  llvm::SmallVectorImpl<clang::TemplateArgument>& out) {
         auto list = TD->getTemplateParameters();
         out.reserve(list->size());
         for(auto arg: arguments) {
@@ -353,7 +353,7 @@ public:
                 auto param = list->getParam(i);
                 // TODO(nttp): Only TemplateTypeParmDecl default arguments are handled.
                 // NonTypeTemplateParmDecl and TemplateTemplateParmDecl defaults are skipped,
-                // causing checkTemplateArguments to return false for templates like:
+                // causing check_template_arguments to return false for templates like:
                 //   template<typename T, int N = 0> struct S;
                 auto TTPD = llvm::dyn_cast<clang::TemplateTypeParmDecl>(param);
                 if(TTPD && TTPD->hasDefaultArgument()) {
@@ -385,7 +385,7 @@ public:
     }
 
     template <typename Decl>
-    bool deduceTemplateArguments(Decl* decl, TemplateArguments arguments) {
+    bool deduce_template_arguments(Decl* decl, TemplateArguments arguments) {
         clang::TemplateParameterList* list = nullptr;
         TemplateArguments params = {};
 
@@ -424,11 +424,11 @@ public:
         /// This handles cases like resolving members of a class template that is
         /// itself nested inside other templates.
         if(stack.empty()) {
-            visitTemplateDeclContexts(llvm::dyn_cast<clang::Decl>(decl->getDeclContext()),
-                                      [&](clang::Decl* decl, clang::TemplateParameterList* params) {
-                                          stack.push(decl,
-                                                     params->getInjectedTemplateArgs(context));
-                                      });
+            visit_template_decl_contexts(
+                llvm::dyn_cast<clang::Decl>(decl->getDeclContext()),
+                [&](clang::Decl* decl, clang::TemplateParameterList* params) {
+                    stack.push(decl, params->getInjectedTemplateArgs(context));
+                });
             std::ranges::reverse(stack.frames());
         }
 
@@ -524,7 +524,7 @@ public:
         if(auto CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(TD)) {
             return lookup(CTD, name, args);
         } else if(auto TATD = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(TD)) {
-            if(deduceTemplateArguments(TATD, args)) {
+            if(deduce_template_arguments(TATD, args)) {
                 auto type = substitute(TATD->getTemplatedDecl()->getUnderlyingType());
                 stack.pop();
                 if(!type.isNull()) {
@@ -553,7 +553,7 @@ public:
             case clang::NestedNameSpecifier::Identifier: {
                 auto stack_size = stack.data.size();
                 auto* decl = preferred(lookup(NNS->getPrefix(), NNS->getAsIdentifier()));
-                auto type = getDeclType(decl);
+                auto type = get_decl_type(decl);
                 if(!type.isNull()) {
                     type = substitute(type);
                 }
@@ -589,7 +589,7 @@ public:
     /// are intentionally left intact. The caller (TransformDependentNameType)
     /// needs them to substitute the found decl's underlying type. The caller
     /// is responsible for popping frames after substitution.
-    lookup_result lookupInBases(clang::CXXRecordDecl* CRD, clang::DeclarationName name) {
+    lookup_result lookup_in_bases(clang::CXXRecordDecl* CRD, clang::DeclarationName name) {
         if(!CRD->hasDefinition()) {
             return lookup_result();
         }
@@ -622,7 +622,7 @@ public:
                          TemplateArguments visibleArguments) {
         // Detect recursive lookup of the same CTD + name.
         // e.g. callback_traits<F> : callback_traits<decltype(&F::operator())>
-        // would infinitely recurse through lookupInBases.
+        // would infinitely recurse through lookup_in_bases.
         auto ctd_key = std::make_pair(static_cast<const void*>(CTD), name.getAsOpaquePtr());
         if(!active_ctd_lookups.insert(ctd_key).second) {
             return lookup_result();
@@ -639,7 +639,7 @@ public:
         } ctd_guard{active_ctd_lookups, ctd_key};
 
         llvm::SmallVector<clang::TemplateArgument, 4> arguments;
-        if(!checkTemplateArguments(CTD, visibleArguments, arguments)) {
+        if(!check_template_arguments(CTD, visibleArguments, arguments)) {
             return lookup_result();
         }
 
@@ -654,7 +654,7 @@ public:
             partials.size());
         ++indent;
         for(auto partial: partials) {
-            if(deduceTemplateArguments(partial, arguments)) {
+            if(deduce_template_arguments(partial, arguments)) {
                 LOG_DEBUG("{}" "matched partial '{}'", pad(), partial->getNameAsString());
                 if(auto members = partial->lookup(name); !members.empty()) {
                     LOG_DEBUG("{}" "found in 'partial'", pad());
@@ -662,7 +662,7 @@ public:
                     return members;
                 }
 
-                if(auto members = lookupInBases(partial, name); !members.empty()) {
+                if(auto members = lookup_in_bases(partial, name); !members.empty()) {
                     LOG_DEBUG("{}" "found in 'base'", pad());
                     --indent;
                     return members;
@@ -672,7 +672,7 @@ public:
             }
         }
 
-        if(deduceTemplateArguments(CTD, arguments)) {
+        if(deduce_template_arguments(CTD, arguments)) {
             LOG_DEBUG("{}using primary template", pad());
             auto CRD = CTD->getTemplatedDecl();
             if(auto members = CRD->lookup(name); !members.empty()) {
@@ -681,7 +681,7 @@ public:
                 return members;
             }
 
-            if(auto members = lookupInBases(CRD, name); !members.empty()) {
+            if(auto members = lookup_in_bases(CRD, name); !members.empty()) {
                 LOG_DEBUG("{}" "found in 'base'", pad());
                 --indent;
                 return members;
@@ -815,7 +815,7 @@ public:
         auto* T = TL.getTypePtr();
 
         // First, try to find a substitution in the instantiation stack.
-        if(auto* arg = stack.findArgument(T)) {
+        if(auto* arg = stack.find_argument(T)) {
             clang::QualType type;
 
             if(arg->getKind() == clang::TemplateArgument::Type) {
@@ -900,7 +900,7 @@ public:
         auto* NNS = NNSLoc.getNestedNameSpecifier();
         auto stack_size = stack.data.size();
         auto* decl = preferred(lookup(NNS, DNT->getIdentifier()));
-        auto type = getDeclType(decl);
+        auto type = get_decl_type(decl);
 
         clang::QualType result;
         if(!type.isNull()) {
@@ -965,8 +965,8 @@ public:
 
     using Base::TransformDependentTemplateSpecializationType;
 
-    clang::QualType rebuildDTST(clang::TypeLocBuilder& TLB,
-                                clang::DependentTemplateSpecializationTypeLoc TL) {
+    clang::QualType rebuild_dtst(clang::TypeLocBuilder& TLB,
+                                 clang::DependentTemplateSpecializationTypeLoc TL) {
         auto* DTST = TL.getTypePtr();
         return TLB.push<clang::DependentTemplateSpecializationTypeLoc>(clang::QualType(DTST, 0))
             .getType();
@@ -989,7 +989,7 @@ public:
         if(!NNSLoc) {
             LOG_DEBUG("{}→ <unresolved DTST>", pad());
             --indent;
-            return rebuildDTST(TLB, TL);
+            return rebuild_dtst(TLB, TL);
         }
         auto* NNS = NNSLoc.getNestedNameSpecifier();
 
@@ -999,7 +999,7 @@ public:
         if(TransformTemplateArguments(iterator(TL, 0), iterator(TL, TL.getNumArgs()), info)) {
             LOG_DEBUG("{}→ <unresolved DTST>", pad());
             --indent;
-            return rebuildDTST(TLB, TL);
+            return rebuild_dtst(TLB, TL);
         }
 
         llvm::SmallVector<clang::TemplateArgument, 4> arguments;
@@ -1011,7 +1011,7 @@ public:
         if(!name) {
             LOG_DEBUG("{}→ <unresolved DTST>", pad());
             --indent;
-            return rebuildDTST(TLB, TL);
+            return rebuild_dtst(TLB, TL);
         }
 
         if(auto result = hole(NNS, name, arguments); !result.isNull()) {
@@ -1025,7 +1025,7 @@ public:
         auto stack_size = stack.data.size();
         if(auto* decl = preferred(lookup(NNS, name))) {
             if(auto* TATD = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(decl)) {
-                if(deduceTemplateArguments(TATD, arguments)) {
+                if(deduce_template_arguments(TATD, arguments)) {
                     auto type = substitute(TATD->getTemplatedDecl()->getUnderlyingType());
                     // Pop lookup frames before further resolution.
                     while(stack.data.size() > stack_size) {
@@ -1067,7 +1067,7 @@ public:
 
         LOG_DEBUG("{}→ <unresolved DTST>", pad());
         --indent;
-        auto fallback = rebuildDTST(TLB, TL);
+        auto fallback = rebuild_dtst(TLB, TL);
         resolved.try_emplace(DTST, fallback);
         return fallback;
     }
