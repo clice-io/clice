@@ -8,7 +8,7 @@ on didSave to mark everything dirty.
 import asyncio
 import json
 import os
-import time
+import shutil
 
 import pytest
 from lsprotocol.types import (
@@ -59,7 +59,8 @@ async def test_header_change_invalidates_ast(client, tmp_path):
 
     # Modify header on disk — introduce an error.
     # Sleep briefly to ensure mtime changes (filesystem granularity).
-    time.sleep(1.1)
+    # Ensure mtime advances past filesystem granularity (1s on some FSes).
+    await asyncio.sleep(1.1)
     (tmp_path / "header.h").write_text(
         "inline int value() { return }\n"
     )  # syntax error
@@ -93,7 +94,8 @@ async def test_header_change_invalidates_pch(client, tmp_path):
     assert len(diags) == 0
 
     # Modify header — rename struct field.
-    time.sleep(1.1)
+    # Ensure mtime advances past filesystem granularity (1s on some FSes).
+    await asyncio.sleep(1.1)
     (tmp_path / "header.h").write_text(
         "#pragma once\nstruct Foo { int y; };\n"  # x -> y
     )
@@ -131,8 +133,6 @@ async def test_no_change_skips_recompile(client, tmp_path):
 
 async def test_didsave_with_module_deps(client, test_data_dir, tmp_path):
     """didSave on a module file should invalidate CompileGraph dependents."""
-    import shutil
-
     src = test_data_dir / "modules" / "save_recompile"
     for f in src.iterdir():
         if f.is_file():

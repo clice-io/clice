@@ -32,7 +32,6 @@ namespace refl = eventide::refl;
 using et::ipc::RequestResult;
 using RequestContext = et::ipc::JsonPeer::RequestContext;
 
-/// Capture mtime for each dependency file. Returns the snapshot.
 /// Hash a file's content using xxh3_64bits. Returns 0 on read failure.
 static std::uint64_t hash_file(llvm::StringRef path) {
     auto buf = llvm::MemoryBuffer::getFile(path);
@@ -45,13 +44,15 @@ static std::uint64_t hash_file(llvm::StringRef path) {
 /// Interns dependency paths into the PathPool and hashes each file's content.
 static DepsSnapshot capture_deps_snapshot(PathPool& pool, llvm::ArrayRef<std::string> deps) {
     DepsSnapshot snap;
+    // Capture timestamp BEFORE hashing to avoid TOCTOU: if a file is modified
+    // during hashing, its mtime will be > build_at, triggering Layer 2 re-hash.
+    snap.build_at = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     snap.path_ids.reserve(deps.size());
     snap.hashes.reserve(deps.size());
-    for(auto& file: deps) {
+    for(const auto& file: deps) {
         snap.path_ids.push_back(pool.intern(file));
         snap.hashes.push_back(hash_file(file));
     }
-    snap.build_at = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     return snap;
 }
 
@@ -577,9 +578,7 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
 
     publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
     doc2.ast_dirty = false;
-    if(result.has_value()) {
-        ast_deps[path_id] = capture_deps_snapshot(path_pool, result.value().deps);
-    }
+    ast_deps[path_id] = capture_deps_snapshot(path_pool, result.value().deps);
     schedule_indexing();
     co_return true;
 }
