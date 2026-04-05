@@ -10,14 +10,14 @@ namespace clice {
 
 namespace {
 
-/// Coroutine that reads lines from a worker's stderr pipe and logs them
-/// with a prefix like [SL-0] or [SF-1].
+/// Coroutine that drains a worker's stderr pipe.
+/// Workers write their own log files, so this only captures unexpected output
+/// (crash stacktraces, assertion failures, etc.) that bypasses spdlog.
 et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
     std::string buffer;
     while(true) {
         auto result = co_await stderr_pipe.read();
         if(!result.has_value()) {
-            // EOF or error — worker has exited
             break;
         }
         auto& chunk = result.value();
@@ -26,7 +26,6 @@ et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
 
         buffer += chunk;
 
-        // Log complete lines
         std::size_t pos = 0;
         while(true) {
             auto nl = buffer.find('\n', pos);
@@ -34,16 +33,15 @@ et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
                 break;
             auto line = buffer.substr(pos, nl - pos);
             if(!line.empty()) {
-                LOG_INFO("{} {}", prefix, line);
+                LOG_DEBUG("{} {}", prefix, line);
             }
             pos = nl + 1;
         }
         buffer.erase(0, pos);
     }
 
-    // Flush any remaining partial line
     if(!buffer.empty()) {
-        LOG_INFO("{} {}", prefix, buffer);
+        LOG_DEBUG("{} {}", prefix, buffer);
     }
 }
 

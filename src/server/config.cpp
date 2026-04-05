@@ -25,10 +25,10 @@ void CliceConfig::apply_defaults(const std::string& workspace_root) {
         cpu_count = 4;
 
     if(stateful_worker_count == 0) {
-        stateful_worker_count = std::max(1u, cpu_count / 4);
+        stateful_worker_count = 2;
     }
     if(stateless_worker_count == 0) {
-        stateless_worker_count = std::max(1u, cpu_count / 4);
+        stateless_worker_count = 3;
     }
     if(worker_memory_limit == 0) {
         worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB default
