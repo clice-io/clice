@@ -565,32 +565,6 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
         }
     }
 
-    // Check if the file exists on disk (e.g. from a previous session) but not in memory.
-    if(pch_states.find(path_id) == pch_states.end() || pch_states[path_id].path != pch_path) {
-        if(llvm::sys::fs::exists(pch_path)) {
-            auto& st = pch_states[path_id];
-            if(st.path.empty() || st.hash != preamble_hash) {
-                // File exists on disk from cache. If we have deps from load_cache(), check them.
-                // If deps are populated and valid, reuse directly.
-                if(!st.deps.path_ids.empty() && st.hash == preamble_hash &&
-                   !deps_changed(path_pool, st.deps)) {
-                    st.path = pch_path;
-                    st.bound = bound;
-                    co_return true;
-                }
-                // Otherwise, populate with build_at=0 to force hash validation on next check,
-                // but still reuse the PCH file for now.
-                st.path = pch_path;
-                st.bound = bound;
-                st.hash = preamble_hash;
-                if(st.deps.path_ids.empty()) {
-                    st.deps.build_at = 0;
-                }
-                co_return true;
-            }
-        }
-    }
-
     // If another coroutine is already building PCH for this file, wait for it.
     if(auto it = pch_states.find(path_id); it != pch_states.end() && it->second.building) {
         co_await it->second.building->wait();
