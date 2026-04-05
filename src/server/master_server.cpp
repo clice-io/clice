@@ -245,11 +245,16 @@ void MasterServer::load_cache() {
             pcm_states[path_id] = {pcm_path, std::move(deps)};
             pcm_paths[path_id] = pcm_path;
 
-            LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", path_id_file, module_name, pcm_path);
+            LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}",
+                      path_id_file,
+                      module_name,
+                      pcm_path);
         }
     }
 
-    LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries", pch_states.size(), pcm_states.size());
+    LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries",
+             pch_states.size(),
+             pcm_states.size());
 }
 
 void MasterServer::save_cache() {
@@ -334,7 +339,8 @@ void MasterServer::save_cache() {
     }
     auto rename_result = fs::rename(tmp_path, cache_path);
     if(!rename_result) {
-        LOG_WARN("Failed to rename cache.json.tmp -> cache.json: {}", rename_result.error().message());
+        LOG_WARN("Failed to rename cache.json.tmp -> cache.json: {}",
+                 rename_result.error().message());
     }
 }
 
@@ -527,8 +533,8 @@ et::task<> MasterServer::load_workspace() {
 
         // Check if cached PCM is still valid.
         if(auto pcm_it = pcm_states.find(path_id); pcm_it != pcm_states.end()) {
-            if(!pcm_it->second.path.empty() && llvm::sys::fs::exists(pcm_it->second.path)
-               && !deps_changed(path_pool, pcm_it->second.deps)) {
+            if(!pcm_it->second.path.empty() && llvm::sys::fs::exists(pcm_it->second.path) &&
+               !deps_changed(path_pool, pcm_it->second.deps)) {
                 pcm_paths[path_id] = pcm_it->second.path;
                 co_return true;
             }
@@ -560,7 +566,7 @@ et::task<> MasterServer::load_workspace() {
 
         pcm_paths[path_id] = result.value().pcm_path;
         pcm_states[path_id] = {result.value().pcm_path,
-                                capture_deps_snapshot(path_pool, result.value().deps)};
+                               capture_deps_snapshot(path_pool, result.value().deps)};
         LOG_INFO("Built PCM for module {}: {}", mod_it->second, result.value().pcm_path);
 
         // Persist cache metadata after successful build.
@@ -623,8 +629,8 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
             if(st.path.empty() || st.hash != preamble_hash) {
                 // File exists on disk from cache. If we have deps from load_cache(), check them.
                 // If deps are populated and valid, reuse directly.
-                if(!st.deps.path_ids.empty() && st.hash == preamble_hash
-                   && !deps_changed(path_pool, st.deps)) {
+                if(!st.deps.path_ids.empty() && st.hash == preamble_hash &&
+                   !deps_changed(path_pool, st.deps)) {
                     st.path = pch_path;
                     st.bound = bound;
                     co_return true;
