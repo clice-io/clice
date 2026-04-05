@@ -160,6 +160,12 @@ async def replay_one(trace_path: Path, clice_bin: Path, timeout: int) -> bool | 
                     fut = pending.pop(msg_id, None)
                     if fut and not fut.done():
                         fut.set_result(msg)
+                    if "error" in msg:
+                        err = msg["error"]
+                        print(
+                            f"  ERROR response id={msg_id}: "
+                            f"code={err.get('code')}, message={err.get('message')}"
+                        )
         except (asyncio.IncompleteReadError, ConnectionError, BrokenPipeError):
             pass
         finally:
