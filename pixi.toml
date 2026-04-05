@@ -62,6 +62,15 @@ lsprotocol = ">=2024.0.0"
 [feature.package.dependencies]
 xz = ">=5.8.1,<6"
 
+[feature.package.tasks.package]
+cmd = """
+cmake -B build/RelWithDebInfo -G Ninja \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
+    -DCLICE_RELEASE=ON && \
+cmake --build build/RelWithDebInfo
+"""
+
 # ============================================================================== #
 #                                   CMAKE                                        #
 # ============================================================================== #
@@ -118,39 +127,6 @@ depends-on = [
     { task = "unit-test", args = ["{{ type }}"] },
     { task = "integration-test", args = ["{{ type }}"] },
 ]
-
-# ============================================================================== #
-#                                   XMAKE                                        #
-# ============================================================================== #
-[feature.build.tasks.xmake-config]
-args = [
-    { arg = "type", default = "releasedbg" },
-    { arg = "ci", default = "n" },
-]
-cmd = "xmake config --yes --mode={{ type }} --toolchain=clang --ci={{ ci }}"
-
-[feature.build.tasks.xmake-build]
-cmd = "xmake build --verbose --diagnosis --all"
-
-[feature.build.tasks.xmake]
-args = [
-    { arg = "type", default = "releasedbg" },
-    { arg = "ci", default = "n" },
-]
-depends-on = [
-    { task = "xmake-config", args = ["{{ type }}", "{{ ci }}"] },
-    { task = "xmake-build" },
-]
-
-[feature.test.tasks.xmake-test]
-cmd = "xmake test --verbose"
-
-[feature.package.tasks.package]
-cmd = """
-xmake config --yes --toolchain=clang --mode=releasedbg \
-    --enable_test=n --dev=n --release=y && \
-xmake pack --verbose
-"""
 
 # ============================================================================== #
 #                                  HELPER TASKS                                  #

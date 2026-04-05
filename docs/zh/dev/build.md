@@ -32,18 +32,6 @@ pixi run integration-test Debug
 > [!TIP]
 > 如果你想直接使用 `cmake`, `ninja`, `clang++` 等命令进行开发，请运行 `pixi shell` 进入已配置好环境变量的终端
 
-### XMake
-
-我们同样支持使用 XMake 构建：
-
-```shell
-# config & build (default releasedbg)
-pixi run xmake
-
-# unit & integration
-pixi run xmake-test
-```
-
 ## Manual Build
 
 如果你打算手动构建，请务必先确认你的工具链满足 pixi.toml 中定义的版本要求。
@@ -70,30 +58,13 @@ cmake -B build -G Ninja \
 | CLICE_USE_LIBCXX     | OFF    | 是否使用 libc++ 来构建 clice（添加 `-std=libc++`），如果开启，请确保 LLVM 库也是使用 libc++ 编译的 |
 | CLICE_CI_ENVIRONMENT | OFF    | 是否打开 `CLICE_CI_ENVIRONMENT` 这个宏，有些测试在 CI 环境才会执行                                 |
 
-### XMake
-
-使用如下命令即可构建 clice：
-
-```bash
-xmake f -c --mode=releasedbg --toolchain=clang
-xmake build --all
-```
-
-可选的构建选项：
-
-| 选项          | 默认值 | 效果                                 |
-| ------------- | ------ | ------------------------------------ |
-| --llvm        | ""     | 使用自定义路径的 LLVM 库来构建 clice |
-| --enable_test | false  | 是否构建 clice 的单元测试            |
-| --ci          | false  | 是否打开 `CLICE_CI_ENVIRONMENT`      |
-
 ## About LLVM
 
 clice 调用 Clang API 来解析 C++ 代码，因此必须链接 LLVM/Clang 库。由于 clice 使用了 Clang 的私有头文件（这些文件通常不包含在发行版中），不能直接使用系统安装的 LLVM 包。
 
 主要有两种方式解决这个依赖问题：
 
-1. 我们在 [clice-llvm](https://github.com/clice-io/clice-llvm/releases) 上会发布使用的 LLVM 版本的预编译二进制，用于 CI 或者 release 构建。在构建时 cmake 和 xmake 默认会从此处下载 LLVM 库然后使用。
+1. 我们在 [clice-llvm](https://github.com/clice-io/clice-llvm/releases) 上会发布使用的 LLVM 版本的预编译二进制，用于 CI 或者 release 构建。在构建时 cmake 默认会从此处下载 LLVM 库然后使用。
 
 > [!IMPORTANT]
 >

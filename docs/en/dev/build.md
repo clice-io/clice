@@ -32,18 +32,6 @@ pixi run integration-test Debug
 > [!TIP]
 > If you want to develop directly with `cmake`, `ninja`, `clang++`, etc., run `pixi shell` to enter a shell with all env vars configured.
 
-### XMake
-
-We also support building with XMake:
-
-```shell
-# config & build (default releasedbg)
-pixi run xmake
-
-# unit & integration
-pixi run xmake-test
-```
-
 ## Manual Build
 
 If you plan to build manually, first ensure your toolchain matches the versions defined in `pixi.toml`.
@@ -70,30 +58,13 @@ Optional build options:
 | CLICE_USE_LIBCXX     | OFF     | Build clice with libc++ (adds `-std=libc++`); if enabled, ensure the LLVM libs are also built with libc++ |
 | CLICE_CI_ENVIRONMENT | OFF     | Enable the `CLICE_CI_ENVIRONMENT` macro; some tests only run in CI                                        |
 
-### XMake
-
-Build clice with:
-
-```bash
-xmake f -c --mode=releasedbg --toolchain=clang
-xmake build --all
-```
-
-Optional build options:
-
-| Option        | Default | Effect                                   |
-| ------------- | ------- | ---------------------------------------- |
-| --llvm        | ""      | Build clice with LLVM from a custom path |
-| --enable_test | false   | Build clice unit tests                   |
-| --ci          | false   | Enable `CLICE_CI_ENVIRONMENT`            |
-
 ## About LLVM
 
 clice calls Clang APIs to parse C++ code, so it must link against LLVM/Clang. Because clice uses Clang's private headers (usually absent from distro packages), the system LLVM package cannot be used directly.
 
 Two ways to satisfy this dependency:
 
-1. We publish prebuilt binaries of the LLVM version we use at [clice-llvm](https://github.com/clice-io/clice-llvm/releases) for CI and release builds. During builds, cmake and xmake download these LLVM libs by default.
+1. We publish prebuilt binaries of the LLVM version we use at [clice-llvm](https://github.com/clice-io/clice-llvm/releases) for CI and release builds. During builds, cmake downloads these LLVM libs by default.
 
 > [!IMPORTANT]
 >

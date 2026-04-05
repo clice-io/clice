@@ -18,13 +18,6 @@ $ ./build/bin/unit_tests --test-dir="./tests/data"
 $ pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice
 ```
 
-如果你使用 xmake 作为构建系统，可以直接通过 xmake 运行测试：
-
-```shell
-$ xmake run --verbose unit_tests
-$ xmake test --verbose integration_tests/default
-```
-
 ## Debug
 
 如果想在 clice 上附加调试器并进行调试，推荐先单独以 socket 模式启动 clice，然后再将客户端连接到 clice 上

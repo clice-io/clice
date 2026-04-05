@@ -29,31 +29,17 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    defaults:
+      run:
+        shell: bash
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup xmake
-        uses: xmake-io/github-action-setup-xmake@v1
-        with:
-          xmake-version: 3.0.5
-          actions-cache-folder: ".xmake-cache"
-          actions-cache-key: ${{ matrix.os }}
-          package-cache: true
-          package-cache-key: ${{ matrix.os }}-pkg-release-v1
-          build-cache: true
-          build-cache-key: ${{ matrix.os }}-build-release-v1
-
       - uses: ./.github/actions/setup-pixi
         with:
           environments: package
-
-      - name: Remove ci llvm toolchain on Windows
-        if: runner.os == 'Windows'
-        run: |
-          # @see https://github.com/xmake-io/xmake/issues/7158
-          xmake lua os.rmdir "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/Llvm"
-          xmake lua os.rmdir "C:/Program Files/LLVM"
 
       - name: Package
         run: pixi run package
@@ -63,7 +49,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/xpack/clice/${{ matrix.artifact_name }}
+          file: build/RelWithDebInfo/${{ matrix.artifact_name }}
           asset_name: ${{ matrix.asset_name }}
           tag: ${{ github.ref }}
           overwrite: true
@@ -73,7 +59,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/xpack/clice/${{ matrix.symbol_artifact_name }}
+          file: build/RelWithDebInfo/${{ matrix.symbol_artifact_name }}
           asset_name: ${{ matrix.symbol_asset_name }}
           tag: ${{ github.ref }}
           overwrite: true

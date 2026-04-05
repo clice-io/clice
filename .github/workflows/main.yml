@@ -19,7 +19,7 @@ jobs:
       clice: ${{ steps.filter.outputs.clice }}
       vscode: ${{ steps.filter.outputs.vscode }}
       cmake: ${{ steps.filter.outputs.cmake }}
-      xmake: ${{ steps.filter.outputs.xmake }}
+
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -46,13 +46,6 @@ jobs:
               - 'tests/**'
               - 'config/**'
               - '.github/workflows/test-cmake.yml'
-            xmake:
-              - 'xmake.lua'
-              - 'src/**'
-              - 'include/**'
-              - 'tests/**'
-              - 'config/**'
-              - '.github/workflows/test-xmake.yml'
 
   format:
     needs: changes
@@ -82,11 +75,6 @@ jobs:
     if: ${{ needs.changes.outputs.cmake == 'true' }}
     uses: ./.github/workflows/test-cmake.yml
 
-  # xmake:
-  #   needs: changes
-  #   if: ${{ needs.changes.outputs.xmake == 'true' }}
-  #   uses: ./.github/workflows/test-xmake.yml
-
   release-clice:
     permissions:
       contents: write
@@ -109,11 +97,11 @@ jobs:
       # - clice
       - vscode
       - cmake
-      # - xmake
+
     runs-on: ubuntu-latest
     steps:
       - name: Check results
         uses: re-actors/alls-green@release/v1
         with:
-          allowed-skips: format,deploy,clice,vscode,cmake,xmake
+          allowed-skips: format,deploy,clice,vscode,cmake
           jobs: ${{ toJSON(needs) }}

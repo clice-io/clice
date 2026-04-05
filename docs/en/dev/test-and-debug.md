@@ -18,13 +18,6 @@ We use pytest to run integration tests. Please refer to `pyproject.toml` to inst
 $ pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice
 ```
 
-If you use xmake as your build system, you can run the tests directly with xmake:
-
-```shell
-$ xmake run --verbose unit_tests
-$ xmake test --verbose integration_tests/default
-```
-
 ## Debug
 
 If you want to attach a debugger to clice for debugging, it is recommended to first start clice in socket mode independently, and then connect the client to it.
