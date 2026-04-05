@@ -99,6 +99,7 @@ TEST_CASE(BuildPCHRequest) {
         params.arguments =
             {"clang++", "-resource-dir", std::string(resource_dir()), "-x", "c++-header", hdr};
         params.content = "#pragma once\nint pch_global = 42;\n";
+        params.output_path = tmp.path("test_pch.pch");
 
         auto result = co_await w.peer->send_request(params);
         EXPECT_TRUE(result.has_value());
@@ -170,6 +171,7 @@ TEST_CASE(BuildPCMRequest) {
                             "--precompile",
                             src};
         params.module_name = "test_module";
+        params.output_path = tmp.path("test_module.pcm");
 
         auto result = co_await w.peer->send_request(params);
         EXPECT_TRUE(result.has_value());

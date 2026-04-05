@@ -49,6 +49,7 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
                             "--precompile",
                             iface};
         params.module_name = "Hello";
+        params.output_path = tmp.path("Hello.pcm");
 
         auto result = co_await sl.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
@@ -134,6 +135,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
                                 "--precompile",
                                 mod_a};
             params.module_name = "A";
+            params.output_path = tmp.path("A.pcm");
 
             auto result = co_await sl.peer->send_request(params);
             CO_ASSERT_TRUE(result.has_value() && result.value().success);
@@ -152,6 +154,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
                                 "--precompile",
                                 mod_b};
             params.module_name = "B";
+            params.output_path = tmp.path("B.pcm");
             params.pcms = {
                 {"A", pcm_a}
             };
@@ -232,6 +235,7 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
                             "--precompile",
                             iface};
         params.module_name = "Calc";
+        params.output_path = tmp.path("Calc.pcm");
 
         auto result = co_await sl.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value() && result.value().success);

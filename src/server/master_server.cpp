@@ -307,9 +307,16 @@ void MasterServer::save_cache() {
     }
 
     auto cache_path = path::join(config.cache_dir, "cache", "cache.json");
-    auto write_result = fs::write(cache_path, *json_str);
+    auto tmp_path = cache_path + ".tmp";
+    auto write_result = fs::write(tmp_path, *json_str);
     if(!write_result) {
-        LOG_WARN("Failed to write cache.json: {}", write_result.error().message());
+        LOG_WARN("Failed to write cache.json.tmp: {}", write_result.error().message());
+        return;
+    }
+    auto rename_result = fs::rename(tmp_path, cache_path);
+    if(!rename_result) {
+        LOG_WARN("Failed to rename cache.json.tmp to cache.json: {}",
+                 rename_result.error().message());
     }
 }
 
@@ -492,11 +499,23 @@ et::task<> MasterServer::load_workspace() {
 
         auto file_path = std::string(path_pool.resolve(path_id));
 
+        worker::BuildPCMParams pcm_params;
+        pcm_params.file = file_path;
+        if(!fill_compile_args(file_path, pcm_params.directory, pcm_params.arguments)) {
+            co_return false;
+        }
+
         // Compute deterministic content-addressed PCM path.
         // Replace ':' with '-' in module name for filesystem safety.
+        // Hash includes file path AND compile arguments so that argument
+        // changes (e.g. -DFOO) invalidate the cached PCM.
         auto safe_module_name = mod_it->second;
         std::ranges::replace(safe_module_name, ':', '-');
-        auto args_hash = llvm::xxh3_64bits(llvm::StringRef(file_path));
+        std::string hash_input = file_path;
+        for(auto& arg: pcm_params.arguments) {
+            hash_input += arg;
+        }
+        auto args_hash = llvm::xxh3_64bits(llvm::StringRef(hash_input));
         auto pcm_filename = std::format("{}-{:016x}.pcm", safe_module_name, args_hash);
         auto pcm_path = path::join(config.cache_dir, "cache", "pcm", pcm_filename);
 
@@ -509,11 +528,6 @@ et::task<> MasterServer::load_workspace() {
             }
         }
 
-        worker::BuildPCMParams pcm_params;
-        pcm_params.file = file_path;
-        if(!fill_compile_args(file_path, pcm_params.directory, pcm_params.arguments)) {
-            co_return false;
-        }
         pcm_params.module_name = mod_it->second;
         pcm_params.output_path = pcm_path;
 
@@ -537,9 +551,6 @@ et::task<> MasterServer::load_workspace() {
         pcm_states[path_id] = {result.value().pcm_path,
                                capture_deps_snapshot(path_pool, result.value().deps)};
         LOG_INFO("Built PCM for module {}: {}", mod_it->second, result.value().pcm_path);
-
-        // Persist cache metadata after successful build.
-        save_cache();
 
         co_return true;
     };
@@ -634,9 +645,6 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     st.building.reset();
 
     LOG_INFO("PCH built for {}: {}", path, result.value().pch_path);
-
-    // Persist cache metadata after successful build.
-    save_cache();
 
     completion->set();
     co_return true;

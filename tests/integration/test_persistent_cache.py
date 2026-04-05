@@ -329,12 +329,12 @@ async def test_no_tmp_files_after_build(client, tmp_path):
     assert len(client.diagnostics.get(uri, [])) == 0
 
     # No .tmp files should linger.
-    pch_dir = tmp_path / ".clice" / "pch"
+    pch_dir = tmp_path / ".clice" / "cache" / "pch"
     if pch_dir.exists():
         tmp_files = list(pch_dir.glob("*.tmp"))
         assert len(tmp_files) == 0, f"Stale .tmp files found: {tmp_files}"
 
-    pcm_dir = tmp_path / ".clice" / "pcm"
+    pcm_dir = tmp_path / ".clice" / "cache" / "pcm"
     if pcm_dir.exists():
         tmp_files = list(pcm_dir.glob("*.tmp"))
         assert len(tmp_files) == 0, f"Stale .tmp files found: {tmp_files}"

@@ -52,6 +52,7 @@ TEST_CASE(BuildPCHThenCompile) {
                             dir,
                             main_file};
         params.content = main_text;
+        params.output_path = tmp.path("preamble.pch");
 
         auto result = co_await sl.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
