@@ -22,6 +22,9 @@ struct CliceConfig {
     // Index storage directory (default: <cache_dir>/index/)
     std::string index_dir;
 
+    // Logging directory (default: <cache_dir>/logs/)
+    std::string logging_dir;
+
     // Background indexing
     bool enable_indexing = true;
     int idle_timeout_ms = 3000;

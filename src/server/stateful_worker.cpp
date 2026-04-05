@@ -320,8 +320,13 @@ void StatefulWorker::register_handlers() {
     });
 }
 
-int run_stateful_worker_mode(std::uint64_t memory_limit) {
-    logging::stderr_logger("stateful-worker", logging::options);
+int run_stateful_worker_mode(std::uint64_t memory_limit,
+                             const std::string& worker_name,
+                             const std::string& log_dir) {
+    logging::stderr_logger(worker_name, logging::options);
+    if(!log_dir.empty()) {
+        logging::file_logger(worker_name, log_dir, logging::options);
+    }
 
     LOG_INFO("Starting stateful worker, memory_limit={}MB", memory_limit / (1024 * 1024));
 

@@ -47,8 +47,11 @@ static et::serde::RawValue to_raw(const T& value) {
     return et::serde::RawValue{json ? std::move(*json) : "null"};
 }
 
-int run_stateless_worker_mode() {
-    logging::stderr_logger("stateless-worker", logging::options);
+int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
+    logging::stderr_logger(worker_name, logging::options);
+    if(!log_dir.empty()) {
+        logging::file_logger(worker_name, log_dir, logging::options);
+    }
 
     LOG_INFO("Starting stateless worker");
 

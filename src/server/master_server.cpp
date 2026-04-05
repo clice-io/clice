@@ -1,6 +1,7 @@
 #include "server/master_server.h"
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <optional>
 #include <string>
@@ -1552,6 +1553,15 @@ void MasterServer::register_handlers() {
         // Load configuration from workspace
         config = CliceConfig::load_from_workspace(workspace_root);
 
+        // Switch master to file logging under a session-timestamped directory
+        if(!config.logging_dir.empty()) {
+            auto now = std::chrono::system_clock::now();
+            auto session_dir =
+                path::join(config.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}", now));
+            logging::file_logger("master", session_dir, logging::options);
+            session_log_dir = session_dir;
+        }
+
         LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
                  config.stateful_worker_count,
                  config.stateless_worker_count,
@@ -1563,6 +1573,7 @@ void MasterServer::register_handlers() {
         pool_opts.stateful_count = config.stateful_worker_count;
         pool_opts.stateless_count = config.stateless_worker_count;
         pool_opts.worker_memory_limit = config.worker_memory_limit;
+        pool_opts.log_dir = session_log_dir;
         if(!pool.start(pool_opts)) {
             LOG_ERROR("Failed to start worker pool");
             return;

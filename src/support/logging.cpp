@@ -38,10 +38,10 @@ void stderr_logger(std::string_view name, const Options& options) {
     spdlog::set_default_logger(std::move(logger));
 }
 
-void file_loggger(std::string_view name, std::string_view dir, const Options& options) {
-    auto now = std::chrono::system_clock::now();
-    auto filename = std::format("{:%Y-%m-%d_%H-%M-%S}.log", now);
-    auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path::join(dir, filename));
+void file_logger(std::string_view name, std::string_view dir, const Options& options) {
+    llvm::sys::fs::create_directories(dir);
+    auto filepath = path::join(dir, std::format("{}.log", name));
+    auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filepath);
 
     if(options.replay_console && ringbuffer_sink) {
         sink->set_level(options.level);

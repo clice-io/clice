@@ -26,6 +26,7 @@ struct WorkerPoolOptions {
     std::uint32_t stateless_count = 2;
     std::uint32_t stateful_count = 2;
     std::uint64_t worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB default
+    std::string log_dir;
 };
 
 class WorkerPool {
@@ -81,6 +82,7 @@ private:
     void clear_owner(std::size_t worker_index);
     std::size_t pick_least_loaded();
 
+    std::string log_dir_;
     bool spawn_worker(const std::string& self_path, bool stateful, std::uint64_t memory_limit);
 };
 

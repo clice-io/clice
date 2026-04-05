@@ -146,6 +146,9 @@ private:
     /// User/project configuration.
     CliceConfig config;
 
+    /// Session-specific log directory (e.g. .clice/logs/2026-04-05_10-30-00/).
+    std::string session_log_dir;
+
     /// Compilation database (compile_commands.json).
     CompilationDatabase cdb;
 

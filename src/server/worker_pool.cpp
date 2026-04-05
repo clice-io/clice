@@ -52,6 +52,10 @@ et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
 bool WorkerPool::spawn_worker(const std::string& self_path,
                               bool stateful,
                               std::uint64_t memory_limit) {
+    auto& workers = stateful ? stateful_workers : stateless_workers;
+    auto worker_index = workers.size();
+    std::string worker_name = std::string(stateful ? "SF-" : "SL-") + std::to_string(worker_index);
+
     et::process::options opts;
     opts.file = self_path;
     if(stateful) {
@@ -63,6 +67,15 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     } else {
         opts.args = {self_path, "--mode", "stateless-worker"};
     }
+
+    opts.args.push_back("--worker-name");
+    opts.args.push_back(worker_name);
+
+    if(!log_dir_.empty()) {
+        opts.args.push_back("--log-dir");
+        opts.args.push_back(log_dir_);
+    }
+
     opts.streams = {
         et::process::stdio::pipe(true, false),  // stdin: child reads
         et::process::stdio::pipe(false, true),  // stdout: child writes
@@ -85,14 +98,8 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
                                                                 std::move(spawn.stdin_pipe));
     auto peer = std::make_unique<et::ipc::BincodePeer>(loop, std::move(transport));
 
-    auto& workers = stateful ? stateful_workers : stateless_workers;
-    auto worker_index = workers.size();
-
-    // Build log prefix: [SF-0] for stateful, [SL-0] for stateless
-    std::string prefix =
-        std::string("[") + (stateful ? "SF-" : "SL-") + std::to_string(worker_index) + "]";
-
     // Schedule stderr log collection
+    std::string prefix = "[" + worker_name + "]";
     loop.schedule(drain_stderr(std::move(spawn.stderr_pipe), prefix));
 
     workers.push_back(WorkerProcess{
@@ -108,6 +115,8 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
 }
 
 bool WorkerPool::start(const WorkerPoolOptions& options) {
+    log_dir_ = options.log_dir;
+
     for(std::uint32_t i = 0; i < options.stateless_count; ++i) {
         if(!spawn_worker(options.self_path, false, 0)) {
             return false;

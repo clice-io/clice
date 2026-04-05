@@ -58,6 +58,18 @@ struct Options {
            required = false)
     <std::string> record;
 
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--log-dir", "--log-dir="},
+           help = "Directory for log files",
+           required = false)
+    <std::string> log_dir;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--worker-name", "--worker-name="},
+           help = "Worker name for logging (internal use)",
+           required = false)
+    <std::string> worker_name;
+
     DecoFlag(names = {"-h", "--help"}, help = "Show help message", required = false)
     help;
 
@@ -108,13 +120,21 @@ int main(int argc, const char** argv) {
 
     auto& mode = *opts.mode;
 
+    auto worker_name = opts.worker_name.value_or("");
+    auto log_dir = opts.log_dir.value_or("");
+
     if(mode == "stateless-worker") {
-        return clice::run_stateless_worker_mode();
+        return clice::run_stateless_worker_mode(worker_name.empty() ? "stateless-worker"
+                                                                    : worker_name,
+                                                log_dir);
     }
 
     if(mode == "stateful-worker") {
         auto mem_limit = opts.worker_memory_limit.value_or(4ULL * 1024 * 1024 * 1024);
-        return clice::run_stateful_worker_mode(mem_limit);
+        return clice::run_stateful_worker_mode(mem_limit,
+                                               worker_name.empty() ? "stateful-worker"
+                                                                   : worker_name,
+                                               log_dir);
     }
 
     if(mode == "pipe") {

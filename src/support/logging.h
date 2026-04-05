@@ -26,7 +26,7 @@ extern Options options;
 
 void stderr_logger(std::string_view name, const Options& options);
 
-void file_loggger(std::string_view name, std::string_view dir, const Options& options);
+void file_logger(std::string_view name, std::string_view dir, const Options& options);
 
 template <typename... Args>
 struct logging_rformat {

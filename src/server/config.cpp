@@ -41,10 +41,15 @@ void CliceConfig::apply_defaults(const std::string& workspace_root) {
         index_dir = path::join(cache_dir, "index");
     }
 
+    if(logging_dir.empty() && !cache_dir.empty()) {
+        logging_dir = path::join(cache_dir, "logs");
+    }
+
     // Apply variable substitution to string fields
     substitute_workspace(compile_commands_path, workspace_root);
     substitute_workspace(cache_dir, workspace_root);
     substitute_workspace(index_dir, workspace_root);
+    substitute_workspace(logging_dir, workspace_root);
 }
 
 std::optional<CliceConfig> CliceConfig::load(const std::string& path,
