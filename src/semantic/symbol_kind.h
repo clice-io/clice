@@ -144,8 +144,6 @@ struct SymbolModifiers {
 
         /// Represents that the symbol is global-scoped.
         GlobalScope = 1u << 21,
-
-        LastModifier = GlobalScope,
     };
 
     constexpr SymbolModifiers() = default;
