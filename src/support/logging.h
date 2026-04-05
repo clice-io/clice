@@ -28,6 +28,11 @@ void stderr_logger(std::string_view name, const Options& options);
 
 void file_logger(std::string_view name, std::string_view dir, const Options& options);
 
+/// Install a signal handler that writes crash stacktraces to the given log file.
+/// Also enables LLVM's default stderr stacktrace output.
+/// Must be called after file_logger so the log file path is known.
+void install_crash_handler(std::string_view log_path);
+
 template <typename... Args>
 struct logging_rformat {
     template <std::convertible_to<std::string_view> StrLike>

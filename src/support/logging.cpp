@@ -7,6 +7,8 @@
 
 #include "support/filesystem.h"
 
+#include "llvm/Support/Signals.h"
+
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -61,6 +63,30 @@ void file_logger(std::string_view name, std::string_view dir, const Options& opt
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
+
+    install_crash_handler(filepath);
+}
+
+static std::unique_ptr<llvm::raw_fd_ostream> crash_log_stream;
+
+static void crash_handler(void*) {
+    if(crash_log_stream) {
+        *crash_log_stream << "\n=== CRASH STACK TRACE ===\n";
+        llvm::sys::PrintStackTrace(*crash_log_stream);
+        crash_log_stream->flush();
+    }
+}
+
+void install_crash_handler(std::string_view log_path) {
+    std::error_code ec;
+    crash_log_stream = std::make_unique<llvm::raw_fd_ostream>(
+        llvm::StringRef(log_path.data(), log_path.size()), ec, llvm::sys::fs::OF_Append);
+    if(ec) {
+        crash_log_stream.reset();
+        return;
+    }
+    llvm::sys::AddSignalHandler(crash_handler, nullptr);
+    llvm::sys::PrintStackTraceOnErrorSignal("clice");
 }
 
 }  // namespace clice::logging
