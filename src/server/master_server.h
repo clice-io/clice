@@ -79,6 +79,15 @@ struct PCHState {
     std::shared_ptr<et::event> building;
 };
 
+/// Cached PCM state for a single module file.
+struct PCMState {
+    /// Built PCM file path.
+    std::string path;
+
+    /// Dependency snapshot for staleness detection.
+    DepsSnapshot deps;
+};
+
 /// Information about a symbol at a given position.
 struct SymbolInfo {
     /// Unique hash identifying this symbol across the project.
@@ -154,6 +163,9 @@ private:
 
     /// path_id -> cached PCH state (path, preamble hash, deps, build event).
     llvm::DenseMap<std::uint32_t, PCHState> pch_states;
+
+    /// path_id -> cached PCM state (path, deps).
+    llvm::DenseMap<std::uint32_t, PCMState> pcm_states;
 
     // === Index state ===
 
@@ -239,6 +251,15 @@ private:
 
     /// Load index state from disk.
     void load_index();
+
+    /// Load PCH/PCM cache metadata from cache.json.
+    void load_cache();
+
+    /// Save PCH/PCM cache metadata to cache.json.
+    void save_cache();
+
+    /// Clean up stale cache files older than max_age_days.
+    void cleanup_cache(int max_age_days = 7);
 
     // === Feature request forwarding ===
 

@@ -74,6 +74,14 @@ inline std::expected<std::string, std::error_code> read(llvm::StringRef path) {
     return buffer.get()->getBuffer().str();
 }
 
+inline std::expected<void, std::error_code> rename(llvm::StringRef from, llvm::StringRef to) {
+    auto error = llvm::sys::fs::rename(from, to);
+    if(error) {
+        return std::unexpected(error);
+    }
+    return std::expected<void, std::error_code>();
+}
+
 }  // namespace fs
 
 namespace vfs = llvm::vfs;
@@ -124,7 +132,7 @@ public:
         }
 
         llvm::StringRef filename = path::filename(Path);
-        if(filename.starts_with("preamble-") && filename.ends_with(".pch")) {
+        if(filename.ends_with(".pch")) {
             return file;
         }
         return std::make_unique<VolatileFile>(std::move(*file));

@@ -99,6 +99,7 @@ struct BuildPCHParams {
     std::vector<std::string> arguments;
     std::string content;
     std::uint32_t preamble_bound = UINT32_MAX;
+    std::string output_path;
 };
 
 struct BuildPCHResult {
@@ -114,6 +115,7 @@ struct BuildPCMParams {
     std::vector<std::string> arguments;
     std::string module_name;
     std::unordered_map<std::string, std::string> pcms;
+    std::string output_path;
 };
 
 struct BuildPCMResult {
