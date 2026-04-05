@@ -476,46 +476,49 @@ std::vector<std::uint32_t> compute_preamble_bounds(llvm::StringRef content) {
     return result;
 }
 
+/// Check if a preprocessor #include/#import directive line is complete.
+static bool is_include_directive_complete(llvm::StringRef directive) {
+    if(directive.contains('"')) {
+        auto after_keyword = directive.drop_front(directive.starts_with("import") ? 6 : 7);
+        return after_keyword.count('"') >= 2;
+    }
+    if(directive.contains('<')) {
+        return directive.contains('>');
+    }
+    // No " or < — might be a macro (#include FOO) or just incomplete (#include ).
+    auto after_keyword = directive.drop_front(directive.starts_with("import") ? 6 : 7).ltrim();
+    return !after_keyword.empty();
+}
+
+/// Check if a C++20 module statement line (import/export module) is complete.
+/// A complete statement must end with ';'.
+static bool is_module_statement_complete(llvm::StringRef trimmed) {
+    return trimmed.rtrim().ends_with(";");
+}
+
 bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound) {
     auto preamble = content.substr(0, bound);
 
-    // Scan each line for incomplete #include/#import directives.
     while(!preamble.empty()) {
         auto [line, rest] = preamble.split('\n');
         preamble = rest;
 
         auto trimmed = line.ltrim();
 
-        if(!trimmed.starts_with("#")) {
+        // Preprocessor directive: #include or #import
+        if(trimmed.starts_with("#")) {
+            auto directive = trimmed.drop_front(1).ltrim();
+            if(directive.starts_with("include") || directive.starts_with("import")) {
+                if(!is_include_directive_complete(directive)) {
+                    return false;
+                }
+            }
             continue;
         }
 
-        // Strip '#' and whitespace to get the directive name.
-        auto directive = trimmed.drop_front(1).ltrim();
-
-        if(!directive.starts_with("include") && !directive.starts_with("import")) {
-            continue;
-        }
-
-        // Check for closing delimiter on this line.
-        // Valid: #include "foo.h"  or  #include <bar.h>
-        // Invalid: #include "foo  or  #include <bar  (user still typing)
-        if(directive.contains('"')) {
-            // Count quotes — need an even number for completeness.
-            auto after_keyword = directive.drop_front(directive.starts_with("import") ? 6 : 7);
-            if(after_keyword.count('"') < 2) {
-                return false;
-            }
-        } else if(directive.contains('<')) {
-            if(!directive.contains('>')) {
-                return false;
-            }
-        } else {
-            // #include with no " or < at all — might be a macro or incomplete.
-            // Treat macro usage (#include FOO) as complete; empty (#include ) as incomplete.
-            auto after_keyword =
-                directive.drop_front(directive.starts_with("import") ? 6 : 7).ltrim();
-            if(after_keyword.empty()) {
+        // C++20 module statements: import, export module, export import
+        if(trimmed.starts_with("import") || trimmed.starts_with("export")) {
+            if(!is_module_statement_complete(trimmed)) {
                 return false;
             }
         }

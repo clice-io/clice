@@ -101,8 +101,9 @@ std::uint32_t compute_preamble_bound(llvm::StringRef content);
 std::vector<std::uint32_t> compute_preamble_bounds(llvm::StringRef content);
 
 /// Check if the preamble region contains only syntactically complete directives.
-/// Returns false if any #include/#import has an unclosed "" or <>, indicating
-/// the user is still typing and PCH rebuild should be deferred.
+/// Returns false if any #include/#import has an unclosed "" or <>, or any
+/// C++20 module statement (import/export) is missing a trailing ';',
+/// indicating the user is still typing and PCH/PCM rebuild should be deferred.
 bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound);
 
 }  // namespace clice
