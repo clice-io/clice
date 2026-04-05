@@ -17,8 +17,6 @@ from lsprotocol.types import (
     DidSaveTextDocumentParams,
     HoverParams,
     Position,
-    Range,
-    TextDocumentContentChangePartial,
     TextDocumentContentChangeWholeDocument,
     TextDocumentIdentifier,
     VersionedTextDocumentIdentifier,
@@ -345,25 +343,17 @@ async def test_didchange_preamble_edit_recompiles(client, tmp_path):
     _write_cdb(tmp_path, ["main.cpp"])
     await client.initialize(tmp_path)
 
-    uri, content = await client.open_and_wait(tmp_path / "main.cpp")
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
     assert len(client.diagnostics.get(uri, [])) == 0
 
     # Switch from a.h to b.h and call from_b() instead.
-    # Use incremental change with full-file range as a workaround for
-    # eventide serde variant deserialization (whole-document changes are
-    # currently parsed as partial changes with a zero range).
-    old_lines = content.count("\n")
     event = client.wait_for_diagnostics(uri)
     client.text_document_did_change(
         DidChangeTextDocumentParams(
             text_document=VersionedTextDocumentIdentifier(uri=uri, version=1),
             content_changes=[
-                TextDocumentContentChangePartial(
-                    range=Range(
-                        start=Position(line=0, character=0),
-                        end=Position(line=old_lines + 1, character=0),
-                    ),
-                    text='#include "b.h"\nint main() { return from_b(); }\n',
+                TextDocumentContentChangeWholeDocument(
+                    text='#include "b.h"\nint main() { return from_b(); }\n'
                 )
             ],
         )
