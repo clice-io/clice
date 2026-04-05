@@ -606,13 +606,12 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
             st.bound = bound;
             co_return true;
         }
+    }
 
-        // Preamble changed, but if it's incomplete (user still typing an #include
-        // path), defer the rebuild and keep using the old PCH.
-        if(!st.path.empty() && !is_preamble_complete(text, bound)) {
-            LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
-            co_return true;
-        }
+    // Preamble incomplete (user still typing) — defer rebuild, reuse old PCH if available.
+    if(!is_preamble_complete(text, bound)) {
+        LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
+        co_return pch_states.count(path_id) && !pch_states[path_id].path.empty();
     }
 
     // If another coroutine is already building PCH for this file, wait for it.
@@ -785,20 +784,15 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
             }
         }
         if(!changed) {
+            LOG_INFO("ensure_compiled: fast path, ast clean path_id={}", path_id);
             co_return true;
         }
+        LOG_INFO("ensure_compiled: deps changed, marking dirty path_id={}", path_id);
         doc.ast_dirty = true;
     }
-
-    // Snapshot the generation counter *before* any co_await.  After compilation
-    // we compare it with the current value to detect edits that arrived while
-    // we were suspended — if they differ, the result is stale and we must not
-    // mark the AST as clean.
-    auto gen = doc.generation;
-
-    auto file_path = std::string(path_pool.resolve(path_id));
-    auto uri = lsp::URI::from_file_path(file_path);
-    std::string uri_str = uri.has_value() ? uri->str() : file_path;
+    LOG_INFO("ensure_compiled: ast_dirty=true, compiling={} path_id={}",
+             (bool)doc.compiling,
+             path_id);
 
     // After co_await suspension points the iterator may be invalidated (the
     // documents map could have been modified by didClose on another file).
@@ -807,14 +801,59 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
         return it != documents.end();
     };
 
+    // If another ensure_compiled() is already in flight for this file,
+    // wait for it to finish instead of sending a duplicate compile request.
+    // Loop because multiple waiters wake up simultaneously — only the first
+    // one should start a new compile; the rest must wait again.
+    while(it->second.compiling) {
+        LOG_INFO("ensure_compiled: waiting on in-flight compile for path_id={}", path_id);
+        co_await it->second.compiling->wait();
+        LOG_INFO("ensure_compiled: in-flight compile done for path_id={}", path_id);
+        if(!recheck())
+            co_return false;
+        if(!it->second.ast_dirty) {
+            LOG_INFO("ensure_compiled: ast clean after wait, path_id={}", path_id);
+            co_return true;
+        }
+        // ast still dirty — loop back to check if someone else already
+        // started a new compile; only fall through if no one has.
+    }
+
+    // Snapshot the generation counter *before* any co_await.  After compilation
+    // we compare it with the current value to detect edits that arrived while
+    // we were suspended — if they differ, the result is stale and we must not
+    // mark the AST as clean.
+    auto gen = doc.generation;
+
+    // Register in-flight compile so concurrent callers wait on us.
+    auto completion = std::make_shared<et::event>();
+    doc.compiling = completion;
+    LOG_INFO("ensure_compiled: starting compile path_id={} gen={}", path_id, gen);
+
+    // Signal waiters and clear compiling flag on any return path.
+    auto finish_compile = [&]() {
+        LOG_INFO("ensure_compiled: finish_compile path_id={} gen={}", path_id, gen);
+        if(auto doc_it = documents.find(path_id); doc_it != documents.end()) {
+            doc_it->second.compiling.reset();
+        }
+        completion->set();
+    };
+
+    auto file_path = std::string(path_pool.resolve(path_id));
+    auto uri = lsp::URI::from_file_path(file_path);
+    std::string uri_str = uri.has_value() ? uri->str() : file_path;
+
     // ── Phase 1–3: Module deps, PCH, PCM paths ─────────────────────────
     worker::CompileParams params;
     params.path = file_path;
-    if(!recheck())
+    if(!recheck()) {
+        finish_compile();
         co_return false;
+    }
     params.version = it->second.version;
     params.text = it->second.text;
     if(!fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments)) {
+        finish_compile();
         co_return false;
     }
 
@@ -826,11 +865,14 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
                              params.pch,
                              params.pcms)) {
         LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
+        finish_compile();
         co_return false;
     }
 
-    if(!recheck())
+    if(!recheck()) {
+        finish_compile();
         co_return false;
+    }
 
     // ── Phase 4: Dispatch to stateful worker ────────────────────────────
     //
@@ -846,8 +888,10 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
 
     // Re-lookup: the document may have been closed while we were compiling.
     it = documents.find(path_id);
-    if(it == documents.end())
+    if(it == documents.end()) {
+        finish_compile();
         co_return false;
+    }
 
     auto& doc2 = it->second;
 
@@ -858,12 +902,11 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
     // we discard the diagnostics and leave ast_dirty == true.  The next
     // feature request will trigger another compile cycle with the latest text.
     if(doc2.generation != gen) {
-        if(result.has_value()) {
-            LOG_DEBUG("Generation mismatch ({} vs {}), dropping diagnostics for {}",
-                      doc2.generation,
-                      gen,
-                      uri_str);
-        }
+        LOG_INFO("ensure_compiled: generation mismatch ({} vs {}) for {}",
+                 doc2.generation,
+                 gen,
+                 uri_str);
+        finish_compile();
         co_return false;
     }
 
@@ -872,12 +915,19 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
         // Clear stale diagnostics so the editor doesn't show errors from a
         // previous successful compilation that no longer apply.
         clear_diagnostics(uri_str);
+        finish_compile();
         co_return false;
     }
 
-    publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
+    LOG_INFO("ensure_compiled: success path_id={} gen={}, publishing diagnostics", path_id, gen);
     doc2.ast_dirty = false;
     ast_deps[path_id] = capture_deps_snapshot(path_pool, result.value().deps);
+    finish_compile();
+
+    // Publish diagnostics AFTER marking compile as done, so that concurrent
+    // forward_stateful() calls can proceed immediately instead of waiting
+    // for the (potentially large) diagnostics to be written to the client pipe.
+    publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
     schedule_indexing();
     co_return true;
 }
@@ -1316,7 +1366,7 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    LOG_DEBUG("forward_stateful: {} path={}", "request", path);
+    LOG_INFO("forward_stateful: request path={}", path);
 
     if(!co_await ensure_compiled(path_id)) {
         LOG_DEBUG("forward_stateful: ensure_compiled failed for {}", path);
@@ -1341,14 +1391,13 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri,
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    LOG_DEBUG("forward_stateful: {} path={} pos={}:{}",
-              "request",
-              path,
-              position.line,
-              position.character);
+    LOG_INFO("forward_stateful(pos): request path={} pos={}:{}",
+             path,
+             position.line,
+             position.character);
 
     if(!co_await ensure_compiled(path_id)) {
-        LOG_DEBUG("forward_stateful: ensure_compiled failed for {}", path);
+        LOG_INFO("forward_stateful(pos): ensure_compiled failed for {}", path);
         co_return serde_raw{"null"};
     }
 

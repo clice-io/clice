@@ -100,7 +100,19 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                 auto unit = compile(cp, pch_info);
                 bool success = unit.completed();
 
-                // Destroy CompilationUnit to flush PCH/PCM file to disk
+                // Extract error messages before destroying the unit.
+                std::string errors;
+                if(!success) {
+                    for(auto& diag: unit.diagnostics()) {
+                        if(diag.id.level >= DiagnosticLevel::Error) {
+                            if(!errors.empty())
+                                errors += "; ";
+                            errors += diag.message;
+                        }
+                    }
+                }
+
+                // Destroy CompilationUnit to flush PCH file to disk
                 // (EndSourceFile serializes the AST on destruction).
                 unit = CompilationUnit(nullptr);
 
@@ -128,9 +140,12 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                     pch_result.deps = pch_info.deps;
                     return pch_result;
                 } else {
-                    LOG_WARN("BuildPCH failed: file={}, {}ms", params.file, timer.ms());
+                    LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]",
+                             params.file,
+                             timer.ms(),
+                             errors);
                     fs::remove(tmp_path);
-                    return {false, "PCH compilation failed", ""};
+                    return {false, errors.empty() ? "PCH compilation failed" : errors, ""};
                 }
             });
             co_return result.value();
@@ -169,6 +184,18 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                 PCMInfo pcm_info;
                 auto unit = compile(cp, pcm_info);
                 bool success = unit.completed();
+
+                std::string errors;
+                if(!success) {
+                    for(auto& diag: unit.diagnostics()) {
+                        if(diag.id.level >= DiagnosticLevel::Error) {
+                            if(!errors.empty())
+                                errors += "; ";
+                            errors += diag.message;
+                        }
+                    }
+                }
+
                 unit = CompilationUnit(nullptr);
 
                 if(success) {
@@ -189,9 +216,12 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                     pcm_result.deps = pcm_info.deps;
                     return pcm_result;
                 } else {
-                    LOG_WARN("BuildPCM failed: module={}, {}ms", params.module_name, timer.ms());
+                    LOG_WARN("BuildPCM failed: module={}, {}ms, errors=[{}]",
+                             params.module_name,
+                             timer.ms(),
+                             errors);
                     fs::remove(tmp_path);
-                    return {false, "PCM compilation failed", ""};
+                    return {false, errors.empty() ? "PCM compilation failed" : errors, ""};
                 }
             });
             co_return result.value();
