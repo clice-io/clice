@@ -166,18 +166,6 @@ struct CacheData {
     std::vector<std::string> paths;
     std::vector<CachePCHEntry> pch;
     std::vector<CachePCMEntry> pcm;
-
-    /// Dedup map used only during save; skipped by serde.
-    et::serde::annotation<std::unordered_map<std::string, std::uint32_t>, et::serde::schema::skip>
-        index_map;
-
-    std::uint32_t intern(const std::string& path) {
-        auto [it, inserted] = index_map.try_emplace(path, static_cast<std::uint32_t>(paths.size()));
-        if(inserted) {
-            paths.push_back(path);
-        }
-        return it->second;
-    }
 };
 
 }  // namespace
@@ -263,9 +251,16 @@ void MasterServer::save_cache() {
         return;
 
     CacheData data;
+    std::unordered_map<std::string, std::uint32_t> index_map;
 
     auto intern = [&](std::uint32_t runtime_path_id) -> std::uint32_t {
-        return data.intern(std::string(path_pool.resolve(runtime_path_id)));
+        auto path = std::string(path_pool.resolve(runtime_path_id));
+        auto [it, inserted] =
+            index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
+        if(inserted) {
+            data.paths.push_back(path);
+        }
+        return it->second;
     };
 
     for(auto& [path_id, st]: pch_states) {
@@ -369,9 +364,10 @@ et::task<> MasterServer::load_workspace() {
             }
         }
 
-        // Load persistent cache and clean up stale files.
-        load_cache();
+        // Clean up stale files first, then load — load_cache() only restores
+        // entries still listed in cache.json, so cleanup won't delete live files.
         cleanup_cache();
+        load_cache();
     }
 
     // Search for compile_commands.json
@@ -552,6 +548,9 @@ et::task<> MasterServer::load_workspace() {
                                capture_deps_snapshot(path_pool, result.value().deps)};
         LOG_INFO("Built PCM for module {}: {}", mod_it->second, result.value().pcm_path);
 
+        // Persist cache metadata after successful build.
+        save_cache();
+
         co_return true;
     };
 
@@ -645,6 +644,9 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     st.building.reset();
 
     LOG_INFO("PCH built for {}: {}", path, result.value().pch_path);
+
+    // Persist cache metadata after successful build.
+    save_cache();
 
     completion->set();
     co_return true;
