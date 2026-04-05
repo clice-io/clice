@@ -20,7 +20,7 @@ max_active_file = 8
 cache_dir = "${workspace}/.clice/cache"
 # Directory for storing index files.
 index_dir = "${workspace}/.clice/index"
-logging_dir = "${workspace}/.clice/logging"
+logging_dir = "${workspace}/.clice/logs"
 # Compile commands files or directories to search for compile_commands.json files.
 compile_commands_paths = ["${workspace}/build"]
 

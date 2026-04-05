@@ -100,9 +100,11 @@ void critical [[noreturn]] (logging_format<Args...> fmt, Args&&... args) {
 }  // namespace clice::logging
 
 #define LOG_MESSAGE(name, fmt, ...)                                                                \
-    if(clice::logging::options.level <= clice::logging::Level::name) {                             \
-        clice::logging::name(fmt __VA_OPT__(, ) __VA_ARGS__);                                      \
-    }
+    do {                                                                                           \
+        if(clice::logging::options.level <= clice::logging::Level::name) {                         \
+            clice::logging::name(fmt __VA_OPT__(, ) __VA_ARGS__);                                  \
+        }                                                                                          \
+    } while(0)
 
 #define LOG_TRACE(fmt, ...) LOG_MESSAGE(trace, fmt, __VA_ARGS__)
 #define LOG_DEBUG(fmt, ...) LOG_MESSAGE(debug, fmt, __VA_ARGS__)
