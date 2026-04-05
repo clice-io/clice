@@ -2,7 +2,6 @@
 
 #include <array>
 #include <chrono>
-#include <cstdio>
 #include <memory>
 #include <string>
 
@@ -42,32 +41,26 @@ void stderr_logger(std::string_view name, const Options& options) {
 void file_logger(std::string_view name, std::string_view dir, const Options& options) {
     llvm::sys::fs::create_directories(dir);
     auto filepath = path::join(dir, std::format("{}.log", name));
-    auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filepath);
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filepath);
 
     if(options.replay_console && ringbuffer_sink) {
-        sink->set_level(options.level);
-        sink->set_pattern(pattern);
+        file_sink->set_level(options.level);
+        file_sink->set_pattern(pattern);
 
         for(auto& log: ringbuffer_sink->last_raw()) {
-            sink->log(log);
+            file_sink->log(log);
         }
 
         ringbuffer_sink.reset();
     }
 
-    auto logger = std::make_shared<spdlog::logger>(std::string(name), std::move(sink));
+    auto console_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>(options.color);
+    std::array<spdlog::sink_ptr, 2> sinks = {file_sink, console_sink};
+    auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
     logger->set_level(options.level);
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
-}
-
-void redirect_stderr(std::string_view dir) {
-    llvm::sys::fs::create_directories(dir);
-    auto filepath = path::join(dir, "crash.log");
-    if(!std::freopen(filepath.c_str(), "a", stderr)) {
-        // If redirect fails, keep original stderr — better than crashing.
-    }
 }
 
 }  // namespace clice::logging

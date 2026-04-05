@@ -1559,7 +1559,6 @@ void MasterServer::register_handlers() {
             auto session_dir =
                 path::join(config.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}", now));
             logging::file_logger("master", session_dir, logging::options);
-            logging::redirect_stderr(session_dir);
             session_log_dir = session_dir;
         }
 

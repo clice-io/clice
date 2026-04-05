@@ -28,10 +28,6 @@ void stderr_logger(std::string_view name, const Options& options);
 
 void file_logger(std::string_view name, std::string_view dir, const Options& options);
 
-/// Redirect stderr (fd 2) to a crash.log file in the given directory.
-/// Captures stacktraces and other crash output that bypasses spdlog.
-void redirect_stderr(std::string_view dir);
-
 template <typename... Args>
 struct logging_rformat {
     template <std::convertible_to<std::string_view> StrLike>
