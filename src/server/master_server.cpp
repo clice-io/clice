@@ -767,7 +767,10 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
 
     auto& doc = it->second;
     LOG_DEBUG("ensure_compiled: path_id={} version={} gen={} ast_dirty={}",
-              path_id, doc.version, doc.generation, doc.ast_dirty);
+              path_id,
+              doc.version,
+              doc.generation,
+              doc.ast_dirty);
 
     if(!doc.ast_dirty) {
         bool changed = false;
@@ -1338,8 +1341,11 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri,
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    LOG_DEBUG("forward_stateful: {} path={} pos={}:{}", "request", path,
-              position.line, position.character);
+    LOG_DEBUG("forward_stateful: {} path={} pos={}:{}",
+              "request",
+              path,
+              position.line,
+              position.character);
 
     if(!co_await ensure_compiled(path_id)) {
         LOG_DEBUG("forward_stateful: ensure_compiled failed for {}", path);
@@ -1373,8 +1379,11 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    LOG_DEBUG("forward_stateless: {} path={} pos={}:{}", "request", path,
-              position.line, position.character);
+    LOG_DEBUG("forward_stateless: {} path={} pos={}:{}",
+              "request",
+              path,
+              position.line,
+              position.character);
 
     auto doc_it = documents.find(path_id);
     if(doc_it == documents.end()) {

@@ -1,4 +1,3 @@
-#include <csignal>
 #include <cstdint>
 #include <iostream>
 #include <print>
@@ -65,9 +64,6 @@ struct Options {
 }  // namespace clice
 
 int main(int argc, const char** argv) {
-    // Ignore SIGPIPE — writes to closed pipes should return EPIPE, not kill us.
-    std::signal(SIGPIPE, SIG_IGN);
-
     auto args = deco::util::argvify(argc, argv);
     auto result = deco::cli::parse<clice::Options>(args);
 
