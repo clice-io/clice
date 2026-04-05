@@ -76,49 +76,33 @@ int run_stateless_worker_mode() {
                 fill_args(cp, params.directory, params.arguments);
                 cp.add_remapped_file(params.file, params.content, params.preamble_bound);
 
-                bool use_output_path = !params.output_path.empty();
-                std::string tmp_path;
-
-                if(use_output_path) {
-                    tmp_path = params.output_path + ".tmp";
+                std::string output;
+                if(!params.output_path.empty()) {
+                    output = params.output_path;
                 } else {
                     auto tmp = fs::createTemporaryFile("clice-pch", "pch");
                     if(!tmp) {
                         LOG_ERROR("BuildPCH: failed to create temp file");
                         return {false, "Failed to create temporary PCH file", ""};
                     }
-                    tmp_path = *tmp;
+                    output = *tmp;
                 }
-                cp.output_file = tmp_path;
+                cp.output_file = output;
 
                 PCHInfo pch_info;
                 auto unit = compile(cp, pch_info);
 
                 if(unit.completed()) {
-                    std::string final_path = tmp_path;
-                    if(use_output_path) {
-                        auto rename_result = fs::rename(tmp_path, params.output_path);
-                        if(rename_result) {
-                            final_path = params.output_path;
-                        } else {
-                            LOG_WARN("BuildPCH: rename {} -> {} failed: {}",
-                                     tmp_path,
-                                     params.output_path,
-                                     rename_result.error().message());
-                            fs::remove(tmp_path);
-                            return {false, "Failed to rename PCH to output path", ""};
-                        }
-                    }
                     LOG_INFO("BuildPCH done: file={}, output={}, {}ms",
                              params.file,
-                             final_path,
+                             output,
                              timer.ms());
-                    worker::BuildPCHResult pch_result{true, "", std::move(final_path)};
+                    worker::BuildPCHResult pch_result{true, "", std::move(output)};
                     pch_result.deps = pch_info.deps;
                     return pch_result;
                 } else {
                     LOG_WARN("BuildPCH failed: file={}, {}ms", params.file, timer.ms());
-                    fs::remove(tmp_path);
+                    fs::remove(output);
                     return {false, "PCH compilation failed", ""};
                 }
             });
@@ -141,46 +125,30 @@ int run_stateless_worker_mode() {
                     cp.pcms.try_emplace(name, path);
                 }
 
-                bool use_output_path = !params.output_path.empty();
-                std::string tmp_path;
-
-                if(use_output_path) {
-                    tmp_path = params.output_path + ".tmp";
+                std::string output;
+                if(!params.output_path.empty()) {
+                    output = params.output_path;
                 } else {
                     auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
                     if(!tmp) {
                         LOG_ERROR("BuildPCM: failed to create temp file");
                         return {false, "Failed to create temporary PCM file"};
                     }
-                    tmp_path = *tmp;
+                    output = *tmp;
                 }
-                cp.output_file = tmp_path;
+                cp.output_file = output;
 
                 PCMInfo pcm_info;
                 auto unit = compile(cp, pcm_info);
 
                 if(unit.completed()) {
-                    std::string final_path = tmp_path;
-                    if(use_output_path) {
-                        auto rename_result = fs::rename(tmp_path, params.output_path);
-                        if(rename_result) {
-                            final_path = params.output_path;
-                        } else {
-                            LOG_WARN("BuildPCM: rename {} -> {} failed: {}",
-                                     tmp_path,
-                                     params.output_path,
-                                     rename_result.error().message());
-                            fs::remove(tmp_path);
-                            return {false, "Failed to rename PCM to output path", ""};
-                        }
-                    }
                     LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
-                    worker::BuildPCMResult pcm_result{true, "", std::move(final_path)};
+                    worker::BuildPCMResult pcm_result{true, "", std::move(output)};
                     pcm_result.deps = pcm_info.deps;
                     return pcm_result;
                 } else {
                     LOG_WARN("BuildPCM failed: module={}, {}ms", params.module_name, timer.ms());
-                    fs::remove(tmp_path);
+                    fs::remove(output);
                     return {false, "PCM compilation failed", ""};
                 }
             });
