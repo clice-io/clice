@@ -114,8 +114,8 @@ async def test_preamble_edit_then_hover(client, workspace):
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no initial diagnostics, got: {diags}"
 
-    # Edit the preamble: add a new #include.
-    new_content = '#include "common.h"\n#include <cstdio>\n' + "\n".join(
+    # Edit the preamble: add a comment line (changes preamble hash without heavy includes).
+    new_content = '#include "common.h"\n// preamble edit\n' + "\n".join(
         content.split("\n")[1:]
     )
     client.text_document_did_change(
