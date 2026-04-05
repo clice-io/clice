@@ -15,42 +15,53 @@
 
 namespace clice {
 
+using deco::decl::KVStyle;
+
 struct Options {
-    DecoKV(names = {"--mode"};
-           help = "Running mode: pipe, socket, stateless-worker, stateful-worker";
-           required = false;)
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Running mode: pipe, socket, stateless-worker, stateful-worker",
+           required = false)
     <std::string> mode;
 
-    DecoKV(names = {"--host"}; help = "Socket mode address"; required = false;)
+    DecoKV(style = KVStyle::JoinedOrSeparate, help = "Socket mode address", required = false)
     <std::string> host = "127.0.0.1";
 
-    DecoKV(names = {"--port"}; help = "Socket mode port"; required = false;)
+    DecoKV(style = KVStyle::JoinedOrSeparate, help = "Socket mode port", required = false)
     <int> port = 50051;
 
-    DecoKV(names = {"--stateful-worker-count"}; help = "Number of stateful workers";
-           required = false;)
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--stateful-worker-count", "--stateful-worker-count="},
+           help = "Number of stateful workers",
+           required = false)
     <std::uint32_t> stateful_worker_count;
 
-    DecoKV(names = {"--stateless-worker-count"}; help = "Number of stateless workers";
-           required = false;)
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--stateless-worker-count", "--stateless-worker-count="},
+           help = "Number of stateless workers",
+           required = false)
     <std::uint32_t> stateless_worker_count;
 
-    DecoKV(names = {"--worker-memory-limit"}; help = "Memory limit per stateful worker (bytes)";
-           required = false;)
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--worker-memory-limit", "--worker-memory-limit="},
+           help = "Memory limit per stateful worker (bytes)",
+           required = false)
     <std::uint64_t> worker_memory_limit;
 
-    DecoKV(names = {"--log-level"}; help = "Log level: trace, debug, info, warn, error, off";
-           required = false;)
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--log-level", "--log-level="},
+           help = "Log level: trace, debug, info, warn, error, off",
+           required = false)
     <std::string> log_level = "info";
 
-    DecoKV(names = {"--record"}; help = "Record LSP input to file for replay testing";
-           required = false;)
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Record LSP input to file for replay testing",
+           required = false)
     <std::string> record;
 
-    DecoFlag(names = {"-h", "--help"}; help = "Show help message"; required = false;)
+    DecoFlag(names = {"-h", "--help"}, help = "Show help message", required = false)
     help;
 
-    DecoFlag(names = {"-v", "--version"}; help = "Show version"; required = false;)
+    DecoFlag(names = {"-v", "--version"}, help = "Show version", required = false)
     version;
 };
 
