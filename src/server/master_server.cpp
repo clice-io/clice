@@ -761,16 +761,14 @@ et::task<bool> MasterServer::ensure_deps(std::uint32_t path_id,
 et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
     auto it = documents.find(path_id);
     if(it == documents.end()) {
+        LOG_DEBUG("ensure_compiled: doc not found for path_id={}", path_id);
         co_return false;
     }
 
     auto& doc = it->second;
+    LOG_DEBUG("ensure_compiled: path_id={} version={} gen={} ast_dirty={}",
+              path_id, doc.version, doc.generation, doc.ast_dirty);
 
-    // Fast path: AST was previously compiled successfully.
-    // Check if any dependency file has changed since the last compilation.
-    // We check both AST deps (body includes) and PCH deps (preamble includes),
-    // because when PCH is active the preamble headers are baked into the PCH
-    // and won't appear in the AST's directive list.
     if(!doc.ast_dirty) {
         bool changed = false;
         auto ast_deps_it = ast_deps.find(path_id);
@@ -1315,15 +1313,22 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    if(!co_await ensure_compiled(path_id))
+    LOG_DEBUG("forward_stateful: {} path={}", "request", path);
+
+    if(!co_await ensure_compiled(path_id)) {
+        LOG_DEBUG("forward_stateful: ensure_compiled failed for {}", path);
         co_return serde_raw{"null"};
+    }
 
     WorkerParams wp;
     wp.path = path;
 
     auto result = co_await pool.send_stateful(path_id, wp);
-    if(!result.has_value())
+    if(!result.has_value()) {
+        LOG_DEBUG("forward_stateful: worker error for {}: {}", path, result.error().message);
         co_return serde_raw{};
+    }
+    LOG_DEBUG("forward_stateful: done {}", path);
     co_return std::move(result.value());
 }
 
@@ -1333,8 +1338,13 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri,
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    if(!co_await ensure_compiled(path_id))
+    LOG_DEBUG("forward_stateful: {} path={} pos={}:{}", "request", path,
+              position.line, position.character);
+
+    if(!co_await ensure_compiled(path_id)) {
+        LOG_DEBUG("forward_stateful: ensure_compiled failed for {}", path);
         co_return serde_raw{"null"};
+    }
 
     WorkerParams wp;
     wp.path = path;
@@ -1349,8 +1359,11 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri,
     }
 
     auto result = co_await pool.send_stateful(path_id, wp);
-    if(!result.has_value())
+    if(!result.has_value()) {
+        LOG_DEBUG("forward_stateful: worker error for {}: {}", path, result.error().message);
         co_return serde_raw{};
+    }
+    LOG_DEBUG("forward_stateful: done {}", path);
     co_return std::move(result.value());
 }
 
@@ -1360,9 +1373,14 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
+    LOG_DEBUG("forward_stateless: {} path={} pos={}:{}", "request", path,
+              position.line, position.character);
+
     auto doc_it = documents.find(path_id);
-    if(doc_it == documents.end())
+    if(doc_it == documents.end()) {
+        LOG_DEBUG("forward_stateless: doc not found for {}", path);
         co_return serde_raw{};
+    }
 
     auto& doc = doc_it->second;
 
@@ -1370,11 +1388,14 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
     wp.path = path;
     wp.version = doc.version;
     wp.text = doc.text;
-    if(!fill_compile_args(path, wp.directory, wp.arguments))
+    if(!fill_compile_args(path, wp.directory, wp.arguments)) {
+        LOG_DEBUG("forward_stateless: no CDB for {}", path);
         co_return serde_raw{};
+    }
 
     // Ensure module deps, PCH, and PCM paths are ready for stateless compilation.
     if(!co_await ensure_deps(path_id, path, wp.text, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
+        LOG_DEBUG("forward_stateless: ensure_deps failed for {}", path);
         co_return serde_raw{};
     }
 
@@ -1385,8 +1406,11 @@ MasterServer::RawResult MasterServer::forward_stateless(const std::string& uri,
     wp.offset = *offset;
 
     auto result = co_await pool.send_stateless(wp);
-    if(!result.has_value())
+    if(!result.has_value()) {
+        LOG_DEBUG("forward_stateless: worker error for {}: {}", path, result.error().message);
         co_return serde_raw{};
+    }
+    LOG_DEBUG("forward_stateless: done {}", path);
     co_return std::move(result.value());
 }
 
@@ -1866,6 +1890,8 @@ void MasterServer::register_handlers() {
 
         doc.generation++;
         doc.ast_dirty = true;
+
+        LOG_DEBUG("didChange: path={} version={} gen={}", path, doc.version, doc.generation);
 
         // Notify the owning stateful worker so it marks the document dirty
         worker::DocumentUpdateParams update;
