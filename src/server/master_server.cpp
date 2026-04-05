@@ -135,16 +135,19 @@ void MasterServer::clear_diagnostics(const std::string& uri) {
 }
 
 /// Serializable cache structures for cache.json persistence.
+/// Paths are stored in a shared table and referenced by index to avoid
+/// redundant storage (a single file can depend on thousands of headers,
+/// many of which are shared across entries).
 namespace {
 
 struct CacheDepEntry {
-    std::string path;
+    std::uint32_t path;  // index into CacheData::paths
     std::uint64_t hash;
 };
 
 struct CachePCHEntry {
     std::string filename;
-    std::string source_file;
+    std::uint32_t source_file;  // index into CacheData::paths
     std::uint64_t hash;
     std::uint32_t bound;
     std::int64_t build_at;
@@ -153,16 +156,29 @@ struct CachePCHEntry {
 
 struct CachePCMEntry {
     std::string filename;
-    std::string source_file;
+    std::uint32_t source_file;  // index into CacheData::paths
     std::string module_name;
     std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
 };
 
 struct CacheData {
+    std::vector<std::string> paths;
     std::vector<CachePCHEntry> pch;
     std::vector<CachePCMEntry> pcm;
 };
+
+/// Helper to intern a path string into CacheData::paths, returning its index.
+static std::uint32_t cache_intern(CacheData& data,
+                                  std::unordered_map<std::string, std::uint32_t>& index_map,
+                                  const std::string& path) {
+    auto [it, inserted] =
+        index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
+    if(inserted) {
+        data.paths.push_back(path);
+    }
+    return it->second;
+}
 
 }  // namespace
 
@@ -184,48 +200,57 @@ void MasterServer::load_cache() {
         return;
     }
 
+    auto resolve = [&](std::uint32_t idx) -> llvm::StringRef {
+        return idx < data.paths.size() ? llvm::StringRef(data.paths[idx]) : "";
+    };
+
     for(auto& entry: data.pch) {
         auto pch_path = path::join(config.cache_dir, "cache", "pch", entry.filename);
-        if(!llvm::sys::fs::exists(pch_path) || entry.source_file.empty())
+        auto source = resolve(entry.source_file);
+        if(!llvm::sys::fs::exists(pch_path) || source.empty())
             continue;
 
         DepsSnapshot deps;
         deps.build_at = entry.build_at;
         for(auto& dep: entry.deps) {
-            deps.path_ids.push_back(path_pool.intern(dep.path));
+            auto dep_path = resolve(dep.path);
+            if(dep_path.empty())
+                continue;
+            deps.path_ids.push_back(path_pool.intern(dep_path));
             deps.hashes.push_back(dep.hash);
         }
 
-        auto path_id = path_pool.intern(entry.source_file);
+        auto path_id = path_pool.intern(source);
         auto& st = pch_states[path_id];
         st.path = pch_path;
         st.hash = entry.hash;
         st.bound = entry.bound;
         st.deps = std::move(deps);
 
-        LOG_DEBUG("Loaded cached PCH: {} -> {}", entry.source_file, pch_path);
+        LOG_DEBUG("Loaded cached PCH: {} -> {}", source, pch_path);
     }
 
     for(auto& entry: data.pcm) {
         auto pcm_path = path::join(config.cache_dir, "cache", "pcm", entry.filename);
-        if(!llvm::sys::fs::exists(pcm_path) || entry.source_file.empty())
+        auto source = resolve(entry.source_file);
+        if(!llvm::sys::fs::exists(pcm_path) || source.empty())
             continue;
 
         DepsSnapshot deps;
         deps.build_at = entry.build_at;
         for(auto& dep: entry.deps) {
-            deps.path_ids.push_back(path_pool.intern(dep.path));
+            auto dep_path = resolve(dep.path);
+            if(dep_path.empty())
+                continue;
+            deps.path_ids.push_back(path_pool.intern(dep_path));
             deps.hashes.push_back(dep.hash);
         }
 
-        auto path_id = path_pool.intern(entry.source_file);
+        auto path_id = path_pool.intern(source);
         pcm_states[path_id] = {pcm_path, std::move(deps)};
         pcm_paths[path_id] = pcm_path;
 
-        LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}",
-                  entry.source_file,
-                  entry.module_name,
-                  pcm_path);
+        LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, pcm_path);
     }
 
     LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries",
@@ -238,6 +263,11 @@ void MasterServer::save_cache() {
         return;
 
     CacheData data;
+    std::unordered_map<std::string, std::uint32_t> index_map;
+
+    auto intern = [&](std::uint32_t runtime_path_id) -> std::uint32_t {
+        return cache_intern(data, index_map, std::string(path_pool.resolve(runtime_path_id)));
+    };
 
     for(auto& [path_id, st]: pch_states) {
         if(st.path.empty())
@@ -245,13 +275,12 @@ void MasterServer::save_cache() {
 
         CachePCHEntry entry;
         entry.filename = std::string(path::filename(st.path));
-        entry.source_file = std::string(path_pool.resolve(path_id));
+        entry.source_file = intern(path_id);
         entry.hash = st.hash;
         entry.bound = st.bound;
         entry.build_at = st.deps.build_at;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
-            entry.deps.push_back(
-                {std::string(path_pool.resolve(st.deps.path_ids[i])), st.deps.hashes[i]});
+            entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }
         data.pch.push_back(std::move(entry));
     }
@@ -262,13 +291,12 @@ void MasterServer::save_cache() {
 
         CachePCMEntry entry;
         entry.filename = std::string(path::filename(st.path));
-        entry.source_file = std::string(path_pool.resolve(path_id));
+        entry.source_file = intern(path_id);
         auto mod_it = path_to_module.find(path_id);
         entry.module_name = mod_it != path_to_module.end() ? mod_it->second : "";
         entry.build_at = st.deps.build_at;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
-            entry.deps.push_back(
-                {std::string(path_pool.resolve(st.deps.path_ids[i])), st.deps.hashes[i]});
+            entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }
         data.pcm.push_back(std::move(entry));
     }
