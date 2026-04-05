@@ -1166,18 +1166,20 @@ PreambleCompletionContext MasterServer::detect_completion_context(const std::str
     // Strip leading whitespace.
     auto trimmed = line.ltrim();
 
-    // Check for #include "prefix
-    if(trimmed.consume_front("#")) {
-        trimmed = trimmed.ltrim();
-        if(trimmed.consume_front("include")) {
-            trimmed = trimmed.ltrim();
-            if(trimmed.consume_front("\"")) {
-                return {CompletionContext::IncludeQuoted, trimmed.str()};
+    // Check for #include "prefix or #include <prefix
+    if(trimmed.starts_with("#")) {
+        auto directive = trimmed.drop_front(1).ltrim();
+        if(directive.consume_front("include")) {
+            directive = directive.ltrim();
+            if(directive.consume_front("\"")) {
+                return {CompletionContext::IncludeQuoted, directive.str()};
             }
-            if(trimmed.consume_front("<")) {
-                return {CompletionContext::IncludeAngled, trimmed.str()};
+            if(directive.consume_front("<")) {
+                return {CompletionContext::IncludeAngled, directive.str()};
             }
         }
+        // Line starts with # but isn't #include — not a completion context.
+        return {};
     }
 
     // Check for [export] import prefix (without trailing semicolon).

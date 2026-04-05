@@ -517,7 +517,12 @@ bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound) {
         }
 
         // C++20 module statements: import, export module, export import
-        if(trimmed.starts_with("import") || trimmed.starts_with("export")) {
+        // Check word boundary to avoid matching identifiers like "important".
+        auto is_keyword = [](llvm::StringRef s, llvm::StringRef keyword) {
+            return s.starts_with(keyword) &&
+                   (s.size() == keyword.size() || !llvm::isAlnum(s[keyword.size()]));
+        };
+        if(is_keyword(trimmed, "import") || is_keyword(trimmed, "export")) {
             if(!is_module_statement_complete(trimmed)) {
                 return false;
             }
