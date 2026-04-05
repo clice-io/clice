@@ -602,6 +602,13 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
             st.bound = bound;
             co_return true;
         }
+
+        // Preamble changed, but if it's incomplete (user still typing an #include
+        // path), defer the rebuild and keep using the old PCH.
+        if(!st.path.empty() && !is_preamble_complete(text, bound)) {
+            LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
+            co_return true;
+        }
     }
 
     // If another coroutine is already building PCH for this file, wait for it.

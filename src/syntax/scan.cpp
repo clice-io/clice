@@ -476,4 +476,52 @@ std::vector<std::uint32_t> compute_preamble_bounds(llvm::StringRef content) {
     return result;
 }
 
+bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound) {
+    auto preamble = content.substr(0, bound);
+
+    // Scan each line for incomplete #include/#import directives.
+    while(!preamble.empty()) {
+        auto [line, rest] = preamble.split('\n');
+        preamble = rest;
+
+        auto trimmed = line.ltrim();
+
+        if(!trimmed.starts_with("#")) {
+            continue;
+        }
+
+        // Strip '#' and whitespace to get the directive name.
+        auto directive = trimmed.drop_front(1).ltrim();
+
+        if(!directive.starts_with("include") && !directive.starts_with("import")) {
+            continue;
+        }
+
+        // Check for closing delimiter on this line.
+        // Valid: #include "foo.h"  or  #include <bar.h>
+        // Invalid: #include "foo  or  #include <bar  (user still typing)
+        if(directive.contains('"')) {
+            // Count quotes — need an even number for completeness.
+            auto after_keyword = directive.drop_front(directive.starts_with("import") ? 6 : 7);
+            if(after_keyword.count('"') < 2) {
+                return false;
+            }
+        } else if(directive.contains('<')) {
+            if(!directive.contains('>')) {
+                return false;
+            }
+        } else {
+            // #include with no " or < at all — might be a macro or incomplete.
+            // Treat macro usage (#include FOO) as complete; empty (#include ) as incomplete.
+            auto after_keyword =
+                directive.drop_front(directive.starts_with("import") ? 6 : 7).ltrim();
+            if(after_keyword.empty()) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 }  // namespace clice
