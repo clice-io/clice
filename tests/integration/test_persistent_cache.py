@@ -1,6 +1,6 @@
 """Integration tests for persistent PCH/PCM cache.
 
-Verifies that PCH/PCM artifacts are written to .clice/pch/ and .clice/pcm/
+Verifies that PCH/PCM artifacts are written to .clice/cache/pch/ and .clice/cache/pcm/
 with content-addressed filenames, survive server restarts via cache.json,
 and are properly reused across sessions.
 """
@@ -44,7 +44,7 @@ def _doc(uri: str) -> TextDocumentIdentifier:
 
 def _list_pch_files(workspace: Path) -> list[Path]:
     """Return all .pch files in the cache directory."""
-    pch_dir = workspace / ".clice" / "pch"
+    pch_dir = workspace / ".clice" / "cache" / "pch"
     if not pch_dir.exists():
         return []
     return sorted(pch_dir.glob("*.pch"))
@@ -52,7 +52,7 @@ def _list_pch_files(workspace: Path) -> list[Path]:
 
 def _list_pcm_files(workspace: Path) -> list[Path]:
     """Return all .pcm files in the cache directory."""
-    pcm_dir = workspace / ".clice" / "pcm"
+    pcm_dir = workspace / ".clice" / "cache" / "pcm"
     if not pcm_dir.exists():
         return []
     return sorted(pcm_dir.glob("*.pcm"))
@@ -60,7 +60,7 @@ def _list_pcm_files(workspace: Path) -> list[Path]:
 
 def _cache_json(workspace: Path) -> dict | None:
     """Read and parse cache.json, or return None if absent."""
-    path = workspace / ".clice" / "cache.json"
+    path = workspace / ".clice" / "cache" / "cache.json"
     if not path.exists():
         return None
     return json.loads(path.read_text())
@@ -103,7 +103,7 @@ async def _shutdown_client(c: CliceClient) -> None:
 
 async def test_pch_written_to_cache_dir(client, tmp_path):
     """After opening a file with #include, a .pch file should appear
-    in .clice/pch/ with a hex-hash filename."""
+    in .clice/cache/pch/ with a hex-hash filename."""
     (tmp_path / "header.h").write_text("#pragma once\nstruct Foo { int x; };\n")
     (tmp_path / "main.cpp").write_text(
         '#include "header.h"\nint main() { Foo f; return f.x; }\n'
@@ -117,7 +117,7 @@ async def test_pch_written_to_cache_dir(client, tmp_path):
 
     # Verify PCH file exists in the cache directory.
     pch_files = _list_pch_files(tmp_path)
-    assert len(pch_files) >= 1, "Expected at least one .pch file in .clice/pch/"
+    assert len(pch_files) >= 1, "Expected at least one .pch file in .clice/cache/pch/"
     # Filename should be a 16-char hex hash + .pch
     assert pch_files[0].stem and len(pch_files[0].stem) == 16, (
         f"Expected 16-char hex filename, got: {pch_files[0].name}"
@@ -341,7 +341,7 @@ async def test_no_tmp_files_after_build(client, tmp_path):
 
 
 async def test_cache_dirs_created_on_startup(client, tmp_path):
-    """The .clice/pch/ and .clice/pcm/ directories should be created
+    """The .clice/cache/pch/ and .clice/cache/pcm/ directories should be created
     when the server initializes a workspace."""
     (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
     _write_cdb(tmp_path, ["main.cpp"])
@@ -352,5 +352,9 @@ async def test_cache_dirs_created_on_startup(client, tmp_path):
     uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
     assert len(client.diagnostics.get(uri, [])) == 0
 
-    assert (tmp_path / ".clice" / "pch").is_dir(), ".clice/pch/ should be created"
-    assert (tmp_path / ".clice" / "pcm").is_dir(), ".clice/pcm/ should be created"
+    assert (tmp_path / ".clice" / "cache" / "pch").is_dir(), (
+        ".clice/cache/pch/ should be created"
+    )
+    assert (tmp_path / ".clice" / "cache" / "pcm").is_dir(), (
+        ".clice/cache/pcm/ should be created"
+    )

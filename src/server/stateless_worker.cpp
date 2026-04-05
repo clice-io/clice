@@ -76,18 +76,7 @@ int run_stateless_worker_mode() {
                 fill_args(cp, params.directory, params.arguments);
                 cp.add_remapped_file(params.file, params.content, params.preamble_bound);
 
-                std::string output;
-                if(!params.output_path.empty()) {
-                    output = params.output_path;
-                } else {
-                    auto tmp = fs::createTemporaryFile("clice-pch", "pch");
-                    if(!tmp) {
-                        LOG_ERROR("BuildPCH: failed to create temp file");
-                        return {false, "Failed to create temporary PCH file", ""};
-                    }
-                    output = *tmp;
-                }
-                cp.output_file = output;
+                cp.output_file = params.output_path;
 
                 PCHInfo pch_info;
                 auto unit = compile(cp, pch_info);
@@ -95,14 +84,14 @@ int run_stateless_worker_mode() {
                 if(unit.completed()) {
                     LOG_INFO("BuildPCH done: file={}, output={}, {}ms",
                              params.file,
-                             output,
+                             params.output_path,
                              timer.ms());
-                    worker::BuildPCHResult pch_result{true, "", std::move(output)};
+                    worker::BuildPCHResult pch_result{true, "", params.output_path};
                     pch_result.deps = pch_info.deps;
                     return pch_result;
                 } else {
                     LOG_WARN("BuildPCH failed: file={}, {}ms", params.file, timer.ms());
-                    fs::remove(output);
+                    fs::remove(params.output_path);
                     return {false, "PCH compilation failed", ""};
                 }
             });
@@ -125,30 +114,19 @@ int run_stateless_worker_mode() {
                     cp.pcms.try_emplace(name, path);
                 }
 
-                std::string output;
-                if(!params.output_path.empty()) {
-                    output = params.output_path;
-                } else {
-                    auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
-                    if(!tmp) {
-                        LOG_ERROR("BuildPCM: failed to create temp file");
-                        return {false, "Failed to create temporary PCM file"};
-                    }
-                    output = *tmp;
-                }
-                cp.output_file = output;
+                cp.output_file = params.output_path;
 
                 PCMInfo pcm_info;
                 auto unit = compile(cp, pcm_info);
 
                 if(unit.completed()) {
                     LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
-                    worker::BuildPCMResult pcm_result{true, "", std::move(output)};
+                    worker::BuildPCMResult pcm_result{true, "", params.output_path};
                     pcm_result.deps = pcm_info.deps;
                     return pcm_result;
                 } else {
                     LOG_WARN("BuildPCM failed: module={}, {}ms", params.module_name, timer.ms());
-                    fs::remove(output);
+                    fs::remove(params.output_path);
                     return {false, "PCM compilation failed", ""};
                 }
             });

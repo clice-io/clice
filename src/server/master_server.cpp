@@ -170,7 +170,7 @@ void MasterServer::load_cache() {
     if(config.cache_dir.empty())
         return;
 
-    auto cache_path = path::join(config.cache_dir, "cache.json");
+    auto cache_path = path::join(config.cache_dir, "cache", "cache.json");
     auto content = fs::read(cache_path);
     if(!content) {
         LOG_DEBUG("No cache.json found at {}", cache_path);
@@ -185,7 +185,7 @@ void MasterServer::load_cache() {
     }
 
     for(auto& entry: data.pch) {
-        auto pch_path = path::join(config.cache_dir, "pch", entry.filename);
+        auto pch_path = path::join(config.cache_dir, "cache", "pch", entry.filename);
         if(!llvm::sys::fs::exists(pch_path) || entry.source_file.empty())
             continue;
 
@@ -207,7 +207,7 @@ void MasterServer::load_cache() {
     }
 
     for(auto& entry: data.pcm) {
-        auto pcm_path = path::join(config.cache_dir, "pcm", entry.filename);
+        auto pcm_path = path::join(config.cache_dir, "cache", "pcm", entry.filename);
         if(!llvm::sys::fs::exists(pcm_path) || entry.source_file.empty())
             continue;
 
@@ -279,7 +279,7 @@ void MasterServer::save_cache() {
         return;
     }
 
-    auto cache_path = path::join(config.cache_dir, "cache.json");
+    auto cache_path = path::join(config.cache_dir, "cache", "cache.json");
     auto write_result = fs::write(cache_path, *json_str);
     if(!write_result) {
         LOG_WARN("Failed to write cache.json: {}", write_result.error().message());
@@ -293,7 +293,7 @@ void MasterServer::cleanup_cache(int max_age_days) {
     auto now = std::chrono::system_clock::now();
     auto max_age = std::chrono::hours(max_age_days * 24);
 
-    for(auto* subdir: {"pch", "pcm"}) {
+    for(auto* subdir: {"cache/pch", "cache/pcm"}) {
         auto dir = path::join(config.cache_dir, subdir);
         std::error_code ec;
         for(auto it = llvm::sys::fs::directory_iterator(dir, ec);
@@ -326,8 +326,8 @@ et::task<> MasterServer::load_workspace() {
             LOG_INFO("Cache directory: {}", config.cache_dir);
         }
 
-        // Create pch/ and pcm/ subdirectories inside cache directory
-        for(auto* subdir: {"pch", "pcm"}) {
+        // Create cache/pch/ and cache/pcm/ subdirectories
+        for(auto* subdir: {"cache/pch", "cache/pcm"}) {
             auto dir = path::join(config.cache_dir, subdir);
             auto ec2 = llvm::sys::fs::create_directories(dir);
             if(ec2) {
@@ -471,7 +471,7 @@ et::task<> MasterServer::load_workspace() {
         std::ranges::replace(safe_module_name, ':', '-');
         auto args_hash = llvm::xxh3_64bits(llvm::StringRef(file_path));
         auto pcm_filename = std::format("{}-{:016x}.pcm", safe_module_name, args_hash);
-        auto pcm_path = path::join(config.cache_dir, "pcm", pcm_filename);
+        auto pcm_path = path::join(config.cache_dir, "cache", "pcm", pcm_filename);
 
         // Check if cached PCM is still valid.
         if(auto pcm_it = pcm_states.find(path_id); pcm_it != pcm_states.end()) {
@@ -553,7 +553,8 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
     auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(text).substr(0, bound));
 
     // Deterministic content-addressed PCH path.
-    auto pch_path = path::join(config.cache_dir, "pch", std::format("{:016x}.pch", preamble_hash));
+    auto pch_path =
+        path::join(config.cache_dir, "cache", "pch", std::format("{:016x}.pch", preamble_hash));
 
     // Reuse existing PCH if preamble content and deps haven't changed.
     if(auto it = pch_states.find(path_id); it != pch_states.end()) {
