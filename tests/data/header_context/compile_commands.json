@@ -1,0 +1,1 @@
+[{"directory": ".", "command": "clang++ -std=c++17 -I. main.cpp", "file": "main.cpp"}]

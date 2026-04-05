@@ -411,6 +411,9 @@ et::task<> MasterServer::load_workspace() {
 
     auto report = scan_dependency_graph(cdb, path_pool, dependency_graph);
 
+    // Build reverse include map so headers can find their host source files.
+    dependency_graph.build_reverse_map();
+
     auto unresolved = report.includes_found - report.includes_resolved;
     double accuracy =
         report.includes_found > 0
@@ -562,20 +565,191 @@ et::task<> MasterServer::load_workspace() {
     LOG_INFO("CompileGraph initialized with {} module(s)", path_to_module.size());
 }
 
+std::optional<HeaderFileContext>
+    MasterServer::resolve_header_context(std::uint32_t header_path_id) {
+    // Find source files that transitively include this header.
+    auto hosts = dependency_graph.find_host_sources(header_path_id);
+    if(hosts.empty()) {
+        LOG_DEBUG("resolve_header_context: no host sources for path_id={}", header_path_id);
+        return std::nullopt;
+    }
+
+    // Pick the first available host that has a CDB entry.
+    std::uint32_t host_path_id = 0;
+    std::vector<std::uint32_t> chain;
+    for(auto candidate: hosts) {
+        auto candidate_path = path_pool.resolve(candidate);
+        auto results = cdb.lookup(candidate_path, {.suppress_logging = true});
+        if(results.empty())
+            continue;
+        auto c = dependency_graph.find_include_chain(candidate, header_path_id);
+        if(c.empty())
+            continue;
+        host_path_id = candidate;
+        chain = std::move(c);
+        break;
+    }
+
+    if(chain.empty()) {
+        LOG_DEBUG("resolve_header_context: no usable host with include chain for path_id={}",
+                  header_path_id);
+        return std::nullopt;
+    }
+
+    // Build preamble text: for each file in the chain except the last (target),
+    // append all content up to (but not including) the line that includes the
+    // next file in the chain.
+    std::string preamble;
+    for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
+        auto cur_id = chain[i];
+        auto next_id = chain[i + 1];
+
+        auto cur_path = path_pool.resolve(cur_id);
+        auto next_path = path_pool.resolve(next_id);
+        auto next_filename = llvm::sys::path::filename(next_path);
+
+        // Prefer in-memory document text over disk content.
+        std::string content;
+        if(auto doc_it = documents.find(cur_id); doc_it != documents.end()) {
+            content = doc_it->second.text;
+        } else {
+            auto buf = llvm::MemoryBuffer::getFile(cur_path);
+            if(!buf) {
+                LOG_WARN("resolve_header_context: cannot read {}", cur_path);
+                return std::nullopt;
+            }
+            content = (*buf)->getBuffer().str();
+        }
+
+        // Scan line by line for the #include that brings in next_filename.
+        llvm::StringRef content_ref(content);
+        std::size_t line_start = 0;
+        std::size_t include_line_start = std::string::npos;
+        while(line_start <= content_ref.size()) {
+            auto newline_pos = content_ref.find('\n', line_start);
+            auto line_end =
+                (newline_pos == llvm::StringRef::npos) ? content_ref.size() : newline_pos;
+            auto line = content_ref.slice(line_start, line_end).trim();
+
+            if(line.starts_with("#include") || line.starts_with("# include")) {
+                // Check if this line references the next file in the chain.
+                if(line.contains(next_filename)) {
+                    include_line_start = line_start;
+                    break;
+                }
+            }
+
+            line_start =
+                (newline_pos == llvm::StringRef::npos) ? content_ref.size() + 1 : newline_pos + 1;
+        }
+
+        // Emit a #line marker then all content before the include line.
+        preamble += std::format("#line 1 \"{}\"\n", cur_path.str());
+        if(include_line_start != std::string::npos) {
+            preamble += content_ref.substr(0, include_line_start).str();
+        } else {
+            // No matching include line found — emit the whole file to be safe.
+            LOG_DEBUG("resolve_header_context: include line for {} not found in {}, emitting full",
+                      next_filename,
+                      cur_path);
+            preamble += content;
+        }
+    }
+
+    // Hash the preamble and write to cache directory.
+    auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(preamble));
+    auto preamble_filename = std::format("{:016x}.h", preamble_hash);
+    auto preamble_dir = path::join(config.cache_dir, "header_context");
+    auto preamble_path = path::join(preamble_dir, preamble_filename);
+
+    if(!llvm::sys::fs::exists(preamble_path)) {
+        auto ec = llvm::sys::fs::create_directories(preamble_dir);
+        if(ec) {
+            LOG_WARN("resolve_header_context: cannot create dir {}: {}",
+                     preamble_dir,
+                     ec.message());
+            return std::nullopt;
+        }
+        if(auto result = fs::write(preamble_path, preamble); !result) {
+            LOG_WARN("resolve_header_context: cannot write preamble {}: {}",
+                     preamble_path,
+                     result.error().message());
+            return std::nullopt;
+        }
+        LOG_INFO("resolve_header_context: wrote preamble {} for header path_id={}",
+                 preamble_path,
+                 header_path_id);
+    }
+
+    return HeaderFileContext{host_path_id, preamble_path, preamble_hash};
+}
+
 bool MasterServer::fill_compile_args(llvm::StringRef path,
                                      std::string& directory,
                                      std::vector<std::string>& arguments) {
     auto results = cdb.lookup(path, {.query_toolchain = true});
-    if(results.empty()) {
-        LOG_WARN("No CDB entry for {}", path);
+    if(!results.empty()) {
+        auto& ctx = results.front();
+        directory = ctx.directory.str();
+        arguments.clear();
+        for(auto* arg: ctx.arguments) {
+            arguments.emplace_back(arg);
+        }
+        return true;
+    }
+
+    // No direct CDB entry — try to compile the header in context of a host source.
+    auto path_id = path_pool.intern(path);
+
+    // Use cached context if available; otherwise resolve.
+    const HeaderFileContext* ctx_ptr = nullptr;
+    auto ctx_it = header_file_contexts.find(path_id);
+    if(ctx_it != header_file_contexts.end()) {
+        ctx_ptr = &ctx_it->second;
+    } else {
+        auto resolved = resolve_header_context(path_id);
+        if(!resolved) {
+            LOG_WARN("No CDB entry and no header context for {}", path);
+            return false;
+        }
+        header_file_contexts[path_id] = std::move(*resolved);
+        ctx_ptr = &header_file_contexts[path_id];
+    }
+
+    auto host_path = path_pool.resolve(ctx_ptr->host_path_id);
+    auto host_results = cdb.lookup(host_path, {.query_toolchain = true});
+    if(host_results.empty()) {
+        LOG_WARN("fill_compile_args: host {} has no CDB entry", host_path);
         return false;
     }
-    auto& ctx = results.front();
-    directory = ctx.directory.str();
+
+    auto& host_ctx = host_results.front();
+    directory = host_ctx.directory.str();
     arguments.clear();
-    for(auto* arg: ctx.arguments) {
-        arguments.emplace_back(arg);
+
+    // Copy host arguments, skipping the last element if it looks like a source
+    // file path (i.e. not a flag). The header path is used as the main file by
+    // the caller via CompileParams::path.
+    auto num_args = host_ctx.arguments.size();
+    std::size_t copy_count = num_args;
+    if(copy_count > 0) {
+        llvm::StringRef last(host_ctx.arguments[copy_count - 1]);
+        if(!last.starts_with("-"))
+            copy_count -= 1;
     }
+    for(std::size_t i = 0; i < copy_count; ++i) {
+        arguments.emplace_back(host_ctx.arguments[i]);
+    }
+
+    // Inject the preamble before the header so the compiler sees all context
+    // code that normally precedes this header in the host translation unit.
+    arguments.insert(arguments.begin() + 1, ctx_ptr->preamble_path);
+    arguments.insert(arguments.begin() + 1, "-include");
+
+    LOG_INFO("fill_compile_args: using header context for {} (host={}, preamble={})",
+             path,
+             host_path,
+             ctx_ptr->preamble_path);
     return true;
 }
 
@@ -2015,6 +2189,22 @@ void MasterServer::register_handlers() {
                 if(doc_it != documents.end()) {
                     doc_it->second.ast_dirty = true;
                 }
+            }
+        }
+
+        // Invalidate header contexts whose host is the saved file.
+        // Collect entries to erase to avoid modifying the map while iterating.
+        llvm::SmallVector<std::uint32_t, 4> stale_headers;
+        for(auto& [hdr_id, hdr_ctx]: header_file_contexts) {
+            if(hdr_ctx.host_path_id == path_id)
+                stale_headers.push_back(hdr_id);
+        }
+        for(auto hdr_id: stale_headers) {
+            header_file_contexts.erase(hdr_id);
+            auto doc_it = documents.find(hdr_id);
+            if(doc_it != documents.end()) {
+                doc_it->second.ast_dirty = true;
+                LOG_DEBUG("didSave: invalidated header context for path_id={}", hdr_id);
             }
         }
 

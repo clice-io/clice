@@ -70,6 +70,24 @@ public:
     /// Get the union of includes across all configs for a file.
     llvm::SmallVector<std::uint32_t> get_all_includes(std::uint32_t path_id) const;
 
+    /// Build the reverse include map from the forward includes.
+    /// Must be called after all set_includes() calls are complete.
+    void build_reverse_map();
+
+    /// Get the direct includers of a file (files that directly include path_id).
+    llvm::ArrayRef<std::uint32_t> get_includers(std::uint32_t path_id) const;
+
+    /// BFS upward through reverse edges to find all source files (roots)
+    /// that transitively include header_path_id.
+    /// Source files are those that have no includers (i.e. they are roots in the graph).
+    llvm::SmallVector<std::uint32_t, 4> find_host_sources(std::uint32_t header_path_id) const;
+
+    /// BFS forward through include edges to find the shortest include chain
+    /// from host_path_id to target_path_id.
+    /// Returns [host, intermediate1, ..., target], or empty if no path exists.
+    std::vector<std::uint32_t> find_include_chain(std::uint32_t host_path_id,
+                                                  std::uint32_t target_path_id) const;
+
     /// Number of files with include entries.
     std::size_t file_count() const;
 
@@ -94,6 +112,10 @@ private:
 
     /// Track which files have any include entries (for file_count).
     llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> file_configs;
+
+    /// Reverse include map: PathID -> list of PathIDs that directly include it.
+    /// Populated by build_reverse_map().
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t, 4>> reverse_includes_;
 };
 
 /// A (file, search-config) pair used to track per-wave work items.
