@@ -87,7 +87,9 @@ auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
     }
 
     auto entry = self->SM().getFileEntryRefForID(fid);
-    assert(entry && "Invalid file entry");
+    if(!entry) {
+        return {};
+    }
 
     llvm::SmallString<128> path;
 
@@ -242,13 +244,19 @@ std::vector<std::string> CompilationUnitRef::deps() {
     for(auto& [fid, directive]: directives()) {
         for(auto& include: directive.includes) {
             if(!include.skipped) {
-                deps.try_emplace(file_path(include.fid));
+                auto path = file_path(include.fid);
+                if(!path.empty()) {
+                    deps.try_emplace(path);
+                }
             }
         }
 
         for(auto& has_include: directive.has_includes) {
             if(has_include.fid.isValid()) {
-                deps.try_emplace(file_path(has_include.fid));
+                auto path = file_path(has_include.fid);
+                if(!path.empty()) {
+                    deps.try_emplace(path);
+                }
             }
         }
     }
