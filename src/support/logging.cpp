@@ -57,16 +57,7 @@ void file_logger(std::string_view name, std::string_view dir, const Options& opt
     }
     auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filepath);
 
-    if(options.replay_console && ringbuffer_sink) {
-        file_sink->set_level(options.level);
-        file_sink->set_pattern(pattern);
-
-        for(auto& log: ringbuffer_sink->last_raw()) {
-            file_sink->log(log);
-        }
-
-        ringbuffer_sink.reset();
-    }
+    auto replay_buffer = ringbuffer_sink;
 
     auto console_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>(options.color);
     std::array<spdlog::sink_ptr, 2> sinks = {file_sink, console_sink};
@@ -75,6 +66,19 @@ void file_logger(std::string_view name, std::string_view dir, const Options& opt
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
+
+    // Replay buffered logs after swapping the default logger, so no messages
+    // emitted between the snapshot and the swap are lost.
+    if(options.replay_console && replay_buffer) {
+        file_sink->set_level(options.level);
+        file_sink->set_pattern(pattern);
+
+        for(auto& log: replay_buffer->last_raw()) {
+            file_sink->log(log);
+        }
+
+        ringbuffer_sink.reset();
+    }
 
     install_crash_handler(filepath);
 }
@@ -96,6 +100,7 @@ void install_crash_handler(std::string_view log_path) {
                                                ec,
                                                llvm::sys::fs::OF_Append);
     if(ec) {
+        LOG_WARN("Failed to install crash handler for {}: {}", log_path, ec.message());
         crash_log_stream.reset();
         return;
     }
