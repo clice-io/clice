@@ -30,24 +30,6 @@ struct Options {
     <int> port = 50051;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--stateful-worker-count", "--stateful-worker-count="},
-           help = "Number of stateful workers",
-           required = false)
-    <std::uint32_t> stateful_worker_count;
-
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--stateless-worker-count", "--stateless-worker-count="},
-           help = "Number of stateless workers",
-           required = false)
-    <std::uint32_t> stateless_worker_count;
-
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--worker-memory-limit", "--worker-memory-limit="},
-           help = "Memory limit per stateful worker (bytes)",
-           required = false)
-    <std::uint64_t> worker_memory_limit;
-
-    DecoKV(style = KVStyle::JoinedOrSeparate,
            names = {"--log-level", "--log-level="},
            help = "Log level: trace, debug, info, warn, error, off",
            required = false)
@@ -58,17 +40,19 @@ struct Options {
            required = false)
     <std::string> record;
 
+    // Internal options (passed from master to worker processes)
     DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--log-dir", "--log-dir="},
-           help = "Directory for log files",
+           names = {"--worker-memory-limit", "--worker-memory-limit="},
            required = false)
-    <std::string> log_dir;
+    <std::uint64_t> worker_memory_limit;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            names = {"--worker-name", "--worker-name="},
-           help = "Worker name for logging (internal use)",
            required = false)
     <std::string> worker_name;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate, names = {"--log-dir", "--log-dir="}, required = false)
+    <std::string> log_dir;
 
     DecoFlag(names = {"-h", "--help"}, help = "Show help message", required = false)
     help;

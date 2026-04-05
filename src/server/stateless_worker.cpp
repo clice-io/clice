@@ -51,6 +51,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     logging::stderr_logger(worker_name, logging::options);
     if(!log_dir.empty()) {
         logging::file_logger(worker_name, log_dir, logging::options);
+        logging::redirect_stderr(log_dir);
     }
 
     LOG_INFO("Starting stateless worker");

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstdio>
 #include <memory>
 #include <string>
 
@@ -59,6 +60,14 @@ void file_logger(std::string_view name, std::string_view dir, const Options& opt
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
+}
+
+void redirect_stderr(std::string_view dir) {
+    llvm::sys::fs::create_directories(dir);
+    auto filepath = path::join(dir, "crash.log");
+    if(!std::freopen(filepath.c_str(), "a", stderr)) {
+        // If redirect fails, keep original stderr — better than crashing.
+    }
 }
 
 }  // namespace clice::logging
