@@ -45,6 +45,16 @@ void file_logger(std::string_view name, std::string_view dir, const Options& opt
         return;
     }
     auto filepath = path::join(dir, std::format("{}.log", name));
+    // Verify we can write to the file before constructing the sink.
+    // (spdlog would throw on failure, but exceptions are disabled in this project.)
+    {
+        std::error_code ec;
+        llvm::raw_fd_ostream test(filepath, ec, llvm::sys::fs::OF_Append);
+        if(ec) {
+            spdlog::error("Failed to open log file {}: {}", filepath, ec.message());
+            return;
+        }
+    }
     auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filepath);
 
     if(options.replay_console && ringbuffer_sink) {

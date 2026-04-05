@@ -24,6 +24,7 @@
 #include "syntax/scan.h"
 
 #include "llvm/Support/Chrono.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 
@@ -1556,8 +1557,9 @@ void MasterServer::register_handlers() {
         // Switch master to file logging under a session-timestamped directory
         if(!config.logging_dir.empty()) {
             auto now = std::chrono::system_clock::now();
+            auto pid = llvm::sys::Process::getProcessId();
             auto session_dir =
-                path::join(config.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}", now));
+                path::join(config.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
             logging::file_logger("master", session_dir, logging::options);
             session_log_dir = session_dir;
         }
