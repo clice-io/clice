@@ -23,7 +23,6 @@
 #include "syntax/scan.h"
 
 #include "llvm/Support/Chrono.h"
-#include "llvm/Support/JSON.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 
@@ -135,6 +134,38 @@ void MasterServer::clear_diagnostics(const std::string& uri) {
     peer.send_notification(params);
 }
 
+/// Serializable cache structures for cache.json persistence.
+namespace {
+
+struct CacheDepEntry {
+    std::string path;
+    std::uint64_t hash;
+};
+
+struct CachePCHEntry {
+    std::string filename;
+    std::string source_file;
+    std::uint64_t hash;
+    std::uint32_t bound;
+    std::int64_t build_at;
+    std::vector<CacheDepEntry> deps;
+};
+
+struct CachePCMEntry {
+    std::string filename;
+    std::string source_file;
+    std::string module_name;
+    std::int64_t build_at;
+    std::vector<CacheDepEntry> deps;
+};
+
+struct CacheData {
+    std::vector<CachePCHEntry> pch;
+    std::vector<CachePCMEntry> pcm;
+};
+
+}  // namespace
+
 void MasterServer::load_cache() {
     if(config.cache_dir.empty())
         return;
@@ -146,110 +177,55 @@ void MasterServer::load_cache() {
         return;
     }
 
-    auto parsed = llvm::json::parse(*content);
-    if(!parsed) {
-        LOG_WARN("Failed to parse cache.json: {}", llvm::toString(parsed.takeError()));
+    CacheData data;
+    auto status = et::serde::json::from_json(*content, data);
+    if(!status) {
+        LOG_WARN("Failed to parse cache.json");
         return;
     }
 
-    auto* root = parsed->getAsObject();
-    if(!root)
-        return;
+    for(auto& entry: data.pch) {
+        auto pch_path = path::join(config.cache_dir, "pch", entry.filename);
+        if(!llvm::sys::fs::exists(pch_path) || entry.source_file.empty())
+            continue;
 
-    // Load PCH entries.
-    if(auto* pch_obj = root->getObject("pch")) {
-        for(auto& [filename, value]: *pch_obj) {
-            auto* entry = value.getAsObject();
-            if(!entry)
-                continue;
-
-            auto pch_path = path::join(config.cache_dir, "pch", filename.str());
-            if(!llvm::sys::fs::exists(pch_path))
-                continue;
-
-            auto hash_str = entry->getString("hash").value_or("");
-            auto bound = entry->getInteger("bound").value_or(0);
-            auto build_at = entry->getInteger("build_at").value_or(0);
-
-            std::uint64_t hash = 0;
-            llvm::StringRef(hash_str).getAsInteger(10, hash);
-
-            DepsSnapshot deps;
-            deps.build_at = static_cast<std::int64_t>(build_at);
-            if(auto* deps_arr = entry->getArray("deps")) {
-                for(auto& dep_val: *deps_arr) {
-                    auto* dep_obj = dep_val.getAsObject();
-                    if(!dep_obj)
-                        continue;
-                    auto dep_path = dep_obj->getString("path").value_or("");
-                    auto dep_hash_str = dep_obj->getString("hash").value_or("");
-                    std::uint64_t dep_hash = 0;
-                    llvm::StringRef(dep_hash_str).getAsInteger(10, dep_hash);
-                    deps.path_ids.push_back(path_pool.intern(dep_path));
-                    deps.hashes.push_back(dep_hash);
-                }
-            }
-
-            // Find the path_id for any source file that maps to this PCH.
-            // We store the original source file path in "source_file" field.
-            auto source_file = entry->getString("source_file").value_or("");
-            if(source_file.empty())
-                continue;
-
-            auto path_id = path_pool.intern(source_file);
-            auto& st = pch_states[path_id];
-            st.path = pch_path;
-            st.hash = hash;
-            st.bound = static_cast<std::uint32_t>(bound);
-            st.deps = std::move(deps);
-
-            LOG_DEBUG("Loaded cached PCH: {} -> {}", source_file, pch_path);
+        DepsSnapshot deps;
+        deps.build_at = entry.build_at;
+        for(auto& dep: entry.deps) {
+            deps.path_ids.push_back(path_pool.intern(dep.path));
+            deps.hashes.push_back(dep.hash);
         }
+
+        auto path_id = path_pool.intern(entry.source_file);
+        auto& st = pch_states[path_id];
+        st.path = pch_path;
+        st.hash = entry.hash;
+        st.bound = entry.bound;
+        st.deps = std::move(deps);
+
+        LOG_DEBUG("Loaded cached PCH: {} -> {}", entry.source_file, pch_path);
     }
 
-    // Load PCM entries.
-    if(auto* pcm_obj = root->getObject("pcm")) {
-        for(auto& [filename, value]: *pcm_obj) {
-            auto* entry = value.getAsObject();
-            if(!entry)
-                continue;
+    for(auto& entry: data.pcm) {
+        auto pcm_path = path::join(config.cache_dir, "pcm", entry.filename);
+        if(!llvm::sys::fs::exists(pcm_path) || entry.source_file.empty())
+            continue;
 
-            auto pcm_path = path::join(config.cache_dir, "pcm", filename.str());
-            if(!llvm::sys::fs::exists(pcm_path))
-                continue;
-
-            auto module_name = entry->getString("module_name").value_or("");
-            auto path_id_file = entry->getString("path_id_file").value_or("");
-            auto build_at = entry->getInteger("build_at").value_or(0);
-
-            if(path_id_file.empty())
-                continue;
-
-            DepsSnapshot deps;
-            deps.build_at = static_cast<std::int64_t>(build_at);
-            if(auto* deps_arr = entry->getArray("deps")) {
-                for(auto& dep_val: *deps_arr) {
-                    auto* dep_obj = dep_val.getAsObject();
-                    if(!dep_obj)
-                        continue;
-                    auto dep_path = dep_obj->getString("path").value_or("");
-                    auto dep_hash_str = dep_obj->getString("hash").value_or("");
-                    std::uint64_t dep_hash = 0;
-                    llvm::StringRef(dep_hash_str).getAsInteger(10, dep_hash);
-                    deps.path_ids.push_back(path_pool.intern(dep_path));
-                    deps.hashes.push_back(dep_hash);
-                }
-            }
-
-            auto path_id = path_pool.intern(path_id_file);
-            pcm_states[path_id] = {pcm_path, std::move(deps)};
-            pcm_paths[path_id] = pcm_path;
-
-            LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}",
-                      path_id_file,
-                      module_name,
-                      pcm_path);
+        DepsSnapshot deps;
+        deps.build_at = entry.build_at;
+        for(auto& dep: entry.deps) {
+            deps.path_ids.push_back(path_pool.intern(dep.path));
+            deps.hashes.push_back(dep.hash);
         }
+
+        auto path_id = path_pool.intern(entry.source_file);
+        pcm_states[path_id] = {pcm_path, std::move(deps)};
+        pcm_paths[path_id] = pcm_path;
+
+        LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}",
+                  entry.source_file,
+                  entry.module_name,
+                  pcm_path);
     }
 
     LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries",
@@ -261,86 +237,52 @@ void MasterServer::save_cache() {
     if(config.cache_dir.empty())
         return;
 
-    llvm::json::Object root;
+    CacheData data;
 
-    // Save PCH entries.
-    llvm::json::Object pch_obj;
     for(auto& [path_id, st]: pch_states) {
         if(st.path.empty())
             continue;
 
-        auto filename = std::string(path::filename(st.path));
-        auto source_file = std::string(path_pool.resolve(path_id));
-
-        llvm::json::Array deps_arr;
+        CachePCHEntry entry;
+        entry.filename = std::string(path::filename(st.path));
+        entry.source_file = std::string(path_pool.resolve(path_id));
+        entry.hash = st.hash;
+        entry.bound = st.bound;
+        entry.build_at = st.deps.build_at;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
-            llvm::json::Object dep;
-            dep["path"] = std::string(path_pool.resolve(st.deps.path_ids[i]));
-            dep["hash"] = std::to_string(st.deps.hashes[i]);
-            deps_arr.push_back(std::move(dep));
+            entry.deps.push_back(
+                {std::string(path_pool.resolve(st.deps.path_ids[i])), st.deps.hashes[i]});
         }
-
-        llvm::json::Object entry;
-        entry["hash"] = std::to_string(st.hash);
-        entry["bound"] = static_cast<int64_t>(st.bound);
-        entry["build_at"] = static_cast<int64_t>(st.deps.build_at);
-        entry["source_file"] = source_file;
-        entry["deps"] = std::move(deps_arr);
-
-        pch_obj[filename] = std::move(entry);
+        data.pch.push_back(std::move(entry));
     }
-    root["pch"] = std::move(pch_obj);
 
-    // Save PCM entries.
-    llvm::json::Object pcm_obj;
     for(auto& [path_id, st]: pcm_states) {
         if(st.path.empty())
             continue;
 
-        auto filename = std::string(path::filename(st.path));
-        auto path_id_file = std::string(path_pool.resolve(path_id));
-
-        // Find module name for this path_id.
-        std::string module_name;
+        CachePCMEntry entry;
+        entry.filename = std::string(path::filename(st.path));
+        entry.source_file = std::string(path_pool.resolve(path_id));
         auto mod_it = path_to_module.find(path_id);
-        if(mod_it != path_to_module.end()) {
-            module_name = mod_it->second;
-        }
-
-        llvm::json::Array deps_arr;
+        entry.module_name = mod_it != path_to_module.end() ? mod_it->second : "";
+        entry.build_at = st.deps.build_at;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
-            llvm::json::Object dep;
-            dep["path"] = std::string(path_pool.resolve(st.deps.path_ids[i]));
-            dep["hash"] = std::to_string(st.deps.hashes[i]);
-            deps_arr.push_back(std::move(dep));
+            entry.deps.push_back(
+                {std::string(path_pool.resolve(st.deps.path_ids[i])), st.deps.hashes[i]});
         }
-
-        llvm::json::Object entry;
-        entry["module_name"] = module_name;
-        entry["path_id_file"] = path_id_file;
-        entry["build_at"] = static_cast<int64_t>(st.deps.build_at);
-        entry["deps"] = std::move(deps_arr);
-
-        pcm_obj[filename] = std::move(entry);
+        data.pcm.push_back(std::move(entry));
     }
-    root["pcm"] = std::move(pcm_obj);
 
-    // Serialize and write atomically.
-    std::string json_str;
-    llvm::raw_string_ostream os(json_str);
-    os << llvm::json::Value(std::move(root));
-
-    auto cache_path = path::join(config.cache_dir, "cache.json");
-    auto tmp_path = cache_path + ".tmp";
-    auto write_result = fs::write(tmp_path, json_str);
-    if(!write_result) {
-        LOG_WARN("Failed to write cache.json.tmp: {}", write_result.error().message());
+    auto json_str = et::serde::json::to_json(data);
+    if(!json_str) {
+        LOG_WARN("Failed to serialize cache.json");
         return;
     }
-    auto rename_result = fs::rename(tmp_path, cache_path);
-    if(!rename_result) {
-        LOG_WARN("Failed to rename cache.json.tmp -> cache.json: {}",
-                 rename_result.error().message());
+
+    auto cache_path = path::join(config.cache_dir, "cache.json");
+    auto write_result = fs::write(cache_path, *json_str);
+    if(!write_result) {
+        LOG_WARN("Failed to write cache.json: {}", write_result.error().message());
     }
 }
 

@@ -142,7 +142,7 @@ async def test_cache_json_persisted(client, tmp_path):
     assert len(cache["pch"]) >= 1, "Expected at least one PCH entry in cache.json"
 
     # Verify the entry has expected fields.
-    entry = next(iter(cache["pch"].values()))
+    entry = cache["pch"][0]
     assert "hash" in entry
     assert "build_at" in entry
     assert "deps" in entry
