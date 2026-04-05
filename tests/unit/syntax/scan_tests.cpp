@@ -289,5 +289,135 @@ int x;
 
 };  // TEST_SUITE(PreambleBound)
 
+TEST_SUITE(PreambleComplete) {
+
+// --- #include completeness ---
+
+TEST_CASE(CompleteQuotedInclude) {
+    llvm::StringRef content = "#include \"foo.h\"\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_TRUE(is_preamble_complete(content, bound));
+}
+
+TEST_CASE(CompleteAngledInclude) {
+    llvm::StringRef content = "#include <vector>\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_TRUE(is_preamble_complete(content, bound));
+}
+
+TEST_CASE(IncompleteQuotedInclude) {
+    llvm::StringRef content = "#include \"foo\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_FALSE(is_preamble_complete(content, bound));
+}
+
+TEST_CASE(IncompleteAngledInclude) {
+    llvm::StringRef content = "#include <sys/\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_FALSE(is_preamble_complete(content, bound));
+}
+
+TEST_CASE(IncludeWithNoPath) {
+    llvm::StringRef content = "#include \nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_FALSE(is_preamble_complete(content, bound));
+}
+
+TEST_CASE(IncludeMacroUsage) {
+    llvm::StringRef content = "#include FOO\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_TRUE(is_preamble_complete(content, bound));
+}
+
+TEST_CASE(MultipleIncludesAllComplete) {
+    llvm::StringRef content = "#include <vector>\n#include \"foo.h\"\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_TRUE(is_preamble_complete(content, bound));
+}
+
+TEST_CASE(MultipleIncludesLastIncomplete) {
+    llvm::StringRef content = "#include <vector>\n#include \"foo\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_FALSE(is_preamble_complete(content, bound));
+}
+
+// --- C++20 module statements ---
+// Note: compute_preamble_bound does not include import/export lines in its
+// bound, so we pass manual bounds covering the relevant lines.
+
+TEST_CASE(CompleteImport) {
+    llvm::StringRef content = "import std;\nint x;";
+    // Bound covers "import std;\n".
+    EXPECT_TRUE(is_preamble_complete(content, 12));
+}
+
+TEST_CASE(ImportMissingSemicolon) {
+    llvm::StringRef content = "import std\nint x;";
+    // Bound covers "import std\n".
+    EXPECT_FALSE(is_preamble_complete(content, 11));
+}
+
+TEST_CASE(ImportWithNothing) {
+    llvm::StringRef content = "import \nint x;";
+    // Bound covers "import \n".
+    EXPECT_FALSE(is_preamble_complete(content, 8));
+}
+
+TEST_CASE(CompleteExportModule) {
+    llvm::StringRef content = "export module foo;\nint x;";
+    // Bound covers "export module foo;\n".
+    EXPECT_TRUE(is_preamble_complete(content, 19));
+}
+
+TEST_CASE(ExportModuleMissingSemicolon) {
+    llvm::StringRef content = "export module foo\nint x;";
+    // Bound covers "export module foo\n".
+    EXPECT_FALSE(is_preamble_complete(content, 18));
+}
+
+TEST_CASE(CompleteExportImport) {
+    llvm::StringRef content = "export import std;\nint x;";
+    // Bound covers "export import std;\n".
+    EXPECT_TRUE(is_preamble_complete(content, 19));
+}
+
+// --- Edge cases ---
+
+TEST_CASE(EmptyPreamble) {
+    llvm::StringRef content = "int x;";
+    EXPECT_TRUE(is_preamble_complete(content, 0));
+}
+
+TEST_CASE(NonImportIncludeLinesIgnored) {
+    llvm::StringRef content = "#define FOO 1\n#ifdef BAR\n#endif\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_TRUE(is_preamble_complete(content, bound));
+}
+
+TEST_CASE(ImportantDoesNotMatchImport) {
+    // "important" starts with "import" but should NOT be treated as an import.
+    llvm::StringRef content = "#include <vector>\nint x;";
+    auto bound = compute_preamble_bound(content);
+    // Manually test with content that has "important" within the preamble region.
+    // Since compute_preamble_bound won't include non-directive lines, we test
+    // is_preamble_complete directly with a crafted bound.
+    llvm::StringRef crafted = "important = 1;\n";
+    EXPECT_TRUE(is_preamble_complete(crafted, crafted.size()));
+}
+
+TEST_CASE(PreprocessorDirectivesIgnored) {
+    llvm::StringRef content = "#ifdef FOO\n#define BAR 1\n#endif\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_TRUE(is_preamble_complete(content, bound));
+}
+
+TEST_CASE(MixedIncludeAndImportAllComplete) {
+    llvm::StringRef content = "#include <vector>\nimport std;\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_TRUE(is_preamble_complete(content, bound));
+}
+
+};  // TEST_SUITE(PreambleComplete)
+
 }  // namespace
 }  // namespace clice::testing

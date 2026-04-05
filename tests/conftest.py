@@ -220,6 +220,26 @@ def test_data_dir() -> Path:
         ]
         cdb_path.write_text(json.dumps(cdb, indent=2))
 
+    # Generate compile_commands.json for include_completion
+    ic_dir = data_dir / "include_completion"
+    ic_main = ic_dir / "main.cpp"
+    ic_cdb = ic_dir / "compile_commands.json"
+    if ic_main.exists() and not ic_cdb.exists():
+        cdb = [
+            {
+                "directory": ic_dir.as_posix(),
+                "file": ic_main.as_posix(),
+                "arguments": [
+                    "clang++",
+                    "-std=c++17",
+                    "-I.",
+                    "-fsyntax-only",
+                    ic_main.as_posix(),
+                ],
+            }
+        ]
+        ic_cdb.write_text(json.dumps(cdb, indent=2))
+
     return data_dir
 
 
