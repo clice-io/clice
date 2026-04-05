@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "command/search_config.h"
 #include "eventide/ipc/json_codec.h"
 #include "eventide/ipc/lsp/position.h"
 #include "eventide/ipc/lsp/uri.h"
@@ -21,9 +22,12 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/dependency_graph.h"
+#include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
 #include "llvm/Support/Chrono.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
@@ -676,6 +680,34 @@ et::task<bool> MasterServer::ensure_deps(std::uint32_t path_id,
         co_return false;
     }
 
+    // Scan buffer text for module imports that might not be in compile_graph yet.
+    // When a user adds `import std;` without saving, the compile_graph (disk-based)
+    // doesn't know about the new dependency. Scan the in-memory text to find them.
+    {
+        auto scan_result = scan(text);
+        for(auto& mod_name: scan_result.modules) {
+            if(mod_name.empty()) {
+                continue;
+            }
+            bool found = false;
+            for(auto& [pid, name]: path_to_module) {
+                if(name == mod_name) {
+                    // If PCM not already built, try to build it.
+                    if(pcm_paths.find(pid) == pcm_paths.end()) {
+                        if(compile_graph && compile_graph->has_unit(pid)) {
+                            co_await compile_graph->compile_deps(pid);
+                        }
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            if(!found) {
+                LOG_DEBUG("Buffer imports unknown module '{}', skipping", mod_name);
+            }
+        }
+    }
+
     // Build or reuse PCH.
     auto pch_ok = co_await ensure_pch(path_id, path, text, directory, arguments);
     if(pch_ok) {
@@ -1111,6 +1143,163 @@ et::task<> MasterServer::run_background_indexing() {
 
     // Persist index to disk after a full pass.
     save_index();
+}
+
+// =========================================================================
+// Include/import completion (handled in master)
+// =========================================================================
+
+PreambleCompletionContext MasterServer::detect_completion_context(const std::string& text,
+                                                                  uint32_t offset) {
+    // Find the start of the line containing offset.
+    auto line_start = text.rfind('\n', offset > 0 ? offset - 1 : 0);
+    line_start = (line_start == std::string::npos) ? 0 : line_start + 1;
+
+    // Find the end of the line.
+    auto line_end = text.find('\n', offset);
+    if(line_end == std::string::npos)
+        line_end = text.size();
+
+    // Extract the line up to the cursor position.
+    auto line = llvm::StringRef(text).slice(line_start, offset);
+
+    // Strip leading whitespace.
+    auto trimmed = line.ltrim();
+
+    // Check for #include "prefix
+    if(trimmed.consume_front("#")) {
+        trimmed = trimmed.ltrim();
+        if(trimmed.consume_front("include")) {
+            trimmed = trimmed.ltrim();
+            if(trimmed.consume_front("\"")) {
+                return {CompletionContext::IncludeQuoted, trimmed.str()};
+            }
+            if(trimmed.consume_front("<")) {
+                return {CompletionContext::IncludeAngled, trimmed.str()};
+            }
+        }
+    }
+
+    // Check for [export] import prefix (without trailing semicolon).
+    auto import_check = trimmed;
+    if(import_check.consume_front("export")) {
+        import_check = import_check.ltrim();
+    }
+    if(import_check.consume_front("import")) {
+        import_check = import_check.ltrim();
+        // Only treat as import if there's no semicolon in what follows.
+        auto rest_of_line = llvm::StringRef(text).slice(line_start, line_end);
+        if(!rest_of_line.contains(';')) {
+            return {CompletionContext::Import, import_check.str()};
+        }
+    }
+
+    return {};
+}
+
+et::serde::RawValue MasterServer::complete_include(const PreambleCompletionContext& ctx,
+                                                   llvm::StringRef path) {
+    std::string directory;
+    std::vector<std::string> arguments;
+    if(!fill_compile_args(path, directory, arguments))
+        return et::serde::RawValue{"[]"};
+
+    // Convert arguments to const char* array.
+    std::vector<const char*> args_ptrs;
+    args_ptrs.reserve(arguments.size());
+    for(auto& arg: arguments) {
+        args_ptrs.push_back(arg.c_str());
+    }
+
+    auto config = extract_search_config(args_ptrs, directory);
+    DirListingCache dir_cache;
+    auto resolved = resolve_search_config(config, dir_cache);
+
+    // Determine search range based on context.
+    unsigned start_idx = 0;
+    if(ctx.kind == CompletionContext::IncludeAngled) {
+        start_idx = resolved.angled_start_idx;
+    }
+
+    // Split prefix into dir_prefix and file_prefix if it contains '/'.
+    llvm::StringRef prefix_ref(ctx.prefix);
+    llvm::StringRef dir_prefix;
+    llvm::StringRef file_prefix = prefix_ref;
+    auto slash_pos = prefix_ref.rfind('/');
+    if(slash_pos != llvm::StringRef::npos) {
+        dir_prefix = prefix_ref.slice(0, slash_pos);
+        file_prefix = prefix_ref.slice(slash_pos + 1, llvm::StringRef::npos);
+    }
+
+    std::vector<protocol::CompletionItem> items;
+    llvm::StringSet<> seen;  // Deduplicate entries across search dirs.
+
+    for(unsigned i = start_idx; i < resolved.dirs.size(); ++i) {
+        auto& search_dir = resolved.dirs[i];
+
+        // If there's a dir_prefix, resolve the subdirectory.
+        const llvm::StringSet<>* entries = nullptr;
+        if(!dir_prefix.empty()) {
+            llvm::SmallString<256> sub_path(search_dir.path);
+            llvm::sys::path::append(sub_path, dir_prefix);
+            entries = resolve_dir(sub_path, dir_cache);
+        } else {
+            entries = search_dir.entries;
+        }
+
+        if(!entries)
+            continue;
+
+        for(auto& entry: *entries) {
+            auto name = entry.getKey();
+            if(!name.starts_with(file_prefix))
+                continue;
+            if(!seen.insert(name).second)
+                continue;
+
+            // Check if this entry is a directory.
+            llvm::SmallString<256> full_path(search_dir.path);
+            if(!dir_prefix.empty()) {
+                llvm::sys::path::append(full_path, dir_prefix);
+            }
+            llvm::sys::path::append(full_path, name);
+
+            bool is_dir = false;
+            llvm::sys::fs::is_directory(llvm::Twine(full_path), is_dir);
+
+            protocol::CompletionItem item;
+            if(is_dir) {
+                item.label = (name + "/").str();
+            } else {
+                item.label = name.str();
+            }
+            item.kind = protocol::CompletionItemKind::File;
+            items.push_back(std::move(item));
+        }
+    }
+
+    auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
+    return et::serde::RawValue{json ? std::move(*json) : "[]"};
+}
+
+et::serde::RawValue MasterServer::complete_import(const PreambleCompletionContext& ctx) {
+    std::vector<protocol::CompletionItem> items;
+    llvm::StringRef prefix_ref(ctx.prefix);
+
+    for(auto& [path_id, module_name]: path_to_module) {
+        llvm::StringRef name_ref(module_name);
+        if(!name_ref.starts_with(prefix_ref))
+            continue;
+
+        protocol::CompletionItem item;
+        item.label = module_name;
+        item.kind = protocol::CompletionItemKind::Module;
+        item.insert_text = module_name + ";";
+        items.push_back(std::move(item));
+    }
+
+    auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
+    return et::serde::RawValue{json ? std::move(*json) : "[]"};
 }
 
 // =========================================================================
@@ -1840,9 +2029,30 @@ void MasterServer::register_handlers() {
     // --- textDocument/completion ---
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
-            co_return co_await forward_stateless<worker::CompletionParams>(
-                params.text_document_position_params.text_document.uri,
-                params.text_document_position_params.position);
+            auto uri = params.text_document_position_params.text_document.uri;
+            auto position = params.text_document_position_params.position;
+
+            // Check if cursor is on an #include or import line.
+            auto path = uri_to_path(uri);
+            auto path_id = path_pool.intern(path);
+            auto doc_it = documents.find(path_id);
+            if(doc_it != documents.end()) {
+                lsp::PositionMapper mapper(doc_it->second.text, lsp::PositionEncoding::UTF16);
+                auto offset = mapper.to_offset(position);
+                if(offset) {
+                    auto pctx = detect_completion_context(doc_it->second.text, *offset);
+                    if(pctx.kind == CompletionContext::IncludeQuoted ||
+                       pctx.kind == CompletionContext::IncludeAngled) {
+                        co_return complete_include(pctx, path);
+                    }
+                    if(pctx.kind == CompletionContext::Import) {
+                        co_return complete_import(pctx);
+                    }
+                }
+            }
+
+            // Default: forward to stateless worker.
+            co_return co_await forward_stateless<worker::CompletionParams>(uri, position);
         });
 
     // --- textDocument/signatureHelp ---

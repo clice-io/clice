@@ -28,6 +28,13 @@ namespace clice {
 namespace et = eventide;
 namespace protocol = et::ipc::protocol;
 
+enum class CompletionContext { None, IncludeQuoted, IncludeAngled, Import };
+
+struct PreambleCompletionContext {
+    CompletionContext kind = CompletionContext::None;
+    std::string prefix;
+};
+
 struct DocumentState {
     int version = 0;
 
@@ -263,6 +270,18 @@ private:
 
     /// Clean up stale cache files older than max_age_days.
     void cleanup_cache(int max_age_days = 7);
+
+    // === Include/import completion (handled in master) ===
+
+    /// Detect whether the cursor is on an #include or import line.
+    PreambleCompletionContext detect_completion_context(const std::string& text, uint32_t offset);
+
+    /// Complete #include paths by enumerating search directories.
+    et::serde::RawValue complete_include(const PreambleCompletionContext& ctx,
+                                         llvm::StringRef path);
+
+    /// Complete import module names from the known module map.
+    et::serde::RawValue complete_import(const PreambleCompletionContext& ctx);
 
     // === Feature request forwarding ===
 
