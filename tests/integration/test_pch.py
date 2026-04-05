@@ -103,3 +103,80 @@ async def test_completion_with_pch(client, workspace):
     # Completion should return results.
     assert result is not None
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
+
+
+@pytest.mark.workspace("pch_test")
+async def test_preamble_edit_then_hover(client, workspace):
+    """After editing the preamble (adding an #include), AST should still work."""
+    uri, content = await client.open_and_wait(workspace / "main.cpp")
+
+    # Verify initial state is clean.
+    diags = client.diagnostics.get(uri, [])
+    assert len(diags) == 0, f"Expected no initial diagnostics, got: {diags}"
+
+    # Edit the preamble: add a new #include.
+    new_content = '#include "common.h"\n#include <cstdio>\n' + "\n".join(
+        content.split("\n")[1:]
+    )
+    client.text_document_did_change(
+        DidChangeTextDocumentParams(
+            text_document=VersionedTextDocumentIdentifier(uri=uri, version=1),
+            content_changes=[TextDocumentContentChangeWholeDocument(text=new_content)],
+        )
+    )
+
+    # Trigger recompilation via hover — this will rebuild PCH with new preamble.
+    event = client.wait_for_diagnostics(uri)
+    await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=3, character=4))
+    )
+    await asyncio.wait_for(event.wait(), timeout=60.0)
+
+    # AST should still be valid — no errors.
+    diags = client.diagnostics.get(uri, [])
+    errors = [d for d in diags if d.severity == 1]
+    assert len(errors) == 0, f"Expected no errors after preamble edit, got: {errors}"
+
+    # Hover should still work on a symbol.
+    result = await client.text_document_hover_async(
+        HoverParams(text_document=_doc(uri), position=Position(line=3, character=4))
+    )
+    assert result is not None, "Hover failed after preamble edit"
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
+
+
+@pytest.mark.workspace("pch_test")
+async def test_preamble_edit_multiple_times(client, workspace):
+    """Multiple preamble edits should not break AST building."""
+    uri, content = await client.open_and_wait(workspace / "main.cpp")
+
+    for i in range(3):
+        # Add progressively more includes.
+        includes = '#include "common.h"\n'
+        for j in range(i + 1):
+            includes += f"// edit {j}\n"
+        new_content = includes + "\n".join(content.split("\n")[1:])
+
+        version = i + 1
+        client.text_document_did_change(
+            DidChangeTextDocumentParams(
+                text_document=VersionedTextDocumentIdentifier(uri=uri, version=version),
+                content_changes=[
+                    TextDocumentContentChangeWholeDocument(text=new_content)
+                ],
+            )
+        )
+
+        event = client.wait_for_diagnostics(uri)
+        await client.text_document_hover_async(
+            HoverParams(text_document=_doc(uri), position=Position(line=0, character=0))
+        )
+        await asyncio.wait_for(event.wait(), timeout=60.0)
+
+    # After multiple edits, should still be clean.
+    diags = client.diagnostics.get(uri, [])
+    errors = [d for d in diags if d.severity == 1]
+    assert len(errors) == 0, (
+        f"Expected no errors after multiple preamble edits, got: {errors}"
+    )
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
