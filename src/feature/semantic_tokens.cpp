@@ -23,12 +23,8 @@ struct RawToken {
     std::uint32_t modifiers = 0;
 };
 
-constexpr std::uint32_t bit(SymbolModifiers::Kind kind) {
-    return static_cast<std::uint32_t>(kind);
-}
-
 void add_modifier(std::uint32_t& modifiers, SymbolModifiers::Kind kind) {
-    modifiers |= bit(kind);
+    modifiers |= SymbolModifiers::to_mask(kind);
 }
 
 auto type_index(SymbolKind kind) -> std::uint32_t {

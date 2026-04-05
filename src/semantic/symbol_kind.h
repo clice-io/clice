@@ -80,75 +80,79 @@ private:
 struct SymbolModifiers {
     enum Kind : std::uint32_t {
         /// Represents that the symbol is a declaration(e.g. function declaration).
-        Declaration = 1u << 0,
+        Declaration = 0,
 
         /// Represents that the symbol is a definition(e.g. function definition).
-        Definition = 1u << 1,
+        Definition = 1,
 
         /// Represents that the symbol is const modified(e.g. `const` variable).
-        Const = 1u << 2,
+        Const = 2,
 
         /// Represents that the symbol is overloaded(e.g. overloaded functions and operators).
-        Overloaded = 1u << 3,
+        Overloaded = 3,
 
         /// Represents that the symbol is a part of type(e.g. `*` in `int*`).
-        Typed = 1u << 4,
+        Typed = 4,
 
         /// Represents that the symbol is a template(e.g. class template or function template).
-        Templated = 1u << 5,
+        Templated = 5,
 
         /// Represents that the symbol is deprecated.
-        Deprecated = 1u << 6,
+        Deprecated = 6,
 
         /// Represents that the symbol is deduced.
-        Deduced = 1u << 7,
+        Deduced = 7,
 
         /// Represents that the symbol is readonly.
-        Readonly = 1u << 8,
+        Readonly = 8,
 
         /// Represents that the symbol is static.
-        Static = 1u << 9,
+        Static = 9,
 
         /// Represents that the symbol is abstract.
-        Abstract = 1u << 10,
+        Abstract = 10,
 
         /// Represents that the symbol is virtual.
-        Virtual = 1u << 11,
+        Virtual = 11,
 
         /// Represents that the symbol is a dependent name.
-        DependentName = 1u << 12,
+        DependentName = 12,
 
         /// Represents that the symbol comes from the default library.
-        DefaultLibrary = 1u << 13,
+        DefaultLibrary = 13,
 
         /// Represents that the symbol is used through a mutable reference.
-        UsedAsMutableReference = 1u << 14,
+        UsedAsMutableReference = 14,
 
         /// Represents that the symbol is used through a mutable pointer.
-        UsedAsMutablePointer = 1u << 15,
+        UsedAsMutablePointer = 15,
 
         /// Represents that the symbol is a constructor or destructor.
-        ConstructorOrDestructor = 1u << 16,
+        ConstructorOrDestructor = 16,
 
         /// Represents that the symbol is user-defined.
-        UserDefined = 1u << 17,
+        UserDefined = 17,
 
         /// Represents that the symbol is function-scoped.
-        FunctionScope = 1u << 18,
+        FunctionScope = 18,
 
         /// Represents that the symbol is class-scoped.
-        ClassScope = 1u << 19,
+        ClassScope = 19,
 
         /// Represents that the symbol is file-scoped.
-        FileScope = 1u << 20,
+        FileScope = 20,
 
         /// Represents that the symbol is global-scoped.
-        GlobalScope = 1u << 21,
+        GlobalScope = 21,
     };
+
+    constexpr static std::uint32_t to_mask(Kind kind) {
+        return std::uint32_t(1) << static_cast<std::uint32_t>(kind);
+    }
 
     constexpr SymbolModifiers() = default;
 
-    constexpr SymbolModifiers(Kind kind) : value(static_cast<std::uint32_t>(kind)) {}
+    constexpr SymbolModifiers(Kind kind) : value(to_mask(kind)) {}
 
     constexpr explicit SymbolModifiers(std::uint32_t bits) : value(bits) {}
 
@@ -157,7 +161,7 @@ struct SymbolModifiers {
     }
 
     constexpr bool contains(Kind kind) const {
-        return (value & static_cast<std::uint32_t>(kind)) != 0;
+        return (value & to_mask(kind)) != 0;
     }
 
 private:

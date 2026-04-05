@@ -107,7 +107,7 @@ std::vector<DecodedToken> decoded;
 auto modifier_mask(std::initializer_list<SymbolModifiers::Kind> kinds) -> std::uint32_t {
     std::uint32_t mask = 0;
     for(auto kind: kinds) {
-        mask |= static_cast<std::uint32_t>(kind);
+        mask |= SymbolModifiers::to_mask(kind);
     }
     return mask;
 }
