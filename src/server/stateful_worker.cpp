@@ -326,7 +326,6 @@ int run_stateful_worker_mode(std::uint64_t memory_limit,
     logging::stderr_logger(worker_name, logging::options);
     if(!log_dir.empty()) {
         logging::file_logger(worker_name, log_dir, logging::options);
-        logging::redirect_stderr(log_dir);
     }
 
     LOG_INFO("Starting stateful worker, memory_limit={}MB", memory_limit / (1024 * 1024));
