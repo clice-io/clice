@@ -166,19 +166,19 @@ struct CacheData {
     std::vector<std::string> paths;
     std::vector<CachePCHEntry> pch;
     std::vector<CachePCMEntry> pcm;
-};
 
-/// Helper to intern a path string into CacheData::paths, returning its index.
-static std::uint32_t cache_intern(CacheData& data,
-                                  std::unordered_map<std::string, std::uint32_t>& index_map,
-                                  const std::string& path) {
-    auto [it, inserted] =
-        index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
-    if(inserted) {
-        data.paths.push_back(path);
+    /// Dedup map used only during save; skipped by serde.
+    et::serde::annotation<std::unordered_map<std::string, std::uint32_t>, et::serde::schema::skip>
+        index_map;
+
+    std::uint32_t intern(const std::string& path) {
+        auto [it, inserted] = index_map.try_emplace(path, static_cast<std::uint32_t>(paths.size()));
+        if(inserted) {
+            paths.push_back(path);
+        }
+        return it->second;
     }
-    return it->second;
-}
+};
 
 }  // namespace
 
@@ -263,10 +263,9 @@ void MasterServer::save_cache() {
         return;
 
     CacheData data;
-    std::unordered_map<std::string, std::uint32_t> index_map;
 
     auto intern = [&](std::uint32_t runtime_path_id) -> std::uint32_t {
-        return cache_intern(data, index_map, std::string(path_pool.resolve(runtime_path_id)));
+        return data.intern(std::string(path_pool.resolve(runtime_path_id)));
     };
 
     for(auto& [path_id, st]: pch_states) {
