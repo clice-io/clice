@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "eventide/ipc/lsp/position.h"
 #include "eventide/ipc/lsp/protocol.h"
 #include "eventide/serde/serde/raw_value.h"
 #include "index/merged_index.h"
@@ -21,6 +22,7 @@ namespace clice {
 
 namespace et = eventide;
 namespace protocol = et::ipc::protocol;
+namespace lsp = et::ipc::lsp;
 
 /// In-memory index for an open file.  Kept separate from MergedIndex because
 /// open files change frequently, are based on unsaved buffer content, and only
@@ -128,6 +130,22 @@ private:
     llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
     llvm::DenseMap<std::uint32_t, OpenFileIndex> open_file_indices;
     llvm::DenseSet<std::uint32_t> open_proj_path_ids;
+
+    /// Result of resolving a symbol at a cursor position.
+    struct CursorHit {
+        index::SymbolHash hash = 0;
+        index::Range range{};
+        /// PositionMapper bound to the content used for lookup (for converting range back).
+        std::optional<lsp::PositionMapper> mapper;
+    };
+
+    /// Shared logic for query_relations and lookup_symbol: resolve the symbol
+    /// at (position) in the given file, checking open file index first then
+    /// falling back to MergedIndex.
+    CursorHit resolve_cursor(llvm::StringRef path,
+                             std::uint32_t server_path_id,
+                             const protocol::Position& position,
+                             const std::string* doc_text);
 };
 
 }  // namespace clice

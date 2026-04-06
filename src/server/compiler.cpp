@@ -180,28 +180,31 @@ void Compiler::load_cache() {
         return idx < data.paths.size() ? llvm::StringRef(data.paths[idx]) : "";
     };
 
-    for(auto& entry: data.pch) {
-        auto pch_path = path::join(config.cache_dir, "cache", "pch", entry.filename);
-        auto source = resolve(entry.source_file);
-        if(!llvm::sys::fs::exists(pch_path) || source.empty())
-            continue;
-
+    auto load_deps = [&](std::int64_t build_at, const auto& dep_entries) -> DepsSnapshot {
         DepsSnapshot deps;
-        deps.build_at = entry.build_at;
-        for(auto& dep: entry.deps) {
+        deps.build_at = build_at;
+        for(auto& dep: dep_entries) {
             auto dep_path = resolve(dep.path);
             if(dep_path.empty())
                 continue;
             deps.path_ids.push_back(path_pool.intern(dep_path));
             deps.hashes.push_back(dep.hash);
         }
+        return deps;
+    };
+
+    for(auto& entry: data.pch) {
+        auto pch_path = path::join(config.cache_dir, "cache", "pch", entry.filename);
+        auto source = resolve(entry.source_file);
+        if(!llvm::sys::fs::exists(pch_path) || source.empty())
+            continue;
 
         auto path_id = path_pool.intern(source);
         auto& st = pch_states[path_id];
         st.path = pch_path;
         st.hash = entry.hash;
         st.bound = entry.bound;
-        st.deps = std::move(deps);
+        st.deps = load_deps(entry.build_at, entry.deps);
 
         LOG_DEBUG("Loaded cached PCH: {} -> {}", source, pch_path);
     }
@@ -212,18 +215,8 @@ void Compiler::load_cache() {
         if(!llvm::sys::fs::exists(pcm_path) || source.empty())
             continue;
 
-        DepsSnapshot deps;
-        deps.build_at = entry.build_at;
-        for(auto& dep: entry.deps) {
-            auto dep_path = resolve(dep.path);
-            if(dep_path.empty())
-                continue;
-            deps.path_ids.push_back(path_pool.intern(dep_path));
-            deps.hashes.push_back(dep.hash);
-        }
-
         auto path_id = path_pool.intern(source);
-        pcm_states[path_id] = {pcm_path, std::move(deps)};
+        pcm_states[path_id] = {pcm_path, load_deps(entry.build_at, entry.deps)};
         pcm_paths[path_id] = pcm_path;
 
         LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, pcm_path);

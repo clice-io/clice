@@ -263,55 +263,64 @@ bool Indexer::find_symbol_info(index::SymbolHash hash,
     return false;
 }
 
+Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
+                                           std::uint32_t server_path_id,
+                                           const protocol::Position& position,
+                                           const std::string* doc_text) {
+    CursorHit hit;
+
+    auto ofi_it = open_file_indices.find(server_path_id);
+    if(ofi_it != open_file_indices.end()) {
+        hit.mapper.emplace(ofi_it->second.content, lsp::PositionEncoding::UTF16);
+        auto offset_opt = hit.mapper->to_offset(position);
+        if(!offset_opt)
+            return hit;
+
+        if(auto* occ = lookup_occurrence(ofi_it->second.file_index.occurrences, *offset_opt)) {
+            hit.hash = occ->target;
+            hit.range = occ->range;
+        }
+    } else {
+        if(!doc_text)
+            return hit;
+
+        hit.mapper.emplace(*doc_text, lsp::PositionEncoding::UTF16);
+        auto offset_opt = hit.mapper->to_offset(position);
+        if(!offset_opt)
+            return hit;
+
+        auto proj_cache_it = project_index.path_pool.find(path);
+        if(proj_cache_it == project_index.path_pool.cache.end())
+            return hit;
+
+        auto merged_it = merged_indices.find(proj_cache_it->second);
+        if(merged_it == merged_indices.end())
+            return hit;
+
+        merged_it->second.lookup(*offset_opt, [&](const index::Occurrence& o) {
+            hit.hash = o.target;
+            hit.range = o.range;
+            return false;
+        });
+    }
+
+    return hit;
+}
+
 et::serde::RawValue Indexer::query_relations(llvm::StringRef path,
                                              std::uint32_t server_path_id,
                                              const protocol::Position& position,
                                              RelationKind kind,
                                              const std::string* doc_text) {
-    // Step 1: Find occurrence at the cursor position.
-    index::SymbolHash symbol_hash = 0;
-
-    auto ofi_it = open_file_indices.find(server_path_id);
-    if(ofi_it != open_file_indices.end()) {
-        lsp::PositionMapper mapper(ofi_it->second.content, lsp::PositionEncoding::UTF16);
-        auto offset_opt = mapper.to_offset(position);
-        if(!offset_opt)
-            return serde_raw{"null"};
-
-        if(auto* occ = lookup_occurrence(ofi_it->second.file_index.occurrences, *offset_opt)) {
-            symbol_hash = occ->target;
-        }
-    } else {
-        if(!doc_text)
-            return serde_raw{"null"};
-
-        lsp::PositionMapper mapper(*doc_text, lsp::PositionEncoding::UTF16);
-        auto offset_opt = mapper.to_offset(position);
-        if(!offset_opt)
-            return serde_raw{"null"};
-
-        auto proj_cache_it = project_index.path_pool.find(path);
-        if(proj_cache_it == project_index.path_pool.cache.end())
-            return serde_raw{"null"};
-
-        auto merged_it = merged_indices.find(proj_cache_it->second);
-        if(merged_it == merged_indices.end())
-            return serde_raw{"null"};
-
-        merged_it->second.lookup(*offset_opt, [&](const index::Occurrence& o) {
-            symbol_hash = o.target;
-            return false;
-        });
-    }
-
-    if(symbol_hash == 0)
+    auto hit = resolve_cursor(path, server_path_id, position, doc_text);
+    if(hit.hash == 0)
         return serde_raw{"null"};
 
     // Step 2: Collect relations from all sources.
     std::vector<protocol::Location> locations;
 
     // 2a: From ProjectIndex reference files (MergedIndex shards).
-    auto sym_it = project_index.symbols.find(symbol_hash);
+    auto sym_it = project_index.symbols.find(hit.hash);
     if(sym_it != project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
             if(open_proj_path_ids.contains(file_id))
@@ -332,7 +341,7 @@ et::serde::RawValue Indexer::query_relations(llvm::StringRef path,
 
             lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
 
-            file_merged_it->second.lookup(symbol_hash, kind, [&](const index::Relation& r) {
+            file_merged_it->second.lookup(hit.hash, kind, [&](const index::Relation& r) {
                 auto start = file_mapper.to_position(r.range.begin);
                 auto end = file_mapper.to_position(r.range.end);
                 if(start && end) {
@@ -348,7 +357,7 @@ et::serde::RawValue Indexer::query_relations(llvm::StringRef path,
 
     // 2b: From all open file indices.
     for(auto& [ofi_server_id, ofi]: open_file_indices) {
-        auto rel_it = ofi.file_index.relations.find(symbol_hash);
+        auto rel_it = ofi.file_index.relations.find(hit.hash);
         if(rel_it == ofi.file_index.relations.end())
             continue;
 
@@ -384,63 +393,22 @@ std::optional<SymbolInfo> Indexer::lookup_symbol(const std::string& uri,
                                                  std::uint32_t server_path_id,
                                                  const protocol::Position& position,
                                                  const std::string* doc_text) {
-    index::SymbolHash symbol_hash = 0;
-    index::Range occ_range{};
-    lsp::PositionMapper* mapper_ptr = nullptr;
-
-    std::optional<lsp::PositionMapper> ofi_mapper;
-    auto ofi_it = open_file_indices.find(server_path_id);
-    if(ofi_it != open_file_indices.end()) {
-        ofi_mapper.emplace(ofi_it->second.content, lsp::PositionEncoding::UTF16);
-        mapper_ptr = &*ofi_mapper;
-        auto offset_opt = ofi_mapper->to_offset(position);
-        if(!offset_opt)
-            return std::nullopt;
-
-        if(auto* occ = lookup_occurrence(ofi_it->second.file_index.occurrences, *offset_opt)) {
-            symbol_hash = occ->target;
-            occ_range = occ->range;
-        }
-    } else {
-        if(!doc_text)
-            return std::nullopt;
-
-        ofi_mapper.emplace(*doc_text, lsp::PositionEncoding::UTF16);
-        mapper_ptr = &*ofi_mapper;
-        auto offset_opt = ofi_mapper->to_offset(position);
-        if(!offset_opt)
-            return std::nullopt;
-
-        auto proj_cache_it = project_index.path_pool.find(path);
-        if(proj_cache_it == project_index.path_pool.cache.end())
-            return std::nullopt;
-
-        auto merged_it = merged_indices.find(proj_cache_it->second);
-        if(merged_it == merged_indices.end())
-            return std::nullopt;
-
-        merged_it->second.lookup(*offset_opt, [&](const index::Occurrence& o) {
-            symbol_hash = o.target;
-            occ_range = o.range;
-            return false;
-        });
-    }
-
-    if(symbol_hash == 0)
+    auto hit = resolve_cursor(path, server_path_id, position, doc_text);
+    if(hit.hash == 0 || !hit.mapper)
         return std::nullopt;
 
     std::string name;
     SymbolKind sym_kind;
-    if(!find_symbol_info(symbol_hash, name, sym_kind))
+    if(!find_symbol_info(hit.hash, name, sym_kind))
         return std::nullopt;
 
-    auto start = mapper_ptr->to_position(occ_range.begin);
-    auto end = mapper_ptr->to_position(occ_range.end);
+    auto start = hit.mapper->to_position(hit.range.begin);
+    auto end = hit.mapper->to_position(hit.range.end);
     if(!start || !end)
         return std::nullopt;
 
     SymbolInfo info;
-    info.hash = symbol_hash;
+    info.hash = hit.hash;
     info.name = std::move(name);
     info.kind = sym_kind;
     info.uri = uri;

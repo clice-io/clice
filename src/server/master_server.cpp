@@ -427,18 +427,41 @@ void MasterServer::register_handlers() {
                 params.text_document.uri);
         });
 
+    /// Helpers for index-based queries: resolve URI → path → path_id → doc_text.
+    auto lookup_at = [this](const std::string& uri, const protocol::Position& pos) {
+        auto path = Compiler::uri_to_path(uri);
+        auto path_id = path_pool.intern(path);
+        auto* doc = compiler.get_document(path_id);
+        const std::string* doc_text = doc ? &doc->text : nullptr;
+        return indexer.lookup_symbol(uri, path, path_id, pos, doc_text);
+    };
+
+    auto query_at = [this](const std::string& uri, const protocol::Position& pos,
+                           RelationKind kind) {
+        auto path = Compiler::uri_to_path(uri);
+        auto path_id = path_pool.intern(path);
+        auto* doc = compiler.get_document(path_id);
+        const std::string* doc_text = doc ? &doc->text : nullptr;
+        return indexer.query_relations(path, path_id, pos, kind, doc_text);
+    };
+
+    auto resolve_item = [this](const std::string& uri, const protocol::Range& range,
+                               const std::optional<protocol::LSPAny>& data)
+                             -> std::optional<SymbolInfo> {
+        auto path = Compiler::uri_to_path(uri);
+        auto path_id = path_pool.intern(path);
+        auto* doc = compiler.get_document(path_id);
+        const std::string* doc_text = doc ? &doc->text : nullptr;
+        return indexer.resolve_hierarchy_item(uri, path, path_id, range, data, doc_text);
+    };
+
     /// Feature requests — index-based with AST fallback.
     peer.on_request(
-        [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
+        [this, query_at](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
-            auto path = Compiler::uri_to_path(uri);
-            auto path_id = path_pool.intern(path);
-            auto* doc = compiler.get_document(path_id);
-            const std::string* doc_text = doc ? &doc->text : nullptr;
 
-            auto result =
-                indexer.query_relations(path, path_id, pos, RelationKind::Definition, doc_text);
+            auto result = query_at(uri, pos, RelationKind::Definition);
             if(!result.empty() && result.data != "null") {
                 co_return std::move(result);
             }
@@ -447,20 +470,14 @@ void MasterServer::register_handlers() {
         });
 
     peer.on_request(
-        [this](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
+        [this, query_at](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
-            auto path = Compiler::uri_to_path(uri);
-            auto path_id = path_pool.intern(path);
-            auto* doc = compiler.get_document(path_id);
-            const std::string* doc_text = doc ? &doc->text : nullptr;
 
-            auto refs =
-                indexer.query_relations(path, path_id, pos, RelationKind::Reference, doc_text);
+            auto refs = query_at(uri, pos, RelationKind::Reference);
 
             if(params.context.include_declaration) {
-                auto defs =
-                    indexer.query_relations(path, path_id, pos, RelationKind::Definition, doc_text);
+                auto defs = query_at(uri, pos, RelationKind::Definition);
                 if(!defs.empty() && defs.data != "null") {
                     if(refs.empty() || refs.data == "null") {
                         co_return std::move(defs);
@@ -508,16 +525,12 @@ void MasterServer::register_handlers() {
         });
 
     /// Hierarchy queries — index-based.
-    peer.on_request([this](RequestContext& ctx,
+    peer.on_request([this, lookup_at](RequestContext& ctx,
                            const protocol::CallHierarchyPrepareParams& params) -> RawResult {
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
-        auto path = Compiler::uri_to_path(uri);
-        auto path_id = path_pool.intern(path);
-        auto* doc = compiler.get_document(path_id);
-        const std::string* doc_text = doc ? &doc->text : nullptr;
 
-        auto info = indexer.lookup_symbol(uri, path, path_id, pos, doc_text);
+        auto info = lookup_at(uri, pos);
         if(!info)
             co_return serde_raw{"null"};
         if(!(info->kind == SymbolKind::Function || info->kind == SymbolKind::Method))
@@ -528,44 +541,28 @@ void MasterServer::register_handlers() {
         co_return to_raw(items);
     });
 
-    peer.on_request([this](RequestContext& ctx,
+    peer.on_request([this, resolve_item](RequestContext& ctx,
                            const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
-        auto path = Compiler::uri_to_path(params.item.uri);
-        auto path_id = path_pool.intern(path);
-        auto* doc = compiler.get_document(path_id);
-        const std::string* doc_text = doc ? &doc->text : nullptr;
-
-        auto info = indexer.resolve_hierarchy_item(params.item.uri, path, path_id,
-                                                   params.item.range, params.item.data, doc_text);
+        auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
         co_return indexer.find_incoming_calls(info->hash);
     });
 
-    peer.on_request([this](RequestContext& ctx,
+    peer.on_request([this, resolve_item](RequestContext& ctx,
                            const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
-        auto path = Compiler::uri_to_path(params.item.uri);
-        auto path_id = path_pool.intern(path);
-        auto* doc = compiler.get_document(path_id);
-        const std::string* doc_text = doc ? &doc->text : nullptr;
-
-        auto info = indexer.resolve_hierarchy_item(params.item.uri, path, path_id,
-                                                   params.item.range, params.item.data, doc_text);
+        auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
         co_return indexer.find_outgoing_calls(info->hash);
     });
 
-    peer.on_request([this](RequestContext& ctx,
+    peer.on_request([this, lookup_at](RequestContext& ctx,
                            const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
-        auto path = Compiler::uri_to_path(uri);
-        auto path_id = path_pool.intern(path);
-        auto* doc = compiler.get_document(path_id);
-        const std::string* doc_text = doc ? &doc->text : nullptr;
 
-        auto info = indexer.lookup_symbol(uri, path, path_id, pos, doc_text);
+        auto info = lookup_at(uri, pos);
         if(!info)
             co_return serde_raw{"null"};
         if(!(info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
@@ -577,29 +574,17 @@ void MasterServer::register_handlers() {
         co_return to_raw(items);
     });
 
-    peer.on_request([this](RequestContext& ctx,
+    peer.on_request([this, resolve_item](RequestContext& ctx,
                            const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
-        auto path = Compiler::uri_to_path(params.item.uri);
-        auto path_id = path_pool.intern(path);
-        auto* doc = compiler.get_document(path_id);
-        const std::string* doc_text = doc ? &doc->text : nullptr;
-
-        auto info = indexer.resolve_hierarchy_item(params.item.uri, path, path_id,
-                                                   params.item.range, params.item.data, doc_text);
+        auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
         co_return indexer.find_supertypes(info->hash);
     });
 
-    peer.on_request([this](RequestContext& ctx,
+    peer.on_request([this, resolve_item](RequestContext& ctx,
                            const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
-        auto path = Compiler::uri_to_path(params.item.uri);
-        auto path_id = path_pool.intern(path);
-        auto* doc = compiler.get_document(path_id);
-        const std::string* doc_text = doc ? &doc->text : nullptr;
-
-        auto info = indexer.resolve_hierarchy_item(params.item.uri, path, path_id,
-                                                   params.item.range, params.item.data, doc_text);
+        auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
         co_return indexer.find_subtypes(info->hash);
