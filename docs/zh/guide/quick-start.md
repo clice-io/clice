@@ -54,11 +54,48 @@ bazel run @hedron_compile_commands//:refresh_all
 
 ### Visual Studio
 
-TODO:
+Visual Studio（2019 16.1+）可以通过 CMake 集成来生成编译数据库。将项目作为 CMake 项目打开，然后在 `CMakeSettings.json` 中配置：
+
+```json
+{
+  "configurations": [
+    {
+      "name": "x64-Debug",
+      "generator": "Ninja",
+      "buildRoot": "${projectDir}\\build",
+      "cmakeCommandArgs": "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    }
+  ]
+}
+```
+
+对于基于 MSBuild 的项目（`.vcxproj`），可以使用 [compiledb-vs](https://github.com/pjbroad/compiledb-vs) 或 [catter](https://github.com/clice-io/catter) 来生成编译数据库。
 
 ### Makefile
 
-TODO:
+对于基于 Makefile 的项目，使用 [bear](https://github.com/rizsotto/Bear) 来拦截编译命令：
+
+```bash
+bear -- make
+```
+
+这会在当前目录生成 `compile_commands.json`。注意 `bear` 需要干净的构建来捕获所有命令——如果需要的话，在运行 `bear -- make` 之前先执行 `make clean`。
+
+另外，如果使用 GNU Make，也可以使用 [compiledb](https://github.com/nicktimko/compiledb)：
+
+```bash
+compiledb make
+```
+
+### Meson
+
+Meson 在配置阶段会自动生成编译数据库：
+
+```bash
+meson setup build
+```
+
+`compile_commands.json` 会生成在 `build` 目录下。
 
 ### Xmake
 
@@ -72,11 +109,11 @@ TODO:
 xmake project -k compile_commands --lsp=clangd build
 ```
 
-> 通过这种方法生成的编译数据库无法自动更新，需要在项目编译配置更改时手动重新生成
+> 通过这种方法生成的编译数据库无法自动更新，需要在项目编译配置更改时手动重新生成。
 
 #### VSCode 扩展
 
-Xmake 提供的官方 VSCode 扩展已经自带了编译数据库生成（保存时其会自动生成编译数据库）。然而默认情况下，它将编译数据库生成到了 `.vscode` 文件夹。在 `settings.json` 中添加以下配置：
+Xmake 提供的官方 VSCode 扩展会在 `xmake.lua` 更新时自动生成编译数据库。然而默认情况下，它将编译数据库生成到了 `.vscode` 文件夹。在 `settings.json` 中添加以下配置：
 
 ```json
 "xmake.compileCommandsDirectory": "build"
@@ -86,4 +123,8 @@ Xmake 提供的官方 VSCode 扩展已经自带了编译数据库生成（保存
 
 ### Others
 
-对于任意其它的构建系统，可以尝试使用 [bear](https://github.com/rizsotto/Bear) 或者 [scan-build](https://github.com/rizsotto/scan-build) 来拦截编译命令并获取到编译数据库（不保证成功）。我们计划在未来编写一个**新的工具**，通过假编译器的方式来实现编译命令的捕获。
+对于任意其它的构建系统，可以尝试以下工具来拦截编译命令并生成编译数据库：
+
+- [bear](https://github.com/rizsotto/Bear) — 通过拦截 `exec` 调用来捕获编译命令，适用于 Linux/macOS 上的大多数构建系统。
+- [scan-build](https://github.com/rizsotto/scan-build) — Clang 提供的工具，可以在静态分析的同时生成编译数据库。
+- [catter](https://github.com/clice-io/catter) — 我们正在开发的工具，通过伪装编译器的方式来捕获编译命令。它被设计为能够可靠地与任何调用编译器可执行文件的构建系统配合工作。

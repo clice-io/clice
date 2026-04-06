@@ -54,11 +54,48 @@ bazel run @hedron_compile_commands//:refresh_all
 
 ### Visual Studio
 
-TODO:
+Visual Studio (2019 16.1+) can generate a compilation database via CMake integration. Open your project as a CMake project, then configure the generation in `CMakeSettings.json`:
+
+```json
+{
+  "configurations": [
+    {
+      "name": "x64-Debug",
+      "generator": "Ninja",
+      "buildRoot": "${projectDir}\\build",
+      "cmakeCommandArgs": "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    }
+  ]
+}
+```
+
+Alternatively, for MSBuild-based projects (`.vcxproj`), you can use [compiledb-vs](https://github.com/pjbroad/compiledb-vs) or [catter](https://github.com/clice-io/catter) to generate the compilation database.
 
 ### Makefile
 
-TODO:
+For Makefile-based projects, use [bear](https://github.com/rizsotto/Bear) to intercept compilation commands:
+
+```bash
+bear -- make
+```
+
+This will generate a `compile_commands.json` in the current directory. Note that `bear` requires a clean build to capture all commands — run `make clean` before `bear -- make` if needed.
+
+Alternatively, if you use GNU Make, you can use [compiledb](https://github.com/nicktimko/compiledb):
+
+```bash
+compiledb make
+```
+
+### Meson
+
+Meson generates a compilation database automatically during setup:
+
+```bash
+meson setup build
+```
+
+The `compile_commands.json` will be in the `build` directory.
 
 ### Xmake
 
@@ -66,7 +103,7 @@ Use one of the following approaches to generate a compilation database.
 
 #### Command Line
 
-Run the following command to manually generate compilation database.
+Run the following command to manually generate a compilation database:
 
 ```bash
 xmake project -k compile_commands --lsp=clangd build
@@ -76,7 +113,7 @@ xmake project -k compile_commands --lsp=clangd build
 
 #### VSCode Extension
 
-The Xmake official VSCode extension provides autonomous generation of compilation database upon updates on `xmake.lua`. However, it generates the database to `.vscode` directory. Append this setting in `settings.json`:
+The Xmake official VSCode extension automatically generates the compilation database when `xmake.lua` is updated. However, it generates the database to the `.vscode` directory by default. Add this setting in `settings.json`:
 
 ```json
 "xmake.compileCommandsDirectory": "build"
@@ -86,4 +123,8 @@ to explicitly ask the extension to generate the compilation database in `build`.
 
 ### Others
 
-For any other build system, you can try using [bear](https://github.com/rizsotto/Bear) or [scan-build](https://github.com/rizsotto/scan-build) to intercept compilation commands and obtain the compilation database (no guarantee of success). We plan to write a **new tool** in the future that captures compilation commands through a fake compiler approach.
+For any other build system, you can try the following tools to intercept compilation commands and generate a compilation database:
+
+- [bear](https://github.com/rizsotto/Bear) — intercepts `exec` calls to capture compilation commands. Works with most build systems on Linux/macOS.
+- [scan-build](https://github.com/rizsotto/scan-build) — a Clang tool that can generate compilation databases as a side effect of static analysis.
+- [catter](https://github.com/clice-io/catter) — a tool we are developing that captures compilation commands through a fake compiler approach. It is designed to work reliably with any build system that invokes a compiler executable.
