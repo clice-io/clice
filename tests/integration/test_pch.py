@@ -114,8 +114,10 @@ async def test_preamble_edit_then_hover(client, workspace):
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected no initial diagnostics, got: {diags}"
 
-    # Edit the preamble: add a new #include (triggers PCH rebuild).
-    new_content = '#include "common.h"\n#include <cstdio>\n' + "\n".join(
+    # Edit the preamble: add a second #include (triggers PCH rebuild).
+    # Use project-local header instead of system header (<cstdio>) to avoid
+    # slow PCH rebuilds on macOS CI that cause SIGPIPE timeouts.
+    new_content = '#include "common.h"\n#include "common.h"\n' + "\n".join(
         content.split("\n")[1:]
     )
     client.text_document_did_change(
