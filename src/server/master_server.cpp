@@ -2757,10 +2757,10 @@ void MasterServer::register_handlers() {
 
             ext::QueryContextResult result;
 
-            // Find source files that transitively include this file.
-            // For source files (roots in the include graph) this returns empty.
-            auto hosts = dependency_graph.find_host_sources(path_id);
             std::vector<ext::ContextItem> all_items;
+
+            // For headers: find source files that transitively include this file.
+            auto hosts = dependency_graph.find_host_sources(path_id);
             for(auto host_id: hosts) {
                 auto host_path = path_pool.resolve(host_id);
                 auto host_cdb = cdb.lookup(host_path, {.suppress_logging = true});
@@ -2774,6 +2774,41 @@ void MasterServer::register_handlers() {
                 item.description = std::string(host_path);
                 item.uri = host_uri_opt->str();
                 all_items.push_back(std::move(item));
+            }
+
+            // For source files: list distinct CDB entries (e.g. debug/release).
+            if(hosts.empty()) {
+                auto entries = cdb.lookup(path, {.suppress_logging = true});
+                for(std::size_t i = 0; i < entries.size(); ++i) {
+                    auto& entry = entries[i];
+                    // Build a description from distinguishing flags.
+                    std::string desc;
+                    for(std::size_t j = 0; j < entry.arguments.size(); ++j) {
+                        llvm::StringRef a(entry.arguments[j]);
+                        if(a.starts_with("-D") || a.starts_with("-O") || a.starts_with("-std=") ||
+                           a.starts_with("-g")) {
+                            if(!desc.empty())
+                                desc += ' ';
+                            desc += entry.arguments[j];
+                            // Handle split args like "-D" "CONFIG_A"
+                            if((a == "-D" || a == "-O" || a == "-I") &&
+                               j + 1 < entry.arguments.size()) {
+                                desc += entry.arguments[++j];
+                            }
+                        }
+                    }
+                    if(desc.empty())
+                        desc = std::format("config #{}", i);
+
+                    auto uri_opt = lsp::URI::from_file_path(std::string(path));
+                    if(!uri_opt)
+                        continue;
+                    ext::ContextItem item;
+                    item.label = desc;
+                    item.description = entry.directory.str();
+                    item.uri = uri_opt->str();
+                    all_items.push_back(std::move(item));
+                }
             }
 
             result.total = static_cast<int>(all_items.size());

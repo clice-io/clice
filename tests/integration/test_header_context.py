@@ -53,8 +53,8 @@ async def test_query_context_returns_host_sources(client, workspace):
 
 
 @pytest.mark.workspace("header_context")
-async def test_query_context_source_file_empty(client, workspace):
-    """clice/queryContext on a source file should return empty contexts."""
+async def test_query_context_source_file_returns_cdb_entries(client, workspace):
+    """clice/queryContext on a source file should return its CDB entries."""
     main_uri, _ = await client.open_and_wait(workspace / "main.cpp")
 
     result = await asyncio.wait_for(
@@ -62,8 +62,10 @@ async def test_query_context_source_file_empty(client, workspace):
         timeout=30.0,
     )
     assert result is not None
-    assert _get(result, "total") == 0
-    assert len(_get(result, "contexts", [])) == 0
+    # header_context workspace has exactly 1 CDB entry for main.cpp.
+    assert _get(result, "total") == 1
+    contexts = _get(result, "contexts", [])
+    assert len(contexts) == 1
 
 
 @pytest.mark.workspace("header_context")
@@ -168,7 +170,7 @@ async def test_full_context_flow(client, workspace):
         client.text_document_hover_async(
             HoverParams(
                 text_document=_doc(utils_uri),
-                position=Position(line=12, character=12),  # 'sum' function
+                position=Position(line=14, character=12),  # 'sum' function
             )
         ),
         timeout=30.0,
@@ -182,3 +184,47 @@ async def test_full_context_flow(client, workspace):
     assert len(errors) == 0, (
         f"Header should have no errors after switchContext, got: {errors}"
     )
+
+
+@pytest.mark.workspace("header_context")
+async def test_deep_nested_header_context(client, workspace):
+    """queryContext on a deeply nested header (main.cpp -> utils.h -> inner.h)
+    should still find main.cpp as the host source."""
+    main_uri, _ = await client.open_and_wait(workspace / "main.cpp")
+
+    inner_h = workspace / "inner.h"
+    inner_uri, _ = client.open(inner_h)
+
+    # queryContext on inner.h should find main.cpp through the chain.
+    result = await asyncio.wait_for(
+        client.protocol.send_request_async("clice/queryContext", {"uri": inner_uri}),
+        timeout=30.0,
+    )
+    assert result is not None
+    total = _get(result, "total")
+    assert total >= 1, f"Deep nested header should find host sources, got total={total}"
+    contexts = _get(result, "contexts", [])
+    uris = [_get(c, "uri") for c in contexts]
+    assert any("main.cpp" in u for u in uris), (
+        f"main.cpp should be a context for inner.h, got: {uris}"
+    )
+
+
+@pytest.mark.workspace("multi_context")
+async def test_query_context_multiple_cdb_entries(client, workspace):
+    """queryContext on a source file with multiple CDB entries should return all."""
+    main_cpp = workspace / "main.cpp"
+    main_uri, _ = await client.open_and_wait(main_cpp)
+
+    result = await asyncio.wait_for(
+        client.protocol.send_request_async("clice/queryContext", {"uri": main_uri}),
+        timeout=30.0,
+    )
+    assert result is not None
+    total = _get(result, "total")
+    assert total >= 2, f"Should find at least 2 CDB entries, got total={total}"
+    contexts = _get(result, "contexts", [])
+    labels = [_get(c, "label") for c in contexts]
+    # Each entry should have distinguishing flags in the label.
+    assert any("CONFIG_A" in l for l in labels), f"Should find CONFIG_A, got: {labels}"
+    assert any("CONFIG_B" in l for l in labels), f"Should find CONFIG_B, got: {labels}"

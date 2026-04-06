@@ -241,6 +241,37 @@ def test_data_dir() -> Path:
         ]
         hc_cdb.write_text(json.dumps(cdb, indent=2))
 
+    # Generate compile_commands.json for multi_context (same file, two configs)
+    mc_dir = data_dir / "multi_context"
+    mc_main = mc_dir / "main.cpp"
+    mc_cdb = mc_dir / "compile_commands.json"
+    if mc_main.exists():
+        cdb = [
+            {
+                "directory": mc_dir.as_posix(),
+                "file": mc_main.as_posix(),
+                "arguments": [
+                    "clang++",
+                    "-std=c++17",
+                    "-DCONFIG_A",
+                    "-fsyntax-only",
+                    mc_main.as_posix(),
+                ],
+            },
+            {
+                "directory": mc_dir.as_posix(),
+                "file": mc_main.as_posix(),
+                "arguments": [
+                    "clang++",
+                    "-std=c++17",
+                    "-DCONFIG_B",
+                    "-fsyntax-only",
+                    mc_main.as_posix(),
+                ],
+            },
+        ]
+        mc_cdb.write_text(json.dumps(cdb, indent=2))
+
     # Generate compile_commands.json for include_completion
     ic_dir = data_dir / "include_completion"
     ic_main = ic_dir / "main.cpp"

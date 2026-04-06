@@ -2,6 +2,8 @@
 // Depends on the including source file to provide the <vector> include.
 #pragma once
 
+#include "inner.h"
+
 inline std::vector<int> make_range(int n) {
     std::vector<int> result;
     for(int i = 0; i < n; ++i) {
