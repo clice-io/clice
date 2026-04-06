@@ -16,10 +16,12 @@
 #include "eventide/serde/json/serializer.h"
 #include "eventide/serde/serde/raw_value.h"
 #include "feature/feature.h"
+#include "index/tu_index.h"
 #include "server/protocol.h"
 #include "support/logging.h"
 
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
@@ -210,6 +212,11 @@ void StatefulWorker::register_handlers() {
                 result.memory_usage = 0;  // TODO: query actual memory
                 if(doc->unit.completed()) {
                     result.deps = doc->unit.deps();
+
+                    // Build index for main file only (interested_only=true).
+                    auto tu_index = index::TUIndex::build(doc->unit, true);
+                    llvm::raw_string_ostream os(result.tu_index_data);
+                    tu_index.serialize(os);
                 }
                 return result;
             });

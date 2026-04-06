@@ -85,7 +85,7 @@ struct TUIndex {
 
     FileIndex main_file_index;
 
-    static TUIndex build(CompilationUnitRef unit);
+    static TUIndex build(CompilationUnitRef unit, bool interested_only = false);
 
     void serialize(llvm::raw_ostream& os) const;
 

@@ -19,6 +19,7 @@
 #include "syntax/dependency_graph.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -130,6 +131,15 @@ struct SymbolInfo {
     protocol::Range range;
 };
 
+/// In-memory index for an open file.  Kept separate from MergedIndex because
+/// open files change frequently, are based on unsaved buffer content, and only
+/// need to track the main file (headers are covered by PCH/PCM indexing).
+struct OpenFileIndex {
+    index::FileIndex file_index;
+    index::SymbolTable symbols;
+    std::string content;  ///< Buffer text at index time (for position mapping).
+};
+
 enum class ServerLifecycle : std::uint8_t {
     Uninitialized,
     Initialized,
@@ -216,6 +226,13 @@ private:
 
     /// Timer for idle-triggered background indexing.
     std::shared_ptr<et::timer> index_idle_timer;
+
+    /// In-memory index for open files (server-level path_id -> OpenFileIndex).
+    llvm::DenseMap<std::uint32_t, OpenFileIndex> open_file_indices;
+
+    /// Project-level path_ids of files that have an OpenFileIndex.
+    /// Used to skip stale MergedIndex shards during cross-file queries.
+    llvm::DenseSet<std::uint32_t> open_proj_path_ids;
 
     /// path_id -> open document state (text, version, generation, dirty flag).
     llvm::DenseMap<std::uint32_t, DocumentState> documents;

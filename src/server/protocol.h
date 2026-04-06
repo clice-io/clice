@@ -33,6 +33,8 @@ struct CompileResult {
     eventide::serde::RawValue diagnostics;
     std::size_t memory_usage;
     std::vector<std::string> deps;
+    /// Serialized TUIndex for the main file (interested_only=true).
+    std::string tu_index_data;
 };
 
 struct HoverParams {
@@ -107,6 +109,8 @@ struct BuildPCHResult {
     std::string error;
     std::string pch_path;
     std::vector<std::string> deps;
+    /// Serialized TUIndex for preamble headers (main file index cleared).
+    std::string tu_index_data;
 };
 
 struct BuildPCMParams {
@@ -123,6 +127,8 @@ struct BuildPCMResult {
     std::string error;
     std::string pcm_path;
     std::vector<std::string> deps;
+    /// Serialized TUIndex for the module interface file.
+    std::string tu_index_data;
 };
 
 struct IndexParams {

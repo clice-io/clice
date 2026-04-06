@@ -116,6 +116,16 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                 // (EndSourceFile serializes the AST on destruction).
                 unit = CompilationUnit(nullptr);
 
+                // Index preamble headers before destroying the unit.
+                std::string tu_index_serialized;
+                if(success) {
+                    auto tu_index = index::TUIndex::build(unit);
+                    // Clear main file index — we only want headers from the PCH.
+                    tu_index.main_file_index = index::FileIndex{};
+                    llvm::raw_string_ostream os(tu_index_serialized);
+                    tu_index.serialize(os);
+                }
+
                 if(success) {
                     std::string final_path;
                     if(has_output) {
@@ -138,6 +148,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                              timer.ms());
                     worker::BuildPCHResult pch_result{true, "", std::move(final_path)};
                     pch_result.deps = pch_info.deps;
+                    pch_result.tu_index_data = std::move(tu_index_serialized);
                     return pch_result;
                 } else {
                     LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]",
@@ -196,6 +207,14 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                     }
                 }
 
+                // Index module content before destroying the unit.
+                std::string tu_index_serialized;
+                if(success) {
+                    auto tu_index = index::TUIndex::build(unit);
+                    llvm::raw_string_ostream os(tu_index_serialized);
+                    tu_index.serialize(os);
+                }
+
                 unit = CompilationUnit(nullptr);
 
                 if(success) {
@@ -214,6 +233,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                     LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
                     worker::BuildPCMResult pcm_result{true, "", std::move(final_path)};
                     pcm_result.deps = pcm_info.deps;
+                    pcm_result.tu_index_data = std::move(tu_index_serialized);
                     return pcm_result;
                 } else {
                     LOG_WARN("BuildPCM failed: module={}, {}ms, errors=[{}]",
