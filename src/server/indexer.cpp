@@ -5,11 +5,9 @@
 #include <variant>
 #include <vector>
 
-#include "eventide/ipc/json_codec.h"
 #include "eventide/ipc/lsp/position.h"
 #include "eventide/ipc/lsp/protocol.h"
 #include "eventide/ipc/lsp/uri.h"
-#include "eventide/serde/json/json.h"
 #include "index/tu_index.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -22,13 +20,6 @@
 namespace clice {
 
 namespace lsp = eventide::ipc::lsp;
-using serde_raw = et::serde::RawValue;
-
-template <typename T>
-static serde_raw to_raw(const T& value) {
-    auto json = et::serde::json::to_json<et::ipc::lsp_config>(value);
-    return serde_raw{json ? std::move(*json) : "null"};
-}
 
 /// Find the tightest (innermost) occurrence containing `offset` via binary search.
 static const index::Occurrence* lookup_occurrence(const std::vector<index::Occurrence>& occs,
@@ -314,18 +305,17 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
     return {};
 }
 
-et::serde::RawValue Indexer::query_relations(llvm::StringRef path,
-                                             std::uint32_t server_path_id,
-                                             const protocol::Position& position,
-                                             RelationKind kind,
-                                             const std::string* doc_text) {
+std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
+                                                         std::uint32_t server_path_id,
+                                                         const protocol::Position& position,
+                                                         RelationKind kind,
+                                                         const std::string* doc_text) {
     auto hit = resolve_cursor(path, server_path_id, position, doc_text);
     if(hit.hash == 0)
-        return serde_raw{"null"};
+        return {};
 
     std::vector<protocol::Location> locations;
 
-    // From ProjectIndex reference files (MergedIndex shards).
     auto sym_it = project_index.symbols.find(hit.hash);
     if(sym_it != project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
@@ -344,7 +334,6 @@ et::serde::RawValue Indexer::query_relations(llvm::StringRef path,
         }
     }
 
-    // From open file indices.
     for(auto& [id, index]: open_file_indices) {
         auto uri = lsp::URI::from_file_path(std::string(path_pool.resolve(id)));
         if(!uri)
@@ -355,9 +344,7 @@ et::serde::RawValue Indexer::query_relations(llvm::StringRef path,
         });
     }
 
-    if(locations.empty())
-        return serde_raw{"null"};
-    return to_raw(locations);
+    return locations;
 }
 
 std::optional<SymbolInfo> Indexer::lookup_symbol(const std::string& uri,
@@ -498,7 +485,8 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
 
 // ── Indexer: hierarchy queries ───────────────────────────────────────────
 
-et::serde::RawValue Indexer::find_incoming_calls(index::SymbolHash hash) {
+std::vector<protocol::CallHierarchyIncomingCall>
+Indexer::find_incoming_calls(index::SymbolHash hash) {
     llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> caller_ranges;
     collect_grouped_relations(hash, RelationKind::Caller, caller_ranges);
 
@@ -522,13 +510,11 @@ et::serde::RawValue Indexer::find_incoming_calls(index::SymbolHash hash) {
 
         results.push_back({std::move(item), std::move(ranges)});
     }
-
-    if(results.empty())
-        return serde_raw{"null"};
-    return to_raw(results);
+    return results;
 }
 
-et::serde::RawValue Indexer::find_outgoing_calls(index::SymbolHash hash) {
+std::vector<protocol::CallHierarchyOutgoingCall>
+Indexer::find_outgoing_calls(index::SymbolHash hash) {
     llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> callee_ranges;
     collect_grouped_relations(hash, RelationKind::Callee, callee_ranges);
 
@@ -552,13 +538,10 @@ et::serde::RawValue Indexer::find_outgoing_calls(index::SymbolHash hash) {
 
         results.push_back({std::move(item), std::move(ranges)});
     }
-
-    if(results.empty())
-        return serde_raw{"null"};
-    return to_raw(results);
+    return results;
 }
 
-et::serde::RawValue Indexer::find_supertypes(index::SymbolHash hash) {
+std::vector<protocol::TypeHierarchyItem> Indexer::find_supertypes(index::SymbolHash hash) {
     llvm::SmallVector<index::SymbolHash> base_hashes;
     collect_unique_targets(hash, RelationKind::Base, base_hashes);
 
@@ -581,13 +564,10 @@ et::serde::RawValue Indexer::find_supertypes(index::SymbolHash hash) {
         item.data = protocol::LSPAny(static_cast<std::int64_t>(target_hash));
         results.push_back(std::move(item));
     }
-
-    if(results.empty())
-        return serde_raw{"null"};
-    return to_raw(results);
+    return results;
 }
 
-et::serde::RawValue Indexer::find_subtypes(index::SymbolHash hash) {
+std::vector<protocol::TypeHierarchyItem> Indexer::find_subtypes(index::SymbolHash hash) {
     llvm::SmallVector<index::SymbolHash> derived_hashes;
     collect_unique_targets(hash, RelationKind::Derived, derived_hashes);
 
@@ -610,13 +590,11 @@ et::serde::RawValue Indexer::find_subtypes(index::SymbolHash hash) {
         item.data = protocol::LSPAny(static_cast<std::int64_t>(target_hash));
         results.push_back(std::move(item));
     }
-
-    if(results.empty())
-        return serde_raw{"null"};
-    return to_raw(results);
+    return results;
 }
 
-et::serde::RawValue Indexer::search_symbols(llvm::StringRef query, std::size_t max_results) {
+std::vector<protocol::SymbolInformation>
+Indexer::search_symbols(llvm::StringRef query, std::size_t max_results) {
     std::string query_lower = query.lower();
 
     auto is_indexable_kind = [](SymbolKind sk) {
@@ -683,10 +661,7 @@ et::serde::RawValue Indexer::search_symbols(llvm::StringRef query, std::size_t m
             seen.insert(hash);
         }
     }
-
-    if(results.empty())
-        return serde_raw{"null"};
-    return to_raw(results);
+    return results;
 }
 
 // ── Indexer: static utilities ────────────────────────────────────────────

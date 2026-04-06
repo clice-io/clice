@@ -437,7 +437,7 @@ void MasterServer::register_handlers() {
     };
 
     auto query_at = [this](const std::string& uri, const protocol::Position& pos,
-                           RelationKind kind) {
+                           RelationKind kind) -> std::vector<protocol::Location> {
         auto path = Compiler::uri_to_path(uri);
         auto path_id = path_pool.intern(path);
         auto* doc = compiler.get_document(path_id);
@@ -462,8 +462,8 @@ void MasterServer::register_handlers() {
             auto& pos = params.text_document_position_params.position;
 
             auto result = query_at(uri, pos, RelationKind::Definition);
-            if(!result.empty() && result.data != "null") {
-                co_return std::move(result);
+            if(!result.empty()) {
+                co_return to_raw(result);
             }
 
             co_return co_await compiler.forward_stateful<worker::GoToDefinitionParams>(uri, pos);
@@ -474,24 +474,18 @@ void MasterServer::register_handlers() {
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
 
-            auto refs = query_at(uri, pos, RelationKind::Reference);
+            auto locations = query_at(uri, pos, RelationKind::Reference);
 
             if(params.context.include_declaration) {
                 auto defs = query_at(uri, pos, RelationKind::Definition);
-                if(!defs.empty() && defs.data != "null") {
-                    if(refs.empty() || refs.data == "null") {
-                        co_return std::move(defs);
-                    }
-                    if(refs.data.size() > 2 && defs.data.size() > 2) {
-                        std::string merged = refs.data.substr(0, refs.data.size() - 1);
-                        merged += ',';
-                        merged += defs.data.substr(1);
-                        co_return serde_raw{std::move(merged)};
-                    }
-                }
+                locations.insert(locations.end(),
+                                 std::make_move_iterator(defs.begin()),
+                                 std::make_move_iterator(defs.end()));
             }
 
-            co_return std::move(refs);
+            if(locations.empty())
+                co_return serde_raw{"null"};
+            co_return to_raw(locations);
         });
 
     peer.on_request(
@@ -546,7 +540,10 @@ void MasterServer::register_handlers() {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
-        co_return indexer.find_incoming_calls(info->hash);
+        auto results = indexer.find_incoming_calls(info->hash);
+        if(results.empty())
+            co_return serde_raw{"null"};
+        co_return to_raw(results);
     });
 
     peer.on_request([this, resolve_item](RequestContext& ctx,
@@ -554,7 +551,10 @@ void MasterServer::register_handlers() {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
-        co_return indexer.find_outgoing_calls(info->hash);
+        auto results = indexer.find_outgoing_calls(info->hash);
+        if(results.empty())
+            co_return serde_raw{"null"};
+        co_return to_raw(results);
     });
 
     peer.on_request([this, lookup_at](RequestContext& ctx,
@@ -579,7 +579,10 @@ void MasterServer::register_handlers() {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
-        co_return indexer.find_supertypes(info->hash);
+        auto results = indexer.find_supertypes(info->hash);
+        if(results.empty())
+            co_return serde_raw{"null"};
+        co_return to_raw(results);
     });
 
     peer.on_request([this, resolve_item](RequestContext& ctx,
@@ -587,12 +590,18 @@ void MasterServer::register_handlers() {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
-        co_return indexer.find_subtypes(info->hash);
+        auto results = indexer.find_subtypes(info->hash);
+        if(results.empty())
+            co_return serde_raw{"null"};
+        co_return to_raw(results);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::WorkspaceSymbolParams& params) -> RawResult {
-        co_return indexer.search_symbols(params.query);
+        auto results = indexer.search_symbols(params.query);
+        if(results.empty())
+            co_return serde_raw{"null"};
+        co_return to_raw(results);
     });
 
     /// clice/ extension commands.

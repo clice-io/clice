@@ -8,7 +8,6 @@
 
 #include "eventide/ipc/lsp/position.h"
 #include "eventide/ipc/lsp/protocol.h"
-#include "eventide/serde/serde/raw_value.h"
 #include "index/merged_index.h"
 #include "index/project_index.h"
 #include "semantic/relation_kind.h"
@@ -44,7 +43,7 @@ struct OpenFileIndex {
     find_occurrence(std::uint32_t offset) const;
 
     /// Iterate relations matching `kind`, calling back with pre-converted ranges.
-    /// Callback signature: (const index::Relation&, protocol::Range) -> bool (true = continue).
+    /// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).
     template <typename Fn>
     void find_relations(index::SymbolHash hash, RelationKind kind, Fn&& fn) const {
         if(!mapper)
@@ -90,7 +89,7 @@ struct MergedIndexShard {
     find_occurrence(std::uint32_t offset) const;
 
     /// Iterate relations matching `kind`, calling back with pre-converted ranges.
-    /// Callback signature: (const index::Relation&, protocol::Range) -> bool (true = continue).
+    /// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).
     template <typename Fn>
     void find_relations(index::SymbolHash hash, RelationKind kind, Fn&& fn) const {
         auto* m = mapper();
@@ -138,7 +137,6 @@ public:
     bool need_update(llvm::StringRef file_path);
 
     /// Store or replace the open file index for a server-level path_id.
-    /// Also tracks the project-level path_id for cross-file query filtering.
     void set_open_file(std::uint32_t server_path_id,
                        llvm::StringRef file_path,
                        OpenFileIndex index);
@@ -147,13 +145,12 @@ public:
     void remove_open_file(std::uint32_t server_path_id, llvm::StringRef file_path);
 
     /// Query relations (Definition, Reference, etc.) for a symbol at cursor.
-    /// @param doc_text  Fallback text for position mapping when the file has no
-    ///                  open file index yet (may be nullptr for non-open files).
-    et::serde::RawValue query_relations(llvm::StringRef path,
-                                        std::uint32_t server_path_id,
-                                        const protocol::Position& position,
-                                        RelationKind kind,
-                                        const std::string* doc_text);
+    /// @param doc_text  Fallback text when the file has no open file index yet.
+    std::vector<protocol::Location> query_relations(llvm::StringRef path,
+                                                    std::uint32_t server_path_id,
+                                                    const protocol::Position& position,
+                                                    RelationKind kind,
+                                                    const std::string* doc_text);
 
     /// Look up symbol info (hash, name, kind, range) at a cursor position.
     std::optional<SymbolInfo> lookup_symbol(const std::string& uri,
@@ -176,17 +173,30 @@ public:
                                                      const std::optional<protocol::LSPAny>& data,
                                                      const std::string* doc_text);
 
-    /// Hierarchy & workspace queries (return serialized JSON).
-    et::serde::RawValue find_incoming_calls(index::SymbolHash hash);
-    et::serde::RawValue find_outgoing_calls(index::SymbolHash hash);
-    et::serde::RawValue find_supertypes(index::SymbolHash hash);
-    et::serde::RawValue find_subtypes(index::SymbolHash hash);
-    et::serde::RawValue search_symbols(llvm::StringRef query, std::size_t max_results = 100);
+    /// Find incoming calls to a function.
+    std::vector<protocol::CallHierarchyIncomingCall> find_incoming_calls(index::SymbolHash hash);
 
+    /// Find outgoing calls from a function.
+    std::vector<protocol::CallHierarchyOutgoingCall> find_outgoing_calls(index::SymbolHash hash);
+
+    /// Find supertypes (base classes) of a type.
+    std::vector<protocol::TypeHierarchyItem> find_supertypes(index::SymbolHash hash);
+
+    /// Find subtypes (derived classes) of a type.
+    std::vector<protocol::TypeHierarchyItem> find_subtypes(index::SymbolHash hash);
+
+    /// Search symbols by name substring.
+    std::vector<protocol::SymbolInformation> search_symbols(llvm::StringRef query,
+                                                            std::size_t max_results = 100);
+
+    /// Convert internal SymbolKind to LSP SymbolKind.
     static protocol::SymbolKind to_lsp_symbol_kind(SymbolKind kind);
+
+    /// Build hierarchy items from SymbolInfo.
     static protocol::CallHierarchyItem build_call_hierarchy_item(const SymbolInfo& info);
     static protocol::TypeHierarchyItem build_type_hierarchy_item(const SymbolInfo& info);
 
+    /// Direct access to ProjectIndex for background indexing.
     index::ProjectIndex& project_index_ref() { return project_index; }
 
 private:
