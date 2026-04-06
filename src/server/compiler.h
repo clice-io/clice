@@ -174,29 +174,6 @@ public:
     std::function<void()> on_indexing_needed;
 
 private:
-    et::event_loop& loop;
-    et::ipc::JsonPeer& peer;
-    PathPool& path_pool;
-    WorkerPool& pool;
-    Indexer& indexer;
-    const CliceConfig& config;
-    CompilationDatabase& cdb;
-    DependencyGraph& dep_graph;
-
-    /// Open document state, keyed by server-level path_id.
-    llvm::DenseMap<std::uint32_t, DocumentState> documents;
-
-    llvm::DenseMap<std::uint32_t, PCHState> pch_states;
-    llvm::DenseMap<std::uint32_t, PCMState> pcm_states;
-    llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
-
-    llvm::DenseMap<std::uint32_t, std::string> path_to_module;
-    std::unique_ptr<CompileGraph> compile_graph;
-
-    llvm::DenseMap<std::uint32_t, DepsSnapshot> ast_deps;
-    llvm::DenseMap<std::uint32_t, HeaderFileContext> header_file_contexts;
-    llvm::DenseMap<std::uint32_t, std::uint32_t> active_contexts;
-
     /// Compile module dependencies, build/reuse PCH, and fill PCM paths.
     et::task<bool> ensure_deps(std::uint32_t path_id,
                                llvm::StringRef path,
@@ -240,6 +217,33 @@ private:
     PreambleCompletionContext detect_completion_context(const std::string& text, uint32_t offset);
     et::serde::RawValue complete_include(const PreambleCompletionContext& ctx, llvm::StringRef path);
     et::serde::RawValue complete_import(const PreambleCompletionContext& ctx);
+
+private:
+    et::event_loop& loop;
+    et::ipc::JsonPeer& peer;
+    PathPool& path_pool;
+    WorkerPool& pool;
+    Indexer& indexer;
+    const CliceConfig& config;
+    CompilationDatabase& cdb;
+    DependencyGraph& dep_graph;
+
+    /// Open document state, keyed by server-level path_id.
+    llvm::DenseMap<std::uint32_t, DocumentState> documents;
+
+    /// PCH/PCM cache state.
+    llvm::DenseMap<std::uint32_t, PCHState> pch_states;
+    llvm::DenseMap<std::uint32_t, PCMState> pcm_states;
+    llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
+
+    /// Module compilation ordering.
+    llvm::DenseMap<std::uint32_t, std::string> path_to_module;
+    std::unique_ptr<CompileGraph> compile_graph;
+
+    /// Per-file compilation state.
+    llvm::DenseMap<std::uint32_t, DepsSnapshot> ast_deps;
+    llvm::DenseMap<std::uint32_t, HeaderFileContext> header_file_contexts;
+    llvm::DenseMap<std::uint32_t, std::uint32_t> active_contexts;
 };
 
 }  // namespace clice

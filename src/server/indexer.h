@@ -200,12 +200,6 @@ public:
     index::ProjectIndex& project_index_ref() { return project_index; }
 
 private:
-    PathPool& path_pool;
-    index::ProjectIndex project_index;
-    llvm::DenseMap<std::uint32_t, MergedIndexShard> merged_indices;
-    llvm::DenseMap<std::uint32_t, OpenFileIndex> open_file_indices;
-    llvm::DenseSet<std::uint32_t> open_proj_path_ids;
-
     /// Result of resolving a symbol at a cursor position.
     struct CursorHit {
         index::SymbolHash hash = 0;
@@ -229,6 +223,13 @@ private:
     void collect_unique_targets(index::SymbolHash hash,
                                 RelationKind kind,
                                 llvm::SmallVectorImpl<index::SymbolHash>& targets);
+
+private:
+    PathPool& path_pool;
+    index::ProjectIndex project_index;
+    llvm::DenseMap<std::uint32_t, MergedIndexShard> merged_indices;
+    llvm::DenseMap<std::uint32_t, OpenFileIndex> open_file_indices;
+    llvm::DenseSet<std::uint32_t> open_proj_path_ids;
 };
 
 }  // namespace clice
