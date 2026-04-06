@@ -130,14 +130,8 @@ Compiler::Compiler(et::event_loop& loop,
                    const CliceConfig& config,
                    CompilationDatabase& cdb,
                    DependencyGraph& dep_graph) :
-    loop(loop),
-    peer(peer),
-    path_pool(path_pool),
-    pool(pool),
-    indexer(indexer),
-    config(config),
-    cdb(cdb),
-    dep_graph(dep_graph) {}
+    loop(loop), peer(peer), path_pool(path_pool), pool(pool), indexer(indexer), config(config),
+    cdb(cdb), dep_graph(dep_graph) {}
 
 Compiler::~Compiler() {
     cancel_all();
@@ -428,8 +422,7 @@ void Compiler::init_compile_graph() {
 
         // Merge module index into ProjectIndex/MergedIndex.
         if(!result.value().tu_index_data.empty()) {
-            indexer.merge(result.value().tu_index_data.data(),
-                          result.value().tu_index_data.size());
+            indexer.merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
         }
 
         // Persist cache metadata after successful build.
@@ -538,8 +531,7 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     return true;
 }
 
-std::optional<HeaderFileContext>
-    Compiler::resolve_header_context(std::uint32_t header_path_id) {
+std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t header_path_id) {
     // Find source files that transitively include this header.
     auto hosts = dep_graph.find_host_sources(header_path_id);
     if(hosts.empty()) {
@@ -792,8 +784,7 @@ et::task<bool> Compiler::ensure_pch(std::uint32_t path_id,
 
     // Merge preamble header index into ProjectIndex/MergedIndex.
     if(!result.value().tu_index_data.empty()) {
-        indexer.merge(result.value().tu_index_data.data(),
-                      result.value().tu_index_data.size());
+        indexer.merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
     }
 
     // Persist cache metadata after successful build.
@@ -942,8 +933,7 @@ void Compiler::apply_changes(const protocol::DidChangeTextDocumentParams& params
         std::visit(
             [&](auto& c) {
                 using T = std::remove_cvref_t<decltype(c)>;
-                if constexpr(std::is_same_v<T,
-                                            protocol::TextDocumentContentChangeWholeDocument>) {
+                if constexpr(std::is_same_v<T, protocol::TextDocumentContentChangeWholeDocument>) {
                     doc.text = c.text;
                 } else {
                     auto& range = c.range;
@@ -1515,11 +1505,10 @@ et::serde::RawValue Compiler::complete_import(const PreambleCompletionContext& c
 /// Explicit template instantiations for forward_stateful/forward_stateless
 /// called from MasterServer::register_handlers().
 template Compiler::RawResult
-    Compiler::forward_stateful<worker::HoverParams>(const std::string&,
-                                                    const protocol::Position&);
+    Compiler::forward_stateful<worker::HoverParams>(const std::string&, const protocol::Position&);
 template Compiler::RawResult
     Compiler::forward_stateful<worker::GoToDefinitionParams>(const std::string&,
-                                                            const protocol::Position&);
+                                                             const protocol::Position&);
 template Compiler::RawResult
     Compiler::forward_stateful<worker::SemanticTokensParams>(const std::string&);
 template Compiler::RawResult
@@ -1534,6 +1523,6 @@ template Compiler::RawResult
     Compiler::forward_stateful<worker::CodeActionParams>(const std::string&);
 template Compiler::RawResult
     Compiler::forward_stateless<worker::SignatureHelpParams>(const std::string&,
-                                                            const protocol::Position&);
+                                                             const protocol::Position&);
 
 }  // namespace clice

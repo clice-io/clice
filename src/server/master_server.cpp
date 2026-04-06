@@ -34,10 +34,7 @@ static serde_raw to_raw(const T& value) {
 }
 
 MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path) :
-    loop(loop),
-    peer(peer),
-    pool(loop),
-    indexer(path_pool),
+    loop(loop), peer(peer), pool(loop), indexer(path_pool),
     compiler(loop, peer, path_pool, pool, indexer, config, cdb, dependency_graph),
     self_path(std::move(self_path)) {}
 
@@ -106,10 +103,15 @@ et::task<> MasterServer::load_workspace() {
             ? 100.0 * static_cast<double>(report.includes_resolved) / report.includes_found
             : 100.0;
     LOG_INFO(
-        "Dependency scan: {}ms, {} files ({} source + {} header), "
-        "{} edges, {}/{} resolved ({:.1f}%), {} waves",
-        report.elapsed_ms, report.total_files, report.source_files, report.header_files,
-        report.total_edges, report.includes_resolved, report.includes_found, accuracy,
+        "Dependency scan: {}ms, {} files ({} source + {} header), " "{} edges, {}/{} resolved ({:.1f}%), {} waves",
+        report.elapsed_ms,
+        report.total_files,
+        report.source_files,
+        report.header_files,
+        report.total_edges,
+        report.includes_resolved,
+        report.includes_found,
+        accuracy,
         report.waves);
     if(unresolved > 0) {
         LOG_WARN("{} unresolved includes", unresolved);
@@ -187,8 +189,7 @@ et::task<> MasterServer::run_background_indexing() {
             LOG_INFO("Background indexing got TUIndex for {}: {} bytes",
                      file_path,
                      result.value().tu_index_data.size());
-            indexer.merge(result.value().tu_index_data.data(),
-                          result.value().tu_index_data.size());
+            indexer.merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
             ++processed;
         } else if(result.has_value() && !result.value().success) {
             LOG_WARN("Background index failed for {}: {}", file_path, result.value().error);
@@ -327,7 +328,9 @@ void MasterServer::register_handlers() {
 
         lifecycle = ServerLifecycle::Ready;
 
-        compiler.on_indexing_needed = [this]() { schedule_indexing(); };
+        compiler.on_indexing_needed = [this]() {
+            schedule_indexing();
+        };
 
         loop.schedule(load_workspace());
     });
@@ -357,7 +360,8 @@ void MasterServer::register_handlers() {
     peer.on_notification([this](const protocol::DidOpenTextDocumentParams& params) {
         if(lifecycle != ServerLifecycle::Ready)
             return;
-        compiler.open_document(params.text_document.uri, params.text_document.text,
+        compiler.open_document(params.text_document.uri,
+                               params.text_document.text,
                                params.text_document.version);
     });
 
@@ -391,11 +395,11 @@ void MasterServer::register_handlers() {
             params.text_document_position_params.position);
     });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::SemanticTokensParams& params) -> RawResult {
-        co_return co_await compiler.forward_stateful<worker::SemanticTokensParams>(
-            params.text_document.uri);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
+            co_return co_await compiler.forward_stateful<worker::SemanticTokensParams>(
+                params.text_document.uri);
+        });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
@@ -403,23 +407,23 @@ void MasterServer::register_handlers() {
                 params.text_document.uri);
         });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::FoldingRangeParams& params) -> RawResult {
-        co_return co_await compiler.forward_stateful<worker::FoldingRangeParams>(
-            params.text_document.uri);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
+            co_return co_await compiler.forward_stateful<worker::FoldingRangeParams>(
+                params.text_document.uri);
+        });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::DocumentSymbolParams& params) -> RawResult {
-        co_return co_await compiler.forward_stateful<worker::DocumentSymbolParams>(
-            params.text_document.uri);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
+            co_return co_await compiler.forward_stateful<worker::DocumentSymbolParams>(
+                params.text_document.uri);
+        });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::DocumentLinkParams& params) -> RawResult {
-        co_return co_await compiler.forward_stateful<worker::DocumentLinkParams>(
-            params.text_document.uri);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
+            co_return co_await compiler.forward_stateful<worker::DocumentLinkParams>(
+                params.text_document.uri);
+        });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
@@ -436,7 +440,8 @@ void MasterServer::register_handlers() {
         return indexer.lookup_symbol(uri, path, path_id, pos, doc_text);
     };
 
-    auto query_at = [this](const std::string& uri, const protocol::Position& pos,
+    auto query_at = [this](const std::string& uri,
+                           const protocol::Position& pos,
                            RelationKind kind) -> std::vector<protocol::Location> {
         auto path = Compiler::uri_to_path(uri);
         auto path_id = path_pool.intern(path);
@@ -445,9 +450,10 @@ void MasterServer::register_handlers() {
         return indexer.query_relations(path, path_id, pos, kind, doc_text);
     };
 
-    auto resolve_item = [this](const std::string& uri, const protocol::Range& range,
-                               const std::optional<protocol::LSPAny>& data)
-                             -> std::optional<SymbolInfo> {
+    auto resolve_item =
+        [this](const std::string& uri,
+               const protocol::Range& range,
+               const std::optional<protocol::LSPAny>& data) -> std::optional<SymbolInfo> {
         auto path = Compiler::uri_to_path(uri);
         auto path_id = path_pool.intern(path);
         auto* doc = compiler.get_document(path_id);
@@ -456,37 +462,37 @@ void MasterServer::register_handlers() {
     };
 
     /// Feature requests — index-based with AST fallback.
-    peer.on_request(
-        [this, query_at](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
+    peer.on_request([this, query_at](RequestContext& ctx,
+                                     const protocol::DefinitionParams& params) -> RawResult {
+        auto& uri = params.text_document_position_params.text_document.uri;
+        auto& pos = params.text_document_position_params.position;
 
-            auto result = query_at(uri, pos, RelationKind::Definition);
-            if(!result.empty()) {
-                co_return to_raw(result);
-            }
+        auto result = query_at(uri, pos, RelationKind::Definition);
+        if(!result.empty()) {
+            co_return to_raw(result);
+        }
 
-            co_return co_await compiler.forward_stateful<worker::GoToDefinitionParams>(uri, pos);
-        });
+        co_return co_await compiler.forward_stateful<worker::GoToDefinitionParams>(uri, pos);
+    });
 
-    peer.on_request(
-        [this, query_at](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
+    peer.on_request([this, query_at](RequestContext& ctx,
+                                     const protocol::ReferenceParams& params) -> RawResult {
+        auto& uri = params.text_document_position_params.text_document.uri;
+        auto& pos = params.text_document_position_params.position;
 
-            auto locations = query_at(uri, pos, RelationKind::Reference);
+        auto locations = query_at(uri, pos, RelationKind::Reference);
 
-            if(params.context.include_declaration) {
-                auto defs = query_at(uri, pos, RelationKind::Definition);
-                locations.insert(locations.end(),
-                                 std::make_move_iterator(defs.begin()),
-                                 std::make_move_iterator(defs.end()));
-            }
+        if(params.context.include_declaration) {
+            auto defs = query_at(uri, pos, RelationKind::Definition);
+            locations.insert(locations.end(),
+                             std::make_move_iterator(defs.begin()),
+                             std::make_move_iterator(defs.end()));
+        }
 
-            if(locations.empty())
-                co_return serde_raw{"null"};
-            co_return to_raw(locations);
-        });
+        if(locations.empty())
+            co_return serde_raw{"null"};
+        co_return to_raw(locations);
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {
@@ -519,24 +525,26 @@ void MasterServer::register_handlers() {
         });
 
     /// Hierarchy queries — index-based.
-    peer.on_request([this, lookup_at](RequestContext& ctx,
-                           const protocol::CallHierarchyPrepareParams& params) -> RawResult {
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
+    peer.on_request(
+        [this, lookup_at](RequestContext& ctx,
+                          const protocol::CallHierarchyPrepareParams& params) -> RawResult {
+            auto& uri = params.text_document_position_params.text_document.uri;
+            auto& pos = params.text_document_position_params.position;
 
-        auto info = lookup_at(uri, pos);
-        if(!info)
-            co_return serde_raw{"null"};
-        if(!(info->kind == SymbolKind::Function || info->kind == SymbolKind::Method))
-            co_return serde_raw{"null"};
+            auto info = lookup_at(uri, pos);
+            if(!info)
+                co_return serde_raw{"null"};
+            if(!(info->kind == SymbolKind::Function || info->kind == SymbolKind::Method))
+                co_return serde_raw{"null"};
 
-        std::vector<protocol::CallHierarchyItem> items;
-        items.push_back(Indexer::build_call_hierarchy_item(*info));
-        co_return to_raw(items);
-    });
+            std::vector<protocol::CallHierarchyItem> items;
+            items.push_back(Indexer::build_call_hierarchy_item(*info));
+            co_return to_raw(items);
+        });
 
-    peer.on_request([this, resolve_item](RequestContext& ctx,
-                           const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
+    peer.on_request([this, resolve_item](
+                        RequestContext& ctx,
+                        const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
@@ -546,8 +554,9 @@ void MasterServer::register_handlers() {
         co_return to_raw(results);
     });
 
-    peer.on_request([this, resolve_item](RequestContext& ctx,
-                           const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
+    peer.on_request([this, resolve_item](
+                        RequestContext& ctx,
+                        const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
@@ -557,52 +566,55 @@ void MasterServer::register_handlers() {
         co_return to_raw(results);
     });
 
-    peer.on_request([this, lookup_at](RequestContext& ctx,
-                           const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
+    peer.on_request(
+        [this, lookup_at](RequestContext& ctx,
+                          const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
+            auto& uri = params.text_document_position_params.text_document.uri;
+            auto& pos = params.text_document_position_params.position;
 
-        auto info = lookup_at(uri, pos);
-        if(!info)
-            co_return serde_raw{"null"};
-        if(!(info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
-             info->kind == SymbolKind::Enum || info->kind == SymbolKind::Union))
-            co_return serde_raw{"null"};
+            auto info = lookup_at(uri, pos);
+            if(!info)
+                co_return serde_raw{"null"};
+            if(!(info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
+                 info->kind == SymbolKind::Enum || info->kind == SymbolKind::Union))
+                co_return serde_raw{"null"};
 
-        std::vector<protocol::TypeHierarchyItem> items;
-        items.push_back(Indexer::build_type_hierarchy_item(*info));
-        co_return to_raw(items);
-    });
+            std::vector<protocol::TypeHierarchyItem> items;
+            items.push_back(Indexer::build_type_hierarchy_item(*info));
+            co_return to_raw(items);
+        });
 
-    peer.on_request([this, resolve_item](RequestContext& ctx,
-                           const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
-        auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
-        if(!info)
-            co_return serde_raw{"null"};
-        auto results = indexer.find_supertypes(info->hash);
-        if(results.empty())
-            co_return serde_raw{"null"};
-        co_return to_raw(results);
-    });
+    peer.on_request(
+        [this, resolve_item](RequestContext& ctx,
+                             const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
+            auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
+            if(!info)
+                co_return serde_raw{"null"};
+            auto results = indexer.find_supertypes(info->hash);
+            if(results.empty())
+                co_return serde_raw{"null"};
+            co_return to_raw(results);
+        });
 
-    peer.on_request([this, resolve_item](RequestContext& ctx,
-                           const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
-        auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
-        if(!info)
-            co_return serde_raw{"null"};
-        auto results = indexer.find_subtypes(info->hash);
-        if(results.empty())
-            co_return serde_raw{"null"};
-        co_return to_raw(results);
-    });
+    peer.on_request(
+        [this, resolve_item](RequestContext& ctx,
+                             const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
+            auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
+            if(!info)
+                co_return serde_raw{"null"};
+            auto results = indexer.find_subtypes(info->hash);
+            if(results.empty())
+                co_return serde_raw{"null"};
+            co_return to_raw(results);
+        });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::WorkspaceSymbolParams& params) -> RawResult {
-        auto results = indexer.search_symbols(params.query);
-        if(results.empty())
-            co_return serde_raw{"null"};
-        co_return to_raw(results);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::WorkspaceSymbolParams& params) -> RawResult {
+            auto results = indexer.search_symbols(params.query);
+            if(results.empty())
+                co_return serde_raw{"null"};
+            co_return to_raw(results);
+        });
 
     /// clice/ extension commands.
     peer.on_request(

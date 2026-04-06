@@ -40,7 +40,7 @@ struct OpenFileIndex {
     /// Find the tightest occurrence containing `offset`.
     /// Returns (symbol_hash, LSP range) with positions already converted.
     std::optional<std::pair<index::SymbolHash, protocol::Range>>
-    find_occurrence(std::uint32_t offset) const;
+        find_occurrence(std::uint32_t offset) const;
 
     /// Iterate relations matching `kind`, calling back with pre-converted ranges.
     /// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).
@@ -81,12 +81,14 @@ struct MergedIndexShard {
     }
 
     /// Invalidate the cached mapper (call after merge changes content).
-    void invalidate_mapper() { cached_mapper.reset(); }
+    void invalidate_mapper() {
+        cached_mapper.reset();
+    }
 
     /// Find occurrence at byte offset.
     /// Returns (symbol_hash, LSP range) with positions already converted.
     std::optional<std::pair<index::SymbolHash, protocol::Range>>
-    find_occurrence(std::uint32_t offset) const;
+        find_occurrence(std::uint32_t offset) const;
 
     /// Iterate relations matching `kind`, calling back with pre-converted ranges.
     /// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).
@@ -197,7 +199,9 @@ public:
     static protocol::TypeHierarchyItem build_type_hierarchy_item(const SymbolInfo& info);
 
     /// Direct access to ProjectIndex for background indexing.
-    index::ProjectIndex& project_index_ref() { return project_index; }
+    index::ProjectIndex& project_index_ref() {
+        return project_index;
+    }
 
 private:
     /// Result of resolving a symbol at a cursor position.

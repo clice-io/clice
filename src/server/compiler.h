@@ -166,8 +166,14 @@ public:
     void invalidate_host_contexts(std::uint32_t host_path_id,
                                   llvm::SmallVectorImpl<std::uint32_t>& stale_headers);
 
-    CompileGraph* compile_graph_ptr() { return compile_graph.get(); }
-    const llvm::DenseMap<std::uint32_t, std::string>& module_map() const { return path_to_module; }
+    CompileGraph* compile_graph_ptr() {
+        return compile_graph.get();
+    }
+
+    const llvm::DenseMap<std::uint32_t, std::string>& module_map() const {
+        return path_to_module;
+    }
+
     void cancel_all();
 
     /// Callback invoked when indexing should be scheduled (e.g. after compile success).
@@ -215,7 +221,8 @@ private:
 
     /// Include/import completion helpers.
     PreambleCompletionContext detect_completion_context(const std::string& text, uint32_t offset);
-    et::serde::RawValue complete_include(const PreambleCompletionContext& ctx, llvm::StringRef path);
+    et::serde::RawValue complete_include(const PreambleCompletionContext& ctx,
+                                         llvm::StringRef path);
     et::serde::RawValue complete_import(const PreambleCompletionContext& ctx);
 
 private:

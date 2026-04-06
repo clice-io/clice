@@ -22,7 +22,7 @@ namespace clice {
 namespace lsp = eventide::ipc::lsp;
 
 /// Find the tightest (innermost) occurrence containing `offset` via binary search.
-static const index::Occurrence* lookup_occurrence(const std::vector<index::Occurrence>& occs,
+const static index::Occurrence* lookup_occurrence(const std::vector<index::Occurrence>& occs,
                                                   std::uint32_t offset) {
     auto it = std::ranges::lower_bound(occs, offset, {}, [](const index::Occurrence& o) {
         return o.range.end;
@@ -40,7 +40,7 @@ static const index::Occurrence* lookup_occurrence(const std::vector<index::Occur
 // ── OpenFileIndex ────────────────────────────────────────────────────────
 
 std::optional<std::pair<index::SymbolHash, protocol::Range>>
-OpenFileIndex::find_occurrence(std::uint32_t offset) const {
+    OpenFileIndex::find_occurrence(std::uint32_t offset) const {
     if(!mapper)
         return std::nullopt;
     auto* occ = lookup_occurrence(file_index.occurrences, offset);
@@ -50,13 +50,16 @@ OpenFileIndex::find_occurrence(std::uint32_t offset) const {
     auto end = mapper->to_position(occ->range.end);
     if(!start || !end)
         return std::nullopt;
-    return std::pair{occ->target, protocol::Range{*start, *end}};
+    return std::pair{
+        occ->target,
+        protocol::Range{*start, *end}
+    };
 }
 
 // ── MergedIndexShard ─────────────────────────────────────────────────────
 
 std::optional<std::pair<index::SymbolHash, protocol::Range>>
-MergedIndexShard::find_occurrence(std::uint32_t offset) const {
+    MergedIndexShard::find_occurrence(std::uint32_t offset) const {
     auto* m = mapper();
     if(!m)
         return std::nullopt;
@@ -65,7 +68,10 @@ MergedIndexShard::find_occurrence(std::uint32_t offset) const {
         auto start = m->to_position(o.range.begin);
         auto end = m->to_position(o.range.end);
         if(start && end) {
-            result = {o.target, protocol::Range{*start, *end}};
+            result = {
+                o.target,
+                protocol::Range{*start, *end}
+            };
         }
         return false;
     });
@@ -247,9 +253,7 @@ void Indexer::remove_open_file(std::uint32_t server_path_id, llvm::StringRef fil
 
 // ── Indexer: symbol queries ──────────────────────────────────────────────
 
-bool Indexer::find_symbol_info(index::SymbolHash hash,
-                               std::string& name,
-                               SymbolKind& kind) const {
+bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const {
     for(auto& [_, index]: open_file_indices) {
         auto it = index.symbols.find(hash);
         if(it != index.symbols.end()) {
@@ -327,10 +331,12 @@ std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
             auto uri = lsp::URI::from_file_path(project_index.path_pool.path(file_id));
             if(!uri)
                 continue;
-            shard_it->second.find_relations(hit.hash, kind, [&](const auto&, protocol::Range range) {
-                locations.push_back({uri->str(), range});
-                return true;
-            });
+            shard_it->second.find_relations(hit.hash,
+                                            kind,
+                                            [&](const auto&, protocol::Range range) {
+                                                locations.push_back({uri->str(), range});
+                                                return true;
+                                            });
         }
     }
 
@@ -371,10 +377,12 @@ std::optional<protocol::Location> Indexer::find_definition_location(index::Symbo
         if(!uri)
             continue;
         std::optional<protocol::Location> result;
-        index.find_relations(hash, RelationKind::Definition, [&](const auto&, protocol::Range range) {
-            result = protocol::Location{uri->str(), range};
-            return false;
-        });
+        index.find_relations(hash,
+                             RelationKind::Definition,
+                             [&](const auto&, protocol::Range range) {
+                                 result = protocol::Location{uri->str(), range};
+                                 return false;
+                             });
         if(result)
             return result;
     }
@@ -394,10 +402,12 @@ std::optional<protocol::Location> Indexer::find_definition_location(index::Symbo
         if(!uri)
             continue;
         std::optional<protocol::Location> result;
-        shard_it->second.find_relations(hash, RelationKind::Definition, [&](const auto&, protocol::Range range) {
-            result = protocol::Location{uri->str(), range};
-            return false;
-        });
+        shard_it->second.find_relations(hash,
+                                        RelationKind::Definition,
+                                        [&](const auto&, protocol::Range range) {
+                                            result = protocol::Location{uri->str(), range};
+                                            return false;
+                                        });
         if(result)
             return result;
     }
@@ -405,13 +415,13 @@ std::optional<protocol::Location> Indexer::find_definition_location(index::Symbo
     return std::nullopt;
 }
 
-std::optional<SymbolInfo> Indexer::resolve_hierarchy_item(
-    const std::string& uri,
-    llvm::StringRef path,
-    std::uint32_t server_path_id,
-    const protocol::Range& range,
-    const std::optional<protocol::LSPAny>& data,
-    const std::string* doc_text) {
+std::optional<SymbolInfo>
+    Indexer::resolve_hierarchy_item(const std::string& uri,
+                                    llvm::StringRef path,
+                                    std::uint32_t server_path_id,
+                                    const protocol::Range& range,
+                                    const std::optional<protocol::LSPAny>& data,
+                                    const std::string* doc_text) {
     if(data) {
         if(auto* int_val = std::get_if<std::int64_t>(&*data)) {
             auto hash = static_cast<index::SymbolHash>(*int_val);
@@ -486,7 +496,7 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
 // ── Indexer: hierarchy queries ───────────────────────────────────────────
 
 std::vector<protocol::CallHierarchyIncomingCall>
-Indexer::find_incoming_calls(index::SymbolHash hash) {
+    Indexer::find_incoming_calls(index::SymbolHash hash) {
     llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> caller_ranges;
     collect_grouped_relations(hash, RelationKind::Caller, caller_ranges);
 
@@ -514,7 +524,7 @@ Indexer::find_incoming_calls(index::SymbolHash hash) {
 }
 
 std::vector<protocol::CallHierarchyOutgoingCall>
-Indexer::find_outgoing_calls(index::SymbolHash hash) {
+    Indexer::find_outgoing_calls(index::SymbolHash hash) {
     llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> callee_ranges;
     collect_grouped_relations(hash, RelationKind::Callee, callee_ranges);
 
@@ -593,18 +603,17 @@ std::vector<protocol::TypeHierarchyItem> Indexer::find_subtypes(index::SymbolHas
     return results;
 }
 
-std::vector<protocol::SymbolInformation>
-Indexer::search_symbols(llvm::StringRef query, std::size_t max_results) {
+std::vector<protocol::SymbolInformation> Indexer::search_symbols(llvm::StringRef query,
+                                                                 std::size_t max_results) {
     std::string query_lower = query.lower();
 
     auto is_indexable_kind = [](SymbolKind sk) {
-        return sk == SymbolKind::Namespace || sk == SymbolKind::Class ||
-               sk == SymbolKind::Struct || sk == SymbolKind::Union || sk == SymbolKind::Enum ||
-               sk == SymbolKind::Type || sk == SymbolKind::Field ||
-               sk == SymbolKind::EnumMember || sk == SymbolKind::Function ||
-               sk == SymbolKind::Method || sk == SymbolKind::Variable ||
-               sk == SymbolKind::Parameter || sk == SymbolKind::Macro ||
-               sk == SymbolKind::Concept || sk == SymbolKind::Module ||
+        return sk == SymbolKind::Namespace || sk == SymbolKind::Class || sk == SymbolKind::Struct ||
+               sk == SymbolKind::Union || sk == SymbolKind::Enum || sk == SymbolKind::Type ||
+               sk == SymbolKind::Field || sk == SymbolKind::EnumMember ||
+               sk == SymbolKind::Function || sk == SymbolKind::Method ||
+               sk == SymbolKind::Variable || sk == SymbolKind::Parameter ||
+               sk == SymbolKind::Macro || sk == SymbolKind::Concept || sk == SymbolKind::Module ||
                sk == SymbolKind::Operator || sk == SymbolKind::MacroParameter ||
                sk == SymbolKind::Label || sk == SymbolKind::Attribute;
     };
