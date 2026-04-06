@@ -93,12 +93,13 @@ TEST_CASE(BuildPCHRequest) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::BuildPCHParams params;
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::BuildPCH;
         params.file = hdr;
         params.directory = "/tmp";
         params.arguments =
             {"clang++", "-resource-dir", std::string(resource_dir()), "-x", "c++-header", hdr};
-        params.content = "#pragma once\nint pch_global = 42;\n";
+        params.text = "#pragma once\nint pch_global = 42;\n";
         params.output_path = tmp.path("test_pch.pch");
 
         auto result = co_await w.peer->send_request(params);
@@ -108,7 +109,7 @@ TEST_CASE(BuildPCHRequest) {
             co_return;
         }
         EXPECT_TRUE(result.value().success);
-        EXPECT_FALSE(result.value().pch_path.empty());
+        EXPECT_FALSE(result.value().output_path.empty());
         test_done = true;
         w.peer->close_output();
     });
@@ -127,7 +128,8 @@ TEST_CASE(IndexRequest) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::IndexParams params;
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::Index;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
@@ -161,7 +163,8 @@ TEST_CASE(BuildPCMRequest) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::BuildPCMParams params;
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::BuildPCM;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = {"clang++",
@@ -194,8 +197,9 @@ TEST_CASE(CompletionRequest) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::CompletionParams params;
-        params.path = src;
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::Completion;
+        params.file = src;
         params.version = 1;
         params.text = text;
         params.directory = "/tmp";
@@ -223,8 +227,9 @@ TEST_CASE(SignatureHelpRequest) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::SignatureHelpParams params;
-        params.path = src;
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::SignatureHelp;
+        params.file = src;
         params.version = 1;
         params.text = text;
         params.directory = "/tmp";
@@ -259,7 +264,8 @@ TEST_CASE(MultipleStatelessRequests) {
     w.run([&]() -> et::task<> {
         // Send multiple index requests to test stateless worker handles them sequentially.
         for(int i = 0; i < 3; i++) {
-            worker::IndexParams params;
+            worker::BuildParams params;
+            params.kind = worker::BuildKind::Index;
             params.file = paths[i];
             params.directory = "/tmp";
             params.arguments = make_args(paths[i]);

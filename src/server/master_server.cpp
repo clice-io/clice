@@ -175,7 +175,8 @@ et::task<> MasterServer::run_background_indexing() {
         if(!indexer.need_update(file_path))
             continue;
 
-        worker::IndexParams params;
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::Index;
         params.file = file_path;
         if(!compiler.fill_compile_args(file_path, params.directory, params.arguments))
             continue;
@@ -390,45 +391,46 @@ void MasterServer::register_handlers() {
 
     /// Feature requests — stateful forwarding.
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
-        co_return co_await compiler.forward_stateful<worker::HoverParams>(
+        co_return co_await compiler.forward_query(
+            worker::QueryKind::Hover,
             params.text_document_position_params.text_document.uri,
             params.text_document_position_params.position);
     });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
-            co_return co_await compiler.forward_stateful<worker::SemanticTokensParams>(
-                params.text_document.uri);
+            co_return co_await compiler.forward_query(worker::QueryKind::SemanticTokens,
+                                                      params.text_document.uri);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
-            co_return co_await compiler.forward_stateful<worker::InlayHintsParams>(
-                params.text_document.uri);
+            co_return co_await compiler.forward_query(worker::QueryKind::InlayHints,
+                                                      params.text_document.uri);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
-            co_return co_await compiler.forward_stateful<worker::FoldingRangeParams>(
-                params.text_document.uri);
+            co_return co_await compiler.forward_query(worker::QueryKind::FoldingRange,
+                                                      params.text_document.uri);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
-            co_return co_await compiler.forward_stateful<worker::DocumentSymbolParams>(
-                params.text_document.uri);
+            co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol,
+                                                      params.text_document.uri);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
-            co_return co_await compiler.forward_stateful<worker::DocumentLinkParams>(
-                params.text_document.uri);
+            co_return co_await compiler.forward_query(worker::QueryKind::DocumentLink,
+                                                      params.text_document.uri);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
-            co_return co_await compiler.forward_stateful<worker::CodeActionParams>(
-                params.text_document.uri);
+            co_return co_await compiler.forward_query(worker::QueryKind::CodeAction,
+                                                      params.text_document.uri);
         });
 
     /// Helpers for index-based queries: resolve URI → path → path_id → doc_text.
@@ -472,7 +474,7 @@ void MasterServer::register_handlers() {
             co_return to_raw(result);
         }
 
-        co_return co_await compiler.forward_stateful<worker::GoToDefinitionParams>(uri, pos);
+        co_return co_await compiler.forward_query(worker::QueryKind::GoToDefinition, uri, pos);
     });
 
     peer.on_request([this, query_at](RequestContext& ctx,
@@ -519,7 +521,8 @@ void MasterServer::register_handlers() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
-            co_return co_await compiler.forward_stateless<worker::SignatureHelpParams>(
+            co_return co_await compiler.forward_build(
+                worker::BuildKind::SignatureHelp,
                 params.text_document_position_params.text_document.uri,
                 params.text_document_position_params.position);
         });

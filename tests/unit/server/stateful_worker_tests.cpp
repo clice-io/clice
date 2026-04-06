@@ -61,7 +61,8 @@ TEST_CASE(HoverWithoutCompile) {
 
     w.run([&]() -> et::task<> {
         // Hover on a file that hasn't been compiled should return null.
-        worker::HoverParams params;
+        worker::QueryParams params;
+        params.kind = worker::QueryKind::Hover;
         params.path = "/tmp/nonexistent.cpp";
         params.offset = 0;
 
@@ -101,7 +102,8 @@ TEST_CASE(CompileThenHover) {
 
         // After successful compilation, hover should return info.
         // "int foo() { return 42; }\n" is 25 chars, then char 22 on line 1 = offset 47
-        worker::HoverParams hp;
+        worker::QueryParams hp;
+        hp.kind = worker::QueryKind::Hover;
         hp.path = src;
         hp.offset = 47;  // position of 'foo' in 'return foo();'
 
@@ -147,7 +149,8 @@ TEST_CASE(DocumentUpdate) {
         w.peer->send_notification(up);
 
         // After update, hover still returns stale AST results (not null).
-        worker::HoverParams hp;
+        worker::QueryParams hp;
+        hp.kind = worker::QueryKind::Hover;
         hp.path = src;
         hp.offset = 4;
 
@@ -168,7 +171,8 @@ TEST_CASE(CodeActionReturnsEmpty) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::CodeActionParams params;
+        worker::QueryParams params;
+        params.kind = worker::QueryKind::CodeAction;
         params.path = "/tmp/test.cpp";
 
         auto result = co_await w.peer->send_request(params);
@@ -189,7 +193,8 @@ TEST_CASE(GoToDefinitionReturnsEmpty) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::GoToDefinitionParams params;
+        worker::QueryParams params;
+        params.kind = worker::QueryKind::GoToDefinition;
         params.path = "/tmp/test.cpp";
         params.offset = 0;
 
@@ -211,7 +216,8 @@ TEST_CASE(SemanticTokensWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::SemanticTokensParams params;
+        worker::QueryParams params;
+        params.kind = worker::QueryKind::SemanticTokens;
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
@@ -231,7 +237,8 @@ TEST_CASE(FoldingRangeWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::FoldingRangeParams params;
+        worker::QueryParams params;
+        params.kind = worker::QueryKind::FoldingRange;
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
@@ -251,7 +258,8 @@ TEST_CASE(DocumentSymbolWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::DocumentSymbolParams params;
+        worker::QueryParams params;
+        params.kind = worker::QueryKind::DocumentSymbol;
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
@@ -271,7 +279,8 @@ TEST_CASE(DocumentLinkWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::DocumentLinkParams params;
+        worker::QueryParams params;
+        params.kind = worker::QueryKind::DocumentLink;
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
@@ -291,7 +300,8 @@ TEST_CASE(InlayHintsWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> et::task<> {
-        worker::InlayHintsParams params;
+        worker::QueryParams params;
+        params.kind = worker::QueryKind::InlayHints;
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
@@ -333,13 +343,15 @@ TEST_CASE(MultipleSequentialRequests) {
         CO_ASSERT_TRUE(cr.has_value());
 
         // Now send multiple different feature requests sequentially.
-        worker::HoverParams hp;
+        worker::QueryParams hp;
+        hp.kind = worker::QueryKind::Hover;
         hp.path = src;
         hp.offset = 4;  // 'foo' on line 0
         auto r1 = co_await w.peer->send_request(hp);
         EXPECT_TRUE(r1.has_value());
 
-        worker::CodeActionParams cap;
+        worker::QueryParams cap;
+        cap.kind = worker::QueryKind::CodeAction;
         cap.path = src;
         auto r2 = co_await w.peer->send_request(cap);
         EXPECT_TRUE(r2.has_value());
@@ -347,18 +359,21 @@ TEST_CASE(MultipleSequentialRequests) {
         // 'foo' in 'return foo(0);' at line 4, char 11
         // lines: "int foo(int x) {\n"=17, "    return x + 1;\n"=18, "}\n"=2, "int main() {\n"=14
         // offset = 17+18+2+14+11 = 62
-        worker::GoToDefinitionParams gdp;
+        worker::QueryParams gdp;
+        gdp.kind = worker::QueryKind::GoToDefinition;
         gdp.path = src;
         gdp.offset = 62;
         auto r3 = co_await w.peer->send_request(gdp);
         EXPECT_TRUE(r3.has_value());
 
-        worker::SemanticTokensParams stp;
+        worker::QueryParams stp;
+        stp.kind = worker::QueryKind::SemanticTokens;
         stp.path = src;
         auto r4 = co_await w.peer->send_request(stp);
         EXPECT_TRUE(r4.has_value());
 
-        worker::FoldingRangeParams frp;
+        worker::QueryParams frp;
+        frp.kind = worker::QueryKind::FoldingRange;
         frp.path = src;
         auto r5 = co_await w.peer->send_request(frp);
         EXPECT_TRUE(r5.has_value());
@@ -403,7 +418,8 @@ TEST_CASE(MultipleDocuments) {
 
         // Hover on each document after compilation.
         for(int i = 0; i < 3; i++) {
-            worker::HoverParams hp;
+            worker::QueryParams hp;
+            hp.kind = worker::QueryKind::Hover;
             hp.path = paths[i];
             hp.offset = 4;  // 'var_N'
 
@@ -431,7 +447,8 @@ TEST_CASE(EvictNotification) {
         w.peer->send_notification(ep);
 
         // Hover on the evicted document should return null (document doesn't exist).
-        worker::HoverParams hp;
+        worker::QueryParams hp;
+        hp.kind = worker::QueryKind::Hover;
         hp.path = "/tmp/evict_test.cpp";
         hp.offset = 0;
 
@@ -470,7 +487,8 @@ TEST_CASE(SpawnWithMemoryLimit) {
         EXPECT_TRUE(cr.has_value());
 
         // Feature request should work after compilation.
-        worker::HoverParams hp;
+        worker::QueryParams hp;
+        hp.kind = worker::QueryKind::Hover;
         hp.path = src;
         hp.offset = 4;  // 'memlimit_var'
 

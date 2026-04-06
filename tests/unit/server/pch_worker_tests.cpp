@@ -40,7 +40,8 @@ TEST_CASE(BuildPCHThenCompile) {
     bool phase1_done = false;
 
     sl.run([&]() -> et::task<> {
-        worker::BuildPCHParams params;
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::BuildPCH;
         params.file = main_file;
         params.directory = dir;
         params.arguments = {"clang++",
@@ -51,13 +52,13 @@ TEST_CASE(BuildPCHThenCompile) {
                             "-I",
                             dir,
                             main_file};
-        params.content = main_text;
+        params.text = main_text;
         params.output_path = tmp.path("preamble.pch");
 
         auto result = co_await sl.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
         CO_ASSERT_TRUE(result.value().success);
-        pch_path = result.value().pch_path;
+        pch_path = result.value().output_path;
         EXPECT_FALSE(pch_path.empty());
 
         phase1_done = true;

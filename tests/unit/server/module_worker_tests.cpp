@@ -39,7 +39,8 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
     bool phase1_done = false;
 
     sl.run([&]() -> et::task<> {
-        worker::BuildPCMParams params;
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::BuildPCM;
         params.file = iface;
         params.directory = "/tmp";
         params.arguments = {"clang++",
@@ -54,7 +55,7 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
         auto result = co_await sl.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
         CO_ASSERT_TRUE(result.value().success);
-        pcm_path = result.value().pcm_path;
+        pcm_path = result.value().output_path;
         EXPECT_FALSE(pcm_path.empty());
 
         phase1_done = true;
@@ -125,7 +126,8 @@ TEST_CASE(BuildPCMChainThenCompile) {
     sl.run([&]() -> et::task<> {
         // Build PCM for A first.
         {
-            worker::BuildPCMParams params;
+            worker::BuildParams params;
+            params.kind = worker::BuildKind::BuildPCM;
             params.file = mod_a;
             params.directory = "/tmp";
             params.arguments = {"clang++",
@@ -139,12 +141,13 @@ TEST_CASE(BuildPCMChainThenCompile) {
 
             auto result = co_await sl.peer->send_request(params);
             CO_ASSERT_TRUE(result.has_value() && result.value().success);
-            pcm_a = result.value().pcm_path;
+            pcm_a = result.value().output_path;
         }
 
         // Build PCM for B, passing A's PCM (transitive dep).
         {
-            worker::BuildPCMParams params;
+            worker::BuildParams params;
+            params.kind = worker::BuildKind::BuildPCM;
             params.file = mod_b;
             params.directory = "/tmp";
             params.arguments = {"clang++",
@@ -161,7 +164,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
 
             auto result = co_await sl.peer->send_request(params);
             CO_ASSERT_TRUE(result.has_value() && result.value().success);
-            pcm_b = result.value().pcm_path;
+            pcm_b = result.value().output_path;
         }
 
         pcm_done = true;
@@ -225,7 +228,8 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
     bool pcm_done = false;
 
     sl.run([&]() -> et::task<> {
-        worker::BuildPCMParams params;
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::BuildPCM;
         params.file = iface;
         params.directory = "/tmp";
         params.arguments = {"clang++",
@@ -239,7 +243,7 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
 
         auto result = co_await sl.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value() && result.value().success);
-        pcm_path = result.value().pcm_path;
+        pcm_path = result.value().output_path;
 
         pcm_done = true;
         sl.peer->close_output();

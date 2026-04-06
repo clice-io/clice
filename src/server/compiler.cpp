@@ -368,19 +368,17 @@ void Compiler::init_compile_graph() {
 
         auto file_path = std::string(path_pool.resolve(path_id));
 
-        worker::BuildPCMParams pcm_params;
-        pcm_params.file = file_path;
-        if(!fill_compile_args(file_path, pcm_params.directory, pcm_params.arguments))
+        worker::BuildParams bp;
+        bp.kind = worker::BuildKind::BuildPCM;
+        bp.file = file_path;
+        if(!fill_compile_args(file_path, bp.directory, bp.arguments))
             co_return false;
 
         // Compute deterministic content-addressed PCM path.
-        // Replace ':' with '-' in module name for filesystem safety.
-        // Hash includes file path AND compile arguments so that argument
-        // changes (e.g. -DFOO) invalidate the cached PCM.
         auto safe_module_name = mod_it->second;
         std::ranges::replace(safe_module_name, ':', '-');
         std::string hash_input = file_path;
-        for(auto& arg: pcm_params.arguments) {
+        for(auto& arg: bp.arguments) {
             hash_input += arg;
         }
         auto args_hash = llvm::xxh3_64bits(llvm::StringRef(hash_input));
@@ -396,18 +394,18 @@ void Compiler::init_compile_graph() {
             }
         }
 
-        pcm_params.module_name = mod_it->second;
-        pcm_params.output_path = pcm_path;
+        bp.module_name = mod_it->second;
+        bp.output_path = pcm_path;
 
         // Clang needs ALL transitive PCM deps, not just direct imports.
         for(auto& [pid, existing_pcm_path]: pcm_paths) {
             auto dep_mod_it = path_to_module.find(pid);
             if(dep_mod_it != path_to_module.end()) {
-                pcm_params.pcms[dep_mod_it->second] = existing_pcm_path;
+                bp.pcms[dep_mod_it->second] = existing_pcm_path;
             }
         }
 
-        auto result = co_await pool.send_stateless(pcm_params);
+        auto result = co_await pool.send_stateless(bp);
         if(!result.has_value() || !result.value().success) {
             LOG_WARN("BuildPCM failed for module {}: {}",
                      mod_it->second,
@@ -415,10 +413,10 @@ void Compiler::init_compile_graph() {
             co_return false;
         }
 
-        pcm_paths[path_id] = result.value().pcm_path;
-        pcm_states[path_id] = {result.value().pcm_path,
+        pcm_paths[path_id] = result.value().output_path;
+        pcm_states[path_id] = {result.value().output_path,
                                capture_deps_snapshot(path_pool, result.value().deps)};
-        LOG_INFO("Built PCM for module {}: {}", mod_it->second, result.value().pcm_path);
+        LOG_INFO("Built PCM for module {}: {}", mod_it->second, result.value().output_path);
 
         // Merge module index into ProjectIndex/MergedIndex.
         if(!result.value().tu_index_data.empty()) {
@@ -750,17 +748,18 @@ et::task<bool> Compiler::ensure_pch(std::uint32_t path_id,
     pch_states[path_id].building = completion;
 
     // Build a new PCH via stateless worker.
-    worker::BuildPCHParams pch_params;
-    pch_params.file = std::string(path);
-    pch_params.directory = directory;
-    pch_params.arguments = arguments;
-    pch_params.content = text;
-    pch_params.preamble_bound = bound;
-    pch_params.output_path = pch_path;
+    worker::BuildParams bp;
+    bp.kind = worker::BuildKind::BuildPCH;
+    bp.file = std::string(path);
+    bp.directory = directory;
+    bp.arguments = arguments;
+    bp.text = text;
+    bp.preamble_bound = bound;
+    bp.output_path = pch_path;
 
     LOG_DEBUG("Building PCH for {}, bound={}, output={}", path, bound, pch_path);
 
-    auto result = co_await pool.send_stateless(pch_params);
+    auto result = co_await pool.send_stateless(bp);
 
     if(!result.has_value() || !result.value().success) {
         LOG_WARN("PCH build failed for {}: {}",
@@ -771,18 +770,15 @@ et::task<bool> Compiler::ensure_pch(std::uint32_t path_id,
         co_return false;
     }
 
-    // Update state — no need to delete old file; content-addressed names differ
-    // when content differs, and the 7-day cleanup handles orphaned files.
     auto& st = pch_states[path_id];
-    st.path = result.value().pch_path;
+    st.path = result.value().output_path;
     st.bound = bound;
     st.hash = preamble_hash;
     st.deps = capture_deps_snapshot(path_pool, result.value().deps);
     st.building.reset();
 
-    LOG_INFO("PCH built for {}: {}", path, result.value().pch_path);
+    LOG_INFO("PCH built for {}: {}", path, result.value().output_path);
 
-    // Merge preamble header index into ProjectIndex/MergedIndex.
     if(!result.value().tu_index_data.empty()) {
         indexer.merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
     }
@@ -1228,8 +1224,7 @@ et::task<bool> Compiler::ensure_compiled(std::uint32_t path_id) {
     co_return !it->second.ast_dirty;
 }
 
-template <typename WorkerParams>
-Compiler::RawResult Compiler::forward_stateful(const std::string& uri) {
+Compiler::RawResult Compiler::forward_query(worker::QueryKind kind, const std::string& uri) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
@@ -1237,18 +1232,12 @@ Compiler::RawResult Compiler::forward_stateful(const std::string& uri) {
         co_return serde_raw{"null"};
     }
 
-    // After ensure_compiled returns, a new didChange may have arrived making
-    // the AST stale again.  Sending a feature request with stale state is
-    // wasteful and — more importantly — the queued IPC writes can fill up
-    // the pipe buffer and deadlock the worker.  Drop the request instead.
     auto dit = documents.find(path_id);
     if(dit != documents.end() && dit->second.ast_dirty) {
         co_return serde_raw{"null"};
     }
 
-    WorkerParams wp;
-    wp.path = path;
-
+    worker::QueryParams wp{kind, path};
     auto result = co_await pool.send_stateful(path_id, wp);
     if(!result.has_value()) {
         co_return serde_raw{};
@@ -1256,9 +1245,9 @@ Compiler::RawResult Compiler::forward_stateful(const std::string& uri) {
     co_return std::move(result.value());
 }
 
-template <typename WorkerParams>
-Compiler::RawResult Compiler::forward_stateful(const std::string& uri,
-                                               const protocol::Position& position) {
+Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
+                                            const std::string& uri,
+                                            const protocol::Position& position) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
@@ -1267,23 +1256,16 @@ Compiler::RawResult Compiler::forward_stateful(const std::string& uri,
     }
 
     auto doc_it = documents.find(path_id);
-    if(doc_it == documents.end()) {
+    if(doc_it == documents.end() || doc_it->second.ast_dirty) {
         co_return serde_raw{"null"};
     }
-
-    if(doc_it->second.ast_dirty) {
-        co_return serde_raw{"null"};
-    }
-
-    WorkerParams wp;
-    wp.path = path;
 
     lsp::PositionMapper mapper(doc_it->second.text, lsp::PositionEncoding::UTF16);
     auto offset = mapper.to_offset(position);
     if(!offset)
         co_return serde_raw{"null"};
-    wp.offset = *offset;
 
+    worker::QueryParams wp{kind, path, *offset};
     auto result = co_await pool.send_stateful(path_id, wp);
     if(!result.has_value()) {
         co_return serde_raw{};
@@ -1291,33 +1273,29 @@ Compiler::RawResult Compiler::forward_stateful(const std::string& uri,
     co_return std::move(result.value());
 }
 
-template <typename WorkerParams>
-Compiler::RawResult Compiler::forward_stateless(const std::string& uri,
-                                                const protocol::Position& position) {
+Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
+                                            const std::string& uri,
+                                            const protocol::Position& position) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    LOG_DEBUG("forward_stateless: path={} pos={}:{}", path, position.line, position.character);
-
     auto doc_it = documents.find(path_id);
     if(doc_it == documents.end()) {
-        LOG_DEBUG("forward_stateless: doc not found for {}", path);
         co_return serde_raw{};
     }
 
     auto& doc = doc_it->second;
 
-    WorkerParams wp;
-    wp.path = path;
+    worker::BuildParams wp;
+    wp.kind = kind;
+    wp.file = path;
     wp.version = doc.version;
     wp.text = doc.text;
     if(!fill_compile_args(path, wp.directory, wp.arguments)) {
-        LOG_DEBUG("forward_stateless: no CDB for {}", path);
         co_return serde_raw{};
     }
 
     if(!co_await ensure_deps(path_id, path, wp.text, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
-        LOG_DEBUG("forward_stateless: ensure_deps failed for {}", path);
         co_return serde_raw{};
     }
 
@@ -1329,11 +1307,9 @@ Compiler::RawResult Compiler::forward_stateless(const std::string& uri,
 
     auto result = co_await pool.send_stateless(wp);
     if(!result.has_value()) {
-        LOG_DEBUG("forward_stateless: worker error for {}: {}", path, result.error().message);
         co_return serde_raw{};
     }
-    LOG_DEBUG("forward_stateless: done {}", path);
-    co_return std::move(result.value());
+    co_return std::move(result.value().result_json);
 }
 
 Compiler::RawResult Compiler::handle_completion(const std::string& uri,
@@ -1356,7 +1332,7 @@ Compiler::RawResult Compiler::handle_completion(const std::string& uri,
         }
     }
 
-    co_return co_await forward_stateless<worker::CompletionParams>(uri, position);
+    co_return co_await forward_build(worker::BuildKind::Completion, uri, position);
 }
 
 PreambleCompletionContext Compiler::detect_completion_context(const std::string& text,
@@ -1501,28 +1477,5 @@ et::serde::RawValue Compiler::complete_import(const PreambleCompletionContext& c
     auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
     return serde_raw{json ? std::move(*json) : "[]"};
 }
-
-/// Explicit template instantiations for forward_stateful/forward_stateless
-/// called from MasterServer::register_handlers().
-template Compiler::RawResult
-    Compiler::forward_stateful<worker::HoverParams>(const std::string&, const protocol::Position&);
-template Compiler::RawResult
-    Compiler::forward_stateful<worker::GoToDefinitionParams>(const std::string&,
-                                                             const protocol::Position&);
-template Compiler::RawResult
-    Compiler::forward_stateful<worker::SemanticTokensParams>(const std::string&);
-template Compiler::RawResult
-    Compiler::forward_stateful<worker::InlayHintsParams>(const std::string&);
-template Compiler::RawResult
-    Compiler::forward_stateful<worker::FoldingRangeParams>(const std::string&);
-template Compiler::RawResult
-    Compiler::forward_stateful<worker::DocumentSymbolParams>(const std::string&);
-template Compiler::RawResult
-    Compiler::forward_stateful<worker::DocumentLinkParams>(const std::string&);
-template Compiler::RawResult
-    Compiler::forward_stateful<worker::CodeActionParams>(const std::string&);
-template Compiler::RawResult
-    Compiler::forward_stateless<worker::SignatureHelpParams>(const std::string&,
-                                                             const protocol::Position&);
 
 }  // namespace clice

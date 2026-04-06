@@ -15,8 +15,27 @@ namespace clice::worker {
 
 namespace protocol = eventide::ipc::protocol;
 
-// === StatefulWorker Requests ===
+/// Kind of AST query dispatched to a stateful worker.
+enum class QueryKind : uint8_t {
+    Hover,
+    GoToDefinition,
+    SemanticTokens,
+    InlayHints,
+    FoldingRange,
+    DocumentSymbol,
+    DocumentLink,
+    CodeAction,
+};
 
+/// Unified parameters for all stateful AST queries.
+/// The worker dispatches to the appropriate feature handler based on `kind`.
+struct QueryParams {
+    QueryKind kind;
+    std::string path;
+    uint32_t offset = 0;  ///< Used by Hover and GoToDefinition.
+};
+
+/// Parameters for stateful compilation (builds AST, publishes diagnostics).
 struct CompileParams {
     std::string path;
     int version;
@@ -37,111 +56,51 @@ struct CompileResult {
     std::string tu_index_data;
 };
 
-struct HoverParams {
-    std::string path;
-    uint32_t offset;
+/// Kind of build task dispatched to a stateless worker.
+enum class BuildKind : uint8_t {
+    BuildPCH,
+    BuildPCM,
+    Index,
+    Completion,
+    SignatureHelp,
 };
 
-struct SemanticTokensParams {
-    std::string path;
-};
-
-struct InlayHintsParams {
-    std::string path;
-};
-
-struct FoldingRangeParams {
-    std::string path;
-};
-
-struct DocumentSymbolParams {
-    std::string path;
-};
-
-struct DocumentLinkParams {
-    std::string path;
-};
-
-struct CodeActionParams {
-    std::string path;
-};
-
-struct GoToDefinitionParams {
-    std::string path;
-    uint32_t offset;
-};
-
-// === StatelessWorker Requests ===
-
-struct CompletionParams {
-    std::string path;
-    int version;
-    std::string text;
+/// Unified parameters for all stateless build/compilation tasks.
+/// Fields are used selectively based on `kind`:
+///   - All:           file, directory, arguments
+///   - BuildPCH:      + content, preamble_bound, output_path
+///   - BuildPCM:      + module_name, pcms, output_path
+///   - Index:         + pcms
+///   - Completion:    + text, version, offset, pch, pcms
+///   - SignatureHelp: + text, version, offset, pch, pcms
+struct BuildParams {
+    BuildKind kind;
+    std::string file;
     std::string directory;
     std::vector<std::string> arguments;
+
+    /// Source text for Completion/SignatureHelp, preamble content for BuildPCH.
+    std::string text;
+    int version = 0;
+    uint32_t offset = 0;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
-    uint32_t offset;
+
+    std::string output_path;               ///< BuildPCH, BuildPCM
+    std::string module_name;               ///< BuildPCM
+    uint32_t preamble_bound = UINT32_MAX;  ///< BuildPCH
 };
 
-struct SignatureHelpParams {
-    std::string path;
-    int version;
-    std::string text;
-    std::string directory;
-    std::vector<std::string> arguments;
-    std::pair<std::string, uint32_t> pch;
-    std::unordered_map<std::string, std::string> pcms;
-    uint32_t offset;
-};
-
-struct BuildPCHParams {
-    std::string file;
-    std::string directory;
-    std::vector<std::string> arguments;
-    std::string content;
-    std::uint32_t preamble_bound = UINT32_MAX;
-    std::string output_path;
-};
-
-struct BuildPCHResult {
-    bool success;
+/// Unified result for stateless build tasks.
+/// For Completion/SignatureHelp, the result JSON is in `result_json`.
+/// For BuildPCH/BuildPCM/Index, structured fields are used.
+struct BuildResult {
+    bool success = true;
     std::string error;
-    std::string pch_path;
+    std::string output_path;  ///< PCH or PCM path
     std::vector<std::string> deps;
-    /// Serialized TUIndex for preamble headers (main file index cleared).
     std::string tu_index_data;
-};
-
-struct BuildPCMParams {
-    std::string file;
-    std::string directory;
-    std::vector<std::string> arguments;
-    std::string module_name;
-    std::unordered_map<std::string, std::string> pcms;
-    std::string output_path;
-};
-
-struct BuildPCMResult {
-    bool success;
-    std::string error;
-    std::string pcm_path;
-    std::vector<std::string> deps;
-    /// Serialized TUIndex for the module interface file.
-    std::string tu_index_data;
-};
-
-struct IndexParams {
-    std::string file;
-    std::string directory;
-    std::vector<std::string> arguments;
-    std::unordered_map<std::string, std::string> pcms;
-};
-
-struct IndexResult {
-    bool success;
-    std::string error;
-    std::string tu_index_data;
+    eventide::serde::RawValue result_json;  ///< Completion/SignatureHelp result
 };
 
 // === Notifications ===
@@ -202,8 +161,6 @@ struct SwitchContextResult {
 
 namespace eventide::ipc::protocol {
 
-// === Stateful Requests ===
-
 template <>
 struct RequestTraits<clice::worker::CompileParams> {
     using Result = clice::worker::CompileResult;
@@ -211,83 +168,15 @@ struct RequestTraits<clice::worker::CompileParams> {
 };
 
 template <>
-struct RequestTraits<clice::worker::HoverParams> {
+struct RequestTraits<clice::worker::QueryParams> {
     using Result = eventide::serde::RawValue;
-    constexpr inline static std::string_view method = "clice/worker/hover";
+    constexpr inline static std::string_view method = "clice/worker/query";
 };
 
 template <>
-struct RequestTraits<clice::worker::SemanticTokensParams> {
-    using Result = eventide::serde::RawValue;
-    constexpr inline static std::string_view method = "clice/worker/semanticTokens";
-};
-
-template <>
-struct RequestTraits<clice::worker::InlayHintsParams> {
-    using Result = eventide::serde::RawValue;
-    constexpr inline static std::string_view method = "clice/worker/inlayHints";
-};
-
-template <>
-struct RequestTraits<clice::worker::FoldingRangeParams> {
-    using Result = eventide::serde::RawValue;
-    constexpr inline static std::string_view method = "clice/worker/foldingRange";
-};
-
-template <>
-struct RequestTraits<clice::worker::DocumentSymbolParams> {
-    using Result = eventide::serde::RawValue;
-    constexpr inline static std::string_view method = "clice/worker/documentSymbol";
-};
-
-template <>
-struct RequestTraits<clice::worker::DocumentLinkParams> {
-    using Result = eventide::serde::RawValue;
-    constexpr inline static std::string_view method = "clice/worker/documentLink";
-};
-
-template <>
-struct RequestTraits<clice::worker::CodeActionParams> {
-    using Result = eventide::serde::RawValue;
-    constexpr inline static std::string_view method = "clice/worker/codeAction";
-};
-
-template <>
-struct RequestTraits<clice::worker::GoToDefinitionParams> {
-    using Result = eventide::serde::RawValue;
-    constexpr inline static std::string_view method = "clice/worker/goToDefinition";
-};
-
-// === Stateless Requests ===
-
-template <>
-struct RequestTraits<clice::worker::CompletionParams> {
-    using Result = eventide::serde::RawValue;
-    constexpr inline static std::string_view method = "clice/worker/completion";
-};
-
-template <>
-struct RequestTraits<clice::worker::SignatureHelpParams> {
-    using Result = eventide::serde::RawValue;
-    constexpr inline static std::string_view method = "clice/worker/signatureHelp";
-};
-
-template <>
-struct RequestTraits<clice::worker::BuildPCHParams> {
-    using Result = clice::worker::BuildPCHResult;
-    constexpr inline static std::string_view method = "clice/worker/buildPCH";
-};
-
-template <>
-struct RequestTraits<clice::worker::BuildPCMParams> {
-    using Result = clice::worker::BuildPCMResult;
-    constexpr inline static std::string_view method = "clice/worker/buildPCM";
-};
-
-template <>
-struct RequestTraits<clice::worker::IndexParams> {
-    using Result = clice::worker::IndexResult;
-    constexpr inline static std::string_view method = "clice/worker/index";
+struct RequestTraits<clice::worker::BuildParams> {
+    using Result = clice::worker::BuildResult;
+    constexpr inline static std::string_view method = "clice/worker/build";
 };
 
 // === Notifications ===

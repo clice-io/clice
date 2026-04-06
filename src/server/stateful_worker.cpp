@@ -258,74 +258,47 @@ void StatefulWorker::register_handlers() {
         documents.erase(params.path);
     });
 
-    // === Hover ===
+    // === Query (hover, definition, semantic tokens, etc.) ===
     peer.on_request(
         [this](RequestContext& ctx,
-               const worker::HoverParams& params) -> RequestResult<worker::HoverParams> {
-            co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-                auto result = feature::hover(doc.unit, params.offset);
-                return result ? to_raw(*result) : et::serde::RawValue{"null"};
-            });
+               const worker::QueryParams& params) -> RequestResult<worker::QueryParams> {
+            using K = worker::QueryKind;
+            switch(params.kind) {
+                case K::Hover:
+                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                        auto result = feature::hover(doc.unit, params.offset);
+                        return result ? to_raw(*result) : et::serde::RawValue{"null"};
+                    });
+                case K::GoToDefinition:
+                    // TODO: Implement go-to-definition
+                    co_return et::serde::RawValue{"[]"};
+                case K::SemanticTokens:
+                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                        return to_raw(feature::semantic_tokens(doc.unit));
+                    });
+                case K::InlayHints:
+                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                        LocalSourceRange range{0, static_cast<uint32_t>(doc.text.size())};
+                        return to_raw(feature::inlay_hints(doc.unit, range));
+                    });
+                case K::FoldingRange:
+                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                        return to_raw(feature::folding_ranges(doc.unit));
+                    });
+                case K::DocumentSymbol:
+                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                        return to_raw(feature::document_symbols(doc.unit));
+                    });
+                case K::DocumentLink:
+                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                        return to_raw(feature::document_links(doc.unit));
+                    });
+                case K::CodeAction:
+                    // TODO: Implement code actions
+                    co_return et::serde::RawValue{"[]"};
+            }
+            co_return et::serde::RawValue{"null"};
         });
-
-    // === SemanticTokens ===
-    peer.on_request([this](RequestContext& ctx, const worker::SemanticTokensParams& params)
-                        -> RequestResult<worker::SemanticTokensParams> {
-        co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-            return to_raw(feature::semantic_tokens(doc.unit));
-        });
-    });
-
-    // === InlayHints ===
-    peer.on_request(
-        [this](RequestContext& ctx,
-               const worker::InlayHintsParams& params) -> RequestResult<worker::InlayHintsParams> {
-            co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-                LocalSourceRange range{0, static_cast<uint32_t>(doc.text.size())};
-                return to_raw(feature::inlay_hints(doc.unit, range));
-            });
-        });
-
-    // === FoldingRange ===
-    peer.on_request([this](RequestContext& ctx, const worker::FoldingRangeParams& params)
-                        -> RequestResult<worker::FoldingRangeParams> {
-        co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-            return to_raw(feature::folding_ranges(doc.unit));
-        });
-    });
-
-    // === DocumentSymbol ===
-    peer.on_request([this](RequestContext& ctx, const worker::DocumentSymbolParams& params)
-                        -> RequestResult<worker::DocumentSymbolParams> {
-        co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-            return to_raw(feature::document_symbols(doc.unit));
-        });
-    });
-
-    // === DocumentLink ===
-    peer.on_request([this](RequestContext& ctx, const worker::DocumentLinkParams& params)
-                        -> RequestResult<worker::DocumentLinkParams> {
-        co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-            return to_raw(feature::document_links(doc.unit));
-        });
-    });
-
-    // === CodeAction ===
-    peer.on_request(
-        [this](RequestContext& ctx,
-               const worker::CodeActionParams& params) -> RequestResult<worker::CodeActionParams> {
-            LOG_TRACE("CodeAction request: path={}", params.path);
-            // TODO: Implement code actions
-            co_return et::serde::RawValue{"[]"};
-        });
-
-    // === GoToDefinition ===
-    peer.on_request([this](RequestContext& ctx, const worker::GoToDefinitionParams& params)
-                        -> RequestResult<worker::GoToDefinitionParams> {
-        LOG_TRACE("GoToDefinition request: path={}, offset={}", params.path, params.offset);
-        // TODO: Implement go-to-definition
-        co_return et::serde::RawValue{"[]"};
-    });
 }
 
 int run_stateful_worker_mode(std::uint64_t memory_limit,

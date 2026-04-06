@@ -148,14 +148,16 @@ public:
     /// Feature request forwarding to workers.
     using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
 
-    template <typename WorkerParams>
-    RawResult forward_stateful(const std::string& uri);
+    /// Forward a stateful AST query to the worker owning this file.
+    RawResult forward_query(worker::QueryKind kind, const std::string& uri);
+    RawResult forward_query(worker::QueryKind kind,
+                            const std::string& uri,
+                            const protocol::Position& position);
 
-    template <typename WorkerParams>
-    RawResult forward_stateful(const std::string& uri, const protocol::Position& position);
-
-    template <typename WorkerParams>
-    RawResult forward_stateless(const std::string& uri, const protocol::Position& position);
+    /// Forward a stateless build request (completion/signatureHelp).
+    RawResult forward_build(worker::BuildKind kind,
+                            const std::string& uri,
+                            const protocol::Position& position);
 
     /// Completion with preamble-aware include/import handling.
     RawResult handle_completion(const std::string& uri, const protocol::Position& position);

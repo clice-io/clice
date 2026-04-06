@@ -47,6 +47,240 @@ static et::serde::RawValue to_raw(const T& value) {
     return et::serde::RawValue{json ? std::move(*json) : "null"};
 }
 
+/// Extract error messages from compilation diagnostics.
+static std::string collect_errors(CompilationUnit& unit) {
+    std::string errors;
+    for(auto& diag: unit.diagnostics()) {
+        if(diag.id.level >= DiagnosticLevel::Error) {
+            if(!errors.empty())
+                errors += "; ";
+            errors += diag.message;
+        }
+    }
+    return errors;
+}
+
+/// Build a TUIndex, serialize it, and return as a string.
+static std::string serialize_tu_index(CompilationUnit& unit, bool interested_only = false) {
+    auto tu_index = index::TUIndex::build(unit, interested_only);
+    if(!interested_only) {
+        tu_index.main_file_index = index::FileIndex();
+    }
+    std::string serialized;
+    llvm::raw_string_ostream os(serialized);
+    tu_index.serialize(os);
+    return serialized;
+}
+
+/// Write compilation output to disk, handling tmp+rename pattern.
+/// Returns the final path on success, or empty string on failure.
+static std::string finalize_output(const std::string& output_path,
+                                   const std::string& tmp_path,
+                                   const std::string& file,
+                                   const char* label) {
+    if(!output_path.empty()) {
+        auto ec = fs::rename(tmp_path, output_path);
+        if(ec) {
+            return output_path;
+        } else {
+            LOG_WARN("{}: rename {} -> {} failed: {}",
+                     label,
+                     tmp_path,
+                     output_path,
+                     ec.error().message());
+            return tmp_path;
+        }
+    }
+    return tmp_path;
+}
+
+static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
+    ScopedTimer timer;
+
+    CompilationParams cp;
+    cp.kind = CompilationKind::Preamble;
+    fill_args(cp, params.directory, params.arguments);
+    cp.add_remapped_file(params.file, params.text, params.preamble_bound);
+
+    std::string tmp_path;
+    bool has_output = !params.output_path.empty();
+    if(has_output) {
+        tmp_path = params.output_path + ".tmp";
+    } else {
+        auto tmp = fs::createTemporaryFile("clice-pch", "pch");
+        if(!tmp) {
+            LOG_ERROR("BuildPCH: failed to create temp file");
+            return {false, "Failed to create temporary PCH file"};
+        }
+        tmp_path = *tmp;
+    }
+    cp.output_file = tmp_path;
+
+    PCHInfo pch_info;
+    auto unit = compile(cp, pch_info);
+    bool success = unit.completed();
+
+    std::string errors;
+    if(!success)
+        errors = collect_errors(unit);
+
+    std::string tu_index_data;
+    if(success)
+        tu_index_data = serialize_tu_index(unit);
+
+    // Destroy CompilationUnit to flush PCH to disk.
+    unit = CompilationUnit(nullptr);
+
+    if(success) {
+        auto final_path = finalize_output(params.output_path, tmp_path, params.file, "BuildPCH");
+        LOG_INFO("BuildPCH done: file={}, output={}, {}ms", params.file, final_path, timer.ms());
+        worker::BuildResult result;
+        result.success = true;
+        result.output_path = std::move(final_path);
+        result.deps = pch_info.deps;
+        result.tu_index_data = std::move(tu_index_data);
+        return result;
+    } else {
+        LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]", params.file, timer.ms(), errors);
+        fs::remove(tmp_path);
+        return {false, errors.empty() ? "PCH compilation failed" : errors};
+    }
+}
+
+static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
+    ScopedTimer timer;
+
+    CompilationParams cp;
+    cp.kind = CompilationKind::ModuleInterface;
+    fill_args(cp, params.directory, params.arguments);
+    for(auto& [name, path]: params.pcms) {
+        cp.pcms.try_emplace(name, path);
+    }
+
+    std::string tmp_path;
+    bool has_output = !params.output_path.empty();
+    if(has_output) {
+        tmp_path = params.output_path + ".tmp";
+    } else {
+        auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
+        if(!tmp) {
+            LOG_ERROR("BuildPCM: failed to create temp file");
+            return {false, "Failed to create temporary PCM file"};
+        }
+        tmp_path = *tmp;
+    }
+    cp.output_file = tmp_path;
+
+    PCMInfo pcm_info;
+    auto unit = compile(cp, pcm_info);
+    bool success = unit.completed();
+
+    std::string errors;
+    if(!success)
+        errors = collect_errors(unit);
+
+    std::string tu_index_data;
+    if(success)
+        tu_index_data = serialize_tu_index(unit, true);
+
+    unit = CompilationUnit(nullptr);
+
+    if(success) {
+        auto final_path = finalize_output(params.output_path, tmp_path, params.file, "BuildPCM");
+        LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
+        worker::BuildResult result;
+        result.success = true;
+        result.output_path = std::move(final_path);
+        result.deps = pcm_info.deps;
+        result.tu_index_data = std::move(tu_index_data);
+        return result;
+    } else {
+        LOG_WARN("BuildPCM failed: module={}, {}ms, errors=[{}]",
+                 params.module_name,
+                 timer.ms(),
+                 errors);
+        fs::remove(tmp_path);
+        return {false, errors.empty() ? "PCM compilation failed" : errors};
+    }
+}
+
+static worker::BuildResult handle_index(const worker::BuildParams& params) {
+    ScopedTimer timer;
+
+    CompilationParams cp;
+    cp.kind = CompilationKind::Indexing;
+    fill_args(cp, params.directory, params.arguments);
+    for(auto& [name, path]: params.pcms) {
+        cp.pcms.try_emplace(name, path);
+    }
+
+    auto unit = compile(cp);
+    if(!unit.completed()) {
+        LOG_WARN("Index failed: file={}, {}ms", params.file, timer.ms());
+        return {false, "Index compilation failed"};
+    }
+
+    auto tu_index = index::TUIndex::build(unit);
+    std::string serialized;
+    llvm::raw_string_ostream os(serialized);
+    tu_index.serialize(os);
+
+    LOG_INFO("Index done: file={}, {} symbols, {}ms",
+             params.file,
+             tu_index.symbols.size(),
+             timer.ms());
+    worker::BuildResult result;
+    result.success = true;
+    result.tu_index_data = std::move(serialized);
+    return result;
+}
+
+static worker::BuildResult handle_completion(const worker::BuildParams& params) {
+    ScopedTimer timer;
+
+    CompilationParams cp;
+    cp.kind = CompilationKind::Completion;
+    fill_args(cp, params.directory, params.arguments);
+    if(!params.pch.first.empty()) {
+        cp.pch = params.pch;
+    }
+    for(auto& [name, path]: params.pcms) {
+        cp.pcms.try_emplace(name, path);
+    }
+    cp.add_remapped_file(params.file, params.text);
+    cp.completion = {params.file, params.offset};
+
+    auto items = feature::code_complete(cp);
+    LOG_DEBUG("Completion done: {} items, {}ms", items.size(), timer.ms());
+
+    worker::BuildResult result;
+    result.result_json = to_raw(items);
+    return result;
+}
+
+static worker::BuildResult handle_signature_help(const worker::BuildParams& params) {
+    ScopedTimer timer;
+
+    CompilationParams cp;
+    cp.kind = CompilationKind::Completion;
+    fill_args(cp, params.directory, params.arguments);
+    if(!params.pch.first.empty()) {
+        cp.pch = params.pch;
+    }
+    for(auto& [name, path]: params.pcms) {
+        cp.pcms.try_emplace(name, path);
+    }
+    cp.add_remapped_file(params.file, params.text);
+    cp.completion = {params.file, params.offset};
+
+    auto help = feature::signature_help(cp);
+    LOG_DEBUG("SignatureHelp done: {}ms", timer.ms());
+
+    worker::BuildResult result;
+    result.result_json = to_raw(help);
+    return result;
+}
+
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
     logging::stderr_logger(worker_name, logging::options);
     if(!log_dir.empty()) {
@@ -65,287 +299,18 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 
     et::ipc::BincodePeer peer(loop, std::move(*transport_result));
 
-    // === BuildPCH ===
-    peer.on_request(
-        [&](RequestContext& ctx,
-            const worker::BuildPCHParams& params) -> RequestResult<worker::BuildPCHParams> {
-            LOG_INFO("BuildPCH request: file={}", params.file);
-
-            auto result = co_await et::queue([&]() -> worker::BuildPCHResult {
-                ScopedTimer timer;
-
-                CompilationParams cp;
-                cp.kind = CompilationKind::Preamble;
-                fill_args(cp, params.directory, params.arguments);
-                cp.add_remapped_file(params.file, params.content, params.preamble_bound);
-
-                // When output_path is set, write to .tmp then rename — avoids
-                // Windows file-lock failures when the target is held by another
-                // process.  When empty, fall back to a temporary file.
-                std::string tmp_path;
-                bool has_output = !params.output_path.empty();
-                if(has_output) {
-                    tmp_path = params.output_path + ".tmp";
-                } else {
-                    auto tmp = fs::createTemporaryFile("clice-pch", "pch");
-                    if(!tmp) {
-                        LOG_ERROR("BuildPCH: failed to create temp file");
-                        return {false, "Failed to create temporary PCH file", ""};
-                    }
-                    tmp_path = *tmp;
-                }
-                cp.output_file = tmp_path;
-
-                PCHInfo pch_info;
-                auto unit = compile(cp, pch_info);
-                bool success = unit.completed();
-
-                // Extract error messages before destroying the unit.
-                std::string errors;
-                if(!success) {
-                    for(auto& diag: unit.diagnostics()) {
-                        if(diag.id.level >= DiagnosticLevel::Error) {
-                            if(!errors.empty())
-                                errors += "; ";
-                            errors += diag.message;
-                        }
-                    }
-                }
-
-                // Index preamble headers before destroying the unit.
-                //
-                // Uses interested_only=false to traverse all AST nodes (every
-                // header pulled in by the preamble).  This can be expensive for
-                // large preambles (LLVM/Qt/Boost) but only runs once per unique
-                // preamble content (content-addressed PCH path), and avoids a
-                // separate full recompilation in background indexing.
-                //
-                // The main file index is cleared afterwards — only headers
-                // matter here; the main file's own index comes from the
-                // stateful worker compile (interested_only=true).
-                std::string tu_index_serialized;
-                if(success) {
-                    auto tu_index = index::TUIndex::build(unit);
-                    tu_index.main_file_index = index::FileIndex();
-                    llvm::raw_string_ostream os(tu_index_serialized);
-                    tu_index.serialize(os);
-                }
-
-                // Destroy CompilationUnit to flush PCH file to disk
-                // (EndSourceFile serializes the AST on destruction).
-                unit = CompilationUnit(nullptr);
-
-                if(success) {
-                    std::string final_path;
-                    if(has_output) {
-                        auto ec = fs::rename(tmp_path, params.output_path);
-                        if(ec) {
-                            final_path = params.output_path;
-                        } else {
-                            LOG_WARN("BuildPCH: rename {} -> {} failed: {}",
-                                     tmp_path,
-                                     params.output_path,
-                                     ec.error().message());
-                            final_path = tmp_path;
-                        }
-                    } else {
-                        final_path = tmp_path;
-                    }
-                    LOG_INFO("BuildPCH done: file={}, output={}, {}ms",
-                             params.file,
-                             final_path,
-                             timer.ms());
-                    worker::BuildPCHResult pch_result{true, "", std::move(final_path)};
-                    pch_result.deps = pch_info.deps;
-                    pch_result.tu_index_data = std::move(tu_index_serialized);
-                    return pch_result;
-                } else {
-                    LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]",
-                             params.file,
-                             timer.ms(),
-                             errors);
-                    fs::remove(tmp_path);
-                    return {false, errors.empty() ? "PCH compilation failed" : errors, ""};
-                }
-            });
-            co_return result.value();
-        });
-
-    // === BuildPCM ===
-    peer.on_request(
-        [&](RequestContext& ctx,
-            const worker::BuildPCMParams& params) -> RequestResult<worker::BuildPCMParams> {
-            LOG_INFO("BuildPCM request: file={}, module={}", params.file, params.module_name);
-
-            auto result = co_await et::queue([&]() -> worker::BuildPCMResult {
-                ScopedTimer timer;
-
-                CompilationParams cp;
-                cp.kind = CompilationKind::ModuleInterface;
-                fill_args(cp, params.directory, params.arguments);
-                for(auto& [name, path]: params.pcms) {
-                    cp.pcms.try_emplace(name, path);
-                }
-
-                std::string tmp_path;
-                bool has_output = !params.output_path.empty();
-                if(has_output) {
-                    tmp_path = params.output_path + ".tmp";
-                } else {
-                    auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
-                    if(!tmp) {
-                        LOG_ERROR("BuildPCM: failed to create temp file");
-                        return {false, "Failed to create temporary PCM file", ""};
-                    }
-                    tmp_path = *tmp;
-                }
-                cp.output_file = tmp_path;
-
-                PCMInfo pcm_info;
-                auto unit = compile(cp, pcm_info);
-                bool success = unit.completed();
-
-                std::string errors;
-                if(!success) {
-                    for(auto& diag: unit.diagnostics()) {
-                        if(diag.id.level >= DiagnosticLevel::Error) {
-                            if(!errors.empty())
-                                errors += "; ";
-                            errors += diag.message;
-                        }
-                    }
-                }
-
-                // Index module content before destroying the unit.
-                // Use interested_only=true — we only need the module interface's
-                // own symbols and relations, not transitive header content.
-                std::string tu_index_serialized;
-                if(success) {
-                    auto tu_index = index::TUIndex::build(unit, true);
-                    llvm::raw_string_ostream os(tu_index_serialized);
-                    tu_index.serialize(os);
-                }
-
-                unit = CompilationUnit(nullptr);
-
-                if(success) {
-                    std::string final_path = tmp_path;
-                    if(has_output) {
-                        auto ec = fs::rename(tmp_path, params.output_path);
-                        if(ec) {
-                            final_path = params.output_path;
-                        } else {
-                            LOG_WARN("BuildPCM: rename {} -> {} failed: {}",
-                                     tmp_path,
-                                     params.output_path,
-                                     ec.error().message());
-                        }
-                    }
-                    LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
-                    worker::BuildPCMResult pcm_result{true, "", std::move(final_path)};
-                    pcm_result.deps = pcm_info.deps;
-                    pcm_result.tu_index_data = std::move(tu_index_serialized);
-                    return pcm_result;
-                } else {
-                    LOG_WARN("BuildPCM failed: module={}, {}ms, errors=[{}]",
-                             params.module_name,
-                             timer.ms(),
-                             errors);
-                    fs::remove(tmp_path);
-                    return {false, errors.empty() ? "PCM compilation failed" : errors, ""};
-                }
-            });
-            co_return result.value();
-        });
-
-    // === Completion ===
-    peer.on_request(
-        [&](RequestContext& ctx,
-            const worker::CompletionParams& params) -> RequestResult<worker::CompletionParams> {
-            LOG_DEBUG("Completion request: path={}, offset={}", params.path, params.offset);
-
-            auto result = co_await et::queue([&]() -> et::serde::RawValue {
-                ScopedTimer timer;
-
-                CompilationParams cp;
-                cp.kind = CompilationKind::Completion;
-                fill_args(cp, params.directory, params.arguments);
-                if(!params.pch.first.empty()) {
-                    cp.pch = params.pch;
-                }
-                for(auto& [name, path]: params.pcms) {
-                    cp.pcms.try_emplace(name, path);
-                }
-                cp.add_remapped_file(params.path, params.text);
-                cp.completion = {params.path, params.offset};
-
-                auto items = feature::code_complete(cp);
-                LOG_DEBUG("Completion done: {} items, {}ms", items.size(), timer.ms());
-                return to_raw(items);
-            });
-            co_return result.value();
-        });
-
-    // === SignatureHelp ===
-    peer.on_request([&](RequestContext& ctx, const worker::SignatureHelpParams& params)
-                        -> RequestResult<worker::SignatureHelpParams> {
-        LOG_DEBUG("SignatureHelp request: path={}, offset={}", params.path, params.offset);
-
-        auto result = co_await et::queue([&]() -> et::serde::RawValue {
-            ScopedTimer timer;
-
-            CompilationParams cp;
-            cp.kind = CompilationKind::Completion;
-            fill_args(cp, params.directory, params.arguments);
-            if(!params.pch.first.empty()) {
-                cp.pch = params.pch;
-            }
-            for(auto& [name, path]: params.pcms) {
-                cp.pcms.try_emplace(name, path);
-            }
-            cp.add_remapped_file(params.path, params.text);
-            cp.completion = {params.path, params.offset};
-
-            auto help = feature::signature_help(cp);
-            LOG_DEBUG("SignatureHelp done: {}ms", timer.ms());
-            return to_raw(help);
-        });
-        co_return result.value();
-    });
-
-    // === Index ===
     peer.on_request([&](RequestContext& ctx,
-                        const worker::IndexParams& params) -> RequestResult<worker::IndexParams> {
-        LOG_INFO("Index request: file={}", params.file);
-
-        auto result = co_await et::queue([&]() -> worker::IndexResult {
-            ScopedTimer timer;
-
-            CompilationParams cp;
-            cp.kind = CompilationKind::Indexing;
-            fill_args(cp, params.directory, params.arguments);
-            for(auto& [name, path]: params.pcms) {
-                cp.pcms.try_emplace(name, path);
+                        const worker::BuildParams& params) -> RequestResult<worker::BuildParams> {
+        using K = worker::BuildKind;
+        auto result = co_await et::queue([&]() -> worker::BuildResult {
+            switch(params.kind) {
+                case K::BuildPCH: return handle_build_pch(params);
+                case K::BuildPCM: return handle_build_pcm(params);
+                case K::Index: return handle_index(params);
+                case K::Completion: return handle_completion(params);
+                case K::SignatureHelp: return handle_signature_help(params);
             }
-
-            auto unit = compile(cp);
-
-            if(!unit.completed()) {
-                LOG_WARN("Index failed: file={}, {}ms", params.file, timer.ms());
-                return {false, "Index compilation failed", ""};
-            }
-
-            auto tu_index = index::TUIndex::build(unit);
-
-            std::string serialized;
-            llvm::raw_string_ostream os(serialized);
-            tu_index.serialize(os);
-
-            LOG_INFO("Index done: file={}, {} symbols, {}ms",
-                     params.file,
-                     tu_index.symbols.size(),
-                     timer.ms());
-            return {true, "", std::move(serialized)};
+            return {false, "Unknown build kind"};
         });
         co_return result.value();
     });
