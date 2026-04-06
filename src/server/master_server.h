@@ -9,19 +9,15 @@
 #include "eventide/ipc/lsp/protocol.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/serde/serde/raw_value.h"
-#include "index/merged_index.h"
-#include "index/project_index.h"
-#include "semantic/relation_kind.h"
 #include "server/compile_graph.h"
 #include "server/config.h"
+#include "server/indexer.h"
 #include "server/worker_pool.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -113,33 +109,6 @@ struct PCMState {
     DepsSnapshot deps;
 };
 
-/// Information about a symbol at a given position.
-struct SymbolInfo {
-    /// Unique hash identifying this symbol across the project.
-    index::SymbolHash hash = 0;
-
-    /// Human-readable symbol name.
-    std::string name;
-
-    /// Symbol kind (function, class, variable, etc.).
-    SymbolKind kind;
-
-    /// URI of the file containing this symbol.
-    std::string uri;
-
-    /// Source range of the symbol's identifier.
-    protocol::Range range;
-};
-
-/// In-memory index for an open file.  Kept separate from MergedIndex because
-/// open files change frequently, are based on unsaved buffer content, and only
-/// need to track the main file (headers are covered by PCH/PCM indexing).
-struct OpenFileIndex {
-    index::FileIndex file_index;
-    index::SymbolTable symbols;
-    std::string content;  ///< Buffer text at index time (for position mapping).
-};
-
 enum class ServerLifecycle : std::uint8_t {
     Uninitialized,
     Initialized,
@@ -167,6 +136,9 @@ private:
 
     /// Interning pool for file paths (path string -> uint32_t ID).
     PathPool path_pool;
+
+    /// Cross-file symbol index (ProjectIndex, MergedIndex shards, open file indices).
+    Indexer indexer;
 
     /// Current server lifecycle state.
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
@@ -204,13 +176,7 @@ private:
     /// path_id -> cached PCM state (path, deps).
     llvm::DenseMap<std::uint32_t, PCMState> pcm_states;
 
-    // === Index state ===
-
-    /// Global symbol table and path mapping for the project.
-    index::ProjectIndex project_index;
-
-    /// Per-file merged index shards (keyed by project-level path_id).
-    llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
+    // === Indexing scheduling state ===
 
     /// Files queued for background indexing (server-level path_ids from CDB).
     std::vector<std::uint32_t> index_queue;
@@ -227,12 +193,7 @@ private:
     /// Timer for idle-triggered background indexing.
     std::shared_ptr<et::timer> index_idle_timer;
 
-    /// In-memory index for open files (server-level path_id -> OpenFileIndex).
-    llvm::DenseMap<std::uint32_t, OpenFileIndex> open_file_indices;
-
-    /// Project-level path_ids of files that have an OpenFileIndex.
-    /// Used to skip stale MergedIndex shards during cross-file queries.
-    llvm::DenseSet<std::uint32_t> open_proj_path_ids;
+    // === Document state ===
 
     /// path_id -> open document state (text, version, generation, dirty flag).
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
@@ -244,8 +205,6 @@ private:
     llvm::DenseMap<std::uint32_t, HeaderFileContext> header_file_contexts;
 
     /// Active compilation context overrides: path_id -> context_path_id.
-    /// When a file has an entry here, it is compiled using the context file's
-    /// compile command (e.g. a header compiled through a specific source file).
     llvm::DenseMap<std::uint32_t, std::uint32_t> active_contexts;
 
     // === Helpers ===
@@ -272,19 +231,16 @@ private:
                            std::string& directory,
                            std::vector<std::string>& arguments);
 
-    /// Fill compile arguments using header context (host source's CDB entry
-    /// with file path replaced and preamble injected).
+    /// Fill compile arguments using header context.
     bool fill_header_context_args(llvm::StringRef path,
                                   std::uint32_t path_id,
                                   std::string& directory,
                                   std::vector<std::string>& arguments);
 
     /// Generate a preamble file for compiling a header in context.
-    /// The preamble contains all code from the host source (and intermediate
-    /// headers) that comes BEFORE the #include of the target header.
     std::optional<HeaderFileContext> resolve_header_context(std::uint32_t header_path_id);
 
-    /// Build or reuse PCH for a source file. Returns true if PCH is available.
+    /// Build or reuse PCH for a source file.
     et::task<bool> ensure_pch(std::uint32_t path_id,
                               llvm::StringRef path,
                               const std::string& text,
@@ -292,7 +248,6 @@ private:
                               const std::vector<std::string>& arguments);
 
     /// Compile module dependencies, build/reuse PCH, and fill PCM paths.
-    /// Shared preparation step for ensure_compiled() and forward_stateless().
     et::task<bool> ensure_deps(std::uint32_t path_id,
                                llvm::StringRef path,
                                const std::string& text,
@@ -304,17 +259,8 @@ private:
     /// Schedule background indexing when idle.
     void schedule_indexing();
 
-    /// Background indexing coroutine: picks files from queue and dispatches to workers.
+    /// Background indexing coroutine.
     et::task<> run_background_indexing();
-
-    /// Merge a TUIndex result into ProjectIndex and MergedIndex shards.
-    void merge_index_result(const void* tu_index_data, std::size_t size);
-
-    /// Persist index state to disk.
-    void save_index();
-
-    /// Load index state from disk.
-    void load_index();
 
     /// Load PCH/PCM cache metadata from cache.json.
     void load_cache();
@@ -327,64 +273,23 @@ private:
 
     // === Include/import completion (handled in master) ===
 
-    /// Detect whether the cursor is on an #include or import line.
     PreambleCompletionContext detect_completion_context(const std::string& text, uint32_t offset);
-
-    /// Complete #include paths by enumerating search directories.
     et::serde::RawValue complete_include(const PreambleCompletionContext& ctx,
                                          llvm::StringRef path);
-
-    /// Complete import module names from the known module map.
     et::serde::RawValue complete_import(const PreambleCompletionContext& ctx);
 
     // === Feature request forwarding ===
 
     using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
 
-    /// Forward a simple stateful request (path-only worker params).
     template <typename WorkerParams>
     RawResult forward_stateful(const std::string& uri);
 
-    /// Forward a stateful request with position-to-offset conversion.
     template <typename WorkerParams>
     RawResult forward_stateful(const std::string& uri, const protocol::Position& position);
 
-    /// Forward a stateless request with document content and compile args.
     template <typename WorkerParams>
     RawResult forward_stateless(const std::string& uri, const protocol::Position& position);
-
-    // === Index query helpers ===
-
-    /// Query index for symbol relations (GoToDefinition, FindReferences, etc.).
-    RawResult query_index_relations(const std::string& uri,
-                                    const protocol::Position& position,
-                                    RelationKind kind);
-
-    /// Look up a symbol at a position, returning its hash, name, kind, and range.
-    et::task<std::optional<SymbolInfo>>
-        lookup_symbol_at_position(const std::string& uri, const protocol::Position& position);
-
-    /// Find the definition location (uri + range) of a symbol by its hash.
-    std::optional<protocol::Location> find_symbol_definition_location(index::SymbolHash hash);
-
-    /// Find a symbol's name and kind by hash, searching open file indices
-    /// first (fresher), then ProjectIndex.  Returns false if not found.
-    bool find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const;
-
-    /// Convert clice::SymbolKind to LSP protocol::SymbolKind.
-    static protocol::SymbolKind to_lsp_symbol_kind(SymbolKind kind);
-
-    /// Build a CallHierarchyItem from a SymbolInfo.
-    protocol::CallHierarchyItem build_call_hierarchy_item(const SymbolInfo& info);
-
-    /// Build a TypeHierarchyItem from a SymbolInfo.
-    protocol::TypeHierarchyItem build_type_hierarchy_item(const SymbolInfo& info);
-
-    /// Resolve SymbolInfo from a hierarchy item's stored data (symbol hash).
-    et::task<std::optional<SymbolInfo>>
-        resolve_hierarchy_item(const std::string& uri,
-                               const protocol::Range& range,
-                               const std::optional<protocol::LSPAny>& data);
 };
 
 }  // namespace clice

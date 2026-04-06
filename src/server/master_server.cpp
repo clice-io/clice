@@ -98,7 +98,7 @@ static bool deps_changed(const PathPool& pool, const DepsSnapshot& snap) {
 }
 
 MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path) :
-    loop(loop), peer(peer), pool(loop), self_path(std::move(self_path)) {}
+    loop(loop), peer(peer), pool(loop), indexer(path_pool), self_path(std::move(self_path)) {}
 
 MasterServer::~MasterServer() {
     if(compile_graph) {
@@ -442,7 +442,7 @@ et::task<> MasterServer::load_workspace() {
     }
 
     // Load persisted index from disk.
-    load_index();
+    indexer.load(config.index_dir);
 
     // Build index queue from CDB entries (all source files).
     // CDB entries use the CDB's internal path_ids; convert to server path_ids.
@@ -557,8 +557,8 @@ et::task<> MasterServer::load_workspace() {
 
         // Merge module index into ProjectIndex/MergedIndex.
         if(!result.value().tu_index_data.empty()) {
-            merge_index_result(result.value().tu_index_data.data(),
-                               result.value().tu_index_data.size());
+            indexer.merge(result.value().tu_index_data.data(),
+                          result.value().tu_index_data.size());
         }
 
         // Persist cache metadata after successful build.
@@ -893,8 +893,8 @@ et::task<bool> MasterServer::ensure_pch(std::uint32_t path_id,
 
     // Merge preamble header index into ProjectIndex/MergedIndex.
     if(!result.value().tu_index_data.empty()) {
-        merge_index_result(result.value().tu_index_data.data(),
-                           result.value().tu_index_data.size());
+        indexer.merge(result.value().tu_index_data.data(),
+                      result.value().tu_index_data.size());
     }
 
     // Persist cache metadata after successful build.
@@ -1155,13 +1155,7 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
             ofi.file_index = std::move(tu_index.main_file_index);
             ofi.symbols = std::move(tu_index.symbols);
             ofi.content = doc2.text;
-            self->open_file_indices[pid] = std::move(ofi);
-
-            // Track project-level path_id for cross-file query filtering.
-            auto proj_cache_it = self->project_index.path_pool.find(file_path);
-            if(proj_cache_it != self->project_index.path_pool.cache.end()) {
-                self->open_proj_path_ids.insert(proj_cache_it->second);
-            }
+            self->indexer.set_open_file(pid, file_path, std::move(ofi));
         }
 
         finish_compile();
@@ -1184,161 +1178,8 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
 }
 
 // =========================================================================
-// Index integration
+// Index integration (scheduling — data/queries are in Indexer)
 // =========================================================================
-
-void MasterServer::merge_index_result(const void* tu_index_data, std::size_t size) {
-    auto tu_index = index::TUIndex::from(tu_index_data);
-
-    // Merge symbols into ProjectIndex, get TU-local path_id -> global path_id mapping.
-    auto file_ids_map = project_index.merge(tu_index);
-
-    auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
-
-    // Merge a single file's index into the corresponding MergedIndex shard.
-    auto merge_file_index = [&](std::uint32_t tu_path_id, index::FileIndex& file_idx) {
-        auto global_path_id = file_ids_map[tu_path_id];
-        auto& merged = merged_indices[global_path_id];
-
-        if(tu_path_id == main_tu_path_id) {
-            // Main file (source file) gets a compilation context with include locations.
-            // Collect ALL include locations with path_ids remapped to project-level ids.
-            std::vector<index::IncludeLocation> include_locs;
-            for(auto& loc: tu_index.graph.locations) {
-                index::IncludeLocation remapped = loc;
-                remapped.path_id = file_ids_map[loc.path_id];
-                include_locs.push_back(remapped);
-            }
-            // Read the file content from disk for position mapping in queries.
-            auto file_path = project_index.path_pool.path(global_path_id);
-            llvm::StringRef file_content;
-            std::string file_content_storage;
-            auto buf = llvm::MemoryBuffer::getFile(file_path);
-            if(buf) {
-                file_content_storage = (*buf)->getBuffer().str();
-                file_content = file_content_storage;
-            }
-            merged.merge(global_path_id,
-                         tu_index.built_at,
-                         std::move(include_locs),
-                         file_idx,
-                         file_content);
-        } else {
-            // Header files get a header context keyed by include location.
-            std::uint32_t include_id = 0;
-            for(std::uint32_t i = 0; i < tu_index.graph.locations.size(); ++i) {
-                if(tu_index.graph.locations[i].path_id == tu_path_id) {
-                    include_id = i;
-                    break;
-                }
-            }
-            // Read header file content for position mapping in queries.
-            auto header_path = project_index.path_pool.path(global_path_id);
-            llvm::StringRef header_content;
-            std::string header_content_storage;
-            auto header_buf = llvm::MemoryBuffer::getFile(header_path);
-            if(header_buf) {
-                header_content_storage = (*header_buf)->getBuffer().str();
-                header_content = header_content_storage;
-            }
-            merged.merge(global_path_id, include_id, file_idx, header_content);
-        }
-    };
-
-    // Merge from path_file_indices (deserialized TUIndex from IPC).
-    for(auto& [tu_path_id, file_idx]: tu_index.path_file_indices) {
-        merge_file_index(tu_path_id, file_idx);
-    }
-
-    // Merge main file index.
-    merge_file_index(main_tu_path_id, tu_index.main_file_index);
-
-    LOG_INFO("Merged TUIndex: {} paths, {} symbols, {} merged_shards",
-             tu_index.graph.paths.size(),
-             tu_index.symbols.size(),
-             merged_indices.size());
-}
-
-void MasterServer::save_index() {
-    if(config.index_dir.empty())
-        return;
-
-    auto ec = llvm::sys::fs::create_directories(config.index_dir);
-    if(ec) {
-        LOG_WARN("Failed to create index directory {}: {}", config.index_dir, ec.message());
-        return;
-    }
-
-    // Save ProjectIndex.
-    auto project_path = path::join(config.index_dir, "project.idx");
-    {
-        std::error_code write_ec;
-        llvm::raw_fd_ostream os(project_path, write_ec);
-        if(!write_ec) {
-            project_index.serialize(os);
-            LOG_INFO("Saved ProjectIndex to {}", project_path);
-        } else {
-            LOG_WARN("Failed to save ProjectIndex: {}", write_ec.message());
-        }
-    }
-
-    // Save MergedIndex shards.
-    auto shards_dir = path::join(config.index_dir, "shards");
-    ec = llvm::sys::fs::create_directories(shards_dir);
-    if(ec) {
-        LOG_WARN("Failed to create shards directory: {}", ec.message());
-        return;
-    }
-
-    std::size_t saved = 0;
-    for(auto& [path_id, merged]: merged_indices) {
-        if(!merged.need_rewrite())
-            continue;
-        auto shard_path = path::join(shards_dir, std::to_string(path_id) + ".idx");
-        std::error_code write_ec;
-        llvm::raw_fd_ostream os(shard_path, write_ec);
-        if(!write_ec) {
-            merged.serialize(os);
-            ++saved;
-        }
-    }
-    LOG_INFO("Saved {} MergedIndex shards (of {} total)", saved, merged_indices.size());
-}
-
-void MasterServer::load_index() {
-    if(config.index_dir.empty())
-        return;
-
-    // Load ProjectIndex.
-    auto project_path = path::join(config.index_dir, "project.idx");
-    auto buf = llvm::MemoryBuffer::getFile(project_path);
-    if(buf) {
-        project_index = index::ProjectIndex::from((*buf)->getBufferStart());
-        LOG_INFO("Loaded ProjectIndex: {} symbols", project_index.symbols.size());
-    }
-
-    // Load MergedIndex shards.
-    auto shards_dir = path::join(config.index_dir, "shards");
-    std::error_code ec;
-    for(auto it = llvm::sys::fs::directory_iterator(shards_dir, ec);
-        !ec && it != llvm::sys::fs::directory_iterator();
-        it.increment(ec)) {
-        auto filename = llvm::sys::path::filename(it->path());
-        if(!filename.ends_with(".idx"))
-            continue;
-
-        auto stem = filename.drop_back(4);  // remove ".idx"
-        std::uint32_t path_id = 0;
-        if(stem.getAsInteger(10, path_id))
-            continue;
-
-        merged_indices[path_id] = index::MergedIndex::load(it->path());
-    }
-
-    if(!merged_indices.empty()) {
-        LOG_INFO("Loaded {} MergedIndex shards", merged_indices.size());
-    }
-}
 
 void MasterServer::schedule_indexing() {
     if(!config.enable_indexing || indexing_active || indexing_scheduled)
@@ -1380,24 +1221,8 @@ et::task<> MasterServer::run_background_indexing() {
             continue;
         }
 
-        // Check if the index needs update by checking mtime against existing shard.
-        // If the file is not yet in the project_index path pool, it has never been
-        // indexed — always proceed.  Only skip when we already have a shard that is
-        // still fresh.
-        auto cache_it = project_index.path_pool.find(file_path);
-        if(cache_it != project_index.path_pool.cache.end()) {
-            auto proj_path_id = cache_it->second;
-            auto merged_it = merged_indices.find(proj_path_id);
-            if(merged_it != merged_indices.end()) {
-                // Build path mapping for need_update check.
-                llvm::SmallVector<llvm::StringRef> path_mapping;
-                for(auto& p: project_index.path_pool.paths) {
-                    path_mapping.push_back(p);
-                }
-                if(!merged_it->second.need_update(path_mapping))
-                    continue;
-            }
-        }
+        if(!indexer.need_update(file_path))
+            continue;
 
         // Prepare IndexParams for the stateless worker.
         worker::IndexParams params;
@@ -1420,8 +1245,8 @@ et::task<> MasterServer::run_background_indexing() {
             LOG_INFO("Background indexing got TUIndex for {}: {} bytes",
                      file_path,
                      result.value().tu_index_data.size());
-            merge_index_result(result.value().tu_index_data.data(),
-                               result.value().tu_index_data.size());
+            indexer.merge(result.value().tu_index_data.data(),
+                          result.value().tu_index_data.size());
             ++processed;
         } else if(result.has_value() && !result.value().success) {
             LOG_WARN("Background index failed for {}: {}", file_path, result.value().error);
@@ -1436,7 +1261,7 @@ et::task<> MasterServer::run_background_indexing() {
     LOG_INFO("Background indexing complete: {} files processed", processed);
 
     // Persist index to disk after a full pass.
-    save_index();
+    indexer.save(config.index_dir);
 }
 
 // =========================================================================
@@ -1727,392 +1552,7 @@ static serde_raw to_raw(const T& value) {
     return serde_raw{json ? std::move(*json) : "null"};
 }
 
-/// Look up the first occurrence containing `offset` in a sorted occurrence list.
-/// Uses lower_bound on range.end, then scans forward through overlapping
-/// occurrences (e.g. nested templates, macro expansions) to find the tightest
-/// (innermost) match.  Returns nullptr if no occurrence contains the offset.
-const static index::Occurrence* lookup_occurrence(const std::vector<index::Occurrence>& occs,
-                                                  std::uint32_t offset) {
-    auto it = std::ranges::lower_bound(occs, offset, {}, [](const index::Occurrence& o) {
-        return o.range.end;
-    });
 
-    const index::Occurrence* best = nullptr;
-    while(it != occs.end() && it->range.contains(offset)) {
-        // Prefer the narrowest (innermost) occurrence that contains the offset.
-        if(!best || (it->range.end - it->range.begin) < (best->range.end - best->range.begin)) {
-            best = &*it;
-        }
-        ++it;
-    }
-    return best;
-}
-
-/// Find a symbol's name and kind by hash.  Searches open file indices first
-/// (fresher data for actively-edited files), then falls back to ProjectIndex.
-/// Returns false if the symbol is not found anywhere.
-bool MasterServer::find_symbol_info(index::SymbolHash hash,
-                                    std::string& name,
-                                    SymbolKind& kind) const {
-    // Open file indices may have symbols not yet in ProjectIndex.
-    for(auto& [_, ofi]: open_file_indices) {
-        auto it = ofi.symbols.find(hash);
-        if(it != ofi.symbols.end()) {
-            name = it->second.name;
-            kind = it->second.kind;
-            return true;
-        }
-    }
-    auto it = project_index.symbols.find(hash);
-    if(it != project_index.symbols.end()) {
-        name = it->second.name;
-        kind = it->second.kind;
-        return true;
-    }
-    return false;
-}
-
-MasterServer::RawResult MasterServer::query_index_relations(const std::string& uri,
-                                                            const protocol::Position& position,
-                                                            RelationKind kind) {
-    auto path = uri_to_path(uri);
-    auto server_path_id = path_pool.intern(path);
-
-    // Step 1: Find occurrence at the cursor position.
-    index::SymbolHash symbol_hash = 0;
-
-    auto ofi_it = open_file_indices.find(server_path_id);
-    if(ofi_it != open_file_indices.end()) {
-        // Open file: use in-memory index with buffer content.
-        lsp::PositionMapper mapper(ofi_it->second.content, lsp::PositionEncoding::UTF16);
-        auto offset_opt = mapper.to_offset(position);
-        if(!offset_opt)
-            co_return serde_raw{"null"};
-
-        if(auto* occ = lookup_occurrence(ofi_it->second.file_index.occurrences, *offset_opt)) {
-            symbol_hash = occ->target;
-        }
-    } else {
-        // Non-open file (or open but not yet compiled): use MergedIndex.
-        auto doc_it = documents.find(server_path_id);
-        if(doc_it == documents.end())
-            co_return serde_raw{"null"};
-
-        lsp::PositionMapper mapper(doc_it->second.text, lsp::PositionEncoding::UTF16);
-        auto offset_opt = mapper.to_offset(position);
-        if(!offset_opt)
-            co_return serde_raw{"null"};
-
-        auto proj_cache_it = project_index.path_pool.find(path);
-        if(proj_cache_it == project_index.path_pool.cache.end())
-            co_return serde_raw{"null"};
-
-        auto merged_it = merged_indices.find(proj_cache_it->second);
-        if(merged_it == merged_indices.end())
-            co_return serde_raw{"null"};
-
-        merged_it->second.lookup(*offset_opt, [&](const index::Occurrence& o) {
-            symbol_hash = o.target;
-            return false;
-        });
-    }
-
-    if(symbol_hash == 0)
-        co_return serde_raw{"null"};
-
-    // Step 2: Collect relations from all sources.
-    std::vector<protocol::Location> locations;
-
-    // 2a: From ProjectIndex reference files (MergedIndex shards for disk-indexed files).
-    auto sym_it = project_index.symbols.find(symbol_hash);
-    if(sym_it != project_index.symbols.end()) {
-        for(auto file_id: sym_it->second.reference_files) {
-            // Skip files that have a fresher open file index.
-            if(open_proj_path_ids.contains(file_id))
-                continue;
-
-            auto file_merged_it = merged_indices.find(file_id);
-            if(file_merged_it == merged_indices.end())
-                continue;
-
-            auto file_path = project_index.path_pool.path(file_id);
-            auto file_uri = lsp::URI::from_file_path(file_path);
-            if(!file_uri)
-                continue;
-
-            auto file_content = file_merged_it->second.content();
-            if(file_content.empty())
-                continue;
-
-            lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
-
-            file_merged_it->second.lookup(symbol_hash, kind, [&](const index::Relation& r) {
-                auto start = file_mapper.to_position(r.range.begin);
-                auto end = file_mapper.to_position(r.range.end);
-                if(start && end) {
-                    protocol::Location loc;
-                    loc.uri = file_uri->str();
-                    loc.range = protocol::Range{*start, *end};
-                    locations.push_back(std::move(loc));
-                }
-                return true;
-            });
-        }
-    }
-
-    // 2b: From all open file indices (not tracked in ProjectIndex.reference_files).
-    for(auto& [ofi_server_id, ofi]: open_file_indices) {
-        auto rel_it = ofi.file_index.relations.find(symbol_hash);
-        if(rel_it == ofi.file_index.relations.end())
-            continue;
-
-        auto ofi_path = std::string(path_pool.resolve(ofi_server_id));
-        auto ofi_uri = lsp::URI::from_file_path(ofi_path);
-        if(!ofi_uri)
-            continue;
-
-        lsp::PositionMapper ofi_mapper(ofi.content, lsp::PositionEncoding::UTF16);
-
-        for(auto& relation: rel_it->second) {
-            if(relation.kind & kind) {
-                auto start = ofi_mapper.to_position(relation.range.begin);
-                auto end = ofi_mapper.to_position(relation.range.end);
-                if(start && end) {
-                    protocol::Location loc;
-                    loc.uri = ofi_uri->str();
-                    loc.range = protocol::Range{*start, *end};
-                    locations.push_back(std::move(loc));
-                }
-            }
-        }
-    }
-
-    if(locations.empty())
-        co_return serde_raw{"null"};
-
-    co_return to_raw(locations);
-}
-
-protocol::SymbolKind MasterServer::to_lsp_symbol_kind(SymbolKind kind) {
-    switch(kind) {
-        case SymbolKind::Namespace: return protocol::SymbolKind::Namespace;
-        case SymbolKind::Class: return protocol::SymbolKind::Class;
-        case SymbolKind::Struct: return protocol::SymbolKind::Struct;
-        case SymbolKind::Union: return protocol::SymbolKind::Class;
-        case SymbolKind::Enum: return protocol::SymbolKind::Enum;
-        case SymbolKind::Type: return protocol::SymbolKind::TypeParameter;
-        case SymbolKind::Field: return protocol::SymbolKind::Field;
-        case SymbolKind::EnumMember: return protocol::SymbolKind::EnumMember;
-        case SymbolKind::Function: return protocol::SymbolKind::Function;
-        case SymbolKind::Method: return protocol::SymbolKind::Method;
-        case SymbolKind::Variable: return protocol::SymbolKind::Variable;
-        case SymbolKind::Parameter: return protocol::SymbolKind::Variable;
-        case SymbolKind::Macro: return protocol::SymbolKind::Function;
-        case SymbolKind::Concept: return protocol::SymbolKind::Interface;
-        case SymbolKind::Module: return protocol::SymbolKind::Module;
-        case SymbolKind::Operator: return protocol::SymbolKind::Operator;
-        default: return protocol::SymbolKind::Variable;
-    }
-}
-
-et::task<std::optional<SymbolInfo>>
-    MasterServer::lookup_symbol_at_position(const std::string& uri,
-                                            const protocol::Position& position) {
-    auto path = uri_to_path(uri);
-    auto server_path_id = path_pool.intern(path);
-
-    index::SymbolHash symbol_hash = 0;
-    index::Range occ_range{};
-    lsp::PositionMapper* mapper_ptr = nullptr;
-
-    // Try open file index first.
-    std::optional<lsp::PositionMapper> ofi_mapper;
-    auto ofi_it = open_file_indices.find(server_path_id);
-    if(ofi_it != open_file_indices.end()) {
-        ofi_mapper.emplace(ofi_it->second.content, lsp::PositionEncoding::UTF16);
-        mapper_ptr = &*ofi_mapper;
-        auto offset_opt = ofi_mapper->to_offset(position);
-        if(!offset_opt)
-            co_return std::nullopt;
-
-        if(auto* occ = lookup_occurrence(ofi_it->second.file_index.occurrences, *offset_opt)) {
-            symbol_hash = occ->target;
-            occ_range = occ->range;
-        }
-    } else {
-        // Fall back to MergedIndex.
-        auto doc_it = documents.find(server_path_id);
-        if(doc_it == documents.end())
-            co_return std::nullopt;
-
-        ofi_mapper.emplace(doc_it->second.text, lsp::PositionEncoding::UTF16);
-        mapper_ptr = &*ofi_mapper;
-        auto offset_opt = ofi_mapper->to_offset(position);
-        if(!offset_opt)
-            co_return std::nullopt;
-
-        auto proj_cache_it = project_index.path_pool.find(path);
-        if(proj_cache_it == project_index.path_pool.cache.end())
-            co_return std::nullopt;
-
-        auto merged_it = merged_indices.find(proj_cache_it->second);
-        if(merged_it == merged_indices.end())
-            co_return std::nullopt;
-
-        merged_it->second.lookup(*offset_opt, [&](const index::Occurrence& o) {
-            symbol_hash = o.target;
-            occ_range = o.range;
-            return false;
-        });
-    }
-
-    if(symbol_hash == 0)
-        co_return std::nullopt;
-
-    // Get symbol info: open file indices first (fresher), then ProjectIndex.
-    std::string name;
-    SymbolKind sym_kind;
-    if(!find_symbol_info(symbol_hash, name, sym_kind))
-        co_return std::nullopt;
-
-    auto start = mapper_ptr->to_position(occ_range.begin);
-    auto end = mapper_ptr->to_position(occ_range.end);
-    if(!start || !end)
-        co_return std::nullopt;
-
-    SymbolInfo info;
-    info.hash = symbol_hash;
-    info.name = std::move(name);
-    info.kind = sym_kind;
-    info.uri = uri;
-    info.range = protocol::Range{*start, *end};
-    co_return info;
-}
-
-std::optional<protocol::Location>
-    MasterServer::find_symbol_definition_location(index::SymbolHash hash) {
-    // Check open file indices first (may have the most up-to-date definition).
-    for(auto& [ofi_server_id, ofi]: open_file_indices) {
-        auto rel_it = ofi.file_index.relations.find(hash);
-        if(rel_it == ofi.file_index.relations.end())
-            continue;
-
-        auto ofi_path = std::string(path_pool.resolve(ofi_server_id));
-        auto ofi_uri = lsp::URI::from_file_path(ofi_path);
-        if(!ofi_uri)
-            continue;
-
-        lsp::PositionMapper mapper(ofi.content, lsp::PositionEncoding::UTF16);
-        for(auto& relation: rel_it->second) {
-            if(relation.kind.is_one_of(RelationKind::Definition)) {
-                auto start = mapper.to_position(relation.range.begin);
-                auto end = mapper.to_position(relation.range.end);
-                if(start && end) {
-                    protocol::Location loc;
-                    loc.uri = ofi_uri->str();
-                    loc.range = protocol::Range{*start, *end};
-                    return loc;
-                }
-            }
-        }
-    }
-
-    // Fall back to ProjectIndex reference files (MergedIndex shards).
-    auto sym_it = project_index.symbols.find(hash);
-    if(sym_it == project_index.symbols.end())
-        return std::nullopt;
-
-    for(auto file_id: sym_it->second.reference_files) {
-        if(open_proj_path_ids.contains(file_id))
-            continue;
-
-        auto file_merged_it = merged_indices.find(file_id);
-        if(file_merged_it == merged_indices.end())
-            continue;
-
-        auto file_path = project_index.path_pool.path(file_id);
-        auto file_uri = lsp::URI::from_file_path(file_path);
-        if(!file_uri)
-            continue;
-
-        auto file_content = file_merged_it->second.content();
-        if(file_content.empty())
-            continue;
-        lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
-
-        std::optional<protocol::Location> result;
-        file_merged_it->second.lookup(hash,
-                                      RelationKind::Definition,
-                                      [&](const index::Relation& r) {
-                                          auto start = file_mapper.to_position(r.range.begin);
-                                          auto end = file_mapper.to_position(r.range.end);
-                                          if(start && end) {
-                                              protocol::Location loc;
-                                              loc.uri = file_uri->str();
-                                              loc.range = protocol::Range{*start, *end};
-                                              result = std::move(loc);
-                                              return false;
-                                          }
-                                          return true;
-                                      });
-
-        if(result)
-            return result;
-    }
-
-    return std::nullopt;
-}
-
-protocol::CallHierarchyItem MasterServer::build_call_hierarchy_item(const SymbolInfo& info) {
-    protocol::CallHierarchyItem item;
-    item.name = info.name;
-    item.kind = to_lsp_symbol_kind(info.kind);
-    item.uri = info.uri;
-    item.range = info.range;
-    item.selection_range = info.range;
-    // Store the symbol hash in data for later use in incoming/outgoing calls.
-    item.data = protocol::LSPAny(static_cast<std::int64_t>(info.hash));
-    return item;
-}
-
-protocol::TypeHierarchyItem MasterServer::build_type_hierarchy_item(const SymbolInfo& info) {
-    protocol::TypeHierarchyItem item;
-    item.name = info.name;
-    item.kind = to_lsp_symbol_kind(info.kind);
-    item.uri = info.uri;
-    item.range = info.range;
-    item.selection_range = info.range;
-    item.data = protocol::LSPAny(static_cast<std::int64_t>(info.hash));
-    return item;
-}
-
-et::task<std::optional<SymbolInfo>>
-    MasterServer::resolve_hierarchy_item(const std::string& uri,
-                                         const protocol::Range& range,
-                                         const std::optional<protocol::LSPAny>& data) {
-    // Try to extract symbol hash from the stored data field first.
-    // Check both open file indices and ProjectIndex for the symbol info,
-    // since open files may have symbols not yet in ProjectIndex.
-    if(data) {
-        if(auto* int_val = std::get_if<std::int64_t>(&*data)) {
-            auto hash = static_cast<index::SymbolHash>(*int_val);
-            std::string name;
-            SymbolKind kind;
-            if(find_symbol_info(hash, name, kind)) {
-                SymbolInfo info;
-                info.hash = hash;
-                info.name = std::move(name);
-                info.kind = kind;
-                info.uri = uri;
-                info.range = range;
-                co_return info;
-            }
-        }
-    }
-
-    // Fallback: re-lookup from position (requires document to be open).
-    co_return co_await lookup_symbol_at_position(uri, range.start);
-}
 
 void MasterServer::register_handlers() {
     using StringVec = std::vector<std::string>;
@@ -2269,7 +1709,7 @@ void MasterServer::register_handlers() {
         LOG_INFO("Exit notification received");
 
         // Persist index and cache state before stopping.
-        save_index();
+        indexer.save(config.index_dir);
         save_cache();
 
         // Graceful shutdown: cancel compilations, stop workers, then stop loop
@@ -2359,11 +1799,7 @@ void MasterServer::register_handlers() {
         }
 
         // Clean up open file index and proj_path_id tracking.
-        open_file_indices.erase(path_id);
-        auto proj_cache_it = project_index.path_pool.find(path);
-        if(proj_cache_it != project_index.path_pool.cache.end()) {
-            open_proj_path_ids.erase(proj_cache_it->second);
-        }
+        indexer.remove_open_file(path_id, path);
 
         documents.erase(path_id);
         pch_states.erase(path_id);
@@ -2483,11 +1919,15 @@ void MasterServer::register_handlers() {
         [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
+            auto path = uri_to_path(uri);
+            auto path_id = path_pool.intern(path);
+            auto doc_it = documents.find(path_id);
+            const std::string* doc_text = doc_it != documents.end() ? &doc_it->second.text : nullptr;
 
             // Try index-based lookup first.
-            auto result = co_await query_index_relations(uri, pos, RelationKind::Definition);
-            if(result.has_value() && !result.value().empty() && result.value().data != "null") {
-                co_return std::move(result).value();
+            auto result = indexer.query_relations(path, path_id, pos, RelationKind::Definition, doc_text);
+            if(!result.empty() && result.data != "null") {
+                co_return std::move(result);
             }
 
             // Fall back to stateful worker AST query.
@@ -2499,32 +1939,30 @@ void MasterServer::register_handlers() {
         [this](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
+            auto path = uri_to_path(uri);
+            auto path_id = path_pool.intern(path);
+            auto doc_it = documents.find(path_id);
+            const std::string* doc_text = doc_it != documents.end() ? &doc_it->second.text : nullptr;
 
-            auto refs = co_await query_index_relations(uri, pos, RelationKind::Reference);
+            auto refs = indexer.query_relations(path, path_id, pos, RelationKind::Reference, doc_text);
 
             if(params.context.include_declaration) {
-                // Also include Definition locations when the client requests the declaration.
-                auto defs = co_await query_index_relations(uri, pos, RelationKind::Definition);
-                if(defs.has_value() && !defs.value().empty() && defs.value().data != "null") {
-                    if(!refs.has_value() || refs.value().empty() || refs.value().data == "null") {
-                        co_return std::move(defs).value();
+                auto defs = indexer.query_relations(path, path_id, pos, RelationKind::Definition, doc_text);
+                if(!defs.empty() && defs.data != "null") {
+                    if(refs.empty() || refs.data == "null") {
+                        co_return std::move(defs);
                     }
-                    // Merge: parse both JSON arrays and concatenate.
-                    auto& ref_json = refs.value().data;
-                    auto& def_json = defs.value().data;
-                    // Both are JSON arrays like "[...]". Merge them.
-                    if(ref_json.size() > 2 && def_json.size() > 2) {
-                        // Remove trailing ']' from refs, add comma, add def content without leading
-                        // '['
-                        std::string merged = ref_json.substr(0, ref_json.size() - 1);
+                    // Merge JSON arrays.
+                    if(refs.data.size() > 2 && defs.data.size() > 2) {
+                        std::string merged = refs.data.substr(0, refs.data.size() - 1);
                         merged += ',';
-                        merged += def_json.substr(1);
+                        merged += defs.data.substr(1);
                         co_return serde_raw{std::move(merged)};
                     }
                 }
             }
 
-            co_return refs;
+            co_return std::move(refs);
         });
 
     // --- textDocument/typeDefinition ---
@@ -2593,466 +2031,116 @@ void MasterServer::register_handlers() {
     // --- textDocument/prepareCallHierarchy ---
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyPrepareParams& params) -> RawResult {
-        auto info = co_await lookup_symbol_at_position(
-            params.text_document_position_params.text_document.uri,
-            params.text_document_position_params.position);
+        auto& uri = params.text_document_position_params.text_document.uri;
+        auto& pos = params.text_document_position_params.position;
+        auto path = uri_to_path(uri);
+        auto path_id = path_pool.intern(path);
+        auto doc_it = documents.find(path_id);
+        const std::string* doc_text = doc_it != documents.end() ? &doc_it->second.text : nullptr;
+
+        auto info = indexer.lookup_symbol(uri, path, path_id, pos, doc_text);
         if(!info)
             co_return serde_raw{"null"};
 
-        // Only functions/methods are valid for call hierarchy.
         if(!(info->kind == SymbolKind::Function || info->kind == SymbolKind::Method))
             co_return serde_raw{"null"};
 
         std::vector<protocol::CallHierarchyItem> items;
-        items.push_back(build_call_hierarchy_item(*info));
+        items.push_back(Indexer::build_call_hierarchy_item(*info));
         co_return to_raw(items);
     });
 
     // --- callHierarchy/incomingCalls ---
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
-        // Re-lookup the symbol from the item.
-        auto info =
-            co_await resolve_hierarchy_item(params.item.uri, params.item.range, params.item.data);
+        auto path = uri_to_path(params.item.uri);
+        auto path_id = path_pool.intern(path);
+        auto doc_it = documents.find(path_id);
+        const std::string* doc_text = doc_it != documents.end() ? &doc_it->second.text : nullptr;
+
+        auto info = indexer.resolve_hierarchy_item(
+            params.item.uri, path, path_id, params.item.range, params.item.data, doc_text);
         if(!info)
             co_return serde_raw{"null"};
 
-        // Collect all Caller relations across reference files.
-        // Caller relation: on the callee symbol, target_symbol is the caller's hash.
-        std::vector<protocol::CallHierarchyIncomingCall> results;
-
-        // Group call sites by caller symbol hash.
-        llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> caller_ranges;
-
-        auto sym_it = project_index.symbols.find(info->hash);
-        if(sym_it != project_index.symbols.end())
-            for(auto file_id: sym_it->second.reference_files) {
-                if(open_proj_path_ids.contains(file_id))
-                    continue;
-
-                auto file_merged_it = merged_indices.find(file_id);
-                if(file_merged_it == merged_indices.end())
-                    continue;
-
-                auto file_content = file_merged_it->second.content();
-                if(file_content.empty())
-                    continue;
-
-                lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
-
-                file_merged_it->second.lookup(
-                    info->hash,
-                    RelationKind::Caller,
-                    [&](const index::Relation& r) {
-                        auto start = file_mapper.to_position(r.range.begin);
-                        auto end = file_mapper.to_position(r.range.end);
-                        if(start && end) {
-                            caller_ranges[r.target_symbol].push_back(protocol::Range{*start, *end});
-                        }
-                        return true;
-                    });
-            }
-
-        // Also check open file indices.
-        for(auto& [ofi_id, ofi]: open_file_indices) {
-            auto rel_it = ofi.file_index.relations.find(info->hash);
-            if(rel_it == ofi.file_index.relations.end())
-                continue;
-            lsp::PositionMapper ofi_mapper(ofi.content, lsp::PositionEncoding::UTF16);
-            for(auto& r: rel_it->second) {
-                if(r.kind.is_one_of(RelationKind::Caller)) {
-                    auto start = ofi_mapper.to_position(r.range.begin);
-                    auto end = ofi_mapper.to_position(r.range.end);
-                    if(start && end) {
-                        caller_ranges[r.target_symbol].push_back(protocol::Range{*start, *end});
-                    }
-                }
-            }
-        }
-
-        // Build incoming call items from grouped caller symbols.
-        for(auto& [caller_hash, ranges]: caller_ranges) {
-            auto def_loc = find_symbol_definition_location(caller_hash);
-            if(!def_loc)
-                continue;
-
-            std::string caller_name;
-            SymbolKind caller_kind;
-            if(!find_symbol_info(caller_hash, caller_name, caller_kind))
-                continue;
-
-            protocol::CallHierarchyItem caller_item;
-            caller_item.name = caller_name;
-            caller_item.kind = to_lsp_symbol_kind(caller_kind);
-            caller_item.uri = def_loc->uri;
-            caller_item.range = def_loc->range;
-            caller_item.selection_range = def_loc->range;
-            caller_item.data = protocol::LSPAny(static_cast<std::int64_t>(caller_hash));
-
-            protocol::CallHierarchyIncomingCall call;
-            call.from = std::move(caller_item);
-            call.from_ranges = std::move(ranges);
-            results.push_back(std::move(call));
-        }
-
-        if(results.empty())
-            co_return serde_raw{"null"};
-        co_return to_raw(results);
+        co_return indexer.find_incoming_calls(info->hash);
     });
 
     // --- callHierarchy/outgoingCalls ---
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
-        auto info =
-            co_await resolve_hierarchy_item(params.item.uri, params.item.range, params.item.data);
+        auto path = uri_to_path(params.item.uri);
+        auto path_id = path_pool.intern(path);
+        auto doc_it = documents.find(path_id);
+        const std::string* doc_text = doc_it != documents.end() ? &doc_it->second.text : nullptr;
+
+        auto info = indexer.resolve_hierarchy_item(
+            params.item.uri, path, path_id, params.item.range, params.item.data, doc_text);
         if(!info)
             co_return serde_raw{"null"};
 
-        // Collect Callee relations (outgoing calls from this function).
-        // Group call sites by callee symbol hash.
-        llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> callee_ranges;
-
-        auto sym_it = project_index.symbols.find(info->hash);
-        if(sym_it != project_index.symbols.end())
-            for(auto file_id: sym_it->second.reference_files) {
-                if(open_proj_path_ids.contains(file_id))
-                    continue;
-
-                auto file_merged_it = merged_indices.find(file_id);
-                if(file_merged_it == merged_indices.end())
-                    continue;
-
-                auto file_content = file_merged_it->second.content();
-                if(file_content.empty())
-                    continue;
-
-                lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
-
-                file_merged_it->second.lookup(
-                    info->hash,
-                    RelationKind::Callee,
-                    [&](const index::Relation& r) {
-                        auto start = file_mapper.to_position(r.range.begin);
-                        auto end = file_mapper.to_position(r.range.end);
-                        if(start && end) {
-                            callee_ranges[r.target_symbol].push_back(protocol::Range{*start, *end});
-                        }
-                        return true;
-                    });
-            }
-
-        // Also check open file indices.
-        for(auto& [ofi_id, ofi]: open_file_indices) {
-            auto rel_it = ofi.file_index.relations.find(info->hash);
-            if(rel_it == ofi.file_index.relations.end())
-                continue;
-            lsp::PositionMapper ofi_mapper(ofi.content, lsp::PositionEncoding::UTF16);
-            for(auto& r: rel_it->second) {
-                if(r.kind.is_one_of(RelationKind::Callee)) {
-                    auto start = ofi_mapper.to_position(r.range.begin);
-                    auto end = ofi_mapper.to_position(r.range.end);
-                    if(start && end) {
-                        callee_ranges[r.target_symbol].push_back(protocol::Range{*start, *end});
-                    }
-                }
-            }
-        }
-
-        std::vector<protocol::CallHierarchyOutgoingCall> results;
-        for(auto& [callee_hash, ranges]: callee_ranges) {
-            auto def_loc = find_symbol_definition_location(callee_hash);
-            if(!def_loc)
-                continue;
-
-            std::string callee_name;
-            SymbolKind callee_kind;
-            if(!find_symbol_info(callee_hash, callee_name, callee_kind))
-                continue;
-
-            protocol::CallHierarchyItem callee_item;
-            callee_item.name = callee_name;
-            callee_item.kind = to_lsp_symbol_kind(callee_kind);
-            callee_item.uri = def_loc->uri;
-            callee_item.range = def_loc->range;
-            callee_item.selection_range = def_loc->range;
-            callee_item.data = protocol::LSPAny(static_cast<std::int64_t>(callee_hash));
-
-            protocol::CallHierarchyOutgoingCall call;
-            call.to = std::move(callee_item);
-            call.from_ranges = std::move(ranges);
-            results.push_back(std::move(call));
-        }
-
-        if(results.empty())
-            co_return serde_raw{"null"};
-        co_return to_raw(results);
+        co_return indexer.find_outgoing_calls(info->hash);
     });
 
     // --- textDocument/prepareTypeHierarchy ---
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
-        auto info = co_await lookup_symbol_at_position(
-            params.text_document_position_params.text_document.uri,
-            params.text_document_position_params.position);
+        auto& uri = params.text_document_position_params.text_document.uri;
+        auto& pos = params.text_document_position_params.position;
+        auto path = uri_to_path(uri);
+        auto path_id = path_pool.intern(path);
+        auto doc_it = documents.find(path_id);
+        const std::string* doc_text = doc_it != documents.end() ? &doc_it->second.text : nullptr;
+
+        auto info = indexer.lookup_symbol(uri, path, path_id, pos, doc_text);
         if(!info)
             co_return serde_raw{"null"};
 
-        // Only class-like types are valid for type hierarchy.
         if(!(info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
              info->kind == SymbolKind::Enum || info->kind == SymbolKind::Union))
             co_return serde_raw{"null"};
 
         std::vector<protocol::TypeHierarchyItem> items;
-        items.push_back(build_type_hierarchy_item(*info));
+        items.push_back(Indexer::build_type_hierarchy_item(*info));
         co_return to_raw(items);
     });
 
     // --- typeHierarchy/supertypes ---
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
-        auto info =
-            co_await resolve_hierarchy_item(params.item.uri, params.item.range, params.item.data);
+        auto path = uri_to_path(params.item.uri);
+        auto path_id = path_pool.intern(path);
+        auto doc_it = documents.find(path_id);
+        const std::string* doc_text = doc_it != documents.end() ? &doc_it->second.text : nullptr;
+
+        auto info = indexer.resolve_hierarchy_item(
+            params.item.uri, path, path_id, params.item.range, params.item.data, doc_text);
         if(!info)
             co_return serde_raw{"null"};
 
-        // Find Base relations: supertypes of this class.
-        std::vector<protocol::TypeHierarchyItem> results;
-
-        auto sym_it = project_index.symbols.find(info->hash);
-
-        auto collect_base = [&](const index::Relation& r) {
-            if(!r.kind.is_one_of(RelationKind::Base))
-                return;
-            auto base_hash = r.target_symbol;
-
-            std::string base_name;
-            SymbolKind base_kind;
-            if(!find_symbol_info(base_hash, base_name, base_kind))
-                return;
-
-            auto def_loc = find_symbol_definition_location(base_hash);
-            if(!def_loc)
-                return;
-
-            protocol::TypeHierarchyItem item;
-            item.name = std::move(base_name);
-            item.kind = to_lsp_symbol_kind(base_kind);
-            item.uri = def_loc->uri;
-            item.range = def_loc->range;
-            item.selection_range = def_loc->range;
-            item.data = protocol::LSPAny(static_cast<std::int64_t>(base_hash));
-            results.push_back(std::move(item));
-        };
-
-        if(sym_it != project_index.symbols.end())
-            for(auto file_id: sym_it->second.reference_files) {
-                if(open_proj_path_ids.contains(file_id))
-                    continue;
-
-                auto file_merged_it = merged_indices.find(file_id);
-                if(file_merged_it == merged_indices.end())
-                    continue;
-
-                file_merged_it->second.lookup(info->hash,
-                                              RelationKind::Base,
-                                              [&](const index::Relation& r) {
-                                                  collect_base(r);
-                                                  return true;
-                                              });
-            }
-
-        // Also check open file indices.
-        for(auto& [ofi_id, ofi]: open_file_indices) {
-            auto rel_it = ofi.file_index.relations.find(info->hash);
-            if(rel_it == ofi.file_index.relations.end())
-                continue;
-            for(auto& r: rel_it->second) {
-                collect_base(r);
-            }
-        }
-
-        if(results.empty())
-            co_return serde_raw{"null"};
-        co_return to_raw(results);
+        co_return indexer.find_supertypes(info->hash);
     });
 
     // --- typeHierarchy/subtypes ---
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
-        auto info =
-            co_await resolve_hierarchy_item(params.item.uri, params.item.range, params.item.data);
+        auto path = uri_to_path(params.item.uri);
+        auto path_id = path_pool.intern(path);
+        auto doc_it = documents.find(path_id);
+        const std::string* doc_text = doc_it != documents.end() ? &doc_it->second.text : nullptr;
+
+        auto info = indexer.resolve_hierarchy_item(
+            params.item.uri, path, path_id, params.item.range, params.item.data, doc_text);
         if(!info)
             co_return serde_raw{"null"};
 
-        // Find Derived relations across all reference files: subtypes of this class.
-        std::vector<protocol::TypeHierarchyItem> results;
-
-        auto sym_it = project_index.symbols.find(info->hash);
-
-        auto collect_derived = [&](const index::Relation& r) {
-            if(!r.kind.is_one_of(RelationKind::Derived))
-                return;
-            auto derived_hash = r.target_symbol;
-
-            std::string derived_name;
-            SymbolKind derived_kind;
-            if(!find_symbol_info(derived_hash, derived_name, derived_kind))
-                return;
-
-            auto def_loc = find_symbol_definition_location(derived_hash);
-            if(!def_loc)
-                return;
-
-            protocol::TypeHierarchyItem item;
-            item.name = std::move(derived_name);
-            item.kind = to_lsp_symbol_kind(derived_kind);
-            item.uri = def_loc->uri;
-            item.range = def_loc->range;
-            item.selection_range = def_loc->range;
-            item.data = protocol::LSPAny(static_cast<std::int64_t>(derived_hash));
-            results.push_back(std::move(item));
-        };
-
-        if(sym_it != project_index.symbols.end())
-            for(auto file_id: sym_it->second.reference_files) {
-                if(open_proj_path_ids.contains(file_id))
-                    continue;
-
-                auto file_merged_it = merged_indices.find(file_id);
-                if(file_merged_it == merged_indices.end())
-                    continue;
-
-                file_merged_it->second.lookup(info->hash,
-                                              RelationKind::Derived,
-                                              [&](const index::Relation& r) {
-                                                  collect_derived(r);
-                                                  return true;
-                                              });
-            }
-
-        // Also check open file indices.
-        for(auto& [ofi_id, ofi]: open_file_indices) {
-            auto rel_it = ofi.file_index.relations.find(info->hash);
-            if(rel_it == ofi.file_index.relations.end())
-                continue;
-            for(auto& r: rel_it->second) {
-                collect_derived(r);
-            }
-        }
-
-        if(results.empty())
-            co_return serde_raw{"null"};
-        co_return to_raw(results);
+        co_return indexer.find_subtypes(info->hash);
     });
 
     // --- workspace/symbol ---
     peer.on_request([this](RequestContext& ctx,
                            const protocol::WorkspaceSymbolParams& params) -> RawResult {
-        auto query = llvm::StringRef(params.query);
-        std::vector<protocol::SymbolInformation> results;
-
-        // Case-insensitive substring match on symbol names.
-        std::string query_lower = query.lower();
-
-        auto is_indexable_kind = [](SymbolKind sk) {
-            return sk == SymbolKind::Namespace || sk == SymbolKind::Class ||
-                   sk == SymbolKind::Struct || sk == SymbolKind::Union || sk == SymbolKind::Enum ||
-                   sk == SymbolKind::Type || sk == SymbolKind::Field ||
-                   sk == SymbolKind::EnumMember || sk == SymbolKind::Function ||
-                   sk == SymbolKind::Method || sk == SymbolKind::Variable ||
-                   sk == SymbolKind::Parameter || sk == SymbolKind::Macro ||
-                   sk == SymbolKind::Concept || sk == SymbolKind::Module ||
-                   sk == SymbolKind::Operator || sk == SymbolKind::MacroParameter ||
-                   sk == SymbolKind::Label || sk == SymbolKind::Attribute;
-        };
-
-        auto matches_query = [&](llvm::StringRef name) {
-            if(query_lower.empty())
-                return true;
-            return llvm::StringRef(name).lower().find(query_lower) != std::string::npos;
-        };
-
-        // Collect symbols already seen (by hash) to avoid duplicates
-        // between ProjectIndex and open file indices.
-        llvm::DenseSet<index::SymbolHash> seen;
-
-        for(auto& [hash, symbol]: project_index.symbols) {
-            if(results.size() >= 100)
-                break;
-            if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
-                continue;
-            if(!matches_query(symbol.name))
-                continue;
-
-            auto def_loc = find_symbol_definition_location(hash);
-            if(!def_loc)
-                continue;
-
-            protocol::SymbolInformation info;
-            info.name = symbol.name;
-            info.kind = to_lsp_symbol_kind(symbol.kind);
-            info.location = std::move(*def_loc);
-            results.push_back(std::move(info));
-            seen.insert(hash);
-        }
-
-        // Also search open file indices for symbols not in ProjectIndex.
-        for(auto& [ofi_server_id, ofi]: open_file_indices) {
-            if(results.size() >= 100)
-                break;
-            for(auto& [hash, symbol]: ofi.symbols) {
-                if(results.size() >= 100)
-                    break;
-                if(seen.contains(hash))
-                    continue;
-                if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
-                    continue;
-                if(!matches_query(symbol.name))
-                    continue;
-
-                auto def_loc = find_symbol_definition_location(hash);
-                if(!def_loc)
-                    continue;
-
-                protocol::SymbolInformation info;
-                info.name = symbol.name;
-                info.kind = to_lsp_symbol_kind(symbol.kind);
-                info.location = std::move(*def_loc);
-                results.push_back(std::move(info));
-                seen.insert(hash);
-            }
-        }
-
-        // Also search open file indices for symbols not in ProjectIndex.
-        for(auto& [ofi_server_id, ofi]: open_file_indices) {
-            if(results.size() >= 100)
-                break;
-            for(auto& [hash, symbol]: ofi.symbols) {
-                if(results.size() >= 100)
-                    break;
-                if(seen.contains(hash))
-                    continue;
-                if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
-                    continue;
-                if(!matches_query(symbol.name))
-                    continue;
-
-                auto def_loc = find_symbol_definition_location(hash);
-                if(!def_loc)
-                    continue;
-
-                protocol::SymbolInformation info;
-                info.name = symbol.name;
-                info.kind = to_lsp_symbol_kind(symbol.kind);
-                info.location = std::move(*def_loc);
-                results.push_back(std::move(info));
-                seen.insert(hash);
-            }
-        }
-
-        if(results.empty())
-            co_return serde_raw{"null"};
-        co_return to_raw(results);
+        co_return indexer.search_symbols(params.query);
     });
 
     // === clice/ Extension Commands ===
