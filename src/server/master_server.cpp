@@ -100,6 +100,7 @@ et::task<> MasterServer::load_workspace() {
             LOG_INFO("Cache directory: {}", config.cache_dir);
         }
 
+        // Create cache/pch/ and cache/pcm/ subdirectories
         for(auto* subdir: {"cache/pch", "cache/pcm"}) {
             auto dir = path::join(config.cache_dir, subdir);
             auto ec2 = llvm::sys::fs::create_directories(dir);
@@ -108,6 +109,8 @@ et::task<> MasterServer::load_workspace() {
             }
         }
 
+        // Clean up stale files first, then load — load_cache() only restores
+        // entries still listed in cache.json, so cleanup won't delete live files.
         compiler.cleanup_cache();
         compiler.load_cache();
     }
@@ -115,6 +118,7 @@ et::task<> MasterServer::load_workspace() {
     // Search for compile_commands.json
     std::string cdb_path;
 
+    // If the config specifies a CDB path, use it
     if(!config.compile_commands_path.empty()) {
         if(llvm::sys::fs::exists(config.compile_commands_path)) {
             cdb_path = config.compile_commands_path;
@@ -124,6 +128,7 @@ et::task<> MasterServer::load_workspace() {
         }
     }
 
+    // Otherwise auto-detect in common locations
     if(cdb_path.empty()) {
         for(auto* subdir: {"build", "cmake-build-debug", "cmake-build-release", "out", "."}) {
             auto candidate = path::join(workspace_root, subdir, "compile_commands.json");
@@ -143,6 +148,8 @@ et::task<> MasterServer::load_workspace() {
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
 
     auto report = scan_dependency_graph(cdb, path_pool, dependency_graph);
+
+    // Build reverse include map so headers can find their host source files.
     dependency_graph.build_reverse_map();
 
     auto unresolved = report.includes_found - report.includes_resolved;
@@ -377,10 +384,6 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
     co_return !it->second.ast_dirty;
 }
 
-// =========================================================================
-// Index integration (scheduling — data/queries are in Indexer)
-// =========================================================================
-
 void MasterServer::schedule_indexing() {
     if(!config.enable_indexing || indexing_active || indexing_scheduled)
         return;
@@ -458,10 +461,6 @@ et::task<> MasterServer::run_background_indexing() {
     // Persist index to disk after a full pass.
     indexer.save(config.index_dir);
 }
-
-// =========================================================================
-// Include/import completion (handled in master)
-// =========================================================================
 
 PreambleCompletionContext MasterServer::detect_completion_context(const std::string& text,
                                                                   uint32_t offset) {
@@ -619,10 +618,6 @@ et::serde::RawValue MasterServer::complete_import(const PreambleCompletionContex
     auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
     return et::serde::RawValue{json ? std::move(*json) : "[]"};
 }
-
-// =========================================================================
-// Forwarding helpers
-// =========================================================================
 
 using serde_raw = et::serde::RawValue;
 
@@ -1039,10 +1034,6 @@ void MasterServer::register_handlers() {
         LOG_DEBUG("didSave: {}", params.text_document.uri);
     });
 
-    // =========================================================================
-    // Feature requests routed to stateful workers (RawValue passthrough)
-    // =========================================================================
-
     // --- textDocument/hover ---
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
         co_return co_await forward_stateful<worker::HoverParams>(
@@ -1155,10 +1146,6 @@ void MasterServer::register_handlers() {
             co_return serde_raw{"null"};  // not supported yet
         });
 
-    // =========================================================================
-    // Feature requests routed to stateless workers
-    // =========================================================================
-
     // --- textDocument/completion ---
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
@@ -1195,10 +1182,6 @@ void MasterServer::register_handlers() {
                 params.text_document_position_params.text_document.uri,
                 params.text_document_position_params.position);
         });
-
-    // =========================================================================
-    // Hierarchy and workspace symbol handlers (index-based)
-    // =========================================================================
 
     // --- textDocument/prepareCallHierarchy ---
     peer.on_request([this](RequestContext& ctx,

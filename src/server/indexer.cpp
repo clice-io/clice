@@ -42,6 +42,7 @@ static const index::Occurrence* lookup_occurrence(const std::vector<index::Occur
 
     const index::Occurrence* best = nullptr;
     while(it != occs.end() && it->range.contains(offset)) {
+        // Prefer the narrowest (innermost) occurrence that contains the offset.
         if(!best || (it->range.end - it->range.begin) < (best->range.end - best->range.begin)) {
             best = &*it;
         }
@@ -50,27 +51,29 @@ static const index::Occurrence* lookup_occurrence(const std::vector<index::Occur
     return best;
 }
 
-// =========================================================================
-// Data management
-// =========================================================================
-
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
     auto tu_index = index::TUIndex::from(tu_index_data);
 
+    // Merge symbols into ProjectIndex, get TU-local path_id -> global path_id mapping.
     auto file_ids_map = project_index.merge(tu_index);
+
     auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
 
+    // Merge a single file's index into the corresponding MergedIndex shard.
     auto merge_file_index = [&](std::uint32_t tu_path_id, index::FileIndex& file_idx) {
         auto global_path_id = file_ids_map[tu_path_id];
         auto& merged = merged_indices[global_path_id];
 
         if(tu_path_id == main_tu_path_id) {
+            // Main file (source file) gets a compilation context with include locations.
+            // Collect ALL include locations with path_ids remapped to project-level ids.
             std::vector<index::IncludeLocation> include_locs;
             for(auto& loc: tu_index.graph.locations) {
                 index::IncludeLocation remapped = loc;
                 remapped.path_id = file_ids_map[loc.path_id];
                 include_locs.push_back(remapped);
             }
+            // Read the file content from disk for position mapping in queries.
             auto file_path = project_index.path_pool.path(global_path_id);
             llvm::StringRef file_content;
             std::string file_content_storage;
@@ -85,6 +88,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
                          file_idx,
                          file_content);
         } else {
+            // Header files get a header context keyed by include location.
             std::uint32_t include_id = 0;
             for(std::uint32_t i = 0; i < tu_index.graph.locations.size(); ++i) {
                 if(tu_index.graph.locations[i].path_id == tu_path_id) {
@@ -92,6 +96,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
                     break;
                 }
             }
+            // Read header file content for position mapping in queries.
             auto header_path = project_index.path_pool.path(global_path_id);
             llvm::StringRef header_content;
             std::string header_content_storage;
@@ -104,10 +109,12 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         }
     };
 
+    // Merge from path_file_indices (deserialized TUIndex from IPC).
     for(auto& [tu_path_id, file_idx]: tu_index.path_file_indices) {
         merge_file_index(tu_path_id, file_idx);
     }
 
+    // Merge main file index.
     merge_file_index(main_tu_path_id, tu_index.main_file_index);
 
     LOG_INFO("Merged TUIndex: {} paths, {} symbols, {} merged_shards",
@@ -126,6 +133,7 @@ void Indexer::save(llvm::StringRef index_dir) {
         return;
     }
 
+    // Save ProjectIndex.
     auto project_path = path::join(index_dir, "project.idx");
     {
         std::error_code write_ec;
@@ -138,6 +146,7 @@ void Indexer::save(llvm::StringRef index_dir) {
         }
     }
 
+    // Save MergedIndex shards.
     auto shards_dir = path::join(index_dir, "shards");
     ec = llvm::sys::fs::create_directories(shards_dir);
     if(ec) {
@@ -164,6 +173,7 @@ void Indexer::load(llvm::StringRef index_dir) {
     if(index_dir.empty())
         return;
 
+    // Load ProjectIndex.
     auto project_path = path::join(index_dir, "project.idx");
     auto buf = llvm::MemoryBuffer::getFile(project_path);
     if(buf) {
@@ -171,6 +181,7 @@ void Indexer::load(llvm::StringRef index_dir) {
         LOG_INFO("Loaded ProjectIndex: {} symbols", project_index.symbols.size());
     }
 
+    // Load MergedIndex shards.
     auto shards_dir = path::join(index_dir, "shards");
     std::error_code ec;
     for(auto it = llvm::sys::fs::directory_iterator(shards_dir, ec);
@@ -210,10 +221,6 @@ bool Indexer::need_update(llvm::StringRef file_path) {
     return merged_it->second.need_update(path_mapping);
 }
 
-// =========================================================================
-// Open file index management
-// =========================================================================
-
 void Indexer::set_open_file(std::uint32_t server_path_id,
                             llvm::StringRef file_path,
                             OpenFileIndex ofi) {
@@ -232,10 +239,9 @@ void Indexer::remove_open_file(std::uint32_t server_path_id, llvm::StringRef fil
     }
 }
 
-// =========================================================================
-// Symbol queries
-// =========================================================================
-
+/// Find a symbol's name and kind by hash.  Searches open file indices first
+/// (fresher data for actively-edited files), then falls back to ProjectIndex.
+/// Returns false if the symbol is not found anywhere.
 bool Indexer::find_symbol_info(index::SymbolHash hash,
                                std::string& name,
                                SymbolKind& kind) const {
@@ -541,10 +547,6 @@ std::optional<SymbolInfo> Indexer::resolve_hierarchy_item(
 
     return lookup_symbol(uri, path, server_path_id, range.start, doc_text);
 }
-
-// =========================================================================
-// Hierarchy & workspace queries
-// =========================================================================
 
 /// Helper to collect relations of a given kind for a symbol, grouping by target.
 /// Iterates both MergedIndex shards and open file indices.
@@ -856,10 +858,6 @@ et::serde::RawValue Indexer::search_symbols(llvm::StringRef query, std::size_t m
         return serde_raw{"null"};
     return to_raw(results);
 }
-
-// =========================================================================
-// Static utilities
-// =========================================================================
 
 protocol::SymbolKind Indexer::to_lsp_symbol_kind(SymbolKind kind) {
     switch(kind) {
