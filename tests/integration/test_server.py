@@ -30,6 +30,10 @@ def _doc(uri: str) -> TextDocumentIdentifier:
     return TextDocumentIdentifier(uri=uri)
 
 
+def _capability_enabled(capability: object) -> bool:
+    return capability is True or (capability is not None and capability is not False)
+
+
 @pytest.mark.workspace("hello_world")
 async def test_server_info(client, workspace):
     assert client.init_result.server_info.name == "clice"
@@ -41,11 +45,11 @@ async def test_capabilities(client, workspace):
     caps = client.init_result.capabilities
     assert caps.hover_provider is True
     assert caps.completion_provider is not None
-    assert caps.definition_provider is True
-    assert caps.document_symbol_provider is True
-    assert caps.folding_range_provider is True
-    assert caps.inlay_hint_provider is True
-    assert caps.code_action_provider is True
+    assert _capability_enabled(caps.definition_provider)
+    assert _capability_enabled(caps.document_symbol_provider)
+    assert _capability_enabled(caps.folding_range_provider)
+    assert _capability_enabled(caps.inlay_hint_provider)
+    assert _capability_enabled(caps.code_action_provider)
     assert caps.semantic_tokens_provider is not None
 
 
