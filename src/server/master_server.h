@@ -44,9 +44,15 @@ struct DocumentState {
 
     bool ast_dirty = true;
 
-    /// Non-null while a compile is in flight. Other ensure_compiled() calls
-    /// wait on this instead of sending duplicate compile requests.
-    std::shared_ptr<et::event> compiling;
+    /// Non-null while a compile is in flight.  Callers wait on the event;
+    /// the compile task runs independently and cannot be cancelled by LSP
+    /// $/cancelRequest.
+    struct PendingCompile {
+        et::event done;
+        bool succeeded = false;
+    };
+
+    std::shared_ptr<PendingCompile> compiling;
 };
 
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).

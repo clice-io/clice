@@ -450,9 +450,6 @@ et::task<> MasterServer::load_workspace() {
         }
         if(!index_queue.empty()) {
             LOG_INFO("Queued {} files for background indexing", index_queue.size());
-            for(auto sid: index_queue) {
-                LOG_INFO("  queue entry: server_path_id={} path='{}'", sid, path_pool.resolve(sid));
-            }
             schedule_indexing();
         }
     }
@@ -753,10 +750,10 @@ et::task<bool> MasterServer::ensure_deps(std::uint32_t path_id,
 /// worker); every other file is read from disk by the compiler.
 ///
 /// Concurrency: multiple concurrent feature requests for the same file will
-/// each call ensure_compiled(). The first one triggers the actual compilation;
-/// subsequent ones observe ast_dirty == false after the first completes and
-/// take the fast path. This is safe because forward_stateful serialises
-/// requests per worker slot.
+/// each call ensure_compiled(). The first one launches a detached compile
+/// task via loop.schedule(); subsequent ones wait on the shared event.
+/// The detached task cannot be cancelled by LSP $/cancelRequest, preventing
+/// the race where cancellation wakes all waiters and they all start compiles.
 et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
     auto it = documents.find(path_id);
     if(it == documents.end()) {
@@ -784,152 +781,144 @@ et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
             }
         }
         if(!changed) {
-            LOG_INFO("ensure_compiled: fast path, ast clean path_id={}", path_id);
             co_return true;
         }
-        LOG_INFO("ensure_compiled: deps changed, marking dirty path_id={}", path_id);
         doc.ast_dirty = true;
     }
-    LOG_INFO("ensure_compiled: ast_dirty=true, compiling={} path_id={}",
-             (bool)doc.compiling,
-             path_id);
 
-    // After co_await suspension points the iterator may be invalidated (the
-    // documents map could have been modified by didClose on another file).
-    auto recheck = [&]() -> bool {
-        it = documents.find(path_id);
-        return it != documents.end();
-    };
-
-    // If another ensure_compiled() is already in flight for this file,
-    // wait for it to finish instead of sending a duplicate compile request.
-    // Loop because multiple waiters wake up simultaneously — only the first
-    // one should start a new compile; the rest must wait again.
+    // If another compile is already in flight, wait for it.
+    // This co_await may be cancelled by LSP $/cancelRequest — that's fine,
+    // it just means this particular feature request is abandoned.  The
+    // detached compile task keeps running independently.
     while(it->second.compiling) {
-        LOG_INFO("ensure_compiled: waiting on in-flight compile for path_id={}", path_id);
-        co_await it->second.compiling->wait();
-        LOG_INFO("ensure_compiled: in-flight compile done for path_id={}", path_id);
-        if(!recheck())
+        auto pending = it->second.compiling;
+        co_await pending->done.wait();
+        it = documents.find(path_id);
+        if(it == documents.end())
             co_return false;
-        if(!it->second.ast_dirty) {
-            LOG_INFO("ensure_compiled: ast clean after wait, path_id={}", path_id);
+        if(!it->second.ast_dirty)
             co_return true;
+    }
+
+    // No compile in flight and AST is dirty — launch a detached compile task.
+    // The detached task is scheduled via loop.schedule() so it is NOT subject
+    // to LSP $/cancelRequest cancellation.  This eliminates the race where
+    // cancellation fires the RAII guard, waking all waiters simultaneously
+    // and causing them all to start new compiles.
+    auto pending_compile = std::make_shared<DocumentState::PendingCompile>();
+    it->second.compiling = pending_compile;
+
+    LOG_INFO("ensure_compiled: launching detached compile path_id={} gen={}",
+             path_id,
+             doc.generation);
+
+    loop.schedule([](MasterServer* self,
+                     std::uint32_t pid,
+                     std::shared_ptr<DocumentState::PendingCompile> pc) -> et::task<> {
+        // All parameters are copied into the coroutine frame as function args,
+        // so they survive the lambda temporary's destruction.
+        auto finish_compile = [&]() {
+            if(auto it = self->documents.find(pid); it != self->documents.end()) {
+                if(it->second.compiling == pc) {
+                    it->second.compiling.reset();
+                }
+            }
+            LOG_INFO("ensure_compiled: finish_compile (detached) path_id={}", pid);
+            pc->done.set();
+        };
+
+        auto it = self->documents.find(pid);
+        if(it == self->documents.end()) {
+            finish_compile();
+            co_return;
         }
-        // ast still dirty — loop back to check if someone else already
-        // started a new compile; only fall through if no one has.
-    }
 
-    // Snapshot the generation counter *before* any co_await.  After compilation
-    // we compare it with the current value to detect edits that arrived while
-    // we were suspended — if they differ, the result is stale and we must not
-    // mark the AST as clean.
-    auto gen = doc.generation;
+        auto gen = it->second.generation;
+        LOG_INFO("ensure_compiled: starting compile (detached) path_id={} gen={}", pid, gen);
 
-    // Register in-flight compile so concurrent callers wait on us.
-    auto completion = std::make_shared<et::event>();
-    doc.compiling = completion;
-    LOG_INFO("ensure_compiled: starting compile path_id={} gen={}", path_id, gen);
+        auto file_path = std::string(self->path_pool.resolve(pid));
+        auto uri = lsp::URI::from_file_path(file_path);
+        std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
-    // Signal waiters and clear compiling flag on any return path.
-    auto finish_compile = [&]() {
-        LOG_INFO("ensure_compiled: finish_compile path_id={} gen={}", path_id, gen);
-        if(auto doc_it = documents.find(path_id); doc_it != documents.end()) {
-            doc_it->second.compiling.reset();
+        // ── Phase 1–3: Module deps, PCH, PCM paths ─────────────────────
+        worker::CompileParams params;
+        params.path = file_path;
+        params.version = it->second.version;
+        params.text = it->second.text;
+        if(!self->fill_compile_args(self->path_pool.resolve(pid),
+                                    params.directory,
+                                    params.arguments)) {
+            finish_compile();
+            co_return;
         }
-        completion->set();
-    };
 
-    auto file_path = std::string(path_pool.resolve(path_id));
-    auto uri = lsp::URI::from_file_path(file_path);
-    std::string uri_str = uri.has_value() ? uri->str() : file_path;
+        if(!co_await self->ensure_deps(pid,
+                                       params.path,
+                                       params.text,
+                                       params.directory,
+                                       params.arguments,
+                                       params.pch,
+                                       params.pcms)) {
+            LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
+            finish_compile();
+            co_return;
+        }
 
-    // ── Phase 1–3: Module deps, PCH, PCM paths ─────────────────────────
-    worker::CompileParams params;
-    params.path = file_path;
-    if(!recheck()) {
+        it = self->documents.find(pid);
+        if(it == self->documents.end()) {
+            finish_compile();
+            co_return;
+        }
+
+        // ── Phase 4: Dispatch to stateful worker ────────────────────────
+        auto result = co_await self->pool.send_stateful(pid, params);
+
+        // Re-lookup: the document may have been closed while we were compiling.
+        it = self->documents.find(pid);
+        if(it == self->documents.end()) {
+            finish_compile();
+            co_return;
+        }
+
+        auto& doc2 = it->second;
+
+        // ── Phase 5: Handle result ──────────────────────────────────────
+        if(doc2.generation != gen) {
+            LOG_INFO("ensure_compiled: generation mismatch ({} vs {}) for {}",
+                     doc2.generation,
+                     gen,
+                     uri_str);
+            finish_compile();
+            co_return;
+        }
+
+        if(!result.has_value()) {
+            LOG_WARN("Compile failed for {}: {}", uri_str, result.error().message);
+            self->clear_diagnostics(uri_str);
+            finish_compile();
+            co_return;
+        }
+
+        doc2.ast_dirty = false;
+        pc->succeeded = true;
+        self->ast_deps[pid] = capture_deps_snapshot(self->path_pool, result.value().deps);
         finish_compile();
-        co_return false;
-    }
-    params.version = it->second.version;
-    params.text = it->second.text;
-    if(!fill_compile_args(path_pool.resolve(path_id), params.directory, params.arguments)) {
-        finish_compile();
-        co_return false;
-    }
 
-    if(!co_await ensure_deps(path_id,
-                             params.path,
-                             params.text,
-                             params.directory,
-                             params.arguments,
-                             params.pch,
-                             params.pcms)) {
-        LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
-        finish_compile();
-        co_return false;
-    }
+        // Publish diagnostics AFTER marking compile as done, so that concurrent
+        // forward_stateful() calls can proceed immediately.
+        self->publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
+        self->schedule_indexing();
+    }(this, path_id, pending_compile));
 
-    if(!recheck()) {
-        finish_compile();
-        co_return false;
-    }
+    // Wait for the detached compile to finish.  If this wait is cancelled
+    // by LSP $/cancelRequest, the detached task continues unaffected.
+    co_await pending_compile->done.wait();
 
-    // ── Phase 4: Dispatch to stateful worker ────────────────────────────
-    //
-    // The stateful worker receives the full document text and compile args,
-    // builds the AST, and caches it for subsequent feature requests.  The
-    // response carries diagnostics collected during compilation.
-    LOG_DEBUG("Sending compile: path={}, args={}, gen={}",
-              params.path,
-              params.arguments.size(),
-              gen);
-
-    auto result = co_await pool.send_stateful(path_id, params);
-
-    // Re-lookup: the document may have been closed while we were compiling.
     it = documents.find(path_id);
-    if(it == documents.end()) {
-        finish_compile();
+    if(it == documents.end())
         co_return false;
-    }
 
-    auto& doc2 = it->second;
-
-    // ── Phase 5: Handle result ──────────────────────────────────────────
-    //
-    // Generation mismatch means the user edited the file while we compiled.
-    // The AST we just built corresponds to an older version of the text, so
-    // we discard the diagnostics and leave ast_dirty == true.  The next
-    // feature request will trigger another compile cycle with the latest text.
-    if(doc2.generation != gen) {
-        LOG_INFO("ensure_compiled: generation mismatch ({} vs {}) for {}",
-                 doc2.generation,
-                 gen,
-                 uri_str);
-        finish_compile();
-        co_return false;
-    }
-
-    if(!result.has_value()) {
-        LOG_WARN("Compile failed for {}: {}", uri_str, result.error().message);
-        // Clear stale diagnostics so the editor doesn't show errors from a
-        // previous successful compilation that no longer apply.
-        clear_diagnostics(uri_str);
-        finish_compile();
-        co_return false;
-    }
-
-    LOG_INFO("ensure_compiled: success path_id={} gen={}, publishing diagnostics", path_id, gen);
-    doc2.ast_dirty = false;
-    ast_deps[path_id] = capture_deps_snapshot(path_pool, result.value().deps);
-    finish_compile();
-
-    // Publish diagnostics AFTER marking compile as done, so that concurrent
-    // forward_stateful() calls can proceed immediately instead of waiting
-    // for the (potentially large) diagnostics to be written to the client pipe.
-    publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
-    schedule_indexing();
-    co_return true;
+    co_return !it->second.ast_dirty;
 }
 
 // =========================================================================
@@ -1006,9 +995,6 @@ void MasterServer::merge_index_result(const void* tu_index_data, std::size_t siz
              tu_index.graph.paths.size(),
              tu_index.symbols.size(),
              merged_indices.size());
-    for(auto& [pid, _]: merged_indices) {
-        LOG_INFO("  shard proj_path_id={} path='{}'", pid, project_index.path_pool.path(pid));
-    }
 }
 
 void MasterServer::save_index() {
@@ -1093,13 +1079,6 @@ void MasterServer::load_index() {
 }
 
 void MasterServer::schedule_indexing() {
-    LOG_INFO(
-        "schedule_indexing called: enable={} active={} scheduled={} queue_size={} queue_pos={}",
-        config.enable_indexing,
-        indexing_active,
-        indexing_scheduled,
-        index_queue.size(),
-        index_queue_pos);
     if(!config.enable_indexing || indexing_active || indexing_scheduled)
         return;
     indexing_scheduled = true;
@@ -1366,10 +1345,16 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    LOG_INFO("forward_stateful: request path={}", path);
-
     if(!co_await ensure_compiled(path_id)) {
-        LOG_DEBUG("forward_stateful: ensure_compiled failed for {}", path);
+        co_return serde_raw{"null"};
+    }
+
+    // After ensure_compiled returns, a new didChange may have arrived making
+    // the AST stale again.  Sending a feature request with stale state is
+    // wasteful and — more importantly — the queued IPC writes can fill up
+    // the pipe buffer and deadlock the worker.  Drop the request instead.
+    auto dit = documents.find(path_id);
+    if(dit != documents.end() && dit->second.ast_dirty) {
         co_return serde_raw{"null"};
     }
 
@@ -1378,10 +1363,8 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri) {
 
     auto result = co_await pool.send_stateful(path_id, wp);
     if(!result.has_value()) {
-        LOG_DEBUG("forward_stateful: worker error for {}: {}", path, result.error().message);
         co_return serde_raw{};
     }
-    LOG_DEBUG("forward_stateful: done {}", path);
     co_return std::move(result.value());
 }
 
@@ -1391,34 +1374,33 @@ MasterServer::RawResult MasterServer::forward_stateful(const std::string& uri,
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
 
-    LOG_INFO("forward_stateful(pos): request path={} pos={}:{}",
-             path,
-             position.line,
-             position.character);
-
     if(!co_await ensure_compiled(path_id)) {
-        LOG_INFO("forward_stateful(pos): ensure_compiled failed for {}", path);
+        co_return serde_raw{"null"};
+    }
+
+    auto doc_it = documents.find(path_id);
+    if(doc_it == documents.end()) {
+        co_return serde_raw{"null"};
+    }
+
+    // Drop stale requests — see comment in the other overload.
+    if(doc_it->second.ast_dirty) {
         co_return serde_raw{"null"};
     }
 
     WorkerParams wp;
     wp.path = path;
 
-    auto doc_it = documents.find(path_id);
-    if(doc_it != documents.end()) {
-        lsp::PositionMapper mapper(doc_it->second.text, lsp::PositionEncoding::UTF16);
-        auto offset = mapper.to_offset(position);
-        if(!offset)
-            co_return serde_raw{"null"};
-        wp.offset = *offset;
-    }
+    lsp::PositionMapper mapper(doc_it->second.text, lsp::PositionEncoding::UTF16);
+    auto offset = mapper.to_offset(position);
+    if(!offset)
+        co_return serde_raw{"null"};
+    wp.offset = *offset;
 
     auto result = co_await pool.send_stateful(path_id, wp);
     if(!result.has_value()) {
-        LOG_DEBUG("forward_stateful: worker error for {}: {}", path, result.error().message);
         co_return serde_raw{};
     }
-    LOG_DEBUG("forward_stateful: done {}", path);
     co_return std::move(result.value());
 }
 

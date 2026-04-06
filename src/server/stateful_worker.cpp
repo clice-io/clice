@@ -120,8 +120,9 @@ class StatefulWorker {
     template <typename F>
     et::task<et::serde::RawValue> with_ast(llvm::StringRef path, F&& fn) {
         auto it = documents.find(path);
-        if(it == documents.end())
+        if(it == documents.end()) {
             co_return et::serde::RawValue{"null"};
+        }
 
         // Hold shared_ptr so Evict can't destroy the entry mid-request.
         auto doc = it->second;
