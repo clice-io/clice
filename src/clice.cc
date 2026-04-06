@@ -1,3 +1,4 @@
+#include <csignal>
 #include <cstdint>
 #include <iostream>
 #include <print>
@@ -64,6 +65,13 @@ struct Options {
 }  // namespace clice
 
 int main(int argc, const char** argv) {
+#ifndef _WIN32
+    // On POSIX systems, ignore SIGPIPE so that writing to a closed pipe
+    // (e.g. when the LSP client disconnects) returns EPIPE instead of
+    // killing the process.  This is standard practice for pipe-based servers.
+    signal(SIGPIPE, SIG_IGN);
+#endif
+
     auto args = deco::util::argvify(argc, argv);
     auto result = deco::cli::parse<clice::Options>(args);
 
