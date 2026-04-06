@@ -11,6 +11,7 @@
 
 #include "eventide/ipc/json_codec.h"
 #include "eventide/ipc/lsp/position.h"
+#include "eventide/ipc/lsp/protocol.h"
 #include "eventide/ipc/lsp/uri.h"
 #include "eventide/reflection/enum.h"
 #include "eventide/serde/json/json.h"
@@ -1475,6 +1476,8 @@ et::task<std::optional<SymbolInfo>>
 }
 
 void MasterServer::register_handlers() {
+    using StringVec = std::vector<std::string>;
+
     // === initialize ===
     peer.on_request([this](RequestContext& ctx, const protocol::InitializeParams& params)
                         -> RequestResult<protocol::InitializeParams> {
@@ -1494,28 +1497,53 @@ void MasterServer::register_handlers() {
 
         // Build capabilities
         protocol::InitializeResult result;
+        auto& caps = result.capabilities;
 
         // Text document sync: incremental
-        protocol::TextDocumentSyncOptions sync_opts;
-        sync_opts.open_close = true;
-        sync_opts.change = protocol::TextDocumentSyncKind::Incremental;
-        sync_opts.save = protocol::variant<protocol::boolean, protocol::SaveOptions>{true};
-        result.capabilities.text_document_sync = std::move(sync_opts);
+        caps.text_document_sync = protocol::TextDocumentSyncOptions{
+            .open_close = true,
+            .change = protocol::TextDocumentSyncKind::Incremental,
+            .save = protocol::variant<protocol::boolean, protocol::SaveOptions>{true},
+        };
+        // watch workspace folder changes.
+        caps.workspace = protocol::WorkspaceOptions{};
+        caps.workspace->workspace_folders = protocol::WorkspaceFoldersServerCapabilities{
+            .supported = true,
+            .change_notifications = true,
+        };
 
         // Feature capabilities
-        result.capabilities.hover_provider = true;
-        result.capabilities.completion_provider = protocol::CompletionOptions{};
-        result.capabilities.signature_help_provider = protocol::SignatureHelpOptions{};
-        result.capabilities.definition_provider = true;
-        result.capabilities.references_provider = true;
-        result.capabilities.document_symbol_provider = true;
-        result.capabilities.document_link_provider = protocol::DocumentLinkOptions{};
-        result.capabilities.code_action_provider = true;
-        result.capabilities.folding_range_provider = true;
-        result.capabilities.inlay_hint_provider = true;
-        result.capabilities.call_hierarchy_provider = true;
-        result.capabilities.type_hierarchy_provider = true;
-        result.capabilities.workspace_symbol_provider = true;
+        caps.hover_provider = true;
+        caps.completion_provider = protocol::CompletionOptions{
+            .trigger_characters = StringVec{".", "<", ">", ":", "\"", "/", "*"},
+        };
+        caps.signature_help_provider = protocol::SignatureHelpOptions{
+            .trigger_characters = StringVec{"(", ")", "{", "}", "<", ">", ","},
+        };
+        /// FIXME: In the future, we would support work done progress.
+        caps.declaration_provider = protocol::DeclarationOptions{
+            .work_done_progress = false,
+        };
+        caps.definition_provider = protocol::DefinitionOptions{
+            .work_done_progress = false,
+        };
+        caps.implementation_provider = protocol::ImplementationOptions{
+            .work_done_progress = false,
+        };
+        caps.type_definition_provider = protocol::TypeDefinitionOptions{
+            .work_done_progress = false,
+        };
+        caps.references_provider = protocol::ReferenceOptions{
+            .work_done_progress = false,
+        };
+        caps.document_symbol_provider = true;
+        caps.document_link_provider = protocol::DocumentLinkOptions{};
+        caps.code_action_provider = true;
+        caps.folding_range_provider = true;
+        caps.inlay_hint_provider = true;
+        caps.call_hierarchy_provider = true;
+        caps.type_hierarchy_provider = true;
+        caps.workspace_symbol_provider = true;
 
         // Semantic tokens
         protocol::SemanticTokensOptions sem_opts;
@@ -1824,6 +1852,24 @@ void MasterServer::register_handlers() {
             }
 
             co_return refs;
+        });
+
+    // --- textDocument/typeDefinition ---
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {
+            co_return std::nullopt;  // not supported yet
+        });
+
+    // --- textDocument/implementation ---
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::ImplementationParams& params) -> RawResult {
+            co_return std::nullopt;  // not supported yet
+        });
+
+    // --- textDocument/declaration ---
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DeclarationParams& params) -> RawResult {
+            co_return std::nullopt;  // not supported yet
         });
 
     // =========================================================================
