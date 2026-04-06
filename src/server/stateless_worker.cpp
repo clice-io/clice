@@ -112,10 +112,6 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                     }
                 }
 
-                // Destroy CompilationUnit to flush PCH file to disk
-                // (EndSourceFile serializes the AST on destruction).
-                unit = CompilationUnit(nullptr);
-
                 // Index preamble headers before destroying the unit.
                 std::string tu_index_serialized;
                 if(success) {
@@ -125,6 +121,10 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                     llvm::raw_string_ostream os(tu_index_serialized);
                     tu_index.serialize(os);
                 }
+
+                // Destroy CompilationUnit to flush PCH file to disk
+                // (EndSourceFile serializes the AST on destruction).
+                unit = CompilationUnit(nullptr);
 
                 if(success) {
                     std::string final_path;

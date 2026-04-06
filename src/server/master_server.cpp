@@ -1987,7 +1987,7 @@ std::optional<protocol::Location>
 
         lsp::PositionMapper mapper(ofi.content, lsp::PositionEncoding::UTF16);
         for(auto& relation: rel_it->second) {
-            if(relation.kind & RelationKind::Definition) {
+            if(relation.kind.is_one_of(RelationKind::Definition)) {
                 auto start = mapper.to_position(relation.range.begin);
                 auto end = mapper.to_position(relation.range.end);
                 if(start && end) {
@@ -2637,7 +2637,7 @@ void MasterServer::register_handlers() {
                 continue;
             lsp::PositionMapper ofi_mapper(ofi.content, lsp::PositionEncoding::UTF16);
             for(auto& r: rel_it->second) {
-                if(r.kind & RelationKind::Caller) {
+                if(r.kind.is_one_of(RelationKind::Caller)) {
                     auto start = ofi_mapper.to_position(r.range.begin);
                     auto end = ofi_mapper.to_position(r.range.end);
                     if(start && end) {
@@ -2726,7 +2726,7 @@ void MasterServer::register_handlers() {
                 continue;
             lsp::PositionMapper ofi_mapper(ofi.content, lsp::PositionEncoding::UTF16);
             for(auto& r: rel_it->second) {
-                if(r.kind & RelationKind::Callee) {
+                if(r.kind.is_one_of(RelationKind::Callee)) {
                     auto start = ofi_mapper.to_position(r.range.begin);
                     auto end = ofi_mapper.to_position(r.range.end);
                     if(start && end) {
@@ -2800,7 +2800,7 @@ void MasterServer::register_handlers() {
         std::vector<protocol::TypeHierarchyItem> results;
 
         auto collect_base = [&](const index::Relation& r) {
-            if(!(r.kind & RelationKind::Base))
+            if(!r.kind.is_one_of(RelationKind::Base))
                 return;
             auto base_hash = r.target_symbol;
 
@@ -2884,7 +2884,7 @@ void MasterServer::register_handlers() {
         std::vector<protocol::TypeHierarchyItem> results;
 
         auto collect_derived = [&](const index::Relation& r) {
-            if(!(r.kind & RelationKind::Derived))
+            if(!r.kind.is_one_of(RelationKind::Derived))
                 return;
             auto derived_hash = r.target_symbol;
 
