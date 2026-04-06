@@ -2791,8 +2791,7 @@ void MasterServer::register_handlers() {
                                 desc += ' ';
                             desc += entry.arguments[j];
                             // Handle split args like "-D" "CONFIG_A"
-                            if((a == "-D" || a == "-O" || a == "-I") &&
-                               j + 1 < entry.arguments.size()) {
+                            if((a == "-D" || a == "-O") && j + 1 < entry.arguments.size()) {
                                 desc += entry.arguments[++j];
                             }
                         }
@@ -2866,9 +2865,10 @@ void MasterServer::register_handlers() {
             active_contexts[path_id] = context_path_id;
             header_file_contexts.erase(path_id);
 
-            // Also invalidate the PCH for the old context (if any) so it
-            // gets rebuilt with the new host's preamble.
+            // Also invalidate the PCH and AST deps for the old context so
+            // they get rebuilt with the new host's preamble.
             pch_states.erase(path_id);
+            ast_deps.erase(path_id);
 
             // Mark the document as dirty so it gets recompiled.
             auto doc_it = documents.find(path_id);
