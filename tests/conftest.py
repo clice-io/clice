@@ -292,6 +292,31 @@ def test_data_dir() -> Path:
         ]
         ic_cdb.write_text(json.dumps(cdb, indent=2))
 
+    # Generate compile_commands.json for pch_test (always regenerate for
+    # absolute paths).
+    pt_dir = data_dir / "pch_test"
+    pt_cdb = pt_dir / "compile_commands.json"
+    for src_name in ["main.cpp", "no_includes.cpp"]:
+        src = pt_dir / src_name
+        if not src.exists():
+            continue
+        if src_name == "main.cpp":
+            entries = []
+        entries.append(
+            {
+                "directory": pt_dir.as_posix(),
+                "file": src.as_posix(),
+                "arguments": [
+                    "clang++",
+                    "-std=c++17",
+                    "-fsyntax-only",
+                    src.as_posix(),
+                ],
+            }
+        )
+    if pt_dir.exists():
+        pt_cdb.write_text(json.dumps(entries, indent=2))
+
     return data_dir
 
 
