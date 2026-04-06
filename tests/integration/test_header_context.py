@@ -32,7 +32,7 @@ def _get(obj, key, default=None):
 @pytest.mark.workspace("header_context")
 async def test_query_context_returns_host_sources(client, workspace):
     """clice/queryContext on a header should return source files that include it."""
-    main_uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    await client.open_and_wait(workspace / "main.cpp")
 
     utils_h = workspace / "utils.h"
     utils_uri, _ = client.open(utils_h)
@@ -71,7 +71,7 @@ async def test_query_context_source_file_returns_cdb_entries(client, workspace):
 @pytest.mark.workspace("header_context")
 async def test_current_context_default_null(client, workspace):
     """clice/currentContext should return null context by default."""
-    main_uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    await client.open_and_wait(workspace / "main.cpp")
 
     utils_h = workspace / "utils.h"
     utils_uri, _ = client.open(utils_h)
@@ -190,7 +190,7 @@ async def test_full_context_flow(client, workspace):
 async def test_deep_nested_header_context(client, workspace):
     """queryContext on a deeply nested header (main.cpp -> utils.h -> inner.h)
     should still find main.cpp as the host source."""
-    main_uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    await client.open_and_wait(workspace / "main.cpp")
 
     inner_h = workspace / "inner.h"
     inner_uri, _ = client.open(inner_h)

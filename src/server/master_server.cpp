@@ -756,20 +756,17 @@ bool MasterServer::fill_compile_args(llvm::StringRef path,
     directory = host_ctx.directory.str();
     arguments.clear();
 
-    // Copy host arguments, replacing the source file path (last non-flag arg)
-    // with the header file path, so the compiler processes the header in context.
-    auto num_args = host_ctx.arguments.size();
-    std::size_t copy_count = num_args;
-    if(copy_count > 0) {
-        llvm::StringRef last(host_ctx.arguments[copy_count - 1]);
-        if(!last.starts_with("-"))
-            copy_count -= 1;
+    // Copy host arguments, replacing the host source file path with the header
+    // file path.  We identify the host source by matching against the CDB file
+    // entry rather than guessing based on positional order, so that entries like
+    // "clang++ -c main.cpp -o main.o" are handled correctly.
+    for(auto& arg: host_ctx.arguments) {
+        if(llvm::StringRef(arg) == host_path) {
+            arguments.emplace_back(path);
+        } else {
+            arguments.emplace_back(arg);
+        }
     }
-    for(std::size_t i = 0; i < copy_count; ++i) {
-        arguments.emplace_back(host_ctx.arguments[i]);
-    }
-    // Append the header file path as the source file.
-    arguments.emplace_back(path);
 
     // Inject the preamble so the compiler sees all context code that normally
     // precedes this header in the host translation unit.
