@@ -212,6 +212,37 @@ async def test_deep_nested_header_context(client, workspace):
     )
 
 
+@pytest.mark.workspace("header_context")
+async def test_deep_nested_switch_context_and_hover(client, workspace):
+    """switchContext + hover on deeply nested header (main.cpp -> utils.h -> inner.h)."""
+    main_uri, _ = await client.open_and_wait(workspace / "main.cpp")
+
+    inner_h = workspace / "inner.h"
+    inner_uri, _ = client.open(inner_h)
+
+    # Switch inner.h context to main.cpp.
+    switch = await asyncio.wait_for(
+        client.protocol.send_request_async(
+            "clice/switchContext",
+            {"uri": inner_uri, "contextUri": main_uri},
+        ),
+        timeout=30.0,
+    )
+    assert _get(switch, "success") is True
+
+    # Hover on 'inner_origin' in inner.h should work (Point available via preamble).
+    hover = await asyncio.wait_for(
+        client.text_document_hover_async(
+            HoverParams(
+                text_document=_doc(inner_uri),
+                position=Position(line=3, character=14),  # 'inner_origin'
+            )
+        ),
+        timeout=30.0,
+    )
+    assert hover is not None, "Hover on inner_origin should work after switchContext"
+
+
 @pytest.mark.workspace("multi_context")
 async def test_query_context_multiple_cdb_entries(client, workspace):
     """queryContext on a source file with multiple CDB entries should return all."""

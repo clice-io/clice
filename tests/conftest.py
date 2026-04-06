@@ -140,6 +140,10 @@ class CliceClient(BaseLanguageClient):
         )
         return self._normalize_uri(wire_uri), content
 
+    def path_to_uri(self, filepath: Path) -> str:
+        """Convert a file path to a normalized URI without opening it."""
+        return self._normalize_uri(filepath.as_uri())
+
     async def wait_diagnostics(self, uri: str, timeout: float = 30.0) -> None:
         """Wait for diagnostics on the given URI."""
         uri = self._normalize_uri(uri)

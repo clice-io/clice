@@ -649,10 +649,21 @@ std::optional<HeaderFileContext>
             auto line = content_ref.slice(line_start, line_end).trim();
 
             if(line.starts_with("#include") || line.starts_with("# include")) {
-                // Check if this line references the next file in the chain.
-                if(line.contains(next_filename)) {
-                    include_line_start = line_start;
-                    break;
+                // Extract the filename from the #include directive.
+                // Handles: #include "foo.h", #include <foo.h>, # include "foo.h"
+                auto quote_start = line.find_first_of("\"<");
+                auto quote_end = llvm::StringRef::npos;
+                if(quote_start != llvm::StringRef::npos) {
+                    char close = (line[quote_start] == '"') ? '"' : '>';
+                    quote_end = line.find(close, quote_start + 1);
+                }
+                if(quote_start != llvm::StringRef::npos && quote_end != llvm::StringRef::npos) {
+                    auto included = line.slice(quote_start + 1, quote_end);
+                    auto included_filename = llvm::sys::path::filename(included);
+                    if(included_filename == next_filename) {
+                        include_line_start = line_start;
+                        break;
+                    }
                 }
             }
 
@@ -768,12 +779,19 @@ bool MasterServer::fill_header_context_args(llvm::StringRef path,
     arguments.clear();
 
     // Copy host arguments, replacing the host source file path with the header.
+    bool replaced = false;
     for(auto& arg: host_ctx.arguments) {
         if(llvm::StringRef(arg) == host_path) {
             arguments.emplace_back(path);
+            replaced = true;
         } else {
             arguments.emplace_back(arg);
         }
+    }
+    if(!replaced) {
+        LOG_WARN("fill_header_context_args: host path {} not found in arguments, appending header",
+                 host_path);
+        arguments.emplace_back(path);
     }
 
     // Inject preamble: for cc1 args insert after "-cc1", otherwise after driver.
@@ -2754,7 +2772,7 @@ void MasterServer::register_handlers() {
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
             auto path = uri_to_path(params.uri);
             auto path_id = path_pool.intern(path);
-            int offset_val = params.offset.value_or(0);
+            int offset_val = std::max(0, params.offset.value_or(0));
             constexpr int page_size = 10;
 
             ext::QueryContextResult result;
