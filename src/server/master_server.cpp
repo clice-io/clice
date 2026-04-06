@@ -1857,19 +1857,19 @@ void MasterServer::register_handlers() {
     // --- textDocument/typeDefinition ---
     peer.on_request(
         [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {
-            co_return std::nullopt;  // not supported yet
+            co_return serde_raw{"null"};  // not supported yet
         });
 
     // --- textDocument/implementation ---
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ImplementationParams& params) -> RawResult {
-            co_return std::nullopt;  // not supported yet
+            co_return serde_raw{"null"};  // not supported yet
         });
 
     // --- textDocument/declaration ---
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DeclarationParams& params) -> RawResult {
-            co_return std::nullopt;  // not supported yet
+            co_return serde_raw{"null"};  // not supported yet
         });
 
     // =========================================================================
