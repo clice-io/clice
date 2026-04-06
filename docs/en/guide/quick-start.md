@@ -123,8 +123,4 @@ to explicitly ask the extension to generate the compilation database in `build`.
 
 ### Others
 
-For any other build system, you can try the following tools to intercept compilation commands and generate a compilation database:
-
-- [bear](https://github.com/rizsotto/Bear) — intercepts `exec` calls to capture compilation commands. Works with most build systems on Linux/macOS.
-- [scan-build](https://github.com/rizsotto/scan-build) — a Clang tool that can generate compilation databases as a side effect of static analysis.
-- [catter](https://github.com/clice-io/catter) — a tool we are developing that captures compilation commands through a fake compiler approach. It is designed to work reliably with any build system that invokes a compiler executable.
+For any other build system, you can use [catter](https://github.com/clice-io/catter) to generate a compilation database. It captures compilation commands through a fake compiler approach and is designed to work reliably with any build system that invokes a compiler executable.
