@@ -127,11 +127,11 @@ async def test_no_include_completion_on_regular_code(client, workspace):
 
     # Should return results from clang (keywords, etc.), not include paths.
     # Verify none of the results look like header filenames.
-    if result is not None:
-        items = result.items if hasattr(result, "items") else result
-        labels = [item.label for item in items]
-        assert "myheader.h" not in labels
-        assert "nested.h" not in labels
+    assert result is not None
+    items = result.items if hasattr(result, "items") else result
+    labels = [item.label for item in items]
+    assert "myheader.h" not in labels
+    assert "nested.h" not in labels
 
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
 

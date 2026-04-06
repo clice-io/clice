@@ -1214,10 +1214,12 @@ PreambleCompletionContext MasterServer::detect_completion_context(const std::str
 
     // Check for [export] import prefix (without trailing semicolon).
     auto import_check = trimmed;
-    if(import_check.consume_front("export")) {
+    if(import_check.consume_front("export") &&
+       !import_check.empty() && !std::isalnum(import_check[0])) {
         import_check = import_check.ltrim();
     }
-    if(import_check.consume_front("import")) {
+    if(import_check.consume_front("import") &&
+       (import_check.empty() || !std::isalnum(import_check[0]))) {
         import_check = import_check.ltrim();
         // Only treat as import if there's no semicolon in what follows.
         auto rest_of_line = llvm::StringRef(text).slice(line_start, line_end);
