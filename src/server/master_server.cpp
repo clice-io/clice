@@ -2592,10 +2592,6 @@ void MasterServer::register_handlers() {
         if(!info)
             co_return serde_raw{"null"};
 
-        auto sym_it = project_index.symbols.find(info->hash);
-        if(sym_it == project_index.symbols.end())
-            co_return serde_raw{"null"};
-
         // Collect all Caller relations across reference files.
         // Caller relation: on the callee symbol, target_symbol is the caller's hash.
         std::vector<protocol::CallHierarchyIncomingCall> results;
@@ -2603,6 +2599,8 @@ void MasterServer::register_handlers() {
         // Group call sites by caller symbol hash.
         llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> caller_ranges;
 
+        auto sym_it = project_index.symbols.find(info->hash);
+        if(sym_it != project_index.symbols.end())
         for(auto file_id: sym_it->second.reference_files) {
             if(open_proj_path_ids.contains(file_id))
                 continue;
@@ -2650,16 +2648,31 @@ void MasterServer::register_handlers() {
         // Build incoming call items from grouped caller symbols.
         for(auto& [caller_hash, ranges]: caller_ranges) {
             auto def_loc = find_symbol_definition_location(caller_hash);
-            auto caller_sym_it = project_index.symbols.find(caller_hash);
-            if(caller_sym_it == project_index.symbols.end())
-                continue;
-
             if(!def_loc)
                 continue;
 
+            // Look up symbol info: open file indices first, then ProjectIndex.
+            std::string caller_name;
+            SymbolKind caller_kind;
+            for(auto& [_, ofi]: open_file_indices) {
+                auto sit = ofi.symbols.find(caller_hash);
+                if(sit != ofi.symbols.end()) {
+                    caller_name = sit->second.name;
+                    caller_kind = sit->second.kind;
+                    break;
+                }
+            }
+            if(caller_name.empty()) {
+                auto caller_sym_it = project_index.symbols.find(caller_hash);
+                if(caller_sym_it == project_index.symbols.end())
+                    continue;
+                caller_name = caller_sym_it->second.name;
+                caller_kind = caller_sym_it->second.kind;
+            }
+
             protocol::CallHierarchyItem caller_item;
-            caller_item.name = caller_sym_it->second.name;
-            caller_item.kind = to_lsp_symbol_kind(caller_sym_it->second.kind);
+            caller_item.name = caller_name;
+            caller_item.kind = to_lsp_symbol_kind(caller_kind);
             caller_item.uri = def_loc->uri;
             caller_item.range = def_loc->range;
             caller_item.selection_range = def_loc->range;
@@ -2684,14 +2697,12 @@ void MasterServer::register_handlers() {
         if(!info)
             co_return serde_raw{"null"};
 
-        auto sym_it = project_index.symbols.find(info->hash);
-        if(sym_it == project_index.symbols.end())
-            co_return serde_raw{"null"};
-
         // Collect Callee relations (outgoing calls from this function).
         // Group call sites by callee symbol hash.
         llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> callee_ranges;
 
+        auto sym_it = project_index.symbols.find(info->hash);
+        if(sym_it != project_index.symbols.end())
         for(auto file_id: sym_it->second.reference_files) {
             if(open_proj_path_ids.contains(file_id))
                 continue;
@@ -2739,16 +2750,30 @@ void MasterServer::register_handlers() {
         std::vector<protocol::CallHierarchyOutgoingCall> results;
         for(auto& [callee_hash, ranges]: callee_ranges) {
             auto def_loc = find_symbol_definition_location(callee_hash);
-            auto callee_sym_it = project_index.symbols.find(callee_hash);
-            if(callee_sym_it == project_index.symbols.end())
-                continue;
-
             if(!def_loc)
                 continue;
 
+            std::string callee_name;
+            SymbolKind callee_kind;
+            for(auto& [_, ofi]: open_file_indices) {
+                auto sit = ofi.symbols.find(callee_hash);
+                if(sit != ofi.symbols.end()) {
+                    callee_name = sit->second.name;
+                    callee_kind = sit->second.kind;
+                    break;
+                }
+            }
+            if(callee_name.empty()) {
+                auto callee_sym_it = project_index.symbols.find(callee_hash);
+                if(callee_sym_it == project_index.symbols.end())
+                    continue;
+                callee_name = callee_sym_it->second.name;
+                callee_kind = callee_sym_it->second.kind;
+            }
+
             protocol::CallHierarchyItem callee_item;
-            callee_item.name = callee_sym_it->second.name;
-            callee_item.kind = to_lsp_symbol_kind(callee_sym_it->second.kind);
+            callee_item.name = callee_name;
+            callee_item.kind = to_lsp_symbol_kind(callee_kind);
             callee_item.uri = def_loc->uri;
             callee_item.range = def_loc->range;
             callee_item.selection_range = def_loc->range;
@@ -2792,12 +2817,10 @@ void MasterServer::register_handlers() {
         if(!info)
             co_return serde_raw{"null"};
 
-        auto sym_it = project_index.symbols.find(info->hash);
-        if(sym_it == project_index.symbols.end())
-            co_return serde_raw{"null"};
-
         // Find Base relations: supertypes of this class.
         std::vector<protocol::TypeHierarchyItem> results;
+
+        auto sym_it = project_index.symbols.find(info->hash);
 
         auto collect_base = [&](const index::Relation& r) {
             if(!r.kind.is_one_of(RelationKind::Base))
@@ -2837,6 +2860,7 @@ void MasterServer::register_handlers() {
             results.push_back(std::move(item));
         };
 
+        if(sym_it != project_index.symbols.end())
         for(auto file_id: sym_it->second.reference_files) {
             if(open_proj_path_ids.contains(file_id))
                 continue;
@@ -2876,12 +2900,10 @@ void MasterServer::register_handlers() {
         if(!info)
             co_return serde_raw{"null"};
 
-        auto sym_it = project_index.symbols.find(info->hash);
-        if(sym_it == project_index.symbols.end())
-            co_return serde_raw{"null"};
-
         // Find Derived relations across all reference files: subtypes of this class.
         std::vector<protocol::TypeHierarchyItem> results;
+
+        auto sym_it = project_index.symbols.find(info->hash);
 
         auto collect_derived = [&](const index::Relation& r) {
             if(!r.kind.is_one_of(RelationKind::Derived))
@@ -2920,6 +2942,7 @@ void MasterServer::register_handlers() {
             results.push_back(std::move(item));
         };
 
+        if(sym_it != project_index.symbols.end())
         for(auto file_id: sym_it->second.reference_files) {
             if(open_proj_path_ids.contains(file_id))
                 continue;
@@ -2960,30 +2983,35 @@ void MasterServer::register_handlers() {
             // Case-insensitive substring match on symbol names.
             std::string query_lower = query.lower();
 
+            auto is_indexable_kind = [](SymbolKind sk) {
+                return sk == SymbolKind::Namespace || sk == SymbolKind::Class ||
+                       sk == SymbolKind::Struct || sk == SymbolKind::Union ||
+                       sk == SymbolKind::Enum || sk == SymbolKind::Type ||
+                       sk == SymbolKind::Field || sk == SymbolKind::EnumMember ||
+                       sk == SymbolKind::Function || sk == SymbolKind::Method ||
+                       sk == SymbolKind::Variable || sk == SymbolKind::Parameter ||
+                       sk == SymbolKind::Macro || sk == SymbolKind::Concept ||
+                       sk == SymbolKind::Module || sk == SymbolKind::Operator ||
+                       sk == SymbolKind::MacroParameter || sk == SymbolKind::Label ||
+                       sk == SymbolKind::Attribute;
+            };
+
+            auto matches_query = [&](llvm::StringRef name) {
+                if(query_lower.empty())
+                    return true;
+                return llvm::StringRef(name).lower().find(query_lower) != std::string::npos;
+            };
+
+            // Collect symbols already seen (by hash) to avoid duplicates
+            // between ProjectIndex and open file indices.
+            llvm::DenseSet<index::SymbolHash> seen;
+
             for(auto& [hash, symbol]: project_index.symbols) {
                 if(results.size() >= 100)
                     break;
-
-                // Skip non-indexable symbol kinds (punctuation, literals, etc.)
-                // Skip non-indexable symbol kinds using a positive check instead.
-                auto sk = symbol.kind;
-                if(!(sk == SymbolKind::Namespace || sk == SymbolKind::Class ||
-                     sk == SymbolKind::Struct || sk == SymbolKind::Union ||
-                     sk == SymbolKind::Enum || sk == SymbolKind::Type || sk == SymbolKind::Field ||
-                     sk == SymbolKind::EnumMember || sk == SymbolKind::Function ||
-                     sk == SymbolKind::Method || sk == SymbolKind::Variable ||
-                     sk == SymbolKind::Parameter || sk == SymbolKind::Macro ||
-                     sk == SymbolKind::Concept || sk == SymbolKind::Module ||
-                     sk == SymbolKind::Operator || sk == SymbolKind::MacroParameter ||
-                     sk == SymbolKind::Label || sk == SymbolKind::Attribute))
+                if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
                     continue;
-
-                if(symbol.name.empty())
-                    continue;
-
-                // Check case-insensitive substring match.
-                std::string name_lower = llvm::StringRef(symbol.name).lower();
-                if(!query_lower.empty() && name_lower.find(query_lower) == std::string::npos)
+                if(!matches_query(symbol.name))
                     continue;
 
                 auto def_loc = find_symbol_definition_location(hash);
@@ -2995,6 +3023,34 @@ void MasterServer::register_handlers() {
                 info.kind = to_lsp_symbol_kind(symbol.kind);
                 info.location = std::move(*def_loc);
                 results.push_back(std::move(info));
+                seen.insert(hash);
+            }
+
+            // Also search open file indices for symbols not in ProjectIndex.
+            for(auto& [ofi_server_id, ofi]: open_file_indices) {
+                if(results.size() >= 100)
+                    break;
+                for(auto& [hash, symbol]: ofi.symbols) {
+                    if(results.size() >= 100)
+                        break;
+                    if(seen.contains(hash))
+                        continue;
+                    if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
+                        continue;
+                    if(!matches_query(symbol.name))
+                        continue;
+
+                    auto def_loc = find_symbol_definition_location(hash);
+                    if(!def_loc)
+                        continue;
+
+                    protocol::SymbolInformation info;
+                    info.name = symbol.name;
+                    info.kind = to_lsp_symbol_kind(symbol.kind);
+                    info.location = std::move(*def_loc);
+                    results.push_back(std::move(info));
+                    seen.insert(hash);
+                }
             }
 
             if(results.empty())
