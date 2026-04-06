@@ -54,14 +54,73 @@ bazel run @hedron_compile_commands//:refresh_all
 
 ### Visual Studio
 
-TODO:
+Visual Studio（2019 16.1+）可以通过 CMake 集成来生成编译数据库。将项目作为 CMake 项目打开，然后在 `CMakeSettings.json` 中配置：
+
+```json
+{
+  "configurations": [
+    {
+      "name": "x64-Debug",
+      "generator": "Ninja",
+      "buildRoot": "${projectDir}\\build",
+      "cmakeCommandArgs": "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    }
+  ]
+}
+```
+
+对于基于 MSBuild 的项目（`.vcxproj`），可以使用 [compiledb-vs](https://github.com/pjbroad/compiledb-vs) 或 [catter](https://github.com/clice-io/catter) 来生成编译数据库。
 
 ### Makefile
 
-TODO:
+对于基于 Makefile 的项目，使用 [bear](https://github.com/rizsotto/Bear) 来拦截编译命令：
+
+```bash
+bear -- make
+```
+
+这会在当前目录生成 `compile_commands.json`。注意 `bear` 需要干净的构建来捕获所有命令——如果需要的话，在运行 `bear -- make` 之前先执行 `make clean`。
+
+另外，如果使用 GNU Make，也可以使用 [compiledb](https://github.com/nicktimko/compiledb)：
+
+```bash
+compiledb make
+```
+
+### Meson
+
+Meson 在配置阶段会自动生成编译数据库：
+
+```bash
+meson setup build
+```
+
+`compile_commands.json` 会生成在 `build` 目录下。
 
 ### Xmake
 
+用下列任意方法生成编译数据库。
+
+#### 命令行手动生成
+
+在命令行中执行以下命令：
+
+```bash
+xmake project -k compile_commands --lsp=clangd build
+```
+
+> 通过这种方法生成的编译数据库无法自动更新，需要在项目编译配置更改时手动重新生成。
+
+#### VSCode 扩展
+
+Xmake 提供的官方 VSCode 扩展会在 `xmake.lua` 更新时自动生成编译数据库。然而默认情况下，它将编译数据库生成到了 `.vscode` 文件夹。在 `settings.json` 中添加以下配置：
+
+```json
+"xmake.compileCommandsDirectory": "build"
+```
+
+以将编译数据库的生成目录调整到 `build`，供 clice 使用。
+
 ### Others
 
-对于任意其它的构建系统，可以尝试使用 [bear](https://github.com/rizsotto/Bear) 或者 [scan-build](https://github.com/rizsotto/scan-build) 来拦截编译命令并获取到编译数据库（不保证成功）。我们计划在未来编写一个**新的工具**，通过假编译器的方式来实现编译命令的捕获。
+对于任意其它的构建系统，可以使用 [catter](https://github.com/clice-io/catter) 来生成编译数据库。它通过伪装编译器的方式来捕获编译命令，能够可靠地与任何调用编译器可执行文件的构建系统配合工作。

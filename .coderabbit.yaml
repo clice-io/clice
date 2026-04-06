@@ -1,2 +1,7 @@
 chat:
   auto_reply: false
+reviews:
+  auto_review:
+    enabled: true
+  summary:
+    enabled: false
