@@ -13,6 +13,8 @@ std::vector<HasInclude> has_includes;
 std::vector<Condition> conditions;
 std::vector<MacroRef> macros;
 std::vector<Pragma> pragmas;
+std::vector<Embed> embeds;
+std::vector<HasEmbed> has_embeds;
 
 using u32 = std::uint32_t;
 
@@ -25,6 +27,8 @@ void run(llvm::StringRef code) {
     conditions = unit->directives()[fid].conditions;
     macros = unit->directives()[fid].macros;
     pragmas = unit->directives()[fid].pragmas;
+    embeds = unit->directives()[fid].embeds;
+    has_embeds = unit->directives()[fid].has_embeds;
 }
 
 void EXPECT_INCLUDE(u32 index, llvm::StringRef position, llvm::StringRef path) {
@@ -64,6 +68,25 @@ void EXPECT_MACRO(u32 index, MacroRef::Kind kind, llvm::StringRef position) {
     auto [_, offset] = unit->decompose_location(macro.loc);
     ASSERT_EQ(int(macro.kind), int(kind));
     ASSERT_EQ(offset, point(position));
+}
+
+void EXPECT_EMBED(u32 index, llvm::StringRef position, llvm::StringRef filename) {
+    auto& embed = embeds[index];
+    auto [_, offset] = unit->decompose_location(embed.loc);
+    ASSERT_EQ(offset, point(position));
+    ASSERT_TRUE(embed.file.has_value());
+    ASSERT_EQ(embed.file_name, filename);
+}
+
+void EXPECT_HAS_EMBED(u32 index,
+                      llvm::StringRef position,
+                      llvm::StringRef filename,
+                      bool exists = true) {
+    auto& has_embed = has_embeds[index];
+    auto [_, offset] = unit->decompose_location(has_embed.loc);
+    ASSERT_EQ(offset, point(position));
+    ASSERT_EQ(has_embed.file.has_value(), exists);
+    ASSERT_EQ(has_embed.file_name, filename);
 }
 
 void EXPECT_PRAGMA(u32 index, Pragma::Kind kind, llvm::StringRef pos, llvm::StringRef text) {
@@ -194,6 +217,65 @@ $(2)#pragma endregion
     EXPECT_PRAGMA(0, Pragma::Kind::Other, "0", "#pragma GCC poison printf sprintf fprintf");
     EXPECT_PRAGMA(1, Pragma::Kind::Region, "1", "#pragma region");
     EXPECT_PRAGMA(2, Pragma::Kind::EndRegion, "2", "#pragma endregion");
+};
+
+TEST_CASE(Embed) {
+    run(R"cpp(
+#[bytes10.bin]
+0123456789
+
+#[bytes5.bin]
+ABCDE
+
+#[main.cpp]
+const char e0 = {
+$(0)#embed "bytes10.bin"
+};
+
+const char e1 = {
+$(1)#embed "bytes10.bin"
+};
+
+const char e2 = {
+$(2)#embed "bytes5.bin"
+};
+
+const char e3 = {
+$(3)#embed "bytes5.bin"
+};
+
+const char e4 = {
+$(4)#embed "non-existed.bin"
+};
+
+)cpp");
+
+    // e4 will not be processed by clang::PPCallbacks::EmbedDirective(), so there are only 4
+    // embeds.
+    ASSERT_EQ(embeds.size(), 4U);
+    EXPECT_EMBED(0, "0", "bytes10.bin");
+    EXPECT_EMBED(1, "1", "bytes10.bin");
+    EXPECT_EMBED(2, "2", "bytes5.bin");
+    EXPECT_EMBED(3, "3", "bytes5.bin");
+};
+
+TEST_CASE(HasEmbed) {
+    run(R"cpp(
+#[test.bin]
+
+#[main.cpp]
+#embed "test.bin"
+
+#if __has_embed$(0)("test.bin")
+#endif
+
+#if __has_embed$(1)("non-existed.bin")
+#endif
+)cpp");
+
+    ASSERT_EQ(has_embeds.size(), 2U);
+    EXPECT_HAS_EMBED(0, "0", "test.bin");
+    EXPECT_HAS_EMBED(1, "1", "non-existed.bin", /*exists=*/false);
 };
 
 };  // TEST_SUITE(Directive)

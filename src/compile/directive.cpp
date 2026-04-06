@@ -65,6 +65,31 @@ public:
     ///                         Rewritten Preprocessor Callbacks
     /// ============================================================================
 
+    void HasEmbed(clang::SourceLocation location,
+                  llvm::StringRef filename,
+                  bool is_angled,
+                  clang::OptionalFileEntryRef file) override {
+        unit->directives[unit.file_id(location)].has_embeds.emplace_back(clice::HasEmbed{
+            .file_name = filename,
+            .file = file,
+            .is_angled = is_angled,
+            .loc = location,
+        });
+    }
+
+    void EmbedDirective(clang::SourceLocation location,
+                        clang::StringRef filename,
+                        bool is_angled,
+                        clang::OptionalFileEntryRef file,
+                        const clang::LexEmbedParametersResult&) override {
+        unit->directives[unit.file_id(location)].embeds.emplace_back(Embed{
+            .file_name = filename,
+            .file = file,
+            .is_angled = is_angled,
+            .loc = location,
+        });
+    }
+
     void InclusionDirective(clang::SourceLocation hash_loc,
                             const clang::Token& include_tok,
                             llvm::StringRef,
