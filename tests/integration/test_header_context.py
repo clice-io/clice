@@ -3,7 +3,7 @@
 Tests the clice/queryContext, clice/currentContext, and clice/switchContext
 extension commands that allow switching the compilation context for header files.
 
-utils.h uses std::vector without including <vector> itself -- it depends on
+utils.h uses Point without including types.h itself -- it depends on
 main.cpp to provide that include.  Without header context resolution, the
 server cannot compile utils.h at all.
 """
@@ -124,7 +124,7 @@ async def test_full_context_flow(client, workspace):
     # 1. Open main.cpp, wait for initial compile.
     main_uri, _ = await client.open_and_wait(workspace / "main.cpp")
 
-    # 2. Open utils.h (non self-contained header using std::vector).
+    # 2. Open utils.h (non self-contained header using Point from types.h).
     utils_h = workspace / "utils.h"
     utils_uri, _ = client.open(utils_h)
 
@@ -164,18 +164,20 @@ async def test_full_context_flow(client, workspace):
     assert ctx is not None
     assert "main.cpp" in _get(ctx, "uri")
 
-    # 7. Hover on 'sum' function in utils.h -> should work (proves header compiled).
+    # 7. Hover on 'calc' function in utils.h -> should work (proves header compiled).
     diag_event = client.wait_for_diagnostics(utils_uri)
     hover = await asyncio.wait_for(
         client.text_document_hover_async(
             HoverParams(
                 text_document=_doc(utils_uri),
-                position=Position(line=14, character=12),  # 'sum' function
+                position=Position(line=6, character=12),  # 'calc' function
             )
         ),
         timeout=30.0,
     )
-    assert hover is not None, "Hover on 'sum' in header should work after switchContext"
+    assert hover is not None, (
+        "Hover on 'calc' in header should work after switchContext"
+    )
 
     # 8. Check diagnostics on utils.h -> should have 0 errors.
     await asyncio.wait_for(diag_event.wait(), timeout=30.0)

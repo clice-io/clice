@@ -1,9 +1,8 @@
-#include <vector>
-
+#include "types.h"
 #include "utils.h"
 
 int main() {
-    auto v = make_range(5);
-    int s = sum(v);
-    return s;
+    Point p{3, 4};
+    int d = calc(p);
+    return d;
 }
