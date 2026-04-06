@@ -208,9 +208,11 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                 }
 
                 // Index module content before destroying the unit.
+                // Use interested_only=true — we only need the module interface's
+                // own symbols and relations, not transitive header content.
                 std::string tu_index_serialized;
                 if(success) {
-                    auto tu_index = index::TUIndex::build(unit);
+                    auto tu_index = index::TUIndex::build(unit, true);
                     llvm::raw_string_ostream os(tu_index_serialized);
                     tu_index.serialize(os);
                 }
