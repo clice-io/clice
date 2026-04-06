@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -9,6 +10,9 @@
 
 #include "command/command.h"
 #include "eventide/async/async.h"
+#include "eventide/ipc/lsp/protocol.h"
+#include "eventide/ipc/peer.h"
+#include "eventide/serde/serde/raw_value.h"
 #include "server/compile_graph.h"
 #include "server/config.h"
 #include "server/indexer.h"
@@ -24,14 +28,31 @@
 namespace clice {
 
 namespace et = eventide;
+namespace protocol = et::ipc::protocol;
 
-struct DocumentState;
+/// State of a document opened by the client.
+struct DocumentState {
+    int version = 0;
+    std::string text;
+    std::uint64_t generation = 0;
+    bool ast_dirty = true;
+
+    /// Non-null while a compile is in flight.  Callers wait on the event;
+    /// the compile task runs independently and cannot be cancelled by LSP
+    /// $/cancelRequest.
+    struct PendingCompile {
+        et::event done;
+        bool succeeded = false;
+    };
+
+    std::shared_ptr<PendingCompile> compiling;
+};
 
 /// Context for compiling a header file that lacks its own CDB entry.
 struct HeaderFileContext {
-    std::uint32_t host_path_id;   // Source file acting as host
-    std::string preamble_path;    // Path to generated preamble file on disk
-    std::uint64_t preamble_hash;  // Hash of preamble content for staleness
+    std::uint32_t host_path_id;   /// Source file acting as host
+    std::string preamble_path;    /// Path to generated preamble file on disk
+    std::uint64_t preamble_hash;  /// Hash of preamble content for staleness
 };
 
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
@@ -63,15 +84,24 @@ struct PCMState {
     DepsSnapshot deps;
 };
 
-/// Manages compilation artifacts (PCH/PCM cache), compile arguments, module
-/// dependency graph, and header context resolution.
+enum class CompletionContext { None, IncludeQuoted, IncludeAngled, Import };
+
+struct PreambleCompletionContext {
+    CompletionContext kind = CompletionContext::None;
+    std::string prefix;
+};
+
+/// Manages the full compilation lifecycle: document state, compilation
+/// artifacts (PCH/PCM cache), compile argument resolution, header context,
+/// and feature request forwarding to workers.
 ///
-/// `ensure_compiled()` remains in MasterServer because it deeply interacts
-/// with document state, diagnostics publishing, and index updates.  Compiler
-/// provides the lower-level building blocks it calls.
+/// MasterServer delegates all document and compilation operations here,
+/// keeping itself as a pure LSP handler registration layer.
 class Compiler {
 public:
-    Compiler(PathPool& path_pool,
+    Compiler(et::event_loop& loop,
+             et::ipc::JsonPeer& peer,
+             PathPool& path_pool,
              WorkerPool& pool,
              Indexer& indexer,
              const CliceConfig& config,
@@ -80,13 +110,23 @@ public:
 
     ~Compiler();
 
-    // === Cache persistence ===
+    /// Convert a file:// URI to a local file path.
+    static std::string uri_to_path(const std::string& uri);
 
+    /// Document lifecycle — called from MasterServer handlers.
+    void open_document(const std::string& uri, std::string text, int version);
+    void apply_changes(const protocol::DidChangeTextDocumentParams& params);
+    std::uint32_t close_document(const std::string& uri);
+    llvm::SmallVector<std::uint32_t> on_save(const std::string& uri);
+
+    /// Document accessors.
+    bool is_file_open(std::uint32_t path_id) const;
+    const DocumentState* get_document(std::uint32_t path_id) const;
+
+    /// Cache persistence.
     void load_cache();
     void save_cache();
     void cleanup_cache(int max_age_days = 7);
-
-    // === Module graph ===
 
     /// Build path_to_module reverse mapping from dependency graph.
     void build_module_map();
@@ -94,21 +134,68 @@ public:
     /// Initialize the CompileGraph for C++20 module compilation ordering.
     void init_compile_graph();
 
-    // === Compile argument resolution ===
-
     /// Fill compile arguments for a file (CDB lookup + header context fallback).
     bool fill_compile_args(llvm::StringRef path,
                            std::string& directory,
                            std::vector<std::string>& arguments);
 
-    // === Dependency preparation ===
+    /// Fill PCM paths for all built modules (for background indexing).
+    void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms) const;
 
-    /// Build or reuse PCH for a source file.
-    et::task<bool> ensure_pch(std::uint32_t path_id,
-                              llvm::StringRef path,
-                              const std::string& text,
-                              const std::string& directory,
-                              const std::vector<std::string>& arguments);
+    /// Pull-based compilation entry point for user-opened files.
+    et::task<bool> ensure_compiled(std::uint32_t path_id);
+
+    /// Feature request forwarding to workers.
+    using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
+
+    template <typename WorkerParams>
+    RawResult forward_stateful(const std::string& uri);
+
+    template <typename WorkerParams>
+    RawResult forward_stateful(const std::string& uri, const protocol::Position& position);
+
+    template <typename WorkerParams>
+    RawResult forward_stateless(const std::string& uri, const protocol::Position& position);
+
+    /// Completion with preamble-aware include/import handling.
+    RawResult handle_completion(const std::string& uri, const protocol::Position& position);
+
+    /// Header context management.
+    void switch_context(std::uint32_t path_id, std::uint32_t context_path_id);
+    std::optional<std::uint32_t> get_active_context(std::uint32_t path_id) const;
+    void invalidate_host_contexts(std::uint32_t host_path_id,
+                                  llvm::SmallVectorImpl<std::uint32_t>& stale_headers);
+
+    CompileGraph* compile_graph_ptr() { return compile_graph.get(); }
+    const llvm::DenseMap<std::uint32_t, std::string>& module_map() const { return path_to_module; }
+    void cancel_all();
+
+    /// Callback invoked when indexing should be scheduled (e.g. after compile success).
+    std::function<void()> on_indexing_needed;
+
+private:
+    et::event_loop& loop;
+    et::ipc::JsonPeer& peer;
+    PathPool& path_pool;
+    WorkerPool& pool;
+    Indexer& indexer;
+    const CliceConfig& config;
+    CompilationDatabase& cdb;
+    DependencyGraph& dep_graph;
+
+    /// Open document state, keyed by server-level path_id.
+    llvm::DenseMap<std::uint32_t, DocumentState> documents;
+
+    llvm::DenseMap<std::uint32_t, PCHState> pch_states;
+    llvm::DenseMap<std::uint32_t, PCMState> pcm_states;
+    llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
+
+    llvm::DenseMap<std::uint32_t, std::string> path_to_module;
+    std::unique_ptr<CompileGraph> compile_graph;
+
+    llvm::DenseMap<std::uint32_t, DepsSnapshot> ast_deps;
+    llvm::DenseMap<std::uint32_t, HeaderFileContext> header_file_contexts;
+    llvm::DenseMap<std::uint32_t, std::uint32_t> active_contexts;
 
     /// Compile module dependencies, build/reuse PCH, and fill PCM paths.
     et::task<bool> ensure_deps(std::uint32_t path_id,
@@ -119,7 +206,12 @@ public:
                                std::pair<std::string, uint32_t>& pch,
                                std::unordered_map<std::string, std::string>& pcms);
 
-    // === Staleness detection ===
+    /// Build or reuse PCH for a source file.
+    et::task<bool> ensure_pch(std::uint32_t path_id,
+                              llvm::StringRef path,
+                              const std::string& text,
+                              const std::string& directory,
+                              const std::vector<std::string>& arguments);
 
     /// Check if a file's AST or PCH deps have changed since last compile.
     bool is_stale(std::uint32_t path_id);
@@ -127,70 +219,27 @@ public:
     /// Record dependency snapshot after a successful compile.
     void record_deps(std::uint32_t path_id, llvm::ArrayRef<std::string> deps);
 
-    // === Lifecycle events (called from MasterServer handlers) ===
+    void publish_diagnostics(const std::string& uri, int version, const et::serde::RawValue& diags);
+    void clear_diagnostics(const std::string& uri);
 
-    /// Clean up state for a closed file.
+    /// Clean up compilation state for a closed file.
     void on_file_closed(std::uint32_t path_id);
 
     /// Invalidate artifacts after a file save.
     /// Returns path_ids of all files dirtied (via compile_graph cascade).
     llvm::SmallVector<std::uint32_t> on_file_saved(std::uint32_t path_id);
 
-    /// Invalidate header contexts whose host is the given file.
-    /// Fills `stale_headers` with affected header path_ids.
-    void invalidate_host_contexts(std::uint32_t host_path_id,
-                                  llvm::SmallVectorImpl<std::uint32_t>& stale_headers);
-
-    // === Header context ===
-
-    /// Resolve a compilation context for a header that lacks a CDB entry.
-    std::optional<HeaderFileContext> resolve_header_context(
-        std::uint32_t header_path_id,
-        const llvm::DenseMap<std::uint32_t, DocumentState>& documents);
-
-    /// Set an active context override for a file.
-    void switch_context(std::uint32_t path_id, std::uint32_t context_path_id);
-
-    /// Get the active context override (if any).
-    std::optional<std::uint32_t> get_active_context(std::uint32_t path_id) const;
-
-    // === Access for MasterServer ===
-
-    CompileGraph* compile_graph_ptr() { return compile_graph.get(); }
-    const llvm::DenseMap<std::uint32_t, std::string>& module_map() const { return path_to_module; }
-
-    /// Fill PCM paths for all built modules (for background indexing).
-    void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms) const;
-
-    void cancel_all();
-
-private:
-    PathPool& path_pool;
-    WorkerPool& pool;
-    Indexer& indexer;
-    const CliceConfig& config;
-    CompilationDatabase& cdb;
-    DependencyGraph& dep_graph;
-
-    // PCH/PCM cache
-    llvm::DenseMap<std::uint32_t, PCHState> pch_states;
-    llvm::DenseMap<std::uint32_t, PCMState> pcm_states;
-    llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
-
-    // Module info
-    llvm::DenseMap<std::uint32_t, std::string> path_to_module;
-    std::unique_ptr<CompileGraph> compile_graph;
-
-    // Per-file compilation state
-    llvm::DenseMap<std::uint32_t, DepsSnapshot> ast_deps;
-    llvm::DenseMap<std::uint32_t, HeaderFileContext> header_file_contexts;
-    llvm::DenseMap<std::uint32_t, std::uint32_t> active_contexts;
-
-    // Internal helpers
+    /// Header context resolution.
+    std::optional<HeaderFileContext> resolve_header_context(std::uint32_t header_path_id);
     bool fill_header_context_args(llvm::StringRef path,
                                   std::uint32_t path_id,
                                   std::string& directory,
                                   std::vector<std::string>& arguments);
+
+    /// Include/import completion helpers.
+    PreambleCompletionContext detect_completion_context(const std::string& text, uint32_t offset);
+    et::serde::RawValue complete_include(const PreambleCompletionContext& ctx, llvm::StringRef path);
+    et::serde::RawValue complete_import(const PreambleCompletionContext& ctx);
 };
 
 }  // namespace clice

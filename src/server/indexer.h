@@ -58,8 +58,6 @@ class Indexer {
 public:
     explicit Indexer(PathPool& path_pool) : path_pool(path_pool) {}
 
-    // === Data management ===
-
     /// Merge a TUIndex result into ProjectIndex and MergedIndex shards.
     void merge(const void* tu_index_data, std::size_t size);
 
@@ -72,8 +70,6 @@ public:
     /// Check whether a file needs re-indexing (stale or missing shard).
     bool need_update(llvm::StringRef file_path);
 
-    // === Open file index management ===
-
     /// Store or replace the open file index for a server-level path_id.
     /// Also tracks the project-level path_id for cross-file query filtering.
     void set_open_file(std::uint32_t server_path_id,
@@ -82,8 +78,6 @@ public:
 
     /// Remove the open file index and untrack project-level path_id.
     void remove_open_file(std::uint32_t server_path_id, llvm::StringRef file_path);
-
-    // === Symbol queries ===
 
     /// Query relations (Definition, Reference, etc.) for a symbol at cursor.
     /// @param doc_text  Fallback text for position mapping when the file has no
@@ -115,21 +109,16 @@ public:
                                                      const std::optional<protocol::LSPAny>& data,
                                                      const std::string* doc_text);
 
-    // === Hierarchy & workspace queries (return serialized JSON) ===
-
+    /// Hierarchy & workspace queries (return serialized JSON).
     et::serde::RawValue find_incoming_calls(index::SymbolHash hash);
     et::serde::RawValue find_outgoing_calls(index::SymbolHash hash);
     et::serde::RawValue find_supertypes(index::SymbolHash hash);
     et::serde::RawValue find_subtypes(index::SymbolHash hash);
     et::serde::RawValue search_symbols(llvm::StringRef query, std::size_t max_results = 100);
 
-    // === Static utilities ===
-
     static protocol::SymbolKind to_lsp_symbol_kind(SymbolKind kind);
     static protocol::CallHierarchyItem build_call_hierarchy_item(const SymbolInfo& info);
     static protocol::TypeHierarchyItem build_type_hierarchy_item(const SymbolInfo& info);
-
-    // === Access for MasterServer (background indexing) ===
 
     index::ProjectIndex& project_index_ref() { return project_index; }
 
