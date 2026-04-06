@@ -226,9 +226,18 @@ private:
 
 private:
     PathPool& path_pool;
+
+    /// Global symbol table and path pool shared across all TUs.
     index::ProjectIndex project_index;
+
+    /// Per-file MergedIndex shards (keyed by project-level path_id).
     llvm::DenseMap<std::uint32_t, MergedIndexShard> merged_indices;
+
+    /// In-memory indices for currently open files (keyed by server-level path_id).
     llvm::DenseMap<std::uint32_t, OpenFileIndex> open_file_indices;
+
+    /// Project-level path_ids of open files, used to skip stale MergedIndex
+    /// shards when fresher OpenFileIndex data is available.
     llvm::DenseSet<std::uint32_t> open_proj_path_ids;
 };
 
