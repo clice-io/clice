@@ -255,6 +255,13 @@ private:
                            std::string& directory,
                            std::vector<std::string>& arguments);
 
+    /// Fill compile arguments using header context (host source's CDB entry
+    /// with file path replaced and preamble injected).
+    bool fill_header_context_args(llvm::StringRef path,
+                                  std::uint32_t path_id,
+                                  std::string& directory,
+                                  std::vector<std::string>& arguments);
+
     /// Generate a preamble file for compiling a header in context.
     /// The preamble contains all code from the host source (and intermediate
     /// headers) that comes BEFORE the #include of the target header.

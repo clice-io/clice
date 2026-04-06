@@ -704,24 +704,35 @@ std::optional<HeaderFileContext>
 bool MasterServer::fill_compile_args(llvm::StringRef path,
                                      std::string& directory,
                                      std::vector<std::string>& arguments) {
-    // If the user has explicitly set a header context via switchContext,
-    // skip the normal CDB lookup and go straight to header context resolution.
     auto path_id = path_pool.intern(path);
-    if(active_contexts.find(path_id) == active_contexts.end()) {
-        auto results = cdb.lookup(path, {.query_toolchain = true});
-        if(!results.empty()) {
-            auto& ctx = results.front();
-            directory = ctx.directory.str();
-            arguments.clear();
-            for(auto* arg: ctx.arguments) {
-                arguments.emplace_back(arg);
-            }
-            return true;
-        }
+
+    // 1. If the user has set an active header context via switchContext,
+    //    use the host source's CDB entry with file path replaced and preamble injected.
+    auto active_it = active_contexts.find(path_id);
+    if(active_it != active_contexts.end()) {
+        return fill_header_context_args(path, path_id, directory, arguments);
     }
 
-    // No direct CDB entry or active context override — try header context.
+    // 2. Normal CDB lookup for the file itself.
+    auto results = cdb.lookup(path, {.query_toolchain = true});
+    if(!results.empty()) {
+        auto& ctx = results.front();
+        directory = ctx.directory.str();
+        arguments.clear();
+        for(auto* arg: ctx.arguments) {
+            arguments.emplace_back(arg);
+        }
+        return true;
+    }
 
+    // 3. No CDB entry — try automatic header context resolution.
+    return fill_header_context_args(path, path_id, directory, arguments);
+}
+
+bool MasterServer::fill_header_context_args(llvm::StringRef path,
+                                            std::uint32_t path_id,
+                                            std::string& directory,
+                                            std::vector<std::string>& arguments) {
     // Use cached context if available; otherwise resolve.
     // If an active context override exists, invalidate cache if it points to
     // a different host so we re-resolve with the correct one.
@@ -729,10 +740,8 @@ bool MasterServer::fill_compile_args(llvm::StringRef path,
     auto ctx_it = header_file_contexts.find(path_id);
     auto active_it = active_contexts.find(path_id);
     if(ctx_it != header_file_contexts.end()) {
-        // Check if the cached context matches the active context override.
         if(active_it != active_contexts.end() && ctx_it->second.host_path_id != active_it->second) {
             header_file_contexts.erase(ctx_it);
-            ctx_it = header_file_contexts.end();
         } else {
             ctx_ptr = &ctx_it->second;
         }
@@ -750,7 +759,7 @@ bool MasterServer::fill_compile_args(llvm::StringRef path,
     auto host_path = path_pool.resolve(ctx_ptr->host_path_id);
     auto host_results = cdb.lookup(host_path, {.query_toolchain = true});
     if(host_results.empty()) {
-        LOG_WARN("fill_compile_args: host {} has no CDB entry", host_path);
+        LOG_WARN("fill_header_context_args: host {} has no CDB entry", host_path);
         return false;
     }
 
@@ -758,10 +767,7 @@ bool MasterServer::fill_compile_args(llvm::StringRef path,
     directory = host_ctx.directory.str();
     arguments.clear();
 
-    // Copy host arguments, replacing the host source file path with the header
-    // file path.  We identify the host source by matching against the CDB file
-    // entry rather than guessing based on positional order, so that entries like
-    // "clang++ -c main.cpp -o main.o" are handled correctly.
+    // Copy host arguments, replacing the host source file path with the header.
     for(auto& arg: host_ctx.arguments) {
         if(llvm::StringRef(arg) == host_path) {
             arguments.emplace_back(path);
@@ -770,10 +776,7 @@ bool MasterServer::fill_compile_args(llvm::StringRef path,
         }
     }
 
-    // Inject the preamble so the compiler sees all context code that normally
-    // precedes this header in the host translation unit.
-    // For cc1 args (["clang++", "-cc1", ...]), insert after "-cc1" at position 2.
-    // For driver args, insert after the driver binary at position 1.
+    // Inject preamble: for cc1 args insert after "-cc1", otherwise after driver.
     std::size_t inject_pos = 1;
     if(arguments.size() >= 2 && arguments[1] == "-cc1") {
         inject_pos = 2;
@@ -781,7 +784,7 @@ bool MasterServer::fill_compile_args(llvm::StringRef path,
     arguments.insert(arguments.begin() + inject_pos, ctx_ptr->preamble_path);
     arguments.insert(arguments.begin() + inject_pos, "-include");
 
-    LOG_INFO("fill_compile_args: using header context for {} (host={}, preamble={})",
+    LOG_INFO("fill_compile_args: header context for {} (host={}, preamble={})",
              path,
              host_path,
              ctx_ptr->preamble_path);
