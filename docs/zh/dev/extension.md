@@ -30,7 +30,7 @@ pixi run publish-vscode
 
 1. `pixi shell -e node`
 2. 在 `editors/vscode` 下运行 `pnpm run watch`（增量构建）
-3. VSCode 中使用 “Run Extension/Launch Extension” 调试配置，或执行 `code --extensionDevelopmentPath=$(pwd)/editors/vscode`
+3. VSCode 中使用”Run Extension/Launch Extension”调试配置，或执行 `code --extensionDevelopmentPath=$(pwd)/editors/vscode`
 
 常用脚本（在 `pixi shell -e node` 下）：
 
