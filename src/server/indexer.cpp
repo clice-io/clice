@@ -224,7 +224,8 @@ bool Indexer::need_update(llvm::StringRef file_path) {
 void Indexer::set_open_file(std::uint32_t server_path_id,
                             llvm::StringRef file_path,
                             OpenFileIndex ofi) {
-    open_file_indices[server_path_id] = std::move(ofi);
+    auto& stored = (open_file_indices[server_path_id] = std::move(ofi));
+    stored.mapper.emplace(stored.content, lsp::PositionEncoding::UTF16);
     auto proj_cache_it = project_index.path_pool.find(file_path);
     if(proj_cache_it != project_index.path_pool.cache.end()) {
         open_proj_path_ids.insert(proj_cache_it->second);
@@ -271,10 +272,10 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
 
     auto ofi_it = open_file_indices.find(server_path_id);
     if(ofi_it != open_file_indices.end()) {
-        hit.mapper.emplace(ofi_it->second.content, lsp::PositionEncoding::UTF16);
+        hit.mapper = &*ofi_it->second.mapper;
         auto offset_opt = hit.mapper->to_offset(position);
         if(!offset_opt)
-            return hit;
+            return {};
 
         if(auto* occ = lookup_occurrence(ofi_it->second.file_index.occurrences, *offset_opt)) {
             hit.hash = occ->target;
@@ -282,12 +283,13 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
         }
     } else {
         if(!doc_text)
-            return hit;
+            return {};
 
-        hit.mapper.emplace(*doc_text, lsp::PositionEncoding::UTF16);
+        hit.fallback.emplace(*doc_text, lsp::PositionEncoding::UTF16);
+        hit.mapper = &*hit.fallback;
         auto offset_opt = hit.mapper->to_offset(position);
         if(!offset_opt)
-            return hit;
+            return {};
 
         auto proj_cache_it = project_index.path_pool.find(path);
         if(proj_cache_it == project_index.path_pool.cache.end())
@@ -366,12 +368,10 @@ et::serde::RawValue Indexer::query_relations(llvm::StringRef path,
         if(!ofi_uri)
             continue;
 
-        lsp::PositionMapper ofi_mapper(ofi.content, lsp::PositionEncoding::UTF16);
-
         for(auto& relation: rel_it->second) {
             if(relation.kind & kind) {
-                auto start = ofi_mapper.to_position(relation.range.begin);
-                auto end = ofi_mapper.to_position(relation.range.end);
+                auto start = ofi.mapper->to_position(relation.range.begin);
+                auto end = ofi.mapper->to_position(relation.range.end);
                 if(start && end) {
                     protocol::Location loc;
                     loc.uri = ofi_uri->str();
@@ -428,11 +428,10 @@ std::optional<protocol::Location> Indexer::find_definition_location(index::Symbo
         if(!ofi_uri)
             continue;
 
-        lsp::PositionMapper mapper(ofi.content, lsp::PositionEncoding::UTF16);
         for(auto& relation: rel_it->second) {
             if(relation.kind.is_one_of(RelationKind::Definition)) {
-                auto start = mapper.to_position(relation.range.begin);
-                auto end = mapper.to_position(relation.range.end);
+                auto start = ofi.mapper->to_position(relation.range.begin);
+                auto end = ofi.mapper->to_position(relation.range.end);
                 if(start && end) {
                     protocol::Location loc;
                     loc.uri = ofi_uri->str();
@@ -558,11 +557,10 @@ static void collect_relations(
         auto rel_it = ofi.file_index.relations.find(hash);
         if(rel_it == ofi.file_index.relations.end())
             continue;
-        lsp::PositionMapper ofi_mapper(ofi.content, lsp::PositionEncoding::UTF16);
         for(auto& r: rel_it->second) {
             if(r.kind == kind) {
-                auto start = ofi_mapper.to_position(r.range.begin);
-                auto end = ofi_mapper.to_position(r.range.end);
+                auto start = ofi.mapper->to_position(r.range.begin);
+                auto end = ofi.mapper->to_position(r.range.end);
                 if(start && end) {
                     target_ranges[r.target_symbol].push_back(protocol::Range{*start, *end});
                 }

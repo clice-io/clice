@@ -31,6 +31,10 @@ struct OpenFileIndex {
     index::FileIndex file_index;
     index::SymbolTable symbols;
     std::string content;  ///< Buffer text at index time (for position mapping).
+
+    /// Cached PositionMapper built from `content`.  Avoids re-scanning line
+    /// offsets on every query.  Initialized by Indexer::set_open_file().
+    std::optional<lsp::PositionMapper> mapper;
 };
 
 /// Information about a symbol at a given position.
@@ -135,8 +139,10 @@ private:
     struct CursorHit {
         index::SymbolHash hash = 0;
         index::Range range{};
-        /// PositionMapper bound to the content used for lookup (for converting range back).
-        std::optional<lsp::PositionMapper> mapper;
+        /// Points to the OFI's cached mapper, or to `fallback` when using doc_text.
+        const lsp::PositionMapper* mapper = nullptr;
+        /// Owns a mapper for the non-OFI path (doc_text / MergedIndex).
+        std::optional<lsp::PositionMapper> fallback;
     };
 
     /// Shared logic for query_relations and lookup_symbol: resolve the symbol
