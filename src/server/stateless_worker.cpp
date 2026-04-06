@@ -117,7 +117,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                 if(success) {
                     auto tu_index = index::TUIndex::build(unit);
                     // Clear main file index — we only want headers from the PCH.
-                    tu_index.main_file_index = index::FileIndex{};
+                    tu_index.main_file_index = index::FileIndex();
                     llvm::raw_string_ostream os(tu_index_serialized);
                     tu_index.serialize(os);
                 }

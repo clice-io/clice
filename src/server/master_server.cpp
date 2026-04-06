@@ -2601,32 +2601,32 @@ void MasterServer::register_handlers() {
 
         auto sym_it = project_index.symbols.find(info->hash);
         if(sym_it != project_index.symbols.end())
-        for(auto file_id: sym_it->second.reference_files) {
-            if(open_proj_path_ids.contains(file_id))
-                continue;
+            for(auto file_id: sym_it->second.reference_files) {
+                if(open_proj_path_ids.contains(file_id))
+                    continue;
 
-            auto file_merged_it = merged_indices.find(file_id);
-            if(file_merged_it == merged_indices.end())
-                continue;
+                auto file_merged_it = merged_indices.find(file_id);
+                if(file_merged_it == merged_indices.end())
+                    continue;
 
-            auto file_content = file_merged_it->second.content();
-            if(file_content.empty())
-                continue;
+                auto file_content = file_merged_it->second.content();
+                if(file_content.empty())
+                    continue;
 
-            lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
+                lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
 
-            file_merged_it->second.lookup(info->hash,
-                                          RelationKind::Caller,
-                                          [&](const index::Relation& r) {
-                                              auto start = file_mapper.to_position(r.range.begin);
-                                              auto end = file_mapper.to_position(r.range.end);
-                                              if(start && end) {
-                                                  caller_ranges[r.target_symbol].push_back(
-                                                      protocol::Range{*start, *end});
-                                              }
-                                              return true;
-                                          });
-        }
+                file_merged_it->second.lookup(
+                    info->hash,
+                    RelationKind::Caller,
+                    [&](const index::Relation& r) {
+                        auto start = file_mapper.to_position(r.range.begin);
+                        auto end = file_mapper.to_position(r.range.end);
+                        if(start && end) {
+                            caller_ranges[r.target_symbol].push_back(protocol::Range{*start, *end});
+                        }
+                        return true;
+                    });
+            }
 
         // Also check open file indices.
         for(auto& [ofi_id, ofi]: open_file_indices) {
@@ -2703,32 +2703,32 @@ void MasterServer::register_handlers() {
 
         auto sym_it = project_index.symbols.find(info->hash);
         if(sym_it != project_index.symbols.end())
-        for(auto file_id: sym_it->second.reference_files) {
-            if(open_proj_path_ids.contains(file_id))
-                continue;
+            for(auto file_id: sym_it->second.reference_files) {
+                if(open_proj_path_ids.contains(file_id))
+                    continue;
 
-            auto file_merged_it = merged_indices.find(file_id);
-            if(file_merged_it == merged_indices.end())
-                continue;
+                auto file_merged_it = merged_indices.find(file_id);
+                if(file_merged_it == merged_indices.end())
+                    continue;
 
-            auto file_content = file_merged_it->second.content();
-            if(file_content.empty())
-                continue;
+                auto file_content = file_merged_it->second.content();
+                if(file_content.empty())
+                    continue;
 
-            lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
+                lsp::PositionMapper file_mapper(file_content, lsp::PositionEncoding::UTF16);
 
-            file_merged_it->second.lookup(info->hash,
-                                          RelationKind::Callee,
-                                          [&](const index::Relation& r) {
-                                              auto start = file_mapper.to_position(r.range.begin);
-                                              auto end = file_mapper.to_position(r.range.end);
-                                              if(start && end) {
-                                                  callee_ranges[r.target_symbol].push_back(
-                                                      protocol::Range{*start, *end});
-                                              }
-                                              return true;
-                                          });
-        }
+                file_merged_it->second.lookup(
+                    info->hash,
+                    RelationKind::Callee,
+                    [&](const index::Relation& r) {
+                        auto start = file_mapper.to_position(r.range.begin);
+                        auto end = file_mapper.to_position(r.range.end);
+                        if(start && end) {
+                            callee_ranges[r.target_symbol].push_back(protocol::Range{*start, *end});
+                        }
+                        return true;
+                    });
+            }
 
         // Also check open file indices.
         for(auto& [ofi_id, ofi]: open_file_indices) {
@@ -2861,21 +2861,21 @@ void MasterServer::register_handlers() {
         };
 
         if(sym_it != project_index.symbols.end())
-        for(auto file_id: sym_it->second.reference_files) {
-            if(open_proj_path_ids.contains(file_id))
-                continue;
+            for(auto file_id: sym_it->second.reference_files) {
+                if(open_proj_path_ids.contains(file_id))
+                    continue;
 
-            auto file_merged_it = merged_indices.find(file_id);
-            if(file_merged_it == merged_indices.end())
-                continue;
+                auto file_merged_it = merged_indices.find(file_id);
+                if(file_merged_it == merged_indices.end())
+                    continue;
 
-            file_merged_it->second.lookup(info->hash,
-                                          RelationKind::Base,
-                                          [&](const index::Relation& r) {
-                                              collect_base(r);
-                                              return true;
-                                          });
-        }
+                file_merged_it->second.lookup(info->hash,
+                                              RelationKind::Base,
+                                              [&](const index::Relation& r) {
+                                                  collect_base(r);
+                                                  return true;
+                                              });
+            }
 
         // Also check open file indices.
         for(auto& [ofi_id, ofi]: open_file_indices) {
@@ -2943,21 +2943,21 @@ void MasterServer::register_handlers() {
         };
 
         if(sym_it != project_index.symbols.end())
-        for(auto file_id: sym_it->second.reference_files) {
-            if(open_proj_path_ids.contains(file_id))
-                continue;
+            for(auto file_id: sym_it->second.reference_files) {
+                if(open_proj_path_ids.contains(file_id))
+                    continue;
 
-            auto file_merged_it = merged_indices.find(file_id);
-            if(file_merged_it == merged_indices.end())
-                continue;
+                auto file_merged_it = merged_indices.find(file_id);
+                if(file_merged_it == merged_indices.end())
+                    continue;
 
-            file_merged_it->second.lookup(info->hash,
-                                          RelationKind::Derived,
-                                          [&](const index::Relation& r) {
-                                              collect_derived(r);
-                                              return true;
-                                          });
-        }
+                file_merged_it->second.lookup(info->hash,
+                                              RelationKind::Derived,
+                                              [&](const index::Relation& r) {
+                                                  collect_derived(r);
+                                                  return true;
+                                              });
+            }
 
         // Also check open file indices.
         for(auto& [ofi_id, ofi]: open_file_indices) {
@@ -2975,40 +2975,65 @@ void MasterServer::register_handlers() {
     });
 
     // --- workspace/symbol ---
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::WorkspaceSymbolParams& params) -> RawResult {
-            auto query = llvm::StringRef(params.query);
-            std::vector<protocol::SymbolInformation> results;
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::WorkspaceSymbolParams& params) -> RawResult {
+        auto query = llvm::StringRef(params.query);
+        std::vector<protocol::SymbolInformation> results;
 
-            // Case-insensitive substring match on symbol names.
-            std::string query_lower = query.lower();
+        // Case-insensitive substring match on symbol names.
+        std::string query_lower = query.lower();
 
-            auto is_indexable_kind = [](SymbolKind sk) {
-                return sk == SymbolKind::Namespace || sk == SymbolKind::Class ||
-                       sk == SymbolKind::Struct || sk == SymbolKind::Union ||
-                       sk == SymbolKind::Enum || sk == SymbolKind::Type ||
-                       sk == SymbolKind::Field || sk == SymbolKind::EnumMember ||
-                       sk == SymbolKind::Function || sk == SymbolKind::Method ||
-                       sk == SymbolKind::Variable || sk == SymbolKind::Parameter ||
-                       sk == SymbolKind::Macro || sk == SymbolKind::Concept ||
-                       sk == SymbolKind::Module || sk == SymbolKind::Operator ||
-                       sk == SymbolKind::MacroParameter || sk == SymbolKind::Label ||
-                       sk == SymbolKind::Attribute;
-            };
+        auto is_indexable_kind = [](SymbolKind sk) {
+            return sk == SymbolKind::Namespace || sk == SymbolKind::Class ||
+                   sk == SymbolKind::Struct || sk == SymbolKind::Union || sk == SymbolKind::Enum ||
+                   sk == SymbolKind::Type || sk == SymbolKind::Field ||
+                   sk == SymbolKind::EnumMember || sk == SymbolKind::Function ||
+                   sk == SymbolKind::Method || sk == SymbolKind::Variable ||
+                   sk == SymbolKind::Parameter || sk == SymbolKind::Macro ||
+                   sk == SymbolKind::Concept || sk == SymbolKind::Module ||
+                   sk == SymbolKind::Operator || sk == SymbolKind::MacroParameter ||
+                   sk == SymbolKind::Label || sk == SymbolKind::Attribute;
+        };
 
-            auto matches_query = [&](llvm::StringRef name) {
-                if(query_lower.empty())
-                    return true;
-                return llvm::StringRef(name).lower().find(query_lower) != std::string::npos;
-            };
+        auto matches_query = [&](llvm::StringRef name) {
+            if(query_lower.empty())
+                return true;
+            return llvm::StringRef(name).lower().find(query_lower) != std::string::npos;
+        };
 
-            // Collect symbols already seen (by hash) to avoid duplicates
-            // between ProjectIndex and open file indices.
-            llvm::DenseSet<index::SymbolHash> seen;
+        // Collect symbols already seen (by hash) to avoid duplicates
+        // between ProjectIndex and open file indices.
+        llvm::DenseSet<index::SymbolHash> seen;
 
-            for(auto& [hash, symbol]: project_index.symbols) {
+        for(auto& [hash, symbol]: project_index.symbols) {
+            if(results.size() >= 100)
+                break;
+            if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
+                continue;
+            if(!matches_query(symbol.name))
+                continue;
+
+            auto def_loc = find_symbol_definition_location(hash);
+            if(!def_loc)
+                continue;
+
+            protocol::SymbolInformation info;
+            info.name = symbol.name;
+            info.kind = to_lsp_symbol_kind(symbol.kind);
+            info.location = std::move(*def_loc);
+            results.push_back(std::move(info));
+            seen.insert(hash);
+        }
+
+        // Also search open file indices for symbols not in ProjectIndex.
+        for(auto& [ofi_server_id, ofi]: open_file_indices) {
+            if(results.size() >= 100)
+                break;
+            for(auto& [hash, symbol]: ofi.symbols) {
                 if(results.size() >= 100)
                     break;
+                if(seen.contains(hash))
+                    continue;
                 if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
                     continue;
                 if(!matches_query(symbol.name))
@@ -3025,38 +3050,39 @@ void MasterServer::register_handlers() {
                 results.push_back(std::move(info));
                 seen.insert(hash);
             }
+        }
 
-            // Also search open file indices for symbols not in ProjectIndex.
-            for(auto& [ofi_server_id, ofi]: open_file_indices) {
+        // Also search open file indices for symbols not in ProjectIndex.
+        for(auto& [ofi_server_id, ofi]: open_file_indices) {
+            if(results.size() >= 100)
+                break;
+            for(auto& [hash, symbol]: ofi.symbols) {
                 if(results.size() >= 100)
                     break;
-                for(auto& [hash, symbol]: ofi.symbols) {
-                    if(results.size() >= 100)
-                        break;
-                    if(seen.contains(hash))
-                        continue;
-                    if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
-                        continue;
-                    if(!matches_query(symbol.name))
-                        continue;
+                if(seen.contains(hash))
+                    continue;
+                if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
+                    continue;
+                if(!matches_query(symbol.name))
+                    continue;
 
-                    auto def_loc = find_symbol_definition_location(hash);
-                    if(!def_loc)
-                        continue;
+                auto def_loc = find_symbol_definition_location(hash);
+                if(!def_loc)
+                    continue;
 
-                    protocol::SymbolInformation info;
-                    info.name = symbol.name;
-                    info.kind = to_lsp_symbol_kind(symbol.kind);
-                    info.location = std::move(*def_loc);
-                    results.push_back(std::move(info));
-                    seen.insert(hash);
-                }
+                protocol::SymbolInformation info;
+                info.name = symbol.name;
+                info.kind = to_lsp_symbol_kind(symbol.kind);
+                info.location = std::move(*def_loc);
+                results.push_back(std::move(info));
+                seen.insert(hash);
             }
+        }
 
-            if(results.empty())
-                co_return serde_raw{"null"};
-            co_return to_raw(results);
-        });
+        if(results.empty())
+            co_return serde_raw{"null"};
+        co_return to_raw(results);
+    });
 
     // === clice/ Extension Commands ===
 
