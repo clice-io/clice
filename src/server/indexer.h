@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "eventide/ipc/lsp/position.h"
@@ -16,6 +17,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -35,23 +37,82 @@ struct OpenFileIndex {
     /// Cached PositionMapper built from `content`.  Avoids re-scanning line
     /// offsets on every query.  Initialized by Indexer::set_open_file().
     std::optional<lsp::PositionMapper> mapper;
+
+    /// Find the tightest occurrence containing `offset`.
+    /// Returns (symbol_hash, LSP range) with positions already converted.
+    std::optional<std::pair<index::SymbolHash, protocol::Range>>
+    find_occurrence(std::uint32_t offset) const;
+
+    /// Iterate relations matching `kind`, calling back with pre-converted ranges.
+    /// Callback signature: (const index::Relation&, protocol::Range) -> bool (true = continue).
+    template <typename Fn>
+    void find_relations(index::SymbolHash hash, RelationKind kind, Fn&& fn) const {
+        if(!mapper)
+            return;
+        auto it = file_index.relations.find(hash);
+        if(it == file_index.relations.end())
+            return;
+        for(auto& r: it->second) {
+            if(r.kind & kind) {
+                auto start = mapper->to_position(r.range.begin);
+                auto end = mapper->to_position(r.range.end);
+                if(start && end) {
+                    if(!fn(r, protocol::Range{*start, *end}))
+                        return;
+                }
+            }
+        }
+    }
+};
+
+/// Wraps index::MergedIndex with a lazily-cached PositionMapper.
+struct MergedIndexShard {
+    index::MergedIndex index;
+    mutable std::optional<lsp::PositionMapper> cached_mapper;
+
+    /// Get or lazily build a PositionMapper from the index's stored content.
+    const lsp::PositionMapper* mapper() const {
+        if(!cached_mapper) {
+            auto c = index.content();
+            if(!c.empty()) {
+                cached_mapper.emplace(c, lsp::PositionEncoding::UTF16);
+            }
+        }
+        return cached_mapper ? &*cached_mapper : nullptr;
+    }
+
+    /// Invalidate the cached mapper (call after merge changes content).
+    void invalidate_mapper() { cached_mapper.reset(); }
+
+    /// Find occurrence at byte offset.
+    /// Returns (symbol_hash, LSP range) with positions already converted.
+    std::optional<std::pair<index::SymbolHash, protocol::Range>>
+    find_occurrence(std::uint32_t offset) const;
+
+    /// Iterate relations matching `kind`, calling back with pre-converted ranges.
+    /// Callback signature: (const index::Relation&, protocol::Range) -> bool (true = continue).
+    template <typename Fn>
+    void find_relations(index::SymbolHash hash, RelationKind kind, Fn&& fn) const {
+        auto* m = mapper();
+        if(!m)
+            return;
+        index.lookup(hash, kind, [&](const index::Relation& r) {
+            auto start = m->to_position(r.range.begin);
+            auto end = m->to_position(r.range.end);
+            if(start && end) {
+                return fn(r, protocol::Range{*start, *end});
+            }
+            return true;
+        });
+    }
 };
 
 /// Information about a symbol at a given position.
 struct SymbolInfo {
-    /// Unique hash identifying this symbol across the project.
     index::SymbolHash hash = 0;
-
-    /// Human-readable symbol name.
     std::string name;
-
-    /// Symbol kind (function, class, variable, etc.).
     SymbolKind kind;
-
-    /// URI of the file containing this symbol.
     std::string uri;
-
-    /// Source range of the symbol's identifier.
     protocol::Range range;
 };
 
@@ -80,7 +141,7 @@ public:
     /// Also tracks the project-level path_id for cross-file query filtering.
     void set_open_file(std::uint32_t server_path_id,
                        llvm::StringRef file_path,
-                       OpenFileIndex ofi);
+                       OpenFileIndex index);
 
     /// Remove the open file index and untrack project-level path_id.
     void remove_open_file(std::uint32_t server_path_id, llvm::StringRef file_path);
@@ -131,27 +192,33 @@ public:
 private:
     PathPool& path_pool;
     index::ProjectIndex project_index;
-    llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
+    llvm::DenseMap<std::uint32_t, MergedIndexShard> merged_indices;
     llvm::DenseMap<std::uint32_t, OpenFileIndex> open_file_indices;
     llvm::DenseSet<std::uint32_t> open_proj_path_ids;
 
     /// Result of resolving a symbol at a cursor position.
     struct CursorHit {
         index::SymbolHash hash = 0;
-        index::Range range{};
-        /// Points to the OFI's cached mapper, or to `fallback` when using doc_text.
-        const lsp::PositionMapper* mapper = nullptr;
-        /// Owns a mapper for the non-OFI path (doc_text / MergedIndex).
-        std::optional<lsp::PositionMapper> fallback;
+        protocol::Range range{};
     };
 
-    /// Shared logic for query_relations and lookup_symbol: resolve the symbol
-    /// at (position) in the given file, checking open file index first then
+    /// Resolve the symbol at (position), checking open file index first then
     /// falling back to MergedIndex.
     CursorHit resolve_cursor(llvm::StringRef path,
                              std::uint32_t server_path_id,
                              const protocol::Position& position,
                              const std::string* doc_text);
+
+    /// Collect relations grouped by target symbol, across all index sources.
+    void collect_grouped_relations(
+        index::SymbolHash hash,
+        RelationKind kind,
+        llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>>& target_ranges);
+
+    /// Collect unique target symbol hashes for a relation kind.
+    void collect_unique_targets(index::SymbolHash hash,
+                                RelationKind kind,
+                                llvm::SmallVectorImpl<index::SymbolHash>& targets);
 };
 
 }  // namespace clice
