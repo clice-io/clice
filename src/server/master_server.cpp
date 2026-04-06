@@ -704,19 +704,23 @@ std::optional<HeaderFileContext>
 bool MasterServer::fill_compile_args(llvm::StringRef path,
                                      std::string& directory,
                                      std::vector<std::string>& arguments) {
-    auto results = cdb.lookup(path, {.query_toolchain = true});
-    if(!results.empty()) {
-        auto& ctx = results.front();
-        directory = ctx.directory.str();
-        arguments.clear();
-        for(auto* arg: ctx.arguments) {
-            arguments.emplace_back(arg);
+    // If the user has explicitly set a header context via switchContext,
+    // skip the normal CDB lookup and go straight to header context resolution.
+    auto path_id = path_pool.intern(path);
+    if(active_contexts.find(path_id) == active_contexts.end()) {
+        auto results = cdb.lookup(path, {.query_toolchain = true});
+        if(!results.empty()) {
+            auto& ctx = results.front();
+            directory = ctx.directory.str();
+            arguments.clear();
+            for(auto* arg: ctx.arguments) {
+                arguments.emplace_back(arg);
+            }
+            return true;
         }
-        return true;
     }
 
-    // No direct CDB entry — try to compile the header in context of a host source.
-    auto path_id = path_pool.intern(path);
+    // No direct CDB entry or active context override — try header context.
 
     // Use cached context if available; otherwise resolve.
     // If an active context override exists, invalidate cache if it points to
