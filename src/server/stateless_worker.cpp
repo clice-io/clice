@@ -113,10 +113,19 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                 }
 
                 // Index preamble headers before destroying the unit.
+                //
+                // Uses interested_only=false to traverse all AST nodes (every
+                // header pulled in by the preamble).  This can be expensive for
+                // large preambles (LLVM/Qt/Boost) but only runs once per unique
+                // preamble content (content-addressed PCH path), and avoids a
+                // separate full recompilation in background indexing.
+                //
+                // The main file index is cleared afterwards — only headers
+                // matter here; the main file's own index comes from the
+                // stateful worker compile (interested_only=true).
                 std::string tu_index_serialized;
                 if(success) {
                     auto tu_index = index::TUIndex::build(unit);
-                    // Clear main file index — we only want headers from the PCH.
                     tu_index.main_file_index = index::FileIndex();
                     llvm::raw_string_ostream os(tu_index_serialized);
                     tu_index.serialize(os);

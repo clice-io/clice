@@ -1727,6 +1727,51 @@ static serde_raw to_raw(const T& value) {
     return serde_raw{json ? std::move(*json) : "null"};
 }
 
+/// Look up the first occurrence containing `offset` in a sorted occurrence list.
+/// Uses lower_bound on range.end, then scans forward through overlapping
+/// occurrences (e.g. nested templates, macro expansions) to find the tightest
+/// (innermost) match.  Returns nullptr if no occurrence contains the offset.
+const static index::Occurrence* lookup_occurrence(const std::vector<index::Occurrence>& occs,
+                                                  std::uint32_t offset) {
+    auto it = std::ranges::lower_bound(occs, offset, {}, [](const index::Occurrence& o) {
+        return o.range.end;
+    });
+
+    const index::Occurrence* best = nullptr;
+    while(it != occs.end() && it->range.contains(offset)) {
+        // Prefer the narrowest (innermost) occurrence that contains the offset.
+        if(!best || (it->range.end - it->range.begin) < (best->range.end - best->range.begin)) {
+            best = &*it;
+        }
+        ++it;
+    }
+    return best;
+}
+
+/// Find a symbol's name and kind by hash.  Searches open file indices first
+/// (fresher data for actively-edited files), then falls back to ProjectIndex.
+/// Returns false if the symbol is not found anywhere.
+bool MasterServer::find_symbol_info(index::SymbolHash hash,
+                                    std::string& name,
+                                    SymbolKind& kind) const {
+    // Open file indices may have symbols not yet in ProjectIndex.
+    for(auto& [_, ofi]: open_file_indices) {
+        auto it = ofi.symbols.find(hash);
+        if(it != ofi.symbols.end()) {
+            name = it->second.name;
+            kind = it->second.kind;
+            return true;
+        }
+    }
+    auto it = project_index.symbols.find(hash);
+    if(it != project_index.symbols.end()) {
+        name = it->second.name;
+        kind = it->second.kind;
+        return true;
+    }
+    return false;
+}
+
 MasterServer::RawResult MasterServer::query_index_relations(const std::string& uri,
                                                             const protocol::Position& position,
                                                             RelationKind kind) {
@@ -1744,19 +1789,11 @@ MasterServer::RawResult MasterServer::query_index_relations(const std::string& u
         if(!offset_opt)
             co_return serde_raw{"null"};
 
-        auto& occs = ofi_it->second.file_index.occurrences;
-        auto it = std::ranges::lower_bound(occs, *offset_opt, {}, [](const index::Occurrence& o) {
-            return o.range.end;
-        });
-        while(it != occs.end()) {
-            if(it->range.contains(*offset_opt)) {
-                symbol_hash = it->target;
-                break;
-            }
-            break;
+        if(auto* occ = lookup_occurrence(ofi_it->second.file_index.occurrences, *offset_opt)) {
+            symbol_hash = occ->target;
         }
     } else {
-        // Non-open file: use MergedIndex.
+        // Non-open file (or open but not yet compiled): use MergedIndex.
         auto doc_it = documents.find(server_path_id);
         if(doc_it == documents.end())
             co_return serde_raw{"null"};
@@ -1898,17 +1935,9 @@ et::task<std::optional<SymbolInfo>>
         if(!offset_opt)
             co_return std::nullopt;
 
-        auto& occs = ofi_it->second.file_index.occurrences;
-        auto it = std::ranges::lower_bound(occs, *offset_opt, {}, [](const index::Occurrence& o) {
-            return o.range.end;
-        });
-        while(it != occs.end()) {
-            if(it->range.contains(*offset_opt)) {
-                symbol_hash = it->target;
-                occ_range = it->range;
-                break;
-            }
-            break;
+        if(auto* occ = lookup_occurrence(ofi_it->second.file_index.occurrences, *offset_opt)) {
+            symbol_hash = occ->target;
+            occ_range = occ->range;
         }
     } else {
         // Fall back to MergedIndex.
@@ -1940,23 +1969,11 @@ et::task<std::optional<SymbolInfo>>
     if(symbol_hash == 0)
         co_return std::nullopt;
 
-    // Get symbol info: check open file symbols first, then ProjectIndex.
+    // Get symbol info: open file indices first (fresher), then ProjectIndex.
     std::string name;
     SymbolKind sym_kind;
-    if(ofi_it != open_file_indices.end()) {
-        auto sym_it = ofi_it->second.symbols.find(symbol_hash);
-        if(sym_it != ofi_it->second.symbols.end()) {
-            name = sym_it->second.name;
-            sym_kind = sym_it->second.kind;
-        }
-    }
-    if(name.empty()) {
-        auto sym_it = project_index.symbols.find(symbol_hash);
-        if(sym_it == project_index.symbols.end())
-            co_return std::nullopt;
-        name = sym_it->second.name;
-        sym_kind = sym_it->second.kind;
-    }
+    if(!find_symbol_info(symbol_hash, name, sym_kind))
+        co_return std::nullopt;
 
     auto start = mapper_ptr->to_position(occ_range.begin);
     auto end = mapper_ptr->to_position(occ_range.end);
@@ -2074,15 +2091,18 @@ et::task<std::optional<SymbolInfo>>
                                          const protocol::Range& range,
                                          const std::optional<protocol::LSPAny>& data) {
     // Try to extract symbol hash from the stored data field first.
+    // Check both open file indices and ProjectIndex for the symbol info,
+    // since open files may have symbols not yet in ProjectIndex.
     if(data) {
         if(auto* int_val = std::get_if<std::int64_t>(&*data)) {
             auto hash = static_cast<index::SymbolHash>(*int_val);
-            auto sym_it = project_index.symbols.find(hash);
-            if(sym_it != project_index.symbols.end()) {
+            std::string name;
+            SymbolKind kind;
+            if(find_symbol_info(hash, name, kind)) {
                 SymbolInfo info;
                 info.hash = hash;
-                info.name = sym_it->second.name;
-                info.kind = sym_it->second.kind;
+                info.name = std::move(name);
+                info.kind = kind;
                 info.uri = uri;
                 info.range = range;
                 co_return info;
@@ -2376,10 +2396,15 @@ void MasterServer::register_handlers() {
                 pcm_states.erase(dirty_id);
             }
             // Mark ast_dirty for open documents that depend on the saved file.
+            // Re-queue non-open dependents for background re-indexing so their
+            // stale MergedIndex shards get refreshed after a header change.
             for(auto dirty_id: dirtied) {
                 auto doc_it = documents.find(dirty_id);
                 if(doc_it != documents.end()) {
                     doc_it->second.ast_dirty = true;
+                } else {
+                    // Non-open dependent: needs background re-indexing.
+                    index_queue.push_back(dirty_id);
                 }
             }
         }
@@ -2651,24 +2676,10 @@ void MasterServer::register_handlers() {
             if(!def_loc)
                 continue;
 
-            // Look up symbol info: open file indices first, then ProjectIndex.
             std::string caller_name;
             SymbolKind caller_kind;
-            for(auto& [_, ofi]: open_file_indices) {
-                auto sit = ofi.symbols.find(caller_hash);
-                if(sit != ofi.symbols.end()) {
-                    caller_name = sit->second.name;
-                    caller_kind = sit->second.kind;
-                    break;
-                }
-            }
-            if(caller_name.empty()) {
-                auto caller_sym_it = project_index.symbols.find(caller_hash);
-                if(caller_sym_it == project_index.symbols.end())
-                    continue;
-                caller_name = caller_sym_it->second.name;
-                caller_kind = caller_sym_it->second.kind;
-            }
+            if(!find_symbol_info(caller_hash, caller_name, caller_kind))
+                continue;
 
             protocol::CallHierarchyItem caller_item;
             caller_item.name = caller_name;
@@ -2755,21 +2766,8 @@ void MasterServer::register_handlers() {
 
             std::string callee_name;
             SymbolKind callee_kind;
-            for(auto& [_, ofi]: open_file_indices) {
-                auto sit = ofi.symbols.find(callee_hash);
-                if(sit != ofi.symbols.end()) {
-                    callee_name = sit->second.name;
-                    callee_kind = sit->second.kind;
-                    break;
-                }
-            }
-            if(callee_name.empty()) {
-                auto callee_sym_it = project_index.symbols.find(callee_hash);
-                if(callee_sym_it == project_index.symbols.end())
-                    continue;
-                callee_name = callee_sym_it->second.name;
-                callee_kind = callee_sym_it->second.kind;
-            }
+            if(!find_symbol_info(callee_hash, callee_name, callee_kind))
+                continue;
 
             protocol::CallHierarchyItem callee_item;
             callee_item.name = callee_name;
@@ -2827,24 +2825,10 @@ void MasterServer::register_handlers() {
                 return;
             auto base_hash = r.target_symbol;
 
-            // Try open file symbols, then project index.
             std::string base_name;
             SymbolKind base_kind;
-            for(auto& [_, ofi]: open_file_indices) {
-                auto sit = ofi.symbols.find(base_hash);
-                if(sit != ofi.symbols.end()) {
-                    base_name = sit->second.name;
-                    base_kind = sit->second.kind;
-                    break;
-                }
-            }
-            if(base_name.empty()) {
-                auto base_sym_it = project_index.symbols.find(base_hash);
-                if(base_sym_it == project_index.symbols.end())
-                    return;
-                base_name = base_sym_it->second.name;
-                base_kind = base_sym_it->second.kind;
-            }
+            if(!find_symbol_info(base_hash, base_name, base_kind))
+                return;
 
             auto def_loc = find_symbol_definition_location(base_hash);
             if(!def_loc)
@@ -2912,21 +2896,8 @@ void MasterServer::register_handlers() {
 
             std::string derived_name;
             SymbolKind derived_kind;
-            for(auto& [_, ofi]: open_file_indices) {
-                auto sit = ofi.symbols.find(derived_hash);
-                if(sit != ofi.symbols.end()) {
-                    derived_name = sit->second.name;
-                    derived_kind = sit->second.kind;
-                    break;
-                }
-            }
-            if(derived_name.empty()) {
-                auto derived_sym_it = project_index.symbols.find(derived_hash);
-                if(derived_sym_it == project_index.symbols.end())
-                    return;
-                derived_name = derived_sym_it->second.name;
-                derived_kind = derived_sym_it->second.kind;
-            }
+            if(!find_symbol_info(derived_hash, derived_name, derived_kind))
+                return;
 
             auto def_loc = find_symbol_definition_location(derived_hash);
             if(!def_loc)

@@ -367,6 +367,10 @@ private:
     /// Find the definition location (uri + range) of a symbol by its hash.
     std::optional<protocol::Location> find_symbol_definition_location(index::SymbolHash hash);
 
+    /// Find a symbol's name and kind by hash, searching open file indices
+    /// first (fresher), then ProjectIndex.  Returns false if not found.
+    bool find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const;
+
     /// Convert clice::SymbolKind to LSP protocol::SymbolKind.
     static protocol::SymbolKind to_lsp_symbol_kind(SymbolKind kind);
 
