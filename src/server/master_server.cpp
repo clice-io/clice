@@ -574,20 +574,37 @@ std::optional<HeaderFileContext>
         return std::nullopt;
     }
 
-    // Pick the first available host that has a CDB entry.
+    // If there's an active context override, prefer that host.
     std::uint32_t host_path_id = 0;
     std::vector<std::uint32_t> chain;
-    for(auto candidate: hosts) {
-        auto candidate_path = path_pool.resolve(candidate);
-        auto results = cdb.lookup(candidate_path, {.suppress_logging = true});
-        if(results.empty())
-            continue;
-        auto c = dependency_graph.find_include_chain(candidate, header_path_id);
-        if(c.empty())
-            continue;
-        host_path_id = candidate;
-        chain = std::move(c);
-        break;
+    auto active_it = active_contexts.find(header_path_id);
+    if(active_it != active_contexts.end()) {
+        auto preferred = active_it->second;
+        auto preferred_path = path_pool.resolve(preferred);
+        auto results = cdb.lookup(preferred_path, {.suppress_logging = true});
+        if(!results.empty()) {
+            auto c = dependency_graph.find_include_chain(preferred, header_path_id);
+            if(!c.empty()) {
+                host_path_id = preferred;
+                chain = std::move(c);
+            }
+        }
+    }
+
+    // Fall back to the first available host that has a CDB entry.
+    if(chain.empty()) {
+        for(auto candidate: hosts) {
+            auto candidate_path = path_pool.resolve(candidate);
+            auto results = cdb.lookup(candidate_path, {.suppress_logging = true});
+            if(results.empty())
+                continue;
+            auto c = dependency_graph.find_include_chain(candidate, header_path_id);
+            if(c.empty())
+                continue;
+            host_path_id = candidate;
+            chain = std::move(c);
+            break;
+        }
     }
 
     if(chain.empty()) {
@@ -687,26 +704,38 @@ std::optional<HeaderFileContext>
 bool MasterServer::fill_compile_args(llvm::StringRef path,
                                      std::string& directory,
                                      std::vector<std::string>& arguments) {
-    auto results = cdb.lookup(path, {.query_toolchain = true});
-    if(!results.empty()) {
-        auto& ctx = results.front();
-        directory = ctx.directory.str();
-        arguments.clear();
-        for(auto* arg: ctx.arguments) {
-            arguments.emplace_back(arg);
+    if(cdb.has_entry(path)) {
+        auto results = cdb.lookup(path, {.query_toolchain = true});
+        if(!results.empty()) {
+            auto& ctx = results.front();
+            directory = ctx.directory.str();
+            arguments.clear();
+            for(auto* arg: ctx.arguments) {
+                arguments.emplace_back(arg);
+            }
+            return true;
         }
-        return true;
     }
 
     // No direct CDB entry — try to compile the header in context of a host source.
     auto path_id = path_pool.intern(path);
 
     // Use cached context if available; otherwise resolve.
+    // If an active context override exists, invalidate cache if it points to
+    // a different host so we re-resolve with the correct one.
     const HeaderFileContext* ctx_ptr = nullptr;
     auto ctx_it = header_file_contexts.find(path_id);
+    auto active_it = active_contexts.find(path_id);
     if(ctx_it != header_file_contexts.end()) {
-        ctx_ptr = &ctx_it->second;
-    } else {
+        // Check if the cached context matches the active context override.
+        if(active_it != active_contexts.end() && ctx_it->second.host_path_id != active_it->second) {
+            header_file_contexts.erase(ctx_it);
+            ctx_it = header_file_contexts.end();
+        } else {
+            ctx_ptr = &ctx_it->second;
+        }
+    }
+    if(!ctx_ptr) {
         auto resolved = resolve_header_context(path_id);
         if(!resolved) {
             LOG_WARN("No CDB entry and no header context for {}", path);
@@ -727,9 +756,8 @@ bool MasterServer::fill_compile_args(llvm::StringRef path,
     directory = host_ctx.directory.str();
     arguments.clear();
 
-    // Copy host arguments, skipping the last element if it looks like a source
-    // file path (i.e. not a flag). The header path is used as the main file by
-    // the caller via CompileParams::path.
+    // Copy host arguments, replacing the source file path (last non-flag arg)
+    // with the header file path, so the compiler processes the header in context.
     auto num_args = host_ctx.arguments.size();
     std::size_t copy_count = num_args;
     if(copy_count > 0) {
@@ -740,11 +768,19 @@ bool MasterServer::fill_compile_args(llvm::StringRef path,
     for(std::size_t i = 0; i < copy_count; ++i) {
         arguments.emplace_back(host_ctx.arguments[i]);
     }
+    // Append the header file path as the source file.
+    arguments.emplace_back(path);
 
-    // Inject the preamble before the header so the compiler sees all context
-    // code that normally precedes this header in the host translation unit.
-    arguments.insert(arguments.begin() + 1, ctx_ptr->preamble_path);
-    arguments.insert(arguments.begin() + 1, "-include");
+    // Inject the preamble so the compiler sees all context code that normally
+    // precedes this header in the host translation unit.
+    // For cc1 args (["clang++", "-cc1", ...]), insert after "-cc1" at position 2.
+    // For driver args, insert after the driver binary at position 1.
+    std::size_t inject_pos = 1;
+    if(arguments.size() >= 2 && arguments[1] == "-cc1") {
+        inject_pos = 2;
+    }
+    arguments.insert(arguments.begin() + inject_pos, ctx_ptr->preamble_path);
+    arguments.insert(arguments.begin() + inject_pos, "-include");
 
     LOG_INFO("fill_compile_args: using header context for {} (host={}, preamble={})",
              path,
@@ -932,7 +968,9 @@ et::task<bool> MasterServer::ensure_deps(std::uint32_t path_id,
 et::task<bool> MasterServer::ensure_compiled(std::uint32_t path_id) {
     auto it = documents.find(path_id);
     if(it == documents.end()) {
-        LOG_DEBUG("ensure_compiled: doc not found for path_id={}", path_id);
+        LOG_WARN("ensure_compiled: doc not found for path_id={} path={}",
+                 path_id,
+                 path_pool.resolve(path_id));
         co_return false;
     }
 
@@ -2704,6 +2742,107 @@ void MasterServer::register_handlers() {
             if(results.empty())
                 co_return serde_raw{"null"};
             co_return to_raw(results);
+        });
+
+    // === clice/ Extension Commands ===
+
+    // --- clice/queryContext ---
+    peer.on_request(
+        "clice/queryContext",
+        [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
+            auto path = uri_to_path(params.uri);
+            auto path_id = path_pool.intern(path);
+            int offset_val = params.offset.value_or(0);
+            constexpr int page_size = 10;
+
+            ext::QueryContextResult result;
+
+            // Find source files that transitively include this file.
+            // For source files (roots in the include graph) this returns empty.
+            auto hosts = dependency_graph.find_host_sources(path_id);
+            std::vector<ext::ContextItem> all_items;
+            for(auto host_id: hosts) {
+                auto host_path = path_pool.resolve(host_id);
+                auto host_cdb = cdb.lookup(host_path, {.suppress_logging = true});
+                if(host_cdb.empty())
+                    continue;
+                auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
+                if(!host_uri_opt)
+                    continue;
+                ext::ContextItem item;
+                item.label = llvm::sys::path::filename(host_path).str();
+                item.description = std::string(host_path);
+                item.uri = host_uri_opt->str();
+                all_items.push_back(std::move(item));
+            }
+
+            result.total = static_cast<int>(all_items.size());
+            int end = std::min(offset_val + page_size, static_cast<int>(all_items.size()));
+            for(int i = offset_val; i < end; ++i) {
+                result.contexts.push_back(std::move(all_items[i]));
+            }
+            co_return to_raw(result);
+        });
+
+    // --- clice/currentContext ---
+    peer.on_request(
+        "clice/currentContext",
+        [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
+            auto path = uri_to_path(params.uri);
+            auto path_id = path_pool.intern(path);
+
+            ext::CurrentContextResult result;
+
+            auto it = active_contexts.find(path_id);
+            if(it != active_contexts.end()) {
+                auto ctx_path = path_pool.resolve(it->second);
+                auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
+                if(ctx_uri_opt) {
+                    ext::ContextItem item;
+                    item.label = llvm::sys::path::filename(ctx_path).str();
+                    item.description = std::string(ctx_path);
+                    item.uri = ctx_uri_opt->str();
+                    result.context = std::move(item);
+                }
+            }
+            co_return to_raw(result);
+        });
+
+    // --- clice/switchContext ---
+    peer.on_request(
+        "clice/switchContext",
+        [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
+            auto path = uri_to_path(params.uri);
+            auto path_id = path_pool.intern(path);
+            auto context_path = uri_to_path(params.context_uri);
+            auto context_path_id = path_pool.intern(context_path);
+
+            ext::SwitchContextResult result;
+
+            // Verify the context file has a CDB entry.
+            auto context_cdb = cdb.lookup(context_path, {.suppress_logging = true});
+            if(context_cdb.empty()) {
+                result.success = false;
+                co_return to_raw(result);
+            }
+
+            // Set active context and invalidate cached header context so
+            // resolve_header_context will pick the new host on next compile.
+            active_contexts[path_id] = context_path_id;
+            header_file_contexts.erase(path_id);
+
+            // Also invalidate the PCH for the old context (if any) so it
+            // gets rebuilt with the new host's preamble.
+            pch_states.erase(path_id);
+
+            // Mark the document as dirty so it gets recompiled.
+            auto doc_it = documents.find(path_id);
+            if(doc_it != documents.end()) {
+                doc_it->second.ast_dirty = true;
+            }
+
+            result.success = true;
+            co_return to_raw(result);
         });
 }
 

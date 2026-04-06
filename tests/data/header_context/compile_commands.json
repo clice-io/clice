@@ -1,1 +1,13 @@
-[{"directory": ".", "command": "clang++ -std=c++17 -I. main.cpp", "file": "main.cpp"}]
+[
+  {
+    "directory": "/home/ykiko/C++/clice/tests/data/header_context",
+    "file": "/home/ykiko/C++/clice/tests/data/header_context/main.cpp",
+    "arguments": [
+      "clang++",
+      "-std=c++17",
+      "-I/home/ykiko/C++/clice/tests/data/header_context",
+      "-fsyntax-only",
+      "/home/ykiko/C++/clice/tests/data/header_context/main.cpp"
+    ]
+  }
+]

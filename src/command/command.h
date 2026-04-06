@@ -191,6 +191,10 @@ public:
     /// Intern a file path and return its path_id.
     std::uint32_t intern_path(llvm::StringRef path);
 
+    /// Check if a file has an explicit entry in the compilation database
+    /// (as opposed to a synthesized default).
+    bool has_entry(llvm::StringRef file);
+
     /// All compilation entries (sorted by path_id).
     llvm::ArrayRef<CompilationEntry> get_entries() const;
 

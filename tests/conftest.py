@@ -220,6 +220,27 @@ def test_data_dir() -> Path:
         ]
         cdb_path.write_text(json.dumps(cdb, indent=2))
 
+    # Generate compile_commands.json for header_context (always regenerate
+    # because it contains absolute paths).
+    hc_dir = data_dir / "header_context"
+    hc_main = hc_dir / "main.cpp"
+    hc_cdb = hc_dir / "compile_commands.json"
+    if hc_main.exists():
+        cdb = [
+            {
+                "directory": hc_dir.as_posix(),
+                "file": hc_main.as_posix(),
+                "arguments": [
+                    "clang++",
+                    "-std=c++17",
+                    f"-I{hc_dir.as_posix()}",
+                    "-fsyntax-only",
+                    hc_main.as_posix(),
+                ],
+            }
+        ]
+        hc_cdb.write_text(json.dumps(cdb, indent=2))
+
     # Generate compile_commands.json for include_completion
     ic_dir = data_dir / "include_completion"
     ic_main = ic_dir / "main.cpp"

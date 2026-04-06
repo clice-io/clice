@@ -155,6 +155,45 @@ struct EvictedParams {
 
 }  // namespace clice::worker
 
+// === clice/ LSP Extension Types ===
+
+namespace clice::ext {
+
+struct ContextItem {
+    std::string label;
+    std::string description;
+    std::string uri;
+};
+
+struct QueryContextParams {
+    std::string uri;
+    std::optional<int> offset;
+};
+
+struct QueryContextResult {
+    std::vector<ContextItem> contexts;
+    int total;
+};
+
+struct CurrentContextParams {
+    std::string uri;
+};
+
+struct CurrentContextResult {
+    std::optional<ContextItem> context;
+};
+
+struct SwitchContextParams {
+    std::string uri;
+    std::string context_uri;
+};
+
+struct SwitchContextResult {
+    bool success;
+};
+
+}  // namespace clice::ext
+
 namespace eventide::ipc::protocol {
 
 // === Stateful Requests ===

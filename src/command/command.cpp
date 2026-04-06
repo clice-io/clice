@@ -650,6 +650,11 @@ std::uint32_t CompilationDatabase::intern_path(llvm::StringRef path) {
     return paths.intern(path);
 }
 
+bool CompilationDatabase::has_entry(llvm::StringRef file) {
+    auto path_id = paths.intern(file);
+    return !find_entries(path_id).empty();
+}
+
 llvm::ArrayRef<CompilationEntry> CompilationDatabase::get_entries() const {
     return entries;
 }

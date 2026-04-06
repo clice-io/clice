@@ -226,6 +226,11 @@ private:
     /// Header context cache: header_path_id -> context
     llvm::DenseMap<std::uint32_t, HeaderFileContext> header_file_contexts;
 
+    /// Active compilation context overrides: path_id -> context_path_id.
+    /// When a file has an entry here, it is compiled using the context file's
+    /// compile command (e.g. a header compiled through a specific source file).
+    llvm::DenseMap<std::uint32_t, std::uint32_t> active_contexts;
+
     // === Helpers ===
 
     /// Convert a file:// URI to a local file path.
