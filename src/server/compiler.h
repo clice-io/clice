@@ -263,6 +263,13 @@ private:
     /// across server restarts without polluting the global layer.
     llvm::DenseMap<std::uint32_t, PCHState> pch_warmup_cache;
 
+    /// NOTE: A future "global PCH cache" for accelerating background indexing
+    /// would live here as a separate map (e.g. DenseMap<uint32_t, PCHState>
+    /// global_pch_cache).  Because PCH filenames are content-addressed
+    /// ({xxh3_hash}.pch), per-open-file PCH and global PCH can coexist
+    /// without path conflicts — their preamble content (buffer vs disk)
+    /// naturally produces different hashes and different file paths.
+
     /// Global PCM cache state (shared across all files using that module).
     llvm::DenseMap<std::uint32_t, PCMState> pcm_states;
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
