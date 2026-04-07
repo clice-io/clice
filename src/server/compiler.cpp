@@ -190,6 +190,8 @@ void Compiler::load_cache() {
         return deps;
     };
 
+    // PCH entries are per-open-file state.  Load them into a warmup cache;
+    // they will be moved into DocumentState when the file is opened.
     for(auto& entry: data.pch) {
         auto pch_path = path::join(config.cache_dir, "cache", "pch", entry.filename);
         auto source = resolve(entry.source_file);
@@ -197,13 +199,13 @@ void Compiler::load_cache() {
             continue;
 
         auto path_id = path_pool.intern(source);
-        auto& st = pch_states[path_id];
+        auto& st = pch_warmup_cache[path_id];
         st.path = pch_path;
         st.hash = entry.hash;
         st.bound = entry.bound;
         st.deps = load_deps(entry.build_at, entry.deps);
 
-        LOG_DEBUG("Loaded cached PCH: {} -> {}", source, pch_path);
+        LOG_DEBUG("Loaded cached PCH (warmup): {} -> {}", source, pch_path);
     }
 
     for(auto& entry: data.pcm) {
@@ -219,8 +221,8 @@ void Compiler::load_cache() {
         LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, pcm_path);
     }
 
-    LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries",
-             pch_states.size(),
+    LOG_INFO("Loaded cache.json: {} PCH warmup entries, {} PCM entries",
+             pch_warmup_cache.size(),
              pcm_states.size());
 }
 
@@ -241,10 +243,10 @@ void Compiler::save_cache() {
         return it->second;
     };
 
-    for(auto& [path_id, st]: pch_states) {
+    // Collect PCH entries from open documents and the warmup cache.
+    auto save_pch = [&](std::uint32_t path_id, const PCHState& st) {
         if(st.path.empty())
-            continue;
-
+            return;
         CachePCHEntry entry;
         entry.filename = std::string(path::filename(st.path));
         entry.source_file = intern(path_id);
@@ -255,6 +257,16 @@ void Compiler::save_cache() {
             entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }
         data.pch.push_back(std::move(entry));
+    };
+
+    for(auto& [path_id, doc]: documents) {
+        if(doc.pch)
+            save_pch(path_id, *doc.pch);
+    }
+    for(auto& [path_id, st]: pch_warmup_cache) {
+        // Don't double-save entries that were already saved from documents.
+        if(!documents.count(path_id))
+            save_pch(path_id, st);
     }
 
     for(auto& [path_id, st]: pcm_states) {
@@ -437,8 +449,8 @@ bool Compiler::fill_compile_args(llvm::StringRef path,
 
     // 1. If the user has set an active header context via switchContext,
     //    use the host source's CDB entry with file path replaced and preamble injected.
-    auto active_it = active_contexts.find(path_id);
-    if(active_it != active_contexts.end()) {
+    auto doc_it = documents.find(path_id);
+    if(doc_it != documents.end() && doc_it->second.active_context.has_value()) {
         return fill_header_context_args(path, path_id, directory, arguments);
     }
 
@@ -465,14 +477,14 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     // Use cached context if available; otherwise resolve.
     // If an active context override exists, invalidate cache if it points to
     // a different host so we re-resolve with the correct one.
+    auto& doc = documents[path_id];
     const HeaderFileContext* ctx_ptr = nullptr;
-    auto ctx_it = header_file_contexts.find(path_id);
-    auto active_it = active_contexts.find(path_id);
-    if(ctx_it != header_file_contexts.end()) {
-        if(active_it != active_contexts.end() && ctx_it->second.host_path_id != active_it->second) {
-            header_file_contexts.erase(ctx_it);
+    if(doc.header_context.has_value()) {
+        if(doc.active_context.has_value() &&
+           doc.header_context->host_path_id != *doc.active_context) {
+            doc.header_context.reset();
         } else {
-            ctx_ptr = &ctx_it->second;
+            ctx_ptr = &*doc.header_context;
         }
     }
     if(!ctx_ptr) {
@@ -481,8 +493,8 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
             LOG_WARN("No CDB entry and no header context for {}", path);
             return false;
         }
-        header_file_contexts[path_id] = std::move(*resolved);
-        ctx_ptr = &header_file_contexts[path_id];
+        doc.header_context = std::move(*resolved);
+        ctx_ptr = &*doc.header_context;
     }
 
     auto host_path = path_pool.resolve(ctx_ptr->host_path_id);
@@ -538,9 +550,9 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
     // If there's an active context override, prefer that host.
     std::uint32_t host_path_id = 0;
     std::vector<std::uint32_t> chain;
-    auto active_it = active_contexts.find(header_path_id);
-    if(active_it != active_contexts.end()) {
-        auto preferred = active_it->second;
+    auto doc_it = documents.find(header_path_id);
+    if(doc_it != documents.end() && doc_it->second.active_context.has_value()) {
+        auto preferred = *doc_it->second.active_context;
         auto preferred_path = path_pool.resolve(preferred);
         auto results = cdb.lookup(preferred_path, {.suppress_logging = true});
         if(!results.empty()) {
@@ -674,31 +686,29 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
 }
 
 void Compiler::switch_context(std::uint32_t path_id, std::uint32_t context_path_id) {
-    active_contexts[path_id] = context_path_id;
-    header_file_contexts.erase(path_id);
-    pch_states.erase(path_id);
-    ast_deps.erase(path_id);
-    auto doc_it = documents.find(path_id);
-    if(doc_it != documents.end()) {
-        doc_it->second.ast_dirty = true;
-    }
+    auto& doc = documents[path_id];
+    doc.active_context = context_path_id;
+    doc.header_context.reset();
+    doc.pch.reset();
+    doc.deps.reset();
+    doc.ast_dirty = true;
 }
 
 std::optional<std::uint32_t> Compiler::get_active_context(std::uint32_t path_id) const {
-    auto it = active_contexts.find(path_id);
-    if(it != active_contexts.end())
-        return it->second;
+    auto it = documents.find(path_id);
+    if(it != documents.end())
+        return it->second.active_context;
     return std::nullopt;
 }
 
 void Compiler::invalidate_host_contexts(std::uint32_t host_path_id,
                                         llvm::SmallVectorImpl<std::uint32_t>& stale_headers) {
-    for(auto& [hdr_id, hdr_ctx]: header_file_contexts) {
-        if(hdr_ctx.host_path_id == host_path_id)
+    for(auto& [hdr_id, doc]: documents) {
+        if(doc.header_context.has_value() && doc.header_context->host_path_id == host_path_id)
             stale_headers.push_back(hdr_id);
     }
     for(auto hdr_id: stale_headers) {
-        header_file_contexts.erase(hdr_id);
+        documents[hdr_id].header_context.reset();
     }
 }
 
@@ -707,10 +717,11 @@ et::task<bool> Compiler::ensure_pch(std::uint32_t path_id,
                                     const std::string& text,
                                     const std::string& directory,
                                     const std::vector<std::string>& arguments) {
+    auto& doc = documents[path_id];
     auto bound = compute_preamble_bound(text);
     if(bound == 0) {
         // No preamble directives — PCH would be empty. Clear any stale entry.
-        pch_states.erase(path_id);
+        doc.pch.reset();
         co_return true;
     }
 
@@ -721,8 +732,8 @@ et::task<bool> Compiler::ensure_pch(std::uint32_t path_id,
         path::join(config.cache_dir, "cache", "pch", std::format("{:016x}.pch", preamble_hash));
 
     // Reuse existing PCH if preamble content and deps haven't changed.
-    if(auto it = pch_states.find(path_id); it != pch_states.end()) {
-        auto& st = it->second;
+    if(doc.pch.has_value()) {
+        auto& st = *doc.pch;
         if(st.hash == preamble_hash && !st.path.empty() && !deps_changed(path_pool, st.deps)) {
             st.bound = bound;
             co_return true;
@@ -732,18 +743,20 @@ et::task<bool> Compiler::ensure_pch(std::uint32_t path_id,
     // Preamble incomplete (user still typing) — defer rebuild, reuse old PCH if available.
     if(!is_preamble_complete(text, bound)) {
         LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
-        co_return pch_states.count(path_id) && !pch_states[path_id].path.empty();
+        co_return doc.pch.has_value() && !doc.pch->path.empty();
     }
 
     // If another coroutine is already building PCH for this file, wait for it.
-    if(auto it = pch_states.find(path_id); it != pch_states.end() && it->second.building) {
-        co_await it->second.building->wait();
-        co_return !pch_states[path_id].path.empty();
+    if(doc.pch.has_value() && doc.pch->building) {
+        co_await doc.pch->building->wait();
+        co_return doc.pch.has_value() && !doc.pch->path.empty();
     }
 
     // Register in-flight build so concurrent requests wait on us.
     auto completion = std::make_shared<et::event>();
-    pch_states[path_id].building = completion;
+    if(!doc.pch.has_value())
+        doc.pch.emplace();
+    doc.pch->building = completion;
 
     // Build a new PCH via stateless worker.
     worker::BuildParams bp;
@@ -763,12 +776,15 @@ et::task<bool> Compiler::ensure_pch(std::uint32_t path_id,
         LOG_WARN("PCH build failed for {}: {}",
                  path,
                  result.has_value() ? result.value().error : result.error().message);
-        pch_states[path_id].building.reset();
+        if(doc.pch.has_value())
+            doc.pch->building.reset();
         completion->set();
         co_return false;
     }
 
-    auto& st = pch_states[path_id];
+    if(!doc.pch.has_value())
+        doc.pch.emplace();
+    auto& st = *doc.pch;
     st.path = result.value().output_path;
     st.bound = bound;
     st.hash = preamble_hash;
@@ -833,8 +849,9 @@ et::task<bool> Compiler::ensure_deps(std::uint32_t path_id,
     // Build or reuse PCH.
     auto pch_ok = co_await ensure_pch(path_id, path, text, directory, arguments);
     if(pch_ok) {
-        if(auto pch_it = pch_states.find(path_id); pch_it != pch_states.end()) {
-            pch = {pch_it->second.path, pch_it->second.bound};
+        auto doc_it = documents.find(path_id);
+        if(doc_it != documents.end() && doc_it->second.pch.has_value()) {
+            pch = {doc_it->second.pch->path, doc_it->second.pch->bound};
         }
     }
 
@@ -846,27 +863,30 @@ et::task<bool> Compiler::ensure_deps(std::uint32_t path_id,
 }
 
 bool Compiler::is_stale(std::uint32_t path_id) {
-    auto ast_deps_it = ast_deps.find(path_id);
-    if(ast_deps_it != ast_deps.end() && deps_changed(path_pool, ast_deps_it->second))
+    auto doc_it = documents.find(path_id);
+    if(doc_it == documents.end())
+        return false;
+
+    auto& doc = doc_it->second;
+    if(doc.deps.has_value() && deps_changed(path_pool, *doc.deps))
         return true;
 
-    auto pch_it = pch_states.find(path_id);
-    if(pch_it != pch_states.end() && deps_changed(path_pool, pch_it->second.deps))
+    if(doc.pch.has_value() && deps_changed(path_pool, doc.pch->deps))
         return true;
 
     return false;
 }
 
 void Compiler::record_deps(std::uint32_t path_id, llvm::ArrayRef<std::string> deps) {
-    ast_deps[path_id] = capture_deps_snapshot(path_pool, deps);
+    documents[path_id].deps = capture_deps_snapshot(path_pool, deps);
 }
 
 void Compiler::on_file_closed(std::uint32_t path_id) {
     if(compile_graph && compile_graph->has_unit(path_id)) {
         compile_graph->update(path_id);
     }
-    pch_states.erase(path_id);
-    ast_deps.erase(path_id);
+    // PCH, deps, header_context, and active_context are cleaned up when
+    // the DocumentState is erased in close_document().
 }
 
 llvm::SmallVector<std::uint32_t> Compiler::on_file_saved(std::uint32_t path_id) {
@@ -901,6 +921,13 @@ void Compiler::open_document(const std::string& uri, std::string text, int versi
     doc.version = version;
     doc.text = std::move(text);
     doc.generation++;
+
+    // Move any cached PCH from the warmup cache into the document.
+    if(auto warmup_it = pch_warmup_cache.find(path_id); warmup_it != pch_warmup_cache.end()) {
+        doc.pch = std::move(warmup_it->second);
+        pch_warmup_cache.erase(warmup_it);
+        LOG_DEBUG("didOpen: restored PCH from warmup cache for {}", path);
+    }
 
     LOG_DEBUG("didOpen: {} (v{})", path, version);
 }

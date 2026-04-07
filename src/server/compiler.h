@@ -30,24 +30,6 @@ namespace clice {
 namespace et = eventide;
 namespace protocol = et::ipc::protocol;
 
-/// State of a document opened by the client.
-struct DocumentState {
-    int version = 0;
-    std::string text;
-    std::uint64_t generation = 0;
-    bool ast_dirty = true;
-
-    /// Non-null while a compile is in flight.  Callers wait on the event;
-    /// the compile task runs independently and cannot be cancelled by LSP
-    /// $/cancelRequest.
-    struct PendingCompile {
-        et::event done;
-        bool succeeded = false;
-    };
-
-    std::shared_ptr<PendingCompile> compiling;
-};
-
 /// Context for compiling a header file that lacks its own CDB entry.
 struct HeaderFileContext {
     std::uint32_t host_path_id;   /// Source file acting as host
@@ -82,6 +64,41 @@ struct PCHState {
 struct PCMState {
     std::string path;
     DepsSnapshot deps;
+};
+
+/// State of a document opened by the client.
+///
+/// All per-open-file state lives here.  Open files are volatile and need
+/// frequent updates, so their state (PCH, deps snapshot, header context)
+/// must be independent from the stable, disk-based global state.
+struct DocumentState {
+    int version = 0;
+    std::string text;
+    std::uint64_t generation = 0;
+    bool ast_dirty = true;
+
+    /// Non-null while a compile is in flight.  Callers wait on the event;
+    /// the compile task runs independently and cannot be cancelled by LSP
+    /// $/cancelRequest.
+    struct PendingCompile {
+        et::event done;
+        bool succeeded = false;
+    };
+
+    std::shared_ptr<PendingCompile> compiling;
+
+    /// Per-open-file PCH cache.  Only open files use PCH for incremental
+    /// compilation; background indexing compiles from scratch.
+    std::optional<PCHState> pch;
+
+    /// Two-layer staleness snapshot captured after each successful compile.
+    std::optional<DepsSnapshot> deps;
+
+    /// Header context (only meaningful for header files without CDB entries).
+    std::optional<HeaderFileContext> header_context;
+
+    /// User-selected compilation context override (switchContext).
+    std::optional<std::uint32_t> active_context;
 };
 
 enum class CompletionContext { None, IncludeQuoted, IncludeAngled, Import };
@@ -241,19 +258,18 @@ private:
     /// Open document state, keyed by server-level path_id.
     llvm::DenseMap<std::uint32_t, DocumentState> documents;
 
-    /// PCH/PCM cache state.
-    llvm::DenseMap<std::uint32_t, PCHState> pch_states;
+    /// PCH warmup cache: loaded from cache.json on startup, moved into
+    /// DocumentState when a file is opened.  This preserves PCH reuse
+    /// across server restarts without polluting the global layer.
+    llvm::DenseMap<std::uint32_t, PCHState> pch_warmup_cache;
+
+    /// Global PCM cache state (shared across all files using that module).
     llvm::DenseMap<std::uint32_t, PCMState> pcm_states;
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 
     /// Module compilation ordering.
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
     std::unique_ptr<CompileGraph> compile_graph;
-
-    /// Per-file compilation state.
-    llvm::DenseMap<std::uint32_t, DepsSnapshot> ast_deps;
-    llvm::DenseMap<std::uint32_t, HeaderFileContext> header_file_contexts;
-    llvm::DenseMap<std::uint32_t, std::uint32_t> active_contexts;
 };
 
 }  // namespace clice
