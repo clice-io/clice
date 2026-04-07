@@ -228,6 +228,9 @@ private:
                                 RelationKind kind,
                                 llvm::SmallVectorImpl<index::SymbolHash>& targets);
 
+    /// Resolve a symbol hash into a SymbolInfo with definition location.
+    std::optional<SymbolInfo> resolve_symbol(index::SymbolHash hash);
+
 private:
     PathPool& path_pool;
 

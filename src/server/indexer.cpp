@@ -500,6 +500,19 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
 
 // ── Indexer: hierarchy queries ───────────────────────────────────────────
 
+/// Resolve a symbol hash into a SymbolInfo with definition location.
+/// Returns nullopt if the symbol or its definition cannot be found.
+std::optional<SymbolInfo> Indexer::resolve_symbol(index::SymbolHash hash) {
+    std::string name;
+    SymbolKind kind;
+    if(!find_symbol_info(hash, name, kind))
+        return std::nullopt;
+    auto def_loc = find_definition_location(hash);
+    if(!def_loc)
+        return std::nullopt;
+    return SymbolInfo{hash, std::move(name), kind, def_loc->uri, def_loc->range};
+}
+
 std::vector<protocol::CallHierarchyIncomingCall>
     Indexer::find_incoming_calls(index::SymbolHash hash) {
     llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> caller_ranges;
@@ -507,23 +520,10 @@ std::vector<protocol::CallHierarchyIncomingCall>
 
     std::vector<protocol::CallHierarchyIncomingCall> results;
     for(auto& [caller_hash, ranges]: caller_ranges) {
-        auto def_loc = find_definition_location(caller_hash);
-        if(!def_loc)
+        auto info = resolve_symbol(caller_hash);
+        if(!info)
             continue;
-        std::string name;
-        SymbolKind kind;
-        if(!find_symbol_info(caller_hash, name, kind))
-            continue;
-
-        protocol::CallHierarchyItem item;
-        item.name = name;
-        item.kind = to_lsp_symbol_kind(kind);
-        item.uri = def_loc->uri;
-        item.range = def_loc->range;
-        item.selection_range = def_loc->range;
-        item.data = protocol::LSPAny(static_cast<std::int64_t>(caller_hash));
-
-        results.push_back({std::move(item), std::move(ranges)});
+        results.push_back({build_call_hierarchy_item(*info), std::move(ranges)});
     }
     return results;
 }
@@ -535,23 +535,10 @@ std::vector<protocol::CallHierarchyOutgoingCall>
 
     std::vector<protocol::CallHierarchyOutgoingCall> results;
     for(auto& [callee_hash, ranges]: callee_ranges) {
-        auto def_loc = find_definition_location(callee_hash);
-        if(!def_loc)
+        auto info = resolve_symbol(callee_hash);
+        if(!info)
             continue;
-        std::string name;
-        SymbolKind kind;
-        if(!find_symbol_info(callee_hash, name, kind))
-            continue;
-
-        protocol::CallHierarchyItem item;
-        item.name = name;
-        item.kind = to_lsp_symbol_kind(kind);
-        item.uri = def_loc->uri;
-        item.range = def_loc->range;
-        item.selection_range = def_loc->range;
-        item.data = protocol::LSPAny(static_cast<std::int64_t>(callee_hash));
-
-        results.push_back({std::move(item), std::move(ranges)});
+        results.push_back({build_call_hierarchy_item(*info), std::move(ranges)});
     }
     return results;
 }
@@ -562,22 +549,10 @@ std::vector<protocol::TypeHierarchyItem> Indexer::find_supertypes(index::SymbolH
 
     std::vector<protocol::TypeHierarchyItem> results;
     for(auto target_hash: base_hashes) {
-        std::string name;
-        SymbolKind kind;
-        if(!find_symbol_info(target_hash, name, kind))
+        auto info = resolve_symbol(target_hash);
+        if(!info)
             continue;
-        auto def_loc = find_definition_location(target_hash);
-        if(!def_loc)
-            continue;
-
-        protocol::TypeHierarchyItem item;
-        item.name = std::move(name);
-        item.kind = to_lsp_symbol_kind(kind);
-        item.uri = def_loc->uri;
-        item.range = def_loc->range;
-        item.selection_range = def_loc->range;
-        item.data = protocol::LSPAny(static_cast<std::int64_t>(target_hash));
-        results.push_back(std::move(item));
+        results.push_back(build_type_hierarchy_item(*info));
     }
     return results;
 }
@@ -588,22 +563,10 @@ std::vector<protocol::TypeHierarchyItem> Indexer::find_subtypes(index::SymbolHas
 
     std::vector<protocol::TypeHierarchyItem> results;
     for(auto target_hash: derived_hashes) {
-        std::string name;
-        SymbolKind kind;
-        if(!find_symbol_info(target_hash, name, kind))
+        auto info = resolve_symbol(target_hash);
+        if(!info)
             continue;
-        auto def_loc = find_definition_location(target_hash);
-        if(!def_loc)
-            continue;
-
-        protocol::TypeHierarchyItem item;
-        item.name = std::move(name);
-        item.kind = to_lsp_symbol_kind(kind);
-        item.uri = def_loc->uri;
-        item.range = def_loc->range;
-        item.selection_range = def_loc->range;
-        item.data = protocol::LSPAny(static_cast<std::int64_t>(target_hash));
-        results.push_back(std::move(item));
+        results.push_back(build_type_hierarchy_item(*info));
     }
     return results;
 }

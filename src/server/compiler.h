@@ -140,7 +140,8 @@ public:
                            std::vector<std::string>& arguments);
 
     /// Fill PCM paths for all built modules (for background indexing).
-    void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms) const;
+    void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
+                       std::uint32_t exclude_path_id = UINT32_MAX) const;
 
     /// Pull-based compilation entry point for user-opened files.
     et::task<bool> ensure_compiled(std::uint32_t path_id);

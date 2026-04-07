@@ -1,17 +1,13 @@
 #include "server/stateless_worker.h"
 
-#include <chrono>
-
 #include "compile/compilation.h"
 #include "eventide/async/async.h"
-#include "eventide/ipc/json_codec.h"
 #include "eventide/ipc/peer.h"
 #include "eventide/ipc/transport.h"
-#include "eventide/serde/json/serializer.h"
-#include "eventide/serde/serde/raw_value.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
 #include "server/protocol.h"
+#include "server/worker_common.h"
 #include "support/logging.h"
 
 #include "llvm/Support/raw_ostream.h"
@@ -21,31 +17,6 @@ namespace clice {
 namespace et = eventide;
 using et::ipc::RequestResult;
 using RequestContext = et::ipc::BincodePeer::RequestContext;
-
-struct ScopedTimer {
-    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-
-    long long ms() const {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(
-                   std::chrono::steady_clock::now() - start)
-            .count();
-    }
-};
-
-static void fill_args(CompilationParams& cp,
-                      const std::string& directory,
-                      const std::vector<std::string>& arguments) {
-    cp.directory = directory;
-    for(auto& arg: arguments) {
-        cp.arguments.push_back(arg.c_str());
-    }
-}
-
-template <typename T>
-static et::serde::RawValue to_raw(const T& value) {
-    auto json = et::serde::json::to_json<et::ipc::lsp_config>(value);
-    return et::serde::RawValue{json ? std::move(*json) : "null"};
-}
 
 /// Extract error messages from compilation diagnostics.
 static std::string collect_errors(CompilationUnit& unit) {

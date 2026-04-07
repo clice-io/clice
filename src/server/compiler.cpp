@@ -137,8 +137,11 @@ Compiler::~Compiler() {
     cancel_all();
 }
 
-void Compiler::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms) const {
+void Compiler::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
+                             std::uint32_t exclude_path_id) const {
     for(auto& [pid, pcm_path]: pcm_paths) {
+        if(pid == exclude_path_id)
+            continue;
         auto mod_it = path_to_module.find(pid);
         if(mod_it != path_to_module.end()) {
             pcms[mod_it->second] = pcm_path;
@@ -398,12 +401,7 @@ void Compiler::init_compile_graph() {
         bp.output_path = pcm_path;
 
         // Clang needs ALL transitive PCM deps, not just direct imports.
-        for(auto& [pid, existing_pcm_path]: pcm_paths) {
-            auto dep_mod_it = path_to_module.find(pid);
-            if(dep_mod_it != path_to_module.end()) {
-                bp.pcms[dep_mod_it->second] = existing_pcm_path;
-            }
-        }
+        fill_pcm_deps(bp.pcms);
 
         auto result = co_await pool.send_stateless(bp);
         if(!result.has_value() || !result.value().success) {
@@ -840,16 +838,9 @@ et::task<bool> Compiler::ensure_deps(std::uint32_t path_id,
         }
     }
 
-    // Fill all available PCM paths so clang can resolve transitive imports.
-    // Exclude the file's own PCM to avoid "multiple module declarations".
-    for(auto& [pid, pcm_path]: pcm_paths) {
-        if(pid == path_id)
-            continue;
-        auto mod_it = path_to_module.find(pid);
-        if(mod_it != path_to_module.end()) {
-            pcms[mod_it->second] = pcm_path;
-        }
-    }
+    // Fill all available PCM paths, excluding the file's own PCM
+    // to avoid "multiple module declarations".
+    fill_pcm_deps(pcms, path_id);
 
     co_return true;
 }
@@ -1138,9 +1129,7 @@ et::task<bool> Compiler::ensure_compiled(std::uint32_t path_id) {
         params.path = file_path;
         params.version = it->second.version;
         params.text = it->second.text;
-        if(!self->fill_compile_args(self->path_pool.resolve(pid),
-                                    params.directory,
-                                    params.arguments)) {
+        if(!self->fill_compile_args(file_path, params.directory, params.arguments)) {
             finish_compile();
             co_return;
         }

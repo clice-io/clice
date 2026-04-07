@@ -433,33 +433,37 @@ void MasterServer::register_handlers() {
                                                       params.text_document.uri);
         });
 
-    /// Helpers for index-based queries: resolve URI → path → path_id → doc_text.
-    auto lookup_at = [this](const std::string& uri, const protocol::Position& pos) {
+    /// Resolve URI to the context needed for index queries.
+    auto resolve_uri = [this](const std::string& uri) {
+        struct Result {
+            std::string path;
+            std::uint32_t path_id;
+            const std::string* doc_text;
+        };
         auto path = Compiler::uri_to_path(uri);
         auto path_id = path_pool.intern(path);
         auto* doc = compiler.get_document(path_id);
-        const std::string* doc_text = doc ? &doc->text : nullptr;
+        return Result{std::move(path), path_id, doc ? &doc->text : nullptr};
+    };
+
+    auto lookup_at = [this, resolve_uri](const std::string& uri, const protocol::Position& pos) {
+        auto [path, path_id, doc_text] = resolve_uri(uri);
         return indexer.lookup_symbol(uri, path, path_id, pos, doc_text);
     };
 
-    auto query_at = [this](const std::string& uri,
-                           const protocol::Position& pos,
-                           RelationKind kind) -> std::vector<protocol::Location> {
-        auto path = Compiler::uri_to_path(uri);
-        auto path_id = path_pool.intern(path);
-        auto* doc = compiler.get_document(path_id);
-        const std::string* doc_text = doc ? &doc->text : nullptr;
+    auto query_at = [this, resolve_uri](const std::string& uri,
+                                        const protocol::Position& pos,
+                                        RelationKind kind) -> std::vector<protocol::Location> {
+        auto [path, path_id, doc_text] = resolve_uri(uri);
         return indexer.query_relations(path, path_id, pos, kind, doc_text);
     };
 
     auto resolve_item =
-        [this](const std::string& uri,
-               const protocol::Range& range,
-               const std::optional<protocol::LSPAny>& data) -> std::optional<SymbolInfo> {
-        auto path = Compiler::uri_to_path(uri);
-        auto path_id = path_pool.intern(path);
-        auto* doc = compiler.get_document(path_id);
-        const std::string* doc_text = doc ? &doc->text : nullptr;
+        [this,
+         resolve_uri](const std::string& uri,
+                      const protocol::Range& range,
+                      const std::optional<protocol::LSPAny>& data) -> std::optional<SymbolInfo> {
+        auto [path, path_id, doc_text] = resolve_uri(uri);
         return indexer.resolve_hierarchy_item(uri, path, path_id, range, data, doc_text);
     };
 
