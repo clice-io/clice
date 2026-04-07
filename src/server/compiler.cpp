@@ -952,6 +952,7 @@ std::uint32_t Compiler::close_document(const std::string& uri) {
 
     on_file_closed(path_id);
     indexer.remove_open_file(path_id, path);
+    pool.notify_stateful(path_id, worker::EvictParams{path});
     documents.erase(path_id);
     clear_diagnostics(uri);
 

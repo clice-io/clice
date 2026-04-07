@@ -82,6 +82,10 @@ std::optional<std::pair<index::SymbolHash, protocol::Range>>
 
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
     auto tu_index = index::TUIndex::from(tu_index_data);
+    if(tu_index.graph.paths.empty()) {
+        LOG_WARN("Ignoring TUIndex with empty path graph");
+        return;
+    }
     auto file_ids_map = project_index.merge(tu_index);
     auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
 
@@ -110,12 +114,16 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
                               file_idx,
                               file_content);
         } else {
-            std::uint32_t include_id = 0;
+            std::optional<std::uint32_t> include_id;
             for(std::uint32_t i = 0; i < tu_index.graph.locations.size(); ++i) {
                 if(tu_index.graph.locations[i].path_id == tu_path_id) {
                     include_id = i;
                     break;
                 }
+            }
+            if(!include_id) {
+                LOG_WARN("Skip merge for path {}: include location not found", global_path_id);
+                return;
             }
             auto header_path = project_index.path_pool.path(global_path_id);
             llvm::StringRef header_content;
@@ -125,7 +133,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
                 header_content_storage = (*header_buf)->getBuffer().str();
                 header_content = header_content_storage;
             }
-            shard.index.merge(global_path_id, include_id, file_idx, header_content);
+            shard.index.merge(global_path_id, *include_id, file_idx, header_content);
         }
         shard.invalidate_mapper();
     };
