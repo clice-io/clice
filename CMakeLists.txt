@@ -200,6 +200,14 @@ if(CLICE_ENABLE_BENCHMARK)
         "${PROJECT_SOURCE_DIR}/src"
     )
     target_link_libraries(scan_benchmark PRIVATE clice::core kota::deco)
+
+    add_executable(pch_chain_benchmark
+        "${PROJECT_SOURCE_DIR}/benchmarks/pch_chain/pch_chain_benchmark.cpp"
+    )
+    target_include_directories(pch_chain_benchmark PRIVATE
+        "${PROJECT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(pch_chain_benchmark PRIVATE clice::core)
 endif()
 
 if(CLICE_RELEASE)
