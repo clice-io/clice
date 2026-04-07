@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <format>
 #include <string>
+#include <type_traits>
+#include <variant>
 
+#include "eventide/ipc/lsp/position.h"
 #include "eventide/ipc/lsp/protocol.h"
 #include "eventide/ipc/lsp/uri.h"
 #include "eventide/reflection/enum.h"
@@ -34,9 +37,9 @@ static serde_raw to_raw(const T& value) {
 }
 
 MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path) :
-    loop(loop), peer(peer), pool(loop), indexer(path_pool),
-    compiler(loop, peer, path_pool, pool, indexer, config, cdb, dependency_graph),
-    self_path(std::move(self_path)) {}
+    loop(loop), peer(peer), pool(loop),
+    indexer(workspace, sessions, [this](uint32_t id) { return sessions.contains(id); }),
+    compiler(loop, peer, workspace, pool, sessions), self_path(std::move(self_path)) {}
 
 MasterServer::~MasterServer() = default;
 
@@ -44,16 +47,18 @@ et::task<> MasterServer::load_workspace() {
     if(workspace_root.empty())
         co_return;
 
-    if(!config.cache_dir.empty()) {
-        auto ec = llvm::sys::fs::create_directories(config.cache_dir);
+    if(!workspace.config.cache_dir.empty()) {
+        auto ec = llvm::sys::fs::create_directories(workspace.config.cache_dir);
         if(ec) {
-            LOG_WARN("Failed to create cache directory {}: {}", config.cache_dir, ec.message());
+            LOG_WARN("Failed to create cache directory {}: {}",
+                     workspace.config.cache_dir,
+                     ec.message());
         } else {
-            LOG_INFO("Cache directory: {}", config.cache_dir);
+            LOG_INFO("Cache directory: {}", workspace.config.cache_dir);
         }
 
         for(auto* subdir: {"cache/pch", "cache/pcm"}) {
-            auto dir = path::join(config.cache_dir, subdir);
+            auto dir = path::join(workspace.config.cache_dir, subdir);
             auto ec2 = llvm::sys::fs::create_directories(dir);
             if(ec2) {
                 LOG_WARN("Failed to create {}: {}", dir, ec2.message());
@@ -67,12 +72,12 @@ et::task<> MasterServer::load_workspace() {
     }
 
     std::string cdb_path;
-    if(!config.compile_commands_path.empty()) {
-        if(llvm::sys::fs::exists(config.compile_commands_path)) {
-            cdb_path = config.compile_commands_path;
+    if(!workspace.config.compile_commands_path.empty()) {
+        if(llvm::sys::fs::exists(workspace.config.compile_commands_path)) {
+            cdb_path = workspace.config.compile_commands_path;
         } else {
             LOG_WARN("Configured compile_commands_path not found: {}",
-                     config.compile_commands_path);
+                     workspace.config.compile_commands_path);
         }
     }
 
@@ -91,11 +96,11 @@ et::task<> MasterServer::load_workspace() {
         co_return;
     }
 
-    auto count = cdb.load(cdb_path);
+    auto count = workspace.cdb.load(cdb_path);
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
 
-    auto report = scan_dependency_graph(cdb, path_pool, dependency_graph);
-    dependency_graph.build_reverse_map();
+    auto report = scan_dependency_graph(workspace.cdb, workspace.path_pool, workspace.dep_graph);
+    workspace.dep_graph.build_reverse_map();
 
     auto unresolved = report.includes_found - report.includes_resolved;
     double accuracy =
@@ -118,12 +123,12 @@ et::task<> MasterServer::load_workspace() {
     }
 
     compiler.build_module_map();
-    indexer.load(config.index_dir);
+    indexer.load(workspace.config.index_dir);
 
-    if(config.enable_indexing) {
-        for(auto& entry: cdb.get_entries()) {
-            auto file = cdb.resolve_path(entry.file);
-            auto server_id = path_pool.intern(file);
+    if(workspace.config.enable_indexing) {
+        for(auto& entry: workspace.cdb.get_entries()) {
+            auto file = workspace.cdb.resolve_path(entry.file);
+            auto server_id = workspace.path_pool.intern(file);
             index_queue.push_back(server_id);
         }
         if(!index_queue.empty()) {
@@ -136,14 +141,14 @@ et::task<> MasterServer::load_workspace() {
 }
 
 void MasterServer::schedule_indexing() {
-    if(!config.enable_indexing || indexing_active || indexing_scheduled)
+    if(!workspace.config.enable_indexing || indexing_active || indexing_scheduled)
         return;
     indexing_scheduled = true;
 
     if(!index_idle_timer) {
         index_idle_timer = std::make_shared<et::timer>(et::timer::create(loop));
     }
-    index_idle_timer->start(std::chrono::milliseconds(config.idle_timeout_ms));
+    index_idle_timer->start(std::chrono::milliseconds(workspace.config.idle_timeout_ms));
     loop.schedule(run_background_indexing());
 }
 
@@ -165,10 +170,10 @@ et::task<> MasterServer::run_background_indexing() {
         auto server_path_id = index_queue[index_queue_pos];
         index_queue_pos++;
 
-        auto file_path = std::string(path_pool.resolve(server_path_id));
+        auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
 
         /// Skip open files — their index comes from the stateful worker.
-        if(compiler.is_file_open(server_path_id)) {
+        if(sessions.contains(server_path_id)) {
             continue;
         }
 
@@ -178,7 +183,7 @@ et::task<> MasterServer::run_background_indexing() {
         worker::BuildParams params;
         params.kind = worker::BuildKind::Index;
         params.file = file_path;
-        if(!compiler.fill_compile_args(file_path, params.directory, params.arguments))
+        if(!compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr))
             continue;
 
         compiler.fill_pcm_deps(params.pcms);
@@ -203,7 +208,7 @@ et::task<> MasterServer::run_background_indexing() {
 
     indexing_active = false;
     LOG_INFO("Background indexing complete: {} files processed", processed);
-    indexer.save(config.index_dir);
+    indexer.save(workspace.config.index_dir);
 }
 
 void MasterServer::register_handlers() {
@@ -300,27 +305,27 @@ void MasterServer::register_handlers() {
     });
 
     peer.on_notification([this](const protocol::InitializedParams& params) {
-        config = CliceConfig::load_from_workspace(workspace_root);
+        workspace.config = CliceConfig::load_from_workspace(workspace_root);
 
-        if(!config.logging_dir.empty()) {
+        if(!workspace.config.logging_dir.empty()) {
             auto now = std::chrono::system_clock::now();
             auto pid = llvm::sys::Process::getProcessId();
-            auto session_dir =
-                path::join(config.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
+            auto session_dir = path::join(workspace.config.logging_dir,
+                                          std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
             logging::file_logger("master", session_dir, logging::options);
             session_log_dir = session_dir;
         }
 
         LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
-                 config.stateful_worker_count,
-                 config.stateless_worker_count,
-                 config.idle_timeout_ms);
+                 workspace.config.stateful_worker_count,
+                 workspace.config.stateless_worker_count,
+                 workspace.config.idle_timeout_ms);
 
         WorkerPoolOptions pool_opts;
         pool_opts.self_path = self_path;
-        pool_opts.stateful_count = config.stateful_worker_count;
-        pool_opts.stateless_count = config.stateless_worker_count;
-        pool_opts.worker_memory_limit = config.worker_memory_limit;
+        pool_opts.stateful_count = workspace.config.stateful_worker_count;
+        pool_opts.stateless_count = workspace.config.stateless_worker_count;
+        pool_opts.worker_memory_limit = workspace.config.worker_memory_limit;
         pool_opts.log_dir = session_log_dir;
         if(!pool.start(pool_opts)) {
             LOG_ERROR("Failed to start worker pool");
@@ -348,7 +353,7 @@ void MasterServer::register_handlers() {
         lifecycle = ServerLifecycle::Exited;
         LOG_INFO("Exit notification received");
 
-        indexer.save(config.index_dir);
+        indexer.save(workspace.config.index_dir);
         compiler.save_cache();
 
         loop.schedule([this]() -> et::task<> {
@@ -357,105 +362,225 @@ void MasterServer::register_handlers() {
         }());
     });
 
-    /// Document lifecycle — delegate to Compiler.
+    /// ---------------------------------------------------------------
+    /// Document lifecycle — handled directly by MasterServer.
+    /// ---------------------------------------------------------------
+
     peer.on_notification([this](const protocol::DidOpenTextDocumentParams& params) {
         if(lifecycle != ServerLifecycle::Ready)
             return;
-        compiler.open_document(params.text_document.uri,
-                               params.text_document.text,
-                               params.text_document.version);
+
+        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+
+        auto& session = sessions[path_id];
+        session.path_id = path_id;
+        session.version = params.text_document.version;
+        session.text = params.text_document.text;
+        session.generation++;
+
+        LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
     });
 
     peer.on_notification([this](const protocol::DidChangeTextDocumentParams& params) {
         if(lifecycle != ServerLifecycle::Ready)
             return;
-        compiler.apply_changes(params);
+
+        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+
+        auto it = sessions.find(path_id);
+        if(it == sessions.end())
+            return;
+
+        auto& session = it->second;
+        session.version = params.text_document.version;
+
+        for(auto& change: params.content_changes) {
+            std::visit(
+                [&](auto& c) {
+                    using T = std::remove_cvref_t<decltype(c)>;
+                    if constexpr(std::is_same_v<T,
+                                                protocol::TextDocumentContentChangeWholeDocument>) {
+                        session.text = c.text;
+                    } else {
+                        auto& range = c.range;
+                        lsp::PositionMapper mapper(session.text, lsp::PositionEncoding::UTF16);
+                        auto start = mapper.to_offset(range.start);
+                        auto end = mapper.to_offset(range.end);
+                        if(start && end && *start <= *end) {
+                            session.text.replace(*start, *end - *start, c.text);
+                        }
+                    }
+                },
+                change);
+        }
+
+        session.generation++;
+        session.ast_dirty = true;
+
+        LOG_DEBUG("didChange: path={} version={} gen={}",
+                  path,
+                  session.version,
+                  session.generation);
+
+        worker::DocumentUpdateParams update;
+        update.path = path;
+        update.version = session.version;
+        pool.notify_stateful(path_id, update);
     });
 
     peer.on_notification([this](const protocol::DidCloseTextDocumentParams& params) {
         if(lifecycle != ServerLifecycle::Ready)
             return;
-        auto path_id = compiler.close_document(params.text_document.uri);
+
+        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+
+        workspace.on_file_closed(path_id);
+        pool.notify_stateful(path_id, worker::EvictParams{path});
+
+        // Clear diagnostics for the closed file.
+        protocol::PublishDiagnosticsParams diag_params;
+        diag_params.uri = params.text_document.uri;
+        peer.send_notification(diag_params);
+
+        sessions.erase(path_id);
+
         index_queue.push_back(path_id);
         schedule_indexing();
+
+        LOG_DEBUG("didClose: {}", path);
     });
 
     peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {
         if(lifecycle != ServerLifecycle::Ready)
             return;
-        auto to_index = compiler.on_save(params.text_document.uri);
-        for(auto id: to_index)
-            index_queue.push_back(id);
+
+        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+
+        auto dirtied = workspace.on_file_saved(path_id);
+        for(auto dirty_id: dirtied) {
+            if(auto sit = sessions.find(dirty_id); sit != sessions.end()) {
+                sit->second.ast_dirty = true;
+            } else {
+                index_queue.push_back(dirty_id);
+            }
+        }
+
+        // Invalidate header contexts for sessions whose host is this file.
+        for(auto& [hdr_id, session]: sessions) {
+            if(session.header_context && session.header_context->host_path_id == path_id) {
+                session.header_context.reset();
+                session.ast_dirty = true;
+            }
+        }
+
         schedule_indexing();
+
+        LOG_DEBUG("didSave: {}", path);
     });
 
+    /// ---------------------------------------------------------------
     /// Feature requests — stateful forwarding.
+    /// ---------------------------------------------------------------
+
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
-        co_return co_await compiler.forward_query(
-            worker::QueryKind::Hover,
-            params.text_document_position_params.text_document.uri,
-            params.text_document_position_params.position);
+        auto path = Compiler::uri_to_path(params.text_document_position_params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+        auto sit = sessions.find(path_id);
+        if(sit == sessions.end())
+            co_return serde_raw{"null"};
+        co_return co_await compiler.forward_query(worker::QueryKind::Hover,
+                                                  params.text_document_position_params.position,
+                                                  sit->second);
     });
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
-            co_return co_await compiler.forward_query(worker::QueryKind::SemanticTokens,
-                                                      params.text_document.uri);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::SemanticTokensParams& params) -> RawResult {
+        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+        auto sit = sessions.find(path_id);
+        if(sit == sessions.end())
+            co_return serde_raw{"null"};
+        co_return co_await compiler.forward_query(worker::QueryKind::SemanticTokens, sit->second);
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
-            co_return co_await compiler.forward_query(worker::QueryKind::InlayHints,
-                                                      params.text_document.uri);
+            auto path = Compiler::uri_to_path(params.text_document.uri);
+            auto path_id = workspace.path_pool.intern(path);
+            auto sit = sessions.find(path_id);
+            if(sit == sessions.end())
+                co_return serde_raw{"null"};
+            co_return co_await compiler.forward_query(worker::QueryKind::InlayHints, sit->second);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
-            co_return co_await compiler.forward_query(worker::QueryKind::FoldingRange,
-                                                      params.text_document.uri);
+            auto path = Compiler::uri_to_path(params.text_document.uri);
+            auto path_id = workspace.path_pool.intern(path);
+            auto sit = sessions.find(path_id);
+            if(sit == sessions.end())
+                co_return serde_raw{"null"};
+            co_return co_await compiler.forward_query(worker::QueryKind::FoldingRange, sit->second);
         });
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
-            co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol,
-                                                      params.text_document.uri);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentSymbolParams& params) -> RawResult {
+        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+        auto sit = sessions.find(path_id);
+        if(sit == sessions.end())
+            co_return serde_raw{"null"};
+        co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol, sit->second);
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
-            co_return co_await compiler.forward_query(worker::QueryKind::DocumentLink,
-                                                      params.text_document.uri);
+            auto path = Compiler::uri_to_path(params.text_document.uri);
+            auto path_id = workspace.path_pool.intern(path);
+            auto sit = sessions.find(path_id);
+            if(sit == sessions.end())
+                co_return serde_raw{"null"};
+            co_return co_await compiler.forward_query(worker::QueryKind::DocumentLink, sit->second);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
-            co_return co_await compiler.forward_query(worker::QueryKind::CodeAction,
-                                                      params.text_document.uri);
+            auto path = Compiler::uri_to_path(params.text_document.uri);
+            auto path_id = workspace.path_pool.intern(path);
+            auto sit = sessions.find(path_id);
+            if(sit == sessions.end())
+                co_return serde_raw{"null"};
+            co_return co_await compiler.forward_query(worker::QueryKind::CodeAction, sit->second);
         });
 
-    /// Resolve URI to the context needed for index queries.
+    /// Helper: resolve URI to path, path_id, and Session pointer.
     auto resolve_uri = [this](const std::string& uri) {
         struct Result {
             std::string path;
             std::uint32_t path_id;
-            const std::string* doc_text;
+            Session* session;
         };
         auto path = Compiler::uri_to_path(uri);
-        auto path_id = path_pool.intern(path);
-        auto* doc = compiler.get_document(path_id);
-        return Result{std::move(path), path_id, doc ? &doc->text : nullptr};
+        auto path_id = workspace.path_pool.intern(path);
+        auto sit = sessions.find(path_id);
+        Session* session = (sit != sessions.end()) ? &sit->second : nullptr;
+        return Result{std::move(path), path_id, session};
     };
 
     auto lookup_at = [this, resolve_uri](const std::string& uri, const protocol::Position& pos) {
-        auto [path, path_id, doc_text] = resolve_uri(uri);
-        return indexer.lookup_symbol(uri, path, path_id, pos, doc_text);
+        auto [path, path_id, session] = resolve_uri(uri);
+        return indexer.lookup_symbol(uri, path, pos, session);
     };
 
     auto query_at = [this, resolve_uri](const std::string& uri,
                                         const protocol::Position& pos,
                                         RelationKind kind) -> std::vector<protocol::Location> {
-        auto [path, path_id, doc_text] = resolve_uri(uri);
-        return indexer.query_relations(path, path_id, pos, kind, doc_text);
+        auto [path, path_id, session] = resolve_uri(uri);
+        return indexer.query_relations(path, pos, kind, session);
     };
 
     auto resolve_item =
@@ -463,11 +588,14 @@ void MasterServer::register_handlers() {
          resolve_uri](const std::string& uri,
                       const protocol::Range& range,
                       const std::optional<protocol::LSPAny>& data) -> std::optional<SymbolInfo> {
-        auto [path, path_id, doc_text] = resolve_uri(uri);
-        return indexer.resolve_hierarchy_item(uri, path, path_id, range, data, doc_text);
+        auto [path, path_id, session] = resolve_uri(uri);
+        return indexer.resolve_hierarchy_item(uri, path, range, data, session);
     };
 
+    /// ---------------------------------------------------------------
     /// Feature requests — index-based with AST fallback.
+    /// ---------------------------------------------------------------
+
     peer.on_request([this, query_at](RequestContext& ctx,
                                      const protocol::DefinitionParams& params) -> RawResult {
         auto& uri = params.text_document_position_params.text_document.uri;
@@ -478,7 +606,14 @@ void MasterServer::register_handlers() {
             co_return to_raw(result);
         }
 
-        co_return co_await compiler.forward_query(worker::QueryKind::GoToDefinition, uri, pos);
+        auto path = Compiler::uri_to_path(uri);
+        auto path_id = workspace.path_pool.intern(path);
+        auto sit = sessions.find(path_id);
+        if(sit == sessions.end())
+            co_return serde_raw{"null"};
+        co_return co_await compiler.forward_query(worker::QueryKind::GoToDefinition,
+                                                  pos,
+                                                  sit->second);
     });
 
     peer.on_request([this, query_at](RequestContext& ctx,
@@ -515,23 +650,37 @@ void MasterServer::register_handlers() {
             co_return serde_raw{"null"};
         });
 
+    /// ---------------------------------------------------------------
     /// Feature requests — stateless forwarding.
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
-            co_return co_await compiler.handle_completion(
-                params.text_document_position_params.text_document.uri,
-                params.text_document_position_params.position);
-        });
+    /// ---------------------------------------------------------------
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
-            co_return co_await compiler.forward_build(
-                worker::BuildKind::SignatureHelp,
-                params.text_document_position_params.text_document.uri,
-                params.text_document_position_params.position);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::CompletionParams& params) -> RawResult {
+        auto path = Compiler::uri_to_path(params.text_document_position_params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+        auto sit = sessions.find(path_id);
+        if(sit == sessions.end())
+            co_return serde_raw{"null"};
+        co_return co_await compiler.handle_completion(params.text_document_position_params.position,
+                                                      sit->second);
+    });
 
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::SignatureHelpParams& params) -> RawResult {
+        auto path = Compiler::uri_to_path(params.text_document_position_params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+        auto sit = sessions.find(path_id);
+        if(sit == sessions.end())
+            co_return serde_raw{"null"};
+        co_return co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
+                                                  params.text_document_position_params.position,
+                                                  sit->second);
+    });
+
+    /// ---------------------------------------------------------------
     /// Hierarchy queries — index-based.
+    /// ---------------------------------------------------------------
+
     peer.on_request(
         [this, lookup_at](RequestContext& ctx,
                           const protocol::CallHierarchyPrepareParams& params) -> RawResult {
@@ -623,22 +772,25 @@ void MasterServer::register_handlers() {
             co_return to_raw(results);
         });
 
+    /// ---------------------------------------------------------------
     /// clice/ extension commands.
+    /// ---------------------------------------------------------------
+
     peer.on_request(
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
             auto path = Compiler::uri_to_path(params.uri);
-            auto path_id = path_pool.intern(path);
+            auto path_id = workspace.path_pool.intern(path);
             int offset_val = std::max(0, params.offset.value_or(0));
             constexpr int page_size = 10;
 
             ext::QueryContextResult result;
             std::vector<ext::ContextItem> all_items;
 
-            auto hosts = dependency_graph.find_host_sources(path_id);
+            auto hosts = workspace.dep_graph.find_host_sources(path_id);
             for(auto host_id: hosts) {
-                auto host_path = path_pool.resolve(host_id);
-                auto host_cdb = cdb.lookup(host_path, {.suppress_logging = true});
+                auto host_path = workspace.path_pool.resolve(host_id);
+                auto host_cdb = workspace.cdb.lookup(host_path, {.suppress_logging = true});
                 if(host_cdb.empty())
                     continue;
                 auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
@@ -652,7 +804,7 @@ void MasterServer::register_handlers() {
             }
 
             if(hosts.empty()) {
-                auto entries = cdb.lookup(path, {.suppress_logging = true});
+                auto entries = workspace.cdb.lookup(path, {.suppress_logging = true});
                 for(std::size_t i = 0; i < entries.size(); ++i) {
                     auto& entry = entries[i];
                     std::string desc;
@@ -694,12 +846,12 @@ void MasterServer::register_handlers() {
         "clice/currentContext",
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
             auto path = Compiler::uri_to_path(params.uri);
-            auto path_id = path_pool.intern(path);
+            auto path_id = workspace.path_pool.intern(path);
 
             ext::CurrentContextResult result;
-            auto active_ctx = compiler.get_active_context(path_id);
-            if(active_ctx) {
-                auto ctx_path = path_pool.resolve(*active_ctx);
+            auto sit = sessions.find(path_id);
+            if(sit != sessions.end() && sit->second.active_context) {
+                auto ctx_path = workspace.path_pool.resolve(*sit->second.active_context);
                 auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
                 if(ctx_uri_opt) {
                     ext::ContextItem item;
@@ -716,19 +868,30 @@ void MasterServer::register_handlers() {
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             auto path = Compiler::uri_to_path(params.uri);
-            auto path_id = path_pool.intern(path);
+            auto path_id = workspace.path_pool.intern(path);
             auto context_path = Compiler::uri_to_path(params.context_uri);
-            auto context_path_id = path_pool.intern(context_path);
+            auto context_path_id = workspace.path_pool.intern(context_path);
 
             ext::SwitchContextResult result;
 
-            auto context_cdb = cdb.lookup(context_path, {.suppress_logging = true});
+            auto context_cdb = workspace.cdb.lookup(context_path, {.suppress_logging = true});
             if(context_cdb.empty()) {
                 result.success = false;
                 co_return to_raw(result);
             }
 
-            compiler.switch_context(path_id, context_path_id);
+            auto sit = sessions.find(path_id);
+            if(sit == sessions.end()) {
+                result.success = false;
+                co_return to_raw(result);
+            }
+
+            sit->second.active_context = context_path_id;
+            sit->second.header_context.reset();
+            sit->second.pch_ref.reset();
+            sit->second.ast_deps.reset();
+            sit->second.ast_dirty = true;
+
             result.success = true;
             co_return to_raw(result);
         });

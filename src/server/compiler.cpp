@@ -124,14 +124,10 @@ using serde_raw = et::serde::RawValue;
 
 Compiler::Compiler(et::event_loop& loop,
                    et::ipc::JsonPeer& peer,
-                   PathPool& path_pool,
+                   Workspace& workspace,
                    WorkerPool& pool,
-                   Indexer& indexer,
-                   const CliceConfig& config,
-                   CompilationDatabase& cdb,
-                   DependencyGraph& dep_graph) :
-    loop(loop), peer(peer), path_pool(path_pool), pool(pool), indexer(indexer), config(config),
-    cdb(cdb), dep_graph(dep_graph) {}
+                   llvm::DenseMap<std::uint32_t, Session>& sessions) :
+    loop(loop), peer(peer), workspace(workspace), pool(pool), sessions(sessions) {}
 
 Compiler::~Compiler() {
     cancel_all();
@@ -139,27 +135,27 @@ Compiler::~Compiler() {
 
 void Compiler::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
                              std::uint32_t exclude_path_id) const {
-    for(auto& [pid, pcm_path]: pcm_paths) {
+    for(auto& [pid, pcm_path]: workspace.pcm_paths) {
         if(pid == exclude_path_id)
             continue;
-        auto mod_it = path_to_module.find(pid);
-        if(mod_it != path_to_module.end()) {
+        auto mod_it = workspace.path_to_module.find(pid);
+        if(mod_it != workspace.path_to_module.end()) {
             pcms[mod_it->second] = pcm_path;
         }
     }
 }
 
 void Compiler::cancel_all() {
-    if(compile_graph) {
-        compile_graph->cancel_all();
+    if(workspace.compile_graph) {
+        workspace.compile_graph->cancel_all();
     }
 }
 
 void Compiler::load_cache() {
-    if(config.cache_dir.empty())
+    if(workspace.config.cache_dir.empty())
         return;
 
-    auto cache_path = path::join(config.cache_dir, "cache", "cache.json");
+    auto cache_path = path::join(workspace.config.cache_dir, "cache", "cache.json");
     auto content = fs::read(cache_path);
     if(!content) {
         LOG_DEBUG("No cache.json found at {}", cache_path);
@@ -184,20 +180,20 @@ void Compiler::load_cache() {
             auto dep_path = resolve(dep.path);
             if(dep_path.empty())
                 continue;
-            deps.path_ids.push_back(path_pool.intern(dep_path));
+            deps.path_ids.push_back(workspace.path_pool.intern(dep_path));
             deps.hashes.push_back(dep.hash);
         }
         return deps;
     };
 
     for(auto& entry: data.pch) {
-        auto pch_path = path::join(config.cache_dir, "cache", "pch", entry.filename);
+        auto pch_path = path::join(workspace.config.cache_dir, "cache", "pch", entry.filename);
         auto source = resolve(entry.source_file);
         if(!llvm::sys::fs::exists(pch_path) || source.empty())
             continue;
 
-        auto path_id = path_pool.intern(source);
-        auto& st = pch_states[path_id];
+        auto path_id = workspace.path_pool.intern(source);
+        auto& st = workspace.pch_cache[path_id];
         st.path = pch_path;
         st.hash = entry.hash;
         st.bound = entry.bound;
@@ -207,32 +203,32 @@ void Compiler::load_cache() {
     }
 
     for(auto& entry: data.pcm) {
-        auto pcm_path = path::join(config.cache_dir, "cache", "pcm", entry.filename);
+        auto pcm_path = path::join(workspace.config.cache_dir, "cache", "pcm", entry.filename);
         auto source = resolve(entry.source_file);
         if(!llvm::sys::fs::exists(pcm_path) || source.empty())
             continue;
 
-        auto path_id = path_pool.intern(source);
-        pcm_states[path_id] = {pcm_path, load_deps(entry.build_at, entry.deps)};
-        pcm_paths[path_id] = pcm_path;
+        auto path_id = workspace.path_pool.intern(source);
+        workspace.pcm_cache[path_id] = {pcm_path, load_deps(entry.build_at, entry.deps)};
+        workspace.pcm_paths[path_id] = pcm_path;
 
         LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, pcm_path);
     }
 
     LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries",
-             pch_states.size(),
-             pcm_states.size());
+             workspace.pch_cache.size(),
+             workspace.pcm_cache.size());
 }
 
 void Compiler::save_cache() {
-    if(config.cache_dir.empty())
+    if(workspace.config.cache_dir.empty())
         return;
 
     CacheData data;
     std::unordered_map<std::string, std::uint32_t> index_map;
 
     auto intern = [&](std::uint32_t runtime_path_id) -> std::uint32_t {
-        auto path = std::string(path_pool.resolve(runtime_path_id));
+        auto path = std::string(workspace.path_pool.resolve(runtime_path_id));
         auto [it, inserted] =
             index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
         if(inserted) {
@@ -241,7 +237,7 @@ void Compiler::save_cache() {
         return it->second;
     };
 
-    for(auto& [path_id, st]: pch_states) {
+    for(auto& [path_id, st]: workspace.pch_cache) {
         if(st.path.empty())
             continue;
 
@@ -257,15 +253,15 @@ void Compiler::save_cache() {
         data.pch.push_back(std::move(entry));
     }
 
-    for(auto& [path_id, st]: pcm_states) {
+    for(auto& [path_id, st]: workspace.pcm_cache) {
         if(st.path.empty())
             continue;
 
         CachePCMEntry entry;
         entry.filename = std::string(path::filename(st.path));
         entry.source_file = intern(path_id);
-        auto mod_it = path_to_module.find(path_id);
-        entry.module_name = mod_it != path_to_module.end() ? mod_it->second : "";
+        auto mod_it = workspace.path_to_module.find(path_id);
+        entry.module_name = mod_it != workspace.path_to_module.end() ? mod_it->second : "";
         entry.build_at = st.deps.build_at;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
             entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
@@ -279,7 +275,7 @@ void Compiler::save_cache() {
         return;
     }
 
-    auto cache_path = path::join(config.cache_dir, "cache", "cache.json");
+    auto cache_path = path::join(workspace.config.cache_dir, "cache", "cache.json");
     auto tmp_path = cache_path + ".tmp";
     auto write_result = fs::write(tmp_path, *json_str);
     if(!write_result) {
@@ -294,14 +290,14 @@ void Compiler::save_cache() {
 }
 
 void Compiler::cleanup_cache(int max_age_days) {
-    if(config.cache_dir.empty())
+    if(workspace.config.cache_dir.empty())
         return;
 
     auto now = std::chrono::system_clock::now();
     auto max_age = std::chrono::hours(max_age_days * 24);
 
     for(auto* subdir: {"cache/pch", "cache/pcm"}) {
-        auto dir = path::join(config.cache_dir, subdir);
+        auto dir = path::join(workspace.config.cache_dir, subdir);
         std::error_code ec;
         for(auto it = llvm::sys::fs::directory_iterator(dir, ec);
             !ec && it != llvm::sys::fs::directory_iterator();
@@ -321,23 +317,24 @@ void Compiler::cleanup_cache(int max_age_days) {
 }
 
 void Compiler::build_module_map() {
-    for(auto& [module_name, path_ids]: dep_graph.modules()) {
+    for(auto& [module_name, path_ids]: workspace.dep_graph.modules()) {
         for(auto path_id: path_ids) {
-            path_to_module[path_id] = module_name.str();
+            workspace.path_to_module[path_id] = module_name.str();
         }
     }
 }
 
 void Compiler::init_compile_graph() {
-    if(path_to_module.empty()) {
+    if(workspace.path_to_module.empty()) {
         LOG_INFO("No C++20 modules detected, skipping CompileGraph");
         return;
     }
 
     // Lazy dependency resolver: scans a module file on demand to discover imports.
     auto resolve = [this](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
-        auto file_path = path_pool.resolve(path_id);
-        auto results = cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
+        auto file_path = workspace.path_pool.resolve(path_id);
+        auto results =
+            workspace.cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
         if(results.empty())
             return {};
 
@@ -346,7 +343,7 @@ void Compiler::init_compile_graph() {
 
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
-            auto mod_ids = dep_graph.lookup_module(mod_name);
+            auto mod_ids = workspace.dep_graph.lookup_module(mod_name);
             if(!mod_ids.empty()) {
                 deps.push_back(mod_ids[0]);
             }
@@ -354,7 +351,7 @@ void Compiler::init_compile_graph() {
 
         // Module implementation units implicitly depend on their interface unit.
         if(!scan_result.module_name.empty() && !scan_result.is_interface_unit) {
-            auto mod_ids = dep_graph.lookup_module(scan_result.module_name);
+            auto mod_ids = workspace.dep_graph.lookup_module(scan_result.module_name);
             if(!mod_ids.empty()) {
                 deps.push_back(mod_ids[0]);
             }
@@ -365,11 +362,11 @@ void Compiler::init_compile_graph() {
 
     // Dispatch: sends BuildPCM request to a stateless worker.
     auto dispatch = [this](std::uint32_t path_id) -> et::task<bool> {
-        auto mod_it = path_to_module.find(path_id);
-        if(mod_it == path_to_module.end())
+        auto mod_it = workspace.path_to_module.find(path_id);
+        if(mod_it == workspace.path_to_module.end())
             co_return false;
 
-        auto file_path = std::string(path_pool.resolve(path_id));
+        auto file_path = std::string(workspace.path_pool.resolve(path_id));
 
         worker::BuildParams bp;
         bp.kind = worker::BuildKind::BuildPCM;
@@ -386,13 +383,13 @@ void Compiler::init_compile_graph() {
         }
         auto args_hash = llvm::xxh3_64bits(llvm::StringRef(hash_input));
         auto pcm_filename = std::format("{}-{:016x}.pcm", safe_module_name, args_hash);
-        auto pcm_path = path::join(config.cache_dir, "cache", "pcm", pcm_filename);
+        auto pcm_path = path::join(workspace.config.cache_dir, "cache", "pcm", pcm_filename);
 
         // Check if cached PCM is still valid.
-        if(auto pcm_it = pcm_states.find(path_id); pcm_it != pcm_states.end()) {
+        if(auto pcm_it = workspace.pcm_cache.find(path_id); pcm_it != workspace.pcm_cache.end()) {
             if(!pcm_it->second.path.empty() && llvm::sys::fs::exists(pcm_it->second.path) &&
-               !deps_changed(path_pool, pcm_it->second.deps)) {
-                pcm_paths[path_id] = pcm_it->second.path;
+               !deps_changed(workspace.path_pool, pcm_it->second.deps)) {
+                workspace.pcm_paths[path_id] = pcm_it->second.path;
                 co_return true;
             }
         }
@@ -411,39 +408,41 @@ void Compiler::init_compile_graph() {
             co_return false;
         }
 
-        pcm_paths[path_id] = result.value().output_path;
-        pcm_states[path_id] = {result.value().output_path,
-                               capture_deps_snapshot(path_pool, result.value().deps)};
+        workspace.pcm_paths[path_id] = result.value().output_path;
+        workspace.pcm_cache[path_id] = {
+            result.value().output_path,
+            capture_deps_snapshot(workspace.path_pool, result.value().deps)};
         LOG_INFO("Built PCM for module {}: {}", mod_it->second, result.value().output_path);
-
-        // Merge module index into ProjectIndex/MergedIndex.
-        if(!result.value().tu_index_data.empty()) {
-            indexer.merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
-        }
 
         // Persist cache metadata after successful build.
         save_cache();
+
+        // Signal that new index data is available for background merge.
+        if(on_indexing_needed)
+            on_indexing_needed();
+
         co_return true;
     };
 
-    compile_graph = std::make_unique<CompileGraph>(std::move(dispatch), std::move(resolve));
-    LOG_INFO("CompileGraph initialized with {} module(s)", path_to_module.size());
+    workspace.compile_graph =
+        std::make_unique<CompileGraph>(std::move(dispatch), std::move(resolve));
+    LOG_INFO("CompileGraph initialized with {} module(s)", workspace.path_to_module.size());
 }
 
 bool Compiler::fill_compile_args(llvm::StringRef path,
                                  std::string& directory,
-                                 std::vector<std::string>& arguments) {
-    auto path_id = path_pool.intern(path);
+                                 std::vector<std::string>& arguments,
+                                 Session* session) {
+    auto path_id = workspace.path_pool.intern(path);
 
-    // 1. If the user has set an active header context via switchContext,
+    // 1. If the session has an active header context via switchContext,
     //    use the host source's CDB entry with file path replaced and preamble injected.
-    auto active_it = active_contexts.find(path_id);
-    if(active_it != active_contexts.end()) {
-        return fill_header_context_args(path, path_id, directory, arguments);
+    if(session && session->active_context.has_value()) {
+        return fill_header_context_args(path, path_id, directory, arguments, session);
     }
 
     // 2. Normal CDB lookup for the file itself.
-    auto results = cdb.lookup(path, {.query_toolchain = true});
+    auto results = workspace.cdb.lookup(path, {.query_toolchain = true});
     if(!results.empty()) {
         auto& ctx = results.front();
         directory = ctx.directory.str();
@@ -455,38 +454,47 @@ bool Compiler::fill_compile_args(llvm::StringRef path,
     }
 
     // 3. No CDB entry — try automatic header context resolution.
-    return fill_header_context_args(path, path_id, directory, arguments);
+    return fill_header_context_args(path, path_id, directory, arguments, session);
 }
 
 bool Compiler::fill_header_context_args(llvm::StringRef path,
                                         std::uint32_t path_id,
                                         std::string& directory,
-                                        std::vector<std::string>& arguments) {
+                                        std::vector<std::string>& arguments,
+                                        Session* session) {
     // Use cached context if available; otherwise resolve.
     // If an active context override exists, invalidate cache if it points to
     // a different host so we re-resolve with the correct one.
     const HeaderFileContext* ctx_ptr = nullptr;
-    auto ctx_it = header_file_contexts.find(path_id);
-    auto active_it = active_contexts.find(path_id);
-    if(ctx_it != header_file_contexts.end()) {
-        if(active_it != active_contexts.end() && ctx_it->second.host_path_id != active_it->second) {
-            header_file_contexts.erase(ctx_it);
+    if(session && session->header_context.has_value()) {
+        if(session->active_context.has_value() &&
+           session->header_context->host_path_id != *session->active_context) {
+            session->header_context.reset();
         } else {
-            ctx_ptr = &ctx_it->second;
+            ctx_ptr = &*session->header_context;
         }
     }
     if(!ctx_ptr) {
-        auto resolved = resolve_header_context(path_id);
+        auto resolved = resolve_header_context(path_id, session);
         if(!resolved) {
             LOG_WARN("No CDB entry and no header context for {}", path);
             return false;
         }
-        header_file_contexts[path_id] = std::move(*resolved);
-        ctx_ptr = &header_file_contexts[path_id];
+        if(session) {
+            session->header_context = std::move(*resolved);
+            ctx_ptr = &*session->header_context;
+        } else {
+            // Background indexing path — no session to store on.
+            // Use a temporary (caller will use it immediately).
+            // Store in a local and return.
+            static thread_local std::optional<HeaderFileContext> tl_ctx;
+            tl_ctx = std::move(*resolved);
+            ctx_ptr = &*tl_ctx;
+        }
     }
 
-    auto host_path = path_pool.resolve(ctx_ptr->host_path_id);
-    auto host_results = cdb.lookup(host_path, {.query_toolchain = true});
+    auto host_path = workspace.path_pool.resolve(ctx_ptr->host_path_id);
+    auto host_results = workspace.cdb.lookup(host_path, {.query_toolchain = true});
     if(host_results.empty()) {
         LOG_WARN("fill_header_context_args: host {} has no CDB entry", host_path);
         return false;
@@ -527,9 +535,10 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     return true;
 }
 
-std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t header_path_id) {
+std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t header_path_id,
+                                                                  Session* session) {
     // Find source files that transitively include this header.
-    auto hosts = dep_graph.find_host_sources(header_path_id);
+    auto hosts = workspace.dep_graph.find_host_sources(header_path_id);
     if(hosts.empty()) {
         LOG_DEBUG("resolve_header_context: no host sources for path_id={}", header_path_id);
         return std::nullopt;
@@ -538,13 +547,12 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
     // If there's an active context override, prefer that host.
     std::uint32_t host_path_id = 0;
     std::vector<std::uint32_t> chain;
-    auto active_it = active_contexts.find(header_path_id);
-    if(active_it != active_contexts.end()) {
-        auto preferred = active_it->second;
-        auto preferred_path = path_pool.resolve(preferred);
-        auto results = cdb.lookup(preferred_path, {.suppress_logging = true});
+    if(session && session->active_context.has_value()) {
+        auto preferred = *session->active_context;
+        auto preferred_path = workspace.path_pool.resolve(preferred);
+        auto results = workspace.cdb.lookup(preferred_path, {.suppress_logging = true});
         if(!results.empty()) {
-            auto c = dep_graph.find_include_chain(preferred, header_path_id);
+            auto c = workspace.dep_graph.find_include_chain(preferred, header_path_id);
             if(!c.empty()) {
                 host_path_id = preferred;
                 chain = std::move(c);
@@ -555,11 +563,11 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
     // Fall back to the first available host that has a CDB entry.
     if(chain.empty()) {
         for(auto candidate: hosts) {
-            auto candidate_path = path_pool.resolve(candidate);
-            auto results = cdb.lookup(candidate_path, {.suppress_logging = true});
+            auto candidate_path = workspace.path_pool.resolve(candidate);
+            auto results = workspace.cdb.lookup(candidate_path, {.suppress_logging = true});
             if(results.empty())
                 continue;
-            auto c = dep_graph.find_include_chain(candidate, header_path_id);
+            auto c = workspace.dep_graph.find_include_chain(candidate, header_path_id);
             if(c.empty())
                 continue;
             host_path_id = candidate;
@@ -582,22 +590,23 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
         auto cur_id = chain[i];
         auto next_id = chain[i + 1];
 
-        auto cur_path = path_pool.resolve(cur_id);
-        auto next_path = path_pool.resolve(next_id);
+        auto cur_path = workspace.path_pool.resolve(cur_id);
+        auto next_path = workspace.path_pool.resolve(next_id);
         auto next_filename = llvm::sys::path::filename(next_path);
 
         // Prefer in-memory document text over disk content.
+        // Use the session if this file matches the session's path, otherwise
+        // fall back to disk.
         std::string content;
-        if(auto doc_it = documents.find(cur_id); doc_it != documents.end()) {
-            content = doc_it->second.text;
-        } else {
-            auto buf = llvm::MemoryBuffer::getFile(cur_path);
-            if(!buf) {
-                LOG_WARN("resolve_header_context: cannot read {}", cur_path);
-                return std::nullopt;
-            }
-            content = (*buf)->getBuffer().str();
+        // Note: we don't have the sessions map here, so we always read from disk
+        // for intermediate chain files.  The session parameter only covers the
+        // header file itself (the target), not intermediate files in the chain.
+        auto buf = llvm::MemoryBuffer::getFile(cur_path);
+        if(!buf) {
+            LOG_WARN("resolve_header_context: cannot read {}", cur_path);
+            return std::nullopt;
         }
+        content = (*buf)->getBuffer().str();
 
         // Scan line by line for the #include that brings in next_filename.
         llvm::StringRef content_ref(content);
@@ -648,7 +657,7 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
     // Hash the preamble and write to cache directory.
     auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(preamble));
     auto preamble_filename = std::format("{:016x}.h", preamble_hash);
-    auto preamble_dir = path::join(config.cache_dir, "header_context");
+    auto preamble_dir = path::join(workspace.config.cache_dir, "header_context");
     auto preamble_path = path::join(preamble_dir, preamble_filename);
 
     if(!llvm::sys::fs::exists(preamble_path)) {
@@ -673,215 +682,6 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
     return HeaderFileContext{host_path_id, preamble_path, preamble_hash};
 }
 
-void Compiler::switch_context(std::uint32_t path_id, std::uint32_t context_path_id) {
-    active_contexts[path_id] = context_path_id;
-    header_file_contexts.erase(path_id);
-    pch_states.erase(path_id);
-    ast_deps.erase(path_id);
-    auto doc_it = documents.find(path_id);
-    if(doc_it != documents.end()) {
-        doc_it->second.ast_dirty = true;
-    }
-}
-
-std::optional<std::uint32_t> Compiler::get_active_context(std::uint32_t path_id) const {
-    auto it = active_contexts.find(path_id);
-    if(it != active_contexts.end())
-        return it->second;
-    return std::nullopt;
-}
-
-void Compiler::invalidate_host_contexts(std::uint32_t host_path_id,
-                                        llvm::SmallVectorImpl<std::uint32_t>& stale_headers) {
-    for(auto& [hdr_id, hdr_ctx]: header_file_contexts) {
-        if(hdr_ctx.host_path_id == host_path_id)
-            stale_headers.push_back(hdr_id);
-    }
-    for(auto hdr_id: stale_headers) {
-        header_file_contexts.erase(hdr_id);
-    }
-}
-
-et::task<bool> Compiler::ensure_pch(std::uint32_t path_id,
-                                    llvm::StringRef path,
-                                    const std::string& text,
-                                    const std::string& directory,
-                                    const std::vector<std::string>& arguments) {
-    auto bound = compute_preamble_bound(text);
-    if(bound == 0) {
-        // No preamble directives — PCH would be empty. Clear any stale entry.
-        pch_states.erase(path_id);
-        co_return true;
-    }
-
-    auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(text).substr(0, bound));
-
-    // Deterministic content-addressed PCH path.
-    auto pch_path =
-        path::join(config.cache_dir, "cache", "pch", std::format("{:016x}.pch", preamble_hash));
-
-    // Reuse existing PCH if preamble content and deps haven't changed.
-    if(auto it = pch_states.find(path_id); it != pch_states.end()) {
-        auto& st = it->second;
-        if(st.hash == preamble_hash && !st.path.empty() && !deps_changed(path_pool, st.deps)) {
-            st.bound = bound;
-            co_return true;
-        }
-    }
-
-    // Preamble incomplete (user still typing) — defer rebuild, reuse old PCH if available.
-    if(!is_preamble_complete(text, bound)) {
-        LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
-        co_return pch_states.count(path_id) && !pch_states[path_id].path.empty();
-    }
-
-    // If another coroutine is already building PCH for this file, wait for it.
-    if(auto it = pch_states.find(path_id); it != pch_states.end() && it->second.building) {
-        co_await it->second.building->wait();
-        co_return !pch_states[path_id].path.empty();
-    }
-
-    // Register in-flight build so concurrent requests wait on us.
-    auto completion = std::make_shared<et::event>();
-    pch_states[path_id].building = completion;
-
-    // Build a new PCH via stateless worker.
-    worker::BuildParams bp;
-    bp.kind = worker::BuildKind::BuildPCH;
-    bp.file = std::string(path);
-    bp.directory = directory;
-    bp.arguments = arguments;
-    bp.text = text;
-    bp.preamble_bound = bound;
-    bp.output_path = pch_path;
-
-    LOG_DEBUG("Building PCH for {}, bound={}, output={}", path, bound, pch_path);
-
-    auto result = co_await pool.send_stateless(bp);
-
-    if(!result.has_value() || !result.value().success) {
-        LOG_WARN("PCH build failed for {}: {}",
-                 path,
-                 result.has_value() ? result.value().error : result.error().message);
-        pch_states[path_id].building.reset();
-        completion->set();
-        co_return false;
-    }
-
-    auto& st = pch_states[path_id];
-    st.path = result.value().output_path;
-    st.bound = bound;
-    st.hash = preamble_hash;
-    st.deps = capture_deps_snapshot(path_pool, result.value().deps);
-    st.building.reset();
-
-    LOG_INFO("PCH built for {}: {}", path, result.value().output_path);
-
-    if(!result.value().tu_index_data.empty()) {
-        indexer.merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
-    }
-
-    // Persist cache metadata after successful build.
-    save_cache();
-
-    completion->set();
-    co_return true;
-}
-
-/// Compile module dependencies, build/reuse PCH, and fill PCM paths.
-/// Shared preparation step used by both ensure_compiled() (stateful path)
-/// and forward_stateless() (completion/signatureHelp path).
-et::task<bool> Compiler::ensure_deps(std::uint32_t path_id,
-                                     llvm::StringRef path,
-                                     const std::string& text,
-                                     const std::string& directory,
-                                     const std::vector<std::string>& arguments,
-                                     std::pair<std::string, uint32_t>& pch,
-                                     std::unordered_map<std::string, std::string>& pcms) {
-    // Compile C++20 module dependencies (PCMs).
-    if(compile_graph && !co_await compile_graph->compile_deps(path_id)) {
-        co_return false;
-    }
-
-    // Scan buffer text for module imports that might not be in compile_graph yet.
-    // When a user adds `import std;` without saving, the compile_graph (disk-based)
-    // doesn't know about the new dependency. Scan the in-memory text to find them.
-    {
-        auto scan_result = scan(text);
-        for(auto& mod_name: scan_result.modules) {
-            if(mod_name.empty())
-                continue;
-            bool found = false;
-            for(auto& [pid, name]: path_to_module) {
-                if(name == mod_name) {
-                    // If PCM not already built, try to build it.
-                    if(pcm_paths.find(pid) == pcm_paths.end()) {
-                        if(compile_graph && compile_graph->has_unit(pid)) {
-                            co_await compile_graph->compile_deps(pid);
-                        }
-                    }
-                    found = true;
-                    break;
-                }
-            }
-            if(!found) {
-                LOG_DEBUG("Buffer imports unknown module '{}', skipping", mod_name);
-            }
-        }
-    }
-
-    // Build or reuse PCH.
-    auto pch_ok = co_await ensure_pch(path_id, path, text, directory, arguments);
-    if(pch_ok) {
-        if(auto pch_it = pch_states.find(path_id); pch_it != pch_states.end()) {
-            pch = {pch_it->second.path, pch_it->second.bound};
-        }
-    }
-
-    // Fill all available PCM paths, excluding the file's own PCM
-    // to avoid "multiple module declarations".
-    fill_pcm_deps(pcms, path_id);
-
-    co_return true;
-}
-
-bool Compiler::is_stale(std::uint32_t path_id) {
-    auto ast_deps_it = ast_deps.find(path_id);
-    if(ast_deps_it != ast_deps.end() && deps_changed(path_pool, ast_deps_it->second))
-        return true;
-
-    auto pch_it = pch_states.find(path_id);
-    if(pch_it != pch_states.end() && deps_changed(path_pool, pch_it->second.deps))
-        return true;
-
-    return false;
-}
-
-void Compiler::record_deps(std::uint32_t path_id, llvm::ArrayRef<std::string> deps) {
-    ast_deps[path_id] = capture_deps_snapshot(path_pool, deps);
-}
-
-void Compiler::on_file_closed(std::uint32_t path_id) {
-    if(compile_graph && compile_graph->has_unit(path_id)) {
-        compile_graph->update(path_id);
-    }
-    pch_states.erase(path_id);
-    ast_deps.erase(path_id);
-}
-
-llvm::SmallVector<std::uint32_t> Compiler::on_file_saved(std::uint32_t path_id) {
-    llvm::SmallVector<std::uint32_t> dirtied;
-    if(compile_graph) {
-        auto result = compile_graph->update(path_id);
-        for(auto id: result) {
-            dirtied.push_back(id);
-            pcm_paths.erase(id);
-            pcm_states.erase(id);
-        }
-    }
-    return dirtied;
-}
-
 std::string Compiler::uri_to_path(const std::string& uri) {
     auto parsed = lsp::URI::parse(uri);
     if(parsed.has_value()) {
@@ -891,112 +691,6 @@ std::string Compiler::uri_to_path(const std::string& uri) {
         }
     }
     return uri;
-}
-
-void Compiler::open_document(const std::string& uri, std::string text, int version) {
-    auto path = uri_to_path(uri);
-    auto path_id = path_pool.intern(path);
-
-    auto& doc = documents[path_id];
-    doc.version = version;
-    doc.text = std::move(text);
-    doc.generation++;
-
-    LOG_DEBUG("didOpen: {} (v{})", path, version);
-}
-
-void Compiler::apply_changes(const protocol::DidChangeTextDocumentParams& params) {
-    auto path = uri_to_path(params.text_document.uri);
-    auto path_id = path_pool.intern(path);
-
-    auto it = documents.find(path_id);
-    if(it == documents.end())
-        return;
-
-    auto& doc = it->second;
-    doc.version = params.text_document.version;
-
-    for(auto& change: params.content_changes) {
-        std::visit(
-            [&](auto& c) {
-                using T = std::remove_cvref_t<decltype(c)>;
-                if constexpr(std::is_same_v<T, protocol::TextDocumentContentChangeWholeDocument>) {
-                    doc.text = c.text;
-                } else {
-                    auto& range = c.range;
-                    lsp::PositionMapper mapper(doc.text, lsp::PositionEncoding::UTF16);
-                    auto start = mapper.to_offset(range.start);
-                    auto end = mapper.to_offset(range.end);
-                    if(start && end && *start <= *end) {
-                        doc.text.replace(*start, *end - *start, c.text);
-                    }
-                }
-            },
-            change);
-    }
-
-    doc.generation++;
-    doc.ast_dirty = true;
-
-    LOG_DEBUG("didChange: path={} version={} gen={}", path, doc.version, doc.generation);
-
-    worker::DocumentUpdateParams update;
-    update.path = path;
-    update.version = doc.version;
-    pool.notify_stateful(path_id, update);
-}
-
-std::uint32_t Compiler::close_document(const std::string& uri) {
-    auto path = uri_to_path(uri);
-    auto path_id = path_pool.intern(path);
-
-    on_file_closed(path_id);
-    indexer.remove_open_file(path_id, path);
-    pool.notify_stateful(path_id, worker::EvictParams{path});
-    documents.erase(path_id);
-    clear_diagnostics(uri);
-
-    LOG_DEBUG("didClose: {}", path);
-    return path_id;
-}
-
-llvm::SmallVector<std::uint32_t> Compiler::on_save(const std::string& uri) {
-    auto path = uri_to_path(uri);
-    auto path_id = path_pool.intern(path);
-
-    llvm::SmallVector<std::uint32_t> to_index;
-
-    auto dirtied = on_file_saved(path_id);
-    for(auto dirty_id: dirtied) {
-        auto doc_it = documents.find(dirty_id);
-        if(doc_it != documents.end()) {
-            doc_it->second.ast_dirty = true;
-        } else {
-            to_index.push_back(dirty_id);
-        }
-    }
-
-    llvm::SmallVector<std::uint32_t, 4> stale_headers;
-    invalidate_host_contexts(path_id, stale_headers);
-    for(auto hdr_id: stale_headers) {
-        auto doc_it = documents.find(hdr_id);
-        if(doc_it != documents.end()) {
-            doc_it->second.ast_dirty = true;
-            LOG_DEBUG("didSave: invalidated header context for path_id={}", hdr_id);
-        }
-    }
-
-    LOG_DEBUG("didSave: {}", uri);
-    return to_index;
-}
-
-bool Compiler::is_file_open(std::uint32_t path_id) const {
-    return documents.count(path_id);
-}
-
-const DocumentState* Compiler::get_document(std::uint32_t path_id) const {
-    auto it = documents.find(path_id);
-    return it != documents.end() ? &it->second : nullptr;
 }
 
 void Compiler::publish_diagnostics(const std::string& uri,
@@ -1023,16 +717,186 @@ void Compiler::clear_diagnostics(const std::string& uri) {
     peer.send_notification(params);
 }
 
+et::task<bool> Compiler::ensure_pch(Session& session,
+                                    const std::string& directory,
+                                    const std::vector<std::string>& arguments) {
+    auto path_id = session.path_id;
+    auto path = workspace.path_pool.resolve(path_id);
+    auto& text = session.text;
+    auto bound = compute_preamble_bound(text);
+    if(bound == 0) {
+        // No preamble directives — PCH would be empty. Clear any stale entry.
+        workspace.pch_cache.erase(path_id);
+        session.pch_ref.reset();
+        co_return true;
+    }
+
+    auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(text).substr(0, bound));
+
+    // Deterministic content-addressed PCH path.
+    auto pch_path = path::join(workspace.config.cache_dir,
+                               "cache",
+                               "pch",
+                               std::format("{:016x}.pch", preamble_hash));
+
+    // Reuse existing PCH if preamble content and deps haven't changed.
+    if(auto it = workspace.pch_cache.find(path_id); it != workspace.pch_cache.end()) {
+        auto& st = it->second;
+        if(st.hash == preamble_hash && !st.path.empty() &&
+           !deps_changed(workspace.path_pool, st.deps)) {
+            st.bound = bound;
+            session.pch_ref = Session::PCHRef{path_id, preamble_hash, bound};
+            co_return true;
+        }
+    }
+
+    // Preamble incomplete (user still typing) — defer rebuild, reuse old PCH if available.
+    if(!is_preamble_complete(text, bound)) {
+        LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
+        co_return workspace.pch_cache.count(path_id) && !workspace.pch_cache[path_id].path.empty();
+    }
+
+    // If another coroutine is already building PCH for this file, wait for it.
+    if(auto it = workspace.pch_cache.find(path_id);
+       it != workspace.pch_cache.end() && it->second.building) {
+        co_await it->second.building->wait();
+        if(auto it2 = workspace.pch_cache.find(path_id); it2 != workspace.pch_cache.end()) {
+            session.pch_ref = Session::PCHRef{path_id, it2->second.hash, it2->second.bound};
+        }
+        co_return workspace.pch_cache.count(path_id) && !workspace.pch_cache[path_id].path.empty();
+    }
+
+    // Register in-flight build so concurrent requests wait on us.
+    auto completion = std::make_shared<et::event>();
+    workspace.pch_cache[path_id].building = completion;
+
+    // Build a new PCH via stateless worker.
+    worker::BuildParams bp;
+    bp.kind = worker::BuildKind::BuildPCH;
+    bp.file = std::string(path);
+    bp.directory = directory;
+    bp.arguments = arguments;
+    bp.text = text;
+    bp.preamble_bound = bound;
+    bp.output_path = pch_path;
+
+    LOG_DEBUG("Building PCH for {}, bound={}, output={}", path, bound, pch_path);
+
+    auto result = co_await pool.send_stateless(bp);
+
+    if(!result.has_value() || !result.value().success) {
+        LOG_WARN("PCH build failed for {}: {}",
+                 path,
+                 result.has_value() ? result.value().error : result.error().message);
+        workspace.pch_cache[path_id].building.reset();
+        completion->set();
+        co_return false;
+    }
+
+    auto& st = workspace.pch_cache[path_id];
+    st.path = result.value().output_path;
+    st.bound = bound;
+    st.hash = preamble_hash;
+    st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
+    st.building.reset();
+
+    session.pch_ref = Session::PCHRef{path_id, preamble_hash, bound};
+
+    LOG_INFO("PCH built for {}: {}", path, result.value().output_path);
+
+    // Persist cache metadata after successful build.
+    save_cache();
+
+    completion->set();
+    co_return true;
+}
+
+/// Compile module dependencies, build/reuse PCH, and fill PCM paths.
+/// Shared preparation step used by both ensure_compiled() (stateful path)
+/// and forward_stateless() (completion/signatureHelp path).
+et::task<bool> Compiler::ensure_deps(Session& session,
+                                     const std::string& directory,
+                                     const std::vector<std::string>& arguments,
+                                     std::pair<std::string, uint32_t>& pch,
+                                     std::unordered_map<std::string, std::string>& pcms) {
+    auto path_id = session.path_id;
+
+    // Compile C++20 module dependencies (PCMs).
+    if(workspace.compile_graph && !co_await workspace.compile_graph->compile_deps(path_id)) {
+        co_return false;
+    }
+
+    // Scan buffer text for module imports that might not be in compile_graph yet.
+    // When a user adds `import std;` without saving, the compile_graph (disk-based)
+    // doesn't know about the new dependency. Scan the in-memory text to find them.
+    {
+        auto scan_result = scan(session.text);
+        for(auto& mod_name: scan_result.modules) {
+            if(mod_name.empty())
+                continue;
+            bool found = false;
+            for(auto& [pid, name]: workspace.path_to_module) {
+                if(name == mod_name) {
+                    // If PCM not already built, try to build it.
+                    if(workspace.pcm_paths.find(pid) == workspace.pcm_paths.end()) {
+                        if(workspace.compile_graph && workspace.compile_graph->has_unit(pid)) {
+                            co_await workspace.compile_graph->compile_deps(pid);
+                        }
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            if(!found) {
+                LOG_DEBUG("Buffer imports unknown module '{}', skipping", mod_name);
+            }
+        }
+    }
+
+    // Build or reuse PCH.
+    auto pch_ok = co_await ensure_pch(session, directory, arguments);
+    if(pch_ok) {
+        if(auto pch_it = workspace.pch_cache.find(path_id); pch_it != workspace.pch_cache.end()) {
+            pch = {pch_it->second.path, pch_it->second.bound};
+        }
+    }
+
+    // Fill all available PCM paths, excluding the file's own PCM
+    // to avoid "multiple module declarations".
+    fill_pcm_deps(pcms, path_id);
+
+    co_return true;
+}
+
+bool Compiler::is_stale(const Session& session) {
+    if(session.ast_deps.has_value() && deps_changed(workspace.path_pool, *session.ast_deps))
+        return true;
+
+    // Check PCH staleness via the session's pch_ref.
+    if(session.pch_ref.has_value()) {
+        auto pch_it = workspace.pch_cache.find(session.pch_ref->path_id);
+        if(pch_it != workspace.pch_cache.end() &&
+           deps_changed(workspace.path_pool, pch_it->second.deps))
+            return true;
+    }
+
+    return false;
+}
+
+void Compiler::record_deps(Session& session, llvm::ArrayRef<std::string> deps) {
+    session.ast_deps = capture_deps_snapshot(workspace.path_pool, deps);
+}
+
 /// Pull-based compilation entry point for user-opened files.
 ///
-/// Called lazily by forward_stateful() / forward_stateless() before every
+/// Called lazily by forward_query() / forward_build() before every
 /// feature request (hover, semantic tokens, etc.). Guarantees that when it
 /// returns true the stateful worker assigned to `path_id` holds an up-to-date
 /// AST and diagnostics have been published to the client.
 ///
 /// Lifecycle overview (pull-based model):
 ///
-///   didOpen / didChange          – only update DocumentState, mark ast_dirty
+///   didOpen / didChange          – only update Session, mark ast_dirty
 ///   didSave                      – mark dependents dirty, queue indexing
 ///   feature request arrives      – calls ensure_compiled() first
 ///     1. Fast-path exit if AST is already clean (!ast_dirty).
@@ -1051,40 +915,30 @@ void Compiler::clear_diagnostics(const std::string& uri) {
 /// task via loop.schedule(); subsequent ones wait on the shared event.
 /// The detached task cannot be cancelled by LSP $/cancelRequest, preventing
 /// the race where cancellation wakes all waiters and they all start compiles.
-et::task<bool> Compiler::ensure_compiled(std::uint32_t path_id) {
-    auto it = documents.find(path_id);
-    if(it == documents.end()) {
-        LOG_WARN("ensure_compiled: doc not found for path_id={} path={}",
-                 path_id,
-                 path_pool.resolve(path_id));
-        co_return false;
-    }
+et::task<bool> Compiler::ensure_compiled(Session& session) {
+    auto path_id = session.path_id;
 
-    auto& doc = it->second;
     LOG_DEBUG("ensure_compiled: path_id={} version={} gen={} ast_dirty={}",
               path_id,
-              doc.version,
-              doc.generation,
-              doc.ast_dirty);
+              session.version,
+              session.generation,
+              session.ast_dirty);
 
-    if(!doc.ast_dirty) {
-        if(!is_stale(path_id)) {
+    if(!session.ast_dirty) {
+        if(!is_stale(session)) {
             co_return true;
         }
-        doc.ast_dirty = true;
+        session.ast_dirty = true;
     }
 
     // If another compile is already in flight, wait for it.
     // This co_await may be cancelled by LSP $/cancelRequest — that's fine,
     // it just means this particular feature request is abandoned.  The
     // detached compile task keeps running independently.
-    while(it->second.compiling) {
-        auto pending = it->second.compiling;
+    while(session.compiling) {
+        auto pending = session.compiling;
         co_await pending->done.wait();
-        it = documents.find(path_id);
-        if(it == documents.end())
-            co_return false;
-        if(!it->second.ast_dirty)
+        if(!session.ast_dirty)
             co_return true;
     }
 
@@ -1093,80 +947,82 @@ et::task<bool> Compiler::ensure_compiled(std::uint32_t path_id) {
     // to LSP $/cancelRequest cancellation.  This eliminates the race where
     // cancellation fires the RAII guard, waking all waiters simultaneously
     // and causing them all to start new compiles.
-    auto pending_compile = std::make_shared<DocumentState::PendingCompile>();
-    it->second.compiling = pending_compile;
+    auto pending_compile = std::make_shared<Session::PendingCompile>();
+    session.compiling = pending_compile;
 
     LOG_INFO("ensure_compiled: launching detached compile path_id={} gen={}",
              path_id,
-             doc.generation);
+             session.generation);
 
+    // Capture path_id by value so the detached lambda can re-lookup the session
+    // from the sessions map after co_await (DenseMap may invalidate pointers).
     loop.schedule([](Compiler* self,
                      std::uint32_t pid,
-                     std::shared_ptr<DocumentState::PendingCompile> pc) -> et::task<> {
+                     std::shared_ptr<Session::PendingCompile> pc) -> et::task<> {
+        // Re-lookup session from the sessions map (pointer may have been
+        // invalidated by DenseMap growth during co_await).
+        auto find_session = [&]() -> Session* {
+            auto it = self->sessions.find(pid);
+            return it != self->sessions.end() ? &it->second : nullptr;
+        };
+
+        auto* sess = find_session();
+        if(!sess) {
+            pc->done.set();
+            co_return;
+        }
+
         auto finish_compile = [&]() {
-            if(auto it = self->documents.find(pid); it != self->documents.end()) {
-                if(it->second.compiling == pc) {
-                    it->second.compiling.reset();
-                }
+            auto* s = find_session();
+            if(s && s->compiling == pc) {
+                s->compiling.reset();
             }
             LOG_INFO("ensure_compiled: finish_compile (detached) path_id={}", pid);
             pc->done.set();
         };
 
-        auto it = self->documents.find(pid);
-        if(it == self->documents.end()) {
-            finish_compile();
-            co_return;
-        }
-
-        auto gen = it->second.generation;
+        auto gen = sess->generation;
         LOG_INFO("ensure_compiled: starting compile (detached) path_id={} gen={}", pid, gen);
 
-        auto file_path = std::string(self->path_pool.resolve(pid));
+        auto file_path = std::string(self->workspace.path_pool.resolve(pid));
         auto uri = lsp::URI::from_file_path(file_path);
         std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
         worker::CompileParams params;
         params.path = file_path;
-        params.version = it->second.version;
-        params.text = it->second.text;
-        if(!self->fill_compile_args(file_path, params.directory, params.arguments)) {
+        params.version = sess->version;
+        params.text = sess->text;
+        if(!self->fill_compile_args(file_path, params.directory, params.arguments, sess)) {
             finish_compile();
             co_return;
         }
 
-        if(!co_await self->ensure_deps(pid,
-                                       params.path,
-                                       params.text,
-                                       params.directory,
-                                       params.arguments,
-                                       params.pch,
-                                       params.pcms)) {
+        if(!co_await self
+                ->ensure_deps(*sess, params.directory, params.arguments, params.pch, params.pcms)) {
             LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
             finish_compile();
             co_return;
         }
 
-        it = self->documents.find(pid);
-        if(it == self->documents.end()) {
-            finish_compile();
+        // Re-lookup after co_await (DenseMap may have grown).
+        sess = find_session();
+        if(!sess) {
+            pc->done.set();
             co_return;
         }
 
         auto result = co_await self->pool.send_stateful(pid, params);
 
-        // Re-lookup: the document may have been closed while we were compiling.
-        it = self->documents.find(pid);
-        if(it == self->documents.end()) {
-            finish_compile();
+        // Re-lookup after co_await.
+        sess = find_session();
+        if(!sess) {
+            pc->done.set();
             co_return;
         }
 
-        auto& doc2 = it->second;
-
-        if(doc2.generation != gen) {
+        if(sess->generation != gen) {
             LOG_INFO("ensure_compiled: generation mismatch ({} vs {}) for {}",
-                     doc2.generation,
+                     sess->generation,
                      gen,
                      uri_str);
             finish_compile();
@@ -1180,9 +1036,9 @@ et::task<bool> Compiler::ensure_compiled(std::uint32_t path_id) {
             co_return;
         }
 
-        doc2.ast_dirty = false;
+        sess->ast_dirty = false;
         pc->succeeded = true;
-        self->record_deps(pid, result.value().deps);
+        self->record_deps(*sess, result.value().deps);
 
         // Store open file index from the stateful worker's TUIndex.
         if(!result.value().tu_index_data.empty()) {
@@ -1190,15 +1046,16 @@ et::task<bool> Compiler::ensure_compiled(std::uint32_t path_id) {
             OpenFileIndex ofi;
             ofi.file_index = std::move(tu_index.main_file_index);
             ofi.symbols = std::move(tu_index.symbols);
-            ofi.content = doc2.text;
-            self->indexer.set_open_file(pid, file_path, std::move(ofi));
+            ofi.content = sess->text;
+            ofi.mapper.emplace(ofi.content, lsp::PositionEncoding::UTF16);
+            sess->file_index = std::move(ofi);
         }
 
         finish_compile();
 
         // Publish diagnostics AFTER marking compile as done, so that concurrent
-        // forward_stateful() calls can proceed immediately.
-        self->publish_diagnostics(uri_str, doc2.version, result.value().diagnostics);
+        // forward_query() calls can proceed immediately.
+        self->publish_diagnostics(uri_str, sess->version, result.value().diagnostics);
         if(self->on_indexing_needed)
             self->on_indexing_needed();
     }(this, path_id, pending_compile));
@@ -1207,23 +1064,18 @@ et::task<bool> Compiler::ensure_compiled(std::uint32_t path_id) {
     // by LSP $/cancelRequest, the detached task continues unaffected.
     co_await pending_compile->done.wait();
 
-    it = documents.find(path_id);
-    if(it == documents.end())
-        co_return false;
-
-    co_return !it->second.ast_dirty;
+    co_return !session.ast_dirty;
 }
 
-Compiler::RawResult Compiler::forward_query(worker::QueryKind kind, const std::string& uri) {
-    auto path = uri_to_path(uri);
-    auto path_id = path_pool.intern(path);
+Compiler::RawResult Compiler::forward_query(worker::QueryKind kind, Session& session) {
+    auto path_id = session.path_id;
+    auto path = std::string(workspace.path_pool.resolve(path_id));
 
-    if(!co_await ensure_compiled(path_id)) {
+    if(!co_await ensure_compiled(session)) {
         co_return serde_raw{"null"};
     }
 
-    auto dit = documents.find(path_id);
-    if(dit != documents.end() && dit->second.ast_dirty) {
+    if(session.ast_dirty) {
         co_return serde_raw{"null"};
     }
 
@@ -1236,21 +1088,20 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind, const std::s
 }
 
 Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
-                                            const std::string& uri,
-                                            const protocol::Position& position) {
-    auto path = uri_to_path(uri);
-    auto path_id = path_pool.intern(path);
+                                            const protocol::Position& position,
+                                            Session& session) {
+    auto path_id = session.path_id;
+    auto path = std::string(workspace.path_pool.resolve(path_id));
 
-    if(!co_await ensure_compiled(path_id)) {
+    if(!co_await ensure_compiled(session)) {
         co_return serde_raw{"null"};
     }
 
-    auto doc_it = documents.find(path_id);
-    if(doc_it == documents.end() || doc_it->second.ast_dirty) {
+    if(session.ast_dirty) {
         co_return serde_raw{"null"};
     }
 
-    lsp::PositionMapper mapper(doc_it->second.text, lsp::PositionEncoding::UTF16);
+    lsp::PositionMapper mapper(session.text, lsp::PositionEncoding::UTF16);
     auto offset = mapper.to_offset(position);
     if(!offset)
         co_return serde_raw{"null"};
@@ -1264,28 +1115,21 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
 }
 
 Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
-                                            const std::string& uri,
-                                            const protocol::Position& position) {
-    auto path = uri_to_path(uri);
-    auto path_id = path_pool.intern(path);
-
-    auto doc_it = documents.find(path_id);
-    if(doc_it == documents.end()) {
-        co_return serde_raw{};
-    }
-
-    auto& doc = doc_it->second;
+                                            const protocol::Position& position,
+                                            Session& session) {
+    auto path_id = session.path_id;
+    auto path = std::string(workspace.path_pool.resolve(path_id));
 
     worker::BuildParams wp;
     wp.kind = kind;
     wp.file = path;
-    wp.version = doc.version;
-    wp.text = doc.text;
-    if(!fill_compile_args(path, wp.directory, wp.arguments)) {
+    wp.version = session.version;
+    wp.text = session.text;
+    if(!fill_compile_args(path, wp.directory, wp.arguments, &session)) {
         co_return serde_raw{};
     }
 
-    if(!co_await ensure_deps(path_id, path, wp.text, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
+    if(!co_await ensure_deps(session, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
         co_return serde_raw{};
     }
 
@@ -1302,27 +1146,25 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     co_return std::move(result.value().result_json);
 }
 
-Compiler::RawResult Compiler::handle_completion(const std::string& uri,
-                                                const protocol::Position& position) {
-    auto path = uri_to_path(uri);
-    auto path_id = path_pool.intern(path);
-    auto doc_it = documents.find(path_id);
-    if(doc_it != documents.end()) {
-        lsp::PositionMapper mapper(doc_it->second.text, lsp::PositionEncoding::UTF16);
-        auto offset = mapper.to_offset(position);
-        if(offset) {
-            auto pctx = detect_completion_context(doc_it->second.text, *offset);
-            if(pctx.kind == CompletionContext::IncludeQuoted ||
-               pctx.kind == CompletionContext::IncludeAngled) {
-                co_return complete_include(pctx, path);
-            }
-            if(pctx.kind == CompletionContext::Import) {
-                co_return complete_import(pctx);
-            }
+Compiler::RawResult Compiler::handle_completion(const protocol::Position& position,
+                                                Session& session) {
+    auto path_id = session.path_id;
+    auto path = std::string(workspace.path_pool.resolve(path_id));
+
+    lsp::PositionMapper mapper(session.text, lsp::PositionEncoding::UTF16);
+    auto offset = mapper.to_offset(position);
+    if(offset) {
+        auto pctx = detect_completion_context(session.text, *offset);
+        if(pctx.kind == CompletionContext::IncludeQuoted ||
+           pctx.kind == CompletionContext::IncludeAngled) {
+            co_return complete_include(pctx, path);
+        }
+        if(pctx.kind == CompletionContext::Import) {
+            co_return complete_import(pctx);
         }
     }
 
-    co_return co_await forward_build(worker::BuildKind::Completion, uri, position);
+    co_return co_await forward_build(worker::BuildKind::Completion, position, session);
 }
 
 PreambleCompletionContext Compiler::detect_completion_context(const std::string& text,
@@ -1452,7 +1294,7 @@ et::serde::RawValue Compiler::complete_import(const PreambleCompletionContext& c
     std::vector<protocol::CompletionItem> items;
     llvm::StringRef prefix_ref(ctx.prefix);
 
-    for(auto& [path_id, module_name]: path_to_module) {
+    for(auto& [path_id, module_name]: workspace.path_to_module) {
         llvm::StringRef name_ref(module_name);
         if(!name_ref.starts_with(prefix_ref))
             continue;

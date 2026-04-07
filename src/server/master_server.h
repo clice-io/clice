@@ -9,11 +9,12 @@
 #include "eventide/ipc/peer.h"
 #include "eventide/serde/serde/raw_value.h"
 #include "server/compiler.h"
-#include "server/config.h"
 #include "server/indexer.h"
+#include "server/session.h"
 #include "server/worker_pool.h"
-#include "support/path_pool.h"
-#include "syntax/dependency_graph.h"
+#include "server/workspace.h"
+
+#include "llvm/ADT/DenseMap.h"
 
 namespace clice {
 
@@ -29,9 +30,10 @@ enum class ServerLifecycle : std::uint8_t {
 
 /// Top-level LSP server.
 ///
-/// Registers LSP handlers and delegates all compilation, document management,
-/// and index queries to Compiler and Indexer respectively.  MasterServer
-/// itself only owns workspace initialization and background indexing scheduling.
+/// Owns all persistent state and registers LSP handlers.  Document lifecycle
+/// (open/change/close/save) is handled directly here on the sessions map.
+/// Compilation and feature-request forwarding are delegated to Compiler;
+/// index queries are delegated to Indexer.
 class MasterServer {
 public:
     MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path);
@@ -42,20 +44,27 @@ public:
 private:
     et::event_loop& loop;
     et::ipc::JsonPeer& peer;
+
+    /// Persistent project-wide state (config, CDB, path pool, dependency
+    /// graphs, compilation caches, symbol index).
+    Workspace workspace;
+
+    /// Per-file editing sessions, keyed by server-level path_id.
+    llvm::DenseMap<std::uint32_t, Session> sessions;
+
+    /// Worker process pool for offloading compilation and queries.
     WorkerPool pool;
-    PathPool path_pool;
+
+    /// Index query layer (reads from workspace and sessions).
     Indexer indexer;
+
+    /// Compilation lifecycle manager (reads/writes workspace and sessions).
+    Compiler compiler;
 
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
     std::string self_path;
     std::string workspace_root;
-    CliceConfig config;
     std::string session_log_dir;
-
-    CompilationDatabase cdb;
-    DependencyGraph dependency_graph;
-
-    Compiler compiler;
 
     /// Background indexing state.
     std::vector<std::uint32_t> index_queue;
