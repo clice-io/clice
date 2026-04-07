@@ -804,6 +804,186 @@ int main() {
 }
 
 // ---------------------------------------------------------------------------
+// End-to-end: monolithic first → background split → incremental append
+// ---------------------------------------------------------------------------
+
+static void bench_end_to_end(const std::vector<std::string>& headers,
+                             std::size_t count,
+                             int runs,
+                             const std::string& resource_dir) {
+    std::println("\n=== END-TO-END: monolithic → background split → incremental ===");
+    if(count < 2) {
+        std::println("  Need at least 2 headers");
+        return;
+    }
+
+    std::vector<std::string> temp_files;
+    auto track = [&](const std::string& p) {
+        temp_files.push_back(p);
+        return p;
+    };
+
+    // Phase 1: User opens file. Build monolithic PCH immediately.
+    std::println("\n  Phase 1: Monolithic PCH (what user waits for)");
+    std::string mono_preamble = make_preamble(headers, count);
+    std::string mono_hdr = track(temp_path("e2e-mono", "h"));
+    std::string mono_pch = track(temp_path("e2e-mono", "pch"));
+
+    auto mono_start = Clock::now();
+    auto mono_r = build_one_pch(mono_preamble, mono_hdr, mono_pch, resource_dir);
+    auto mono_end = Clock::now();
+    double mono_ms = std::chrono::duration<double, std::milli>(mono_end - mono_start).count();
+
+    if(!mono_r.success) {
+        std::println("    FAILED: {}", mono_r.error);
+        goto e2e_cleanup;
+    }
+    std::println("    Build: {:.1f}ms", mono_ms);
+    std::println(
+        "    Verify: {}",
+        verify_pch(mono_pch, static_cast<std::uint32_t>(mono_preamble.size()), resource_dir)
+            ? "PASS"
+            : "FAIL");
+
+    {
+        // Phase 2: Background — split into chain for future incremental use.
+        // This happens while user is happily editing. They don't wait for this.
+        std::println("\n  Phase 2: Background chain split (async, user doesn't wait)");
+        std::string prev_pch;
+        std::vector<std::string> chain_pchs;
+        bool chain_ok = true;
+
+        auto split_start = Clock::now();
+        for(std::size_t i = 0; i < count && i < headers.size(); ++i) {
+            std::string text = "#include <" + headers[i] + ">\n";
+            std::string fp = track(temp_path("e2e-chain", "h"));
+            std::string pp = track(temp_path("e2e-chain", "pch"));
+
+            auto r = build_one_pch(text, fp, pp, resource_dir, prev_pch, 0);
+            if(!r.success) {
+                std::println("    Chain failed at link {} (<{}>): {}", i + 1, headers[i], r.error);
+                chain_ok = false;
+                break;
+            }
+            prev_pch = pp;
+            chain_pchs.push_back(pp);
+        }
+        auto split_end = Clock::now();
+        double split_ms =
+            std::chrono::duration<double, std::milli>(split_end - split_start).count();
+
+        if(!chain_ok)
+            goto e2e_cleanup;
+
+        std::println("    Split into {} links: {:.1f}ms", chain_pchs.size(), split_ms);
+        std::println("    Verify final link: {}",
+                     verify_pch(chain_pchs.back(), 0, resource_dir) ? "PASS" : "FAIL");
+
+        // Phase 3: User adds a new #include at the end. Compare strategies.
+        std::println("\n  Phase 3: User adds #include <chrono> at preamble end");
+
+        std::string extra_header = "chrono";
+        std::string extra_text = "#include <" + extra_header + ">\n";
+
+        // Strategy A: Monolithic — full rebuild.
+        std::vector<double> mono_rebuild_times;
+        for(int r = 0; r < runs; ++r) {
+            std::string new_preamble = mono_preamble + extra_text;
+            std::string hdr = temp_path("e2e-rebuild", "h");
+            std::string pch = temp_path("e2e-rebuild", "pch");
+            temp_files.push_back(hdr);
+            temp_files.push_back(pch);
+
+            auto rb = build_one_pch(new_preamble, hdr, pch, resource_dir);
+            if(rb.success)
+                mono_rebuild_times.push_back(rb.ms);
+        }
+
+        // Strategy B: Chained — append one link from cached chain.
+        std::vector<double> chain_append_times;
+        for(int r = 0; r < runs; ++r) {
+            std::string fp = temp_path("e2e-append", "h");
+            std::string pp = temp_path("e2e-append", "pch");
+            temp_files.push_back(fp);
+            temp_files.push_back(pp);
+
+            auto ap = build_one_pch(extra_text, fp, pp, resource_dir, chain_pchs.back(), 0);
+            if(ap.success)
+                chain_append_times.push_back(ap.ms);
+        }
+
+        // Report.
+        if(!mono_rebuild_times.empty()) {
+            std::sort(mono_rebuild_times.begin(), mono_rebuild_times.end());
+            std::println("    Monolithic full rebuild:  median {:.1f}ms",
+                         mono_rebuild_times[mono_rebuild_times.size() / 2]);
+        }
+        if(!chain_append_times.empty()) {
+            std::sort(chain_append_times.begin(), chain_append_times.end());
+            double chain_med = chain_append_times[chain_append_times.size() / 2];
+            std::println("    Chained append 1 link:   median {:.1f}ms", chain_med);
+            if(!mono_rebuild_times.empty()) {
+                double mono_med = mono_rebuild_times[mono_rebuild_times.size() / 2];
+                std::println("    Speedup: {:.0f}x", mono_med / chain_med);
+            }
+        }
+
+        // Phase 4: Verify the appended chain PCH actually works with real code.
+        std::println("\n  Phase 4: Correctness — compile real code with appended chain");
+        std::string verify_source = R"cpp(
+#include <chrono>
+int main() {
+    auto now = std::chrono::system_clock::now();
+    std::vector<std::string> v = {"hello"};
+    std::map<int, double> m = {{1, 3.14}};
+    return 0;
+}
+)cpp";
+        // Prepend the full preamble + chrono for source compilation.
+        std::string full_preamble = mono_preamble + extra_text;
+        std::uint32_t full_bound = static_cast<std::uint32_t>(full_preamble.size());
+        std::string full_source = full_preamble + verify_source;
+        std::string source_file = "/tmp/e2e-verify.cpp";
+
+        // Use the last append PCH.
+        std::string append_pch = temp_files[temp_files.size() - 1];  // last .pch
+        // Find it: it's the last .pch in chain_append_times run
+        // Actually, just build one more for the verify.
+        {
+            std::string fp = track(temp_path("e2e-final", "h"));
+            std::string pp = track(temp_path("e2e-final", "pch"));
+            auto ap = build_one_pch(extra_text, fp, pp, resource_dir, chain_pchs.back(), 0);
+            if(ap.success) {
+                // Compile source using the appended chain PCH.
+                // bound=0 because the PCH doesn't cover any bytes of the source file.
+                double t = compile_with_pch(full_source, source_file, pp, 0, resource_dir);
+                std::println("    Compile with appended chain PCH: {}",
+                             t >= 0 ? "PASS (" + std::to_string(int(t)) + "ms)" : "FAIL");
+            } else {
+                std::println("    Build appended chain: FAILED");
+            }
+        }
+
+        // Also verify monolithic rebuild works.
+        {
+            std::string hdr = track(temp_path("e2e-vfull", "h"));
+            std::string pch = track(temp_path("e2e-vfull", "pch"));
+            auto rb = build_one_pch(full_preamble, hdr, pch, resource_dir);
+            if(rb.success) {
+                double t =
+                    compile_with_pch(full_source, source_file, pch, full_bound, resource_dir);
+                std::println("    Compile with monolithic PCH:     {}",
+                             t >= 0 ? "PASS (" + std::to_string(int(t)) + "ms)" : "FAIL");
+            }
+        }
+    }
+
+e2e_cleanup:
+    for(auto& f: temp_files)
+        fs::remove(f);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -870,6 +1050,7 @@ int main(int argc, char* argv[]) {
     bench_chained(ALL_HEADERS, chain_length, runs, resource_dir);
     bench_incremental(ALL_HEADERS, chain_length - 1, runs, resource_dir);
     bench_ast_load(ALL_HEADERS, chain_length, runs, resource_dir);
+    bench_end_to_end(ALL_HEADERS, chain_length, runs, resource_dir);
 
     return 0;
 }
