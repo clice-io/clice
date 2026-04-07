@@ -932,6 +932,11 @@ void Compiler::open_document(const std::string& uri, std::string text, int versi
     LOG_DEBUG("didOpen: {} (v{})", path, version);
 }
 
+/// Apply incremental edits to an open document.
+///
+/// This method ONLY touches per-open-file state (DocumentState).
+/// Global state (CompileGraph, DependencyGraph, pcm_states, pcm_paths)
+/// is NEVER modified here — that happens exclusively in on_save().
 void Compiler::apply_changes(const protocol::DidChangeTextDocumentParams& params) {
     auto path = uri_to_path(params.text_document.uri);
     auto path_id = path_pool.intern(path);
@@ -987,6 +992,12 @@ std::uint32_t Compiler::close_document(const std::string& uri) {
     return path_id;
 }
 
+/// Handle file save — the ONLY global-state synchronization point.
+///
+/// This is where the stable, disk-based global layer (CompileGraph,
+/// pcm_states, pcm_paths, header contexts) is updated to reflect
+/// the newly saved content.  Open files affected by the cascade are
+/// marked ast_dirty; closed files are queued for background indexing.
 llvm::SmallVector<std::uint32_t> Compiler::on_save(const std::string& uri) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
