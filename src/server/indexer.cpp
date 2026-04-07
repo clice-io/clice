@@ -475,7 +475,8 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
             auto shard_it = merged_indices.find(file_id);
             if(shard_it == merged_indices.end())
                 continue;
-            shard_it->second.find_relations(hash, kind, [&](const auto& r, protocol::Range) {
+            /// No position conversion needed — just collect target symbol hashes.
+            shard_it->second.index.lookup(hash, kind, [&](const index::Relation& r) {
                 if(seen.insert(r.target_symbol).second) {
                     targets.push_back(r.target_symbol);
                 }
@@ -484,12 +485,16 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
         }
     }
     for(auto& [_, index]: open_file_indices) {
-        index.find_relations(hash, kind, [&](const auto& r, protocol::Range) {
-            if(seen.insert(r.target_symbol).second) {
-                targets.push_back(r.target_symbol);
+        auto rel_it = index.file_index.relations.find(hash);
+        if(rel_it == index.file_index.relations.end())
+            continue;
+        for(auto& r: rel_it->second) {
+            if(r.kind & kind) {
+                if(seen.insert(r.target_symbol).second) {
+                    targets.push_back(r.target_symbol);
+                }
             }
-            return true;
-        });
+        }
     }
 }
 
