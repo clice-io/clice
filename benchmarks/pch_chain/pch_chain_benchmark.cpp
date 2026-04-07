@@ -534,6 +534,154 @@ cleanup:
 }
 
 // ---------------------------------------------------------------------------
+// AST load latency: compile a source file using monolithic vs chained PCH
+// ---------------------------------------------------------------------------
+
+/// Compile a source file with a given PCH and measure the time.
+static double compile_with_pch(const std::string& source_text,
+                               const std::string& source_file,
+                               const std::string& pch_path,
+                               std::uint32_t preamble_bound,
+                               const std::string& resource_dir) {
+    CompilationParams cp;
+    cp.kind = CompilationKind::Content;
+    cp.directory = "/tmp";
+
+    std::vector<std::string> arg_storage =
+        {"clang++", "-std=c++20", "-resource-dir", resource_dir, "-fsyntax-only", source_file};
+    std::vector<const char*> args;
+    for(auto& s: arg_storage)
+        args.push_back(s.c_str());
+    cp.arguments = args;
+
+    cp.add_remapped_file(source_file, source_text);
+    cp.pch = {pch_path, preamble_bound};
+
+    auto start = Clock::now();
+    auto unit = compile(cp);
+    bool ok = unit.completed();
+    unit = CompilationUnit(nullptr);
+    auto end = Clock::now();
+
+    if(!ok)
+        return -1.0;
+    return std::chrono::duration<double, std::milli>(end - start).count();
+}
+
+static void bench_ast_load(const std::vector<std::string>& headers,
+                           std::size_t count,
+                           int runs,
+                           const std::string& resource_dir) {
+    std::println("\n=== AST LOAD LATENCY ({} headers, {} runs) ===", count, runs);
+
+    // Source file that uses symbols from multiple headers.
+    std::string source_text = make_preamble(headers, count) + R"cpp(
+int main() {
+    std::vector<std::string> v = {"hello", "world"};
+    std::map<int, std::string> m;
+    auto opt = std::make_optional(42);
+    return 0;
+}
+)cpp";
+    std::string source_file = "/tmp/ast-load-test.cpp";
+    auto preamble_bound = static_cast<std::uint32_t>(make_preamble(headers, count).size());
+
+    // --- Build monolithic PCH ---
+    std::string mono_preamble = make_preamble(headers, count);
+    std::string mono_hdr = temp_path("ast-mono", "h");
+    std::string mono_pch = temp_path("ast-mono", "pch");
+    auto mono_r = build_one_pch(mono_preamble, mono_hdr, mono_pch, resource_dir);
+    if(!mono_r.success) {
+        std::println("  Monolithic PCH build failed");
+        fs::remove(mono_hdr);
+        return;
+    }
+
+    // --- Build chained PCH ---
+    std::string prev_pch;
+    std::vector<std::string> chain_temps;
+    bool chain_ok = true;
+    for(std::size_t i = 0; i < count && i < headers.size(); ++i) {
+        std::string text = "#include <" + headers[i] + ">\n";
+        std::string fp = temp_path("ast-chain", "h");
+        std::string pp = temp_path("ast-chain", "pch");
+        chain_temps.push_back(fp);
+        chain_temps.push_back(pp);
+
+        auto r = build_one_pch(text, fp, pp, resource_dir, prev_pch, 0);
+        if(!r.success) {
+            std::println("  Chain build failed at link {} (<{}>): {}", i + 1, headers[i], r.error);
+            chain_ok = false;
+            break;
+        }
+        prev_pch = pp;
+    }
+
+    if(!chain_ok) {
+        fs::remove(mono_hdr);
+        fs::remove(mono_pch);
+        for(auto& f: chain_temps)
+            fs::remove(f);
+        return;
+    }
+
+    std::string chain_pch = prev_pch;
+
+    // --- Benchmark: compile source with monolithic PCH ---
+    std::vector<double> mono_times, chain_times;
+
+    for(int r = 0; r < runs; ++r) {
+        double t =
+            compile_with_pch(source_text, source_file, mono_pch, preamble_bound, resource_dir);
+        if(t >= 0)
+            mono_times.push_back(t);
+    }
+
+    // --- Benchmark: compile source with chained PCH ---
+    for(int r = 0; r < runs; ++r) {
+        // For chained PCH, bound=0 since the PCH doesn't cover the source file's bytes.
+        // But we need the source to NOT re-parse the preamble includes.
+        // With chained PCH loaded via ImplicitPCHInclude and bound=0,
+        // clang will parse the source from the beginning but the includes
+        // will hit the PCH's already-parsed headers.
+        double t =
+            compile_with_pch(source_text, source_file, chain_pch, preamble_bound, resource_dir);
+        if(t >= 0)
+            chain_times.push_back(t);
+    }
+
+    // --- Report ---
+    if(!mono_times.empty()) {
+        std::sort(mono_times.begin(), mono_times.end());
+        double med = mono_times[mono_times.size() / 2];
+        std::println("  Monolithic PCH → compile:  median {:.1f}ms  (min {:.1f}, max {:.1f})",
+                     med,
+                     mono_times.front(),
+                     mono_times.back());
+    }
+    if(!chain_times.empty()) {
+        std::sort(chain_times.begin(), chain_times.end());
+        double med = chain_times[chain_times.size() / 2];
+        std::println("  Chained PCH    → compile:  median {:.1f}ms  (min {:.1f}, max {:.1f})",
+                     med,
+                     chain_times.front(),
+                     chain_times.back());
+    }
+    if(!mono_times.empty() && !chain_times.empty()) {
+        double mono_med = mono_times[mono_times.size() / 2];
+        double chain_med = chain_times[chain_times.size() / 2];
+        double ratio = chain_med / mono_med;
+        std::println("  Ratio (chained/mono): {:.2f}x", ratio);
+    }
+
+    // Cleanup.
+    fs::remove(mono_hdr);
+    fs::remove(mono_pch);
+    for(auto& f: chain_temps)
+        fs::remove(f);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -599,6 +747,7 @@ int main(int argc, char* argv[]) {
     bench_monolithic(ALL_HEADERS, chain_length, runs, resource_dir);
     bench_chained(ALL_HEADERS, chain_length, runs, resource_dir);
     bench_incremental(ALL_HEADERS, chain_length - 1, runs, resource_dir);
+    bench_ast_load(ALL_HEADERS, chain_length, runs, resource_dir);
 
     return 0;
 }
