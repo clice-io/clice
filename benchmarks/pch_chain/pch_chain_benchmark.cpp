@@ -574,17 +574,129 @@ static void bench_ast_load(const std::vector<std::string>& headers,
                            const std::string& resource_dir) {
     std::println("\n=== AST LOAD LATENCY ({} headers, {} runs) ===", count, runs);
 
-    // Source file that uses symbols from multiple headers.
-    std::string source_text = make_preamble(headers, count) + R"cpp(
+    // Light source: uses only a few types (lazy PCH load, best case).
+    std::string light_source = make_preamble(headers, count) + R"cpp(
 int main() {
-    std::vector<std::string> v = {"hello", "world"};
-    std::map<int, std::string> m;
-    auto opt = std::make_optional(42);
+    std::vector<int> v = {1, 2, 3};
+    return v[0];
+}
+)cpp";
+
+    // Heavy source: references symbols from as many headers as possible
+    // to force maximum PCH deserialization (worst case).
+    std::string heavy_source = make_preamble(headers, count) + R"cpp(
+template <typename... Ts> void use(Ts&&...) {}
+
+int main() {
+    // <cstddef> <cstdint> <climits> <cfloat>
+    std::size_t sz = 0; std::uint64_t u64 = 0;
+
+    // <type_traits> <concepts> <compare>
+    static_assert(std::is_integral_v<int>);
+    static_assert(std::integral<int>);
+    std::strong_ordering cmp = 1 <=> 2;
+
+    // <initializer_list> <utility> <tuple> <optional> <variant> <any> <expected>
+    auto il = {1, 2, 3};
+    auto pr = std::make_pair(1, 2);
+    auto tp = std::make_tuple(1, "hello", 3.14);
+    std::optional<int> opt = 42;
+    std::variant<int, double, std::string> var = "hello";
+    std::any a = 42;
+
+    // <bitset> <bit> <string_view> <string> <charconv> <format>
+    std::bitset<64> bs(0xFF);
+    auto pc = std::popcount(42u);
+    std::string_view sv = "hello";
+    std::string s = "world";
+    auto fmt = std::format("{} {}", s, 42);
+
+    // <array> <vector> <deque> <list> <forward_list>
+    std::array<int, 3> arr = {1, 2, 3};
+    std::vector<std::string> vec = {"a", "b"};
+    std::deque<int> dq = {1, 2};
+    std::list<int> lst = {1, 2};
+    std::forward_list<int> fl = {1, 2};
+
+    // <set> <map> <unordered_set> <unordered_map>
+    std::set<int> st = {1, 2, 3};
+    std::map<std::string, int> mp = {{"a", 1}};
+    std::unordered_set<int> us = {1, 2};
+    std::unordered_map<std::string, int> um = {{"b", 2}};
+
+    // <stack> <queue> <span>
+    std::stack<int> stk;
+    std::queue<int> que;
+    std::span<const int> spn(arr);
+
+    // <iterator> <ranges> <algorithm> <numeric>
+    auto it = vec.begin();
+    auto rng = vec | std::views::take(1);
+    std::sort(vec.begin(), vec.end());
+    auto sum = std::accumulate(arr.begin(), arr.end(), 0);
+
+    // <memory> <memory_resource> <scoped_allocator> <functional>
+    auto up = std::make_unique<int>(42);
+    auto sp = std::make_shared<std::string>("test");
+    std::function<int(int)> fn = [](int x) { return x * 2; };
+
+    // <ratio> <chrono>
+    using half = std::ratio<1, 2>;
+    auto now = std::chrono::system_clock::now();
+
+    // <exception> <stdexcept> <system_error>
+    try { throw std::runtime_error("test"); } catch(...) {}
+    auto ec = std::make_error_code(std::errc::invalid_argument);
+
+    // <typeinfo> <typeindex> <source_location>
+    auto& ti = typeid(int);
+    std::type_index tidx(ti);
+    auto loc = std::source_location::current();
+
+    // <new> <limits> <numbers> <valarray> <complex> <random>
+    static_assert(std::numeric_limits<double>::is_iec559);
+    constexpr auto pi = std::numbers::pi;
+    std::valarray<double> va = {1.0, 2.0, 3.0};
+    std::complex<double> cx(1.0, 2.0);
+    std::mt19937 rng_eng(42);
+
+    // <iosfwd> <ios> <streambuf> <istream> <ostream> <iostream> <sstream> <fstream>
+    std::stringstream ss;
+    ss << "hello " << 42;
+    std::cout << ss.str() << std::endl;
+
+    // <cmath> <cstdio> <cstdlib> <cstring> <ctime> <cassert> <cerrno>
+    auto sq = std::sqrt(2.0);
+    auto len = std::strlen("hello");
+    auto t = std::time(nullptr);
+    assert(sq > 1.0);
+
+    // <atomic> <mutex> <condition_variable> <thread> <future>
+    std::atomic<int> ai{0};
+    std::mutex mtx;
+    std::condition_variable cv;
+
+    // <semaphore> <latch> <barrier> <stop_token> <shared_mutex>
+    std::counting_semaphore<1> sem(1);
+    std::latch lat(1);
+
+    // <regex> <filesystem>
+    std::regex rx("hello.*");
+    auto cwd = std::filesystem::current_path();
+
+    // <locale> <codecvt>
+    auto& loc2 = std::locale::classic();
+
+    use(sz, u64, cmp, il, pr, tp, opt, var, a, bs, pc, sv, s, fmt,
+        arr, vec, dq, lst, fl, st, mp, us, um, stk, que, spn,
+        it, rng, sum, up, sp, fn, now, ec, ti, tidx, loc,
+        pi, va, cx, rng_eng, ss, sq, len, t, ai, mtx, cv,
+        sem, lat, rx, cwd, loc2);
     return 0;
 }
 )cpp";
-    std::string source_file = "/tmp/ast-load-test.cpp";
-    auto preamble_bound = static_cast<std::uint32_t>(make_preamble(headers, count).size());
+    auto preamble = make_preamble(headers, count);
+    auto preamble_bound = static_cast<std::uint32_t>(preamble.size());
 
     // --- Build monolithic PCH ---
     std::string mono_preamble = make_preamble(headers, count);
@@ -627,51 +739,61 @@ int main() {
 
     std::string chain_pch = prev_pch;
 
-    // --- Benchmark: compile source with monolithic PCH ---
-    std::vector<double> mono_times, chain_times;
+    // --- Run both scenarios: light and heavy ---
+    struct Scenario {
+        const char* name;
+        std::string source;
+    };
 
-    for(int r = 0; r < runs; ++r) {
-        double t =
-            compile_with_pch(source_text, source_file, mono_pch, preamble_bound, resource_dir);
-        if(t >= 0)
-            mono_times.push_back(t);
-    }
+    Scenario scenarios[] = {
+        {"light (3 types)",     light_source},
+        {"heavy (all headers)", heavy_source},
+    };
 
-    // --- Benchmark: compile source with chained PCH ---
-    for(int r = 0; r < runs; ++r) {
-        // For chained PCH, bound=0 since the PCH doesn't cover the source file's bytes.
-        // But we need the source to NOT re-parse the preamble includes.
-        // With chained PCH loaded via ImplicitPCHInclude and bound=0,
-        // clang will parse the source from the beginning but the includes
-        // will hit the PCH's already-parsed headers.
-        double t =
-            compile_with_pch(source_text, source_file, chain_pch, preamble_bound, resource_dir);
-        if(t >= 0)
-            chain_times.push_back(t);
-    }
+    for(auto& [name, source]: scenarios) {
+        std::println("\n  --- {} ---", name);
+        std::string source_file = "/tmp/ast-load-test.cpp";
 
-    // --- Report ---
-    if(!mono_times.empty()) {
-        std::sort(mono_times.begin(), mono_times.end());
-        double med = mono_times[mono_times.size() / 2];
-        std::println("  Monolithic PCH → compile:  median {:.1f}ms  (min {:.1f}, max {:.1f})",
-                     med,
-                     mono_times.front(),
-                     mono_times.back());
-    }
-    if(!chain_times.empty()) {
-        std::sort(chain_times.begin(), chain_times.end());
-        double med = chain_times[chain_times.size() / 2];
-        std::println("  Chained PCH    → compile:  median {:.1f}ms  (min {:.1f}, max {:.1f})",
-                     med,
-                     chain_times.front(),
-                     chain_times.back());
-    }
-    if(!mono_times.empty() && !chain_times.empty()) {
-        double mono_med = mono_times[mono_times.size() / 2];
-        double chain_med = chain_times[chain_times.size() / 2];
-        double ratio = chain_med / mono_med;
-        std::println("  Ratio (chained/mono): {:.2f}x", ratio);
+        std::vector<double> mono_times, chain_times;
+
+        for(int r = 0; r < runs; ++r) {
+            double t =
+                compile_with_pch(source, source_file, mono_pch, preamble_bound, resource_dir);
+            if(t >= 0)
+                mono_times.push_back(t);
+        }
+
+        for(int r = 0; r < runs; ++r) {
+            double t =
+                compile_with_pch(source, source_file, chain_pch, preamble_bound, resource_dir);
+            if(t >= 0)
+                chain_times.push_back(t);
+        }
+
+        if(!mono_times.empty()) {
+            std::sort(mono_times.begin(), mono_times.end());
+            double med = mono_times[mono_times.size() / 2];
+            std::println("  Monolithic PCH → compile:  median {:.1f}ms  (min {:.1f}, max {:.1f})",
+                         med,
+                         mono_times.front(),
+                         mono_times.back());
+        }
+        if(!chain_times.empty()) {
+            std::sort(chain_times.begin(), chain_times.end());
+            double med = chain_times[chain_times.size() / 2];
+            std::println("  Chained PCH    → compile:  median {:.1f}ms  (min {:.1f}, max {:.1f})",
+                         med,
+                         chain_times.front(),
+                         chain_times.back());
+        }
+        if(!mono_times.empty() && !chain_times.empty()) {
+            double mono_med = mono_times[mono_times.size() / 2];
+            double chain_med = chain_times[chain_times.size() / 2];
+            double ratio = chain_med / mono_med;
+            std::println("  Ratio (chained/mono): {:.2f}x", ratio);
+        } else if(chain_times.empty()) {
+            std::println("  Chained PCH: compilation FAILED (heavy source may have errors)");
+        }
     }
 
     // Cleanup.
