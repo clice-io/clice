@@ -209,18 +209,18 @@ private:
                                std::pair<std::string, uint32_t>& pch,
                                std::unordered_map<std::string, std::string>& pcms);
 
-    /// Build or reuse PCH for a source file.
-    et::task<bool> ensure_pch(std::uint32_t path_id,
+    /// Build or reuse PCH for an open document.
+    et::task<bool> ensure_pch(DocumentState& doc,
                               llvm::StringRef path,
                               const std::string& text,
                               const std::string& directory,
                               const std::vector<std::string>& arguments);
 
-    /// Check if a file's AST or PCH deps have changed since last compile.
-    bool is_stale(std::uint32_t path_id);
+    /// Check if a document's AST or PCH deps have changed since last compile.
+    bool is_stale(const DocumentState& doc);
 
     /// Record dependency snapshot after a successful compile.
-    void record_deps(std::uint32_t path_id, llvm::ArrayRef<std::string> deps);
+    void record_deps(DocumentState& doc, llvm::ArrayRef<std::string> deps);
 
     void publish_diagnostics(const std::string& uri, int version, const et::serde::RawValue& diags);
     void clear_diagnostics(const std::string& uri);

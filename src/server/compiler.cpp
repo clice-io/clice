@@ -712,12 +712,11 @@ void Compiler::invalidate_host_contexts(std::uint32_t host_path_id,
     }
 }
 
-et::task<bool> Compiler::ensure_pch(std::uint32_t path_id,
+et::task<bool> Compiler::ensure_pch(DocumentState& doc,
                                     llvm::StringRef path,
                                     const std::string& text,
                                     const std::string& directory,
                                     const std::vector<std::string>& arguments) {
-    auto& doc = documents[path_id];
     auto bound = compute_preamble_bound(text);
     if(bound == 0) {
         // No preamble directives — PCH would be empty. Clear any stale entry.
@@ -847,9 +846,13 @@ et::task<bool> Compiler::ensure_deps(std::uint32_t path_id,
     }
 
     // Build or reuse PCH.
-    auto pch_ok = co_await ensure_pch(path_id, path, text, directory, arguments);
+    auto doc_it = documents.find(path_id);
+    if(doc_it == documents.end())
+        co_return false;
+    auto pch_ok = co_await ensure_pch(doc_it->second, path, text, directory, arguments);
     if(pch_ok) {
-        auto doc_it = documents.find(path_id);
+        // Re-lookup: doc_it may be invalidated by co_await.
+        doc_it = documents.find(path_id);
         if(doc_it != documents.end() && doc_it->second.pch.has_value()) {
             pch = {doc_it->second.pch->path, doc_it->second.pch->bound};
         }
@@ -862,12 +865,7 @@ et::task<bool> Compiler::ensure_deps(std::uint32_t path_id,
     co_return true;
 }
 
-bool Compiler::is_stale(std::uint32_t path_id) {
-    auto doc_it = documents.find(path_id);
-    if(doc_it == documents.end())
-        return false;
-
-    auto& doc = doc_it->second;
+bool Compiler::is_stale(const DocumentState& doc) {
     if(doc.deps.has_value() && deps_changed(path_pool, *doc.deps))
         return true;
 
@@ -877,16 +875,16 @@ bool Compiler::is_stale(std::uint32_t path_id) {
     return false;
 }
 
-void Compiler::record_deps(std::uint32_t path_id, llvm::ArrayRef<std::string> deps) {
-    documents[path_id].deps = capture_deps_snapshot(path_pool, deps);
+void Compiler::record_deps(DocumentState& doc, llvm::ArrayRef<std::string> deps) {
+    doc.deps = capture_deps_snapshot(path_pool, deps);
 }
 
+/// Clean up for a closed file.  Does NOT touch global state — the global
+/// layer will be refreshed when the file is re-indexed from disk (triggered
+/// by adding it to index_queue in close_document).
 void Compiler::on_file_closed(std::uint32_t path_id) {
-    if(compile_graph && compile_graph->has_unit(path_id)) {
-        compile_graph->update(path_id);
-    }
-    // PCH, deps, header_context, and active_context are cleaned up when
-    // the DocumentState is erased in close_document().
+    // All per-open-file state (PCH, deps, header_context, active_context)
+    // is cleaned up when the DocumentState is erased in close_document().
 }
 
 llvm::SmallVector<std::uint32_t> Compiler::on_file_saved(std::uint32_t path_id) {
@@ -995,9 +993,16 @@ std::uint32_t Compiler::close_document(const std::string& uri) {
 /// Handle file save — the ONLY global-state synchronization point.
 ///
 /// This is where the stable, disk-based global layer (CompileGraph,
-/// pcm_states, pcm_paths, header contexts) is updated to reflect
-/// the newly saved content.  Open files affected by the cascade are
-/// marked ast_dirty; closed files are queued for background indexing.
+/// pcm_states, pcm_paths) is updated to reflect the newly saved content.
+/// Open files affected by the cascade are marked ast_dirty; closed files
+/// are queued for background indexing.
+///
+/// TODO: re-scan the saved file's includes and call
+///   dep_graph.set_includes() + dep_graph.build_reverse_map()
+/// to keep the dependency graph in sync with disk content.
+/// Currently DependencyGraph only supports bulk build_reverse_map(),
+/// so incremental update would require adding an incremental reverse-map
+/// update API to DependencyGraph first.
 llvm::SmallVector<std::uint32_t> Compiler::on_save(const std::string& uri) {
     auto path = uri_to_path(uri);
     auto path_id = path_pool.intern(path);
@@ -1106,7 +1111,7 @@ et::task<bool> Compiler::ensure_compiled(std::uint32_t path_id) {
               doc.ast_dirty);
 
     if(!doc.ast_dirty) {
-        if(!is_stale(path_id)) {
+        if(!is_stale(doc)) {
             co_return true;
         }
         doc.ast_dirty = true;
@@ -1220,7 +1225,7 @@ et::task<bool> Compiler::ensure_compiled(std::uint32_t path_id) {
 
         doc2.ast_dirty = false;
         pc->succeeded = true;
-        self->record_deps(pid, result.value().deps);
+        self->record_deps(doc2, result.value().deps);
 
         // Store open file index from the stateful worker's TUIndex.
         if(!result.value().tu_index_data.empty()) {
