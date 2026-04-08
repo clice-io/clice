@@ -14,6 +14,7 @@ using namespace std::literals;
 CommandOptions quiet_options() {
     CommandOptions options;
     options.suppress_logging = true;
+    options.inject_resource_dir = false;
     return options;
 }
 
@@ -125,9 +126,10 @@ TEST_CASE(RemoveAppend) {
 TEST_CASE(DefaultFallback) {
     /// Lookup for a file not in the CDB should synthesize a default command.
     CompilationDatabase database;
+    auto options = quiet_options();
 
     /// C++ files get "clang++ -std=c++20 <file>".
-    auto cpp_results = database.lookup("unknown.cpp");
+    auto cpp_results = database.lookup("unknown.cpp", options);
     ASSERT_EQ(cpp_results.size(), 1U);
     auto cpp_argv = cpp_results.front().to_argv();
     ASSERT_EQ(cpp_argv.size(), 3U);
@@ -136,17 +138,17 @@ TEST_CASE(DefaultFallback) {
     ASSERT_EQ(cpp_argv[2], "unknown.cpp"sv);
 
     /// .hpp files also get C++ default.
-    auto hpp_results = database.lookup("header.hpp");
+    auto hpp_results = database.lookup("header.hpp", options);
     ASSERT_EQ(hpp_results.front().to_argv().size(), 3U);
     ASSERT_EQ(hpp_results.front().to_argv()[0], "clang++"sv);
 
     /// .cc files also get C++ default.
-    auto cc_results = database.lookup("file.cc");
+    auto cc_results = database.lookup("file.cc", options);
     ASSERT_EQ(cc_results.front().to_argv().size(), 3U);
     ASSERT_EQ(cc_results.front().to_argv()[0], "clang++"sv);
 
     /// C files get "clang <file>".
-    auto c_results = database.lookup("unknown.c");
+    auto c_results = database.lookup("unknown.c", options);
     ASSERT_EQ(c_results.size(), 1U);
     auto c_argv = c_results.front().to_argv();
     ASSERT_EQ(c_argv.size(), 2U);
@@ -154,7 +156,7 @@ TEST_CASE(DefaultFallback) {
     ASSERT_EQ(c_argv[1], "unknown.c"sv);
 
     /// Other extensions also get plain clang.
-    auto h_results = database.lookup("foo.h");
+    auto h_results = database.lookup("foo.h", options);
     ASSERT_EQ(h_results.front().to_argv().size(), 2U);
     ASSERT_EQ(h_results.front().to_argv()[0], "clang"sv);
 };
@@ -544,19 +546,21 @@ TEST_CASE(Module) {
 }
 
 TEST_CASE(ResourceDir) {
-    // When query_toolchain is enabled, resource dir is injected automatically.
     CompilationDatabase database;
     database.add_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
 
-    // Without query_toolchain, no resource dir injection.
-    auto args_no_tc = database.lookup("main.cpp").front().to_argv();
-    ASSERT_EQ(args_no_tc.size(), 3U);
-    ASSERT_EQ(args_no_tc[0], "clang++"sv);
-    ASSERT_EQ(args_no_tc[1], "-std=c++23"sv);
-    ASSERT_EQ(args_no_tc[2], "main.cpp"sv);
+    // With inject_resource_dir disabled, no resource dir in result.
+    auto args_no_rd =
+        database.lookup("main.cpp", {.suppress_logging = true, .inject_resource_dir = false})
+            .front()
+            .to_argv();
+    ASSERT_EQ(args_no_rd.size(), 3U);
+    ASSERT_EQ(args_no_rd[0], "clang++"sv);
+    ASSERT_EQ(args_no_rd[1], "-std=c++23"sv);
+    ASSERT_EQ(args_no_rd[2], "main.cpp"sv);
 
-    // With query_toolchain, resource dir is present in the result.
-    auto args_tc = database.lookup("main.cpp", {.query_toolchain = true}).front().to_argv();
+    // With inject_resource_dir enabled (default), resource dir is present.
+    auto args_tc = database.lookup("main.cpp").front().to_argv();
     bool has_resource_dir = false;
     for(size_t i = 0; i + 1 < args_tc.size(); ++i) {
         if(args_tc[i] == "-resource-dir"sv) {

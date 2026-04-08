@@ -29,6 +29,11 @@ struct CommandOptions {
     /// Set true in unittests to avoid cluttering test output.
     bool suppress_logging = false;
 
+    /// Inject our resource dir into the flags if not already present.
+    /// Enabled by default so clang tools always use matching builtin headers.
+    /// Disable in unit tests that assert exact argument counts.
+    bool inject_resource_dir = true;
+
     /// Extra arguments to remove from the original command line.
     llvm::ArrayRef<std::string> remove;
 
