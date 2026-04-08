@@ -624,8 +624,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                     cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
                 if(!contexts.empty()) {
                     auto& cmd = contexts[0];
-                    auto argv = cmd.to_argv();
-                    auto fallback = scan_module_decl(argv, cmd.resolved.directory, /*content=*/{});
+                    auto fallback =
+                        scan_module_decl(cmd.to_argv(), cmd.resolved.directory, /*content=*/{});
                     if(!fallback.module_name.empty()) {
                         scan_result.scan_result.module_name = std::move(fallback.module_name);
                         scan_result.scan_result.is_interface_unit = fallback.is_interface_unit;

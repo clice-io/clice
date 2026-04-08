@@ -439,103 +439,107 @@ llvm::SmallVector<CompileCommand> CompilationDatabase::lookup(llvm::StringRef fi
                 }
                 flags = std::move(cleaned);
 
-                // Detect cc1 mode.
-                is_cc1 = (flags.size() >= 2 && flags[1] == llvm::StringRef("-cc1"));
-            }
-
-            // Inject our resource dir if not already present.
-            if(!resource_dir().empty()) {
-                bool has_resource_dir = false;
-                for(auto& arg: flags) {
-                    if(arg == llvm::StringRef("-resource-dir")) {
-                        has_resource_dir = true;
-                        break;
-                    }
-                }
-                if(!has_resource_dir) {
-                    append_arg("-resource-dir");
-                    append_arg(resource_dir());
-                }
+                // Detect cc1 mode (search rather than assuming index).
+                is_cc1 = ranges::contains(flags, llvm::StringRef("-cc1"));
             }
         } else {
             append_args(info->canonical->arguments);
             append_args(info->patch);
         }
 
-        // Apply remove filter.
-        if(!options.remove.empty()) {
-            using Arg = std::unique_ptr<llvm::opt::Arg>;
-            llvm::SmallVector<const char*> remove_strs;
-            for(auto& s: options.remove) {
-                remove_strs.push_back(strings.save(s).data());
+    // Inject our resource dir if not already present.
+    if(!resource_dir().empty()) {
+        bool has_resource_dir = false;
+        for(auto& arg: flags) {
+            if(arg == llvm::StringRef("-resource-dir")) {
+                has_resource_dir = true;
+                break;
             }
-            llvm::SmallVector<Arg> remove_args;
-            parser->parse(
-                remove_strs,
-                [&remove_args](Arg arg) { remove_args.emplace_back(std::move(arg)); },
-                [](int, int) {});
-            auto get_id = [](const Arg& arg) {
-                return arg->getOption().getID();
-            };
-            std::ranges::sort(remove_args, {}, get_id);
-
-            auto saved_flags = std::move(flags);
-            flags.clear();
-            flags.push_back(saved_flags.front());
-
-            parser->parse(
-                llvm::ArrayRef(saved_flags).drop_front(),
-                [&](Arg arg) {
-                    auto id = arg->getOption().getID();
-                    auto range = std::ranges::equal_range(remove_args, id, {}, get_id);
-                    for(auto& remove: range) {
-                        if(remove->getNumValues() == 1 &&
-                           remove->getValue(0) == llvm::StringRef("*")) {
-                            return;
-                        }
-                        if(std::ranges::equal(
-                               arg->getValues(),
-                               remove->getValues(),
-                               [](llvm::StringRef l, llvm::StringRef r) { return l == r; })) {
-                            return;
-                        }
-                    }
-                    render_arg(flags, *arg);
-                },
-                [](int, int) {});
         }
-
-        for(auto& arg: options.append) {
-            append_arg(arg);
+        if(!has_resource_dir) {
+            append_arg("-resource-dir");
+            append_arg(resource_dir());
         }
-
-        return CompileCommand{
-            ResolvedFlags{directory, std::move(flags), is_cc1},
-            paths.resolve(path_id).data()
-        };
-    };
-
-    llvm::SmallVector<CompileCommand> results;
-
-    if(!matched.empty()) {
-        for(auto& entry: matched) {
-            results.push_back(build_command(entry.info));
-        }
-    } else {
-        // No matching entry — synthesize a default command.
-        std::vector<const char*> flags;
-        if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
-            flags = {"clang++", "-std=c++20"};
-        } else {
-            flags = {"clang"};
-        }
-        results.push_back(CompileCommand{
-            ResolvedFlags{{}, std::move(flags), false},
-            paths.resolve(path_id).data()
-        });
     }
 
-    return results;
+    // Apply remove filter.
+    if(!options.remove.empty()) {
+        using Arg = std::unique_ptr<llvm::opt::Arg>;
+        llvm::SmallVector<const char*> remove_strs;
+        for(auto& s: options.remove) {
+            remove_strs.push_back(strings.save(s).data());
+        }
+        llvm::SmallVector<Arg> remove_args;
+        parser->parse(
+            remove_strs,
+            [&remove_args](Arg arg) { remove_args.emplace_back(std::move(arg)); },
+            [](int, int) {});
+        auto get_id = [](const Arg& arg) {
+            return arg->getOption().getID();
+        };
+        std::ranges::sort(remove_args, {}, get_id);
+
+        auto saved_flags = std::move(flags);
+        flags.clear();
+        flags.push_back(saved_flags.front());
+
+        parser->parse(
+            llvm::ArrayRef(saved_flags).drop_front(),
+            [&](Arg arg) {
+                auto id = arg->getOption().getID();
+                auto range = std::ranges::equal_range(remove_args, id, {}, get_id);
+                for(auto& remove: range) {
+                    if(remove->getNumValues() == 1 && remove->getValue(0) == llvm::StringRef("*")) {
+                        return;
+                    }
+                    if(std::ranges::equal(
+                           arg->getValues(),
+                           remove->getValues(),
+                           [](llvm::StringRef l, llvm::StringRef r) { return l == r; })) {
+                        return;
+                    }
+                }
+                render_arg(flags, *arg);
+            },
+            [](int, int) {});
+    }
+
+    for(auto& arg: options.append) {
+        append_arg(arg);
+    }
+
+    return CompileCommand{
+        ResolvedFlags{directory, std::move(flags), is_cc1},
+        paths.resolve(path_id).data()
+    };
+};
+
+llvm::SmallVector<CompileCommand> results;
+
+if(!matched.empty()) {
+    for(auto& entry: matched) {
+        results.push_back(build_command(entry.info));
+    }
+} else {
+    // No matching entry — synthesize a default command.
+    std::vector<const char*> flags;
+    if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
+        flags = {"clang++", "-std=c++20"};
+    } else {
+        flags = {"clang"};
+    }
+    if(!resource_dir().empty()) {
+        flags.push_back(strings.save("-resource-dir").data());
+        flags.push_back(strings.save(resource_dir()).data());
+    }
+    results.push_back(CompileCommand{
+        ResolvedFlags{{}, std::move(flags), false},
+        paths.resolve(path_id).data()
+    });
+}
+
+return results;
+
 }
 
 SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
@@ -557,8 +561,7 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
 
     auto results = lookup(file, options);
     auto& cmd = results.front();
-    auto argv = cmd.to_argv();
-    auto config = extract_search_config(argv, cmd.resolved.directory);
+    auto config = extract_search_config(cmd.to_argv(), cmd.resolved.directory);
 
     if(cacheable) {
         auto key = ConfigCacheKey{matched.front().info.ptr, options_bits(options)};

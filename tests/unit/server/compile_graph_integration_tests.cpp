@@ -70,8 +70,7 @@ CompileGraph::resolve_fn make_resolver(CompilationDatabase& cdb,
             return {};
         }
 
-        auto argv = results[0].to_argv();
-        auto scan_result = scan_precise(argv, results[0].resolved.directory);
+        auto scan_result = scan_precise(results[0].to_argv(), results[0].resolved.directory);
 
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
@@ -1033,8 +1032,7 @@ TEST_CASE(ReResolveAfterUpdate) {
         if(results.empty()) {
             return {};
         }
-        auto argv = results[0].to_argv();
-        auto scan_result = scan_precise(argv, results[0].resolved.directory);
+        auto scan_result = scan_precise(results[0].to_argv(), results[0].resolved.directory);
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
             auto mod_ids = env.graph.lookup_module(mod_name);

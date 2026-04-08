@@ -53,8 +53,7 @@ void Compiler::init_compile_graph() {
             return {};
 
         auto& cmd = results[0];
-        auto argv = cmd.to_argv();
-        auto scan_result = scan_precise(argv, cmd.resolved.directory);
+        auto scan_result = scan_precise(cmd.to_argv(), cmd.resolved.directory);
 
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
