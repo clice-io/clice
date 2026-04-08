@@ -58,11 +58,9 @@ public:
              llvm::DenseMap<std::uint32_t, Session>& sessions);
     ~Compiler();
 
-    // ----- Module / compile graph (operates on Workspace) -----
 
     void init_compile_graph();
 
-    // ----- Compile argument resolution -----
 
     /// Fill compile arguments for a file (CDB lookup + header context fallback).
     /// @param session  If non-null, used for header context resolution on open files.
@@ -71,13 +69,11 @@ public:
                            std::vector<std::string>& arguments,
                            Session* session = nullptr);
 
-    // ----- Pull-based compilation -----
 
     /// Compile an open file's AST if dirty.  On success, updates session's
     /// file_index, pch_ref, ast_deps, and publishes diagnostics.
     et::task<bool> ensure_compiled(Session& session);
 
-    // ----- Feature request forwarding to workers -----
 
     using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
 

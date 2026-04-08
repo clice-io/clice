@@ -26,12 +26,10 @@ namespace et = eventide;
 /// Sessions may READ from Workspace (e.g. to obtain PCH/PCM paths, module
 /// mappings, include graph) but all compilation results stay here.
 struct Session {
-    // ----- Identity -----
 
     /// Path ID of this file in PathPool.  Set on creation, never changes.
     std::uint32_t path_id = 0;
 
-    // ----- Document state (from LSP) -----
 
     /// LSP document version, incremented by the client on each edit.
     int version = 0;
@@ -56,7 +54,6 @@ struct Session {
 
     std::shared_ptr<PendingCompile> compiling;
 
-    // ----- Compilation artifacts (per-file, references Workspace caches) -----
 
     /// Reference to the PCH entry in Workspace.pch_cache, if any.
     /// The PCH itself is owned by Workspace (shared, content-addressed);
@@ -73,7 +70,6 @@ struct Session {
     /// Used for two-layer staleness detection (mtime + content hash).
     std::optional<DepsSnapshot> ast_deps;
 
-    // ----- Header context (only meaningful for header files) -----
 
     /// Compilation context for header files that lack their own CDB entry.
     /// Stores the host source file and synthesized preamble for this header.
@@ -83,7 +79,6 @@ struct Session {
     /// When set, overrides automatic header context resolution.
     std::optional<std::uint32_t> active_context;
 
-    // ----- Index (per-file, not merged into Workspace) -----
 
     /// Symbol index built from the latest compilation of this file's buffer.
     /// Used for queries (hover, goto, references) on this file.

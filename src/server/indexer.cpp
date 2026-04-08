@@ -21,7 +21,6 @@ namespace clice {
 
 namespace lsp = eventide::ipc::lsp;
 
-// -- Indexer: data management -------------------------------------------------
 
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
     auto tu_index = index::TUIndex::from(tu_index_data);
@@ -183,7 +182,6 @@ bool Indexer::need_update(llvm::StringRef file_path) {
     return merged_it->second.index.need_update(path_mapping);
 }
 
-// -- Indexer: symbol queries --------------------------------------------------
 
 bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const {
     for(auto& [_, session]: sessions) {
@@ -369,7 +367,6 @@ std::optional<SymbolInfo>
     return lookup_symbol(uri, path, range.start, session);
 }
 
-// -- Indexer: relation collection helpers --------------------------------------
 
 void Indexer::collect_grouped_relations(
     index::SymbolHash hash,
@@ -436,7 +433,6 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
     }
 }
 
-// -- Indexer: hierarchy queries ------------------------------------------------
 
 /// Resolve a symbol hash into a SymbolInfo with definition location.
 /// Returns nullopt if the symbol or its definition cannot be found.
@@ -581,7 +577,6 @@ std::vector<protocol::SymbolInformation> Indexer::search_symbols(llvm::StringRef
     return results;
 }
 
-// -- Indexer: static utilities ------------------------------------------------
 
 protocol::SymbolKind Indexer::to_lsp_symbol_kind(SymbolKind kind) {
     switch(kind) {

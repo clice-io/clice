@@ -362,9 +362,7 @@ void MasterServer::register_handlers() {
         }());
     });
 
-    /// ---------------------------------------------------------------
     /// Document lifecycle — handled directly by MasterServer.
-    /// ---------------------------------------------------------------
 
     peer.on_notification([this](const protocol::DidOpenTextDocumentParams& params) {
         if(lifecycle != ServerLifecycle::Ready)
@@ -482,9 +480,7 @@ void MasterServer::register_handlers() {
         LOG_DEBUG("didSave: {}", path);
     });
 
-    /// ---------------------------------------------------------------
     /// Feature requests — stateful forwarding.
-    /// ---------------------------------------------------------------
 
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
         auto path = uri_to_path(params.text_document_position_params.text_document.uri);
@@ -592,9 +588,7 @@ void MasterServer::register_handlers() {
         return indexer.resolve_hierarchy_item(uri, path, range, data, session);
     };
 
-    /// ---------------------------------------------------------------
     /// Feature requests — index-based with AST fallback.
-    /// ---------------------------------------------------------------
 
     peer.on_request([this, query_at](RequestContext& ctx,
                                      const protocol::DefinitionParams& params) -> RawResult {
@@ -650,9 +644,7 @@ void MasterServer::register_handlers() {
             co_return serde_raw{"null"};
         });
 
-    /// ---------------------------------------------------------------
     /// Feature requests — stateless forwarding.
-    /// ---------------------------------------------------------------
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CompletionParams& params) -> RawResult {
@@ -677,9 +669,7 @@ void MasterServer::register_handlers() {
                                                       sit->second);
         });
 
-    /// ---------------------------------------------------------------
     /// Hierarchy queries — index-based.
-    /// ---------------------------------------------------------------
 
     peer.on_request(
         [this, lookup_at](RequestContext& ctx,
@@ -772,9 +762,7 @@ void MasterServer::register_handlers() {
             co_return to_raw(results);
         });
 
-    /// ---------------------------------------------------------------
     /// clice/ extension commands.
-    /// ---------------------------------------------------------------
 
     peer.on_request(
         "clice/queryContext",

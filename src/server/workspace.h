@@ -171,16 +171,13 @@ struct PCMState {
 /// Sessions (open files) may READ from Workspace but must not WRITE to it
 /// except through the didSave path.
 struct Workspace {
-    // ----- Configuration -----
 
     CliceConfig config;
     CompilationDatabase cdb;
 
-    // ----- Path management -----
 
     PathPool path_pool;
 
-    // ----- Dependency graphs -----
 
     /// Include relationships between files on disk (#include edges).
     /// Built once at startup from CDB scan; updated incrementally on didSave.
@@ -195,7 +192,6 @@ struct Workspace {
     /// declarations change.
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
-    // ----- Compilation caches (shared, content-addressed) -----
 
     /// PCH cache, keyed by file path_id.  Content-addressed by preamble hash,
     /// so different files with identical preambles share the same PCH.
@@ -209,7 +205,6 @@ struct Workspace {
     /// Maps to the .pcm file on disk used as -fmodule-file argument.
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 
-    // ----- Symbol index (disk-derived) -----
 
     /// Global symbol table across all indexed translation units.
     index::ProjectIndex project_index;
@@ -219,7 +214,6 @@ struct Workspace {
     /// for position mapping.
     llvm::DenseMap<std::uint32_t, MergedIndexShard> merged_indices;
 
-    // ----- Lifecycle methods -----
 
     /// Called when a file is saved to disk.  Cascades invalidation through
     /// compile_graph and clears affected PCM caches.
@@ -230,7 +224,6 @@ struct Workspace {
     /// is a module unit so dependents can be re-evaluated on next compile.
     void on_file_closed(std::uint32_t path_id);
 
-    // ----- Cache / module methods (moved from Compiler) -----
 
     /// Load PCH/PCM cache from cache.json on disk.
     void load_cache();
