@@ -52,8 +52,9 @@ void Compiler::init_compile_graph() {
         if(results.empty())
             return {};
 
-        auto& ctx = results[0];
-        auto scan_result = scan_precise(ctx.arguments, ctx.directory);
+        auto& cmd = results[0];
+        auto argv = cmd.to_argv();
+        auto scan_result = scan_precise(argv, cmd.resolved.directory);
 
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
@@ -158,12 +159,9 @@ bool Compiler::fill_compile_args(llvm::StringRef path,
     // 2. Normal CDB lookup for the file itself.
     auto results = workspace.cdb.lookup(path, {.query_toolchain = true});
     if(!results.empty()) {
-        auto& ctx = results.front();
-        directory = ctx.directory.str();
-        arguments.clear();
-        for(auto* arg: ctx.arguments) {
-            arguments.emplace_back(arg);
-        }
+        auto& cmd = results.front();
+        directory = cmd.resolved.directory.str();
+        arguments = cmd.to_string_argv();
         return true;
     }
 
@@ -214,33 +212,20 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
         return false;
     }
 
-    auto& host_ctx = host_results.front();
-    directory = host_ctx.directory.str();
-    arguments.clear();
+    auto& host_cmd = host_results.front();
+    directory = host_cmd.resolved.directory.str();
 
-    // Copy host arguments, replacing the host source file path with the header.
-    bool replaced = false;
-    for(auto& arg: host_ctx.arguments) {
-        if(llvm::StringRef(arg) == host_path) {
-            arguments.emplace_back(path);
-            replaced = true;
-        } else {
-            arguments.emplace_back(arg);
-        }
-    }
-    if(!replaced) {
-        LOG_WARN("fill_header_context_args: host path {} not found in arguments, appending header",
-                 host_path);
-        arguments.emplace_back(path);
-    }
+    // Replace source_file and inject -include preamble into flags directly.
+    CompileCommand header_cmd = host_cmd;
+    header_cmd.source_file = workspace.path_pool.resolve(path_id).data();
 
-    // Inject preamble: for cc1 args insert after "-cc1", otherwise after driver.
-    std::size_t inject_pos = 1;
-    if(arguments.size() >= 2 && arguments[1] == "-cc1") {
-        inject_pos = 2;
-    }
-    arguments.insert(arguments.begin() + inject_pos, ctx_ptr->preamble_path);
-    arguments.insert(arguments.begin() + inject_pos, "-include");
+    // Inject -include <preamble> into flags: after "-cc1" for cc1, after driver otherwise.
+    std::size_t inject_pos = header_cmd.resolved.is_cc1 ? 2 : 1;
+    header_cmd.resolved.flags.insert(header_cmd.resolved.flags.begin() + inject_pos,
+                                     ctx_ptr->preamble_path.c_str());
+    header_cmd.resolved.flags.insert(header_cmd.resolved.flags.begin() + inject_pos, "-include");
+
+    arguments = header_cmd.to_string_argv();
 
     LOG_INFO("fill_compile_args: header context for {} (host={}, preamble={})",
              path,

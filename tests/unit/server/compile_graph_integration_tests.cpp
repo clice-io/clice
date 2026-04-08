@@ -29,10 +29,8 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
-        cp.directory = results[0].directory.str();
-        for(auto* arg: results[0].arguments) {
-            cp.arguments.push_back(arg);
-        }
+        cp.directory = results[0].resolved.directory.str();
+        cp.arguments = results[0].to_argv();
 
         // Fill ALL available PCM paths (clang needs transitive deps too).
         for(auto& [pid, pcm_path]: pcm_paths) {
@@ -72,7 +70,8 @@ CompileGraph::resolve_fn make_resolver(CompilationDatabase& cdb,
             return {};
         }
 
-        auto scan_result = scan_precise(results[0].arguments, results[0].directory);
+        auto argv = results[0].to_argv();
+        auto scan_result = scan_precise(argv, results[0].resolved.directory);
 
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
@@ -1034,7 +1033,8 @@ TEST_CASE(ReResolveAfterUpdate) {
         if(results.empty()) {
             return {};
         }
-        auto scan_result = scan_precise(results[0].arguments, results[0].directory);
+        auto argv = results[0].to_argv();
+        auto scan_result = scan_precise(argv, results[0].resolved.directory);
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
             auto mod_ids = env.graph.lookup_module(mod_name);
@@ -1150,10 +1150,8 @@ TEST_CASE(ModuleImplementationUnit) {
 
         CompilationParams cp;
         cp.kind = CompilationKind::Content;
-        cp.directory = results[0].directory.str();
-        for(auto* arg: results[0].arguments) {
-            cp.arguments.push_back(arg);
-        }
+        cp.directory = results[0].resolved.directory.str();
+        cp.arguments = results[0].to_argv();
         // Pass the built PCM so clang can resolve `module Greeter;`.
         for(auto& [pid, pcm_path]: env.pcm_paths) {
             for(auto& [mod_name, mod_ids]: env.graph.modules()) {

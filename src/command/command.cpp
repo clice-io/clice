@@ -23,6 +23,44 @@ namespace ranges = std::ranges;
 
 }  // namespace
 
+std::vector<const char*> CompileCommand::to_argv() const {
+    std::vector<const char*> argv;
+    argv.reserve(resolved.flags.size() + 4);
+
+    if(resolved.is_cc1 && source_file) {
+        // cc1 mode requires TWO file-related arguments (both are needed):
+        //   1. -main-file-name <basename>  — used by clang for diagnostics/debug info
+        //   2. <source_file> at the end    — the actual input file path
+        // These are NOT duplicates: (1) is just the basename, (2) is the full path.
+        for(std::size_t i = 0; i < resolved.flags.size(); ++i) {
+            argv.push_back(resolved.flags[i]);
+            if(resolved.flags[i] == llvm::StringRef("-cc1")) {
+                argv.push_back("-main-file-name");
+                // path::filename returns a suffix of source_file (a pointer into
+                // the same buffer), so .data() is null-terminated because source_file is.
+                argv.push_back(path::filename(source_file).data());
+            }
+        }
+    } else {
+        argv.insert(argv.end(), resolved.flags.begin(), resolved.flags.end());
+    }
+
+    if(source_file) {
+        argv.push_back(source_file);
+    }
+    return argv;
+}
+
+std::vector<std::string> CompileCommand::to_string_argv() const {
+    auto argv = to_argv();
+    std::vector<std::string> result;
+    result.reserve(argv.size());
+    for(auto* arg: argv) {
+        result.emplace_back(arg);
+    }
+    return result;
+}
+
 CompilationDatabase::CompilationDatabase() = default;
 
 CompilationDatabase::~CompilationDatabase() = default;
@@ -329,8 +367,8 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
     return entries.size();
 }
 
-llvm::SmallVector<CompilationContext> CompilationDatabase::lookup(llvm::StringRef file,
-                                                                  const CommandOptions& options) {
+llvm::SmallVector<CompileCommand> CompilationDatabase::lookup(llvm::StringRef file,
+                                                              const CommandOptions& options) {
     auto path_id = paths.intern(file);
     auto matched = find_entries(path_id);
 
@@ -338,17 +376,18 @@ llvm::SmallVector<CompilationContext> CompilationDatabase::lookup(llvm::StringRe
         render_arg_to([&](llvm::StringRef s) { out.push_back(strings.save(s).data()); }, arg);
     };
 
-    /// Build one CompilationContext from a single CompilationInfo.
-    auto build_context = [&](object_ptr<CompilationInfo> info) -> CompilationContext {
+    /// Build one CompileCommand from a single CompilationInfo.
+    auto build_command = [&](object_ptr<CompilationInfo> info) -> CompileCommand {
         llvm::StringRef directory = info->directory;
-        std::vector<const char*> arguments;
+        std::vector<const char*> flags;
+        bool is_cc1 = false;
 
         auto append_arg = [&](llvm::StringRef s) {
-            arguments.emplace_back(strings.save(s).data());
+            flags.emplace_back(strings.save(s).data());
         };
 
         auto append_args = [&](llvm::ArrayRef<const char*> args) {
-            arguments.insert(arguments.end(), args.begin(), args.end());
+            flags.insert(flags.end(), args.begin(), args.end());
         };
 
         if(options.query_toolchain) {
@@ -361,23 +400,20 @@ llvm::SmallVector<CompilationContext> CompilationDatabase::lookup(llvm::StringRe
                 append_args(info->canonical->arguments);
                 append_args(info->patch);
             } else {
-                arguments.assign(cached.begin(), cached.end());
-                // TODO: add an assertion that the last arg is the temp source
-                // file (e.g., contains "query-toolchain") to guard against
-                // future changes in clang cc1 argument ordering.
-                arguments.pop_back();  // remove temp source file
+                flags.assign(cached.begin(), cached.end());
+                flags.pop_back();  // remove temp source file
 
                 // Replace resource dir if needed.
                 if(!resource_dir().empty()) {
                     llvm::StringRef old_resource_dir;
-                    for(std::size_t i = 0; i + 1 < arguments.size(); ++i) {
-                        if(arguments[i] == llvm::StringRef("-resource-dir")) {
-                            old_resource_dir = arguments[i + 1];
+                    for(std::size_t i = 0; i + 1 < flags.size(); ++i) {
+                        if(flags[i] == llvm::StringRef("-resource-dir")) {
+                            old_resource_dir = flags[i + 1];
                             break;
                         }
                     }
                     if(!old_resource_dir.empty() && old_resource_dir != resource_dir()) {
-                        for(auto& arg: arguments) {
+                        for(auto& arg: flags) {
                             llvm::StringRef s(arg);
                             if(s.starts_with(old_resource_dir)) {
                                 auto replaced =
@@ -390,24 +426,27 @@ llvm::SmallVector<CompilationContext> CompilationDatabase::lookup(llvm::StringRe
 
                 append_args(info->patch);
 
-                // Fix -main-file-name to match the actual file.
-                bool next_main_file = false;
-                for(auto& arg: arguments) {
-                    if(arg == llvm::StringRef("-main-file-name")) {
-                        next_main_file = true;
+                // Strip -main-file-name and its value from flags (to_argv() will
+                // re-inject it with the correct basename when is_cc1 is set).
+                std::vector<const char*> cleaned;
+                cleaned.reserve(flags.size());
+                for(std::size_t i = 0; i < flags.size(); ++i) {
+                    if(flags[i] == llvm::StringRef("-main-file-name") && i + 1 < flags.size()) {
+                        ++i;  // skip the value
                         continue;
                     }
-                    if(next_main_file) {
-                        arg = strings.save(path::filename(file)).data();
-                        next_main_file = false;
-                    }
+                    cleaned.push_back(flags[i]);
                 }
+                flags = std::move(cleaned);
+
+                // Detect cc1 mode.
+                is_cc1 = (flags.size() >= 2 && flags[1] == llvm::StringRef("-cc1"));
             }
 
             // Inject our resource dir if not already present.
             if(!resource_dir().empty()) {
                 bool has_resource_dir = false;
-                for(auto& arg: arguments) {
+                for(auto& arg: flags) {
                     if(arg == llvm::StringRef("-resource-dir")) {
                         has_resource_dir = true;
                         break;
@@ -440,12 +479,12 @@ llvm::SmallVector<CompilationContext> CompilationDatabase::lookup(llvm::StringRe
             };
             std::ranges::sort(remove_args, {}, get_id);
 
-            auto saved_args = std::move(arguments);
-            arguments.clear();
-            arguments.push_back(saved_args.front());
+            auto saved_flags = std::move(flags);
+            flags.clear();
+            flags.push_back(saved_flags.front());
 
             parser->parse(
-                llvm::ArrayRef(saved_args).drop_front(),
+                llvm::ArrayRef(saved_flags).drop_front(),
                 [&](Arg arg) {
                     auto id = arg->getOption().getID();
                     auto range = std::ranges::equal_range(remove_args, id, {}, get_id);
@@ -461,7 +500,7 @@ llvm::SmallVector<CompilationContext> CompilationDatabase::lookup(llvm::StringRe
                             return;
                         }
                     }
-                    render_arg(arguments, *arg);
+                    render_arg(flags, *arg);
                 },
                 [](int, int) {});
         }
@@ -470,26 +509,30 @@ llvm::SmallVector<CompilationContext> CompilationDatabase::lookup(llvm::StringRe
             append_arg(arg);
         }
 
-        arguments.emplace_back(paths.resolve(path_id).data());
-        return CompilationContext(directory, std::move(arguments));
+        return CompileCommand{
+            ResolvedFlags{directory, std::move(flags), is_cc1},
+            paths.resolve(path_id).data()
+        };
     };
 
-    llvm::SmallVector<CompilationContext> results;
+    llvm::SmallVector<CompileCommand> results;
 
     if(!matched.empty()) {
         for(auto& entry: matched) {
-            results.push_back(build_context(entry.info));
+            results.push_back(build_command(entry.info));
         }
     } else {
         // No matching entry — synthesize a default command.
-        std::vector<const char*> arguments;
+        std::vector<const char*> flags;
         if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
-            arguments = {"clang++", "-std=c++20"};
+            flags = {"clang++", "-std=c++20"};
         } else {
-            arguments = {"clang"};
+            flags = {"clang"};
         }
-        arguments.emplace_back(paths.resolve(path_id).data());
-        results.push_back(CompilationContext({}, std::move(arguments)));
+        results.push_back(CompileCommand{
+            ResolvedFlags{{}, std::move(flags), false},
+            paths.resolve(path_id).data()
+        });
     }
 
     return results;
@@ -513,8 +556,9 @@ SearchConfig CompilationDatabase::lookup_search_config(llvm::StringRef file,
     }
 
     auto results = lookup(file, options);
-    auto& ctx = results.front();
-    auto config = extract_search_config(ctx.arguments, ctx.directory);
+    auto& cmd = results.front();
+    auto argv = cmd.to_argv();
+    auto config = extract_search_config(argv, cmd.resolved.directory);
 
     if(cacheable) {
         auto key = ConfigCacheKey{matched.front().info.ptr, options_bits(options)};

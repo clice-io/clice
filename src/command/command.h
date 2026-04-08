@@ -36,12 +36,35 @@ struct CommandOptions {
     llvm::ArrayRef<std::string> append;
 };
 
-struct CompilationContext {
+/// File-independent compilation flags (shareable, suitable as cache key input).
+/// Does NOT contain source file path or -main-file-name.
+struct ResolvedFlags {
     /// The working directory of compilation.
     llvm::StringRef directory;
 
-    /// The compilation arguments.
-    std::vector<const char*> arguments;
+    /// All flags excluding source file path and -main-file-name.
+    std::vector<const char*> flags;
+
+    /// Whether flags come from toolchain query (cc1 mode).
+    /// When true, flags are cc1 frontend args (resolved clang binary + "-cc1" + ...),
+    /// NOT the original driver command. to_argv() scans for "-cc1" in flags and
+    /// inserts -main-file-name immediately after it.
+    bool is_cc1 = false;
+};
+
+/// Compilation command = resolved flags + source file identity.
+struct CompileCommand {
+    ResolvedFlags resolved;
+
+    /// Interned, pointer-stable. Must be null-terminated (required by to_argv()
+    /// and path::filename().data() which relies on the suffix being null-terminated).
+    const char* source_file = nullptr;
+
+    /// Produce full argv: flags + [-main-file-name <basename> if cc1] + source_file.
+    std::vector<const char*> to_argv() const;
+
+    /// Convenience: to_argv() converted to vector<string>.
+    std::vector<std::string> to_string_argv() const;
 };
 
 /// Shared compiler identity — driver + all semantics-affecting flags.
@@ -174,10 +197,10 @@ public:
     /// but toolchain cache survives. Returns the number of entries loaded.
     std::size_t load(llvm::StringRef path);
 
-    /// Lookup the compilation contexts for a file. A file may have multiple
+    /// Lookup the compile commands for a file. A file may have multiple
     /// compilation commands (e.g. different build configurations); all are returned.
-    llvm::SmallVector<CompilationContext> lookup(llvm::StringRef file,
-                                                 const CommandOptions& options = {});
+    llvm::SmallVector<CompileCommand> lookup(llvm::StringRef file,
+                                             const CommandOptions& options = {});
 
     /// Combined lookup + extract_search_config with internal caching.
     SearchConfig lookup_search_config(llvm::StringRef file, const CommandOptions& options = {});
