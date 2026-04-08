@@ -4,18 +4,13 @@ import asyncio
 
 import pytest
 from lsprotocol.types import (
-    DidChangeTextDocumentParams,
     DidCloseTextDocumentParams,
     HoverParams,
     Position,
-    TextDocumentContentChangeWholeDocument,
-    TextDocumentIdentifier,
-    VersionedTextDocumentIdentifier,
 )
 
-
-def _doc(uri: str) -> TextDocumentIdentifier:
-    return TextDocumentIdentifier(uri=uri)
+from tests.integration.utils import doc
+from tests.integration.utils.workspace import did_change
 
 
 @pytest.mark.workspace("hello_world")
@@ -32,7 +27,7 @@ async def test_rapid_edits_with_hover(client, workspace):
     hover = await asyncio.wait_for(
         client.text_document_hover_async(
             HoverParams(
-                text_document=_doc(uri),
+                text_document=doc(uri),
                 position=Position(line=2, character=4),
             )
         ),
@@ -43,21 +38,14 @@ async def test_rapid_edits_with_hover(client, workspace):
     # 50 rapid body edits, each followed by a hover request.
     for i in range(50):
         new_content = content.replace("return a + b;", f"return a + b + {i};")
-        client.text_document_did_change(
-            DidChangeTextDocumentParams(
-                text_document=VersionedTextDocumentIdentifier(uri=uri, version=i + 2),
-                content_changes=[
-                    TextDocumentContentChangeWholeDocument(text=new_content)
-                ],
-            )
-        )
+        did_change(client, uri, i + 2, new_content)
         # Fire-and-forget hover on 'add' — just ensure it doesn't hang.
         # We don't await the result here to simulate real editor behavior
         # where requests overlap.
         asyncio.ensure_future(
             client.text_document_hover_async(
                 HoverParams(
-                    text_document=_doc(uri),
+                    text_document=doc(uri),
                     position=Position(line=2, character=4),
                 )
             )
@@ -71,7 +59,7 @@ async def test_rapid_edits_with_hover(client, workspace):
     final_hover = await asyncio.wait_for(
         client.text_document_hover_async(
             HoverParams(
-                text_document=_doc(uri),
+                text_document=doc(uri),
                 position=Position(line=2, character=4),
             )
         ),
@@ -80,4 +68,4 @@ async def test_rapid_edits_with_hover(client, workspace):
     assert final_hover is not None, "Final hover returned None — worker may have hung"
     assert final_hover.contents is not None, "Final hover contents should not be None"
 
-    client.text_document_did_close(DidCloseTextDocumentParams(text_document=_doc(uri)))
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=doc(uri)))

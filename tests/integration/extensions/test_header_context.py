@@ -17,9 +17,7 @@ from lsprotocol.types import (
     TextDocumentIdentifier,
 )
 
-
-def _doc(uri: str) -> TextDocumentIdentifier:
-    return TextDocumentIdentifier(uri=uri)
+from tests.integration.utils import doc
 
 
 def _get(obj, key, default=None):
@@ -37,10 +35,7 @@ async def test_query_context_returns_host_sources(client, workspace):
     utils_h = workspace / "utils.h"
     utils_uri, _ = client.open(utils_h)
 
-    result = await asyncio.wait_for(
-        client.protocol.send_request_async("clice/queryContext", {"uri": utils_uri}),
-        timeout=30.0,
-    )
+    result = await client.query_context(utils_uri)
     assert result is not None
     total = _get(result, "total")
     contexts = _get(result, "contexts", [])
@@ -57,10 +52,7 @@ async def test_query_context_source_file_returns_cdb_entries(client, workspace):
     """clice/queryContext on a source file should return its CDB entries."""
     main_uri, _ = await client.open_and_wait(workspace / "main.cpp")
 
-    result = await asyncio.wait_for(
-        client.protocol.send_request_async("clice/queryContext", {"uri": main_uri}),
-        timeout=30.0,
-    )
+    result = await client.query_context(main_uri)
     assert result is not None
     # header_context workspace has exactly 1 CDB entry for main.cpp.
     assert _get(result, "total") == 1
@@ -76,10 +68,7 @@ async def test_current_context_default_null(client, workspace):
     utils_h = workspace / "utils.h"
     utils_uri, _ = client.open(utils_h)
 
-    result = await asyncio.wait_for(
-        client.protocol.send_request_async("clice/currentContext", {"uri": utils_uri}),
-        timeout=30.0,
-    )
+    result = await client.current_context(utils_uri)
     assert result is not None
     assert _get(result, "context") is None, (
         "Default context should be null (no explicit override)"
@@ -95,21 +84,12 @@ async def test_switch_context_and_current_context(client, workspace):
     utils_uri, _ = client.open(utils_h)
 
     # Switch context to main.cpp.
-    switch_result = await asyncio.wait_for(
-        client.protocol.send_request_async(
-            "clice/switchContext",
-            {"uri": utils_uri, "contextUri": main_uri},
-        ),
-        timeout=30.0,
-    )
+    switch_result = await client.switch_context(utils_uri, main_uri)
     assert switch_result is not None
     assert _get(switch_result, "success") is True
 
     # Verify currentContext now returns main.cpp.
-    current = await asyncio.wait_for(
-        client.protocol.send_request_async("clice/currentContext", {"uri": utils_uri}),
-        timeout=30.0,
-    )
+    current = await client.current_context(utils_uri)
     assert current is not None
     ctx = _get(current, "context")
     assert ctx is not None, (
@@ -129,37 +109,22 @@ async def test_full_context_flow(client, workspace):
     utils_uri, _ = client.open(utils_h)
 
     # 3. queryContext on utils.h -> should return main.cpp as a context option.
-    query = await asyncio.wait_for(
-        client.protocol.send_request_async("clice/queryContext", {"uri": utils_uri}),
-        timeout=30.0,
-    )
+    query = await client.query_context(utils_uri)
     assert _get(query, "total") >= 1
     contexts = _get(query, "contexts", [])
     context_uris = [_get(c, "uri") for c in contexts]
     assert any("main.cpp" in u for u in context_uris)
 
     # 4. currentContext on utils.h -> should be null (default).
-    current = await asyncio.wait_for(
-        client.protocol.send_request_async("clice/currentContext", {"uri": utils_uri}),
-        timeout=30.0,
-    )
+    current = await client.current_context(utils_uri)
     assert _get(current, "context") is None
 
     # 5. switchContext on utils.h to main.cpp.
-    switch = await asyncio.wait_for(
-        client.protocol.send_request_async(
-            "clice/switchContext",
-            {"uri": utils_uri, "contextUri": main_uri},
-        ),
-        timeout=30.0,
-    )
+    switch = await client.switch_context(utils_uri, main_uri)
     assert _get(switch, "success") is True
 
     # 6. currentContext on utils.h -> should now be main.cpp.
-    current2 = await asyncio.wait_for(
-        client.protocol.send_request_async("clice/currentContext", {"uri": utils_uri}),
-        timeout=30.0,
-    )
+    current2 = await client.current_context(utils_uri)
     ctx = _get(current2, "context")
     assert ctx is not None
     assert "main.cpp" in _get(ctx, "uri")
@@ -169,7 +134,7 @@ async def test_full_context_flow(client, workspace):
     hover = await asyncio.wait_for(
         client.text_document_hover_async(
             HoverParams(
-                text_document=_doc(utils_uri),
+                text_document=doc(utils_uri),
                 position=Position(line=6, character=12),  # 'calc' function
             )
         ),
@@ -198,10 +163,7 @@ async def test_deep_nested_header_context(client, workspace):
     inner_uri, _ = client.open(inner_h)
 
     # queryContext on inner.h should find main.cpp through the chain.
-    result = await asyncio.wait_for(
-        client.protocol.send_request_async("clice/queryContext", {"uri": inner_uri}),
-        timeout=30.0,
-    )
+    result = await client.query_context(inner_uri)
     assert result is not None
     total = _get(result, "total")
     assert total >= 1, f"Deep nested header should find host sources, got total={total}"
@@ -221,20 +183,14 @@ async def test_deep_nested_switch_context_and_hover(client, workspace):
     inner_uri, _ = client.open(inner_h)
 
     # Switch inner.h context to main.cpp.
-    switch = await asyncio.wait_for(
-        client.protocol.send_request_async(
-            "clice/switchContext",
-            {"uri": inner_uri, "contextUri": main_uri},
-        ),
-        timeout=30.0,
-    )
+    switch = await client.switch_context(inner_uri, main_uri)
     assert _get(switch, "success") is True
 
     # Hover on 'inner_origin' in inner.h should work (Point available via preamble).
     hover = await asyncio.wait_for(
         client.text_document_hover_async(
             HoverParams(
-                text_document=_doc(inner_uri),
+                text_document=doc(inner_uri),
                 position=Position(line=3, character=14),  # 'inner_origin'
             )
         ),
@@ -249,10 +205,7 @@ async def test_query_context_multiple_cdb_entries(client, workspace):
     main_cpp = workspace / "main.cpp"
     main_uri, _ = await client.open_and_wait(main_cpp)
 
-    result = await asyncio.wait_for(
-        client.protocol.send_request_async("clice/queryContext", {"uri": main_uri}),
-        timeout=30.0,
-    )
+    result = await client.query_context(main_uri)
     assert result is not None
     total = _get(result, "total")
     assert total >= 2, f"Should find at least 2 CDB entries, got total={total}"

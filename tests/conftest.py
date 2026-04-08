@@ -1,35 +1,35 @@
-"""Fixtures and shared helpers for clice LSP integration tests using pygls LanguageClient."""
+"""Root conftest — fixtures and shared helpers for clice integration tests.
+
+Directory structure:
+    tests/integration/
+    ├── conftest.py              ← you are here (global fixtures)
+    ├── utils/                   ← shared utilities
+    │   ├── client.py            ← CliceClient class
+    │   ├── workspace.py         ← write_cdb, doc, write_source, did_change
+    │   ├── assertions.py        ← assert_no_errors, assert_has_errors, ...
+    │   ├── wait.py              ← wait_for_recompile, wait_for_index
+    │   └── cache.py             ← list_pch_files, read_cache_json, ...
+    ├── lifecycle/               ← server lifecycle tests
+    ├── compilation/             ← staleness, PCH, persistent cache
+    ├── features/                ← LSP feature tests
+    ├── modules/                 ← C++20 module tests
+    ├── extensions/              ← clice extension protocol tests
+    └── stress/                  ← rapid edit / stress tests
+
+Run all:     pytest tests/integration/ -v
+Run subset:  pytest tests/integration/features/ -v
+"""
 
 import asyncio
 import json
 import shutil
 import subprocess
 import sys
-from collections.abc import AsyncGenerator
 from pathlib import Path
-from urllib.parse import unquote
 
 import pytest
-from lsprotocol.types import (
-    PROGRESS,
-    TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS,
-    WINDOW_WORK_DONE_PROGRESS_CREATE,
-    ClientCapabilities,
-    Diagnostic,
-    DidOpenTextDocumentParams,
-    HoverParams,
-    InitializeParams,
-    InitializeResult,
-    InitializedParams,
-    Position,
-    ProgressParams,
-    PublishDiagnosticsParams,
-    TextDocumentIdentifier,
-    TextDocumentItem,
-    WorkDoneProgressCreateParams,
-    WorkspaceFolder,
-)
-from pygls.lsp.client import BaseLanguageClient
+
+from tests.integration.utils.client import CliceClient
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -59,124 +59,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
-class CliceClient(BaseLanguageClient):
-    """Language client that tracks server-sent notifications."""
-
-    def __init__(self) -> None:
-        super().__init__("clice-test-client", "0.1.0")
-        self.diagnostics: dict[str, list[Diagnostic]] = {}
-        self.diagnostics_events: dict[str, asyncio.Event] = {}
-        self.progress_tokens: list[str] = []
-        self.progress_events: list[dict] = []
-        self.init_result: InitializeResult | None = None
-
-        @self.feature(TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
-        def on_diagnostics(params: PublishDiagnosticsParams) -> None:
-            raw_uri = params.uri
-            normalized = self._normalize_uri(raw_uri)
-            diags = list(params.diagnostics)
-            # Store under both raw and normalized forms.
-            self.diagnostics[raw_uri] = diags
-            if raw_uri != normalized:
-                self.diagnostics[normalized] = diags
-            for key in (raw_uri, normalized):
-                if key in self.diagnostics_events:
-                    self.diagnostics_events[key].set()
-
-        @self.feature(WINDOW_WORK_DONE_PROGRESS_CREATE)
-        def on_create_progress(params: WorkDoneProgressCreateParams) -> None:
-            token = str(params.token) if isinstance(params.token, int) else params.token
-            self.progress_tokens.append(token)
-            return None
-
-        @self.feature(PROGRESS)
-        def on_progress(params: ProgressParams) -> None:
-            token = str(params.token) if isinstance(params.token, int) else params.token
-            self.progress_events.append({"token": token, "value": params.value})
-
-    @staticmethod
-    def _normalize_uri(uri: str) -> str:
-        """Decode percent-encoded URIs so encoded and unencoded forms match."""
-        return unquote(uri)
-
-    def wait_for_diagnostics(self, uri: str) -> asyncio.Event:
-        """Get or create an event that fires when diagnostics arrive for uri."""
-        uri = self._normalize_uri(uri)
-        if uri not in self.diagnostics_events:
-            self.diagnostics_events[uri] = asyncio.Event()
-        else:
-            self.diagnostics_events[uri].clear()
-        return self.diagnostics_events[uri]
-
-    async def initialize(self, workspace: Path) -> InitializeResult:
-        """Initialize the LSP server with a workspace folder and return the result."""
-        result = await self.initialize_async(
-            InitializeParams(
-                capabilities=ClientCapabilities(),
-                root_uri=workspace.as_uri(),
-                workspace_folders=[
-                    WorkspaceFolder(uri=workspace.as_uri(), name="test")
-                ],
-            )
-        )
-        self.initialized(InitializedParams())
-        self.init_result = result
-        return result
-
-    def open(self, filepath: Path, version: int = 0) -> tuple[str, str]:
-        """Open a text document and return (normalized_uri, content).
-
-        Sends the percent-encoded URI on the wire (RFC 3986), but returns
-        the normalized (decoded) form for internal lookups.
-        """
-        content = filepath.read_bytes().decode("utf-8")
-        wire_uri = filepath.as_uri()
-        self.text_document_did_open(
-            DidOpenTextDocumentParams(
-                text_document=TextDocumentItem(
-                    uri=wire_uri, language_id="cpp", version=version, text=content
-                )
-            )
-        )
-        return self._normalize_uri(wire_uri), content
-
-    def path_to_uri(self, filepath: Path) -> str:
-        """Convert a file path to a normalized URI without opening it."""
-        return self._normalize_uri(filepath.as_uri())
-
-    async def wait_diagnostics(self, uri: str, timeout: float = 30.0) -> None:
-        """Wait for diagnostics on the given URI."""
-        uri = self._normalize_uri(uri)
-        if uri in self.diagnostics:
-            return
-        event = self.wait_for_diagnostics(uri)
-        if uri in self.diagnostics:
-            return
-        await asyncio.wait_for(event.wait(), timeout=timeout)
-
-    async def open_and_wait(
-        self, filepath: Path, timeout: float = 60.0
-    ) -> tuple[str, str]:
-        """Open a file and trigger compilation by sending a hover request.
-
-        With the pull-based compilation model, compilation is triggered
-        by feature requests (hover, completion, etc.) via ensure_compiled(),
-        not by didOpen. This method opens the file and sends a hover request
-        to trigger compilation, which publishes diagnostics as a side effect.
-        """
-        uri, content = self.open(filepath)
-        event = self.wait_for_diagnostics(uri)
-        # Send hover to trigger pull-based compilation (ensure_compiled).
-        # This causes the server to compile the file and publish diagnostics.
-        await self.text_document_hover_async(
-            HoverParams(
-                text_document=TextDocumentIdentifier(uri=uri),
-                position=Position(line=0, character=0),
-            )
-        )
-        # Wait for diagnostics notification to be processed by the client.
-        await asyncio.wait_for(event.wait(), timeout=timeout)
-        return uri, content
+# ── Session-scoped fixtures ─────────────────────────────────────────
 
 
 @pytest.fixture(scope="session")
@@ -204,146 +87,11 @@ def executable(request: pytest.FixtureRequest) -> Path:
 def test_data_dir() -> Path:
     path = Path(__file__).parent / "data"
     data_dir = path.resolve()
-
-    # Generate compile_commands.json for hello_world
-    hw_dir = data_dir / "hello_world"
-    main_cpp = hw_dir / "main.cpp"
-    cdb_path = hw_dir / "compile_commands.json"
-    if main_cpp.exists() and not cdb_path.exists():
-        cdb = [
-            {
-                "directory": hw_dir.as_posix(),
-                "file": main_cpp.as_posix(),
-                "arguments": [
-                    "clang++",
-                    "-std=c++17",
-                    "-fsyntax-only",
-                    main_cpp.as_posix(),
-                ],
-            }
-        ]
-        cdb_path.write_text(json.dumps(cdb, indent=2))
-
-    # Generate compile_commands.json for header_context (always regenerate
-    # because it contains absolute paths).
-    hc_dir = data_dir / "header_context"
-    hc_main = hc_dir / "main.cpp"
-    hc_cdb = hc_dir / "compile_commands.json"
-    if hc_main.exists():
-        cdb = [
-            {
-                "directory": hc_dir.as_posix(),
-                "file": hc_main.as_posix(),
-                "arguments": [
-                    "clang++",
-                    "-std=c++17",
-                    f"-I{hc_dir.as_posix()}",
-                    "-fsyntax-only",
-                    hc_main.as_posix(),
-                ],
-            }
-        ]
-        hc_cdb.write_text(json.dumps(cdb, indent=2))
-
-    # Generate compile_commands.json for multi_context (same file, two configs)
-    mc_dir = data_dir / "multi_context"
-    mc_main = mc_dir / "main.cpp"
-    mc_cdb = mc_dir / "compile_commands.json"
-    if mc_main.exists():
-        cdb = [
-            {
-                "directory": mc_dir.as_posix(),
-                "file": mc_main.as_posix(),
-                "arguments": [
-                    "clang++",
-                    "-std=c++17",
-                    "-DCONFIG_A",
-                    "-fsyntax-only",
-                    mc_main.as_posix(),
-                ],
-            },
-            {
-                "directory": mc_dir.as_posix(),
-                "file": mc_main.as_posix(),
-                "arguments": [
-                    "clang++",
-                    "-std=c++17",
-                    "-DCONFIG_B",
-                    "-fsyntax-only",
-                    mc_main.as_posix(),
-                ],
-            },
-        ]
-        mc_cdb.write_text(json.dumps(cdb, indent=2))
-
-    # Generate compile_commands.json for include_completion
-    ic_dir = data_dir / "include_completion"
-    ic_main = ic_dir / "main.cpp"
-    ic_cdb = ic_dir / "compile_commands.json"
-    if ic_main.exists() and not ic_cdb.exists():
-        cdb = [
-            {
-                "directory": ic_dir.as_posix(),
-                "file": ic_main.as_posix(),
-                "arguments": [
-                    "clang++",
-                    "-std=c++17",
-                    "-I.",
-                    "-fsyntax-only",
-                    ic_main.as_posix(),
-                ],
-            }
-        ]
-        ic_cdb.write_text(json.dumps(cdb, indent=2))
-
-    # Generate compile_commands.json for pch_test (always regenerate for
-    # absolute paths).
-    pt_dir = data_dir / "pch_test"
-    pt_cdb = pt_dir / "compile_commands.json"
-    for src_name in ["main.cpp", "no_includes.cpp"]:
-        src = pt_dir / src_name
-        if not src.exists():
-            continue
-        if src_name == "main.cpp":
-            entries = []
-        entries.append(
-            {
-                "directory": pt_dir.as_posix(),
-                "file": src.as_posix(),
-                "arguments": [
-                    "clang++",
-                    "-std=c++17",
-                    "-fsyntax-only",
-                    src.as_posix(),
-                ],
-            }
-        )
-    if pt_dir.exists():
-        pt_cdb.write_text(json.dumps(entries, indent=2))
-
+    _generate_test_data_cdbs(data_dir)
     return data_dir
 
 
-def generate_cdb(workspace: Path) -> None:
-    """Generate compile_commands.json using CMake with Ninja backend."""
-    cmake = shutil.which("cmake")
-    if cmake is None:
-        raise RuntimeError("cmake executable not found in PATH")
-    toolchain = Path(__file__).resolve().parent.parent / "cmake" / "toolchain.cmake"
-    cmd = [
-        cmake,
-        "-G",
-        "Ninja",
-        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-        f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
-        "-S",
-        str(workspace),
-        "-B",
-        str(workspace / "build"),
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    if result.returncode != 0:
-        raise RuntimeError(f"cmake failed:\n{result.stderr}")
+# ── Function-scoped fixtures ────────────────────────────────────────
 
 
 @pytest.fixture
@@ -393,7 +141,44 @@ async def client(
 
     yield c
 
-    # Graceful shutdown
+    await _shutdown_client(c)
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+def generate_cdb(workspace: Path) -> None:
+    """Generate compile_commands.json using CMake with Ninja backend."""
+    cmake = shutil.which("cmake")
+    if cmake is None:
+        raise RuntimeError("cmake executable not found in PATH")
+    toolchain = Path(__file__).resolve().parent.parent / "cmake" / "toolchain.cmake"
+    cmd = [
+        cmake,
+        "-G",
+        "Ninja",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
+        "-S",
+        str(workspace),
+        "-B",
+        str(workspace / "build"),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        raise RuntimeError(f"cmake failed:\n{result.stderr}")
+
+
+async def make_client(executable: Path, workspace: Path) -> CliceClient:
+    """Spawn a fresh clice server and initialize it. For multi-session tests."""
+    c = CliceClient()
+    await c.start_io(str(executable), "--mode", "pipe")
+    await c.initialize(workspace)
+    return c
+
+
+async def _shutdown_client(c: CliceClient) -> None:
+    """Gracefully shut down a client, force-kill if needed."""
     try:
         await asyncio.wait_for(c.shutdown_async(None), timeout=3.0)
     except Exception:
@@ -403,12 +188,10 @@ async def client(
     except Exception:
         pass
 
-    # Wait briefly, then force-kill if still running
     await asyncio.sleep(0.3)
     if hasattr(c, "_server") and c._server is not None and c._server.returncode is None:
         c._server.kill()
 
-    # Dump server stderr warnings for diagnostics.
     try:
         server = getattr(c, "_server", None)
         if server and server.stderr:
@@ -420,7 +203,6 @@ async def client(
     except Exception:
         pass
 
-    # Stop pygls client (with timeout to avoid hanging)
     try:
         c._stop_event.set()
         for task in c._async_tasks:
@@ -428,3 +210,65 @@ async def client(
         await asyncio.sleep(0.1)
     except Exception:
         pass
+
+
+shutdown_client = _shutdown_client  # Public alias for multi-session tests
+
+
+def _generate_test_data_cdbs(data_dir: Path) -> None:
+    """Generate compile_commands.json for all static test data directories."""
+
+    def _write(directory: Path, entries: list[dict]) -> None:
+        (directory / "compile_commands.json").write_text(json.dumps(entries, indent=2))
+
+    def _entry(directory: Path, source: Path, extra_args: list[str] | None = None):
+        args = ["clang++", "-std=c++17", "-fsyntax-only"]
+        if extra_args:
+            args.extend(extra_args)
+        args.append(source.as_posix())
+        return {
+            "directory": directory.as_posix(),
+            "file": source.as_posix(),
+            "arguments": args,
+        }
+
+    # hello_world
+    hw_dir = data_dir / "hello_world"
+    hw_main = hw_dir / "main.cpp"
+    if hw_main.exists():
+        _write(hw_dir, [_entry(hw_dir, hw_main)])
+
+    # header_context (always regenerate — absolute paths)
+    hc_dir = data_dir / "header_context"
+    hc_main = hc_dir / "main.cpp"
+    if hc_main.exists():
+        _write(hc_dir, [_entry(hc_dir, hc_main, [f"-I{hc_dir.as_posix()}"])])
+
+    # multi_context (same file, two configs)
+    mc_dir = data_dir / "multi_context"
+    mc_main = mc_dir / "main.cpp"
+    if mc_main.exists():
+        _write(
+            mc_dir,
+            [
+                _entry(mc_dir, mc_main, ["-DCONFIG_A"]),
+                _entry(mc_dir, mc_main, ["-DCONFIG_B"]),
+            ],
+        )
+
+    # include_completion
+    ic_dir = data_dir / "include_completion"
+    ic_main = ic_dir / "main.cpp"
+    if ic_main.exists():
+        _write(ic_dir, [_entry(ic_dir, ic_main, ["-I."])])
+
+    # pch_test
+    pt_dir = data_dir / "pch_test"
+    if pt_dir.exists():
+        entries = []
+        for src_name in ["main.cpp", "no_includes.cpp"]:
+            src = pt_dir / src_name
+            if src.exists():
+                entries.append(_entry(pt_dir, src))
+        if entries:
+            _write(pt_dir, entries)

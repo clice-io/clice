@@ -6,13 +6,14 @@ import shutil
 import pytest
 from tests.conftest import generate_cdb
 from lsprotocol.types import (
-    DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
     HoverParams,
     Position,
     TextDocumentIdentifier,
     TextDocumentItem,
 )
+
+from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
 
 
 @pytest.mark.workspace("modules/single_module_no_deps")
@@ -175,9 +176,7 @@ async def test_save_recompile(client, test_data_dir, tmp_path):
     )
 
     # Close Leaf, modify on disk, and reopen with new content.
-    client.text_document_did_close(
-        DidCloseTextDocumentParams(text_document=TextDocumentIdentifier(uri=leaf_uri))
-    )
+    client.close(leaf_uri)
 
     new_content = "export module Leaf;\nexport int leaf() { return 100; }\n"
     (tmp_path / "leaf.cppm").write_text(new_content)
