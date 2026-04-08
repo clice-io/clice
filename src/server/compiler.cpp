@@ -1,11 +1,8 @@
 #include "server/compiler.h"
 
-#include <chrono>
 #include <format>
 #include <ranges>
 #include <string>
-#include <type_traits>
-#include <variant>
 
 #include "command/search_config.h"
 #include "eventide/ipc/lsp/position.h"
@@ -18,11 +15,9 @@
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
-#include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 
 namespace clice {
@@ -812,11 +807,12 @@ et::task<bool> Compiler::ensure_compiled(Session& session) {
             sess->file_index = std::move(ofi);
         }
 
+        auto version = sess->version;
         finish_compile();
 
         // Publish diagnostics AFTER marking compile as done, so that concurrent
         // forward_query() calls can proceed immediately.
-        self->publish_diagnostics(uri_str, sess->version, result.value().diagnostics);
+        self->publish_diagnostics(uri_str, version, result.value().diagnostics);
         if(self->on_indexing_needed)
             self->on_indexing_needed();
     }(this, path_id, pending_compile));

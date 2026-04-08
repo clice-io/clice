@@ -371,7 +371,8 @@ void MasterServer::register_handlers() {
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = workspace.path_pool.intern(path);
 
-        auto& session = sessions[path_id];
+        auto [it, _] = sessions.try_emplace(path_id);
+        auto& session = it->second;
         session.path_id = path_id;
         session.version = params.text_document.version;
         session.text = params.text_document.text;

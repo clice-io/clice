@@ -185,9 +185,9 @@ struct Workspace {
     /// declarations change.
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
-    /// PCH cache, keyed by file path_id.  Content-addressed by preamble hash,
-    /// so different files with identical preambles share the same PCH.
-    /// Both open files and background indexing may reference entries here.
+    /// PCH cache, keyed by file path_id.
+    /// TODO: re-key by preamble content hash to enable cross-file sharing and
+    /// add LRU eviction.  Compile flags should also be part of the key.
     llvm::DenseMap<std::uint32_t, PCHState> pch_cache;
 
     /// PCM cache, keyed by module source path_id.
