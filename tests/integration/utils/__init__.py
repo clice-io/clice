@@ -11,6 +11,7 @@ from tests.integration.utils.wait import wait_for_recompile, wait_for_index
 from tests.integration.utils.cache import (
     list_pch_files,
     list_pcm_files,
+    list_tmp_files,
     read_cache_json,
 )
 
@@ -26,5 +27,6 @@ __all__ = [
     "wait_for_index",
     "list_pch_files",
     "list_pcm_files",
+    "list_tmp_files",
     "read_cache_json",
 ]
