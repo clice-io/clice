@@ -28,12 +28,20 @@ enum class ServerLifecycle : std::uint8_t {
     Exited,
 };
 
-/// Top-level LSP server.
+/// Top-level LSP server — the single orchestration point for the language
+/// server process.
 ///
-/// Owns all persistent state and registers LSP handlers.  Document lifecycle
-/// (open/change/close/save) is handled directly here on the sessions map.
-/// Compilation and feature-request forwarding are delegated to Compiler;
-/// index queries are delegated to Indexer.
+/// Responsibilities:
+///   - Owns the two-layer state model: Workspace (disk truth) and Sessions
+///     (per-open-file volatile state).
+///   - Manages Session lifecycle directly: didOpen creates, didChange mutates,
+///     didSave syncs to Workspace, didClose destroys.
+///   - Dispatches compilation and feature queries to Compiler.
+///   - Dispatches index lookups and background indexing to Indexer.
+///
+/// Design principle:
+///   Open files are never depended upon by other files.  Dependencies always
+///   point to disk files.  The only path from Session to Workspace is didSave.
 class MasterServer {
 public:
     MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path);
