@@ -55,27 +55,18 @@ private:
     /// Worker process pool for offloading compilation and queries.
     WorkerPool pool;
 
-    /// Index query layer (reads from workspace and sessions).
-    Indexer indexer;
-
     /// Compilation lifecycle manager (reads/writes workspace and sessions).
     Compiler compiler;
+
+    /// Index query and background scheduling (reads from workspace and sessions).
+    Indexer indexer;
 
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
     std::string self_path;
     std::string workspace_root;
     std::string session_log_dir;
 
-    /// Background indexing state.
-    std::vector<std::uint32_t> index_queue;
-    std::size_t index_queue_pos = 0;
-    bool indexing_active = false;
-    bool indexing_scheduled = false;
-    std::shared_ptr<et::timer> index_idle_timer;
-
     et::task<> load_workspace();
-    void schedule_indexing();
-    et::task<> run_background_indexing();
 
     using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
 };

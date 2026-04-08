@@ -2,10 +2,12 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "eventide/async/async.h"
 #include "eventide/ipc/lsp/position.h"
 #include "eventide/ipc/lsp/protocol.h"
 #include "semantic/relation_kind.h"
@@ -23,6 +25,8 @@ namespace protocol = et::ipc::protocol;
 namespace lsp = et::ipc::lsp;
 
 struct Session;
+class Compiler;
+class WorkerPool;
 
 /// Information about a symbol at a given position.
 struct SymbolInfo {
@@ -33,26 +37,28 @@ struct SymbolInfo {
     protocol::Range range;
 };
 
-/// Provides query methods for cross-file navigation over Workspace index data
-/// and open Session file indices.
+/// Provides query methods for cross-file navigation and manages background
+/// indexing scheduling.
 ///
 /// Indexer does NOT own any index state.  All persistent data lives in
 /// Workspace (disk-derived ProjectIndex + MergedIndex shards) and per-file
 /// data lives in Session (OpenFileIndex from unsaved buffers).
-///
-/// Background indexing scheduling is driven by MasterServer; Indexer is the
-/// pure query layer.
 class Indexer {
 public:
-    /// @param workspace  Project-wide persistent state (ProjectIndex, MergedIndex shards).
-    /// @param sessions   Map of open editing sessions, keyed by server-level path_id.
-    /// @param is_file_open  Callback that returns true if a *project-level* path_id
-    ///        has an active Session.  Used to skip stale MergedIndex shards when
-    ///        fresher OpenFileIndex data is available.
-    Indexer(Workspace& workspace,
+    Indexer(et::event_loop& loop,
+            Workspace& workspace,
             llvm::DenseMap<std::uint32_t, Session>& sessions,
+            WorkerPool& pool,
+            Compiler& compiler,
             std::function<bool(std::uint32_t)> is_file_open = {}) :
-        workspace(workspace), sessions(sessions), is_file_open(std::move(is_file_open)) {}
+        loop(loop), workspace(workspace), sessions(sessions), pool(pool), compiler(compiler),
+        is_file_open(std::move(is_file_open)) {}
+
+    /// Add a file to the background indexing queue.
+    void enqueue(std::uint32_t server_path_id);
+
+    /// Schedule background indexing (respects idle timeout and dedup).
+    void schedule();
 
     /// Merge a TUIndex result into Workspace's ProjectIndex and MergedIndex shards.
     void merge(const void* tu_index_data, std::size_t size);
@@ -150,13 +156,25 @@ private:
     }
 
 private:
+    et::event_loop& loop;
     Workspace& workspace;
     llvm::DenseMap<std::uint32_t, Session>& sessions;
+    WorkerPool& pool;
+    Compiler& compiler;
 
     /// Callback that checks if a *project-level* path_id has an active
     /// Session.  Set by the owner (e.g. MasterServer) to bridge the
     /// server-path-id-keyed sessions map to project-level path_ids.
     std::function<bool(std::uint32_t)> is_file_open;
+
+    /// Background indexing queue and scheduling state.
+    std::vector<std::uint32_t> index_queue;
+    std::size_t index_queue_pos = 0;
+    bool indexing_active = false;
+    bool indexing_scheduled = false;
+    std::shared_ptr<et::timer> index_idle_timer;
+
+    et::task<> run_background_indexing();
 };
 
 }  // namespace clice

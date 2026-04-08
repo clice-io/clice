@@ -8,7 +8,10 @@
 #include "eventide/ipc/lsp/protocol.h"
 #include "eventide/ipc/lsp/uri.h"
 #include "index/tu_index.h"
+#include "server/compiler.h"
+#include "server/protocol.h"
 #include "server/session.h"
+#include "server/worker_pool.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
@@ -615,6 +618,79 @@ protocol::TypeHierarchyItem Indexer::build_type_hierarchy_item(const SymbolInfo&
     item.selection_range = info.range;
     item.data = protocol::LSPAny(static_cast<std::int64_t>(info.hash));
     return item;
+}
+
+void Indexer::enqueue(std::uint32_t server_path_id) {
+    index_queue.push_back(server_path_id);
+}
+
+void Indexer::schedule() {
+    if(!workspace.config.enable_indexing || indexing_active || indexing_scheduled)
+        return;
+    indexing_scheduled = true;
+
+    if(!index_idle_timer) {
+        index_idle_timer = std::make_shared<et::timer>(et::timer::create(loop));
+    }
+    index_idle_timer->start(std::chrono::milliseconds(workspace.config.idle_timeout_ms));
+    loop.schedule(run_background_indexing());
+}
+
+et::task<> Indexer::run_background_indexing() {
+    if(index_idle_timer) {
+        co_await index_idle_timer->wait();
+    }
+    indexing_scheduled = false;
+
+    if(index_queue_pos >= index_queue.size()) {
+        LOG_DEBUG("Background indexing: queue exhausted");
+        co_return;
+    }
+
+    indexing_active = true;
+    std::size_t processed = 0;
+
+    while(index_queue_pos < index_queue.size()) {
+        auto server_path_id = index_queue[index_queue_pos];
+        index_queue_pos++;
+
+        auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
+
+        if(sessions.contains(server_path_id))
+            continue;
+
+        if(!need_update(file_path))
+            continue;
+
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::Index;
+        params.file = file_path;
+        if(!compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr))
+            continue;
+
+        workspace.fill_pcm_deps(params.pcms);
+
+        LOG_INFO("Background indexing: {}", file_path);
+
+        auto result = co_await pool.send_stateless(params);
+        if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
+            LOG_INFO("Background indexing got TUIndex for {}: {} bytes",
+                     file_path,
+                     result.value().tu_index_data.size());
+            merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
+            ++processed;
+        } else if(result.has_value() && !result.value().success) {
+            LOG_WARN("Background index failed for {}: {}", file_path, result.value().error);
+        } else if(result.has_value() && result.value().tu_index_data.empty()) {
+            LOG_WARN("Background index returned empty TUIndex for {}", file_path);
+        } else {
+            LOG_WARN("Background index IPC error for {}: {}", file_path, result.error().message);
+        }
+    }
+
+    indexing_active = false;
+    LOG_INFO("Background indexing complete: {} files processed", processed);
+    save(workspace.config.index_dir);
 }
 
 }  // namespace clice

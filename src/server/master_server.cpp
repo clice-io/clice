@@ -37,9 +37,14 @@ static serde_raw to_raw(const T& value) {
 }
 
 MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path) :
-    loop(loop), peer(peer), pool(loop),
-    indexer(workspace, sessions, [this](uint32_t id) { return sessions.contains(id); }),
-    compiler(loop, peer, workspace, pool, sessions), self_path(std::move(self_path)) {}
+    loop(loop), peer(peer), pool(loop), compiler(loop, peer, workspace, pool, sessions),
+    indexer(loop,
+            workspace,
+            sessions,
+            pool,
+            compiler,
+            [this](uint32_t id) { return sessions.contains(id); }),
+    self_path(std::move(self_path)) {}
 
 MasterServer::~MasterServer() = default;
 
@@ -129,86 +134,12 @@ et::task<> MasterServer::load_workspace() {
         for(auto& entry: workspace.cdb.get_entries()) {
             auto file = workspace.cdb.resolve_path(entry.file);
             auto server_id = workspace.path_pool.intern(file);
-            index_queue.push_back(server_id);
+            indexer.enqueue(server_id);
         }
-        if(!index_queue.empty()) {
-            LOG_INFO("Queued {} files for background indexing", index_queue.size());
-            schedule_indexing();
-        }
+        indexer.schedule();
     }
 
     compiler.init_compile_graph();
-}
-
-void MasterServer::schedule_indexing() {
-    if(!workspace.config.enable_indexing || indexing_active || indexing_scheduled)
-        return;
-    indexing_scheduled = true;
-
-    if(!index_idle_timer) {
-        index_idle_timer = std::make_shared<et::timer>(et::timer::create(loop));
-    }
-    index_idle_timer->start(std::chrono::milliseconds(workspace.config.idle_timeout_ms));
-    loop.schedule(run_background_indexing());
-}
-
-et::task<> MasterServer::run_background_indexing() {
-    if(index_idle_timer) {
-        co_await index_idle_timer->wait();
-    }
-    indexing_scheduled = false;
-
-    if(index_queue_pos >= index_queue.size()) {
-        LOG_DEBUG("Background indexing: queue exhausted");
-        co_return;
-    }
-
-    indexing_active = true;
-    std::size_t processed = 0;
-
-    while(index_queue_pos < index_queue.size()) {
-        auto server_path_id = index_queue[index_queue_pos];
-        index_queue_pos++;
-
-        auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
-
-        /// Skip open files — their index comes from the stateful worker.
-        if(sessions.contains(server_path_id)) {
-            continue;
-        }
-
-        if(!indexer.need_update(file_path))
-            continue;
-
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::Index;
-        params.file = file_path;
-        if(!compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr))
-            continue;
-
-        workspace.fill_pcm_deps(params.pcms);
-
-        LOG_INFO("Background indexing: {}", file_path);
-
-        auto result = co_await pool.send_stateless(params);
-        if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
-            LOG_INFO("Background indexing got TUIndex for {}: {} bytes",
-                     file_path,
-                     result.value().tu_index_data.size());
-            indexer.merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
-            ++processed;
-        } else if(result.has_value() && !result.value().success) {
-            LOG_WARN("Background index failed for {}: {}", file_path, result.value().error);
-        } else if(result.has_value() && result.value().tu_index_data.empty()) {
-            LOG_WARN("Background index returned empty TUIndex for {}", file_path);
-        } else {
-            LOG_WARN("Background index IPC error for {}: {}", file_path, result.error().message);
-        }
-    }
-
-    indexing_active = false;
-    LOG_INFO("Background indexing complete: {} files processed", processed);
-    indexer.save(workspace.config.index_dir);
 }
 
 void MasterServer::register_handlers() {
@@ -335,7 +266,7 @@ void MasterServer::register_handlers() {
         lifecycle = ServerLifecycle::Ready;
 
         compiler.on_indexing_needed = [this]() {
-            schedule_indexing();
+            indexer.schedule();
         };
 
         loop.schedule(load_workspace());
@@ -446,8 +377,8 @@ void MasterServer::register_handlers() {
 
         sessions.erase(path_id);
 
-        index_queue.push_back(path_id);
-        schedule_indexing();
+        indexer.enqueue(path_id);
+        indexer.schedule();
 
         LOG_DEBUG("didClose: {}", path);
     });
@@ -464,7 +395,7 @@ void MasterServer::register_handlers() {
             if(auto sit = sessions.find(dirty_id); sit != sessions.end()) {
                 sit->second.ast_dirty = true;
             } else {
-                index_queue.push_back(dirty_id);
+                indexer.enqueue(dirty_id);
             }
         }
 
@@ -476,7 +407,7 @@ void MasterServer::register_handlers() {
             }
         }
 
-        schedule_indexing();
+        indexer.schedule();
 
         LOG_DEBUG("didSave: {}", path);
     });
