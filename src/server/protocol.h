@@ -103,7 +103,6 @@ struct BuildResult {
     eventide::serde::RawValue result_json;  ///< Completion/SignatureHelp result
 };
 
-// === Notifications ===
 
 struct DocumentUpdateParams {
     std::string path;
@@ -120,7 +119,6 @@ struct EvictedParams {
 
 }  // namespace clice::worker
 
-// === clice/ LSP Extension Types ===
 
 namespace clice::ext {
 
@@ -179,7 +177,6 @@ struct RequestTraits<clice::worker::BuildParams> {
     constexpr inline static std::string_view method = "clice/worker/build";
 };
 
-// === Notifications ===
 
 template <>
 struct NotificationTraits<clice::worker::DocumentUpdateParams> {

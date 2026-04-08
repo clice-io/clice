@@ -20,9 +20,7 @@ namespace clice {
 
 namespace et = eventide;
 
-// ============================================================================
 // DependencyGraph implementation
-// ============================================================================
 
 void DependencyGraph::add_module(llvm::StringRef module_name, std::uint32_t path_id) {
     auto& ids = module_to_path[module_name];
@@ -205,9 +203,7 @@ std::vector<std::uint32_t> DependencyGraph::find_include_chain(std::uint32_t hos
     return chain;
 }
 
-// ============================================================================
 // Wavefront BFS scanner — async implementation
-// ============================================================================
 
 namespace {
 
@@ -819,9 +815,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 
 }  // namespace
 
-// ============================================================================
 // Public sync entry point
-// ============================================================================
 
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
                                  PathPool& path_pool,

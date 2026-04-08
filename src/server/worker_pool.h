@@ -83,7 +83,6 @@ private:
     bool spawn_worker(const std::string& self_path, bool stateful, std::uint64_t memory_limit);
 };
 
-// --- Template implementations ---------------------------------------------------
 
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
