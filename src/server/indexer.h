@@ -37,12 +37,21 @@ struct SymbolInfo {
     protocol::Range range;
 };
 
-/// Provides query methods for cross-file navigation and manages background
-/// indexing scheduling.
+/// Index query layer and background indexing scheduler.
 ///
-/// Indexer does NOT own any index state.  All persistent data lives in
+/// Indexer holds no index data of its own.  All persistent data lives in
 /// Workspace (disk-derived ProjectIndex + MergedIndex shards) and per-file
 /// data lives in Session (OpenFileIndex from unsaved buffers).
+///
+/// Responsibilities:
+///   - Cross-file navigation queries (definition, references, hierarchy)
+///   - Symbol search (workspace/symbol)
+///   - Background indexing scheduling (enqueue → idle timer → worker dispatch)
+///   - Merging TUIndex results into Workspace's ProjectIndex
+///
+/// NOT responsible for:
+///   - Compilation — handled by Compiler
+///   - Document lifecycle — handled by MasterServer
 class Indexer {
 public:
     Indexer(et::event_loop& loop,

@@ -30,19 +30,23 @@ namespace protocol = et::ipc::protocol;
 /// Convert a file:// URI to a local file path.
 std::string uri_to_path(const std::string& uri);
 
-/// Stateless compilation service.
+/// Compilation service — drives worker processes to build ASTs, PCHs, and PCMs.
 ///
-/// Compiler does not own any persistent state.  It holds references to
-/// Workspace (project-wide shared state) and WorkerPool (child processes),
-/// both owned by MasterServer.  Per-file state lives in Session objects
-/// managed by the caller.
+/// Compiler holds no persistent state of its own.  All project-wide data
+/// lives in Workspace; per-file data lives in Session.  Compiler reads from
+/// both and writes compilation results back to Session (file_index, pch_ref,
+/// ast_deps, diagnostics).
 ///
-/// Document lifecycle (open/change/close) is handled directly by
-/// MasterServer on the sessions map.  Compiler is only responsible for:
-///   - Compilation (ensure_compiled, ensure_pch, ensure_deps)
-///   - Feature request forwarding to workers
-///   - Compile argument resolution
-///   - Compile graph initialization
+/// Responsibilities:
+///   - AST compilation lifecycle (ensure_compiled → ensure_pch → ensure_deps)
+///   - Feature request forwarding to stateful/stateless workers
+///   - Compile argument resolution (CDB lookup + header context fallback)
+///   - Compile graph initialization (module DAG setup)
+///
+/// NOT responsible for:
+///   - Document lifecycle (didOpen/didChange/didClose) — handled by MasterServer
+///   - Index queries — handled by Indexer
+///   - Background indexing scheduling — handled by Indexer
 class Compiler {
 public:
     Compiler(et::event_loop& loop,
