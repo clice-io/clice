@@ -71,17 +71,27 @@ public:
 
     using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
 
+    /// Forward a query (hover, semantic tokens, etc.) to the stateful worker
+    /// that holds this file's AST.  Ensures compilation first.
     RawResult forward_query(worker::QueryKind kind, Session& session);
+
+    /// Forward a position-sensitive query (goto definition, references, etc.)
+    /// to the stateful worker.  Converts LSP position to byte offset.
     RawResult forward_query(worker::QueryKind kind,
                             const protocol::Position& position,
                             Session& session);
 
+    /// Forward a build request (signature help, etc.) to a stateless worker.
+    /// Sends the full buffer content and compile arguments.
     RawResult forward_build(worker::BuildKind kind,
                             const protocol::Position& position,
                             Session& session);
 
+    /// Handle completion requests.  Detects preamble context (include/import)
+    /// and serves those locally; delegates code completion to a stateless worker.
     RawResult handle_completion(const protocol::Position& position, Session& session);
 
+    /// Send an empty diagnostics notification to clear stale markers in the editor.
     void clear_diagnostics(const std::string& uri);
 
     /// Callback invoked when indexing should be scheduled.
