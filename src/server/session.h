@@ -51,13 +51,11 @@ struct Session {
 
     std::shared_ptr<PendingCompile> compiling;
 
-    /// Reference to the PCH entry in Workspace.pch_cache, if any.
-    /// The PCH itself is owned by Workspace (shared, content-addressed);
+    /// Reference to the PCH artifact in ArtifactCache.
     /// Session only stores enough to locate and validate it.
     struct PCHRef {
-        std::uint32_t path_id = 0;  ///< Key into Workspace.pch_cache.
-        std::uint64_t hash = 0;     ///< Preamble hash at build time.
-        std::uint32_t bound = 0;    ///< Preamble byte boundary.
+        ArtifactKey artifact_key = 0;  ///< Key into ArtifactCache.
+        std::uint32_t bound = 0;       ///< Preamble byte boundary.
     };
 
     std::optional<PCHRef> pch_ref;

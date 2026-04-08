@@ -162,7 +162,7 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     options.suppress_logging = true;
     auto commands = database.lookup(src_path, options);
     assert(!commands.empty() && "lookup failed after add_command");
-    params.arguments = commands.front().arguments;
+    params.arguments = commands.front().to_argv();
 
     params.kind = CompilationKind::Content;
 
@@ -214,7 +214,7 @@ bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
     options.suppress_logging = true;
     auto commands = database.lookup(src_path, options);
     assert(!commands.empty() && "lookup failed after add_command");
-    params.arguments = commands.front().arguments;
+    params.arguments = commands.front().to_argv();
 
     auto pch_path = fs::createTemporaryFile("clice", "pch");
     if(!pch_path) {

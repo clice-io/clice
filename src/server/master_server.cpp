@@ -733,19 +733,20 @@ void MasterServer::register_handlers() {
             }
 
             if(hosts.empty()) {
-                auto entries = workspace.cdb.lookup(path, {.suppress_logging = true});
-                for(std::size_t i = 0; i < entries.size(); ++i) {
-                    auto& entry = entries[i];
+                auto commands = workspace.cdb.lookup(path, {.suppress_logging = true});
+                for(std::size_t i = 0; i < commands.size(); ++i) {
+                    auto& cmd = commands[i];
                     std::string desc;
-                    for(std::size_t j = 0; j < entry.arguments.size(); ++j) {
-                        llvm::StringRef a(entry.arguments[j]);
+                    auto& flags = cmd.resolved.flags;
+                    for(std::size_t j = 0; j < flags.size(); ++j) {
+                        llvm::StringRef a(flags[j]);
                         if(a.starts_with("-D") || a.starts_with("-O") || a.starts_with("-std=") ||
                            a.starts_with("-g")) {
                             if(!desc.empty())
                                 desc += ' ';
-                            desc += entry.arguments[j];
-                            if((a == "-D" || a == "-O") && j + 1 < entry.arguments.size()) {
-                                desc += entry.arguments[++j];
+                            desc += flags[j];
+                            if((a == "-D" || a == "-O") && j + 1 < flags.size()) {
+                                desc += flags[++j];
                             }
                         }
                     }
@@ -757,7 +758,7 @@ void MasterServer::register_handlers() {
                         continue;
                     ext::ContextItem item;
                     item.label = desc;
-                    item.description = entry.directory.str();
+                    item.description = cmd.resolved.directory.str();
                     item.uri = uri_opt->str();
                     all_items.push_back(std::move(item));
                 }

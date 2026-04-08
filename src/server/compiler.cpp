@@ -52,8 +52,8 @@ void Compiler::init_compile_graph() {
         if(results.empty())
             return {};
 
-        auto& ctx = results[0];
-        auto scan_result = scan_precise(ctx.arguments, ctx.directory);
+        auto& cmd = results[0];
+        auto scan_result = scan_precise(cmd.to_argv(), cmd.resolved.directory);
 
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
@@ -82,28 +82,31 @@ void Compiler::init_compile_graph() {
 
         auto file_path = std::string(workspace.path_pool.resolve(path_id));
 
+        auto cmd_opt = resolve_compile_command(file_path);
+        if(!cmd_opt)
+            co_return false;
+        auto& cmd = *cmd_opt;
+
         worker::BuildParams bp;
         bp.kind = worker::BuildKind::BuildPCM;
         bp.file = file_path;
-        if(!fill_compile_args(file_path, bp.directory, bp.arguments))
-            co_return false;
+        bp.directory = cmd.resolved.directory.str();
+        bp.arguments = cmd.to_string_argv();
 
-        // Compute deterministic content-addressed PCM path.
+        // Content-addressed key: file path + compile flags (source-file-free).
+        auto artifact_key = ArtifactCache::compute_key_with_path(file_path, cmd.resolved.flags);
+
+        // Deterministic PCM output path.
         auto safe_module_name = mod_it->second;
         std::ranges::replace(safe_module_name, ':', '-');
-        std::string hash_input = file_path;
-        for(auto& arg: bp.arguments) {
-            hash_input += arg;
-        }
-        auto args_hash = llvm::xxh3_64bits(llvm::StringRef(hash_input));
-        auto pcm_filename = std::format("{}-{:016x}.pcm", safe_module_name, args_hash);
+        auto pcm_filename = std::format("{}-{:016x}.pcm", safe_module_name, artifact_key);
         auto pcm_path = path::join(workspace.config.cache_dir, "cache", "pcm", pcm_filename);
 
-        // Check if cached PCM is still valid.
-        if(auto pcm_it = workspace.pcm_cache.find(path_id); pcm_it != workspace.pcm_cache.end()) {
-            if(!pcm_it->second.path.empty() && llvm::sys::fs::exists(pcm_it->second.path) &&
-               !deps_changed(workspace.path_pool, pcm_it->second.deps)) {
-                workspace.pcm_paths[path_id] = pcm_it->second.path;
+        // Check if cached artifact is still valid.
+        if(auto* cached = workspace.artifact_cache.lookup(artifact_key)) {
+            if(!cached->path.empty() && llvm::sys::fs::exists(cached->path) &&
+               !deps_changed(workspace.path_pool, cached->deps)) {
+                workspace.pcm_active[path_id] = artifact_key;
                 co_return true;
             }
         }
@@ -122,10 +125,30 @@ void Compiler::init_compile_graph() {
             co_return false;
         }
 
-        workspace.pcm_paths[path_id] = result.value().output_path;
-        workspace.pcm_cache[path_id] = {
-            result.value().output_path,
-            capture_deps_snapshot(workspace.path_pool, result.value().deps)};
+        // Collect input artifact keys from dependent PCMs.
+        // By the time dispatch runs, all dependencies are already compiled
+        // (CompileGraph guarantees topological order).
+        llvm::SmallVector<ArtifactKey> input_keys;
+        for(auto& [mod_name, pcm_dep_path]: bp.pcms) {
+            // Find which path_id owns this PCM path and get its artifact key.
+            for(auto& [dep_pid, dep_key]: workspace.pcm_active) {
+                auto* dep_entry = workspace.artifact_cache.lookup(dep_key);
+                if(dep_entry && dep_entry->path == pcm_dep_path) {
+                    input_keys.push_back(dep_key);
+                    break;
+                }
+            }
+        }
+
+        // Insert into artifact cache.
+        ArtifactEntry artifact;
+        artifact.path = result.value().output_path;
+        artifact.inputs.assign(input_keys.begin(), input_keys.end());
+        artifact.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
+        workspace.artifact_cache.insert(artifact_key, std::move(artifact));
+
+        // Update active state.
+        workspace.pcm_active[path_id] = artifact_key;
         LOG_INFO("Built PCM for module {}: {}", mod_it->second, result.value().output_path);
 
         // Persist cache metadata after successful build.
@@ -143,39 +166,29 @@ void Compiler::init_compile_graph() {
     LOG_INFO("CompileGraph initialized with {} module(s)", workspace.path_to_module.size());
 }
 
-bool Compiler::fill_compile_args(llvm::StringRef path,
-                                 std::string& directory,
-                                 std::vector<std::string>& arguments,
-                                 Session* session) {
+std::optional<CompileCommand> Compiler::resolve_compile_command(llvm::StringRef path,
+                                                                Session* session) {
     auto path_id = workspace.path_pool.intern(path);
 
     // 1. If the session has an active header context via switchContext,
     //    use the host source's CDB entry with file path replaced and preamble injected.
     if(session && session->active_context.has_value()) {
-        return fill_header_context_args(path, path_id, directory, arguments, session);
+        return resolve_header_context_command(path, path_id, session);
     }
 
     // 2. Normal CDB lookup for the file itself.
     auto results = workspace.cdb.lookup(path, {.query_toolchain = true});
     if(!results.empty()) {
-        auto& ctx = results.front();
-        directory = ctx.directory.str();
-        arguments.clear();
-        for(auto* arg: ctx.arguments) {
-            arguments.emplace_back(arg);
-        }
-        return true;
+        return std::move(results.front());
     }
 
     // 3. No CDB entry — try automatic header context resolution.
-    return fill_header_context_args(path, path_id, directory, arguments, session);
+    return resolve_header_context_command(path, path_id, session);
 }
 
-bool Compiler::fill_header_context_args(llvm::StringRef path,
-                                        std::uint32_t path_id,
-                                        std::string& directory,
-                                        std::vector<std::string>& arguments,
-                                        Session* session) {
+std::optional<CompileCommand> Compiler::resolve_header_context_command(llvm::StringRef path,
+                                                                       std::uint32_t path_id,
+                                                                       Session* session) {
     // Use cached context if available; otherwise resolve.
     // If an active context override exists, invalidate cache if it points to
     // a different host so we re-resolve with the correct one.
@@ -192,15 +205,13 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
         auto resolved = resolve_header_context(path_id, session);
         if(!resolved) {
             LOG_WARN("No CDB entry and no header context for {}", path);
-            return false;
+            return std::nullopt;
         }
         if(session) {
             session->header_context = std::move(*resolved);
             ctx_ptr = &*session->header_context;
         } else {
             // Background indexing path — no session to store on.
-            // Use a temporary (caller will use it immediately).
-            // Store in a local and return.
             static thread_local std::optional<HeaderFileContext> tl_ctx;
             tl_ctx = std::move(*resolved);
             ctx_ptr = &*tl_ctx;
@@ -210,43 +221,29 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     auto host_path = workspace.path_pool.resolve(ctx_ptr->host_path_id);
     auto host_results = workspace.cdb.lookup(host_path, {.query_toolchain = true});
     if(host_results.empty()) {
-        LOG_WARN("fill_header_context_args: host {} has no CDB entry", host_path);
-        return false;
+        LOG_WARN("resolve_header_context_command: host {} has no CDB entry", host_path);
+        return std::nullopt;
     }
 
-    auto& host_ctx = host_results.front();
-    directory = host_ctx.directory.str();
-    arguments.clear();
-
-    // Copy host arguments, replacing the host source file path with the header.
-    bool replaced = false;
-    for(auto& arg: host_ctx.arguments) {
-        if(llvm::StringRef(arg) == host_path) {
-            arguments.emplace_back(path);
-            replaced = true;
-        } else {
-            arguments.emplace_back(arg);
-        }
-    }
-    if(!replaced) {
-        LOG_WARN("fill_header_context_args: host path {} not found in arguments, appending header",
-                 host_path);
-        arguments.emplace_back(path);
-    }
+    // Take the host's resolved flags and rebind to the header file.
+    auto cmd = std::move(host_results.front());
+    cmd.source_file = workspace.path_pool.resolve(workspace.path_pool.intern(path)).data();
 
     // Inject preamble: for cc1 args insert after "-cc1", otherwise after driver.
     std::size_t inject_pos = 1;
-    if(arguments.size() >= 2 && arguments[1] == "-cc1") {
+    if(cmd.resolved.is_cc1 && cmd.resolved.flags.size() >= 2 &&
+       cmd.resolved.flags[1] == llvm::StringRef("-cc1")) {
         inject_pos = 2;
     }
-    arguments.insert(arguments.begin() + inject_pos, ctx_ptr->preamble_path);
-    arguments.insert(arguments.begin() + inject_pos, "-include");
+    cmd.resolved.flags.insert(cmd.resolved.flags.begin() + inject_pos,
+                              ctx_ptr->preamble_path.c_str());
+    cmd.resolved.flags.insert(cmd.resolved.flags.begin() + inject_pos, "-include");
 
-    LOG_INFO("fill_compile_args: header context for {} (host={}, preamble={})",
+    LOG_INFO("resolve_compile_command: header context for {} (host={}, preamble={})",
              path,
              host_path,
              ctx_ptr->preamble_path);
-    return true;
+    return cmd;
 }
 
 std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t header_path_id,
@@ -431,41 +428,49 @@ void Compiler::clear_diagnostics(const std::string& uri) {
     peer.send_notification(params);
 }
 
-et::task<bool> Compiler::ensure_pch(Session& session,
-                                    const std::string& directory,
-                                    const std::vector<std::string>& arguments) {
+et::task<bool> Compiler::ensure_pch(Session& session, const CompileCommand& cmd) {
     auto path_id = session.path_id;
     auto path = workspace.path_pool.resolve(path_id);
     auto& text = session.text;
     auto bound = compute_preamble_bound(text);
     if(bound == 0) {
         // No preamble directives — PCH would be empty. Clear any stale entry.
-        workspace.pch_cache.erase(path_id);
+        workspace.pch_active.erase(path_id);
         session.pch_ref.reset();
         co_return true;
     }
 
-    // FIXME: hash should also include compile flags that affect preprocessing
-    // (e.g. -D, -I, -isystem, -std) so that files with the same preamble text
-    // but different flags produce separate PCHs.  Currently only the preamble
-    // text is hashed — the source file path must be excluded from the hash
-    // to allow sharing across files with identical preambles.
+    // Content-addressed key: preamble text + compile flags.
+    // ResolvedFlags already excludes source file path and -main-file-name,
+    // so we can use it directly — no manual stripping needed.
     auto preamble_text = llvm::StringRef(text).substr(0, bound);
-    auto preamble_hash = llvm::xxh3_64bits(preamble_text);
+    auto artifact_key = ArtifactCache::compute_key(preamble_text, cmd.resolved.flags);
 
     // Deterministic content-addressed PCH path.
     auto pch_path = path::join(workspace.config.cache_dir,
                                "cache",
                                "pch",
-                               std::format("{:016x}.pch", preamble_hash));
+                               std::format("{:016x}.pch", artifact_key));
 
-    // Reuse existing PCH if preamble content and deps haven't changed.
-    if(auto it = workspace.pch_cache.find(path_id); it != workspace.pch_cache.end()) {
+    // Reuse existing artifact if preamble+flags match and deps haven't changed.
+    if(auto it = workspace.pch_active.find(path_id); it != workspace.pch_active.end()) {
         auto& st = it->second;
-        if(st.hash == preamble_hash && !st.path.empty() &&
-           !deps_changed(workspace.path_pool, st.deps)) {
+        if(st.artifact_key == artifact_key &&
+           !workspace.artifact_cache.deps_changed(workspace.path_pool, artifact_key)) {
             st.bound = bound;
-            session.pch_ref = Session::PCHRef{path_id, preamble_hash, bound};
+            session.pch_ref = Session::PCHRef{artifact_key, bound};
+            co_return true;
+        }
+    }
+
+    // Also check artifact cache directly (another file may have built this).
+    if(auto* cached = workspace.artifact_cache.lookup(artifact_key)) {
+        if(!cached->path.empty() && llvm::sys::fs::exists(cached->path) &&
+           !deps_changed(workspace.path_pool, cached->deps)) {
+            auto& st = workspace.pch_active[path_id];
+            st.artifact_key = artifact_key;
+            st.bound = bound;
+            session.pch_ref = Session::PCHRef{artifact_key, bound};
             co_return true;
         }
     }
@@ -473,29 +478,35 @@ et::task<bool> Compiler::ensure_pch(Session& session,
     // Preamble incomplete (user still typing) — defer rebuild, reuse old PCH if available.
     if(!is_preamble_complete(text, bound)) {
         LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
-        co_return workspace.pch_cache.count(path_id) && !workspace.pch_cache[path_id].path.empty();
+        if(auto it = workspace.pch_active.find(path_id); it != workspace.pch_active.end()) {
+            auto* entry = workspace.artifact_cache.lookup(it->second.artifact_key);
+            co_return entry && !entry->path.empty();
+        }
+        co_return false;
     }
 
     // If another coroutine is already building PCH for this file, wait for it.
-    if(auto it = workspace.pch_cache.find(path_id);
-       it != workspace.pch_cache.end() && it->second.building) {
+    if(auto it = workspace.pch_active.find(path_id);
+       it != workspace.pch_active.end() && it->second.building) {
         co_await it->second.building->wait();
-        if(auto it2 = workspace.pch_cache.find(path_id); it2 != workspace.pch_cache.end()) {
-            session.pch_ref = Session::PCHRef{path_id, it2->second.hash, it2->second.bound};
+        if(auto it2 = workspace.pch_active.find(path_id); it2 != workspace.pch_active.end()) {
+            session.pch_ref = Session::PCHRef{it2->second.artifact_key, it2->second.bound};
+            auto* entry = workspace.artifact_cache.lookup(it2->second.artifact_key);
+            co_return entry && !entry->path.empty();
         }
-        co_return workspace.pch_cache.count(path_id) && !workspace.pch_cache[path_id].path.empty();
+        co_return false;
     }
 
     // Register in-flight build so concurrent requests wait on us.
     auto completion = std::make_shared<et::event>();
-    workspace.pch_cache[path_id].building = completion;
+    workspace.pch_active[path_id].building = completion;
 
     // Build a new PCH via stateless worker.
     worker::BuildParams bp;
     bp.kind = worker::BuildKind::BuildPCH;
     bp.file = std::string(path);
-    bp.directory = directory;
-    bp.arguments = arguments;
+    bp.directory = cmd.resolved.directory.str();
+    bp.arguments = cmd.to_string_argv();
     bp.text = text;
     bp.preamble_bound = bound;
     bp.output_path = pch_path;
@@ -508,19 +519,24 @@ et::task<bool> Compiler::ensure_pch(Session& session,
         LOG_WARN("PCH build failed for {}: {}",
                  path,
                  result.has_value() ? result.value().error : result.error().message);
-        workspace.pch_cache[path_id].building.reset();
+        workspace.pch_active[path_id].building.reset();
         completion->set();
         co_return false;
     }
 
-    auto& st = workspace.pch_cache[path_id];
-    st.path = result.value().output_path;
+    // Insert into artifact cache.
+    ArtifactEntry artifact;
+    artifact.path = result.value().output_path;
+    artifact.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
+    workspace.artifact_cache.insert(artifact_key, std::move(artifact));
+
+    // Update active state.
+    auto& st = workspace.pch_active[path_id];
+    st.artifact_key = artifact_key;
     st.bound = bound;
-    st.hash = preamble_hash;
-    st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
     st.building.reset();
 
-    session.pch_ref = Session::PCHRef{path_id, preamble_hash, bound};
+    session.pch_ref = Session::PCHRef{artifact_key, bound};
 
     LOG_INFO("PCH built for {}: {}", path, result.value().output_path);
 
@@ -535,8 +551,7 @@ et::task<bool> Compiler::ensure_pch(Session& session,
 /// Shared preparation step used by both ensure_compiled() (stateful path)
 /// and forward_stateless() (completion/signatureHelp path).
 et::task<bool> Compiler::ensure_deps(Session& session,
-                                     const std::string& directory,
-                                     const std::vector<std::string>& arguments,
+                                     const CompileCommand& cmd,
                                      std::pair<std::string, uint32_t>& pch,
                                      std::unordered_map<std::string, std::string>& pcms) {
     auto path_id = session.path_id;
@@ -558,7 +573,7 @@ et::task<bool> Compiler::ensure_deps(Session& session,
             for(auto& [pid, name]: workspace.path_to_module) {
                 if(name == mod_name) {
                     // If PCM not already built, try to build it.
-                    if(workspace.pcm_paths.find(pid) == workspace.pcm_paths.end()) {
+                    if(workspace.pcm_active.find(pid) == workspace.pcm_active.end()) {
                         if(workspace.compile_graph && workspace.compile_graph->has_unit(pid)) {
                             co_await workspace.compile_graph->compile_deps(pid);
                         }
@@ -574,10 +589,13 @@ et::task<bool> Compiler::ensure_deps(Session& session,
     }
 
     // Build or reuse PCH.
-    auto pch_ok = co_await ensure_pch(session, directory, arguments);
+    auto pch_ok = co_await ensure_pch(session, cmd);
     if(pch_ok) {
-        if(auto pch_it = workspace.pch_cache.find(path_id); pch_it != workspace.pch_cache.end()) {
-            pch = {pch_it->second.path, pch_it->second.bound};
+        if(auto pch_it = workspace.pch_active.find(path_id); pch_it != workspace.pch_active.end()) {
+            auto* entry = workspace.artifact_cache.lookup(pch_it->second.artifact_key);
+            if(entry) {
+                pch = {entry->path, pch_it->second.bound};
+            }
         }
     }
 
@@ -592,11 +610,10 @@ bool Compiler::is_stale(const Session& session) {
     if(session.ast_deps.has_value() && deps_changed(workspace.path_pool, *session.ast_deps))
         return true;
 
-    // Check PCH staleness via the session's pch_ref.
+    // Check PCH staleness via the artifact cache.
     if(session.pch_ref.has_value()) {
-        auto pch_it = workspace.pch_cache.find(session.pch_ref->path_id);
-        if(pch_it != workspace.pch_cache.end() &&
-           deps_changed(workspace.path_pool, pch_it->second.deps))
+        if(workspace.artifact_cache.deps_changed(workspace.path_pool,
+                                                 session.pch_ref->artifact_key))
             return true;
     }
 
@@ -708,17 +725,21 @@ et::task<bool> Compiler::ensure_compiled(Session& session) {
         auto uri = lsp::URI::from_file_path(file_path);
         std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
+        auto cmd_opt = self->resolve_compile_command(file_path, sess);
+        if(!cmd_opt) {
+            finish_compile();
+            co_return;
+        }
+        auto& cmd = *cmd_opt;
+
         worker::CompileParams params;
         params.path = file_path;
         params.version = sess->version;
         params.text = sess->text;
-        if(!self->fill_compile_args(file_path, params.directory, params.arguments, sess)) {
-            finish_compile();
-            co_return;
-        }
+        params.directory = cmd.resolved.directory.str();
+        params.arguments = cmd.to_string_argv();
 
-        if(!co_await self
-                ->ensure_deps(*sess, params.directory, params.arguments, params.pch, params.pcms)) {
+        if(!co_await self->ensure_deps(*sess, cmd, params.pch, params.pcms)) {
             LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
             finish_compile();
             co_return;
@@ -841,6 +862,12 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     auto path_id = session.path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
 
+    auto cmd_opt = resolve_compile_command(path, &session);
+    if(!cmd_opt) {
+        co_return serde_raw{};
+    }
+    auto& cmd = *cmd_opt;
+
     worker::BuildParams wp;
     wp.kind = kind;
     wp.file = path;
@@ -848,11 +875,10 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     // if didClose erases the entry from the sessions map during suspension.
     wp.version = session.version;
     wp.text = session.text;
-    if(!fill_compile_args(path, wp.directory, wp.arguments, &session)) {
-        co_return serde_raw{};
-    }
+    wp.directory = cmd.resolved.directory.str();
+    wp.arguments = cmd.to_string_argv();
 
-    if(!co_await ensure_deps(session, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
+    if(!co_await ensure_deps(session, cmd, wp.pch, wp.pcms)) {
         co_return serde_raw{};
     }
 
@@ -885,17 +911,12 @@ Compiler::RawResult Compiler::handle_completion(const protocol::Position& positi
         auto pctx = detect_completion_context(session.text, *offset);
         if(pctx.kind == CompletionContext::IncludeQuoted ||
            pctx.kind == CompletionContext::IncludeAngled) {
-            std::string directory;
-            std::vector<std::string> arguments;
-            if(!fill_compile_args(path, directory, arguments))
+            auto cmd_opt = resolve_compile_command(path);
+            if(!cmd_opt)
                 co_return serde_raw{"[]"};
 
-            std::vector<const char*> args_ptrs;
-            args_ptrs.reserve(arguments.size());
-            for(auto& arg: arguments)
-                args_ptrs.push_back(arg.c_str());
-
-            auto search_config = extract_search_config(args_ptrs, directory);
+            auto search_config =
+                extract_search_config(cmd_opt->resolved.flags, cmd_opt->resolved.directory);
             DirListingCache dir_cache;
             auto resolved = resolve_search_config(search_config, dir_cache);
             bool angled = (pctx.kind == CompletionContext::IncludeAngled);

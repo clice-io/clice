@@ -58,12 +58,11 @@ public:
 
     void init_compile_graph();
 
-    /// Fill compile arguments for a file (CDB lookup + header context fallback).
+    /// Resolve a file's compilation command (CDB lookup + header context fallback).
+    /// Returns a CompileCommand with resolved flags separated from source file identity.
     /// @param session  If non-null, used for header context resolution on open files.
-    bool fill_compile_args(llvm::StringRef path,
-                           std::string& directory,
-                           std::vector<std::string>& arguments,
-                           Session* session = nullptr);
+    std::optional<CompileCommand> resolve_compile_command(llvm::StringRef path,
+                                                          Session* session = nullptr);
 
     /// Compile an open file's AST if dirty.  On success, updates session's
     /// file_index, pch_ref, ast_deps, and publishes diagnostics.
@@ -98,14 +97,11 @@ public:
 
 private:
     et::task<bool> ensure_deps(Session& session,
-                               const std::string& directory,
-                               const std::vector<std::string>& arguments,
+                               const CompileCommand& cmd,
                                std::pair<std::string, uint32_t>& pch,
                                std::unordered_map<std::string, std::string>& pcms);
 
-    et::task<bool> ensure_pch(Session& session,
-                              const std::string& directory,
-                              const std::vector<std::string>& arguments);
+    et::task<bool> ensure_pch(Session& session, const CompileCommand& cmd);
 
     bool is_stale(const Session& session);
     void record_deps(Session& session, llvm::ArrayRef<std::string> deps);
@@ -115,11 +111,9 @@ private:
     std::optional<HeaderFileContext> resolve_header_context(std::uint32_t header_path_id,
                                                             Session* session);
 
-    bool fill_header_context_args(llvm::StringRef path,
-                                  std::uint32_t path_id,
-                                  std::string& directory,
-                                  std::vector<std::string>& arguments,
-                                  Session* session);
+    std::optional<CompileCommand> resolve_header_context_command(llvm::StringRef path,
+                                                                 std::uint32_t path_id,
+                                                                 Session* session);
 
 private:
     et::event_loop& loop;

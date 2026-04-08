@@ -203,7 +203,7 @@ export int a_value() { return b_value() + 1; }
 
     CompilationParams params_b;
     params_b.kind = CompilationKind::ModuleInterface;
-    params_b.arguments = cdb.lookup(tmp.path("mod_b.cppm"), cmd_opts).front().arguments;
+    params_b.arguments = cdb.lookup(tmp.path("mod_b.cppm"), cmd_opts).front().to_argv();
 
     auto pcm_b_path = fs::createTemporaryFile("mod_b", "pcm");
     ASSERT_TRUE(pcm_b_path.operator bool());
@@ -221,7 +221,7 @@ export int a_value() { return b_value() + 1; }
 
     CompilationParams params_a;
     params_a.kind = CompilationKind::ModuleInterface;
-    params_a.arguments = cdb.lookup(tmp.path("mod_a.cppm"), cmd_opts).front().arguments;
+    params_a.arguments = cdb.lookup(tmp.path("mod_a.cppm"), cmd_opts).front().to_argv();
     params_a.pcms.try_emplace("mod_b", info_b.path);
 
     auto pcm_a_path = fs::createTemporaryFile("mod_a", "pcm");

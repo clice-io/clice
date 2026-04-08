@@ -16,6 +16,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Path.h"
 
 namespace clice {
 
@@ -36,12 +37,56 @@ struct CommandOptions {
     llvm::ArrayRef<std::string> append;
 };
 
-struct CompilationContext {
+/// Resolved compilation flags — file-identity-free.
+/// Contains driver/cc1 flags + patches (-I, -D, etc.) but NO source file path
+/// and NO -main-file-name.  This is the "shareable" part of a compilation command,
+/// directly usable as PCH cache key input and SearchConfig input without stripping.
+struct ResolvedFlags {
     /// The working directory of compilation.
     llvm::StringRef directory;
 
-    /// The compilation arguments.
-    std::vector<const char*> arguments;
+    /// Compilation flags (driver + semantic flags + patches).
+    /// Does NOT contain the source file path or -main-file-name.
+    std::vector<const char*> flags;
+
+    /// Whether the flags are in cc1 mode (after toolchain query).
+    bool is_cc1 = false;
+};
+
+/// A file-bound compilation command = resolved flags + source file identity.
+struct CompileCommand {
+    ResolvedFlags resolved;
+
+    /// The source file being compiled (interned, pointer-stable).
+    const char* source_file = nullptr;
+
+    /// Materialize a full argv for clang invocation (flags + source file appended).
+    std::vector<const char*> to_argv() const {
+        auto args = resolved.flags;
+        if(resolved.is_cc1) {
+            // Insert -main-file-name after -cc1 (or after driver if not found).
+            auto basename = llvm::sys::path::filename(llvm::StringRef(source_file));
+            // Find insertion point: after "-cc1" if present, else position 1.
+            std::size_t pos = 1;
+            if(args.size() >= 2 && args[1] == llvm::StringRef("-cc1")) {
+                pos = 2;
+            }
+            args.insert(args.begin() + pos, {"-main-file-name", basename.data()});
+        }
+        args.push_back(source_file);
+        return args;
+    }
+
+    /// Materialize a full argv as std::string (for worker params).
+    std::vector<std::string> to_string_argv() const {
+        auto args = to_argv();
+        std::vector<std::string> result;
+        result.reserve(args.size());
+        for(auto* arg: args) {
+            result.emplace_back(arg);
+        }
+        return result;
+    }
 };
 
 /// Shared compiler identity — driver + all semantics-affecting flags.
@@ -174,10 +219,11 @@ public:
     /// but toolchain cache survives. Returns the number of entries loaded.
     std::size_t load(llvm::StringRef path);
 
-    /// Lookup the compilation contexts for a file. A file may have multiple
+    /// Lookup the compilation commands for a file. A file may have multiple
     /// compilation commands (e.g. different build configurations); all are returned.
-    llvm::SmallVector<CompilationContext> lookup(llvm::StringRef file,
-                                                 const CommandOptions& options = {});
+    /// The returned CompileCommand separates resolved flags from source file identity.
+    llvm::SmallVector<CompileCommand> lookup(llvm::StringRef file,
+                                             const CommandOptions& options = {});
 
     /// Combined lookup + extract_search_config with internal caching.
     SearchConfig lookup_search_config(llvm::StringRef file, const CommandOptions& options = {});

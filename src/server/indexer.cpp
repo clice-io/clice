@@ -662,11 +662,15 @@ et::task<> Indexer::run_background_indexing() {
         if(!need_update(file_path))
             continue;
 
+        auto cmd_opt = compiler.resolve_compile_command(file_path, nullptr);
+        if(!cmd_opt)
+            continue;
+
         worker::BuildParams params;
         params.kind = worker::BuildKind::Index;
         params.file = file_path;
-        if(!compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr))
-            continue;
+        params.directory = cmd_opt->resolved.directory.str();
+        params.arguments = cmd_opt->to_string_argv();
 
         workspace.fill_pcm_deps(params.pcms);
 

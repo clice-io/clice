@@ -13,6 +13,7 @@
 #include "index/merged_index.h"
 #include "index/project_index.h"
 #include "semantic/relation_kind.h"
+#include "server/artifact_cache.h"
 #include "server/compile_graph.h"
 #include "server/config.h"
 #include "support/path_pool.h"
@@ -28,20 +29,6 @@ namespace clice {
 namespace et = eventide;
 namespace protocol = et::ipc::protocol;
 namespace lsp = et::ipc::lsp;
-
-/// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
-///
-/// Layer 1 (fast): compare each file's current mtime against build_at.
-///   If all mtimes <= build_at, the artifact is fresh (zero I/O beyond stat).
-///
-/// Layer 2 (precise): for files whose mtime changed, re-hash their content
-///   and compare against the stored hash.  If the hash matches, the file was
-///   "touched" but not actually modified — skip the rebuild.
-struct DepsSnapshot {
-    llvm::SmallVector<std::uint32_t> path_ids;
-    llvm::SmallVector<std::uint64_t> hashes;
-    std::int64_t build_at = 0;
-};
 
 /// Context for compiling a header file that lacks its own CDB entry.
 struct HeaderFileContext {
@@ -133,21 +120,12 @@ struct MergedIndexShard {
     }
 };
 
-/// Cached PCH state.  Content-addressed by preamble hash — shared across all
-/// files (open or on-disk) that have the same preamble content.
+/// Active PCH state for an open file.  References an entry in ArtifactCache.
+/// This is the "hot" layer — tracks what's currently in use and being built.
 struct PCHState {
-    std::string path;
-    std::uint32_t bound = 0;
-    std::uint64_t hash = 0;
-    DepsSnapshot deps;
-    std::shared_ptr<eventide::event> building;
-};
-
-/// Cached PCM state for a single C++20 module.  Shared across all files that
-/// import the same module.
-struct PCMState {
-    std::string path;
-    DepsSnapshot deps;
+    ArtifactKey artifact_key = 0;               ///< Key into ArtifactCache.
+    std::uint32_t bound = 0;                    ///< Preamble byte boundary.
+    std::shared_ptr<eventide::event> building;  ///< Non-null during build.
 };
 
 /// All persistent, project-wide state derived from files on disk.
@@ -188,17 +166,17 @@ struct Workspace {
     /// declarations change.
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
-    /// PCH cache, keyed by file path_id.
-    /// TODO: re-key by preamble content hash to enable cross-file sharing and
-    /// add LRU eviction.  Compile flags should also be part of the key.
-    llvm::DenseMap<std::uint32_t, PCHState> pch_cache;
+    /// Content-addressed compilation artifact cache (PCH and PCM files).
+    /// This is the "cold" storage layer with LRU eviction.
+    ArtifactCache artifact_cache;
 
-    /// PCM cache, keyed by module source path_id.
-    llvm::DenseMap<std::uint32_t, PCMState> pcm_cache;
+    /// Active PCH state per open file (keyed by path_id).
+    /// References entries in artifact_cache.  Manages building coordination.
+    llvm::DenseMap<std::uint32_t, PCHState> pch_active;
 
-    /// PCM output paths, keyed by module source path_id.
-    /// Maps to the .pcm file on disk used as -fmodule-file argument.
-    llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
+    /// Active PCM artifact keys per module source (keyed by path_id).
+    /// Maps module source path_id to its ArtifactKey in artifact_cache.
+    llvm::DenseMap<std::uint32_t, ArtifactKey> pcm_active;
 
     /// Global symbol table across all indexed translation units.
     index::ProjectIndex project_index;
@@ -217,11 +195,11 @@ struct Workspace {
     /// is a module unit so dependents can be re-evaluated on next compile.
     void on_file_closed(std::uint32_t path_id);
 
-    /// Load PCH/PCM cache from cache.json on disk.
+    /// Load artifact cache from disk.
     void load_cache();
-    /// Save PCH/PCM cache to cache.json on disk.
+    /// Save artifact cache to disk.
     void save_cache();
-    /// Remove stale PCH/PCM files older than max_age_days.
+    /// Remove stale artifact files older than max_age_days.
     void cleanup_cache(int max_age_days = 7);
     /// Build path_to_module reverse mapping from dep_graph.
     void build_module_map();
@@ -231,17 +209,5 @@ struct Workspace {
     /// Cancel all in-flight compilations.
     void cancel_all();
 };
-
-/// Hash a file's content using xxh3_64bits. Returns 0 on read failure.
-std::uint64_t hash_file(llvm::StringRef path);
-
-/// Capture a two-layer staleness snapshot after a successful compilation.
-/// Interns dependency paths into the PathPool and hashes each file's content.
-DepsSnapshot capture_deps_snapshot(PathPool& pool, llvm::ArrayRef<std::string> deps);
-
-/// Two-layer staleness check.
-/// Layer 1 (fast): stat each dep file, compare mtime against build_at.
-/// Layer 2 (precise): for files with mtime > build_at, re-hash content.
-bool deps_changed(const PathPool& pool, const DepsSnapshot& snap);
 
 }  // namespace clice

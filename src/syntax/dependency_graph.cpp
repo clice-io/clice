@@ -620,11 +620,12 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             // headers cannot contain module declarations.
             if(scan_result.scan_result.need_preprocess && wave_num == 0) {
                 auto file_path = llvm::StringRef(scan_result.path);
-                auto contexts =
+                auto commands =
                     cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
-                if(!contexts.empty()) {
-                    auto& ctx = contexts[0];
-                    auto fallback = scan_module_decl(ctx.arguments, ctx.directory, /*content=*/{});
+                if(!commands.empty()) {
+                    auto& cmd = commands[0];
+                    auto fallback =
+                        scan_module_decl(cmd.to_argv(), cmd.resolved.directory, /*content=*/{});
                     if(!fallback.module_name.empty()) {
                         scan_result.scan_result.module_name = std::move(fallback.module_name);
                         scan_result.scan_result.is_interface_unit = fallback.is_interface_unit;

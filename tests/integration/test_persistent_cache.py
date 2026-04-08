@@ -138,15 +138,17 @@ async def test_cache_json_persisted(client, tmp_path):
 
     cache = _cache_json(tmp_path)
     assert cache is not None, "cache.json should exist after PCH build"
-    assert "pch" in cache, "cache.json should have 'pch' section"
-    assert len(cache["pch"]) >= 1, "Expected at least one PCH entry in cache.json"
+    assert "artifacts" in cache, "cache.json should have 'artifacts' section"
+    assert len(cache["artifacts"]) >= 1, (
+        "Expected at least one artifact entry in cache.json"
+    )
 
     # Verify the entry has expected fields.
-    entry = cache["pch"][0]
-    assert "hash" in entry
+    entry = cache["artifacts"][0]
+    assert "key" in entry
     assert "build_at" in entry
     assert "deps" in entry
-    assert "source_file" in entry
+    assert "filename" in entry
 
 
 async def test_pch_reused_on_close_reopen(client, tmp_path):
