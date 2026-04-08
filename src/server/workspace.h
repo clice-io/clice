@@ -29,9 +29,6 @@ namespace et = eventide;
 namespace protocol = et::ipc::protocol;
 namespace lsp = et::ipc::lsp;
 
-// ---------------------------------------------------------------------------
-// Shared types used by both Workspace and Session
-// ---------------------------------------------------------------------------
 
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
 ///
@@ -54,9 +51,6 @@ struct HeaderFileContext {
     std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
 };
 
-// ---------------------------------------------------------------------------
-// Index wrapper types (used by Workspace and Session)
-// ---------------------------------------------------------------------------
 
 /// In-memory index for an open file.  Kept separate from MergedIndex because
 /// open files change frequently, are based on unsaved buffer content, and only
@@ -141,9 +135,6 @@ struct MergedIndexShard {
     }
 };
 
-// ---------------------------------------------------------------------------
-// PCH / PCM caches
-// ---------------------------------------------------------------------------
 
 /// Cached PCH state.  Content-addressed by preamble hash — shared across all
 /// files (open or on-disk) that have the same preamble content.
@@ -162,9 +153,6 @@ struct PCMState {
     DepsSnapshot deps;
 };
 
-// ---------------------------------------------------------------------------
-// Workspace
-// ---------------------------------------------------------------------------
 
 /// All persistent, project-wide state derived from files on disk.
 ///
