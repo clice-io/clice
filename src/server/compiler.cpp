@@ -445,11 +445,11 @@ et::task<bool> Compiler::ensure_pch(Session& session,
         co_return true;
     }
 
-    // Hash only the preamble text.  This allows files with identical preambles
-    // to share the same PCH file (content-addressed).  Compile flags are NOT
-    // included because preamble content is what determines the PCH output.
-    // TODO: consider hashing flags that affect preprocessing (e.g. -D, -I)
-    // for correctness when files have same preamble text but different flags.
+    // FIXME: hash should also include compile flags that affect preprocessing
+    // (e.g. -D, -I, -isystem, -std) so that files with the same preamble text
+    // but different flags produce separate PCHs.  Currently only the preamble
+    // text is hashed — the source file path must be excluded from the hash
+    // to allow sharing across files with identical preambles.
     auto preamble_text = llvm::StringRef(text).substr(0, bound);
     auto preamble_hash = llvm::xxh3_64bits(preamble_text);
 
