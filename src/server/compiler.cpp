@@ -445,7 +445,14 @@ et::task<bool> Compiler::ensure_pch(Session& session,
         co_return true;
     }
 
-    auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(text).substr(0, bound));
+    // Hash both the preamble text AND compile arguments so that different
+    // compilation contexts (e.g. after switchContext) produce different PCHs.
+    auto preamble_text = llvm::StringRef(text).substr(0, bound);
+    auto preamble_hash = llvm::xxh3_64bits(preamble_text);
+    for(auto& arg: arguments) {
+        preamble_hash ^= llvm::xxh3_64bits(arg);
+    }
+    preamble_hash ^= llvm::xxh3_64bits(directory);
 
     // Deterministic content-addressed PCH path.
     auto pch_path = path::join(workspace.config.cache_dir,
@@ -807,16 +814,21 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
                                             Session& session) {
     auto path_id = session.path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
+    // Cache text before co_await — session reference may dangle if didClose
+    // erases the entry from the sessions map during suspension.
+    auto text = session.text;
 
     if(!co_await ensure_compiled(session)) {
         co_return serde_raw{"null"};
     }
 
-    if(session.ast_dirty) {
+    // Re-lookup session after co_await (DenseMap may have been modified).
+    auto sit = sessions.find(path_id);
+    if(sit == sessions.end() || sit->second.ast_dirty) {
         co_return serde_raw{"null"};
     }
 
-    lsp::PositionMapper mapper(session.text, lsp::PositionEncoding::UTF16);
+    lsp::PositionMapper mapper(text, lsp::PositionEncoding::UTF16);
     auto offset = mapper.to_offset(position);
     if(!offset)
         co_return serde_raw{"null"};
@@ -838,6 +850,8 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     worker::BuildParams wp;
     wp.kind = kind;
     wp.file = path;
+    // Cache session fields before co_await — session reference may dangle
+    // if didClose erases the entry from the sessions map during suspension.
     wp.version = session.version;
     wp.text = session.text;
     if(!fill_compile_args(path, wp.directory, wp.arguments, &session)) {
@@ -845,6 +859,11 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     }
 
     if(!co_await ensure_deps(session, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
+        co_return serde_raw{};
+    }
+
+    // After co_await, verify session still exists.
+    if(sessions.find(path_id) == sessions.end()) {
         co_return serde_raw{};
     }
 

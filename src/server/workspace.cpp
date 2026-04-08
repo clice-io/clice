@@ -8,6 +8,7 @@
 #include "eventide/serde/json/json.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "syntax/scan.h"
 
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
@@ -74,6 +75,18 @@ std::optional<std::pair<index::SymbolHash, protocol::Range>>
 
 llvm::SmallVector<std::uint32_t> Workspace::on_file_saved(std::uint32_t path_id) {
     llvm::SmallVector<std::uint32_t> dirtied;
+
+    // Re-scan the saved file for module declarations and update path_to_module.
+    auto file_path = path_pool.resolve(path_id);
+    if(auto buf = llvm::MemoryBuffer::getFile(file_path)) {
+        auto result = scan((*buf)->getBuffer());
+        if(!result.module_name.empty()) {
+            path_to_module[path_id] = std::move(result.module_name);
+        } else {
+            path_to_module.erase(path_id);
+        }
+    }
+
     if(compile_graph) {
         auto result = compile_graph->update(path_id);
         for(auto id: result) {

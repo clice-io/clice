@@ -43,7 +43,13 @@ MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::s
             sessions,
             pool,
             compiler,
-            [this](uint32_t id) { return sessions.contains(id); }),
+            [this](uint32_t proj_path_id) {
+                // Bridge project-level path_id to server-level path_id.
+                // The two PathPools may assign different IDs to the same path.
+                auto path = workspace.project_index.path_pool.path(proj_path_id);
+                auto server_id = workspace.path_pool.intern(path);
+                return sessions.contains(server_id);
+            }),
     self_path(std::move(self_path)) {}
 
 MasterServer::~MasterServer() = default;
