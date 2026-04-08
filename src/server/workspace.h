@@ -152,6 +152,12 @@ struct PCMState {
 
 /// All persistent, project-wide state derived from files on disk.
 ///
+/// Design principle: open files are never depended upon by other files.
+/// Dependencies always point to disk files.  This enforces a clean two-layer
+/// architecture:
+///   - Global layer (Workspace): tracks disk truth, shared by all files
+///   - Per-file layer (Session): tracks buffer truth, isolated per TU
+///
 /// Workspace is the single source of truth for:
 ///   - dependency relationships (include graph, module DAG)
 ///   - compilation artifacts shared across files (PCH/PCM caches)
@@ -163,9 +169,6 @@ struct PCMState {
 ///   - Initialization  (load_workspace at startup)
 ///   - didSave         (on_file_saved: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
-///
-/// Sessions (open files) may READ from Workspace but must not WRITE to it
-/// except through the didSave path.
 struct Workspace {
     CliceConfig config;
     CompilationDatabase cdb;

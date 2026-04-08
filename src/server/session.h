@@ -16,13 +16,12 @@ namespace et = eventide;
 
 /// An editing session for a single file opened in the editor.
 ///
+/// Design principle: open files are never depended upon by other files.
+/// Dependencies always point to disk files.  The only path from Session
+/// to Workspace is didSave, which tells Workspace to rescan the disk file.
+///
 /// Created on didOpen, destroyed on didClose.  All fields are local to this
 /// file's translation unit and NEVER leak to Workspace or other Sessions.
-///
-/// The only path from Session to Workspace is didSave, which triggers
-/// Workspace to rescan the disk file — Session itself does not write to
-/// Workspace.
-///
 /// Sessions may READ from Workspace (e.g. to obtain PCH/PCM paths, module
 /// mappings, include graph) but all compilation results stay here.
 struct Session {
