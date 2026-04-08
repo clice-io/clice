@@ -308,8 +308,12 @@ void MasterServer::register_handlers() {
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = workspace.path_pool.intern(path);
 
-        auto [it, _] = sessions.try_emplace(path_id);
+        auto [it, inserted] = sessions.try_emplace(path_id);
         auto& session = it->second;
+        if(!inserted) {
+            // DenseMap tombstone may retain stale data — reset to a fresh Session.
+            session = Session{};
+        }
         session.path_id = path_id;
         session.version = params.text_document.version;
         session.text = params.text_document.text;
