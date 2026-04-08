@@ -18,6 +18,7 @@
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -240,6 +241,34 @@ struct Workspace {
     /// Called when a file is closed.  Notifies compile_graph if this file
     /// is a module unit so dependents can be re-evaluated on next compile.
     void on_file_closed(std::uint32_t path_id);
+
+    // ----- Cache / module methods (moved from Compiler) -----
+
+    /// Load PCH/PCM cache from cache.json on disk.
+    void load_cache();
+    /// Save PCH/PCM cache to cache.json on disk.
+    void save_cache();
+    /// Remove stale PCH/PCM files older than max_age_days.
+    void cleanup_cache(int max_age_days = 7);
+    /// Build path_to_module reverse mapping from dep_graph.
+    void build_module_map();
+    /// Fill PCM paths for all built modules, excluding exclude_path_id.
+    void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
+                       std::uint32_t exclude_path_id = UINT32_MAX) const;
+    /// Cancel all in-flight compilations.
+    void cancel_all();
 };
+
+/// Hash a file's content using xxh3_64bits. Returns 0 on read failure.
+std::uint64_t hash_file(llvm::StringRef path);
+
+/// Capture a two-layer staleness snapshot after a successful compilation.
+/// Interns dependency paths into the PathPool and hashes each file's content.
+DepsSnapshot capture_deps_snapshot(PathPool& pool, llvm::ArrayRef<std::string> deps);
+
+/// Two-layer staleness check.
+/// Layer 1 (fast): stat each dep file, compare mtime against build_at.
+/// Layer 2 (precise): for files with mtime > build_at, re-hash content.
+bool deps_changed(const PathPool& pool, const DepsSnapshot& snap);
 
 }  // namespace clice

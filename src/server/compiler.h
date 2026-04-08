@@ -33,6 +33,9 @@ struct PreambleCompletionContext {
     std::string prefix;
 };
 
+/// Convert a file:// URI to a local file path.
+std::string uri_to_path(const std::string& uri);
+
 /// Stateless compilation service.
 ///
 /// Compiler does not own any persistent state.  It holds references to
@@ -45,8 +48,7 @@ struct PreambleCompletionContext {
 ///   - Compilation (ensure_compiled, ensure_pch, ensure_deps)
 ///   - Feature request forwarding to workers
 ///   - Compile argument resolution
-///   - Cache persistence
-///   - Module/compile graph initialization
+///   - Compile graph initialization
 class Compiler {
 public:
     Compiler(et::event_loop& loop,
@@ -56,18 +58,8 @@ public:
              llvm::DenseMap<std::uint32_t, Session>& sessions);
     ~Compiler();
 
-    /// Convert a file:// URI to a local file path.
-    static std::string uri_to_path(const std::string& uri);
-
-    // ----- Cache persistence (operates on Workspace) -----
-
-    void load_cache();
-    void save_cache();
-    void cleanup_cache(int max_age_days = 7);
-
     // ----- Module / compile graph (operates on Workspace) -----
 
-    void build_module_map();
     void init_compile_graph();
 
     // ----- Compile argument resolution -----
@@ -78,10 +70,6 @@ public:
                            std::string& directory,
                            std::vector<std::string>& arguments,
                            Session* session = nullptr);
-
-    /// Fill PCM paths for all built modules (for background indexing).
-    void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
-                       std::uint32_t exclude_path_id = UINT32_MAX) const;
 
     // ----- Pull-based compilation -----
 
@@ -103,8 +91,6 @@ public:
                             Session& session);
 
     RawResult handle_completion(const protocol::Position& position, Session& session);
-
-    void cancel_all();
 
     void clear_diagnostics(const std::string& uri);
 
@@ -136,7 +122,6 @@ private:
                                   std::vector<std::string>& arguments,
                                   Session* session);
 
-    PreambleCompletionContext detect_completion_context(const std::string& text, uint32_t offset);
     et::serde::RawValue complete_include(const PreambleCompletionContext& ctx,
                                          llvm::StringRef path);
     et::serde::RawValue complete_import(const PreambleCompletionContext& ctx);

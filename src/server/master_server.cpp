@@ -67,8 +67,8 @@ et::task<> MasterServer::load_workspace() {
 
         // Clean up stale files first, then load — load_cache() only restores
         // entries still listed in cache.json, so cleanup won't delete live files.
-        compiler.cleanup_cache();
-        compiler.load_cache();
+        workspace.cleanup_cache();
+        workspace.load_cache();
     }
 
     std::string cdb_path;
@@ -122,7 +122,7 @@ et::task<> MasterServer::load_workspace() {
         LOG_WARN("{} unresolved includes", unresolved);
     }
 
-    compiler.build_module_map();
+    workspace.build_module_map();
     indexer.load(workspace.config.index_dir);
 
     if(workspace.config.enable_indexing) {
@@ -186,7 +186,7 @@ et::task<> MasterServer::run_background_indexing() {
         if(!compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr))
             continue;
 
-        compiler.fill_pcm_deps(params.pcms);
+        workspace.fill_pcm_deps(params.pcms);
 
         LOG_INFO("Background indexing: {}", file_path);
 
@@ -222,7 +222,7 @@ void MasterServer::register_handlers() {
 
         auto& init = params.lsp__initialize_params;
         if(init.root_uri.has_value()) {
-            workspace_root = Compiler::uri_to_path(*init.root_uri);
+            workspace_root = uri_to_path(*init.root_uri);
         }
 
         lifecycle = ServerLifecycle::Initialized;
@@ -354,7 +354,7 @@ void MasterServer::register_handlers() {
         LOG_INFO("Exit notification received");
 
         indexer.save(workspace.config.index_dir);
-        compiler.save_cache();
+        workspace.save_cache();
 
         loop.schedule([this]() -> et::task<> {
             co_await pool.stop();
@@ -370,7 +370,7 @@ void MasterServer::register_handlers() {
         if(lifecycle != ServerLifecycle::Ready)
             return;
 
-        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path = uri_to_path(params.text_document.uri);
         auto path_id = workspace.path_pool.intern(path);
 
         auto& session = sessions[path_id];
@@ -386,7 +386,7 @@ void MasterServer::register_handlers() {
         if(lifecycle != ServerLifecycle::Ready)
             return;
 
-        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path = uri_to_path(params.text_document.uri);
         auto path_id = workspace.path_pool.intern(path);
 
         auto it = sessions.find(path_id);
@@ -434,7 +434,7 @@ void MasterServer::register_handlers() {
         if(lifecycle != ServerLifecycle::Ready)
             return;
 
-        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path = uri_to_path(params.text_document.uri);
         auto path_id = workspace.path_pool.intern(path);
 
         workspace.on_file_closed(path_id);
@@ -457,7 +457,7 @@ void MasterServer::register_handlers() {
         if(lifecycle != ServerLifecycle::Ready)
             return;
 
-        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path = uri_to_path(params.text_document.uri);
         auto path_id = workspace.path_pool.intern(path);
 
         auto dirtied = workspace.on_file_saved(path_id);
@@ -487,7 +487,7 @@ void MasterServer::register_handlers() {
     /// ---------------------------------------------------------------
 
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
-        auto path = Compiler::uri_to_path(params.text_document_position_params.text_document.uri);
+        auto path = uri_to_path(params.text_document_position_params.text_document.uri);
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
@@ -499,7 +499,7 @@ void MasterServer::register_handlers() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::SemanticTokensParams& params) -> RawResult {
-        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path = uri_to_path(params.text_document.uri);
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
@@ -509,7 +509,7 @@ void MasterServer::register_handlers() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
-            auto path = Compiler::uri_to_path(params.text_document.uri);
+            auto path = uri_to_path(params.text_document.uri);
             auto path_id = workspace.path_pool.intern(path);
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
@@ -519,7 +519,7 @@ void MasterServer::register_handlers() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
-            auto path = Compiler::uri_to_path(params.text_document.uri);
+            auto path = uri_to_path(params.text_document.uri);
             auto path_id = workspace.path_pool.intern(path);
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
@@ -529,7 +529,7 @@ void MasterServer::register_handlers() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::DocumentSymbolParams& params) -> RawResult {
-        auto path = Compiler::uri_to_path(params.text_document.uri);
+        auto path = uri_to_path(params.text_document.uri);
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
@@ -539,7 +539,7 @@ void MasterServer::register_handlers() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
-            auto path = Compiler::uri_to_path(params.text_document.uri);
+            auto path = uri_to_path(params.text_document.uri);
             auto path_id = workspace.path_pool.intern(path);
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
@@ -549,7 +549,7 @@ void MasterServer::register_handlers() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
-            auto path = Compiler::uri_to_path(params.text_document.uri);
+            auto path = uri_to_path(params.text_document.uri);
             auto path_id = workspace.path_pool.intern(path);
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
@@ -564,7 +564,7 @@ void MasterServer::register_handlers() {
             std::uint32_t path_id;
             Session* session;
         };
-        auto path = Compiler::uri_to_path(uri);
+        auto path = uri_to_path(uri);
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         Session* session = (sit != sessions.end()) ? &sit->second : nullptr;
@@ -606,7 +606,7 @@ void MasterServer::register_handlers() {
             co_return to_raw(result);
         }
 
-        auto path = Compiler::uri_to_path(uri);
+        auto path = uri_to_path(uri);
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
@@ -656,7 +656,7 @@ void MasterServer::register_handlers() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CompletionParams& params) -> RawResult {
-        auto path = Compiler::uri_to_path(params.text_document_position_params.text_document.uri);
+        auto path = uri_to_path(params.text_document_position_params.text_document.uri);
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
@@ -665,17 +665,17 @@ void MasterServer::register_handlers() {
                                                       sit->second);
     });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::SignatureHelpParams& params) -> RawResult {
-        auto path = Compiler::uri_to_path(params.text_document_position_params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
-        auto sit = sessions.find(path_id);
-        if(sit == sessions.end())
-            co_return serde_raw{"null"};
-        co_return co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
-                                                  params.text_document_position_params.position,
-                                                  sit->second);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
+            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
+            auto path_id = workspace.path_pool.intern(path);
+            auto sit = sessions.find(path_id);
+            if(sit == sessions.end())
+                co_return serde_raw{"null"};
+            co_return co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
+                                                      params.text_document_position_params.position,
+                                                      sit->second);
+        });
 
     /// ---------------------------------------------------------------
     /// Hierarchy queries — index-based.
@@ -779,7 +779,7 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
-            auto path = Compiler::uri_to_path(params.uri);
+            auto path = uri_to_path(params.uri);
             auto path_id = workspace.path_pool.intern(path);
             int offset_val = std::max(0, params.offset.value_or(0));
             constexpr int page_size = 10;
@@ -845,7 +845,7 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "clice/currentContext",
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
-            auto path = Compiler::uri_to_path(params.uri);
+            auto path = uri_to_path(params.uri);
             auto path_id = workspace.path_pool.intern(path);
 
             ext::CurrentContextResult result;
@@ -867,9 +867,9 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
-            auto path = Compiler::uri_to_path(params.uri);
+            auto path = uri_to_path(params.uri);
             auto path_id = workspace.path_pool.intern(path);
-            auto context_path = Compiler::uri_to_path(params.context_uri);
+            auto context_path = uri_to_path(params.context_uri);
             auto context_path_id = workspace.path_pool.intern(context_path);
 
             ext::SwitchContextResult result;
