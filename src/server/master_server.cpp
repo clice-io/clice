@@ -427,8 +427,8 @@ void MasterServer::register_handlers() {
         if(sit == sessions.end())
             co_return serde_raw{"null"};
         co_return co_await compiler.forward_query(worker::QueryKind::Hover,
-                                                  params.text_document_position_params.position,
-                                                  sit->second);
+                                                  sit->second,
+                                                  params.text_document_position_params.position);
     });
 
     peer.on_request([this](RequestContext& ctx,
@@ -448,7 +448,10 @@ void MasterServer::register_handlers() {
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
                 co_return serde_raw{"null"};
-            co_return co_await compiler.forward_query(worker::QueryKind::InlayHints, sit->second);
+            co_return co_await compiler.forward_query(worker::QueryKind::InlayHints,
+                                                      sit->second,
+                                                      {},
+                                                      params.range);
         });
 
     peer.on_request(
@@ -544,8 +547,8 @@ void MasterServer::register_handlers() {
         if(sit == sessions.end())
             co_return serde_raw{"null"};
         co_return co_await compiler.forward_query(worker::QueryKind::GoToDefinition,
-                                                  pos,
-                                                  sit->second);
+                                                  sit->second,
+                                                  pos);
     });
 
     peer.on_request([this, query_at](RequestContext& ctx,

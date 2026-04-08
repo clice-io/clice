@@ -249,7 +249,9 @@ void StatefulWorker::register_handlers() {
                     });
                 case K::InlayHints:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-                        LocalSourceRange range{0, static_cast<uint32_t>(doc.text.size())};
+                        auto range = params.range;
+                        if(range.begin == static_cast<uint32_t>(-1))
+                            range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
                         return to_raw(feature::inlay_hints(doc.unit, range));
                     });
                 case K::FoldingRange:

@@ -71,15 +71,14 @@ public:
 
     using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
 
-    /// Forward a query (hover, semantic tokens, etc.) to the stateful worker
-    /// that holds this file's AST.  Ensures compilation first.
-    RawResult forward_query(worker::QueryKind kind, Session& session);
-
-    /// Forward a position-sensitive query (goto definition, references, etc.)
-    /// to the stateful worker.  Converts LSP position to byte offset.
+    /// Forward a query to the stateful worker that holds this file's AST.
+    /// Ensures compilation first.  For position-sensitive queries (hover,
+    /// goto-definition), pass a Position.  For range-sensitive queries
+    /// (inlay hints), pass a Range.
     RawResult forward_query(worker::QueryKind kind,
-                            const protocol::Position& position,
-                            Session& session);
+                            Session& session,
+                            std::optional<protocol::Position> position = {},
+                            std::optional<protocol::Range> range = {});
 
     /// Forward a build request (signature help, etc.) to a stateless worker.
     /// Sends the full buffer content and compile arguments.

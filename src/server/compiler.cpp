@@ -789,29 +789,10 @@ et::task<bool> Compiler::ensure_compiled(Session& session) {
     co_return !session.ast_dirty;
 }
 
-Compiler::RawResult Compiler::forward_query(worker::QueryKind kind, Session& session) {
-    auto path_id = session.path_id;
-    auto path = std::string(workspace.path_pool.resolve(path_id));
-
-    if(!co_await ensure_compiled(session)) {
-        co_return serde_raw{"null"};
-    }
-
-    if(session.ast_dirty) {
-        co_return serde_raw{"null"};
-    }
-
-    worker::QueryParams wp{kind, path};
-    auto result = co_await pool.send_stateful(path_id, wp);
-    if(!result.has_value()) {
-        co_return serde_raw{};
-    }
-    co_return std::move(result.value());
-}
-
 Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
-                                            const protocol::Position& position,
-                                            Session& session) {
+                                            Session& session,
+                                            std::optional<protocol::Position> position,
+                                            std::optional<protocol::Range> range) {
     auto path_id = session.path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
     // Cache text before co_await — session reference may dangle if didClose
@@ -822,18 +803,32 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
         co_return serde_raw{"null"};
     }
 
-    // Re-lookup session after co_await (DenseMap may have been modified).
     auto sit = sessions.find(path_id);
     if(sit == sessions.end() || sit->second.ast_dirty) {
         co_return serde_raw{"null"};
     }
 
-    lsp::PositionMapper mapper(text, lsp::PositionEncoding::UTF16);
-    auto offset = mapper.to_offset(position);
-    if(!offset)
-        co_return serde_raw{"null"};
+    worker::QueryParams wp;
+    wp.kind = kind;
+    wp.path = path;
 
-    worker::QueryParams wp{kind, path, *offset};
+    lsp::PositionMapper mapper(text, lsp::PositionEncoding::UTF16);
+
+    if(position) {
+        auto offset = mapper.to_offset(*position);
+        if(!offset)
+            co_return serde_raw{"null"};
+        wp.offset = *offset;
+    }
+
+    if(range) {
+        auto start = mapper.to_offset(range->start);
+        auto end = mapper.to_offset(range->end);
+        if(start && end) {
+            wp.range = {*start, *end};
+        }
+    }
+
     auto result = co_await pool.send_stateful(path_id, wp);
     if(!result.has_value()) {
         co_return serde_raw{};
