@@ -35,7 +35,6 @@ const static index::Occurrence* lookup_occurrence(const std::vector<index::Occur
     return best;
 }
 
-
 std::optional<std::pair<index::SymbolHash, protocol::Range>>
     OpenFileIndex::find_occurrence(std::uint32_t offset) const {
     if(!mapper)
@@ -52,7 +51,6 @@ std::optional<std::pair<index::SymbolHash, protocol::Range>>
         protocol::Range{*start, *end}
     };
 }
-
 
 std::optional<std::pair<index::SymbolHash, protocol::Range>>
     MergedIndexShard::find_occurrence(std::uint32_t offset) const {
@@ -74,7 +72,6 @@ std::optional<std::pair<index::SymbolHash, protocol::Range>>
     return result;
 }
 
-
 llvm::SmallVector<std::uint32_t> Workspace::on_file_saved(std::uint32_t path_id) {
     llvm::SmallVector<std::uint32_t> dirtied;
     if(compile_graph) {
@@ -94,7 +91,6 @@ void Workspace::on_file_closed(std::uint32_t path_id) {
     }
     pch_cache.erase(path_id);
 }
-
 
 std::uint64_t hash_file(llvm::StringRef path) {
     auto buf = llvm::MemoryBuffer::getFile(path);
@@ -141,7 +137,6 @@ bool deps_changed(const PathPool& pool, const DepsSnapshot& snap) {
     return false;
 }
 
-
 namespace {
 
 struct CacheDepEntry {
@@ -173,7 +168,6 @@ struct CacheData {
 };
 
 }  // namespace
-
 
 void Workspace::load_cache() {
     if(config.cache_dir.empty())

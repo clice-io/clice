@@ -29,7 +29,6 @@ namespace et = eventide;
 namespace protocol = et::ipc::protocol;
 namespace lsp = et::ipc::lsp;
 
-
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
 ///
 /// Layer 1 (fast): compare each file's current mtime against build_at.
@@ -50,7 +49,6 @@ struct HeaderFileContext {
     std::string preamble_path;    ///< Path to generated preamble file on disk.
     std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
 };
-
 
 /// In-memory index for an open file.  Kept separate from MergedIndex because
 /// open files change frequently, are based on unsaved buffer content, and only
@@ -135,7 +133,6 @@ struct MergedIndexShard {
     }
 };
 
-
 /// Cached PCH state.  Content-addressed by preamble hash — shared across all
 /// files (open or on-disk) that have the same preamble content.
 struct PCHState {
@@ -152,7 +149,6 @@ struct PCMState {
     std::string path;
     DepsSnapshot deps;
 };
-
 
 /// All persistent, project-wide state derived from files on disk.
 ///
@@ -171,13 +167,10 @@ struct PCMState {
 /// Sessions (open files) may READ from Workspace but must not WRITE to it
 /// except through the didSave path.
 struct Workspace {
-
     CliceConfig config;
     CompilationDatabase cdb;
 
-
     PathPool path_pool;
-
 
     /// Include relationships between files on disk (#include edges).
     /// Built once at startup from CDB scan; updated incrementally on didSave.
@@ -192,7 +185,6 @@ struct Workspace {
     /// declarations change.
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
-
     /// PCH cache, keyed by file path_id.  Content-addressed by preamble hash,
     /// so different files with identical preambles share the same PCH.
     /// Both open files and background indexing may reference entries here.
@@ -205,7 +197,6 @@ struct Workspace {
     /// Maps to the .pcm file on disk used as -fmodule-file argument.
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 
-
     /// Global symbol table across all indexed translation units.
     index::ProjectIndex project_index;
 
@@ -213,7 +204,6 @@ struct Workspace {
     /// path_id.  Contains symbol occurrences, relations, and stored content
     /// for position mapping.
     llvm::DenseMap<std::uint32_t, MergedIndexShard> merged_indices;
-
 
     /// Called when a file is saved to disk.  Cascades invalidation through
     /// compile_graph and clears affected PCM caches.
@@ -223,7 +213,6 @@ struct Workspace {
     /// Called when a file is closed.  Notifies compile_graph if this file
     /// is a module unit so dependents can be re-evaluated on next compile.
     void on_file_closed(std::uint32_t path_id);
-
 
     /// Load PCH/PCM cache from cache.json on disk.
     void load_cache();

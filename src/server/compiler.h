@@ -58,9 +58,7 @@ public:
              llvm::DenseMap<std::uint32_t, Session>& sessions);
     ~Compiler();
 
-
     void init_compile_graph();
-
 
     /// Fill compile arguments for a file (CDB lookup + header context fallback).
     /// @param session  If non-null, used for header context resolution on open files.
@@ -69,11 +67,9 @@ public:
                            std::vector<std::string>& arguments,
                            Session* session = nullptr);
 
-
     /// Compile an open file's AST if dirty.  On success, updates session's
     /// file_index, pch_ref, ast_deps, and publishes diagnostics.
     et::task<bool> ensure_compiled(Session& session);
-
 
     using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
 
