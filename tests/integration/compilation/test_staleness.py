@@ -25,7 +25,6 @@ from tests.integration.utils.wait import wait_for_recompile
 from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
 
 
-
 async def test_header_change_invalidates_ast(client, tmp_path):
     """Modifying a header on disk should cause recompilation on next hover,
     even though didSave was never called (mtime-based detection)."""
@@ -232,7 +231,6 @@ async def test_transitive_header_change(client, tmp_path):
     assert_has_errors(client, uri, "Expected diagnostics from transitive header change")
 
 
-
 async def test_didchange_body_edit_recompiles(client, tmp_path):
     """Editing the body (not preamble) via didChange should trigger
     recompilation and update diagnostics."""
@@ -317,7 +315,9 @@ async def test_didclose_then_reopen(client, tmp_path):
 
     # Reopen — should compile the new (broken) content from disk.
     uri2, _ = await client.open_and_wait(tmp_path / "main.cpp")
-    assert_has_errors(client, uri2, "Expected diagnostics after reopen with broken content")
+    assert_has_errors(
+        client, uri2, "Expected diagnostics after reopen with broken content"
+    )
 
 
 async def test_didclose_clears_hover(client, tmp_path):
@@ -360,7 +360,9 @@ async def test_didsave_triggers_recompile_for_dependents(client, tmp_path):
     # Hover should detect the change and recompile.
     await wait_for_recompile(client, uri)
 
-    assert_has_errors(client, uri, "Expected diagnostics after didSave on broken header")
+    assert_has_errors(
+        client, uri, "Expected diagnostics after didSave on broken header"
+    )
 
 
 async def test_didsave_with_module_deps(client, test_data_dir, tmp_path):

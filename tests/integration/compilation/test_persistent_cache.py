@@ -16,9 +16,12 @@ from lsprotocol.types import (
 
 from tests.conftest import make_client, shutdown_client
 from tests.integration.utils import write_cdb, doc
-from tests.integration.utils.cache import list_pch_files, list_pcm_files, read_cache_json
+from tests.integration.utils.cache import (
+    list_pch_files,
+    list_pcm_files,
+    read_cache_json,
+)
 from tests.integration.utils.assertions import assert_clean_compile
-
 
 
 async def test_pch_written_to_cache_dir(client, tmp_path):

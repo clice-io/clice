@@ -118,9 +118,7 @@ class CliceClient(BaseLanguageClient):
     def close(self, uri: str) -> None:
         """Close a text document."""
         self.text_document_did_close(
-            DidCloseTextDocumentParams(
-                text_document=TextDocumentIdentifier(uri=uri)
-            )
+            DidCloseTextDocumentParams(text_document=TextDocumentIdentifier(uri=uri))
         )
 
     # ── Diagnostics ──────────────────────────────────────────────────
@@ -161,7 +159,9 @@ class CliceClient(BaseLanguageClient):
 
     # ── Feature request shortcuts ────────────────────────────────────
 
-    async def hover_at(self, uri: str, line: int, character: int, *, timeout: float = 30.0):
+    async def hover_at(
+        self, uri: str, line: int, character: int, *, timeout: float = 30.0
+    ):
         """Send hover request at given position."""
         return await asyncio.wait_for(
             self.text_document_hover_async(
@@ -173,7 +173,9 @@ class CliceClient(BaseLanguageClient):
             timeout=timeout,
         )
 
-    async def definition_at(self, uri: str, line: int, character: int, *, timeout: float = 30.0):
+    async def definition_at(
+        self, uri: str, line: int, character: int, *, timeout: float = 30.0
+    ):
         """Send go-to-definition request at given position."""
         return await asyncio.wait_for(
             self.text_document_definition_async(
@@ -186,8 +188,13 @@ class CliceClient(BaseLanguageClient):
         )
 
     async def references_at(
-        self, uri: str, line: int, character: int,
-        *, include_declaration: bool = True, timeout: float = 30.0,
+        self,
+        uri: str,
+        line: int,
+        character: int,
+        *,
+        include_declaration: bool = True,
+        timeout: float = 30.0,
     ):
         """Send find-references request at given position."""
         return await asyncio.wait_for(
@@ -201,7 +208,9 @@ class CliceClient(BaseLanguageClient):
             timeout=timeout,
         )
 
-    async def completion_at(self, uri: str, line: int, character: int, *, timeout: float = 30.0):
+    async def completion_at(
+        self, uri: str, line: int, character: int, *, timeout: float = 30.0
+    ):
         """Send completion request at given position."""
         return await asyncio.wait_for(
             self.text_document_completion_async(
@@ -213,7 +222,9 @@ class CliceClient(BaseLanguageClient):
             timeout=timeout,
         )
 
-    async def signature_help_at(self, uri: str, line: int, character: int, *, timeout: float = 30.0):
+    async def signature_help_at(
+        self, uri: str, line: int, character: int, *, timeout: float = 30.0
+    ):
         """Send signature help request at given position."""
         return await asyncio.wait_for(
             self.text_document_signature_help_async(
@@ -256,13 +267,20 @@ class CliceClient(BaseLanguageClient):
         """Send inlay hint request for given range."""
         return await asyncio.wait_for(
             self.text_document_inlay_hint_async(
-                InlayHintParams(text_document=TextDocumentIdentifier(uri=uri), range=range_)
+                InlayHintParams(
+                    text_document=TextDocumentIdentifier(uri=uri), range=range_
+                )
             ),
             timeout=timeout,
         )
 
     async def code_actions(
-        self, uri: str, range_: Range, diagnostics=None, *, timeout: float = 30.0,
+        self,
+        uri: str,
+        range_: Range,
+        diagnostics=None,
+        *,
+        timeout: float = 30.0,
     ):
         """Send code action request."""
         return await asyncio.wait_for(
@@ -301,7 +319,9 @@ class CliceClient(BaseLanguageClient):
             timeout=timeout,
         )
 
-    async def switch_context(self, uri: str, context_uri: str, *, timeout: float = 30.0):
+    async def switch_context(
+        self, uri: str, context_uri: str, *, timeout: float = 30.0
+    ):
         """Send clice/switchContext extension request."""
         return await asyncio.wait_for(
             self.protocol.send_request_async(

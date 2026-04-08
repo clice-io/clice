@@ -17,7 +17,6 @@ from tests.integration.utils import doc
 from tests.integration.utils.wait import wait_for_index
 
 
-
 @pytest.mark.workspace("index_features")
 async def test_goto_definition(client, workspace):
     """Test GoToDefinition navigates from a call site to the function definition."""
@@ -38,7 +37,6 @@ async def test_goto_definition(client, workspace):
     client.close(uri)
 
 
-
 @pytest.mark.workspace("index_features")
 async def test_find_references(client, workspace):
     """Test FindReferences returns all usages of global_var."""
@@ -55,7 +53,6 @@ async def test_find_references(client, workspace):
     )
 
     client.close(uri)
-
 
 
 @pytest.mark.workspace("index_features")
@@ -130,7 +127,6 @@ async def test_call_hierarchy_outgoing(client, workspace):
     client.close(uri)
 
 
-
 @pytest.mark.workspace("index_features")
 async def test_type_hierarchy_prepare(client, workspace):
     """Test prepareTypeHierarchy returns a TypeHierarchyItem for 'Dog'."""
@@ -202,7 +198,6 @@ async def test_type_hierarchy_subtypes(client, workspace):
     assert "Cat" in subtype_names, f"Expected 'Cat' in subtypes, got {subtype_names}"
 
     client.close(uri)
-
 
 
 @pytest.mark.workspace("index_features")

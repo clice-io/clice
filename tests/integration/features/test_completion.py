@@ -13,7 +13,6 @@ from tests.integration.utils import doc
 from tests.integration.utils.workspace import did_change
 
 
-
 @pytest.mark.workspace("include_completion")
 async def test_include_completion_quoted(client, workspace):
     """Completion after #include " should list local headers."""
@@ -105,7 +104,6 @@ async def test_include_completion_empty_prefix(client, workspace):
     assert "myheader.h" in labels
 
     client.close(uri)
-
 
 
 @pytest.mark.workspace("modules/chained_modules")

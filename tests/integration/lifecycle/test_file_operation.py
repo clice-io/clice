@@ -51,11 +51,11 @@ async def test_hover_save_close(client, workspace):
         CompletionParams(text_document=doc(uri), position=Position(line=0, character=0))
     )
     await client.text_document_signature_help_async(
-        SignatureHelpParams(text_document=doc(uri), position=Position(line=0, character=0))
+        SignatureHelpParams(
+            text_document=doc(uri), position=Position(line=0, character=0)
+        )
     )
-    client.text_document_did_close(
-        DidCloseTextDocumentParams(text_document=doc(uri))
-    )
+    client.text_document_did_close(DidCloseTextDocumentParams(text_document=doc(uri)))
     closed_hover = await client.text_document_hover_async(
         HoverParams(text_document=doc(uri), position=Position(line=0, character=0))
     )

@@ -29,7 +29,11 @@ def assert_has_errors(client, uri: str, msg: str = "") -> None:
 
 
 def assert_diagnostics_count(
-    client, uri: str, count: int, *, severity: int | None = None,
+    client,
+    uri: str,
+    count: int,
+    *,
+    severity: int | None = None,
 ) -> None:
     """Assert exact number of diagnostics, optionally filtered by severity."""
     diags = client.diagnostics.get(uri, [])
