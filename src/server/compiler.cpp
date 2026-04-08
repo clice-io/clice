@@ -445,14 +445,13 @@ et::task<bool> Compiler::ensure_pch(Session& session,
         co_return true;
     }
 
-    // Hash both the preamble text AND compile arguments so that different
-    // compilation contexts (e.g. after switchContext) produce different PCHs.
+    // Hash only the preamble text.  This allows files with identical preambles
+    // to share the same PCH file (content-addressed).  Compile flags are NOT
+    // included because preamble content is what determines the PCH output.
+    // TODO: consider hashing flags that affect preprocessing (e.g. -D, -I)
+    // for correctness when files have same preamble text but different flags.
     auto preamble_text = llvm::StringRef(text).substr(0, bound);
     auto preamble_hash = llvm::xxh3_64bits(preamble_text);
-    for(auto& arg: arguments) {
-        preamble_hash ^= llvm::xxh3_64bits(arg);
-    }
-    preamble_hash ^= llvm::xxh3_64bits(directory);
 
     // Deterministic content-addressed PCH path.
     auto pch_path = path::join(workspace.config.cache_dir,
