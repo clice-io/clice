@@ -20,10 +20,6 @@ from tests.integration.utils.cache import list_pch_files, list_pcm_files, read_c
 from tests.integration.utils.assertions import assert_clean_compile
 
 
-# =========================================================================
-# PCH persistent cache tests
-# =========================================================================
-
 
 async def test_pch_written_to_cache_dir(client, tmp_path):
     """After opening a file with #include, a .pch file should appear

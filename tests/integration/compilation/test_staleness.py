@@ -25,10 +25,6 @@ from tests.integration.utils.wait import wait_for_recompile
 from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
 
 
-# =========================================================================
-# Staleness detection tests
-# =========================================================================
-
 
 async def test_header_change_invalidates_ast(client, tmp_path):
     """Modifying a header on disk should cause recompilation on next hover,
@@ -235,10 +231,6 @@ async def test_transitive_header_change(client, tmp_path):
 
     assert_has_errors(client, uri, "Expected diagnostics from transitive header change")
 
-
-# =========================================================================
-# didChange / didOpen / didSave / didClose lifecycle tests
-# =========================================================================
 
 
 async def test_didchange_body_edit_recompiles(client, tmp_path):

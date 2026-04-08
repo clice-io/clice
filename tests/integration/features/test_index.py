@@ -17,10 +17,6 @@ from tests.integration.utils import doc
 from tests.integration.utils.wait import wait_for_index
 
 
-# ---------------------------------------------------------------------------
-# GoToDefinition
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.workspace("index_features")
 async def test_goto_definition(client, workspace):
@@ -42,10 +38,6 @@ async def test_goto_definition(client, workspace):
     client.close(uri)
 
 
-# ---------------------------------------------------------------------------
-# FindReferences
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.workspace("index_features")
 async def test_find_references(client, workspace):
@@ -64,10 +56,6 @@ async def test_find_references(client, workspace):
 
     client.close(uri)
 
-
-# ---------------------------------------------------------------------------
-# CallHierarchy
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.workspace("index_features")
@@ -142,10 +130,6 @@ async def test_call_hierarchy_outgoing(client, workspace):
     client.close(uri)
 
 
-# ---------------------------------------------------------------------------
-# TypeHierarchy
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.workspace("index_features")
 async def test_type_hierarchy_prepare(client, workspace):
@@ -219,10 +203,6 @@ async def test_type_hierarchy_subtypes(client, workspace):
 
     client.close(uri)
 
-
-# ---------------------------------------------------------------------------
-# WorkspaceSymbol
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.workspace("index_features")

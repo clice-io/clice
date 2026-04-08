@@ -13,10 +13,6 @@ from tests.integration.utils import doc
 from tests.integration.utils.workspace import did_change
 
 
-# ---------------------------------------------------------------------------
-# #include completion
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.workspace("include_completion")
 async def test_include_completion_quoted(client, workspace):
@@ -110,10 +106,6 @@ async def test_include_completion_empty_prefix(client, workspace):
 
     client.close(uri)
 
-
-# ---------------------------------------------------------------------------
-# import completion
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.workspace("modules/chained_modules")
