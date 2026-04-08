@@ -15,6 +15,7 @@
 #include "server/session.h"
 #include "server/worker_pool.h"
 #include "server/workspace.h"
+#include "syntax/completion.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -25,13 +26,6 @@ namespace clice {
 
 namespace et = eventide;
 namespace protocol = et::ipc::protocol;
-
-enum class CompletionContext { None, IncludeQuoted, IncludeAngled, Import };
-
-struct PreambleCompletionContext {
-    CompletionContext kind = CompletionContext::None;
-    std::string prefix;
-};
 
 /// Convert a file:// URI to a local file path.
 std::string uri_to_path(const std::string& uri);
@@ -113,10 +107,6 @@ private:
                                   std::string& directory,
                                   std::vector<std::string>& arguments,
                                   Session* session);
-
-    et::serde::RawValue complete_include(const PreambleCompletionContext& ctx,
-                                         llvm::StringRef path);
-    et::serde::RawValue complete_import(const PreambleCompletionContext& ctx);
 
 private:
     et::event_loop& loop;

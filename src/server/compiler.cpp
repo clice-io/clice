@@ -26,48 +26,6 @@ namespace lsp = eventide::ipc::lsp;
 using serde_raw = et::serde::RawValue;
 
 /// Detect whether the cursor is inside a preamble directive (include/import).
-static PreambleCompletionContext detect_completion_context(const std::string& text,
-                                                           uint32_t offset) {
-    auto line_start = text.rfind('\n', offset > 0 ? offset - 1 : 0);
-    line_start = (line_start == std::string::npos) ? 0 : line_start + 1;
-
-    auto line_end = text.find('\n', offset);
-    if(line_end == std::string::npos)
-        line_end = text.size();
-
-    auto line = llvm::StringRef(text).slice(line_start, offset);
-    auto trimmed = line.ltrim();
-
-    if(trimmed.starts_with("#")) {
-        auto directive = trimmed.drop_front(1).ltrim();
-        if(directive.consume_front("include")) {
-            directive = directive.ltrim();
-            if(directive.consume_front("\"")) {
-                return {CompletionContext::IncludeQuoted, directive.str()};
-            }
-            if(directive.consume_front("<")) {
-                return {CompletionContext::IncludeAngled, directive.str()};
-            }
-        }
-        return {};
-    }
-
-    auto import_check = trimmed;
-    if(import_check.consume_front("export") && !import_check.empty() &&
-       !std::isalnum(import_check[0])) {
-        import_check = import_check.ltrim();
-    }
-    if(import_check.consume_front("import") &&
-       (import_check.empty() || !std::isalnum(import_check[0]))) {
-        import_check = import_check.ltrim();
-        auto rest_of_line = llvm::StringRef(text).slice(line_start, line_end);
-        if(!rest_of_line.contains(';')) {
-            return {CompletionContext::Import, import_check.str()};
-        }
-    }
-
-    return {};
-}
 
 Compiler::Compiler(et::event_loop& loop,
                    et::ipc::JsonPeer& peer,
@@ -914,114 +872,51 @@ Compiler::RawResult Compiler::handle_completion(const protocol::Position& positi
         auto pctx = detect_completion_context(session.text, *offset);
         if(pctx.kind == CompletionContext::IncludeQuoted ||
            pctx.kind == CompletionContext::IncludeAngled) {
-            co_return complete_include(pctx, path);
+            std::string directory;
+            std::vector<std::string> arguments;
+            if(!fill_compile_args(path, directory, arguments))
+                co_return serde_raw{"[]"};
+
+            std::vector<const char*> args_ptrs;
+            args_ptrs.reserve(arguments.size());
+            for(auto& arg: arguments)
+                args_ptrs.push_back(arg.c_str());
+
+            auto search_config = extract_search_config(args_ptrs, directory);
+            DirListingCache dir_cache;
+            auto resolved = resolve_search_config(search_config, dir_cache);
+            bool angled = (pctx.kind == CompletionContext::IncludeAngled);
+            auto candidates = complete_include_path(resolved, pctx.prefix, angled, dir_cache);
+
+            std::vector<protocol::CompletionItem> items;
+            items.reserve(candidates.size());
+            for(auto& c: candidates) {
+                protocol::CompletionItem item;
+                item.label = c.is_directory ? c.name + "/" : c.name;
+                item.kind = protocol::CompletionItemKind::File;
+                items.push_back(std::move(item));
+            }
+            auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
+            co_return serde_raw{json ? std::move(*json) : "[]"};
         }
         if(pctx.kind == CompletionContext::Import) {
-            co_return complete_import(pctx);
+            auto module_names = complete_module_import(workspace.path_to_module, pctx.prefix);
+
+            std::vector<protocol::CompletionItem> items;
+            items.reserve(module_names.size());
+            for(auto& name: module_names) {
+                protocol::CompletionItem item;
+                item.label = name;
+                item.kind = protocol::CompletionItemKind::Module;
+                item.insert_text = name + ";";
+                items.push_back(std::move(item));
+            }
+            auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
+            co_return serde_raw{json ? std::move(*json) : "[]"};
         }
     }
 
     co_return co_await forward_build(worker::BuildKind::Completion, position, session);
-}
-
-et::serde::RawValue Compiler::complete_include(const PreambleCompletionContext& ctx,
-                                               llvm::StringRef path) {
-    std::string directory;
-    std::vector<std::string> arguments;
-    if(!fill_compile_args(path, directory, arguments))
-        return serde_raw{"[]"};
-
-    std::vector<const char*> args_ptrs;
-    args_ptrs.reserve(arguments.size());
-    for(auto& arg: arguments) {
-        args_ptrs.push_back(arg.c_str());
-    }
-
-    auto search_config = extract_search_config(args_ptrs, directory);
-    DirListingCache dir_cache;
-    auto resolved = resolve_search_config(search_config, dir_cache);
-
-    unsigned start_idx = 0;
-    if(ctx.kind == CompletionContext::IncludeAngled) {
-        start_idx = resolved.angled_start_idx;
-    }
-
-    llvm::StringRef prefix_ref(ctx.prefix);
-    llvm::StringRef dir_prefix;
-    llvm::StringRef file_prefix = prefix_ref;
-    auto slash_pos = prefix_ref.rfind('/');
-    if(slash_pos != llvm::StringRef::npos) {
-        dir_prefix = prefix_ref.slice(0, slash_pos);
-        file_prefix = prefix_ref.slice(slash_pos + 1, llvm::StringRef::npos);
-    }
-
-    std::vector<protocol::CompletionItem> items;
-    llvm::StringSet<> seen;
-
-    for(unsigned i = start_idx; i < resolved.dirs.size(); ++i) {
-        auto& search_dir = resolved.dirs[i];
-
-        const llvm::StringSet<>* entries = nullptr;
-        if(!dir_prefix.empty()) {
-            llvm::SmallString<256> sub_path(search_dir.path);
-            llvm::sys::path::append(sub_path, dir_prefix);
-            entries = resolve_dir(sub_path, dir_cache);
-        } else {
-            entries = search_dir.entries;
-        }
-
-        if(!entries)
-            continue;
-
-        for(auto& entry: *entries) {
-            auto name = entry.getKey();
-            if(!name.starts_with(file_prefix))
-                continue;
-            if(!seen.insert(name).second)
-                continue;
-
-            llvm::SmallString<256> full_path(search_dir.path);
-            if(!dir_prefix.empty()) {
-                llvm::sys::path::append(full_path, dir_prefix);
-            }
-            llvm::sys::path::append(full_path, name);
-
-            bool is_dir = false;
-            llvm::sys::fs::is_directory(llvm::Twine(full_path), is_dir);
-
-            protocol::CompletionItem item;
-            if(is_dir) {
-                item.label = (name + "/").str();
-            } else {
-                item.label = name.str();
-            }
-            item.kind = protocol::CompletionItemKind::File;
-            items.push_back(std::move(item));
-        }
-    }
-
-    auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
-    return serde_raw{json ? std::move(*json) : "[]"};
-}
-
-et::serde::RawValue Compiler::complete_import(const PreambleCompletionContext& ctx) {
-    std::vector<protocol::CompletionItem> items;
-    llvm::StringRef prefix_ref(ctx.prefix);
-
-    for(auto& [path_id, module_name]: workspace.path_to_module) {
-        llvm::StringRef name_ref(module_name);
-        if(!name_ref.starts_with(prefix_ref))
-            continue;
-
-        protocol::CompletionItem item;
-        item.label = module_name;
-        item.kind = protocol::CompletionItemKind::Module;
-        item.insert_text = module_name + ";";
-        items.push_back(std::move(item));
-    }
-
-    auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
-    return serde_raw{json ? std::move(*json) : "[]"};
 }
 
 }  // namespace clice
