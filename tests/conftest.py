@@ -1,25 +1,3 @@
-"""Root conftest — fixtures and shared helpers for clice integration tests.
-
-Directory structure:
-    tests/integration/
-    ├── conftest.py              ← you are here (global fixtures)
-    ├── utils/                   ← shared utilities
-    │   ├── client.py            ← CliceClient class
-    │   ├── workspace.py         ← write_cdb, doc, write_source, did_change
-    │   ├── assertions.py        ← assert_no_errors, assert_has_errors, ...
-    │   ├── wait.py              ← wait_for_recompile, wait_for_index
-    │   └── cache.py             ← list_pch_files, read_cache_json, ...
-    ├── lifecycle/               ← server lifecycle tests
-    ├── compilation/             ← staleness, PCH, persistent cache
-    ├── features/                ← LSP feature tests
-    ├── modules/                 ← C++20 module tests
-    ├── extensions/              ← clice extension protocol tests
-    └── stress/                  ← rapid edit / stress tests
-
-Run all:     pytest tests/integration/ -v
-Run subset:  pytest tests/integration/features/ -v
-"""
-
 import asyncio
 import json
 import shutil
@@ -59,9 +37,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
-# ── Session-scoped fixtures ─────────────────────────────────────────
-
-
 @pytest.fixture(scope="session")
 def executable(request: pytest.FixtureRequest) -> Path:
     exe = request.config.getoption("--executable")
@@ -89,9 +64,6 @@ def test_data_dir() -> Path:
     data_dir = path.resolve()
     _generate_test_data_cdbs(data_dir)
     return data_dir
-
-
-# ── Function-scoped fixtures ────────────────────────────────────────
 
 
 @pytest.fixture
@@ -142,9 +114,6 @@ async def client(
     yield c
 
     await _shutdown_client(c)
-
-
-# ── Helpers ──────────────────────────────────────────────────────────
 
 
 def generate_cdb(workspace: Path) -> None:
