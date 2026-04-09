@@ -23,6 +23,23 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
     PositionMapper converter(content, encoding);
     auto& directives = directives_it->second;
 
+    // Scan forward from offset to find a quoted/angled filename range.
+    auto find_filename_range = [&](std::uint32_t offset) -> std::optional<LocalSourceRange> {
+        auto tail = content.substr(offset);
+        auto quote_pos = tail.find_first_of("<\"");
+        if(quote_pos == llvm::StringRef::npos) {
+            return std::nullopt;
+        }
+        char open = tail[quote_pos];
+        char close = open == '<' ? '>' : '"';
+        auto close_pos = tail.find(close, quote_pos + 1);
+        if(close_pos == llvm::StringRef::npos) {
+            return std::nullopt;
+        }
+        return LocalSourceRange(offset + static_cast<std::uint32_t>(quote_pos),
+                                offset + static_cast<std::uint32_t>(close_pos + 1));
+    };
+
     links.reserve(directives.includes.size() + directives.has_includes.size());
 
     for(const auto& include: directives.includes) {
@@ -48,42 +65,17 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
             continue;
         }
 
-        auto tail = content.substr(offset);
-        char open = tail.front();
-        if(open != '<' && open != '"') {
+        auto range = find_filename_range(offset);
+        if(!range) {
             continue;
         }
 
-        char close = open == '<' ? '>' : '"';
-        auto close_index = tail.find(close, 1);
-        if(close_index == llvm::StringRef::npos) {
-            continue;
-        }
-
-        LocalSourceRange range(offset, offset + static_cast<std::uint32_t>(close_index + 1));
         protocol::DocumentLink link{
-            .range = to_range(converter, range),
+            .range = to_range(converter, *range),
         };
         link.target = std::string(unit.file_path(has_include.fid));
         links.push_back(std::move(link));
     }
-
-    // Helper: scan forward from offset to find a quoted/angled filename range.
-    auto find_filename_range = [&](std::uint32_t offset) -> std::optional<LocalSourceRange> {
-        auto tail = content.substr(offset);
-        auto quote_pos = tail.find_first_of("<\"");
-        if(quote_pos == llvm::StringRef::npos) {
-            return std::nullopt;
-        }
-        char open = tail[quote_pos];
-        char close = open == '<' ? '>' : '"';
-        auto close_pos = tail.find(close, quote_pos + 1);
-        if(close_pos == llvm::StringRef::npos) {
-            return std::nullopt;
-        }
-        return LocalSourceRange(offset + static_cast<std::uint32_t>(quote_pos),
-                                offset + static_cast<std::uint32_t>(close_pos + 1));
-    };
 
     for(const auto& embed: directives.embeds) {
         if(!embed.file) {
