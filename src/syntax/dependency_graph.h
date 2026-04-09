@@ -1,5 +1,29 @@
 #pragma once
 
+/// @file dependency_graph.h
+/// @brief Wave-based BFS dependency scanner for C/C++ include graphs.
+///
+/// Builds a complete include dependency graph by scanning all source files in
+/// the compilation database using a breadth-first "wave" strategy:
+///
+///   - **Wave 0**: All source files from the CDB (translation units).
+///   - **Wave N+1**: All newly-discovered headers from wave N's #include
+///     directives.
+///
+/// Each wave runs in three phases:
+///   1. **Phase 1** (parallel): Read files and lex #include directives on a
+///      thread pool.
+///   2. **Phase 2** (serial): Resolve #include paths using SearchConfig
+///      (system/user search dirs), with directory listing caches.
+///   3. **Phase 3** (serial): Insert edges into the DependencyGraph.
+///
+/// The scanner is include-config-aware: the same header included with different
+/// search configs (e.g. different -I paths) gets separate edge sets. Conditional
+/// includes (#ifdef guards) are flagged with CONDITIONAL_FLAG on the path_id.
+///
+/// A persistent ScanCache can be reused across incremental re-scans to skip
+/// redundant I/O, lexer scans, directory listings, and include resolutions.
+
 #include <cstdint>
 #include <string>
 #include <vector>

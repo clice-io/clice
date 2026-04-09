@@ -1,5 +1,17 @@
 #pragma once
 
+/// @file merged_index.h
+/// @brief Per-file disk-persisted binary index for occurrence and relation lookups.
+///
+/// MergedIndex is the on-disk representation of index data for a single file.
+/// It stores occurrences and relations in a FlatBuffer binary format and
+/// supports lazy deserialization: when loaded from disk, the raw buffer is
+/// memory-mapped and queried directly without full deserialization. Only when
+/// the index needs updating (merge, remove) is the data materialized into an
+/// in-memory Impl structure. After modification, serialize() writes a new
+/// binary blob. This design minimizes memory usage for the common read-only
+/// lookup path (go-to-definition, find-references).
+
 #include <chrono>
 #include <cstdint>
 #include <memory>

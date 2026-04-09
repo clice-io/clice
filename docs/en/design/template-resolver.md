@@ -29,3 +29,33 @@ From the user's perspective, completion should also be provided here, since the 
 3. It doesn't consider default template parameters, unable to handle dependent names caused by default template parameters
 
 Although we can make exceptions for standard library types to provide related support, I hope that user code can have the same status as standard library code, so we need a universal algorithm to handle dependent types. To solve this problem, I wrote a pseudo-instantiation (pseudo instantiator). It can instantiate dependent types without specific types, achieving the purpose of simplification. For example, in the above example, `std::vector<std::vector<T>>::reference` can be simplified to `std::vector<T>&`, and further provide code completion options for users.
+
+## How It Works
+
+The `TemplateResolver` class takes a reference to Clang's `Sema` and resolves dependent types through pseudo-instantiation. The core mechanism is a `PseudoInstantiator` class built on Clang's `TreeTransform` framework. It works in two phases:
+
+**Phase 1 — Heuristic lookup (`PseudoInstantiator`).** Walks the type tree and transforms dependent constructs:
+
+- `TransformDependentNameType`: looks up the member name in the primary template of the qualifier, substitutes template parameters, and recurses into the result.
+- `TransformDependentTemplateSPTType`: resolves dependent template specialization types by looking up the template name and deducing arguments.
+- `TransformTemplateTypeParmType`: substitutes template type parameters from an `InstantiationStack` that tracks the current pseudo-instantiation context, with fallback to default template arguments.
+- `TransformTypedefType`: delegates to Phase 2 to expand typedefs without triggering heuristic lookup.
+
+**Phase 2 — Substitution only (`SubstituteOnly`).** A separate `TreeTransform` that expands typedefs and substitutes template parameters from the stack, but does NOT override `TransformDependentNameType`. This is critical: it prevents infinite cycles where typedef expansion triggers a lookup that expands back into the same typedef. Phase 2 handles `TypedefType`, `ElaboratedType`, `InjectedClassNameType`, alias template specializations, and `TemplateTypeParmType`.
+
+The `resugar()` method performs a simpler transform via `ResugarOnly`: it walks the type tree and replaces canonical `TemplateTypeParmType` nodes (which lack source-level names) with their original named declarations, restoring readability for display purposes.
+
+## The Lookup Mechanism
+
+The `lookup()` method on `TemplateResolver` dispatches to `PseudoInstantiator::lookup(NNS, name)`, which resolves a `NestedNameSpecifier` chain to a concrete `DeclContext` and performs name lookup there. Multiple overloads handle different AST node types:
+
+- `DependentNameType`: looks up the identifier in the qualifier's resolved context.
+- `DependentTemplateSpecializationType`: extracts the template name's identifier and looks it up.
+- `DependentScopeDeclRefExpr`: looks up the name from an expression like `T::value`.
+- `UnresolvedLookupExpr`: iterates candidate declarations and returns the first `TemplateDecl`.
+- `UnresolvedUsingValueDecl` / `UnresolvedUsingTypenameDecl`: resolves the using declaration's qualifier and name.
+- `CXXDependentScopeMemberExpr` and `UnresolvedMemberExpr`: currently return empty results (TODO).
+
+## Caching
+
+Resolved types are cached in a `DenseMap<const void*, QualType>` keyed by AST node pointer. Since each AST node has a unique identity within a translation unit (different syntactic occurrences of the "same" type have different pointers), the cache is safe to share across multiple `resolve()` calls on the same TU. The `PseudoInstantiator` receives a reference to this cache and checks it before performing expensive tree transforms, avoiding redundant resolution of the same dependent type node.

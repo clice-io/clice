@@ -1,5 +1,24 @@
 #pragma once
 
+/// @file semantic_visitor.h
+/// @brief CRTP-based AST visitor that extracts semantic symbol information.
+///
+/// SemanticVisitor<Derived> extends FilteredASTVisitor with a comprehensive set
+/// of Visit* methods for all C++ declaration, expression, type-loc, and
+/// specifier nodes. It classifies each AST node into semantic callbacks:
+///
+///   - `handleDeclOccurrence`: A named declaration is seen (decl/def/ref).
+///   - `handleMacroOccurrence`: A macro is defined or referenced.
+///   - `handleModuleOccurrence`: A module import/export is seen.
+///   - `handleAttrOccurrence`: An attribute (e.g. [[override]]) is seen.
+///   - `handleRelation`: An inter-symbol relation is discovered (base/derived,
+///      caller/callee, type-definition, interface/implementation, etc.).
+///
+/// Derived classes override only the handle* methods they care about; the CRTP
+/// dispatch uses compile-time same_as checks to avoid infinite recursion when
+/// a handler is not overridden. This pattern is used by both the indexer
+/// (TUIndex::build) and semantic token collector (feature::semantic_tokens).
+
 #include "semantic/ast_utility.h"
 #include "semantic/filtered_ast_visitor.h"
 #include "semantic/relation_kind.h"

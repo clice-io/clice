@@ -1,5 +1,23 @@
 #pragma once
 
+/// @file command.h
+/// @brief Compilation database loading, command parsing, and flag resolution.
+///
+/// CompilationDatabase loads compile_commands.json (or equivalent), parses each
+/// entry into a structured CompilationInfo (canonical command + per-file patch),
+/// and provides lookup by file path. The parsing pipeline:
+///
+///   1. **Load**: Read JSON entries, intern all strings in a BumpPtrAllocator.
+///   2. **Classify**: Split flags into canonical (driver + semantic flags shared
+///      across files) and per-file patch (-I, -D, -U, etc.). Canonical commands
+///      are deduplicated via ObjectSet so most files share one instance.
+///   3. **Resolve**: On lookup, optionally query the compiler driver for cc1
+///      flags and system includes (cached by canonical command key), then
+///      produce a CompileCommand with the final argv.
+///
+/// The resolved output feeds into both the indexing pipeline (TUIndex::build)
+/// and the dependency scanner (SearchConfig extraction).
+
 #include <cstdint>
 #include <memory>
 #include <string>

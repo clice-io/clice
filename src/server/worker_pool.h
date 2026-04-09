@@ -1,5 +1,20 @@
 #pragma once
 
+/// @file worker_pool.h
+/// @brief Multi-process worker pool with stateful and stateless workers.
+///
+/// The master server delegates compilation and query work to child processes
+/// via IPC (bincode over pipes). Two worker classes exist:
+///
+/// - **Stateful workers** maintain an in-memory compilation cache (AST, preamble)
+///   for open files. Requests are routed by path_id affinity so the same file
+///   always hits the same worker, with LRU-based eviction when a worker is
+///   overloaded. Eviction notifications flow back so the master can reassign.
+///
+/// - **Stateless workers** have no persistent state and are dispatched via
+///   round-robin. They handle one-shot tasks like formatting or dependency
+///   scanning that do not benefit from caching.
+
 #include <chrono>
 #include <cstdint>
 #include <functional>
