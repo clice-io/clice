@@ -5,50 +5,42 @@
 clice is a C++ language server built on a multi-process, event-driven architecture. A single **master process** orchestrates all state and communication, delegating heavyweight compilation and query work to a pool of **worker processes** over IPC.
 
 ```
-                      Editor (LSP client)
-                            |
-                      JSON-RPC (stdin/stdout)
-                            |
-  +------------------------ | ---------------------------+
-  |                   MasterServer                       |
-  |                                                      |
-  |   Workspace (project-level, persistent)              |
-  |   ┌──────────────────────────────────────────────┐   |
-  |   │ CompilationDatabase    DependencyGraph        │   |
-  |   │ CompileGraph           PathPool               │   |
-  |   │ PCH/PCM cache          Module map             │   |
-  |   │ ProjectIndex           MergedIndex shards     │   |
-  |   └──────────────────────────────────────────────┘   |
-  |                                                      |
-  |   Sessions (per-file, volatile)                      |
-  |   ┌──────────────────────────────────────────────┐   |
-  |   │ text, generation, ast_dirty, compiling        │   |
-  |   │ pch_ref, ast_deps, header_context             │   |
-  |   │ OpenFileIndex                                 │   |
-  |   └──────────────────────────────────────────────┘   |
-  |                                                      |
-  |   Compiler              Indexer                      |
-  |   ├ ensure_compiled()   ├ query_relations()          |
-  |   ├ ensure_pch()        ├ find_definition()          |
-  |   ├ forward_query()     ├ schedule() background      |
-  |   └ forward_build()     └ merge() TUIndex            |
-  |          |                    |                       |
-  +----------|--------------------|-----------------------+
-             |                    |
-       Bincode IPC (pipes)  Bincode IPC (pipes)
-             |                    |
-     ┌───────┴───────┐   ┌───────┴───────┐
-     │   Stateful    │   │   Stateless   │
-     │   Workers     │   │   Workers     │
-     │               │   │               │
-     │ Hold ASTs     │   │ One-shot:     │
-     │ Path-affinity │   │  PCH build    │
-     │ LRU eviction  │   │  PCM build    │
-     │               │   │  Completion   │
-     │ hover, defn,  │   │  Sig. help    │
-     │ sem. tokens,  │   │               │
-     │ diagnostics   │   │ Round-robin   │
-     └───────────────┘   └───────────────┘
+                    Editor (LSP client)
+                          |
+                    JSON-RPC (stdin/stdout)
+                          |
+  +---------------------- | -----------------------+
+  |                 MasterServer                    |
+  |                                                 |
+  |   Workspace (project-level, persistent)         |
+  |   ┌───────────────────────────────────────┐     |
+  |   │ CDB, DependencyGraph, CompileGraph    │     |
+  |   │ PCH/PCM cache, ProjectIndex, PathPool │     |
+  |   └───────────────────────────────────────┘     |
+  |                                                 |
+  |   Sessions (per-file, volatile)                 |
+  |   ┌───────────────────────────────────────┐     |
+  |   │ buffer text, AST state, deps snapshot │     |
+  |   │ PCH ref, header context, file index   │     |
+  |   └───────────────────────────────────────┘     |
+  |                                                 |
+  |   Compiler                Indexer               |
+  |        |                      |                 |
+  +--------|----------------------|-----------------+
+           |                      |
+     Bincode IPC (pipes)    Bincode IPC (pipes)
+           |                      |
+   ┌───────┴───────┐     ┌───────┴───────┐
+   │   Stateful    │     │   Stateless   │
+   │   Workers     │     │   Workers     │
+   │               │     │               │
+   │ Hold ASTs     │     │ One-shot:     │
+   │ Path-affinity │     │  PCH/PCM      │
+   │ LRU eviction  │     │  Completion   │
+   │               │     │  Sig. help    │
+   │ Queries run   │     │               │
+   │ against AST   │     │ Round-robin   │
+   └───────────────┘     └───────────────┘
 ```
 
 ## Multi-Process Model
