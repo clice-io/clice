@@ -192,6 +192,47 @@ void bar() {
     ASSERT_EQ(*it->kind, protocol::CompletionItemKind::Class);
 }
 
+TEST_CASE(ConstructorLabelNoTemplateArgs) {
+    // Constructors of class templates should use plain class name as label,
+    // not "Foo<T>" or "Foo<_Tp, _Alloc>". This ensures dedup works and
+    // insertion text is correct.
+    feature::CodeCompletionOptions opts;
+    opts.bundle_overloads = false;
+    code_complete(R"cpp(
+template <typename T, typename U>
+struct Bazzz {
+    Bazzz() {}
+    Bazzz(T x) {}
+    Bazzz(T x, U y) {}
+};
+
+template <typename T>
+Bazzz(T) -> Bazzz<T, int>;
+
+void bar() {
+    Ba$(pos)
+}
+)cpp",
+                  opts);
+
+    // Non-bundled mode should produce multiple "Bazzz" items (class + constructors + guide).
+    auto count = std::ranges::count_if(items, [](const protocol::CompletionItem& item) {
+        return item.label == "Bazzz";
+    });
+    ASSERT_TRUE(count > 1);
+
+    // Every item's label must be plain "Bazzz", never "Bazzz<T, U>".
+    // And the insertion text must also be "Bazzz" (not the templated form).
+    for(auto& item: items) {
+        if(item.label.find("Bazzz") != std::string::npos) {
+            ASSERT_EQ(item.label, "Bazzz");
+            auto& edit = std::get<protocol::TextEdit>(*item.text_edit);
+            ASSERT_TRUE(edit.new_text.starts_with("Bazzz"));
+            ASSERT_TRUE(edit.new_text.find("<") == std::string::npos);
+        }
+    }
+}
+
 TEST_CASE(NoBundleOverloads) {
     feature::CodeCompletionOptions opts;
     opts.bundle_overloads = false;

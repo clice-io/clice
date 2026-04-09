@@ -386,8 +386,20 @@ public:
                         break;
                     }
 
-                    auto label = ast::name_of(declaration);
                     auto kind = completion_kind(declaration);
+
+                    // For constructors and deduction guides, use the class name
+                    // (without template args) instead of the full type name.
+                    // e.g. "vector" instead of "vector<_Tp, _Alloc>".
+                    std::string label;
+                    if(auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(declaration)) {
+                        label = ctor->getParent()->getName().str();
+                    } else if(auto* guide =
+                                  llvm::dyn_cast<clang::CXXDeductionGuideDecl>(declaration)) {
+                        label = guide->getDeducedTemplate()->getName().str();
+                    } else {
+                        label = ast::name_of(declaration);
+                    }
 
                     llvm::SmallString<256> qualified_name;
                     bool is_callable = kind == protocol::CompletionItemKind::Function ||
