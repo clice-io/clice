@@ -446,6 +446,46 @@ export module @m0[foo].@m1[bar];
     EXPECT_TOKEN("m1", SymbolKind::Module);
 }
 
+TEST_CASE(ModuleImport) {
+    // Step 1: Build the module interface to a PCM.
+    auto pcm_path = fs::createTemporaryFile("test-mod", "pcm");
+    ASSERT_TRUE(pcm_path.has_value());
+
+    {
+        Tester mod;
+        mod.add_main("mod.cppm", "export module foo;\nexport int x = 42;\n");
+        mod.prepare("-std=c++20");
+        mod.params.kind = CompilationKind::ModuleInterface;
+        mod.params.output_file = *pcm_path;
+        auto built = clice::compile(mod.params);
+        ASSERT_TRUE(built.completed());
+    }
+
+    // Step 2: Compile the importing file with -fmodule-file.
+    add_main("main.cpp", R"cpp(
+import @mod[foo];
+int y = x;
+)cpp");
+    prepare("-std=c++20");
+    auto fmodule_arg = std::string("-fmodule-file=foo=") + *pcm_path;
+    owned_args.push_back(fmodule_arg);
+    params.arguments.clear();
+    for(auto& arg: owned_args) {
+        params.arguments.push_back(arg.c_str());
+    }
+
+    auto built = clice::compile(params);
+    ASSERT_TRUE(built.completed());
+    unit.emplace(std::move(built));
+
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+
+    EXPECT_TOKEN("mod", SymbolKind::Module);
+
+    fs::remove(*pcm_path);
+}
+
 };  // TEST_SUITE(SemanticTokens)
 
 }  // namespace
