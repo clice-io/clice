@@ -55,70 +55,36 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
         links.push_back(std::move(link));
     }
 
-    for(const auto& has_include: directives.has_includes) {
-        if(has_include.fid.isInvalid()) {
-            continue;
-        }
-
-        auto [fid, offset] = unit.decompose_location(has_include.location);
+    auto add_link_by_location = [&](clang::SourceLocation loc, llvm::StringRef target) {
+        auto [fid, offset] = unit.decompose_location(loc);
         if(fid != interested || offset >= content.size()) {
-            continue;
+            return;
         }
-
         auto range = find_filename_range(offset);
         if(!range) {
-            continue;
+            return;
         }
-
-        protocol::DocumentLink link{
-            .range = to_range(converter, *range),
-        };
-        link.target = std::string(unit.file_path(has_include.fid));
+        protocol::DocumentLink link{.range = to_range(converter, *range)};
+        link.target = target.str();
         links.push_back(std::move(link));
+    };
+
+    for(const auto& has_include: directives.has_includes) {
+        if(has_include.fid.isValid()) {
+            add_link_by_location(has_include.location, unit.file_path(has_include.fid));
+        }
     }
 
     for(const auto& embed: directives.embeds) {
-        if(!embed.file) {
-            continue;
+        if(embed.file) {
+            add_link_by_location(embed.loc, embed.file->getName());
         }
-
-        auto [fid, offset] = unit.decompose_location(embed.loc);
-        if(fid != interested || offset >= content.size()) {
-            continue;
-        }
-
-        auto range = find_filename_range(offset);
-        if(!range) {
-            continue;
-        }
-
-        protocol::DocumentLink link{
-            .range = to_range(converter, *range),
-        };
-        link.target = embed.file->getName().str();
-        links.push_back(std::move(link));
     }
 
     for(const auto& has_embed: directives.has_embeds) {
-        if(!has_embed.file) {
-            continue;
+        if(has_embed.file) {
+            add_link_by_location(has_embed.loc, has_embed.file->getName());
         }
-
-        auto [fid, offset] = unit.decompose_location(has_embed.loc);
-        if(fid != interested || offset >= content.size()) {
-            continue;
-        }
-
-        auto range = find_filename_range(offset);
-        if(!range) {
-            continue;
-        }
-
-        protocol::DocumentLink link{
-            .range = to_range(converter, *range),
-        };
-        link.target = has_embed.file->getName().str();
-        links.push_back(std::move(link));
     }
 
     return links;
