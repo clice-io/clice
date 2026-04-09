@@ -40,21 +40,6 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
                                 offset + static_cast<std::uint32_t>(close_pos + 1));
     };
 
-    links.reserve(directives.includes.size() + directives.has_includes.size());
-
-    for(const auto& include: directives.includes) {
-        auto [fid, range] = unit.decompose_range(include.filename_range);
-        if(fid != interested || !range.valid()) {
-            continue;
-        }
-
-        protocol::DocumentLink link{
-            .range = to_range(converter, range),
-        };
-        link.target = std::string(unit.file_path(include.fid));
-        links.push_back(std::move(link));
-    }
-
     auto add_link_by_location = [&](clang::SourceLocation loc, llvm::StringRef target) {
         auto [fid, offset] = unit.decompose_location(loc);
         if(fid != interested || offset >= content.size()) {
@@ -68,6 +53,12 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
         link.target = target.str();
         links.push_back(std::move(link));
     };
+
+    for(const auto& include: directives.includes) {
+        if(include.fid.isValid()) {
+            add_link_by_location(include.location, unit.file_path(include.fid));
+        }
+    }
 
     for(const auto& has_include: directives.has_includes) {
         if(has_include.fid.isValid()) {
