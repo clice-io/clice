@@ -53,8 +53,8 @@ auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKi
         return protocol::CompletionItemKind::Module;
     }
 
-    if(llvm::isa<clang::FunctionDecl, clang::FunctionTemplateDecl>(decl)) {
-        return protocol::CompletionItemKind::Function;
+    if(llvm::isa<clang::CXXConstructorDecl>(decl)) {
+        return protocol::CompletionItemKind::Constructor;
     }
 
     if(llvm::isa<clang::CXXMethodDecl,
@@ -64,8 +64,8 @@ auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKi
         return protocol::CompletionItemKind::Method;
     }
 
-    if(llvm::isa<clang::CXXConstructorDecl>(decl)) {
-        return protocol::CompletionItemKind::Constructor;
+    if(llvm::isa<clang::FunctionDecl, clang::FunctionTemplateDecl>(decl)) {
+        return protocol::CompletionItemKind::Function;
     }
 
     if(llvm::isa<clang::FieldDecl, clang::IndirectFieldDecl>(decl)) {
@@ -107,6 +107,65 @@ auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKi
     }
 
     return protocol::CompletionItemKind::Text;
+}
+
+/// Extract the function signature (parameter list) from a CodeCompletionString.
+/// Returns something like "(int x, float y)" for display in labelDetails.detail.
+auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
+    std::string signature;
+    bool in_parens = false;
+
+    for(const auto& chunk: ccs) {
+        using CK = clang::CodeCompletionString::ChunkKind;
+        switch(chunk.Kind) {
+            case CK::CK_LeftParen:
+                in_parens = true;
+                signature += '(';
+                break;
+            case CK::CK_RightParen:
+                signature += ')';
+                in_parens = false;
+                break;
+            case CK::CK_Placeholder:
+            case CK::CK_CurrentParameter:
+                if(in_parens && chunk.Text) {
+                    signature += chunk.Text;
+                }
+                break;
+            case CK::CK_Text:
+            case CK::CK_Informative:
+                if(in_parens && chunk.Text) {
+                    signature += chunk.Text;
+                }
+                break;
+            case CK::CK_LeftAngle:
+                signature += '<';
+                in_parens = true;
+                break;
+            case CK::CK_RightAngle:
+                signature += '>';
+                in_parens = false;
+                break;
+            case CK::CK_Comma:
+                if(in_parens) {
+                    signature += ", ";
+                }
+                break;
+            default: break;
+        }
+    }
+
+    return signature;
+}
+
+/// Extract the return type from a CodeCompletionString.
+auto extract_return_type(const clang::CodeCompletionString& ccs) -> std::string {
+    for(const auto& chunk: ccs) {
+        if(chunk.Kind == clang::CodeCompletionString::CK_ResultType && chunk.Text) {
+            return chunk.Text;
+        }
+    }
+    return {};
 }
 
 struct OverloadItem {
@@ -159,6 +218,8 @@ public:
         overloads.reserve(candidate_count);
         std::unordered_map<std::string, std::size_t> overload_index;
 
+        bool prefix_starts_with_underscore = prefix.spelling.starts_with("_");
+
         auto build_item =
             [&](llvm::StringRef label, protocol::CompletionItemKind kind, llvm::StringRef insert) {
                 protocol::CompletionItem item{
@@ -177,8 +238,15 @@ public:
         auto try_add = [&](llvm::StringRef label,
                            protocol::CompletionItemKind kind,
                            llvm::StringRef insert_text,
-                           llvm::StringRef overload_key) {
+                           llvm::StringRef overload_key,
+                           llvm::StringRef signature = {},
+                           llvm::StringRef return_type = {}) {
             if(label.empty()) {
+                return;
+            }
+
+            // Filter out _/__ prefixed internal symbols unless user typed _.
+            if(!prefix_starts_with_underscore && label.starts_with("_")) {
                 return;
             }
 
@@ -193,6 +261,16 @@ public:
                 if(inserted) {
                     auto item = build_item(label, kind, insert_text);
                     item.sort_text = std::format("{}", *score);
+                    if(!signature.empty() || !return_type.empty()) {
+                        protocol::CompletionItemLabelDetails details;
+                        if(!signature.empty()) {
+                            details.detail = signature.str();
+                        }
+                        if(!return_type.empty()) {
+                            details.description = return_type.str();
+                        }
+                        item.label_details = std::move(details);
+                    }
                     overloads.push_back({
                         .item = std::move(item),
                         .score = *score,
@@ -211,6 +289,16 @@ public:
 
             auto item = build_item(label, kind, insert_text);
             item.sort_text = std::format("{}", *score);
+            if(!signature.empty() || !return_type.empty()) {
+                protocol::CompletionItemLabelDetails details;
+                if(!signature.empty()) {
+                    details.detail = signature.str();
+                }
+                if(!return_type.empty()) {
+                    details.description = return_type.str();
+                }
+                item.label_details = std::move(details);
+            }
             collected.push_back(std::move(item));
         };
 
@@ -246,12 +334,28 @@ public:
                     auto kind = completion_kind(declaration);
 
                     llvm::SmallString<256> qualified_name;
-                    if(options.bundle_overloads && kind == protocol::CompletionItemKind::Function) {
+                    bool is_callable = kind == protocol::CompletionItemKind::Function ||
+                                       kind == protocol::CompletionItemKind::Method ||
+                                       kind == protocol::CompletionItemKind::Constructor;
+                    if(options.bundle_overloads && is_callable) {
                         llvm::raw_svector_ostream stream(qualified_name);
                         declaration->printQualifiedName(stream);
                     }
 
-                    try_add(label, kind, label, qualified_name.str());
+                    std::string signature;
+                    std::string return_type;
+                    auto* ccs =
+                        candidate.CreateCodeCompletionString(sema,
+                                                             context,
+                                                             getAllocator(),
+                                                             getCodeCompletionTUInfo(),
+                                                             /*IncludeBriefComments=*/false);
+                    if(ccs) {
+                        signature = extract_signature(*ccs);
+                        return_type = extract_return_type(*ccs);
+                    }
+
+                    try_add(label, kind, label, qualified_name.str(), signature, return_type);
                     break;
                 }
             }
@@ -259,9 +363,46 @@ public:
 
         for(auto& entry: overloads) {
             if(entry.count > 1) {
-                entry.item.detail = "(...)";
+                protocol::CompletionItemLabelDetails details;
+                details.detail = std::format("(…) +{} overloads", entry.count);
+                entry.item.label_details = std::move(details);
             }
             collected.push_back(std::move(entry.item));
+        }
+
+        // In bundle mode, deduplicate by label: when the same name appears as
+        // both a class and its constructors/deduction guides, keep only the
+        // highest-priority kind (Class > Function/Method > others).
+        if(options.bundle_overloads) {
+            auto kind_priority = [](protocol::CompletionItemKind k) -> int {
+                switch(k) {
+                    case protocol::CompletionItemKind::Class:
+                    case protocol::CompletionItemKind::Struct: return 3;
+                    case protocol::CompletionItemKind::Function:
+                    case protocol::CompletionItemKind::Method: return 2;
+                    case protocol::CompletionItemKind::Constructor: return 1;
+                    default: return 0;
+                }
+            };
+
+            std::unordered_map<std::string, std::size_t> label_index;
+            std::vector<protocol::CompletionItem> deduped;
+            deduped.reserve(collected.size());
+
+            for(auto& item: collected) {
+                auto [it, inserted] = label_index.try_emplace(item.label, deduped.size());
+                if(inserted) {
+                    deduped.push_back(std::move(item));
+                } else {
+                    auto& existing = deduped[it->second];
+                    int old_prio = existing.kind.has_value() ? kind_priority(*existing.kind) : 0;
+                    int new_prio = item.kind.has_value() ? kind_priority(*item.kind) : 0;
+                    if(new_prio > old_prio) {
+                        existing = std::move(item);
+                    }
+                }
+            }
+            collected.swap(deduped);
         }
 
         output.clear();
