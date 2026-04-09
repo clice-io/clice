@@ -100,6 +100,10 @@ private:
     std::deque<std::uint32_t> waitings;
 
     async::Event update_event;
+
+    async::Event finish_event;
+
+    size_t finish_cnt = 0;
 };
 
 }  // namespace clice

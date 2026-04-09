@@ -80,12 +80,25 @@ async::Task<> Indexer::schedule_next() {
 
         co_await workings[i];
         workings[i].release().destroy();
+
+        finish_cnt += 1;
+        finish_event.set();
     }
 }
 
 async::Task<> Indexer::index_all() {
+    waitings.clear();
+    workings.clear();
+    update_event.clear();
+    finish_event.clear();
+    finish_cnt = 0;
+
     for(auto& file: database.files()) {
         waitings.push_back(project_index.path_pool.path_id(file));
+    }
+    auto to_finish = waitings.size();
+    if(to_finish == 0) {
+        co_return;
     }
 
     auto max_count = std::max(std::thread::hardware_concurrency(), 4u);
@@ -98,6 +111,11 @@ async::Task<> Indexer::index_all() {
         auto task = schedule_next();
         task.schedule();
         task.dispose();
+    }
+
+    while(finish_cnt < to_finish) {
+        co_await finish_event;
+        finish_event.unset();
     }
 
     co_return;

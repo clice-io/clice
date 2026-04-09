@@ -6,6 +6,7 @@
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/sinks/stdout_sinks.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace clice::logging {
 
@@ -34,26 +35,43 @@ void stderr_logger(std::string_view name, const Options& options) {
 }
 
 void file_loggger(std::string_view name, std::string_view dir, const Options& options) {
-    auto now = std::chrono::system_clock::now();
-    auto filename = std::format("{:%Y-%m-%d_%H-%M-%S}.log", now);
-    auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path::join(dir, filename));
-
-    if(options.replay_console && ringbuffer_sink) {
-        sink->set_level(options.level);
-        sink->set_pattern(pattern);
-
-        for(auto& log: ringbuffer_sink->last_raw()) {
-            sink->log(log);
-        }
-
-        ringbuffer_sink.reset();
+    if(auto err = fs::create_directories(dir)) {
+        spdlog::error("Failed to create log directory {}: {}", std::string(dir), err.message());
+        return;
     }
 
-    auto logger = std::make_shared<spdlog::logger>(std::string(name), std::move(sink));
+    auto now = std::chrono::system_clock::now();
+    auto filename = std::format("{:%Y-%m-%d_%H-%M-%S}.log", now);
+    auto filepath = path::join(dir, filename);
+
+    {
+        std::error_code err;
+        llvm::raw_fd_ostream test(filepath, err, fs::OF_Append);
+        if(err) {
+            spdlog::error("Failed to open log file {}: {}", filepath, err.message());
+            return;
+        }
+    }
+
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filepath);
+    auto console_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>(options.color);
+    std::array<spdlog::sink_ptr, 2> sinks = {file_sink, console_sink};
+    auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
     logger->set_level(options.level);
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
+
+    if(options.replay_console && ringbuffer_sink) {
+        file_sink->set_level(options.level);
+        file_sink->set_pattern(pattern);
+
+        for(auto& log: ringbuffer_sink->last_raw()) {
+            file_sink->log(log);
+        }
+
+        ringbuffer_sink.reset();
+    }
 }
 
 }  // namespace clice::logging
