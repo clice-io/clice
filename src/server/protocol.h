@@ -102,6 +102,7 @@ struct BuildResult {
     std::string output_path;  ///< PCH or PCM path
     std::vector<std::string> deps;
     std::string tu_index_data;
+    std::string pch_links_json;             ///< Pre-serialized DocumentLink[] from PCH
     eventide::serde::RawValue result_json;  ///< Completion/SignatureHelp result
 };
 

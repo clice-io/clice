@@ -15,9 +15,9 @@ TEST_SUITE(DocumentLink, Tester) {
 
 std::vector<protocol::DocumentLink> links;
 
-void run(llvm::StringRef source) {
+void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
     add_files("main.cpp", source);
-    ASSERT_TRUE(compile());
+    ASSERT_TRUE(compile(standard));
     links = feature::document_links(*unit, feature::PositionEncoding::UTF8);
 }
 
@@ -87,6 +87,40 @@ TEST_CASE(HasInclude) {
     ASSERT_EQ(links.size(), 2U);
     EXPECT_LINK(0, "0", TestVFS::path("test.h"));
     EXPECT_LINK(1, "1", TestVFS::path("test.h"));
+}
+
+TEST_CASE(Embed) {
+    run(R"cpp(
+#[bytes.bin]
+0123456789
+
+#[main.cpp]
+const char e[] = {
+#embed @0["bytes.bin"$]
+};
+)cpp",
+        "-std=c++23");
+
+    ASSERT_EQ(links.size(), 1U);
+    EXPECT_LINK(0, "0", TestVFS::path("bytes.bin"));
+}
+
+TEST_CASE(HasEmbed) {
+    run(R"cpp(
+#[data.bin]
+ABCDE
+
+#[main.cpp]
+#if __has_embed(@0["data.bin"$])
+#endif
+
+#if __has_embed("non_existent.bin")
+#endif
+)cpp",
+        "-std=c++23");
+
+    ASSERT_EQ(links.size(), 1U);
+    EXPECT_LINK(0, "0", TestVFS::path("data.bin"));
 }
 
 };  // TEST_SUITE(DocumentLink)

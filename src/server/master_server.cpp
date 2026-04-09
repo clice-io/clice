@@ -478,15 +478,35 @@ void MasterServer::register_handlers() {
         co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol, sit->second);
     });
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document.uri);
-            auto path_id = workspace.path_pool.intern(path);
-            auto sit = sessions.find(path_id);
-            if(sit == sessions.end())
-                co_return serde_raw{"null"};
-            co_return co_await compiler.forward_query(worker::QueryKind::DocumentLink, sit->second);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentLinkParams& params) -> RawResult {
+        auto path = uri_to_path(params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+        auto sit = sessions.find(path_id);
+        if(sit == sessions.end())
+            co_return serde_raw{"null"};
+        auto result = co_await compiler.forward_query(worker::QueryKind::DocumentLink, sit->second);
+        if(!result.has_value())
+            co_return serde_raw{"null"};
+        // Merge document links from PCH if available.
+        auto& links = result.value();
+        if(sit->second.pch_ref) {
+            auto pch_it = workspace.pch_cache.find(sit->second.pch_ref->path_id);
+            if(pch_it != workspace.pch_cache.end() && !pch_it->second.document_links_json.empty()) {
+                auto& pch_json = pch_it->second.document_links_json;
+                // Merge two JSON arrays.
+                if(!links.data.empty() && links.data != "null" && links.data.size() > 2) {
+                    // "[a,b]" + "[c,d]" -> "[a,b,c,d]"
+                    links.data.pop_back();  // remove trailing ']'
+                    links.data += ',';
+                    links.data.append(pch_json.begin() + 1, pch_json.end());  // skip '['
+                } else {
+                    links.data = pch_json;
+                }
+            }
+        }
+        co_return std::move(links);
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {

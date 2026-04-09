@@ -502,6 +502,7 @@ et::task<bool> Compiler::ensure_pch(Session& session,
     st.bound = bound;
     st.hash = preamble_hash;
     st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
+    st.document_links_json = std::move(result.value().pch_links_json);
     st.building.reset();
 
     session.pch_ref = Session::PCHRef{path_id, preamble_hash, bound};

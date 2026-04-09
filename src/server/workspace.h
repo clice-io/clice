@@ -140,6 +140,7 @@ struct PCHState {
     std::uint32_t bound = 0;
     std::uint64_t hash = 0;
     DepsSnapshot deps;
+    std::string document_links_json;  ///< Pre-serialized DocumentLink[] from PCH build
     std::shared_ptr<eventide::event> building;
 };
 

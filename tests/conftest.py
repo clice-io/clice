@@ -231,6 +231,14 @@ def _generate_test_data_cdbs(data_dir: Path) -> None:
     if ic_main.exists():
         _write(ic_dir, [_entry(ic_dir, ic_main, ["-I."])])
 
+    # document_links
+    dl_dir = data_dir / "document_links"
+    dl_main = dl_dir / "main.cpp"
+    if dl_main.exists():
+        _write(
+            dl_dir, [_entry(dl_dir, dl_main, [f"-I{dl_dir.as_posix()}", "-std=c++23"])]
+        )
+
     # pch_test
     pt_dir = data_dir / "pch_test"
     if pt_dir.exists():

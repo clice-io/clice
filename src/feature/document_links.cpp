@@ -68,6 +68,67 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
         links.push_back(std::move(link));
     }
 
+    // Helper: scan forward from offset to find a quoted/angled filename range.
+    auto find_filename_range = [&](std::uint32_t offset) -> std::optional<LocalSourceRange> {
+        auto tail = content.substr(offset);
+        auto quote_pos = tail.find_first_of("<\"");
+        if(quote_pos == llvm::StringRef::npos) {
+            return std::nullopt;
+        }
+        char open = tail[quote_pos];
+        char close = open == '<' ? '>' : '"';
+        auto close_pos = tail.find(close, quote_pos + 1);
+        if(close_pos == llvm::StringRef::npos) {
+            return std::nullopt;
+        }
+        return LocalSourceRange(offset + static_cast<std::uint32_t>(quote_pos),
+                                offset + static_cast<std::uint32_t>(close_pos + 1));
+    };
+
+    for(const auto& embed: directives.embeds) {
+        if(!embed.file) {
+            continue;
+        }
+
+        auto [fid, offset] = unit.decompose_location(embed.loc);
+        if(fid != interested || offset >= content.size()) {
+            continue;
+        }
+
+        auto range = find_filename_range(offset);
+        if(!range) {
+            continue;
+        }
+
+        protocol::DocumentLink link{
+            .range = to_range(converter, *range),
+        };
+        link.target = embed.file->getName().str();
+        links.push_back(std::move(link));
+    }
+
+    for(const auto& has_embed: directives.has_embeds) {
+        if(!has_embed.file) {
+            continue;
+        }
+
+        auto [fid, offset] = unit.decompose_location(has_embed.loc);
+        if(fid != interested || offset >= content.size()) {
+            continue;
+        }
+
+        auto range = find_filename_range(offset);
+        if(!range) {
+            continue;
+        }
+
+        protocol::DocumentLink link{
+            .range = to_range(converter, *range),
+        };
+        link.target = has_embed.file->getName().str();
+        links.push_back(std::move(link));
+    }
+
     return links;
 }
 
