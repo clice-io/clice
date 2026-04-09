@@ -7,6 +7,40 @@
 
 namespace clice::testing {
 
+Tester::~Tester() {
+    for(auto& path: pcm_paths) {
+        fs::remove(path);
+    }
+}
+
+std::vector<std::string> Tester::base_cc1_args(llvm::StringRef standard) {
+    return {
+        "clang",
+        "-cc1",
+        "-triple",
+        LLVM_DEFAULT_TARGET_TRIPLE,
+        standard.str(),
+        "-ffreestanding",
+        "-undef",
+        "-fms-extensions",
+        "-fsyntax-only",
+        "-x",
+        "c++",
+    };
+}
+
+bool Tester::try_compile() {
+    auto built = clice::compile(params);
+    if(!built.completed()) {
+        for(auto& diag: built.diagnostics()) {
+            LOG_ERROR("{}", diag.message);
+        }
+        return false;
+    }
+    unit.emplace(std::move(built));
+    return true;
+}
+
 void Tester::prepare(llvm::StringRef standard) {
     params = CompilationParams();
     unit.reset();
@@ -16,19 +50,7 @@ void Tester::prepare(llvm::StringRef standard) {
         vfs->add(file, source.content);
     }
 
-    owned_args.clear();
-    // Use -cc1 mode directly to bypass the slow driver subprocess.
-    owned_args.push_back("clang");
-    owned_args.push_back("-cc1");
-    owned_args.push_back("-triple");
-    owned_args.push_back(LLVM_DEFAULT_TARGET_TRIPLE);
-    owned_args.push_back(standard.str());
-    owned_args.push_back("-ffreestanding");
-    owned_args.push_back("-undef");
-    owned_args.push_back("-fms-extensions");
-    owned_args.push_back("-fsyntax-only");
-    owned_args.push_back("-x");
-    owned_args.push_back("c++");
+    owned_args = base_cc1_args(standard);
     owned_args.push_back(TestVFS::path(src_path));
 
     params.arguments.clear();
@@ -42,17 +64,7 @@ void Tester::prepare(llvm::StringRef standard) {
 
 bool Tester::compile(llvm::StringRef standard) {
     prepare(standard);
-
-    auto built = clice::compile(params);
-    if(!built.completed()) {
-        for(auto& diag: built.diagnostics()) {
-            LOG_ERROR("{}", diag.message);
-        }
-        return false;
-    }
-
-    unit.emplace(std::move(built));
-    return true;
+    return try_compile();
 }
 
 bool Tester::compile_with_pch(llvm::StringRef standard) {
@@ -64,7 +76,6 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
         return false;
     }
 
-    // Use an overlay VFS so the PCH temp file on real disk is accessible.
     auto overlay =
         llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
     overlay->pushOverlay(vfs);
@@ -96,16 +107,128 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     params.pch = {info.path, static_cast<std::uint32_t>(info.preamble.size())};
     params.buffers.clear();
 
-    auto built = clice::compile(params);
-    if(!built.completed()) {
-        for(auto& diag: built.diagnostics()) {
-            LOG_ERROR("{}", diag.message);
+    return try_compile();
+}
+
+bool Tester::compile_with_modules(llvm::StringRef standard) {
+    std::vector<ModuleFile> all_modules = module_files;
+    for(auto& [file, source]: sources.all_files) {
+        if(file == src_path) {
+            continue;
         }
-        return false;
+        auto result = scan(source.content);
+        if(!result.module_name.empty() || result.need_preprocess) {
+            all_modules.push_back({file.str(), source.content});
+        }
     }
 
-    unit.emplace(std::move(built));
-    return true;
+    if(all_modules.empty()) {
+        return compile(standard);
+    }
+
+    vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    for(auto& [file, source]: sources.all_files) {
+        vfs->add(file, source.content);
+    }
+    for(auto& mod: module_files) {
+        vfs->add(mod.filename, mod.content);
+    }
+
+    struct ScannedModule {
+        std::string filename;
+        std::string content;
+        std::string module_name;
+        std::vector<std::string> deps;
+    };
+
+    auto scan_args_base = base_cc1_args(standard);
+
+    std::vector<ScannedModule> modules;
+    for(auto& mod: all_modules) {
+        auto args = scan_args_base;
+        args.push_back(TestVFS::path(mod.filename));
+
+        std::vector<const char*> argv;
+        for(auto& arg: args) {
+            argv.push_back(arg.c_str());
+        }
+
+        auto result = scan_precise(argv, TestVFS::root(), {}, nullptr, vfs);
+        modules.push_back(
+            {mod.filename, mod.content, result.module_name, std::move(result.modules)});
+    }
+
+    llvm::StringMap<std::size_t> name_to_index;
+    for(std::size_t i = 0; i < modules.size(); ++i) {
+        name_to_index[modules[i].module_name] = i;
+    }
+
+    std::vector<std::size_t> order;
+    std::vector<int> state(modules.size(), 0);
+
+    auto topo_visit = [&](this auto& self, std::size_t i) -> bool {
+        if(state[i] == 2)
+            return true;
+        if(state[i] == 1) {
+            LOG_ERROR("Circular module dependency involving {}", modules[i].module_name);
+            return false;
+        }
+        state[i] = 1;
+        for(auto& dep: modules[i].deps) {
+            auto it = name_to_index.find(dep);
+            if(it != name_to_index.end()) {
+                if(!self(it->second))
+                    return false;
+            }
+        }
+        state[i] = 2;
+        order.push_back(i);
+        return true;
+    };
+
+    for(std::size_t i = 0; i < modules.size(); ++i) {
+        if(!topo_visit(i))
+            return false;
+    }
+
+    auto overlay =
+        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    overlay->pushOverlay(vfs);
+
+    llvm::StringMap<std::string> built_pcms;
+    for(auto idx: order) {
+        auto& mod = modules[idx];
+
+        auto pcm_path = fs::createTemporaryFile("clice", "pcm");
+        if(!pcm_path) {
+            LOG_ERROR("{}", pcm_path.error().message());
+            return false;
+        }
+        pcm_paths.push_back(*pcm_path);
+
+        Tester builder;
+        builder.add_main(mod.filename, mod.content);
+        builder.prepare(standard);
+        builder.params.kind = CompilationKind::ModuleInterface;
+        builder.params.output_file = *pcm_path;
+        builder.params.vfs = overlay;
+        builder.params.pcms = built_pcms;
+
+        auto built = clice::compile(builder.params);
+        if(!built.completed()) {
+            for(auto& diag: built.diagnostics()) {
+                LOG_ERROR("{}", diag.message);
+            }
+            return false;
+        }
+
+        built_pcms.try_emplace(mod.module_name, *pcm_path);
+    }
+
+    prepare(standard);
+    params.vfs = overlay;
+    params.pcms = std::move(built_pcms);
+    return try_compile();
 }
 
 std::uint32_t Tester::point(llvm::StringRef name, llvm::StringRef file) {
@@ -166,13 +289,11 @@ void Tester::prepare_driver(llvm::StringRef standard) {
 
     params.kind = CompilationKind::Content;
 
-    // Use overlay VFS: real FS (for system headers) + InMemoryFS (for test files).
     auto overlay =
         llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
-    // Remap test files so clang sees our in-memory content.
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {
             params.add_remapped_file(file, source.content);
@@ -185,48 +306,17 @@ void Tester::prepare_driver(llvm::StringRef standard) {
 
 bool Tester::compile_driver(llvm::StringRef standard) {
     prepare_driver(standard);
-
-    auto built = clice::compile(params);
-    if(!built.completed()) {
-        for(auto& diag: built.diagnostics()) {
-            LOG_ERROR("{}", diag.message);
-        }
-        return false;
-    }
-
-    unit.emplace(std::move(built));
-    return true;
+    return try_compile();
 }
 
 bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
-    params = CompilationParams();
-    unit.reset();
-    vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    for(auto& [file, source]: sources.all_files) {
-        vfs->add(file, source.content);
-    }
-
-    auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
-    database.add_command("fake", src_path, command);
-
-    CommandOptions options;
-    options.query_toolchain = true;
-    options.suppress_logging = true;
-    auto commands = database.lookup(src_path, options);
-    assert(!commands.empty() && "lookup failed after add_command");
-    params.arguments = commands.front().to_argv();
+    prepare_driver(standard);
 
     auto pch_path = fs::createTemporaryFile("clice", "pch");
     if(!pch_path) {
         LOG_ERROR("{}", pch_path.error().message());
         return false;
     }
-
-    // Use overlay VFS: real FS (for system headers + PCH temp) + InMemoryFS.
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
-    overlay->pushOverlay(vfs);
-    params.vfs = overlay;
 
     // Phase 1: Build PCH from the preamble portion.
     params.kind = CompilationKind::Preamble;
@@ -268,16 +358,7 @@ bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
         }
     }
 
-    auto built = clice::compile(params);
-    if(!built.completed()) {
-        for(auto& diag: built.diagnostics()) {
-            LOG_ERROR("{}", diag.message);
-        }
-        return false;
-    }
-
-    unit.emplace(std::move(built));
-    return true;
+    return try_compile();
 }
 
 void Tester::clear() {
@@ -288,6 +369,11 @@ void Tester::clear() {
     src_path.clear();
     owned_args.clear();
     vfs.reset();
+    module_files.clear();
+    for(auto& path: pcm_paths) {
+        fs::remove(path);
+    }
+    pcm_paths.clear();
 }
 
 }  // namespace clice::testing

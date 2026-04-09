@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "test/annotation.h"
 #include "test/test.h"
@@ -25,6 +26,16 @@ struct Tester {
     /// The VFS used for compilation.
     llvm::IntrusiveRefCntPtr<TestVFS> vfs;
 
+    struct ModuleFile {
+        std::string filename;
+        std::string content;
+    };
+
+    std::vector<ModuleFile> module_files;
+    std::vector<std::string> pcm_paths;
+
+    ~Tester();
+
     void add_main(llvm::StringRef file, llvm::StringRef content) {
         src_path = file.str();
         sources.add_source(file, content);
@@ -39,6 +50,10 @@ struct Tester {
         sources.add_sources(content);
     }
 
+    void add_module(llvm::StringRef filename, llvm::StringRef content) {
+        module_files.push_back({filename.str(), content.str()});
+    }
+
     /// Fast VFS-only path: uses -cc1 directly, no system headers.
     void prepare(llvm::StringRef standard = "-std=c++20");
 
@@ -46,12 +61,18 @@ struct Tester {
 
     bool compile_with_pch(llvm::StringRef standard = "-std=c++20");
 
+    bool compile_with_modules(llvm::StringRef standard = "-std=c++20");
+
     /// Driver path: uses CompilationDatabase + toolchain cache, has system headers.
     void prepare_driver(llvm::StringRef standard = "-std=c++20");
 
     bool compile_driver(llvm::StringRef standard = "-std=c++20");
 
     bool compile_driver_with_pch(llvm::StringRef standard = "-std=c++20");
+
+    static std::vector<std::string> base_cc1_args(llvm::StringRef standard);
+
+    bool try_compile();
 
     std::uint32_t operator[](llvm::StringRef file, llvm::StringRef pos) {
         return sources.all_files.lookup(file).offsets.lookup(pos);

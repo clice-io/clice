@@ -449,42 +449,21 @@ export @kw[module] @m0[foo].@m1[bar];
 }
 
 TEST_CASE(ModuleImport) {
-    auto pcm_path = fs::createTemporaryFile("test-mod", "pcm");
-    ASSERT_TRUE(pcm_path.has_value());
+    add_files("main.cpp", R"(
+#[mod.cppm]
+export module foo;
+export int x = 42;
 
-    {
-        Tester mod;
-        mod.add_main("mod.cppm", "export module foo;\nexport int x = 42;\n");
-        mod.prepare("-std=c++20");
-        mod.params.kind = CompilationKind::ModuleInterface;
-        mod.params.output_file = *pcm_path;
-        auto built = clice::compile(mod.params);
-        ASSERT_TRUE(built.completed());
-    }
-
-    add_main("main.cpp", R"cpp(
+#[main.cpp]
 @kw[import] @mod[foo];
 int y = x;
-)cpp");
-    prepare("-std=c++20");
-    auto fmodule_arg = std::string("-fmodule-file=foo=") + *pcm_path;
-    owned_args.push_back(fmodule_arg);
-    params.arguments.clear();
-    for(auto& arg: owned_args) {
-        params.arguments.push_back(arg.c_str());
-    }
-
-    auto built = clice::compile(params);
-    ASSERT_TRUE(built.completed());
-    unit.emplace(std::move(built));
-
+)");
+    ASSERT_TRUE(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->interested_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
-
-    fs::remove(*pcm_path);
 }
 
 TEST_CASE(ModulePartition) {
@@ -500,43 +479,21 @@ export module @m0[foo]:@m1[bar];
 }
 
 TEST_CASE(ModuleReexport) {
-    auto pcm_path = fs::createTemporaryFile("test-mod", "pcm");
-    ASSERT_TRUE(pcm_path.has_value());
+    add_files("main.cppm", R"(
+#[mod.cppm]
+export module foo;
+export int x = 42;
 
-    {
-        Tester mod;
-        mod.add_main("mod.cppm", "export module foo;\nexport int x = 42;\n");
-        mod.prepare("-std=c++20");
-        mod.params.kind = CompilationKind::ModuleInterface;
-        mod.params.output_file = *pcm_path;
-        auto built = clice::compile(mod.params);
-        ASSERT_TRUE(built.completed());
-    }
-
-    add_main("main.cppm", R"cpp(
+#[main.cppm]
 export module bar;
 export @kw[import] @mod[foo];
-)cpp");
-    prepare("-std=c++20");
-    auto fmodule_arg = std::string("-fmodule-file=foo=") + *pcm_path;
-    owned_args.push_back(fmodule_arg);
-    params.arguments.clear();
-    for(auto& arg: owned_args) {
-        params.arguments.push_back(arg.c_str());
-    }
-    params.kind = CompilationKind::ModuleInterface;
-
-    auto built = clice::compile(params);
-    ASSERT_TRUE(built.completed());
-    unit.emplace(std::move(built));
-
+)");
+    ASSERT_TRUE(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->interested_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
-
-    fs::remove(*pcm_path);
 }
 
 TEST_CASE(GlobalModuleFragment) {
