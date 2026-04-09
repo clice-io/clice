@@ -43,19 +43,17 @@ The `TemplateResolver` class takes a reference to Clang's `Sema` and resolves de
 
 **Phase 2 — Substitution only (`SubstituteOnly`).** A separate `TreeTransform` that expands typedefs and substitutes template parameters from the stack, but does NOT override `TransformDependentNameType`. This is critical: it prevents infinite cycles where typedef expansion triggers a lookup that expands back into the same typedef. Phase 2 handles `TypedefType`, `ElaboratedType`, `InjectedClassNameType`, alias template specializations, and `TemplateTypeParmType`.
 
-The `resugar()` method performs a simpler transform via `ResugarOnly`: it walks the type tree and replaces canonical `TemplateTypeParmType` nodes (which lack source-level names) with their original named declarations, restoring readability for display purposes.
+A separate "resugar" pass performs a simpler transform: it walks the type tree and replaces canonical template type parameter nodes (which lack source-level names) with their original named declarations, restoring readability for display purposes (e.g. showing `T` instead of `type-parameter-0-0`).
 
 ## The Lookup Mechanism
 
-The `lookup()` method on `TemplateResolver` dispatches to `PseudoInstantiator::lookup(NNS, name)`, which resolves a `NestedNameSpecifier` chain to a concrete `DeclContext` and performs name lookup there. Multiple overloads handle different AST node types:
+The lookup mechanism resolves a nested name specifier chain to a concrete declaration context and performs name lookup there. Different overloads handle different kinds of dependent AST nodes:
 
-- `DependentNameType`: looks up the identifier in the qualifier's resolved context.
-- `DependentTemplateSpecializationType`: extracts the template name's identifier and looks it up.
-- `DependentScopeDeclRefExpr`: looks up the name from an expression like `T::value`.
-- `UnresolvedLookupExpr`: iterates candidate declarations and returns the first `TemplateDecl`.
-- `UnresolvedUsingValueDecl` / `UnresolvedUsingTypenameDecl`: resolves the using declaration's qualifier and name.
-- `CXXDependentScopeMemberExpr` and `UnresolvedMemberExpr`: currently return empty results (TODO).
+- Dependent name types (e.g. `typename T::value_type`)
+- Dependent template specializations (e.g. `typename T::template rebind<U>`)
+- Dependent scope references in expressions (e.g. `T::value`)
+- Unresolved lookup expressions and using declarations
 
 ## Caching
 
-Resolved types are cached in a `DenseMap<const void*, QualType>` keyed by AST node pointer. Since each AST node has a unique identity within a translation unit (different syntactic occurrences of the "same" type have different pointers), the cache is safe to share across multiple `resolve()` calls on the same TU. The `PseudoInstantiator` receives a reference to this cache and checks it before performing expensive tree transforms, avoiding redundant resolution of the same dependent type node.
+Resolved types are cached by AST node pointer. Since each AST node has a unique identity within a translation unit, the cache is safe to share across multiple resolution calls on the same TU. The cache is checked before performing expensive tree transforms, avoiding redundant resolution of the same dependent type node.

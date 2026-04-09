@@ -65,31 +65,13 @@ All server state is split into two layers with a strict isolation boundary.
 
 ### Workspace (Project-Level, Persistent)
 
-`Workspace` holds everything derived from files on disk. It is the single source of truth for:
-
-- **CompilationDatabase** (`cdb`): loaded from `compile_commands.json` at startup.
-- **DependencyGraph** (`dep_graph`): include edges and module declarations, built by a BFS scan at startup.
-- **CompileGraph** (`compile_graph`): C++20 module DAG for topological compilation ordering.
-- **PCH cache** (`pch_cache`): keyed by file path_id, stores PCH path, preamble hash, bound, and dependency snapshot.
-- **PCM cache** (`pcm_cache`, `pcm_paths`): keyed by module source path_id.
-- **Module map** (`path_to_module`): reverse mapping from file to module name.
-- **Project index** (`project_index`, `merged_indices`): symbol table and per-file index shards from background indexing.
-- **PathPool**: interning table that maps file paths to compact integer IDs.
+`Workspace` holds everything derived from files on disk. It is the single source of truth for the compilation database, include/module dependency graphs, PCH/PCM caches, the project-wide symbol index, and a path interning pool.
 
 Workspace is **never modified by unsaved buffer content**. The only mutation paths are: initialization at startup, `didSave` (which cascades invalidation), and background index merges.
 
 ### Session (Per-File, Volatile)
 
-`Session` represents a single open file. Created on `didOpen`, destroyed on `didClose`. Fields include:
-
-- `text`: current buffer content (may differ from disk).
-- `generation`: monotonic counter incremented on every `didChange`. Used for ABA prevention during compilation.
-- `ast_dirty`: whether the AST needs rebuilding before serving queries.
-- `compiling`: shared pointer to an in-flight compilation event. Concurrent queries wait on it.
-- `pch_ref`: reference to a PCH entry in `Workspace.pch_cache` (path_id, hash, bound).
-- `ast_deps`: `DepsSnapshot` from the last successful compile, used for staleness detection.
-- `header_context`: resolved host source and synthesized preamble for header files.
-- `file_index`: `OpenFileIndex` built from the latest compilation of this buffer.
+`Session` represents a single open file. Created on `didOpen`, destroyed on `didClose`. It holds the current buffer text, a generation counter for ABA prevention, AST dirty state, dependency snapshots for staleness detection, header context for header files, and a per-file symbol index for open-file queries.
 
 **Isolation principle:** Sessions never write to Workspace. The only path from Session to Workspace is `didSave`, which tells Workspace to rescan the disk file and cascade invalidation. Sessions may _read_ from Workspace (PCH/PCM paths, module mappings, include graph) but all compilation results stay local to the Session.
 
@@ -108,19 +90,19 @@ The top-level orchestrator. Owns Workspace, the sessions map, WorkerPool, Compil
 
 Drives worker processes to build ASTs, PCHs, and PCMs. Holds no persistent state of its own -- reads from Workspace and Sessions, writes results back to Sessions.
 
-- `ensure_compiled()`: pull-based entry point. Ensures a file's AST is up-to-date before serving any query.
-- `ensure_pch()` / `ensure_deps()`: builds or reuses PCH and PCM artifacts.
-- `forward_query()`: ensures compilation, then sends a query to the stateful worker holding the AST.
-- `forward_build()`: sends a stateless build request (completion, signature help).
-- `fill_compile_args()`: resolves compile arguments from CDB, with header context fallback.
+- Pull-based: feature requests trigger compilation only when the AST is dirty or dependencies are stale.
+- Resolves compile flags from the CDB, with header context fallback for header files.
+- Builds or reuses PCH/PCM artifacts before sending compilation to a worker.
+- Forwards queries (hover, semantic tokens, etc.) to the stateful worker holding the AST.
+- Sends one-shot build requests (completion, signature help) to stateless workers.
 
 ### Indexer
 
-Handles cross-file navigation queries and background indexing. Also holds no persistent state -- reads from `Workspace.project_index` and `Workspace.merged_indices`, and from `Session.file_index` for open files.
+Handles cross-file navigation queries and background indexing. Holds no persistent state -- reads from Workspace's project index and per-session file indices.
 
-- Symbol lookup, relation queries (definition, references, call/type hierarchy).
-- Background indexing: maintains a queue of files, schedules indexing on an idle timer, dispatches compilation to workers, merges results into Workspace's ProjectIndex.
-- Skips files that are currently open (they have fresher data in Session.file_index).
+- Serves symbol lookup and relation queries (definition, references, call/type hierarchy).
+- Runs background indexing on an idle timer: dispatches compilation to workers, merges results into the project-wide index.
+- For open files, prefers the fresher per-session index over the project-wide one.
 
 ### WorkerPool
 
@@ -129,24 +111,19 @@ Manages worker process lifecycles and request routing.
 - Spawns stateful and stateless workers at startup (counts are configurable).
 - Routes stateful requests by path-affinity with LRU tracking and least-loaded fallback.
 - Routes stateless requests by round-robin.
-- Provides `send_stateful()`, `send_stateless()`, and `notify_stateful()` as the IPC interface.
 
 ## Message Flow Example: Hover Request
 
 1. Client sends `textDocument/hover` with a URI and position.
-2. `MasterServer` resolves the URI to a `path_id`, finds the Session.
-3. Calls `Compiler::forward_query(QueryKind::Hover, session, position)`.
-4. `forward_query()` calls `ensure_compiled(session)`.
-5. If `ast_dirty` or dependencies are stale, a detached compile task is launched:
-   - `fill_compile_args()` resolves CDB flags (or header context).
-   - `ensure_deps()` builds PCMs via CompileGraph and PCH via `ensure_pch()`.
-   - `CompileParams` is sent to the stateful worker via `WorkerPool::send_stateful()`.
-   - Worker builds the AST, returns diagnostics and TUIndex data.
-   - On success: `ast_dirty` is cleared, `file_index` is updated, diagnostics are published.
-   - On generation mismatch: result is discarded, `ast_dirty` stays true.
-6. `forward_query()` sends `QueryParams` to the same stateful worker.
-7. Worker runs the hover query against the resident AST, returns the result.
-8. Result is relayed back to the client.
+2. MasterServer resolves the URI to a path ID and finds the Session.
+3. Compiler ensures the file is compiled (pull-based -- only rebuilds if the AST is dirty or dependencies are stale):
+   - Resolves compile flags from the CDB (or via header context for headers).
+   - Builds any missing PCM/PCH dependencies first.
+   - Sends the compilation to a stateful worker. The worker builds the AST, returns diagnostics and index data.
+   - If the user edited the file during compilation (generation mismatch), the result is discarded.
+4. Compiler sends the hover query to the same stateful worker (which holds the AST in memory).
+5. Worker runs the query against the resident AST and returns the result.
+6. Result is relayed back to the client.
 
 ## Async Model
 
