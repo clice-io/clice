@@ -485,13 +485,16 @@ void MasterServer::register_handlers() {
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
             co_return serde_raw{"null"};
-        auto result = co_await compiler.forward_query(worker::QueryKind::DocumentLink, sit->second);
+        auto& session = sit->second;
+        auto result = co_await compiler.forward_query(worker::QueryKind::DocumentLink, session);
         if(!result.has_value())
             co_return serde_raw{"null"};
         // Merge document links from PCH if available.
         auto& links = result.value();
-        if(sit->second.pch_ref) {
-            auto pch_it = workspace.pch_cache.find(sit->second.pch_ref->path_id);
+        // Re-lookup session after co_await since iterators may be invalidated.
+        auto sit2 = sessions.find(path_id);
+        if(sit2 != sessions.end() && sit2->second.pch_ref) {
+            auto pch_it = workspace.pch_cache.find(sit2->second.pch_ref->path_id);
             if(pch_it != workspace.pch_cache.end() && !pch_it->second.document_links_json.empty()) {
                 auto& pch_json = pch_it->second.document_links_json;
                 // Merge two JSON arrays.
