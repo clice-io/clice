@@ -53,7 +53,8 @@ void Lexer::lex(Token& token) {
         }
     } else if(parse_pp_keyword) {
         parse_pp_keyword = false;
-        parse_header_name = token.text(content) == "include";
+        auto kw = token.text(content);
+        parse_header_name = kw == "include" || kw == "include_next" || kw == "embed";
     }
 }
 

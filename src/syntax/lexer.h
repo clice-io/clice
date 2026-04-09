@@ -51,6 +51,15 @@ public:
 
     Token advance_until(TokenKind kind);
 
+    /// Force the lexer into header-name mode so the next token is lexed
+    /// via LexIncludeFilename (correctly handling both "..." and <...>).
+    /// Use this before lexing filename arguments in contexts like
+    /// __has_include() or __has_embed() where the lexer cannot detect
+    /// the mode automatically.
+    void set_header_name_mode() {
+        parse_header_name = true;
+    }
+
 private:
     bool ignore_end_of_directive = true;
     bool parse_pp_keyword = false;
