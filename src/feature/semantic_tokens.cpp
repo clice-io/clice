@@ -296,17 +296,16 @@ private:
     void highlight_modules() {
         auto interested = unit.interested_file();
 
-        // Import statements: highlight module name identifiers.
         auto directives_it = unit.directives().find(interested);
         if(directives_it != unit.directives().end()) {
             for(const auto& import: directives_it->second.imports) {
+                add_token(import.location, SymbolKind::Keyword, 0);
                 for(auto loc: import.name_locations) {
                     add_token(loc, SymbolKind::Module, 0);
                 }
             }
         }
 
-        // Module declaration (export module foo.bar;): highlight module name.
         auto* mod = unit.context().getCurrentNamedModule();
         if(!mod) {
             return;
@@ -326,8 +325,12 @@ private:
         auto& lang_opts = unit.lang_options();
         Lexer lexer(content.substr(offset), false, &lang_opts);
 
-        // Skip 'module' keyword.
-        lexer.advance();
+        auto module_token = lexer.advance();
+        if(module_token.is_identifier()) {
+            auto range = LocalSourceRange(offset + module_token.range.begin,
+                                          offset + module_token.range.end);
+            tokens.push_back({.range = range, .kind = SymbolKind::Keyword, .modifiers = 0});
+        }
 
         // Scan for identifiers (module name parts) until semicolon/eof.
         while(true) {
@@ -396,8 +399,15 @@ private:
     }
 
     static void resolve_conflict(RawToken& last, const RawToken& current) {
-        (void)current;
         if(last.kind == SymbolKind::Conflict) {
+            return;
+        }
+        // Directive is a low-priority lexical kind; semantic tokens override it.
+        if(last.kind == SymbolKind::Directive) {
+            last = current;
+            return;
+        }
+        if(current.kind == SymbolKind::Directive) {
             return;
         }
         last.kind = SymbolKind::Conflict;

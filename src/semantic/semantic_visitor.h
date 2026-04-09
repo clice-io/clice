@@ -131,9 +131,6 @@ public:
                 }
             }
         }
-
-        // Module declaration and import handling is done in SemanticTokensCollector
-        // directly, using directives data and AST rather than TokenBuffer.
     }
 
 public:

@@ -425,29 +425,30 @@ cd*/
 
 TEST_CASE(ModuleDeclaration) {
     add_main("main.cpp", R"cpp(
-export module @mod[foo];
+export @kw[module] @mod[foo];
 )cpp");
     ASSERT_TRUE(compile("-std=c++20"));
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->interested_content(), tokens);
 
+    EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
 }
 
 TEST_CASE(ModuleDeclarationDotted) {
     add_main("main.cpp", R"cpp(
-export module @m0[foo].@m1[bar];
+export @kw[module] @m0[foo].@m1[bar];
 )cpp");
     ASSERT_TRUE(compile("-std=c++20"));
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->interested_content(), tokens);
 
+    EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("m0", SymbolKind::Module);
     EXPECT_TOKEN("m1", SymbolKind::Module);
 }
 
 TEST_CASE(ModuleImport) {
-    // Step 1: Build the module interface to a PCM.
     auto pcm_path = fs::createTemporaryFile("test-mod", "pcm");
     ASSERT_TRUE(pcm_path.has_value());
 
@@ -461,9 +462,8 @@ TEST_CASE(ModuleImport) {
         ASSERT_TRUE(built.completed());
     }
 
-    // Step 2: Compile the importing file with -fmodule-file.
     add_main("main.cpp", R"cpp(
-import @mod[foo];
+@kw[import] @mod[foo];
 int y = x;
 )cpp");
     prepare("-std=c++20");
@@ -481,9 +481,105 @@ int y = x;
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->interested_content(), tokens);
 
+    EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
 
     fs::remove(*pcm_path);
+}
+
+TEST_CASE(ModulePartition) {
+    add_main("main.cpp", R"cpp(
+export module @m0[foo]:@m1[bar];
+)cpp");
+    ASSERT_TRUE(compile("-std=c++20"));
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+
+    EXPECT_TOKEN("m0", SymbolKind::Module);
+    EXPECT_TOKEN("m1", SymbolKind::Module);
+}
+
+TEST_CASE(ModuleReexport) {
+    auto pcm_path = fs::createTemporaryFile("test-mod", "pcm");
+    ASSERT_TRUE(pcm_path.has_value());
+
+    {
+        Tester mod;
+        mod.add_main("mod.cppm", "export module foo;\nexport int x = 42;\n");
+        mod.prepare("-std=c++20");
+        mod.params.kind = CompilationKind::ModuleInterface;
+        mod.params.output_file = *pcm_path;
+        auto built = clice::compile(mod.params);
+        ASSERT_TRUE(built.completed());
+    }
+
+    add_main("main.cppm", R"cpp(
+export module bar;
+export @kw[import] @mod[foo];
+)cpp");
+    prepare("-std=c++20");
+    auto fmodule_arg = std::string("-fmodule-file=foo=") + *pcm_path;
+    owned_args.push_back(fmodule_arg);
+    params.arguments.clear();
+    for(auto& arg: owned_args) {
+        params.arguments.push_back(arg.c_str());
+    }
+    params.kind = CompilationKind::ModuleInterface;
+
+    auto built = clice::compile(params);
+    ASSERT_TRUE(built.completed());
+    unit.emplace(std::move(built));
+
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+
+    EXPECT_TOKEN("kw", SymbolKind::Keyword);
+    EXPECT_TOKEN("mod", SymbolKind::Module);
+
+    fs::remove(*pcm_path);
+}
+
+TEST_CASE(GlobalModuleFragment) {
+    add_main("main.cpp", R"cpp(
+module;
+export module @mod[foo];
+)cpp");
+    ASSERT_TRUE(compile("-std=c++20"));
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+
+    EXPECT_TOKEN("mod", SymbolKind::Module);
+}
+
+TEST_CASE(PrivateModuleFragment) {
+    add_main("main.cpp", R"cpp(
+export module @mod[foo];
+module :private;
+int x = 1;
+)cpp");
+    ASSERT_TRUE(compile("-std=c++20"));
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+
+    EXPECT_TOKEN("mod", SymbolKind::Module);
+}
+
+TEST_CASE(ModuleKeywordAsIdentifier) {
+    run_utf8(R"cpp(
+void f() {
+    struct @s0[module] {};
+    @s1[module] @v0[m];
+    int @v1[import] = 1;
+    int @v2[module] = 2;
+}
+)cpp");
+
+    auto definition = modifier_mask({SymbolModifiers::Definition});
+    EXPECT_TOKEN("s0", SymbolKind::Struct, definition);
+    EXPECT_TOKEN("s1", SymbolKind::Struct);
+    EXPECT_TOKEN("v0", SymbolKind::Variable, definition);
+    EXPECT_TOKEN("v1", SymbolKind::Variable, definition);
+    EXPECT_TOKEN("v2", SymbolKind::Variable, definition);
 }
 
 };  // TEST_SUITE(SemanticTokens)
