@@ -296,7 +296,8 @@ public:
                            llvm::StringRef overload_key,
                            llvm::StringRef signature = {},
                            llvm::StringRef return_type = {},
-                           bool is_snippet = false) {
+                           bool is_snippet = false,
+                           bool is_deprecated = false) {
             if(label.empty()) {
                 return;
             }
@@ -327,6 +328,9 @@ public:
                         }
                         item.label_details = std::move(details);
                     }
+                    if(is_deprecated) {
+                        item.tags = std::vector{protocol::CompletionItemTag::Deprecated};
+                    }
                     overloads.push_back({
                         .item = std::move(item),
                         .score = *score,
@@ -354,6 +358,9 @@ public:
                     details.description = return_type.str();
                 }
                 item.label_details = std::move(details);
+            }
+            if(is_deprecated) {
+                item.tags = std::vector{protocol::CompletionItemTag::Deprecated};
             }
             collected.push_back(std::move(item));
         };
@@ -431,13 +438,15 @@ public:
 
                     bool has_snippet = !snippet.empty();
                     auto insert = has_snippet ? llvm::StringRef(snippet) : llvm::StringRef(label);
+                    bool deprecated = candidate.Availability == CXAvailability_Deprecated;
                     try_add(label,
                             kind,
                             insert,
                             qualified_name.str(),
                             signature,
                             return_type,
-                            has_snippet);
+                            has_snippet,
+                            deprecated);
                     break;
                 }
             }

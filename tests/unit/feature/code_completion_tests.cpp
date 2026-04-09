@@ -233,6 +233,33 @@ void bar() {
     }
 }
 
+TEST_CASE(DeprecatedTag) {
+    code_complete(R"cpp(
+[[deprecated]] int foooo(int x);
+int z = fo$(pos)
+)cpp");
+
+    auto it = find_item("foooo");
+    ASSERT_TRUE(it != items.end());
+    ASSERT_TRUE(it->tags.has_value());
+    auto& tags = *it->tags;
+    ASSERT_TRUE(std::ranges::find(tags, protocol::CompletionItemTag::Deprecated) != tags.end());
+}
+
+TEST_CASE(NotDeprecated) {
+    code_complete(R"cpp(
+int foooo(int x);
+int z = fo$(pos)
+)cpp");
+
+    auto it = find_item("foooo");
+    ASSERT_TRUE(it != items.end());
+    // Non-deprecated should have no Deprecated tag.
+    ASSERT_TRUE(!it->tags.has_value() ||
+                std::ranges::find(*it->tags, protocol::CompletionItemTag::Deprecated) ==
+                    it->tags->end());
+}
+
 TEST_CASE(NoBundleOverloads) {
     feature::CodeCompletionOptions opts;
     opts.bundle_overloads = false;
