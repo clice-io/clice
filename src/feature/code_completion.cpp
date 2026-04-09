@@ -158,6 +158,56 @@ auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
     return signature;
 }
 
+/// Build a snippet string from a CodeCompletionString.
+/// Produces e.g. "funcName(${1:int x}, ${2:float y})" for functions,
+/// or "ClassName<${1:T}>" for class templates.
+auto build_snippet(const clang::CodeCompletionString& ccs) -> std::string {
+    std::string snippet;
+    unsigned placeholder_index = 0;
+
+    for(const auto& chunk: ccs) {
+        using CK = clang::CodeCompletionString::ChunkKind;
+        switch(chunk.Kind) {
+            case CK::CK_TypedText:
+                if(chunk.Text) {
+                    snippet += chunk.Text;
+                }
+                break;
+            case CK::CK_Placeholder:
+                if(chunk.Text) {
+                    snippet += std::format("${{{0}:{1}}}", ++placeholder_index, chunk.Text);
+                }
+                break;
+            case CK::CK_LeftParen: snippet += '('; break;
+            case CK::CK_RightParen: snippet += ')'; break;
+            case CK::CK_LeftAngle: snippet += '<'; break;
+            case CK::CK_RightAngle: snippet += '>'; break;
+            case CK::CK_Comma: snippet += ", "; break;
+            case CK::CK_Text:
+                if(chunk.Text) {
+                    snippet += chunk.Text;
+                }
+                break;
+            case CK::CK_Optional:
+                // Optional chunks contain default arguments — skip for snippet.
+                break;
+            case CK::CK_Informative:
+            case CK::CK_ResultType:
+            case CK::CK_CurrentParameter:
+                // Display-only chunks, not part of insertion.
+                break;
+            default: break;
+        }
+    }
+
+    // If no placeholders were generated, return empty to signal plain text.
+    if(placeholder_index == 0) {
+        return {};
+    }
+
+    return snippet;
+}
+
 /// Extract the return type from a CodeCompletionString.
 auto extract_return_type(const clang::CodeCompletionString& ccs) -> std::string {
     for(const auto& chunk: ccs) {
@@ -220,27 +270,33 @@ public:
 
         bool prefix_starts_with_underscore = prefix.spelling.starts_with("_");
 
-        auto build_item =
-            [&](llvm::StringRef label, protocol::CompletionItemKind kind, llvm::StringRef insert) {
-                protocol::CompletionItem item{
-                    .label = label.str(),
-                };
-                item.kind = kind;
-
-                protocol::TextEdit edit{
-                    .range = replace_range,
-                    .new_text = insert.empty() ? label.str() : insert.str(),
-                };
-                item.text_edit = std::move(edit);
-                return item;
+        auto build_item = [&](llvm::StringRef label,
+                              protocol::CompletionItemKind kind,
+                              llvm::StringRef insert,
+                              bool is_snippet = false) {
+            protocol::CompletionItem item{
+                .label = label.str(),
             };
+            item.kind = kind;
+
+            protocol::TextEdit edit{
+                .range = replace_range,
+                .new_text = insert.empty() ? label.str() : insert.str(),
+            };
+            item.text_edit = std::move(edit);
+            if(is_snippet) {
+                item.insert_text_format = protocol::InsertTextFormat::Snippet;
+            }
+            return item;
+        };
 
         auto try_add = [&](llvm::StringRef label,
                            protocol::CompletionItemKind kind,
                            llvm::StringRef insert_text,
                            llvm::StringRef overload_key,
                            llvm::StringRef signature = {},
-                           llvm::StringRef return_type = {}) {
+                           llvm::StringRef return_type = {},
+                           bool is_snippet = false) {
             if(label.empty()) {
                 return;
             }
@@ -259,7 +315,7 @@ public:
                 auto [it, inserted] =
                     overload_index.try_emplace(overload_key.str(), overloads.size());
                 if(inserted) {
-                    auto item = build_item(label, kind, insert_text);
+                    auto item = build_item(label, kind, insert_text, is_snippet);
                     item.sort_text = std::format("{}", *score);
                     if(!signature.empty() || !return_type.empty()) {
                         protocol::CompletionItemLabelDetails details;
@@ -287,7 +343,7 @@ public:
                 return;
             }
 
-            auto item = build_item(label, kind, insert_text);
+            auto item = build_item(label, kind, insert_text, is_snippet);
             item.sort_text = std::format("{}", *score);
             if(!signature.empty() || !return_type.empty()) {
                 protocol::CompletionItemLabelDetails details;
@@ -344,6 +400,7 @@ public:
 
                     std::string signature;
                     std::string return_type;
+                    std::string snippet;
                     auto* ccs =
                         candidate.CreateCodeCompletionString(sema,
                                                              context,
@@ -353,9 +410,22 @@ public:
                     if(ccs) {
                         signature = extract_signature(*ccs);
                         return_type = extract_return_type(*ccs);
+                        // Generate snippet for non-bundled callables.
+                        if(is_callable && !options.bundle_overloads &&
+                           options.enable_function_arguments_snippet) {
+                            snippet = build_snippet(*ccs);
+                        }
                     }
 
-                    try_add(label, kind, label, qualified_name.str(), signature, return_type);
+                    bool has_snippet = !snippet.empty();
+                    auto insert = has_snippet ? llvm::StringRef(snippet) : llvm::StringRef(label);
+                    try_add(label,
+                            kind,
+                            insert,
+                            qualified_name.str(),
+                            signature,
+                            return_type,
+                            has_snippet);
                     break;
                 }
             }

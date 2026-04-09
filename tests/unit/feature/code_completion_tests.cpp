@@ -237,6 +237,104 @@ int x = fooo$(pos)
     ASSERT_TRUE(count >= 3);
 }
 
+TEST_CASE(SnippetFunctionArgs) {
+    feature::CodeCompletionOptions opts;
+    opts.bundle_overloads = false;
+    opts.enable_function_arguments_snippet = true;
+    code_complete(R"cpp(
+int foooo(int x, float y);
+int z = fo$(pos)
+)cpp",
+                  opts);
+
+    auto it = find_item("foooo");
+    ASSERT_TRUE(it != items.end());
+    // Should have snippet format.
+    ASSERT_TRUE(it->insert_text_format.has_value());
+    ASSERT_EQ(*it->insert_text_format, protocol::InsertTextFormat::Snippet);
+    // textEdit should contain placeholders.
+    auto& edit = std::get<protocol::TextEdit>(*it->text_edit);
+    ASSERT_TRUE(edit.new_text.find("${1:") != std::string::npos);
+    ASSERT_TRUE(edit.new_text.find("${2:") != std::string::npos);
+    ASSERT_TRUE(edit.new_text.find("(") != std::string::npos);
+    ASSERT_TRUE(edit.new_text.find(")") != std::string::npos);
+}
+
+TEST_CASE(SnippetNoArgs) {
+    feature::CodeCompletionOptions opts;
+    opts.bundle_overloads = false;
+    opts.enable_function_arguments_snippet = true;
+    code_complete(R"cpp(
+void foooo();
+void bar() { fo$(pos) }
+)cpp",
+                  opts);
+
+    auto it = find_item("foooo");
+    ASSERT_TRUE(it != items.end());
+    // No-arg function should not generate snippet (no placeholders).
+    ASSERT_TRUE(!it->insert_text_format.has_value() ||
+                *it->insert_text_format == protocol::InsertTextFormat::PlainText);
+}
+
+TEST_CASE(SnippetDisabled) {
+    feature::CodeCompletionOptions opts;
+    opts.bundle_overloads = false;
+    opts.enable_function_arguments_snippet = false;
+    code_complete(R"cpp(
+int foooo(int x, float y);
+int z = fo$(pos)
+)cpp",
+                  opts);
+
+    auto it = find_item("foooo");
+    ASSERT_TRUE(it != items.end());
+    // With snippet disabled, should be plain text.
+    ASSERT_TRUE(!it->insert_text_format.has_value() ||
+                *it->insert_text_format == protocol::InsertTextFormat::PlainText);
+}
+
+TEST_CASE(SnippetBundleMode) {
+    // In bundle mode, snippets should NOT be generated even if enabled.
+    feature::CodeCompletionOptions opts;
+    opts.bundle_overloads = true;
+    opts.enable_function_arguments_snippet = true;
+    code_complete(R"cpp(
+int foooo(int x);
+int foooo(int x, int y);
+int z = fo$(pos)
+)cpp",
+                  opts);
+
+    auto it = find_item("foooo");
+    ASSERT_TRUE(it != items.end());
+    ASSERT_TRUE(!it->insert_text_format.has_value() ||
+                *it->insert_text_format == protocol::InsertTextFormat::PlainText);
+}
+
+TEST_CASE(SnippetMethod) {
+    feature::CodeCompletionOptions opts;
+    opts.bundle_overloads = false;
+    opts.enable_function_arguments_snippet = true;
+    code_complete(R"cpp(
+struct Foo {
+    int bazzzz(int a, int b);
+};
+void bar() {
+    Foo f;
+    f.ba$(pos);
+}
+)cpp",
+                  opts);
+
+    auto it = find_item("bazzzz");
+    ASSERT_TRUE(it != items.end());
+    ASSERT_TRUE(it->insert_text_format.has_value());
+    ASSERT_EQ(*it->insert_text_format, protocol::InsertTextFormat::Snippet);
+    auto& edit = std::get<protocol::TextEdit>(*it->text_edit);
+    ASSERT_TRUE(edit.new_text.find("${1:") != std::string::npos);
+}
+
 TEST_CASE(Unqualified) {
     code_complete(R"cpp(
 namespace A {
