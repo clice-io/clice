@@ -33,6 +33,7 @@ clang = "==20.1.8"
 clangxx = "==20.1.8"
 lld = "==20.1.8"
 llvm-tools = "==20.1.8"
+clang-tools = "==20.1.8"
 compiler-rt = "==20.1.8"
 
 [feature.build.target.win-64.dependencies]
@@ -102,6 +103,10 @@ depends-on = [
     { task = "cmake-config", args = ["{{ type }}", "{{ ci }}", "{{extra}}"] },
     { task = "cmake-build", args = ["{{ type }}"] },
 ]
+
+[feature.build.tasks.clang-tidy]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+depends-on = [{ task = "lint-cpp", args = ["{{ type }}"] }]
 
 [feature.build.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
@@ -205,3 +210,20 @@ format = { depends-on = [
     "format-toml",
     "format-yaml"
 ] }
+
+# ============================================================================== #
+#                                     LINT                                       #
+# ============================================================================== #
+[feature.format.tasks.lint-python]
+cmd = "ruff check ."
+
+[feature.build.tasks.lint-cpp]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cmd = "python scripts/run_clang_tidy.py build/{{ type }}"
+
+[feature.build.tasks.lint]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+depends-on = [
+    "lint-python",
+    { task = "lint-cpp", args = ["{{ type }}"] },
+]

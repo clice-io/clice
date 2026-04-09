@@ -61,7 +61,6 @@ tests/unit/Local/
 !/.vscode/tasks.json
 .vs/
 .idea/
-.claude
 .clangd
 
 # pixi environments
@@ -70,5 +69,7 @@ tests/unit/Local/
 !.pixi/config.toml
 
 .codex/
-.claude/
+.claude/*
+!.claude/CLAUDE.md
+!.claude/commands/
 openspec/
