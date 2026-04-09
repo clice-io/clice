@@ -20,11 +20,8 @@ struct Include {
     /// The file id of included file.
     clang::FileID fid;
 
-    /// Location of the `include`.
+    /// Location of the `include` keyword.
     clang::SourceLocation location;
-
-    /// The range of filename(includes `""` or `<>`).
-    clang::SourceRange filename_range;
 };
 
 /// Information about `__has_include` directive.

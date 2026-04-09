@@ -89,6 +89,19 @@ TEST_CASE(HasInclude) {
     EXPECT_LINK(1, "1", TestVFS::path("test.h"));
 }
 
+TEST_CASE(MacroInclude) {
+    run(R"cpp(
+#[test.h]
+
+#[main.cpp]
+#define HEADER "test.h"
+#include @0[HEADER$]
+)cpp");
+
+    ASSERT_EQ(links.size(), 1U);
+    EXPECT_LINK(0, "0", TestVFS::path("test.h"));
+}
+
 TEST_CASE(Embed) {
     run(R"cpp(
 #[bytes.bin]

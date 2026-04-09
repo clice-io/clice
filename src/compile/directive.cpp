@@ -94,7 +94,7 @@ public:
                             const clang::Token& include_tok,
                             llvm::StringRef,
                             bool,
-                            clang::CharSourceRange filename_range,
+                            clang::CharSourceRange,
                             clang::OptionalFileEntryRef,
                             llvm::StringRef,
                             llvm::StringRef,
@@ -108,7 +108,6 @@ public:
         unit->directives[prev_fid].includes.emplace_back(Include{
             .fid = {},
             .location = include_tok.getLocation(),
-            .filename_range = filename_range.getAsRange(),
         });
     }
 

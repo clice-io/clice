@@ -53,7 +53,8 @@ void Lexer::lex(Token& token) {
         }
     } else if(parse_pp_keyword) {
         parse_pp_keyword = false;
-        parse_header_name = token.text(content) == "include";
+        auto kw = token.text(content);
+        parse_header_name = kw == "include" || kw == "include_next" || kw == "embed";
     }
 }
 
@@ -103,6 +104,62 @@ Token Lexer::advance_until(TokenKind kind) {
             return token;
         }
     }
+}
+
+static bool is_directive_keyword(llvm::StringRef word) {
+    return word == "include" || word == "include_next" || word == "import" || word == "embed" ||
+           word == "__has_include" || word == "__has_include_next" || word == "__has_embed";
+}
+
+std::optional<LocalSourceRange> find_directive_argument(llvm::StringRef content,
+                                                        std::uint32_t offset,
+                                                        const clang::LangOptions* lang_opts) {
+    std::uint32_t line_start = 0;
+    if(auto nl = content.rfind('\n', offset); nl != llvm::StringRef::npos)
+        line_start = static_cast<std::uint32_t>(nl + 1);
+
+    auto line = content.substr(line_start);
+    Lexer lexer(line, true, lang_opts);
+    bool after_has_keyword = false;
+    bool ready = false;
+
+    while(true) {
+        auto tok = lexer.advance();
+        if(tok.is_eof() || tok.is_eod())
+            break;
+
+        auto abs_begin = line_start + tok.range.begin;
+        auto abs_end = line_start + tok.range.end;
+
+        if(tok.is_identifier()) {
+            auto text = tok.text(line);
+            if(text == "__has_include" || text == "__has_include_next" || text == "__has_embed") {
+                after_has_keyword = true;
+                continue;
+            }
+            if(text == "include" || text == "include_next" || text == "embed") {
+                ready = true;
+                continue;
+            }
+        }
+
+        if(tok.kind == clang::tok::l_paren && after_has_keyword) {
+            after_has_keyword = false;
+            ready = true;
+            lexer.set_header_name_mode();
+            continue;
+        }
+
+        if(abs_begin < offset || !ready)
+            continue;
+
+        if(tok.is_header_name() || tok.kind == clang::tok::string_literal)
+            return LocalSourceRange(abs_begin, abs_end);
+
+        if(tok.is_identifier())
+            return LocalSourceRange(abs_begin, abs_end);
+    }
+    return std::nullopt;
 }
 
 }  // namespace clice
