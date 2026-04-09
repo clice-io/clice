@@ -150,6 +150,28 @@ add_custom_target(
     DEPENDS ${CONFIG_GENERATED_FILE}
 )
 
+add_library(clice_core_deps INTERFACE)
+target_include_directories(clice_core_deps INTERFACE
+    "${PROJECT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated"
+)
+target_link_libraries(clice_core_deps INTERFACE
+    clice_options
+    libuv::libuv
+    spdlog::spdlog
+    tomlplusplus::tomlplusplus
+    roaring::roaring
+    flatbuffers
+    llvm-libs
+)
+
+add_library(clice_builtin_api INTERFACE)
+target_link_libraries(clice_builtin_api INTERFACE clice_core_deps)
+
+include("${PROJECT_SOURCE_DIR}/cmake/builtin-libraries.cmake")
+
+clice_include_builtin_library_modules()
+
 file(GLOB_RECURSE CLICE_SOURCES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/src/AST/*.cpp"
     "${PROJECT_SOURCE_DIR}/src/Async/*.cpp"
@@ -162,20 +184,8 @@ file(GLOB_RECURSE CLICE_SOURCES CONFIGURE_DEPENDS
 )
 add_library(clice-core STATIC "${CLICE_SOURCES}")
 add_dependencies(clice-core generate_flatbuffers_schema generate_config)
-
-target_include_directories(clice-core PUBLIC
-    "${PROJECT_SOURCE_DIR}/include"
-    "${CMAKE_CURRENT_BINARY_DIR}/generated"
-)
-target_link_libraries(clice-core PUBLIC
-    clice_options
-    libuv::libuv
-    spdlog::spdlog
-    tomlplusplus::tomlplusplus
-    roaring::roaring
-    flatbuffers
-    llvm-libs
-)
+target_link_libraries(clice-core PUBLIC clice_core_deps)
+clice_finalize_builtin_libraries(TARGET clice-core)
 
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
 target_link_libraries(clice PRIVATE clice-core)

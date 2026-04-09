@@ -20,7 +20,7 @@ clice_get_server_plugin_info() {
 }
 ```
 
-See [PluginDef.h](/include/Server/PluginDef.h) for more details.
+See [PluginProtocol.h](/include/Server/PluginProtocol.h) for more details.
 
 ## Compiling a plugin
 
@@ -72,3 +72,7 @@ You will get a C source code file, content of which is like this:
 ...
 #endif
 ```
+
+## Builtin libraries
+
+If you want to compile a plugin directly into the `clice` binary instead of loading it dynamically, see [Builtin Libraries](./builtin-library.md).

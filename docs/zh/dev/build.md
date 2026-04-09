@@ -69,6 +69,7 @@ cmake -B build -G Ninja \
 | CLICE_ENABLE_TEST    | OFF    | 是否构建 clice 的单元测试                                                                          |
 | CLICE_USE_LIBCXX     | OFF    | 是否使用 libc++ 来构建 clice（添加 `-std=libc++`），如果开启，请确保 LLVM 库也是使用 libc++ 编译的 |
 | CLICE_CI_ENVIRONMENT | OFF    | 是否打开 `CLICE_CI_ENVIRONMENT` 这个宏，有些测试在 CI 环境才会执行                                 |
+| CLICE_BUILTIN_LIBRARY_MODULES | "" | 以分号分隔的 CMake 模块列表，用于注册会被编译进 `clice` 的 builtin library；详见 [Builtin Libraries](./builtin-library.md) |
 
 ### XMake
 

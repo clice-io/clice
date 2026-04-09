@@ -13,6 +13,12 @@
 namespace cl = llvm::cl;
 using namespace clice;
 
+namespace clice {
+
+void register_builtin_server_plugins(ServerPluginBuilder& builder);
+
+}
+
 namespace {
 
 static cl::OptionCategory category("clice options");
@@ -95,6 +101,7 @@ std::vector<Plugin> load_plugins(Server& instance) {
         plugin_instance->register_server_callbacks(builder);
         plugins.push_back(std::move(plugin_instance.value()));
     }
+    ::clice::register_builtin_server_plugins(builder);
     // The llvm::sys::DynamicLibrary will be unloaded when the program exits.
     return plugins;
 }

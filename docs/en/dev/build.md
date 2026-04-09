@@ -69,6 +69,7 @@ Optional build options:
 | CLICE_ENABLE_TEST    | OFF     | Build clice unit tests                                                                                    |
 | CLICE_USE_LIBCXX     | OFF     | Build clice with libc++ (adds `-std=libc++`); if enabled, ensure the LLVM libs are also built with libc++ |
 | CLICE_CI_ENVIRONMENT | OFF     | Enable the `CLICE_CI_ENVIRONMENT` macro; some tests only run in CI                                        |
+| CLICE_BUILTIN_LIBRARY_MODULES | "" | Semicolon-separated list of CMake modules that register builtin libraries compiled into `clice`; see [Builtin Libraries](./builtin-library.md) |
 
 ### XMake
 

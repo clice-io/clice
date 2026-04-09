@@ -20,7 +20,7 @@ clice_get_server_plugin_info() {
 }
 ```
 
-请参考 [PluginDef.h](/include/Server/PluginDef.h) 了解更多细节。
+请参考 [PluginProtocol.h](/include/Server/PluginProtocol.h) 了解更多细节。
 
 ## 编译插件
 
@@ -72,3 +72,7 @@ $ python scripts/plugin-def.py content > /tmp/plugin-proto.h
 ...
 #endif
 ```
+
+## Builtin libraries
+
+如果你希望把插件直接编译进 `clice` 可执行文件，而不是在运行时动态加载，请参考 [Builtin Libraries](./builtin-library.md)。
