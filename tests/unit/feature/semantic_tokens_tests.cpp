@@ -423,6 +423,29 @@ cd*/
     ASSERT_EQ(comments[1].length, 4);
 }
 
+TEST_CASE(ModuleDeclaration) {
+    add_main("main.cpp", R"cpp(
+export module @mod[foo];
+)cpp");
+    ASSERT_TRUE(compile("-std=c++20"));
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+
+    EXPECT_TOKEN("mod", SymbolKind::Module);
+}
+
+TEST_CASE(ModuleDeclarationDotted) {
+    add_main("main.cpp", R"cpp(
+export module @m0[foo].@m1[bar];
+)cpp");
+    ASSERT_TRUE(compile("-std=c++20"));
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+
+    EXPECT_TOKEN("m0", SymbolKind::Module);
+    EXPECT_TOKEN("m1", SymbolKind::Module);
+}
+
 };  // TEST_SUITE(SemanticTokens)
 
 }  // namespace
