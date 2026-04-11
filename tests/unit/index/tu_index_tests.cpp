@@ -500,6 +500,18 @@ TEST_CASE(SymbolKinds) {
     check_kind("ns", SymbolKind::Namespace);
 }
 
+TEST_CASE(HashCaching) {
+    build_index(R"(
+            int foo() { return 42; }
+            int bar() { return foo() + 1; }
+        )");
+
+    auto& index = tu_index.main_file_index;
+    auto hash1 = index.hash();
+    auto hash2 = index.hash();
+    ASSERT_EQ(hash1, hash2);
+}
+
 };  // TEST_SUITE(TUIndex)
 }  // namespace
 }  // namespace clice::testing

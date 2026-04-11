@@ -129,18 +129,19 @@ struct MergedIndex::Impl {
     std::vector<std::uint32_t> canonical_ref_counts;
 
     /// The canonical id set of removed index.
-    roaring::Roaring removed;
+    ContextBitmap removed;
 
     /// All merged symbol occurrences.
-    llvm::DenseMap<Occurrence, roaring::Roaring> occurrences;
+    llvm::DenseMap<Occurrence, ContextBitmap> occurrences;
 
     /// All merged symbol relations.
-    llvm::DenseMap<SymbolHash, llvm::DenseMap<Relation, roaring::Roaring>> relations;
+    llvm::DenseMap<SymbolHash, llvm::DenseMap<Relation, ContextBitmap>> relations;
 
     /// Sorted occurrences cache for fast lookup.
     std::vector<Occurrence> occurrences_cache;
 
-    void merge(this Impl& self, std::uint32_t path_id, FileIndex& index, auto&& add_context) {
+    /// Returns true if this was a cache hit (no new data inserted).
+    bool merge(this Impl& self, std::uint32_t path_id, FileIndex& index, auto&& add_context) {
         auto hash = index.hash();
         auto hash_key = llvm::StringRef(reinterpret_cast<char*>(hash.data()), hash.size());
         auto [it, success] = self.canonical_cache.try_emplace(hash_key, self.max_canonical_id);
@@ -151,7 +152,7 @@ struct MergedIndex::Impl {
         if(!success) {
             self.canonical_ref_counts[canonical_id] += 1;
             self.removed.remove(canonical_id);
-            return;
+            return true;
         }
 
         for(auto& occurrence: index.occurrences) {
@@ -167,6 +168,7 @@ struct MergedIndex::Impl {
 
         self.canonical_ref_counts.emplace_back(1);
         self.max_canonical_id += 1;
+        return false;
     }
 
     friend bool operator==(const Impl&, const Impl&) = default;
@@ -237,19 +239,20 @@ void MergedIndex::load_in_memory(this Self& self) {
 
     // Deserialize removed bitmap.
     if(root->removed() && root->removed()->size() > 0) {
-        index.removed = read_bitmap(root->removed());
+        index.removed = ContextBitmap::from_roaring(read_bitmap(root->removed()));
     }
 
     for(auto entry: *root->occurrences()) {
         index.occurrences.try_emplace(*safe_cast<Occurrence>(entry->occurrence()),
-                                      read_bitmap(entry->context()));
+                                      ContextBitmap::from_roaring(read_bitmap(entry->context())));
     }
 
     for(auto entry: *root->relations()) {
         auto& relations = index.relations[entry->symbol()];
         for(auto relation_entry: *entry->relations()) {
-            relations.try_emplace(*safe_cast<Relation>(relation_entry->relation()),
-                                  read_bitmap(relation_entry->context()));
+            relations.try_emplace(
+                *safe_cast<Relation>(relation_entry->relation()),
+                ContextBitmap::from_roaring(read_bitmap(relation_entry->context())));
         }
     }
 
@@ -310,17 +313,22 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
             CreateStructVector<binary::IncludeLocation>(builder, context.include_locations));
     });
 
+    auto serialize_ctx_bitmap = [&](const ContextBitmap& ctx) {
+        auto r = ctx.to_roaring();
+        buffer.clear();
+        buffer.resize_for_overwrite(r.getSizeInBytes(false));
+        r.write(buffer.data(), false);
+        return CreateVector(builder, buffer);
+    };
+
     llvm::SmallVector<const Occurrence*> occurrence_keys;
     occurrence_keys.reserve(index->occurrences.size());
     auto occurrences = transform(index->occurrences, [&](auto&& value) {
         auto&& [occurrence, bitmap] = value;
-        buffer.clear();
-        buffer.resize_for_overwrite(bitmap.getSizeInBytes(false));
-        bitmap.write(buffer.data(), false);
         occurrence_keys.emplace_back(&occurrence);
         return binary::CreateOccurrenceEntry(builder,
                                              safe_cast<binary::Occurrence>(&occurrence),
-                                             CreateVector(builder, buffer));
+                                             serialize_ctx_bitmap(bitmap));
     });
     std::ranges::sort(std::views::zip(occurrence_keys, occurrences), [](auto lhs, auto rhs) {
         const auto& lo = *std::get<0>(lhs);
@@ -335,12 +343,9 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
         auto&& [symbol_id, symbol_relations] = value;
         auto relations = transform(symbol_relations, [&](auto&& value) {
             auto&& [relation, bitmap] = value;
-            buffer.clear();
-            buffer.resize_for_overwrite(bitmap.getSizeInBytes(false));
-            bitmap.write(buffer.data(), false);
             return binary::CreateRelationEntry(builder,
                                                safe_cast<binary::Relation>(&relation),
-                                               CreateVector(builder, buffer));
+                                               serialize_ctx_bitmap(bitmap));
         });
         relation_keys.emplace_back(symbol_id);
         return binary::CreateSymbolRelationsEntry(builder,
@@ -353,9 +358,10 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
 
     // Serialize removed bitmap.
     buffer.clear();
-    if(!index->removed.isEmpty()) {
-        buffer.resize_for_overwrite(index->removed.getSizeInBytes(false));
-        index->removed.write(buffer.data(), false);
+    if(!index->removed.is_empty()) {
+        auto r = index->removed.to_roaring();
+        buffer.resize_for_overwrite(r.getSizeInBytes(false));
+        r.write(buffer.data(), false);
     }
     auto removed = CreateVector(builder, buffer);
 
@@ -398,14 +404,12 @@ void MergedIndex::lookup(this const Self& self,
         while(it != occurrences.end()) {
             if(it->range.contains(offset)) {
                 // Skip occurrences whose canonical_ids are all removed.
-                if(!index.removed.isEmpty()) {
+                if(!index.removed.is_empty()) {
                     auto bitmap_it = index.occurrences.find(*it);
-                    if(bitmap_it != index.occurrences.end()) {
-                        auto remaining = bitmap_it->second - index.removed;
-                        if(remaining.isEmpty()) {
-                            it++;
-                            continue;
-                        }
+                    if(bitmap_it != index.occurrences.end() &&
+                       !bitmap_it->second.any_not_in(index.removed)) {
+                        ++it;
+                        continue;
                     }
                 }
 
@@ -413,7 +417,7 @@ void MergedIndex::lookup(this const Self& self,
                     break;
                 }
 
-                it++;
+                ++it;
                 continue;
             }
 
@@ -434,7 +438,7 @@ void MergedIndex::lookup(this const Self& self,
                     break;
                 }
 
-                it++;
+                ++it;
                 continue;
             }
 
@@ -457,11 +461,8 @@ void MergedIndex::lookup(this const Self& self,
         for(auto& [relation, bitmap]: relations) {
             if(relation.kind & kind) {
                 // Skip relations whose canonical_ids are all removed.
-                if(!self.impl->removed.isEmpty()) {
-                    auto remaining = bitmap - self.impl->removed;
-                    if(remaining.isEmpty()) {
-                        continue;
-                    }
+                if(!self.impl->removed.is_empty() && !bitmap.any_not_in(self.impl->removed)) {
+                    continue;
                 }
 
                 if(!callback(relation)) {
@@ -579,7 +580,7 @@ void MergedIndex::remove(this Self& self, std::uint32_t path_id) {
     index.occurrences_cache.clear();
 }
 
-void MergedIndex::merge(this Self& self,
+bool MergedIndex::merge(this Self& self,
                         std::uint32_t path_id,
                         std::chrono::milliseconds build_at,
                         std::vector<IncludeLocation> include_locations,
@@ -587,16 +588,17 @@ void MergedIndex::merge(this Self& self,
                         llvm::StringRef content) {
     self.load_in_memory();
     self.impl->content = content.str();
-    self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
+    bool hit = self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
         auto& context = self.compilation_contexts[path_id];
         context.canonical_id = canonical_id;
         context.build_at = build_at.count();
         context.include_locations = std::move(include_locations);
     });
     self.impl->occurrences_cache.clear();
+    return hit;
 }
 
-void MergedIndex::merge(this Self& self,
+bool MergedIndex::merge(this Self& self,
                         std::uint32_t path_id,
                         std::uint32_t include_id,
                         FileIndex& index,
@@ -605,11 +607,12 @@ void MergedIndex::merge(this Self& self,
     if(self.impl->content.empty() && !content.empty()) {
         self.impl->content = content.str();
     }
-    self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
+    bool hit = self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
         auto& context = self.header_contexts[path_id];
         context.includes.emplace_back(include_id, canonical_id);
     });
     self.impl->occurrences_cache.clear();
+    return hit;
 }
 
 llvm::StringRef MergedIndex::content(this const Self& self) {

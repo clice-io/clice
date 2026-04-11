@@ -357,6 +357,45 @@ TEST_CASE(CacheInvalidatedAfterMerge) {
     ASSERT_TRUE(found_second);
 }
 
+TEST_CASE(MergeCacheHit) {
+    add_file("header.h", R"(
+            #pragma once
+            inline int shared() { return 1; }
+        )");
+    add_main("a.cpp", R"(
+            #include "header.h"
+            int use_a() { return shared(); }
+        )");
+    ASSERT_TRUE(compile());
+    auto tu_a = index::TUIndex::build(*unit);
+
+    add_file("header.h", R"(
+            #pragma once
+            inline int shared() { return 1; }
+        )");
+    add_main("b.cpp", R"(
+            #include "header.h"
+            int use_b() { return shared(); }
+        )");
+    ASSERT_TRUE(compile());
+    auto tu_b = index::TUIndex::build(*unit);
+
+    // First merge of a FileIndex should return false (new data).
+    index::MergedIndex merged;
+    bool first_hit = false;
+    for(auto& [fid, file_index]: tu_a.file_indices) {
+        first_hit = merged.merge(0, tu_a.graph.include_location_id(fid), file_index, {});
+    }
+    ASSERT_FALSE(first_hit);
+
+    // Second merge with identical content should return true (cache hit).
+    bool second_hit = false;
+    for(auto& [fid, file_index]: tu_b.file_indices) {
+        second_hit = merged.merge(1, tu_b.graph.include_location_id(fid), file_index, {});
+    }
+    ASSERT_TRUE(second_hit);
+}
+
 };  // TEST_SUITE(MergedIndex)
 }  // namespace
 }  // namespace clice::testing

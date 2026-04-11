@@ -4,6 +4,7 @@
 #include <bit>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -52,7 +53,12 @@ struct FileIndex {
 
     std::vector<Occurrence> occurrences;
 
+    /// Compute (and cache) SHA256 hash of this index's content.
+    /// Each FileIndex instance must only be hashed by one thread at a time.
     std::array<std::uint8_t, 32> hash();
+
+private:
+    std::optional<std::array<std::uint8_t, 32>> cached_hash;
 };
 
 struct Symbol {

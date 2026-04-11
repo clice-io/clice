@@ -1,5 +1,6 @@
 #include "index/tu_index.h"
 
+#include <algorithm>
 #include <tuple>
 
 #include "index/serialization.h"
@@ -160,6 +161,9 @@ private:
 }  // namespace
 
 std::array<std::uint8_t, 32> FileIndex::hash() {
+    if(cached_hash)
+        return *cached_hash;
+
     llvm::SHA256 hasher;
 
     using u8 = std::uint8_t;
@@ -172,20 +176,35 @@ std::array<std::uint8_t, 32> FileIndex::hash() {
         hasher.update(llvm::ArrayRef(data, size));
     }
 
-    for(auto& [symbol_id, relations]: relations) {
+    // Sort keys to ensure deterministic iteration order over DenseMap.
+    llvm::SmallVector<SymbolHash> sorted_keys;
+    sorted_keys.reserve(relations.size());
+    for(auto& [symbol_id, _]: relations) {
+        sorted_keys.push_back(symbol_id);
+    }
+    std::ranges::sort(sorted_keys);
+
+    for(auto symbol_id: sorted_keys) {
         hasher.update(std::bit_cast<std::array<u8, sizeof(symbol_id)>>(symbol_id));
         static_assert(sizeof(Relation) ==
                       sizeof(RelationKind) + 4 + sizeof(Range) + sizeof(SymbolHash));
         static_assert(sizeof(Relation) % 8 == 0);
 
-        if(!relations.empty()) {
-            auto data = reinterpret_cast<u8*>(relations.data());
-            auto size = relations.size() * sizeof(Relation);
+        auto& rels = relations[symbol_id];
+        std::ranges::sort(rels, [](const Relation& lhs, const Relation& rhs) {
+            return std::tuple(lhs.kind.value(), lhs.range.begin, lhs.range.end, lhs.target_symbol) <
+                   std::tuple(rhs.kind.value(), rhs.range.begin, rhs.range.end, rhs.target_symbol);
+        });
+
+        if(!rels.empty()) {
+            auto data = reinterpret_cast<u8*>(rels.data());
+            auto size = rels.size() * sizeof(Relation);
             hasher.update(llvm::ArrayRef(data, size));
         }
     }
 
-    return hasher.final();
+    cached_hash = hasher.final();
+    return *cached_hash;
 }
 
 TUIndex TUIndex::build(CompilationUnitRef unit, bool interested_only) {
