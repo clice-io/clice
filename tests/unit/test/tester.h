@@ -70,8 +70,6 @@ struct Tester {
 
     bool compile_driver_with_pch(llvm::StringRef standard = "-std=c++20");
 
-    static std::vector<std::string> base_cc1_args(llvm::StringRef standard);
-
     bool try_compile();
 
     std::uint32_t operator[](llvm::StringRef file, llvm::StringRef pos) {

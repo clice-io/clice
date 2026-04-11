@@ -7,13 +7,9 @@
 
 namespace clice::testing {
 
-Tester::~Tester() {
-    for(auto& path: pcm_paths) {
-        fs::remove(path);
-    }
-}
+namespace {
 
-std::vector<std::string> Tester::base_cc1_args(llvm::StringRef standard) {
+std::vector<std::string> base_cc1_args(llvm::StringRef standard) {
     return {
         "clang",
         "-cc1",
@@ -27,6 +23,14 @@ std::vector<std::string> Tester::base_cc1_args(llvm::StringRef standard) {
         "-x",
         "c++",
     };
+}
+
+}  // namespace
+
+Tester::~Tester() {
+    for(auto& path: pcm_paths) {
+        fs::remove(path);
+    }
 }
 
 bool Tester::try_compile() {
@@ -214,13 +218,8 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         builder.params.vfs = overlay;
         builder.params.pcms = built_pcms;
 
-        auto built = clice::compile(builder.params);
-        if(!built.completed()) {
-            for(auto& diag: built.diagnostics()) {
-                LOG_ERROR("{}", diag.message);
-            }
+        if(!builder.try_compile())
             return false;
-        }
 
         built_pcms.try_emplace(mod.module_name, *pcm_path);
     }
@@ -322,6 +321,8 @@ bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
     params.kind = CompilationKind::Preamble;
     params.output_file = *pch_path;
 
+    // Clear buffers from prepare_driver() so we can re-add with preamble bound.
+    params.buffers.clear();
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {
             auto bound = compute_preamble_bound(source.content);
@@ -348,15 +349,6 @@ bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
     params.kind = CompilationKind::Content;
     params.pch = {info.path, static_cast<std::uint32_t>(info.preamble.size())};
     params.buffers.clear();
-
-    for(auto& [file, source]: sources.all_files) {
-        if(file == src_path) {
-            params.add_remapped_file(file, source.content);
-        } else {
-            std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
-            params.add_remapped_file(path, source.content);
-        }
-    }
 
     return try_compile();
 }
