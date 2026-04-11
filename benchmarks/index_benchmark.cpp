@@ -235,8 +235,8 @@ int main(int argc, const char** argv) {
         total_build_ms += r->stats.build_index_ms;
         total_serialize_ms += r->stats.serialize_ms;
         total_serialized += r->stats.serialized_bytes;
+        all_stats.push_back(r->stats);
         tu_indices.emplace_back(std::move(r->stats.file), std::move(r->tu_index));
-        all_stats.push_back(std::move(r->stats));
     }
 
     std::println("=== Phase 1: Compile & Build TUIndex ({} threads) ===", num_jobs);
@@ -407,9 +407,11 @@ int main(int argc, const char** argv) {
                  cache_hits,
                  cache_misses);
     std::println("  ProjectIndex merge (selective):  {:.0f}ms", project_merge_selective_ms);
-    std::println("  Main-thread total:  {:.0f}ms ({:.1f}ms/TU)",
-                 merged_index_merge_ms + project_merge_selective_ms,
-                 (merged_index_merge_ms + project_merge_selective_ms) / tu_indices.size());
+    if(!tu_indices.empty()) {
+        std::println("  Main-thread total:  {:.0f}ms ({:.1f}ms/TU)",
+                     merged_index_merge_ms + project_merge_selective_ms,
+                     (merged_index_merge_ms + project_merge_selective_ms) / tu_indices.size());
+    }
     std::println("  Serialize time:     {:.0f}ms", merge_stats.serialize_ms);
     std::print("  Total size:       ");
     print_size(merge_stats.total_serialized_bytes);

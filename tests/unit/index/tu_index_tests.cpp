@@ -512,6 +512,24 @@ TEST_CASE(HashCaching) {
     ASSERT_EQ(hash1, hash2);
 }
 
+TEST_CASE(HashDeterminism) {
+    add_main("main.cpp", R"(
+            int foo() { return 42; }
+            int bar() { return foo() + 1; }
+        )");
+    ASSERT_TRUE(compile());
+    auto index_a = index::TUIndex::build(*unit);
+
+    add_main("main.cpp", R"(
+            int foo() { return 42; }
+            int bar() { return foo() + 1; }
+        )");
+    ASSERT_TRUE(compile());
+    auto index_b = index::TUIndex::build(*unit);
+
+    ASSERT_EQ(index_a.main_file_index.hash(), index_b.main_file_index.hash());
+}
+
 };  // TEST_SUITE(TUIndex)
 }  // namespace
 }  // namespace clice::testing

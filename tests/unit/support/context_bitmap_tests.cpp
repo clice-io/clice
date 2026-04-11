@@ -248,6 +248,49 @@ TEST_CASE(AddSmallAfterUpgrade) {
     EXPECT_EQ(r.cardinality(), 2U);
 }
 
+TEST_CASE(AnyNotInEmpty) {
+    ContextBitmap empty_a, empty_b, non_empty;
+    non_empty.add(5);
+
+    EXPECT_FALSE(empty_a.any_not_in(non_empty));
+    EXPECT_TRUE(non_empty.any_not_in(empty_b));
+    EXPECT_FALSE(empty_a.any_not_in(empty_b));
+}
+
+TEST_CASE(RemoveNonexistent) {
+    // Inline mode: remove id that was never added.
+    ContextBitmap inline_bm;
+    inline_bm.add(3);
+    inline_bm.remove(10);
+    EXPECT_FALSE(inline_bm.is_empty());
+    auto r1 = inline_bm.to_roaring();
+    EXPECT_TRUE(r1.contains(3));
+    EXPECT_EQ(r1.cardinality(), 1U);
+
+    // Heap mode: remove id that was never added.
+    ContextBitmap heap_bm;
+    heap_bm.add(100);
+    heap_bm.remove(200);
+    EXPECT_FALSE(heap_bm.is_empty());
+    auto r2 = heap_bm.to_roaring();
+    EXPECT_TRUE(r2.contains(100));
+    EXPECT_EQ(r2.cardinality(), 1U);
+}
+
+TEST_CASE(RemoveLargeInInline) {
+    ContextBitmap bm;
+    bm.add(5);
+    bm.add(10);
+    // Remove id >= 63 while in inline mode; should be a no-op.
+    bm.remove(63);
+    bm.remove(100);
+    EXPECT_FALSE(bm.is_empty());
+    auto r = bm.to_roaring();
+    EXPECT_TRUE(r.contains(5));
+    EXPECT_TRUE(r.contains(10));
+    EXPECT_EQ(r.cardinality(), 2U);
+}
+
 };  // TEST_SUITE(ContextBitmap)
 
 }  // namespace

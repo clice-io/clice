@@ -63,15 +63,12 @@ public:
         free_heap();
     }
 
-    ContextBitmap(ContextBitmap&& other) noexcept : data(other.data) {
-        other.data = inline_tag;
-    }
+    ContextBitmap(ContextBitmap&& other) noexcept : data(std::exchange(other.data, inline_tag)) {}
 
     ContextBitmap& operator=(ContextBitmap&& other) noexcept {
         if(this != &other) {
             free_heap();
-            data = other.data;
-            other.data = inline_tag;
+            data = std::exchange(other.data, inline_tag);
         }
         return *this;
     }
@@ -137,6 +134,8 @@ public:
     friend bool operator==(const ContextBitmap& lhs, const ContextBitmap& rhs) {
         if(lhs.is_inline() && rhs.is_inline())
             return lhs.data == rhs.data;
+        // Different modes implies different sets: a heap bitmap always contains
+        // at least one id >= inline_capacity that an inline bitmap cannot hold.
         if(lhs.is_inline() != rhs.is_inline())
             return false;
         return *lhs.as_heap() == *rhs.as_heap();

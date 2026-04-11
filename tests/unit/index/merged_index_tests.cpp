@@ -396,6 +396,29 @@ TEST_CASE(MergeCacheHit) {
     ASSERT_TRUE(second_hit);
 }
 
+TEST_CASE(MergeCacheHitCompilation) {
+    build_index(R"(
+            int foo() { return 42; }
+        )");
+    auto tu_a = tu_index;
+
+    build_index(R"(
+            int foo() { return 42; }
+        )");
+    auto tu_b = tu_index;
+
+    index::MergedIndex merged;
+    std::vector<index::IncludeLocation> locations_a;
+    bool first_hit =
+        merged.merge(0, tu_a.built_at, std::move(locations_a), tu_a.main_file_index, {});
+    ASSERT_FALSE(first_hit);
+
+    std::vector<index::IncludeLocation> locations_b;
+    bool second_hit =
+        merged.merge(1, tu_b.built_at, std::move(locations_b), tu_b.main_file_index, {});
+    ASSERT_TRUE(second_hit);
+}
+
 };  // TEST_SUITE(MergedIndex)
 }  // namespace
 }  // namespace clice::testing

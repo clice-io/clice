@@ -176,7 +176,8 @@ std::array<std::uint8_t, 32> FileIndex::hash() {
         hasher.update(llvm::ArrayRef(data, size));
     }
 
-    // Sort keys to ensure deterministic iteration order over DenseMap.
+    // Sort keys and relations to ensure deterministic hashing regardless of
+    // DenseMap iteration order.  This mutates the relations in-place intentionally.
     llvm::SmallVector<SymbolHash> sorted_keys;
     sorted_keys.reserve(relations.size());
     for(auto& [symbol_id, _]: relations) {
