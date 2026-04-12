@@ -264,7 +264,10 @@ def main() -> None:
     parser.add_argument("--install-path")
     parser.add_argument("--enable-lto", action="store_true")
     parser.add_argument("--offline", action="store_true")
-    parser.add_argument("--target-platform", help="Override platform for cross-compilation (e.g. macosx, linux, windows)")
+    parser.add_argument(
+        "--target-platform",
+        help="Override platform for cross-compilation (e.g. macosx, linux, windows)",
+    )
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
