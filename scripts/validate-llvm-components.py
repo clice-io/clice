@@ -129,7 +129,9 @@ def main() -> None:
     missing: list[tuple[str, list[str]]] = []
     for name in components:
         if name not in source_targets:
-            suggestions = difflib.get_close_matches(name, source_targets, n=3, cutoff=0.6)
+            suggestions = difflib.get_close_matches(
+                name, source_targets, n=3, cutoff=0.6
+            )
             missing.append((name, suggestions))
 
     if missing:
@@ -144,11 +146,11 @@ def main() -> None:
     component_set = set(components)
     new_targets = sorted(source_targets - component_set - KNOWN_HEADER_TARGETS)
     # Filter to targets that follow LLVM/Clang naming conventions to reduce noise.
-    noteworthy = [
-        t for t in new_targets if t.startswith(("LLVM", "clang", "Clang"))
-    ]
+    noteworthy = [t for t in new_targets if t.startswith(("LLVM", "clang", "Clang"))]
     if noteworthy:
-        print(f"\nWarning: {len(noteworthy)} target(s) in source not listed in components:")
+        print(
+            f"\nWarning: {len(noteworthy)} target(s) in source not listed in components:"
+        )
         for name in noteworthy:
             print(f"  + {name}")
 
