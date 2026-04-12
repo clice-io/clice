@@ -71,6 +71,7 @@ private:
     std::string self_path;
     std::string workspace_root;
     std::string session_log_dir;
+    std::string init_options_json;  ///< Raw JSON from initializationOptions, consumed once.
 
     kota::task<> load_workspace();
 

@@ -183,10 +183,10 @@ struct CacheData {
 }  // namespace
 
 void Workspace::load_cache() {
-    if(config.cache_dir.empty())
+    if(config.project.cache_dir.empty())
         return;
 
-    auto cache_path = path::join(config.cache_dir, "cache", "cache.json");
+    auto cache_path = path::join(config.project.cache_dir, "cache", "cache.json");
     auto content = fs::read(cache_path);
     if(!content) {
         LOG_DEBUG("No cache.json found at {}", cache_path);
@@ -218,7 +218,7 @@ void Workspace::load_cache() {
     };
 
     for(auto& entry: data.pch) {
-        auto pch_path = path::join(config.cache_dir, "cache", "pch", entry.filename);
+        auto pch_path = path::join(config.project.cache_dir, "cache", "pch", entry.filename);
         auto source = resolve(entry.source_file);
         if(!llvm::sys::fs::exists(pch_path) || source.empty())
             continue;
@@ -234,7 +234,7 @@ void Workspace::load_cache() {
     }
 
     for(auto& entry: data.pcm) {
-        auto pcm_path = path::join(config.cache_dir, "cache", "pcm", entry.filename);
+        auto pcm_path = path::join(config.project.cache_dir, "cache", "pcm", entry.filename);
         auto source = resolve(entry.source_file);
         if(!llvm::sys::fs::exists(pcm_path) || source.empty())
             continue;
@@ -252,7 +252,7 @@ void Workspace::load_cache() {
 }
 
 void Workspace::save_cache() {
-    if(config.cache_dir.empty())
+    if(config.project.cache_dir.empty())
         return;
 
     CacheData data;
@@ -306,7 +306,7 @@ void Workspace::save_cache() {
         return;
     }
 
-    auto cache_path = path::join(config.cache_dir, "cache", "cache.json");
+    auto cache_path = path::join(config.project.cache_dir, "cache", "cache.json");
     auto tmp_path = cache_path + ".tmp";
     auto write_result = fs::write(tmp_path, *json_str);
     if(!write_result) {
@@ -321,14 +321,14 @@ void Workspace::save_cache() {
 }
 
 void Workspace::cleanup_cache(int max_age_days) {
-    if(config.cache_dir.empty())
+    if(config.project.cache_dir.empty())
         return;
 
     auto now = std::chrono::system_clock::now();
     auto max_age = std::chrono::hours(max_age_days * 24);
 
     for(auto* subdir: {"cache/pch", "cache/pcm"}) {
-        auto dir = path::join(config.cache_dir, subdir);
+        auto dir = path::join(config.project.cache_dir, subdir);
         std::error_code ec;
         for(auto it = llvm::sys::fs::directory_iterator(dir, ec);
             !ec && it != llvm::sys::fs::directory_iterator();

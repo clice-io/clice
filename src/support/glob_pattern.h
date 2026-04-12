@@ -54,7 +54,7 @@ public:
     }
 
     /// \returns \p true if \p str matches this glob pattern
-    bool match(llvm::StringRef s);
+    bool match(llvm::StringRef s) const;
 
 private:
     /// GlobPattern is seperated into `Prefix + SubGlobPattern`

@@ -625,14 +625,14 @@ void Indexer::enqueue(std::uint32_t server_path_id) {
 }
 
 void Indexer::schedule() {
-    if(!workspace.config.enable_indexing || indexing_active || indexing_scheduled)
+    if(!*workspace.config.project.enable_indexing || indexing_active || indexing_scheduled)
         return;
     indexing_scheduled = true;
 
     if(!index_idle_timer) {
         index_idle_timer = std::make_shared<kota::timer>(kota::timer::create(loop));
     }
-    index_idle_timer->start(std::chrono::milliseconds(workspace.config.idle_timeout_ms));
+    index_idle_timer->start(std::chrono::milliseconds(*workspace.config.project.idle_timeout_ms));
     loop.schedule(run_background_indexing());
 }
 
@@ -690,7 +690,7 @@ kota::task<> Indexer::run_background_indexing() {
 
     indexing_active = false;
     LOG_INFO("Background indexing complete: {} files processed", processed);
-    save(workspace.config.index_dir);
+    save(workspace.config.project.index_dir);
 }
 
 }  // namespace clice

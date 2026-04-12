@@ -4,9 +4,15 @@
 #include <thread>
 
 #include "support/filesystem.h"
+#include "support/glob_pattern.h"
 #include "support/logging.h"
 
+#include "kota/codec/json/json.h"
 #include "kota/codec/toml.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
+#include "llvm/Support/Process.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -20,80 +26,145 @@ static void substitute_workspace(std::string& value, const std::string& workspac
     }
 }
 
+/// Try to resolve the default cache directory using XDG_CACHE_HOME.
+/// Returns empty string on failure.
+static std::string resolve_xdg_cache_dir(const std::string& workspace_root) {
+    // Determine base: $XDG_CACHE_HOME or ~/.cache
+    std::string base;
+    if(auto xdg = llvm::sys::Process::GetEnv("XDG_CACHE_HOME"); xdg && !xdg->empty()) {
+        base = std::move(*xdg);
+    } else if(auto home = llvm::sys::Process::GetEnv("HOME"); home && !home->empty()) {
+        base = path::join(*home, ".cache");
+    } else {
+        return {};
+    }
+
+    // Use a hash of workspace_root to create a unique subdirectory.
+    auto hash = llvm::xxh3_64bits(workspace_root);
+    auto dir = path::join(base, "clice", std::format("{:016x}", hash));
+
+    if(auto ec = llvm::sys::fs::create_directories(dir)) {
+        LOG_WARN("Failed to create XDG cache directory {}: {}", dir, ec.message());
+        return {};
+    }
+    return dir;
+}
+
 void CliceConfig::apply_defaults(const std::string& workspace_root) {
-    auto cpu_count = std::thread::hardware_concurrency();
-    if(cpu_count == 0)
-        cpu_count = 4;
+    auto& p = project;
 
-    if(stateful_worker_count == 0) {
-        stateful_worker_count = 2;
-    }
-    if(stateless_worker_count == 0) {
-        stateless_worker_count = 3;
-    }
-    if(worker_memory_limit == 0) {
-        worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB default
-    }
-    if(cache_dir.empty() && !workspace_root.empty()) {
-        cache_dir = path::join(workspace_root, ".clice");
-    }
+    if(p.max_active_file == 0)
+        p.max_active_file = 8;
+    if(!p.enable_indexing)
+        p.enable_indexing = true;
+    if(!p.idle_timeout_ms)
+        p.idle_timeout_ms = 3000;
 
-    if(index_dir.empty() && !cache_dir.empty()) {
-        index_dir = path::join(cache_dir, "index");
-    }
+    if(p.stateful_worker_count == 0)
+        p.stateful_worker_count = 2;
+    if(p.stateless_worker_count == 0)
+        p.stateless_worker_count = 3;
+    if(p.worker_memory_limit == 0)
+        p.worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB
 
-    if(logging_dir.empty() && !cache_dir.empty()) {
-        logging_dir = path::join(cache_dir, "logs");
+    if(p.cache_dir.empty() && !workspace_root.empty()) {
+        p.cache_dir = resolve_xdg_cache_dir(workspace_root);
+        if(p.cache_dir.empty())
+            p.cache_dir = path::join(workspace_root, ".clice");
     }
+    if(p.index_dir.empty() && !p.cache_dir.empty())
+        p.index_dir = path::join(p.cache_dir, "index");
+    if(p.logging_dir.empty() && !p.cache_dir.empty())
+        p.logging_dir = path::join(p.cache_dir, "logs");
 
-    // Apply variable substitution to string fields
-    substitute_workspace(compile_commands_path, workspace_root);
-    substitute_workspace(cache_dir, workspace_root);
-    substitute_workspace(index_dir, workspace_root);
-    substitute_workspace(logging_dir, workspace_root);
+    // Variable substitution on string fields.
+    substitute_workspace(p.cache_dir, workspace_root);
+    substitute_workspace(p.index_dir, workspace_root);
+    substitute_workspace(p.logging_dir, workspace_root);
+    for(auto& path: p.compile_commands_paths)
+        substitute_workspace(path, workspace_root);
+
+    // Pre-compile glob patterns from rules.
+    compiled_rules.clear();
+    for(auto& rule: rules) {
+        CompiledRule compiled;
+        for(auto& pattern_str: rule.patterns) {
+            auto pat = GlobPattern::create(pattern_str);
+            if(!pat) {
+                LOG_WARN("Invalid glob pattern in rule: {}", pattern_str);
+                continue;
+            }
+            compiled.patterns.push_back(std::move(*pat));
+        }
+        compiled.append.assign(rule.append.begin(), rule.append.end());
+        compiled.remove.assign(rule.remove.begin(), rule.remove.end());
+        compiled_rules.push_back(std::move(compiled));
+    }
+}
+
+void CliceConfig::match_rules(llvm::StringRef file_path,
+                              std::vector<std::string>& append,
+                              std::vector<std::string>& remove) const {
+    for(auto& rule: compiled_rules) {
+        bool matched =
+            std::ranges::any_of(rule.patterns, [&](auto& pat) { return pat.match(file_path); });
+        if(matched) {
+            append.insert(append.end(), rule.append.begin(), rule.append.end());
+            remove.insert(remove.end(), rule.remove.begin(), rule.remove.end());
+        }
+    }
 }
 
 std::optional<CliceConfig> CliceConfig::load(const std::string& path,
                                              const std::string& workspace_root) {
     auto content = fs::read(path);
-    if(!content) {
+    if(!content)
         return std::nullopt;
-    }
 
     auto result = kota::codec::toml::parse<CliceConfig>(*content);
     if(!result) {
-        LOG_WARN("Failed to parse config file {}", path);
+        LOG_WARN("Failed to parse config file {}: {}", path, result.error().message());
         return std::nullopt;
     }
 
     auto config = std::move(*result);
     config.apply_defaults(workspace_root);
-
     LOG_INFO("Loaded config from {}", path);
+    return config;
+}
+
+std::optional<CliceConfig> CliceConfig::load_from_json(llvm::StringRef json,
+                                                       const std::string& workspace_root) {
+    auto result = kota::codec::json::from_json<CliceConfig>(json);
+    if(!result) {
+        LOG_WARN("Failed to parse initializationOptions JSON");
+        return std::nullopt;
+    }
+
+    auto config = std::move(*result);
+    config.apply_defaults(workspace_root);
+    LOG_INFO("Loaded config from initializationOptions");
     return config;
 }
 
 CliceConfig CliceConfig::load_from_workspace(const std::string& workspace_root) {
     if(!workspace_root.empty()) {
-        // Try standard config file locations
         for(auto* name: {"clice.toml", ".clice/config.toml"}) {
             auto config_path = path::join(workspace_root, name);
             if(llvm::sys::fs::exists(config_path)) {
-                auto config = load(config_path, workspace_root);
-                if(config)
+                if(auto config = load(config_path, workspace_root))
                     return std::move(*config);
             }
         }
     }
 
-    // No config file found; use defaults
     CliceConfig config;
     config.apply_defaults(workspace_root);
     LOG_INFO(
         "No clice.toml found, using default configuration " "(stateful={}, stateless={}, memory_limit={}MB)",
-        config.stateful_worker_count,
-        config.stateless_worker_count,
-        config.worker_memory_limit / (1024 * 1024));
+        config.project.stateful_worker_count.value,
+        config.project.stateless_worker_count.value,
+        config.project.worker_memory_limit.value / (1024 * 1024));
     return config;
 }
 

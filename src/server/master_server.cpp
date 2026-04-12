@@ -60,46 +60,65 @@ kota::task<> MasterServer::load_workspace() {
     if(workspace_root.empty())
         co_return;
 
-    if(!workspace.config.cache_dir.empty()) {
-        auto ec = llvm::sys::fs::create_directories(workspace.config.cache_dir);
+    auto& cfg = workspace.config.project;
+
+    if(!cfg.cache_dir.empty()) {
+        auto ec = llvm::sys::fs::create_directories(cfg.cache_dir);
         if(ec) {
             LOG_WARN("Failed to create cache directory {}: {}",
-                     workspace.config.cache_dir,
+                     std::string_view(cfg.cache_dir),
                      ec.message());
         } else {
-            LOG_INFO("Cache directory: {}", workspace.config.cache_dir);
+            LOG_INFO("Cache directory: {}", std::string_view(cfg.cache_dir));
         }
 
         for(auto* subdir: {"cache/pch", "cache/pcm"}) {
-            auto dir = path::join(workspace.config.cache_dir, subdir);
-            auto ec2 = llvm::sys::fs::create_directories(dir);
-            if(ec2) {
+            auto dir = path::join(cfg.cache_dir, subdir);
+            if(auto ec2 = llvm::sys::fs::create_directories(dir))
                 LOG_WARN("Failed to create {}: {}", dir, ec2.message());
-            }
         }
 
-        // Clean up stale files first, then load — load_cache() only restores
-        // entries still listed in cache.json, so cleanup won't delete live files.
         workspace.cleanup_cache();
         workspace.load_cache();
     }
 
+    // Discover compile_commands.json: configured paths first, then auto-scan.
     std::string cdb_path;
-    if(!workspace.config.compile_commands_path.empty()) {
-        if(llvm::sys::fs::exists(workspace.config.compile_commands_path)) {
-            cdb_path = workspace.config.compile_commands_path;
-        } else {
-            LOG_WARN("Configured compile_commands_path not found: {}",
-                     workspace.config.compile_commands_path);
-        }
-    }
-
-    if(cdb_path.empty()) {
-        for(auto* subdir: {"build", "cmake-build-debug", "cmake-build-release", "out", "."}) {
-            auto candidate = path::join(workspace_root, subdir, "compile_commands.json");
+    for(auto& configured: cfg.compile_commands_paths) {
+        // Each entry can be a file or a directory containing compile_commands.json.
+        if(llvm::sys::fs::is_directory(configured)) {
+            auto candidate = path::join(configured, "compile_commands.json");
             if(llvm::sys::fs::exists(candidate)) {
                 cdb_path = std::move(candidate);
                 break;
+            }
+        } else if(llvm::sys::fs::exists(configured)) {
+            cdb_path = configured;
+            break;
+        } else {
+            LOG_WARN("Configured compile_commands_path not found: {}", configured);
+        }
+    }
+
+    // Auto-scan: workspace root + all immediate subdirectories.
+    if(cdb_path.empty()) {
+        auto try_candidate = [&](llvm::StringRef dir) -> bool {
+            auto candidate = path::join(dir, "compile_commands.json");
+            if(llvm::sys::fs::exists(candidate)) {
+                cdb_path = std::move(candidate);
+                return true;
+            }
+            return false;
+        };
+
+        if(!try_candidate(workspace_root)) {
+            std::error_code ec;
+            for(llvm::sys::fs::directory_iterator it(workspace_root, ec), end; it != end && !ec;
+                it.increment(ec)) {
+                if(it->type() == llvm::sys::fs::file_type::directory_file) {
+                    if(try_candidate(it->path()))
+                        break;
+                }
             }
         }
     }
@@ -131,14 +150,13 @@ kota::task<> MasterServer::load_workspace() {
         report.includes_found,
         accuracy,
         report.waves);
-    if(unresolved > 0) {
+    if(unresolved > 0)
         LOG_WARN("{} unresolved includes", unresolved);
-    }
 
     workspace.build_module_map();
-    indexer.load(workspace.config.index_dir);
+    indexer.load(cfg.index_dir);
 
-    if(workspace.config.enable_indexing) {
+    if(*cfg.enable_indexing) {
         for(auto& entry: workspace.cdb.get_entries()) {
             auto file = workspace.cdb.resolve_path(entry.file);
             auto server_id = workspace.path_pool.intern(file);
@@ -162,6 +180,13 @@ void MasterServer::register_handlers() {
         auto& init = params.lsp__initialize_params;
         if(init.root_uri.has_value()) {
             workspace_root = uri_to_path(*init.root_uri);
+        }
+
+        // Capture initializationOptions as raw JSON for config loading.
+        if(init.initialization_options.has_value()) {
+            auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(*init.initialization_options);
+            if(json)
+                init_options_json = std::move(*json);
         }
 
         lifecycle = ServerLifecycle::Initialized;
@@ -244,27 +269,39 @@ void MasterServer::register_handlers() {
     });
 
     peer.on_notification([this](const protocol::InitializedParams& params) {
-        workspace.config = CliceConfig::load_from_workspace(workspace_root);
+        // Config priority: initializationOptions > clice.toml > defaults.
+        if(!init_options_json.empty()) {
+            auto cfg = CliceConfig::load_from_json(init_options_json, workspace_root);
+            if(cfg)
+                workspace.config = std::move(*cfg);
+            else
+                workspace.config = CliceConfig::load_from_workspace(workspace_root);
+            init_options_json.clear();
+        } else {
+            workspace.config = CliceConfig::load_from_workspace(workspace_root);
+        }
 
-        if(!workspace.config.logging_dir.empty()) {
+        auto& cfg = workspace.config.project;
+
+        if(!cfg.logging_dir.empty()) {
             auto now = std::chrono::system_clock::now();
             auto pid = llvm::sys::Process::getProcessId();
-            auto session_dir = path::join(workspace.config.logging_dir,
-                                          std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
+            auto session_dir =
+                path::join(cfg.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
             logging::file_logger("master", session_dir, logging::options);
             session_log_dir = session_dir;
         }
 
         LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
-                 workspace.config.stateful_worker_count,
-                 workspace.config.stateless_worker_count,
-                 workspace.config.idle_timeout_ms);
+                 cfg.stateful_worker_count.value,
+                 cfg.stateless_worker_count.value,
+                 *cfg.idle_timeout_ms);
 
         WorkerPoolOptions pool_opts;
         pool_opts.self_path = self_path;
-        pool_opts.stateful_count = workspace.config.stateful_worker_count;
-        pool_opts.stateless_count = workspace.config.stateless_worker_count;
-        pool_opts.worker_memory_limit = workspace.config.worker_memory_limit;
+        pool_opts.stateful_count = cfg.stateful_worker_count;
+        pool_opts.stateless_count = cfg.stateless_worker_count;
+        pool_opts.worker_memory_limit = cfg.worker_memory_limit;
         pool_opts.log_dir = session_log_dir;
         if(!pool.start(pool_opts)) {
             LOG_ERROR("Failed to start worker pool");
@@ -292,7 +329,7 @@ void MasterServer::register_handlers() {
         lifecycle = ServerLifecycle::Exited;
         LOG_INFO("Exit notification received");
 
-        indexer.save(workspace.config.index_dir);
+        indexer.save(workspace.config.project.index_dir);
         workspace.save_cache();
 
         loop.schedule([this]() -> kota::task<> {

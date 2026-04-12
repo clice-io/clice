@@ -24,9 +24,17 @@ from tests.integration.utils.cache import (
 from tests.integration.utils.assertions import assert_clean_compile
 
 
+def _pin_cache_to_workspace(tmp_path):
+    """Write a clice.toml that pins cache_dir to <workspace>/.clice/."""
+    (tmp_path / "clice.toml").write_text(
+        '[project]\ncache_dir = "${workspace}/.clice"\n'
+    )
+
+
 async def test_pch_written_to_cache_dir(client, tmp_path):
     """After opening a file with #include, a .pch file should appear
     in .clice/cache/pch/ with a hex-hash filename."""
+    _pin_cache_to_workspace(tmp_path)
     (tmp_path / "header.h").write_text("#pragma once\nstruct Foo { int x; };\n")
     (tmp_path / "main.cpp").write_text(
         '#include "header.h"\nint main() { Foo f; return f.x; }\n'
@@ -48,6 +56,7 @@ async def test_pch_written_to_cache_dir(client, tmp_path):
 
 async def test_cache_json_persisted(client, tmp_path):
     """After a PCH build, cache.json should be written with the entry."""
+    _pin_cache_to_workspace(tmp_path)
     (tmp_path / "header.h").write_text("#pragma once\nint global_val = 42;\n")
     (tmp_path / "main.cpp").write_text(
         '#include "header.h"\nint main() { return global_val; }\n'
@@ -74,6 +83,7 @@ async def test_cache_json_persisted(client, tmp_path):
 async def test_pch_reused_on_close_reopen(client, tmp_path):
     """Closing and reopening a file within the same session should reuse
     the cached PCH — no additional .pch files should be created."""
+    _pin_cache_to_workspace(tmp_path)
     (tmp_path / "header.h").write_text("#pragma once\nstruct Bar { int y; };\n")
     (tmp_path / "main.cpp").write_text(
         '#include "header.h"\nint main() { Bar b; return b.y; }\n'
@@ -108,6 +118,7 @@ async def test_pch_reused_on_close_reopen(client, tmp_path):
 async def test_pch_survives_server_restart(executable, tmp_path):
     """PCH cache should survive a full server restart — cache.json is
     loaded on startup and the existing .pch file is reused."""
+    _pin_cache_to_workspace(tmp_path)
     (tmp_path / "header.h").write_text("#pragma once\nstruct Baz { int z; };\n")
     (tmp_path / "main.cpp").write_text(
         '#include "header.h"\nint main() { Baz b; return b.z; }\n'
@@ -150,6 +161,7 @@ async def test_pch_survives_server_restart(executable, tmp_path):
 async def test_shared_preamble_shares_pch(client, tmp_path):
     """Two files with identical preambles should share the same PCH file
     (content-addressed by preamble hash)."""
+    _pin_cache_to_workspace(tmp_path)
     (tmp_path / "header.h").write_text("#pragma once\nint shared_val = 1;\n")
     (tmp_path / "a.cpp").write_text(
         '#include "header.h"\nint fa() { return shared_val; }\n'
@@ -176,6 +188,7 @@ async def test_shared_preamble_shares_pch(client, tmp_path):
 
 async def test_different_preamble_different_pch(client, tmp_path):
     """Files with different preambles should produce different PCH files."""
+    _pin_cache_to_workspace(tmp_path)
     (tmp_path / "a.h").write_text("#pragma once\nint val_a = 1;\n")
     (tmp_path / "b.h").write_text("#pragma once\nint val_b = 2;\n")
     (tmp_path / "a.cpp").write_text('#include "a.h"\nint fa() { return val_a; }\n')
@@ -199,6 +212,7 @@ async def test_different_preamble_different_pch(client, tmp_path):
 async def test_pch_rebuilt_on_header_change(client, tmp_path):
     """When a preamble header changes, a new PCH should be built
     (different hash → different filename). The old one remains for cleanup."""
+    _pin_cache_to_workspace(tmp_path)
     (tmp_path / "header.h").write_text("#pragma once\nstruct V1 { int a; };\n")
     (tmp_path / "main.cpp").write_text(
         '#include "header.h"\nint main() { V1 v; return v.a; }\n'
@@ -240,6 +254,7 @@ async def test_pch_rebuilt_on_header_change(client, tmp_path):
 
 async def test_no_tmp_files_after_build(client, tmp_path):
     """After a successful PCH build, no .tmp files should remain in the cache dir."""
+    _pin_cache_to_workspace(tmp_path)
     (tmp_path / "header.h").write_text("#pragma once\nint val = 1;\n")
     (tmp_path / "main.cpp").write_text(
         '#include "header.h"\nint main() { return val; }\n'
@@ -265,6 +280,7 @@ async def test_no_tmp_files_after_build(client, tmp_path):
 async def test_cache_dirs_created_on_startup(client, tmp_path):
     """The .clice/cache/pch/ and .clice/cache/pcm/ directories should be created
     when the server initializes a workspace."""
+    _pin_cache_to_workspace(tmp_path)
     (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
     write_cdb(tmp_path, ["main.cpp"])
     await client.initialize(tmp_path)
