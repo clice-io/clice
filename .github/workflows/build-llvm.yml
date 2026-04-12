@@ -12,6 +12,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip_pr:
+        description: "Skip PR creation (upload only, no PR)"
+        required: false
+        type: boolean
+        default: false
   pull_request:
     # if you want to run this workflow, change the branch name to main,
     # if you want to turn off it, change it to non existent branch.
@@ -317,6 +322,7 @@ jobs:
   # ── Auto-create PR to update clice LLVM dependency ──────────────────────
   update-clice:
     needs: upload
+    if: ${{ !inputs.skip_pr }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
