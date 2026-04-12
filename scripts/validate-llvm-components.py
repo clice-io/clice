@@ -30,6 +30,7 @@ CLANG_LIB_PATTERNS = [
 HEADER_PATTERNS = [
     re.compile(r"add_llvm_install_targets\(\s*([^\s)]+)"),
     re.compile(r"add_custom_target\(\s*([^\s)]+)"),
+    re.compile(r"add_library\(\s*([^\s)]+)"),
 ]
 
 # Targets we recognise as header-only distribution components.
