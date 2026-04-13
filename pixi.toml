@@ -81,17 +81,18 @@ scripts = ["scripts/activate_cross_linux.sh"]
 [feature.test.dependencies]
 python = ">=3.13"
 
-# clice discovers toolchain flags by running `clang++ -###`. On macOS, the
-# system Apple clang emits vendor-specific flags that upstream LLVM cannot
-# parse, causing unit test failures.  Providing upstream clang in PATH
-# prevents fallback to /usr/bin/clang++.
+# On macOS, the system Apple clang emits vendor-specific flags that upstream
+# LLVM cannot parse.  Providing upstream clang + lld in PATH prevents
+# fallback to /usr/bin/clang++ and satisfies toolchain.cmake's -fuse-ld=lld.
 [feature.test.target.osx-64.dependencies]
 clang = "==20.1.8"
 clangxx = "==20.1.8"
+lld = "==20.1.8"
 
 [feature.test.target.osx-arm64.dependencies]
 clang = "==20.1.8"
 clangxx = "==20.1.8"
+lld = "==20.1.8"
 
 [feature.test.pypi-dependencies]
 pytest = "*"
