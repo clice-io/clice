@@ -36,10 +36,8 @@ jobs:
           - os: ubuntu-24.04
             build_type: RelWithDebInfo
             target_triple: aarch64-linux-gnu
-          - os: windows-2025
+          - os: windows-11-arm
             build_type: RelWithDebInfo
-            target_triple: aarch64-pc-windows-msvc
-            build_only: true
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
