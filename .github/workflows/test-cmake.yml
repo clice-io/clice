@@ -80,8 +80,16 @@ jobs:
         if: ${{ matrix.target_triple }}
         shell: bash
         run: |
-          pixi run -e ${{ matrix.pixi_env || 'default' }} cmake-config ${{ matrix.build_type }} OFF "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
-          pixi run -e ${{ matrix.pixi_env || 'default' }} cmake-build ${{ matrix.build_type }}
+          ENV="${{ matrix.pixi_env || 'default' }}"
+          pixi run -e "$ENV" -- env -u LIBRARY_PATH \
+            cmake -B "build/${{ matrix.build_type }}" -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
+            -DCLICE_ENABLE_TEST=ON \
+            -DCLICE_CI_ENVIRONMENT=OFF \
+            "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
+          pixi run -e "$ENV" -- env -u LIBRARY_PATH \
+            cmake --build "build/${{ matrix.build_type }}"
 
       - name: Upload cross-compiled binaries
         if: ${{ matrix.build_only }}
