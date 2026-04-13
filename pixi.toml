@@ -14,7 +14,7 @@ readme = "README.md"
 documentation = "https://docs.clice.io/clice/"
 repository = "https://github.com/clice-io/clice"
 channels = ["conda-forge"]
-platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
+platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64", "win-arm64"]
 
 [environments]
 default = ["build", "test"]
@@ -29,6 +29,9 @@ test-run = ["test"]
 # ============================================================================== #
 #                                  DEPENDENCIES                                  #
 # ============================================================================== #
+[feature.build]
+platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
+
 [feature.build.dependencies]
 python = ">=3.13"
 cmake = ">=3.30"
@@ -39,6 +42,7 @@ lld = "==20.1.8"
 llvm-tools = "==20.1.8"
 clang-tools = "==20.1.8"
 compiler-rt = "==20.1.8"
+flatbuffers = "==25.9.23"
 
 [feature.build.target.win-64.dependencies]
 sccache = "*"
@@ -173,11 +177,13 @@ args = ["file_name"]
 cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]
 
 [dependencies]
-flatbuffers = "==25.9.23"
 
 # ============================================================================== #
 #                             DOCS & VSCODE EXTENSION                            #
 # ============================================================================== #
+[feature.node]
+platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
+
 [feature.node.dependencies]
 nodejs = ">=20"
 pnpm = "*"
@@ -203,6 +209,9 @@ outputs = ["editors/vscode/node_modules/.modules.yaml"]
 # ============================================================================== #
 #                                    FORMAT                                      #
 # ============================================================================== #
+[feature.format]
+platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
+
 [feature.format.dependencies]
 ruff = "*"
 tombi = "*"

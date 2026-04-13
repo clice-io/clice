@@ -39,10 +39,11 @@ jobs:
             target_triple: aarch64-linux-gnu
             build_only: true
             pixi_env: cross-linux-aarch64
-          # ── Native ARM64 build + test ─────────────────────────────────
-          - os: windows-11-arm
+          - os: windows-2025
             build_type: RelWithDebInfo
             target_triple: aarch64-pc-windows-msvc
+            build_only: true
+            pixi_env: cross-windows-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -127,6 +128,9 @@ jobs:
           - os: ubuntu-24.04-arm
             build_type: RelWithDebInfo
             target_triple: aarch64-linux-gnu
+          - os: windows-11-arm
+            build_type: RelWithDebInfo
+            target_triple: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -143,6 +147,7 @@ jobs:
           path: build/${{ matrix.build_type }}/
 
       - name: Make binaries executable
+        if: runner.os != 'Windows'
         run: chmod +x build/${{ matrix.build_type }}/bin/*
 
       - name: Unit Test
