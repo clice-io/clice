@@ -17,9 +17,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2025, ubuntu-24.04, macos-15]
-        build_type: [Debug, RelWithDebInfo]
         include:
+          # ── Native builds ──────────────────────────────────────────────
+          - os: windows-2025
+            build_type: Debug
+          - os: windows-2025
+            build_type: RelWithDebInfo
+          - os: ubuntu-24.04
+            build_type: Debug
+          - os: ubuntu-24.04
+            build_type: RelWithDebInfo
+          - os: macos-15
+            build_type: Debug
+          - os: macos-15
+            build_type: RelWithDebInfo
+          # ── Cross-compile builds (build-only, no tests) ──────────────
           - os: macos-15
             build_type: RelWithDebInfo
             target_triple: x86_64-apple-darwin
