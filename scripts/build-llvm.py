@@ -41,6 +41,7 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
         "-DCMAKE_BUILD_TYPE=Release",
         "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
         "-DLLVM_TARGETS_TO_BUILD=Native",
+        "-DLLVM_DISABLE_ASSEMBLY_FILES=ON",
         "-DCMAKE_C_FLAGS=-w",
         "-DCMAKE_CXX_FLAGS=-w",
     ]
