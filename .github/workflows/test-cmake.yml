@@ -29,13 +29,11 @@ jobs:
             build_type: Debug
           - os: macos-15
             build_type: RelWithDebInfo
-          # ── Cross-compile builds ────────────────────────────────────────
-          - os: macos-15
+          # ── Additional platform builds ─────────────────────────────────
+          - os: macos-13
             build_type: RelWithDebInfo
-            target_triple: x86_64-apple-darwin
-          - os: ubuntu-24.04
+          - os: ubuntu-24.04-arm
             build_type: RelWithDebInfo
-            target_triple: aarch64-linux-gnu
           - os: windows-11-arm
             build_type: RelWithDebInfo
             target_triple: aarch64-pc-windows-msvc
@@ -64,13 +62,6 @@ jobs:
           fi
         shell: bash
 
-      - name: Setup QEMU for aarch64 tests
-        if: matrix.target_triple == 'aarch64-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user-static libc6-arm64-cross libstdc++6-arm64-cross
-          echo "QEMU_LD_PREFIX=/usr/aarch64-linux-gnu" >> "$GITHUB_ENV"
-
       - name: Build (native)
         if: ${{ !matrix.target_triple }}
         run: pixi run build ${{ matrix.build_type }} ON
@@ -79,23 +70,17 @@ jobs:
         if: ${{ matrix.target_triple }}
         shell: bash
         run: |
-          TEST_FLAG="ON"
-          if [[ "${{ matrix.build_only }}" == "true" ]]; then
-            TEST_FLAG="OFF"
-          fi
-          pixi run cmake-config ${{ matrix.build_type }} OFF "-DCLICE_ENABLE_TEST=${TEST_FLAG} -DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
+          pixi run cmake-config ${{ matrix.build_type }} OFF "-DCLICE_ENABLE_TEST=ON -DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
           pixi run cmake-build ${{ matrix.build_type }}
 
       - name: Unit Test
-        if: ${{ !matrix.build_only }}
         run: pixi run unit-test ${{ matrix.build_type }}
 
       - name: Integration Test
-        if: ${{ !matrix.build_only }}
         run: pixi run integration-test ${{ matrix.build_type }}
 
       - name: Smoke Test
-        if: ${{ !matrix.build_only && (success() || failure()) }}
+        if: success() || failure()
         run: pixi run smoke-test ${{ matrix.build_type }}
 
       - name: Print cache stats and stop server
