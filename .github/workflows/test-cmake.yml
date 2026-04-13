@@ -38,6 +38,7 @@ jobs:
             target_triple: aarch64-linux-gnu
           - os: windows-11-arm
             build_type: RelWithDebInfo
+            target_triple: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
