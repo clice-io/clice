@@ -277,6 +277,12 @@ def main():
             native_bin_dir = build_native_tools(project_root, build_dir)
             cmake_args.append(f"-DLLVM_NATIVE_TOOL_DIR={native_bin_dir}")
 
+    # When cross-compiling, clear conda's host-platform flags so they
+    # don't leak into the target build (e.g. -L pointing to x86_64 libs).
+    if args.target_triple:
+        for var in ["LIBRARY_PATH", "LDFLAGS", "CFLAGS", "CXXFLAGS", "CPPFLAGS"]:
+            os.environ.pop(var, None)
+
     build_dir.mkdir(exist_ok=True)
 
     print(f"\nConfiguring in {build_dir}...")

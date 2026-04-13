@@ -70,20 +70,24 @@ jobs:
             llvm_mode: RelWithDebInfo
             lto: OFF
             target_triple: aarch64-linux-gnu
+            pixi_env: cross-linux-aarch64
           - os: ubuntu-24.04
             llvm_mode: RelWithDebInfo
             lto: ON
             target_triple: aarch64-linux-gnu
+            pixi_env: cross-linux-aarch64
 
           # Windows arm64 (from x64 windows-2025)
           - os: windows-2025
             llvm_mode: RelWithDebInfo
             lto: OFF
             target_triple: aarch64-pc-windows-msvc
+            pixi_env: cross-windows-arm64
           - os: windows-2025
             llvm_mode: RelWithDebInfo
             lto: ON
             target_triple: aarch64-pc-windows-msvc
+            pixi_env: cross-windows-arm64
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -117,7 +121,7 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.9.3
         with:
           pixi-version: v0.59.0
-          environments: package
+          environments: ${{ matrix.pixi_env || 'package' }}
           activate-environment: true
           cache: true
           locked: true
@@ -139,11 +143,12 @@ jobs:
       - name: Build LLVM (install-distribution)
         shell: bash
         run: |
+          ENV="${{ matrix.pixi_env || 'package' }}"
           EXTRA_ARGS=""
           if [[ -n "${{ matrix.target_triple }}" ]]; then
             EXTRA_ARGS="--target-triple=${{ matrix.target_triple }}"
           fi
-          pixi run build-llvm \
+          pixi run -e "$ENV" build-llvm \
             --llvm-src=.llvm \
             --mode="${{ matrix.llvm_mode }}" \
             --lto="${{ matrix.lto }}" \
@@ -162,6 +167,35 @@ jobs:
             -DCLICE_ENABLE_LTO=${{ matrix.lto }} \
             -DLLVM_INSTALL_PATH=".llvm/build-install"
           cmake --build build
+
+      - name: Build clice using installed LLVM (cross-compile)
+        if: ${{ matrix.target_triple }}
+        shell: bash
+        run: |
+          ENV="${{ matrix.pixi_env || 'package' }}"
+          pixi run -e "$ENV" -- env -u LIBRARY_PATH -u LDFLAGS -u CFLAGS -u CXXFLAGS -u CPPFLAGS \
+            cmake -B build-clice -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.llvm_mode }} \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
+            -DCLICE_ENABLE_TEST=ON \
+            -DCLICE_CI_ENVIRONMENT=ON \
+            -DCLICE_ENABLE_LTO=${{ matrix.lto }} \
+            "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}" \
+            -DLLVM_INSTALL_PATH=".llvm/build-install"
+          pixi run -e "$ENV" -- env -u LIBRARY_PATH -u LDFLAGS -u CFLAGS -u CXXFLAGS -u CPPFLAGS \
+            cmake --build build-clice
+
+      - name: Verify cross-compiled binary architecture
+        if: ${{ matrix.target_triple && runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          BINARY="build-clice/bin/clice"
+          echo "Binary info:"
+          file "$BINARY"
+          case "${{ matrix.target_triple }}" in
+            aarch64-linux-gnu)   file "$BINARY" | grep -q "aarch64" ;;
+            x86_64-apple-darwin) file "$BINARY" | grep -q "x86_64" ;;
+          esac
 
       - name: Run tests
         if: ${{ !matrix.target_triple }}
