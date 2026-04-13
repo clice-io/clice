@@ -30,10 +30,12 @@ jobs:
           - os: macos-15
             build_type: RelWithDebInfo
           # ── Additional platform builds ─────────────────────────────────
-          - os: macos-13
+          - os: macos-15
             build_type: RelWithDebInfo
-          - os: ubuntu-24.04-arm
+            target_triple: x86_64-apple-darwin
+          - os: ubuntu-24.04
             build_type: RelWithDebInfo
+            target_triple: aarch64-linux-gnu
           - os: windows-11-arm
             build_type: RelWithDebInfo
             target_triple: aarch64-pc-windows-msvc
@@ -61,6 +63,13 @@ jobs:
             pixi run -- ccache --zero-stats || true
           fi
         shell: bash
+
+      - name: Setup QEMU for aarch64 tests
+        if: matrix.target_triple == 'aarch64-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static libc6-arm64-cross libstdc++6-arm64-cross
+          echo "QEMU_LD_PREFIX=/usr/aarch64-linux-gnu" >> "$GITHUB_ENV"
 
       - name: Build (native)
         if: ${{ !matrix.target_triple }}
