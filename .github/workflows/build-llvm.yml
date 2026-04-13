@@ -276,7 +276,7 @@ jobs:
           if [[ "${{ matrix.lto }}" == "ON" ]]; then
             SUFFIX="-lto"
           fi
-          if [[ "${{ matrix.llvm_mode }}" == "Debug" ]]; then
+          if [[ "${{ matrix.llvm_mode }}" == "Debug" && "${{ matrix.os }}" != windows-* ]]; then
             SUFFIX="${SUFFIX}-asan"
           fi
 

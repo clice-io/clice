@@ -185,8 +185,10 @@ def main():
     is_shared = "OFF"
     if args.mode == "Debug":
         cmake_args.append("-DCMAKE_BUILD_TYPE=Debug")
-        cmake_args.append("-DLLVM_USE_SANITIZER=Address")
-        is_shared = "ON"
+        # ASAN is incompatible with -MDd on Windows (clang-cl), skip it there.
+        if sys.platform != "win32":
+            cmake_args.append("-DLLVM_USE_SANITIZER=Address")
+            is_shared = "ON"
     elif args.mode == "Release":
         cmake_args.append("-DCMAKE_BUILD_TYPE=Release")
     elif args.mode == "RelWithDebInfo":
