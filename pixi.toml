@@ -72,6 +72,9 @@ sysroot_linux-aarch64 = "==2.17"
 gcc_linux-aarch64 = "==14.2.0"
 gxx_linux-aarch64 = "==14.2.0"
 
+[feature.cross-linux-aarch64.target.linux-64.activation]
+scripts = ["scripts/activate_cross_linux.sh"]
+
 # Windows arm64 (from x64): Windows SDK on CI already includes ARM64 libs.
 [feature.cross-windows-arm64.target.win-64.dependencies]
 
