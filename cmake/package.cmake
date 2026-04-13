@@ -1,7 +1,7 @@
 include_guard()
 
 include(${CMAKE_CURRENT_LIST_DIR}/llvm.cmake)
-setup_llvm("21.1.8")
+setup_llvm("21.1.4+r1")
 
 # install dependencies
 include(FetchContent)
