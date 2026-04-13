@@ -38,6 +38,7 @@ jobs:
             build_type: RelWithDebInfo
             target_triple: aarch64-linux-gnu
             build_only: true
+            pixi_env: cross-linux-aarch64
           # ── Native ARM64 build + test ─────────────────────────────────
           - os: windows-11-arm
             build_type: RelWithDebInfo
@@ -48,6 +49,8 @@ jobs:
         uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-pixi
+        with:
+          environments: ${{ matrix.pixi_env && format('default {0}', matrix.pixi_env) || 'default' }}
 
       - name: Restore compiler cache
         uses: actions/cache@v4
@@ -75,15 +78,17 @@ jobs:
         if: ${{ matrix.target_triple }}
         shell: bash
         run: |
-          pixi run cmake-config ${{ matrix.build_type }} OFF "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
-          pixi run cmake-build ${{ matrix.build_type }}
+          pixi run -e ${{ matrix.pixi_env || 'default' }} cmake-config ${{ matrix.build_type }} OFF "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
+          pixi run -e ${{ matrix.pixi_env || 'default' }} cmake-build ${{ matrix.build_type }}
 
       - name: Upload cross-compiled binaries
         if: ${{ matrix.build_only }}
         uses: actions/upload-artifact@v4
         with:
           name: cross-build-${{ matrix.target_triple }}
-          path: build/${{ matrix.build_type }}/bin/
+          path: |
+            build/${{ matrix.build_type }}/bin/
+            build/${{ matrix.build_type }}/lib/
           if-no-files-found: error
           retention-days: 1
 
@@ -135,7 +140,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: cross-build-${{ matrix.target_triple }}
-          path: build/${{ matrix.build_type }}/bin/
+          path: build/${{ matrix.build_type }}/
 
       - name: Make binaries executable
         run: chmod +x build/${{ matrix.build_type }}/bin/*

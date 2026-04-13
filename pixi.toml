@@ -29,9 +29,6 @@ test-run = ["test"]
 # ============================================================================== #
 #                                  DEPENDENCIES                                  #
 # ============================================================================== #
-[feature.build]
-platforms = ["win-64", "linux-64", "osx-arm64"]
-
 [feature.build.dependencies]
 python = ">=3.13"
 cmake = ">=3.30"
@@ -206,9 +203,6 @@ outputs = ["editors/vscode/node_modules/.modules.yaml"]
 # ============================================================================== #
 #                                    FORMAT                                      #
 # ============================================================================== #
-[feature.format]
-platforms = ["win-64", "linux-64", "osx-arm64"]
-
 [feature.format.dependencies]
 ruff = "*"
 tombi = "*"
