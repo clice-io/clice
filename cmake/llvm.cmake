@@ -33,6 +33,12 @@ function(setup_llvm LLVM_VERSION)
         elseif(CLICE_TARGET_TRIPLE MATCHES "windows")
             list(APPEND LLVM_SETUP_ARGS "--target-platform" "Windows")
         endif()
+
+        if(CLICE_TARGET_TRIPLE MATCHES "^aarch64")
+            list(APPEND LLVM_SETUP_ARGS "--target-arch" "arm64")
+        elseif(CLICE_TARGET_TRIPLE MATCHES "^x86_64")
+            list(APPEND LLVM_SETUP_ARGS "--target-arch" "x64")
+        endif()
     endif()
 
     execute_process(

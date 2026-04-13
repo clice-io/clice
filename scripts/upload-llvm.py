@@ -27,6 +27,15 @@ def parse_platform(name: str) -> str:
     raise ValueError(f"Unable to determine platform from filename: {name}")
 
 
+def parse_arch(name: str) -> str:
+    lowered = name.lower()
+    if lowered.startswith("aarch64-") or lowered.startswith("arm64-"):
+        return "arm64"
+    if lowered.startswith("x64-") or lowered.startswith("x86_64-"):
+        return "x64"
+    raise ValueError(f"Unable to determine arch from filename: {name}")
+
+
 def parse_build_type(name: str) -> str:
     lowered = name.lower()
     if "debug" in lowered:
@@ -43,6 +52,7 @@ def build_metadata_entry(path: Path, version: str) -> dict:
         "lto": "-lto" in filename.lower(),
         "asan": "-asan" in filename.lower(),
         "platform": parse_platform(filename),
+        "arch": parse_arch(filename),
         "build_type": parse_build_type(filename),
     }
 

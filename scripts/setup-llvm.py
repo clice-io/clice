@@ -40,14 +40,32 @@ def detect_platform() -> str:
     raise RuntimeError(f"Unsupported platform: {plat}")
 
 
+def detect_arch() -> str:
+    import platform
+
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        return "x64"
+    if machine in ("aarch64", "arm64"):
+        return "arm64"
+    raise RuntimeError(f"Unsupported architecture: {machine}")
+
+
 def pick_artifact(
-    manifest: list[dict], version: str, build_type: str, is_lto: bool, platform: str
+    manifest: list[dict],
+    version: str,
+    build_type: str,
+    is_lto: bool,
+    platform: str,
+    arch: str,
 ) -> dict:
     base_version = version.split("+", 1)[0]
     for entry in manifest:
         if entry.get("version") != version:
             continue
         if entry.get("platform") != platform.lower():
+            continue
+        if entry.get("arch") != arch:
             continue
         if entry.get("build_type") != build_type:
             continue
@@ -56,7 +74,7 @@ def pick_artifact(
         return entry
     raise RuntimeError(
         f"No matching LLVM artifact in manifest for version={base_version}, platform={platform}, "
-        f"build_type={build_type}, lto={is_lto}"
+        f"arch={arch}, build_type={build_type}, lto={is_lto}"
     )
 
 
@@ -268,6 +286,10 @@ def main() -> None:
         "--target-platform",
         help="Override platform for cross-compilation (e.g. macosx, linux, windows)",
     )
+    parser.add_argument(
+        "--target-arch",
+        help="Override architecture for cross-compilation (e.g. x64, arm64)",
+    )
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -280,7 +302,10 @@ def main() -> None:
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     build_type = args.build_type
     platform_name = args.target_platform if args.target_platform else detect_platform()
-    log(f"Platform: {platform_name}, normalized build type: {build_type}")
+    arch_name = args.target_arch if args.target_arch else detect_arch()
+    log(
+        f"Platform: {platform_name}, arch: {arch_name}, normalized build type: {build_type}"
+    )
     manifest = read_manifest(Path(args.manifest))
 
     binary_dir = Path(args.binary_dir).resolve()
@@ -308,7 +333,12 @@ def main() -> None:
     if install_path is None:
         needs_install = True
         artifact = pick_artifact(
-            manifest, args.version, build_type, args.enable_lto, platform_name
+            manifest,
+            args.version,
+            build_type,
+            args.enable_lto,
+            platform_name,
+            arch_name,
         )
         log(f"Selected artifact: {artifact.get('filename')} for download")
         filename = artifact["filename"]
@@ -321,7 +351,12 @@ def main() -> None:
         install_path = install_root
     elif needs_install:
         artifact = pick_artifact(
-            manifest, args.version, build_type, args.enable_lto, platform_name
+            manifest,
+            args.version,
+            build_type,
+            args.enable_lto,
+            platform_name,
+            arch_name,
         )
         log(f"Selected artifact: {artifact.get('filename')} for download")
         filename = artifact["filename"]
