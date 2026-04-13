@@ -51,7 +51,7 @@ jobs:
 
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: ${{ matrix.pixi_env && format('default {0}', matrix.pixi_env) || 'default' }}
+          environments: ${{ matrix.pixi_env || 'default' }}
 
       - name: Restore compiler cache
         uses: actions/cache@v4
@@ -63,11 +63,12 @@ jobs:
 
       - name: Zero cache stats
         run: |
+          ENV="${{ matrix.pixi_env || 'default' }}"
           if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -- sccache --stop-server || true
-            pixi run -- sccache --zero-stats || true
+            pixi run -e "$ENV" -- sccache --stop-server || true
+            pixi run -e "$ENV" -- sccache --zero-stats || true
           else
-            pixi run -- ccache --zero-stats || true
+            pixi run -e "$ENV" -- ccache --zero-stats || true
           fi
         shell: bash
 
@@ -108,11 +109,12 @@ jobs:
       - name: Print cache stats and stop server
         if: always()
         run: |
+          ENV="${{ matrix.pixi_env || 'default' }}"
           if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -- sccache --show-stats
-            pixi run -- sccache --stop-server || true
+            pixi run -e "$ENV" -- sccache --show-stats
+            pixi run -e "$ENV" -- sccache --stop-server || true
           else
-            pixi run -- ccache --show-stats
+            pixi run -e "$ENV" -- ccache --show-stats
           fi
         shell: bash
 
