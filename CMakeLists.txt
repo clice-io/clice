@@ -127,9 +127,16 @@ endif()
 set(FBS_SCHEMA_FILE "${PROJECT_SOURCE_DIR}/src/index/schema.fbs")
 set(GENERATED_HEADER "${PROJECT_BINARY_DIR}/generated/schema_generated.h")
 
+if(CMAKE_CROSSCOMPILING)
+    find_program(FLATC_EXECUTABLE flatc REQUIRED)
+    set(FLATC_CMD "${FLATC_EXECUTABLE}")
+else()
+    set(FLATC_CMD "$<TARGET_FILE:flatc>")
+endif()
+
 add_custom_command(
     OUTPUT "${GENERATED_HEADER}"
-    COMMAND $<TARGET_FILE:flatc> --cpp -o "${PROJECT_BINARY_DIR}/generated" "${FBS_SCHEMA_FILE}"
+    COMMAND ${FLATC_CMD} --cpp -o "${PROJECT_BINARY_DIR}/generated" "${FBS_SCHEMA_FILE}"
     DEPENDS "${FBS_SCHEMA_FILE}"
     COMMENT "Generating C++ header from ${FBS_SCHEMA_FILE}"
 )

@@ -168,6 +168,9 @@ gh workflow run upload-llvm.yml \
 args = ["file_name"]
 cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]
 
+[dependencies]
+flatbuffers = ">=25.12.19,<26"
+
 # ============================================================================== #
 #                             DOCS & VSCODE EXTENSION                            #
 # ============================================================================== #
