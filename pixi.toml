@@ -14,7 +14,7 @@ readme = "README.md"
 documentation = "https://docs.clice.io/clice/"
 repository = "https://github.com/clice-io/clice"
 channels = ["conda-forge"]
-platforms = ["win-64", "linux-64", "osx-arm64"]
+platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 [environments]
 default = ["build", "test"]
@@ -24,10 +24,14 @@ cross-linux-aarch64 = ["build", "cross-linux-aarch64"]
 cross-windows-arm64 = ["build", "cross-windows-arm64"]
 node = ["node"]
 format = ["format"]
+test-run = ["test"]
 
 # ============================================================================== #
 #                                  DEPENDENCIES                                  #
 # ============================================================================== #
+[feature.build]
+platforms = ["win-64", "linux-64", "osx-arm64"]
+
 [feature.build.dependencies]
 python = ">=3.13"
 cmake = ">=3.30"
@@ -69,6 +73,9 @@ gxx_linux-aarch64 = "==14.2.0"
 
 # Windows arm64 (from x64): Windows SDK on CI already includes ARM64 libs.
 [feature.cross-windows-arm64.target.win-64.dependencies]
+
+[feature.test.dependencies]
+python = ">=3.13"
 
 [feature.test.pypi-dependencies]
 pytest = "*"
@@ -124,7 +131,7 @@ depends-on = [
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 depends-on = [{ task = "lint-cpp", args = ["{{ type }}"] }]
 
-[feature.build.tasks.unit-test]
+[feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data"'
 
@@ -199,6 +206,9 @@ outputs = ["editors/vscode/node_modules/.modules.yaml"]
 # ============================================================================== #
 #                                    FORMAT                                      #
 # ============================================================================== #
+[feature.format]
+platforms = ["win-64", "linux-64", "osx-arm64"]
+
 [feature.format.dependencies]
 ruff = "*"
 tombi = "*"
