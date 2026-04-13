@@ -19,6 +19,16 @@ jobs:
       matrix:
         os: [windows-2025, ubuntu-24.04, macos-15]
         build_type: [Debug, RelWithDebInfo]
+        include:
+          - os: macos-15
+            build_type: RelWithDebInfo
+            target_triple: x86_64-apple-darwin
+          - os: ubuntu-24.04
+            build_type: RelWithDebInfo
+            target_triple: aarch64-linux-gnu
+          - os: windows-2025
+            build_type: RelWithDebInfo
+            target_triple: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -30,9 +40,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
-          key: ${{ runner.os }}-${{ matrix.build_type }}-ccache-${{ github.sha }}
+          key: ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.target_triple || 'native' }}-ccache-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.build_type }}-ccache-
+            ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.target_triple || 'native' }}-ccache-
 
       - name: Zero cache stats
         run: |
@@ -44,17 +54,27 @@ jobs:
           fi
         shell: bash
 
-      - name: Build
+      - name: Build (native)
+        if: ${{ !matrix.target_triple }}
         run: pixi run build ${{ matrix.build_type }} ON
 
+      - name: Build (cross-compile)
+        if: ${{ matrix.target_triple }}
+        shell: bash
+        run: |
+          pixi run cmake-config ${{ matrix.build_type }} OFF "-DCLICE_ENABLE_TEST=OFF -DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
+          pixi run cmake-build ${{ matrix.build_type }}
+
       - name: Unit Test
+        if: ${{ !matrix.target_triple }}
         run: pixi run unit-test ${{ matrix.build_type }}
 
       - name: Integration Test
+        if: ${{ !matrix.target_triple }}
         run: pixi run integration-test ${{ matrix.build_type }}
 
       - name: Smoke Test
-        if: success() || failure()
+        if: ${{ !matrix.target_triple && (success() || failure()) }}
         run: pixi run smoke-test ${{ matrix.build_type }}
 
       - name: Print cache stats and stop server
