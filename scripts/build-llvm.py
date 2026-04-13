@@ -36,7 +36,8 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
     source_dir = project_root / "llvm"
 
     cmake_args = [
-        "-G", "Ninja",
+        "-G",
+        "Ninja",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
         "-DLLVM_TARGETS_TO_BUILD=Native",
@@ -65,9 +66,7 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
 
     for tool in required_tools:
         print(f"Building native {tool}...")
-        subprocess.check_call(
-            ["cmake", "--build", str(native_dir), "--target", tool]
-        )
+        subprocess.check_call(["cmake", "--build", str(native_dir), "--target", tool])
 
     for tool in optional_tools:
         try:
