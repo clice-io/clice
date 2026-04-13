@@ -30,9 +30,6 @@ jobs:
         include:
           # ── Native builds ──────────────────────────────────────────────
           - os: windows-2025
-            llvm_mode: Debug
-            lto: OFF
-          - os: windows-2025
             llvm_mode: RelWithDebInfo
             lto: OFF
           - os: windows-2025
@@ -296,7 +293,7 @@ jobs:
   # ── Upload to clice-llvm ────────────────────────────────────────────────
   upload:
     needs: build
-    if: ${{ inputs.llvm_version && !inputs.skip_upload }}
+    if: ${{ !cancelled() && inputs.llvm_version && !inputs.skip_upload }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
