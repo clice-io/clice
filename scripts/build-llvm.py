@@ -23,6 +23,66 @@ def normalize_mode(value: str) -> str:
     )
 
 
+def build_native_tools(project_root: Path, build_dir: Path) -> Path:
+    """Build native host tablegen tools for cross-compilation.
+
+    When cross-compiling LLVM, build tools like llvm-tblgen must run on the
+    host but would otherwise be compiled for the target architecture.  This
+    function performs a minimal native build and returns the bin directory
+    containing host-runnable executables.
+    """
+    native_dir = build_dir.parent / f"{build_dir.name}-native-tools"
+    native_dir.mkdir(exist_ok=True)
+    source_dir = project_root / "llvm"
+
+    cmake_args = [
+        "-G", "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
+        "-DLLVM_TARGETS_TO_BUILD=Native",
+        "-DCMAKE_C_FLAGS=-w",
+        "-DCMAKE_CXX_FLAGS=-w",
+    ]
+
+    if sys.platform == "win32":
+        cmake_args += [
+            "-DCMAKE_C_COMPILER=clang-cl",
+            "-DCMAKE_CXX_COMPILER=clang-cl",
+        ]
+    else:
+        cmake_args += [
+            "-DCMAKE_C_COMPILER=clang",
+            "-DCMAKE_CXX_COMPILER=clang++",
+        ]
+
+    print(f"\nConfiguring native host tools in {native_dir}...")
+    subprocess.check_call(
+        ["cmake", "-S", str(source_dir), "-B", str(native_dir)] + cmake_args
+    )
+
+    required_tools = ["llvm-tblgen", "llvm-min-tblgen", "clang-tblgen"]
+    optional_tools = ["clang-tidy-confusable-chars-gen"]
+
+    for tool in required_tools:
+        print(f"Building native {tool}...")
+        subprocess.check_call(
+            ["cmake", "--build", str(native_dir), "--target", tool]
+        )
+
+    for tool in optional_tools:
+        try:
+            print(f"Building native {tool} (optional)...")
+            subprocess.check_call(
+                ["cmake", "--build", str(native_dir), "--target", tool]
+            )
+        except subprocess.CalledProcessError:
+            print(f"  {tool} not available, skipping.")
+
+    bin_dir = native_dir / "bin"
+    print(f"Native host tools ready in {bin_dir}")
+    return bin_dir
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Build LLVM with specific configurations."
@@ -209,6 +269,13 @@ def main():
     if args.target_triple:
         cmake_args.append(f"-DCLICE_TARGET_TRIPLE={args.target_triple}")
         cmake_args.append(f"-DLLVM_HOST_TRIPLE={args.target_triple}")
+
+        # Cross-compilation needs native host tools (tablegen, etc.) that can
+        # run on the build machine.  macOS handles this transparently via
+        # Rosetta 2, but Linux and Windows require a separate native build.
+        if sys.platform != "darwin":
+            native_bin_dir = build_native_tools(project_root, build_dir)
+            cmake_args.append(f"-DLLVM_NATIVE_TOOL_DIR={native_bin_dir}")
 
     build_dir.mkdir(exist_ok=True)
 
