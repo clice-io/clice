@@ -169,7 +169,7 @@ args = ["file_name"]
 cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]
 
 [dependencies]
-flatbuffers = ">=25.12.19,<26"
+flatbuffers = "==25.9.23"
 
 # ============================================================================== #
 #                             DOCS & VSCODE EXTENSION                            #
