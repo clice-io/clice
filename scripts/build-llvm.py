@@ -111,11 +111,14 @@ def main():
     if sys.platform == "win32":
         # Use clang-cl (MSVC driver) on Windows so that LLVM's CMake
         # generates correct MSVC-style linker flags for LTO, etc.
+        c_flags = "-w"
+        if args.target_triple:
+            c_flags += f" --target={args.target_triple}"
         cmake_args += [
             "-DCMAKE_C_COMPILER=clang-cl",
             "-DCMAKE_CXX_COMPILER=clang-cl",
-            "-DCMAKE_C_FLAGS=-w",
-            "-DCMAKE_CXX_FLAGS=-w",
+            f"-DCMAKE_C_FLAGS={c_flags}",
+            f"-DCMAKE_CXX_FLAGS={c_flags}",
             "-DLLVM_USE_LINKER=lld-link",
         ]
     else:
@@ -205,6 +208,7 @@ def main():
 
     if args.target_triple:
         cmake_args.append(f"-DCLICE_TARGET_TRIPLE={args.target_triple}")
+        cmake_args.append(f"-DLLVM_HOST_TRIPLE={args.target_triple}")
 
     build_dir.mkdir(exist_ok=True)
 
