@@ -39,18 +39,18 @@ set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
-    eventide
-    GIT_REPOSITORY https://github.com/clice-io/eventide
+    kotatsu
+    GIT_REPOSITORY https://github.com/clice-io/kotatsu
     GIT_TAG main
     GIT_SHALLOW TRUE
 )
 
-set(ETD_ENABLE_ZEST ON)
-set(ETD_ENABLE_TEST OFF)
-set(ETD_SERDE_ENABLE_SIMDJSON ON)
-set(ETD_SERDE_ENABLE_YYJSON ON)
-set(ETD_SERDE_ENABLE_TOML ON)
-set(ETD_ENABLE_EXCEPTIONS OFF)
-set(ETD_ENABLE_RTTI OFF)
+set(KOTA_ENABLE_ZEST ON)
+set(KOTA_ENABLE_TEST OFF)
+set(KOTA_CODEC_ENABLE_SIMDJSON ON)
+set(KOTA_CODEC_ENABLE_YYJSON ON)
+set(KOTA_CODEC_ENABLE_TOML ON)
+set(KOTA_ENABLE_EXCEPTIONS OFF)
+set(KOTA_ENABLE_RTTI OFF)
 
-FetchContent_MakeAvailable(eventide spdlog croaring flatbuffers)
+FetchContent_MakeAvailable(kotatsu spdlog croaring flatbuffers)

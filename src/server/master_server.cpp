@@ -6,37 +6,39 @@
 #include <type_traits>
 #include <variant>
 
-#include "eventide/ipc/lsp/position.h"
-#include "eventide/ipc/lsp/protocol.h"
-#include "eventide/ipc/lsp/uri.h"
-#include "eventide/reflection/enum.h"
-#include "eventide/serde/json/json.h"
 #include "semantic/symbol_kind.h"
 #include "server/protocol.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
+#include "kota/codec/json/json.h"
+#include "kota/ipc/lsp/position.h"
+#include "kota/ipc/lsp/protocol.h"
+#include "kota/ipc/lsp/uri.h"
+#include "kota/meta/enum.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 
 namespace clice {
 
-namespace protocol = eventide::ipc::protocol;
-namespace lsp = eventide::ipc::lsp;
-namespace refl = eventide::refl;
-using et::ipc::RequestResult;
-using RequestContext = et::ipc::JsonPeer::RequestContext;
-using serde_raw = et::serde::RawValue;
+namespace protocol = kota::ipc::protocol;
+namespace lsp = kota::ipc::lsp;
+namespace refl = kota::meta;
+using kota::ipc::RequestResult;
+using RequestContext = kota::ipc::JsonPeer::RequestContext;
+using serde_raw = kota::codec::RawValue;
 
 /// Serialize a value to a JSON RawValue using LSP config.
 template <typename T>
 static serde_raw to_raw(const T& value) {
-    auto json = et::serde::json::to_json<et::ipc::lsp_config>(value);
+    auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(value);
     return serde_raw{json ? std::move(*json) : "null"};
 }
 
-MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path) :
+MasterServer::MasterServer(kota::event_loop& loop,
+                           kota::ipc::JsonPeer& peer,
+                           std::string self_path) :
     loop(loop), peer(peer), pool(loop), compiler(loop, peer, workspace, pool, sessions),
     indexer(loop,
             workspace,
@@ -54,7 +56,7 @@ MasterServer::MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::s
 
 MasterServer::~MasterServer() = default;
 
-et::task<> MasterServer::load_workspace() {
+kota::task<> MasterServer::load_workspace() {
     if(workspace_root.empty())
         co_return;
 
@@ -154,7 +156,7 @@ void MasterServer::register_handlers() {
     peer.on_request([this](RequestContext& ctx, const protocol::InitializeParams& params)
                         -> RequestResult<protocol::InitializeParams> {
         if(lifecycle != ServerLifecycle::Uninitialized) {
-            co_return et::outcome_error(protocol::Error{"Server already initialized"});
+            co_return kota::outcome_error(protocol::Error{"Server already initialized"});
         }
 
         auto& init = params.lsp__initialize_params;
@@ -293,7 +295,7 @@ void MasterServer::register_handlers() {
         indexer.save(workspace.config.index_dir);
         workspace.save_cache();
 
-        loop.schedule([this]() -> et::task<> {
+        loop.schedule([this]() -> kota::task<> {
             co_await pool.stop();
             loop.stop();
         }());

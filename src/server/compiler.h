@@ -8,15 +8,16 @@
 #include <vector>
 
 #include "command/command.h"
-#include "eventide/async/async.h"
-#include "eventide/ipc/lsp/protocol.h"
-#include "eventide/ipc/peer.h"
-#include "eventide/serde/serde/raw_value.h"
 #include "server/session.h"
 #include "server/worker_pool.h"
 #include "server/workspace.h"
 #include "syntax/completion.h"
 
+#include "kota/async/async.h"
+#include "kota/codec/raw_value.h"
+#include "kota/ipc/codec/json.h"
+#include "kota/ipc/lsp/protocol.h"
+#include "kota/ipc/peer.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -24,8 +25,7 @@
 
 namespace clice {
 
-namespace et = eventide;
-namespace protocol = et::ipc::protocol;
+namespace protocol = kota::ipc::protocol;
 
 /// Convert a file:// URI to a local file path.
 std::string uri_to_path(const std::string& uri);
@@ -49,8 +49,8 @@ std::string uri_to_path(const std::string& uri);
 ///   - Background indexing scheduling — handled by Indexer
 class Compiler {
 public:
-    Compiler(et::event_loop& loop,
-             et::ipc::JsonPeer& peer,
+    Compiler(kota::event_loop& loop,
+             kota::ipc::JsonPeer& peer,
              Workspace& workspace,
              WorkerPool& pool,
              llvm::DenseMap<std::uint32_t, Session>& sessions);
@@ -67,9 +67,9 @@ public:
 
     /// Compile an open file's AST if dirty.  On success, updates session's
     /// file_index, pch_ref, ast_deps, and publishes diagnostics.
-    et::task<bool> ensure_compiled(Session& session);
+    kota::task<bool> ensure_compiled(Session& session);
 
-    using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
+    using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
     /// Forward a query to the stateful worker that holds this file's AST.
     /// Ensures compilation first.  For position-sensitive queries (hover,
@@ -97,20 +97,22 @@ public:
     std::function<void()> on_indexing_needed;
 
 private:
-    et::task<bool> ensure_deps(Session& session,
-                               const std::string& directory,
-                               const std::vector<std::string>& arguments,
-                               std::pair<std::string, uint32_t>& pch,
-                               std::unordered_map<std::string, std::string>& pcms);
+    kota::task<bool> ensure_deps(Session& session,
+                                 const std::string& directory,
+                                 const std::vector<std::string>& arguments,
+                                 std::pair<std::string, uint32_t>& pch,
+                                 std::unordered_map<std::string, std::string>& pcms);
 
-    et::task<bool> ensure_pch(Session& session,
-                              const std::string& directory,
-                              const std::vector<std::string>& arguments);
+    kota::task<bool> ensure_pch(Session& session,
+                                const std::string& directory,
+                                const std::vector<std::string>& arguments);
 
     bool is_stale(const Session& session);
     void record_deps(Session& session, llvm::ArrayRef<std::string> deps);
 
-    void publish_diagnostics(const std::string& uri, int version, const et::serde::RawValue& diags);
+    void publish_diagnostics(const std::string& uri,
+                             int version,
+                             const kota::codec::RawValue& diags);
 
     std::optional<HeaderFileContext> resolve_header_context(std::uint32_t header_path_id,
                                                             Session* session);
@@ -122,8 +124,8 @@ private:
                                   Session* session);
 
 private:
-    et::event_loop& loop;
-    et::ipc::JsonPeer& peer;
+    kota::event_loop& loop;
+    kota::ipc::JsonPeer& peer;
     Workspace& workspace;
     WorkerPool& pool;
     llvm::DenseMap<std::uint32_t, Session>& sessions;

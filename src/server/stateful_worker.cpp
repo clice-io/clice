@@ -8,23 +8,23 @@
 #include <vector>
 
 #include "compile/compilation.h"
-#include "eventide/async/async.h"
-#include "eventide/ipc/peer.h"
-#include "eventide/ipc/transport.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
 #include "server/protocol.h"
 #include "server/worker_common.h"
 #include "support/logging.h"
 
+#include "kota/async/async.h"
+#include "kota/ipc/codec/bincode.h"
+#include "kota/ipc/peer.h"
+#include "kota/ipc/transport.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
-namespace et = eventide;
-using et::ipc::RequestResult;
-using RequestContext = et::ipc::BincodePeer::RequestContext;
+using kota::ipc::RequestResult;
+using RequestContext = kota::ipc::BincodePeer::RequestContext;
 
 struct DocumentEntry {
     int version = 0;
@@ -35,7 +35,7 @@ struct DocumentEntry {
 
     // Signaled when the first compilation completes (has_ast becomes true).
     // Feature handlers co_await this before accessing the AST.
-    et::event ast_ready{false};
+    kota::event ast_ready{false};
 
     // Compilation context (from CompileParams)
     std::string directory;
@@ -44,11 +44,11 @@ struct DocumentEntry {
     llvm::StringMap<std::string> pcms;
 
     // Per-document serialization mutex
-    et::mutex strand;
+    kota::mutex strand;
 };
 
 class StatefulWorker {
-    et::ipc::BincodePeer& peer;
+    kota::ipc::BincodePeer& peer;
     std::uint64_t memory_limit;
 
     llvm::StringMap<std::shared_ptr<DocumentEntry>> documents;
@@ -91,10 +91,10 @@ class StatefulWorker {
     /// Look up document, wait for AST, lock strand, run fn(doc) on thread pool, unlock.
     /// Returns "null" if document not found or AST not usable.
     template <typename F>
-    et::task<et::serde::RawValue> with_ast(llvm::StringRef path, F&& fn) {
+    kota::task<kota::codec::RawValue> with_ast(llvm::StringRef path, F&& fn) {
         auto it = documents.find(path);
         if(it == documents.end()) {
-            co_return et::serde::RawValue{"null"};
+            co_return kota::codec::RawValue{"null"};
         }
 
         // Hold shared_ptr so Evict can't destroy the entry mid-request.
@@ -104,9 +104,9 @@ class StatefulWorker {
         co_await doc->ast_ready.wait();
         co_await doc->strand.lock();
 
-        auto result = co_await et::queue([&]() -> et::serde::RawValue {
+        auto result = co_await kota::queue([&]() -> kota::codec::RawValue {
             if(!doc->has_ast || (!doc->unit.completed() && !doc->unit.fatal_error()))
-                return et::serde::RawValue{"null"};
+                return kota::codec::RawValue{"null"};
             return fn(*doc);
         });
 
@@ -115,7 +115,7 @@ class StatefulWorker {
     }
 
 public:
-    StatefulWorker(et::ipc::BincodePeer& peer, std::uint64_t memory_limit) :
+    StatefulWorker(kota::ipc::BincodePeer& peer, std::uint64_t memory_limit) :
         peer(peer), memory_limit(memory_limit) {}
 
     void register_handlers();
@@ -147,7 +147,7 @@ void StatefulWorker::register_handlers() {
                 doc->pcms.try_emplace(name, pcm_path);
             }
 
-            auto compile_result = co_await et::queue([&]() -> worker::CompileResult {
+            auto compile_result = co_await kota::queue([&]() -> worker::CompileResult {
                 ScopedTimer timer;
 
                 CompilationParams cp;
@@ -169,15 +169,15 @@ void StatefulWorker::register_handlers() {
                 result.version = doc->version;
                 if(doc->unit.completed() || doc->unit.fatal_error()) {
                     auto diags = feature::diagnostics(doc->unit);
-                    auto json = et::serde::json::to_json<et::ipc::lsp_config>(diags);
-                    result.diagnostics = et::serde::RawValue{json ? std::move(*json) : "[]"};
+                    auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(diags);
+                    result.diagnostics = kota::codec::RawValue{json ? std::move(*json) : "[]"};
                     LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
                              params.path,
                              timer.ms(),
                              diags.size(),
                              doc->unit.fatal_error());
                 } else {
-                    result.diagnostics = et::serde::RawValue{"[]"};
+                    result.diagnostics = kota::codec::RawValue{"[]"};
                     LOG_WARN("Compile incomplete: path={}, {}ms", params.path, timer.ms());
                 }
                 result.memory_usage = 0;  // TODO: query actual memory
@@ -201,7 +201,7 @@ void StatefulWorker::register_handlers() {
 
     // === DocumentUpdate ===
     // Only mark the document dirty — do NOT update doc.text or doc.version
-    // here.  The et::queue compilation work may be reading doc.text on the
+    // here.  The kota::queue compilation work may be reading doc.text on the
     // thread pool concurrently, so writing it from the event loop would be
     // a data race.  The next Compile request will bring the correct text
     // and update it inside the strand lock.
@@ -238,11 +238,11 @@ void StatefulWorker::register_handlers() {
                 case K::Hover:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
                         auto result = feature::hover(doc.unit, params.offset);
-                        return result ? to_raw(*result) : et::serde::RawValue{"null"};
+                        return result ? to_raw(*result) : kota::codec::RawValue{"null"};
                     });
                 case K::GoToDefinition:
                     // TODO: Implement go-to-definition
-                    co_return et::serde::RawValue{"[]"};
+                    co_return kota::codec::RawValue{"[]"};
                 case K::SemanticTokens:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
                         return to_raw(feature::semantic_tokens(doc.unit));
@@ -268,9 +268,9 @@ void StatefulWorker::register_handlers() {
                     });
                 case K::CodeAction:
                     // TODO: Implement code actions
-                    co_return et::serde::RawValue{"[]"};
+                    co_return kota::codec::RawValue{"[]"};
             }
-            co_return et::serde::RawValue{"null"};
+            co_return kota::codec::RawValue{"null"};
         });
 }
 
@@ -284,15 +284,15 @@ int run_stateful_worker_mode(std::uint64_t memory_limit,
 
     LOG_INFO("Starting stateful worker, memory_limit={}MB", memory_limit / (1024 * 1024));
 
-    et::event_loop loop;
+    kota::event_loop loop;
 
-    auto transport_result = et::ipc::StreamTransport::open_stdio(loop);
+    auto transport_result = kota::ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {
         LOG_ERROR("Failed to open stdio transport");
         return 1;
     }
 
-    et::ipc::BincodePeer peer(loop, std::move(*transport_result));
+    kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
 
     StatefulWorker worker(peer, memory_limit);
     worker.register_handlers();

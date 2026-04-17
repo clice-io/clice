@@ -5,20 +5,18 @@
 #include <string>
 #include <vector>
 
-#include "eventide/async/async.h"
-#include "eventide/ipc/peer.h"
-#include "eventide/serde/serde/raw_value.h"
 #include "server/compiler.h"
 #include "server/indexer.h"
 #include "server/session.h"
 #include "server/worker_pool.h"
 #include "server/workspace.h"
 
+#include "kota/async/async.h"
+#include "kota/codec/raw_value.h"
+#include "kota/ipc/peer.h"
 #include "llvm/ADT/DenseMap.h"
 
 namespace clice {
-
-namespace et = eventide;
 
 enum class ServerLifecycle : std::uint8_t {
     Uninitialized,
@@ -44,14 +42,14 @@ enum class ServerLifecycle : std::uint8_t {
 ///   point to disk files.  The only path from Session to Workspace is didSave.
 class MasterServer {
 public:
-    MasterServer(et::event_loop& loop, et::ipc::JsonPeer& peer, std::string self_path);
+    MasterServer(kota::event_loop& loop, kota::ipc::JsonPeer& peer, std::string self_path);
     ~MasterServer();
 
     void register_handlers();
 
 private:
-    et::event_loop& loop;
-    et::ipc::JsonPeer& peer;
+    kota::event_loop& loop;
+    kota::ipc::JsonPeer& peer;
 
     /// Persistent project-wide state (config, CDB, path pool, dependency
     /// graphs, compilation caches, symbol index).
@@ -74,9 +72,9 @@ private:
     std::string workspace_root;
     std::string session_log_dir;
 
-    et::task<> load_workspace();
+    kota::task<> load_workspace();
 
-    using RawResult = et::task<et::serde::RawValue, et::ipc::Error>;
+    using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 };
 
 }  // namespace clice

@@ -8,8 +8,6 @@
 #include <utility>
 
 #include "command/command.h"
-#include "eventide/ipc/lsp/position.h"
-#include "eventide/ipc/lsp/protocol.h"
 #include "index/merged_index.h"
 #include "index/project_index.h"
 #include "semantic/relation_kind.h"
@@ -18,6 +16,8 @@
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
+#include "kota/ipc/lsp/position.h"
+#include "kota/ipc/lsp/protocol.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -25,9 +25,8 @@
 
 namespace clice {
 
-namespace et = eventide;
-namespace protocol = et::ipc::protocol;
-namespace lsp = et::ipc::lsp;
+namespace protocol = kota::ipc::protocol;
+namespace lsp = kota::ipc::lsp;
 
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
 ///
@@ -141,7 +140,7 @@ struct PCHState {
     std::uint64_t hash = 0;
     DepsSnapshot deps;
     std::string document_links_json;  ///< Pre-serialized DocumentLink[] from PCH build
-    std::shared_ptr<eventide::event> building;
+    std::shared_ptr<kota::event> building;
 };
 
 /// Cached PCM state for a single C++20 module.  Shared across all files that

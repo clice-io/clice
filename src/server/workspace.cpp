@@ -3,13 +3,13 @@
 #include <algorithm>
 #include <chrono>
 
-#include "eventide/ipc/lsp/position.h"
-#include "eventide/ipc/lsp/protocol.h"
-#include "eventide/serde/json/json.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/scan.h"
 
+#include "kota/codec/json/json.h"
+#include "kota/ipc/lsp/position.h"
+#include "kota/ipc/lsp/protocol.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -18,7 +18,7 @@
 
 namespace clice {
 
-namespace lsp = eventide::ipc::lsp;
+namespace lsp = kota::ipc::lsp;
 
 /// Find the tightest (innermost) occurrence containing `offset` via binary search.
 const static index::Occurrence* lookup_occurrence(const std::vector<index::Occurrence>& occs,
@@ -194,7 +194,7 @@ void Workspace::load_cache() {
     }
 
     CacheData data;
-    auto status = eventide::serde::json::from_json(*content, data);
+    auto status = kota::codec::json::from_json(*content, data);
     if(!status) {
         LOG_WARN("Failed to parse cache.json");
         return;
@@ -300,7 +300,7 @@ void Workspace::save_cache() {
         data.pcm.push_back(std::move(entry));
     }
 
-    auto json_str = eventide::serde::json::to_json(data);
+    auto json_str = kota::codec::json::to_json(data);
     if(!json_str) {
         LOG_WARN("Failed to serialize cache.json");
         return;

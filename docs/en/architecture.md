@@ -91,7 +91,7 @@ The worker pool (`src/server/worker_pool.cpp`) manages spawning and communicatin
 
 ### Communication
 
-Workers communicate with the master via **stdio pipes** using a **bincode** serialization format (via `eventide::ipc::BincodePeer`). This is more compact and faster than JSON for internal IPC, while the master handles JSON for the external LSP protocol.
+Workers communicate with the master via **stdio pipes** using a **bincode** serialization format (via `kota::ipc::BincodePeer`). This is more compact and faster than JSON for internal IPC, while the master handles JSON for the external LSP protocol.
 
 ### Stateful Worker Routing
 
@@ -111,7 +111,7 @@ The stateful worker (`src/server/stateful_worker.cpp`) caches compiled ASTs in m
 - **Feature queries**: Look up the cached AST and invoke the corresponding `feature::*` function (hover, semantic tokens, etc.), serializing the result to JSON
 - **Document updates**: Received as notifications — the worker updates the stored text and marks the document as `dirty`, causing feature queries to return `null` until recompilation
 - **Eviction**: LRU-based; evicts the oldest document when capacity is exceeded, notifying the master
-- **Concurrency**: Each document has a per-document `et::mutex` (strand) to serialize compilation and feature queries. Heavy work (compilation, feature extraction) runs on a thread pool via `et::queue`.
+- **Concurrency**: Each document has a per-document `kota::mutex` (strand) to serialize compilation and feature queries. Heavy work (compilation, feature extraction) runs on a thread pool via `kota::queue`.
 
 ## Stateless Worker
 
@@ -123,7 +123,7 @@ The stateless worker (`src/server/stateless_worker.cpp`) handles one-shot reques
 - **Build PCM**: Compiles a C++20 module interface to a temporary file
 - **Index**: Compiles a file for indexing (TUIndex generation — currently a stub)
 
-All requests are dispatched to a thread pool via `et::queue`.
+All requests are dispatched to a thread pool via `kota::queue`.
 
 ## Compile Graph
 
@@ -132,7 +132,7 @@ The compile graph (`src/server/compile_graph.cpp`) tracks compilation unit depen
 - **Registration**: Each file registers its included dependencies
 - **Cascade invalidation**: When a file changes, all transitive dependents are marked dirty and their ongoing compilations are cancelled
 - **Dependency compilation**: Before compiling a file, `compile_deps` ensures all dependencies (PCH, PCMs) are built first
-- **Cancellation**: Uses `et::cancellation_source` to abort in-flight compilations when files are invalidated
+- **Cancellation**: Uses `kota::cancellation_source` to abort in-flight compilations when files are invalidated
 
 ## Configuration
 

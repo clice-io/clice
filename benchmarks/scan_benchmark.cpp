@@ -21,16 +21,14 @@
 #include <thread>
 
 #include "command/command.h"
-#include "eventide/deco/deco.h"
-#include "eventide/serde/json/serializer.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
+#include "kota/codec/json/serializer.h"
+#include "kota/deco/deco.h"
 #include "llvm/Support/FileSystem.h"
-
-namespace et = eventide;
 
 using namespace clice;
 
@@ -97,7 +95,7 @@ void export_graph_json(const PathPool& path_pool,
         export_data.files.push_back(std::move(node));
     }
 
-    auto json = et::serde::json::to_json(export_data);
+    auto json = kota::codec::json::to_json(export_data);
     if(!json) {
         std::println(stderr, "Failed to serialize dependency graph");
         return;
@@ -221,8 +219,8 @@ void print_report(const ScanReport& report) {
 }
 
 int main(int argc, const char** argv) {
-    auto args = deco::util::argvify(argc, argv);
-    auto result = deco::cli::parse<BenchmarkOptions>(args);
+    auto args = kota::deco::util::argvify(argc, argv);
+    auto result = kota::deco::cli::parse<BenchmarkOptions>(args);
 
     if(!result.has_value()) {
         std::println(stderr, "Error: {}", result.error().message);
@@ -233,7 +231,7 @@ int main(int argc, const char** argv) {
 
     if(opts.help.value_or(false) || !opts.cdb_path.has_value()) {
         std::ostringstream oss;
-        deco::cli::write_usage_for<BenchmarkOptions>(oss, "scan_benchmark [OPTIONS] <cdb>");
+        kota::deco::cli::write_usage_for<BenchmarkOptions>(oss, "scan_benchmark [OPTIONS] <cdb>");
         std::print("{}", oss.str());
         return opts.help.value_or(false) ? 0 : 1;
     }

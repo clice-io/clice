@@ -4,11 +4,11 @@
 #include <chrono>
 
 #include "command/toolchain.h"
-#include "eventide/async/async.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
+#include "kota/async/async.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
@@ -17,8 +17,6 @@
 #include "llvm/Support/StringSaver.h"
 
 namespace clice {
-
-namespace et = eventide;
 
 // DependencyGraph implementation
 
@@ -253,12 +251,12 @@ FileScanResult scan_file_worker(const char* path, std::uint32_t path_id, std::ui
 }
 
 /// The async scan implementation that runs on a local event loop.
-et::task<> scan_impl(CompilationDatabase& cdb,
-                     PathPool& path_pool,
-                     DependencyGraph& graph,
-                     ScanReport& report,
-                     ScanCache* ext_cache,
-                     et::event_loop& loop) {
+kota::task<> scan_impl(CompilationDatabase& cdb,
+                       PathPool& path_pool,
+                       DependencyGraph& graph,
+                       ScanReport& report,
+                       ScanCache* ext_cache,
+                       kota::event_loop& loop) {
     auto start_time = std::chrono::steady_clock::now();
 
     // Reuse context groups and configs from cache when available (warm runs).
@@ -316,10 +314,10 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             if(!pending.empty()) {
                 LOG_INFO("Warming toolchain cache: {} unique queries", pending.size());
 
-                std::vector<et::task<ToolchainResult, et::error>> tasks;
+                std::vector<kota::task<ToolchainResult, kota::error>> tasks;
                 tasks.reserve(pending.size());
                 for(auto& query: pending) {
-                    tasks.push_back(et::queue(
+                    tasks.push_back(kota::queue(
                         [q = std::move(query)]() -> ToolchainResult {
                             ToolchainResult result;
                             result.key = q.key;
@@ -337,7 +335,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                         loop));
                 }
 
-                auto outcome = co_await et::when_all(std::move(tasks));
+                auto outcome = co_await kota::when_all(std::move(tasks));
                 if(outcome.has_value()) {
                     cdb.inject_results(*outcome);
                 } else {
@@ -390,7 +388,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         llvm::StringSet<> entries;
     };
 
-    std::vector<et::task<DirEntry, et::error>> pending_dir_tasks;
+    std::vector<kota::task<DirEntry, kota::error>> pending_dir_tasks;
 
     if(dir_cache.dirs.empty()) {
         llvm::StringSet<> unique_dirs;
@@ -412,7 +410,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
         pending_dir_tasks.reserve(unique_dirs.size());
         for(auto& entry: unique_dirs) {
             auto dir_path = entry.getKey().str();
-            pending_dir_tasks.push_back(et::queue(
+            pending_dir_tasks.push_back(kota::queue(
                 [dir_path = std::move(dir_path)]() -> DirEntry {
                     DirEntry result;
                     result.dir_path = dir_path;
@@ -463,7 +461,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
     // queued for scanning on the thread pool.  When wave N+1 starts,
     // these tasks are already running (or finished), eliminating most
     // of the Phase 1 wait time for subsequent waves.
-    std::vector<et::task<FileScanResult, et::error>> prefetch_tasks;
+    std::vector<kota::task<FileScanResult, kota::error>> prefetch_tasks;
 
     // Pre-resolved search configs: built once after dir cache is populated,
     // then reused for all waves.  Eliminates StringMap lookups in Phase 2.
@@ -500,7 +498,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
 
         if(!prefetch_tasks.empty()) {
             // Waves 1+: await prefetched scan tasks from previous Phase 2.
-            auto scan_outcome = co_await et::when_all(std::move(prefetch_tasks));
+            auto scan_outcome = co_await kota::when_all(std::move(prefetch_tasks));
             prefetch_tasks.clear();
             if(scan_outcome.has_error()) {
                 LOG_ERROR("Prefetch scan failed: {}", scan_outcome.error().message());
@@ -514,7 +512,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             }
         } else {
             // Wave 0 (or warm run with all cache hits): create scan tasks now.
-            std::vector<et::task<FileScanResult, et::error>> scan_tasks;
+            std::vector<kota::task<FileScanResult, kota::error>> scan_tasks;
             scan_tasks.reserve(current_wave.size());
             for(auto& entry: current_wave) {
                 auto pid = entry.path_id;
@@ -525,8 +523,8 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                 }
                 auto path = path_pool.resolve(pid).data();
                 scan_tasks.push_back(
-                    et::queue([path, pid, cid]() { return scan_file_worker(path, pid, cid); },
-                              loop));
+                    kota::queue([path, pid, cid]() { return scan_file_worker(path, pid, cid); },
+                                loop));
             }
 
             // Optimization 1: await dir cache tasks concurrently with scan tasks.
@@ -535,7 +533,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             // max(dir_time, scan_time) instead of dir_time + scan_time.
             if(!pending_dir_tasks.empty()) {
                 auto dir_t0 = std::chrono::steady_clock::now();
-                auto dir_outcome = co_await et::when_all(std::move(pending_dir_tasks));
+                auto dir_outcome = co_await kota::when_all(std::move(pending_dir_tasks));
                 pending_dir_tasks.clear();
                 if(dir_outcome.has_value()) {
                     for(auto& entry: *dir_outcome) {
@@ -549,7 +547,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
             }
 
             if(!scan_tasks.empty()) {
-                auto scan_outcome = co_await et::when_all(std::move(scan_tasks));
+                auto scan_outcome = co_await kota::when_all(std::move(scan_tasks));
                 if(scan_outcome.has_error()) {
                     LOG_ERROR("Parallel scan failed: {}", scan_outcome.error().message());
                     break;
@@ -749,7 +747,7 @@ et::task<> scan_impl(CompilationDatabase& cdb,
                     if(!ext_cache ||
                        ext_cache->scan_results.find(inc_path_id) == ext_cache->scan_results.end()) {
                         auto inc_path = path_pool.resolve(inc_path_id).data();
-                        prefetch_tasks.push_back(et::queue(
+                        prefetch_tasks.push_back(kota::queue(
                             [inc_path, inc_path_id, cid = scan_result.config_id]() {
                                 return scan_file_worker(inc_path, inc_path_id, cid);
                             },
@@ -827,7 +825,7 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
         return report;
     }
 
-    et::event_loop loop;
+    kota::event_loop loop;
     loop.schedule(scan_impl(cdb, path_pool, graph, report, cache, loop));
     loop.run();
     return report;

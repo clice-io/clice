@@ -6,7 +6,6 @@
 namespace clice::testing {
 namespace {
 
-namespace et = eventide;
 namespace ranges = std::ranges;
 
 /// A resolve_fn that always returns no dependencies.
@@ -29,27 +28,27 @@ CompileGraph::resolve_fn
 }
 
 CompileGraph::dispatch_fn instant_dispatch() {
-    return [](std::uint32_t) -> et::task<bool> {
+    return [](std::uint32_t) -> kota::task<bool> {
         co_return true;
     };
 }
 
 CompileGraph::dispatch_fn tracking_dispatch(std::vector<std::uint32_t>& compiled) {
-    return [&compiled](std::uint32_t path_id) -> et::task<bool> {
+    return [&compiled](std::uint32_t path_id) -> kota::task<bool> {
         compiled.push_back(path_id);
         co_return true;
     };
 }
 
 CompileGraph::dispatch_fn failing_dispatch() {
-    return [](std::uint32_t) -> et::task<bool> {
+    return [](std::uint32_t) -> kota::task<bool> {
         co_return false;
     };
 }
 
 /// Dispatch that fails only for specific path_ids.
 CompileGraph::dispatch_fn selective_dispatch(llvm::DenseSet<std::uint32_t> fail_ids) {
-    return [fail_ids = std::move(fail_ids)](std::uint32_t path_id) -> et::task<bool> {
+    return [fail_ids = std::move(fail_ids)](std::uint32_t path_id) -> kota::task<bool> {
         co_return !fail_ids.contains(path_id);
     };
 }
@@ -61,7 +60,7 @@ std::optional<CompileGraph> graph;
 
 template <typename F>
 void execute(F&& fn) {
-    et::event_loop loop;
+    kota::event_loop loop;
     auto t = fn();
     loop.schedule(t);
     loop.run();
@@ -70,7 +69,7 @@ void execute(F&& fn) {
 TEST_CASE(CompileNoDeps) {
     graph.emplace(tracking_dispatch(compiled), no_deps());
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -87,7 +86,7 @@ TEST_CASE(CompileWithDependency) {
                       {1, {2}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -109,7 +108,7 @@ TEST_CASE(CompileChain) {
                       {2, {3}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -132,7 +131,7 @@ TEST_CASE(DiamondDependency) {
                       {3, {4}   }
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -152,7 +151,7 @@ TEST_CASE(UpdateInvalidates) {
                       {1, {2}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         co_await graph->compile(1).catch_cancel();
         EXPECT_FALSE(graph->is_dirty(2));
         EXPECT_FALSE(graph->is_dirty(1));
@@ -172,7 +171,7 @@ TEST_CASE(UpdateCascade) {
                       {2, {3}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         co_await graph->compile(1).catch_cancel();
         EXPECT_FALSE(graph->is_dirty(2));
         EXPECT_FALSE(graph->is_dirty(3));
@@ -192,7 +191,7 @@ TEST_CASE(CompileAfterUpdate) {
                       {1, {2}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(compiled.size(), 2u);
 
@@ -210,7 +209,7 @@ TEST_CASE(DispatchFailure) {
                       {1, {2}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
@@ -228,7 +227,7 @@ TEST_CASE(CancelAll) {
 TEST_CASE(SecondCompileSkips) {
     graph.emplace(tracking_dispatch(compiled), no_deps());
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(compiled.size(), 1u);
         // Second compile should skip (already clean).
@@ -245,7 +244,7 @@ TEST_CASE(CascadeThroughAlreadyDirty) {
                       {2, {3}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         co_await graph->compile(1).catch_cancel();
 
         // Update node 2: marks 2 and 1 dirty.
@@ -270,7 +269,7 @@ TEST_CASE(CircularDependencyDetection) {
                       {2, {1}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         // Should return false (cycle detected), not deadlock.
         EXPECT_TRUE(result.has_value());
@@ -289,7 +288,7 @@ TEST_CASE(CrossBranchCycleDetection) {
                       {3, {2}   }
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         // Should return false (cycle detected), not deadlock.
         EXPECT_TRUE(result.has_value());
@@ -312,7 +311,7 @@ TEST_CASE(UpdateResetsResolved) {
 
     graph.emplace(tracking_dispatch(compiled), std::move(resolver));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         // First compile: resolves 1 -> {2}.
         co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(resolve_count, 1);
@@ -344,7 +343,7 @@ TEST_CASE(UpdateCleansBackEdges) {
 
     graph.emplace(tracking_dispatch(compiled), std::move(resolver));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         // First compile: 1 -> {2}.
         co_await graph->compile(1).catch_cancel();
         EXPECT_FALSE(graph->is_dirty(1));
@@ -373,7 +372,7 @@ TEST_CASE(DiamondUpdateCascade) {
                       {3, {4}   }
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         co_await graph->compile(1).catch_cancel();
         EXPECT_FALSE(graph->is_dirty(1));
         EXPECT_FALSE(graph->is_dirty(4));
@@ -402,7 +401,7 @@ TEST_CASE(UpdateReturnsAllDirtied) {
                       {2, {3}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         co_await graph->compile(1).catch_cancel();
 
         auto dirtied = graph->update(3);
@@ -417,7 +416,7 @@ TEST_CASE(UpdateReturnsAllDirtied) {
 TEST_CASE(HasUnitAndIsCompiling) {
     graph.emplace(instant_dispatch(), no_deps());
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         EXPECT_FALSE(graph->has_unit(1));
         EXPECT_FALSE(graph->is_compiling(1));
 
@@ -434,7 +433,7 @@ TEST_CASE(FailureLeavesDepsDirty) {
                       {1, {2}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
@@ -451,7 +450,7 @@ TEST_CASE(SelfLoop) {
                       {1, {1}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         // Should detect cycle and return false, not deadlock.
         EXPECT_TRUE(result.has_value());
@@ -465,7 +464,7 @@ TEST_CASE(CancelAllAndRecompile) {
                       {1, {2}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(compiled.size(), 2u);
         EXPECT_FALSE(graph->is_dirty(1));
@@ -488,10 +487,10 @@ TEST_CASE(CancelAllAndRecompile) {
 }
 
 TEST_CASE(UpdateDuringCompile) {
-    et::event_loop loop;
-    et::event gate;
+    kota::event_loop loop;
+    kota::event gate;
 
-    auto gated_dispatch = [&gate](std::uint32_t) -> et::task<bool> {
+    auto gated_dispatch = [&gate](std::uint32_t) -> kota::task<bool> {
         co_await gate.wait();
         co_return true;
     };
@@ -502,14 +501,14 @@ TEST_CASE(UpdateDuringCompile) {
     bool was_cancelled = false;
 
     // Coroutine 1: compile(1), will suspend inside dispatch waiting on gate.
-    auto compiler = [&]() -> et::task<> {
+    auto compiler = [&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         compile_done = true;
         was_cancelled = !result.has_value();
     };
 
     // Coroutine 2: update(1) while dispatch is in flight, then unblock gate.
-    auto updater = [&]() -> et::task<> {
+    auto updater = [&]() -> kota::task<> {
         graph->update(1);
         gate.set();
         co_return;
@@ -534,7 +533,7 @@ TEST_CASE(WhenAllPartialFailure) {
     }),
                   static_resolver({{1, {2, 3}}}));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
@@ -566,7 +565,7 @@ TEST_CASE(EmptyGraphNoCompile) {
 TEST_CASE(CompileDepsNoDeps) {
     graph.emplace(tracking_dispatch(compiled), no_deps());
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile_deps(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -582,7 +581,7 @@ TEST_CASE(CompileDepsWithDependency) {
                       {1, {2}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile_deps(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -602,7 +601,7 @@ TEST_CASE(CompileDepsChain) {
                       {2, {3}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile_deps(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -623,7 +622,7 @@ TEST_CASE(CompileDepsDiamond) {
                       {3, {4}   }
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile_deps(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -640,7 +639,7 @@ TEST_CASE(CompileDepsDiamond) {
 
 TEST_CASE(CompileDepsFailure) {
     // 1 -> 2. Dispatch fails for unit 2.
-    auto fail_and_track = [&](std::uint32_t path_id) -> et::task<bool> {
+    auto fail_and_track = [&](std::uint32_t path_id) -> kota::task<bool> {
         compiled.push_back(path_id);
         co_return false;
     };
@@ -650,7 +649,7 @@ TEST_CASE(CompileDepsFailure) {
                       {1, {2}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile_deps(1).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_FALSE(*result);
@@ -666,7 +665,7 @@ TEST_CASE(CompileDepsPlainCpp) {
                       {10, {20}}
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto result = co_await graph->compile_deps(10).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -688,11 +687,11 @@ TEST_CASE(CompileDepsConcurrentDedup) {
                       {2, {3, 5}},
     }));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         // Launch both compile_deps concurrently.
         auto t1 = graph->compile_deps(1);
         auto t2 = graph->compile_deps(2);
-        auto results = co_await et::when_all(std::move(t1), std::move(t2));
+        auto results = co_await kota::when_all(std::move(t1), std::move(t2));
 
         auto [r1, r2] = results;
         EXPECT_TRUE(r1);
@@ -722,10 +721,10 @@ TEST_CASE(CompileDepsResolveOnce) {
 
     graph.emplace(tracking_dispatch(compiled), std::move(resolve));
 
-    execute([&]() -> et::task<> {
+    execute([&]() -> kota::task<> {
         auto t1 = graph->compile_deps(1);
         auto t2 = graph->compile_deps(2);
-        auto results = co_await et::when_all(std::move(t1), std::move(t2));
+        auto results = co_await kota::when_all(std::move(t1), std::move(t2));
 
         auto [r1, r2] = results;
         EXPECT_TRUE(r1);

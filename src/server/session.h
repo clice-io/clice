@@ -5,14 +5,12 @@
 #include <optional>
 #include <string>
 
-#include "eventide/async/async.h"
 #include "server/workspace.h"
 
+#include "kota/async/async.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace clice {
-
-namespace et = eventide;
 
 /// An editing session for a single file opened in the editor.
 ///
@@ -45,7 +43,7 @@ struct Session {
     /// Other queries wait on the event; the compilation task itself
     /// runs independently and cannot be cancelled by LSP $/cancelRequest.
     struct PendingCompile {
-        et::event done;
+        kota::event done;
         bool succeeded = false;
     };
 

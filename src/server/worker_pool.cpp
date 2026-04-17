@@ -3,8 +3,9 @@
 #include <csignal>
 #include <string>
 
-#include "eventide/ipc/transport.h"
 #include "support/logging.h"
+
+#include "kota/ipc/transport.h"
 
 namespace clice {
 
@@ -13,7 +14,7 @@ namespace {
 /// Coroutine that drains a worker's stderr pipe.
 /// Workers write their own log files, so this only captures unexpected output
 /// (crash stacktraces, assertion failures, etc.) that bypasses spdlog.
-et::task<> drain_stderr(et::pipe stderr_pipe, std::string prefix) {
+kota::task<> drain_stderr(kota::pipe stderr_pipe, std::string prefix) {
     std::string buffer;
     while(true) {
         auto result = co_await stderr_pipe.read();
@@ -54,7 +55,7 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     auto worker_index = workers.size();
     std::string worker_name = std::string(stateful ? "SF-" : "SL-") + std::to_string(worker_index);
 
-    et::process::options opts;
+    kota::process::options opts;
     opts.file = self_path;
     if(stateful) {
         opts.args = {self_path,
@@ -75,12 +76,12 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     }
 
     opts.streams = {
-        et::process::stdio::pipe(true, false),  // stdin: child reads
-        et::process::stdio::pipe(false, true),  // stdout: child writes
-        et::process::stdio::pipe(false, true),  // stderr: child writes
+        kota::process::stdio::pipe(true, false),  // stdin: child reads
+        kota::process::stdio::pipe(false, true),  // stdout: child writes
+        kota::process::stdio::pipe(false, true),  // stderr: child writes
     };
 
-    auto result = et::process::spawn(opts, loop);
+    auto result = kota::process::spawn(opts, loop);
     if(!result) {
         LOG_ERROR("Failed to spawn {} worker: {}",
                   stateful ? "stateful" : "stateless",
@@ -92,9 +93,9 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
 
     // StreamTransport: input = child's stdout (parent reads), output = child's stdin (parent
     // writes)
-    auto transport = std::make_unique<et::ipc::StreamTransport>(std::move(spawn.stdout_pipe),
-                                                                std::move(spawn.stdin_pipe));
-    auto peer = std::make_unique<et::ipc::BincodePeer>(loop, std::move(transport));
+    auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(spawn.stdout_pipe),
+                                                                  std::move(spawn.stdin_pipe));
+    auto peer = std::make_unique<kota::ipc::BincodePeer>(loop, std::move(transport));
 
     // Schedule stderr log collection
     std::string prefix = "[" + worker_name + "]";
@@ -142,7 +143,7 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
     return true;
 }
 
-et::task<> WorkerPool::stop() {
+kota::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopping...");
 
     // Close output pipes to signal workers to exit gracefully

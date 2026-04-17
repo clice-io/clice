@@ -9,8 +9,6 @@ namespace clice::testing {
 
 namespace {
 
-namespace et = eventide;
-
 // ============================================================================
 // End-to-end module compilation through real workers:
 //   1. Stateless worker builds PCM for module interface
@@ -38,7 +36,7 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
     std::string pcm_path;
     bool phase1_done = false;
 
-    sl.run([&]() -> et::task<> {
+    sl.run([&]() -> kota::task<> {
         worker::BuildParams params;
         params.kind = worker::BuildKind::BuildPCM;
         params.file = iface;
@@ -71,7 +69,7 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
 
     bool phase2_done = false;
 
-    sf.run([&]() -> et::task<> {
+    sf.run([&]() -> kota::task<> {
         worker::CompileParams params;
         params.path = consumer;
         params.version = 1;
@@ -123,7 +121,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
     std::string pcm_a, pcm_b;
     bool pcm_done = false;
 
-    sl.run([&]() -> et::task<> {
+    sl.run([&]() -> kota::task<> {
         // Build PCM for A first.
         {
             worker::BuildParams params;
@@ -179,7 +177,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
 
     bool compile_done = false;
 
-    sf.run([&]() -> et::task<> {
+    sf.run([&]() -> kota::task<> {
         worker::CompileParams params;
         params.path = consumer;
         params.version = 1;
@@ -227,7 +225,7 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
     std::string pcm_path;
     bool pcm_done = false;
 
-    sl.run([&]() -> et::task<> {
+    sl.run([&]() -> kota::task<> {
         worker::BuildParams params;
         params.kind = worker::BuildKind::BuildPCM;
         params.file = iface;
@@ -257,7 +255,7 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
 
     bool compile_done = false;
 
-    sf.run([&]() -> et::task<> {
+    sf.run([&]() -> kota::task<> {
         worker::CompileParams params;
         params.path = impl;
         params.version = 1;

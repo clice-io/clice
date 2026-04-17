@@ -4,19 +4,21 @@
 #include <print>
 #include <string>
 
-#include "eventide/async/async.h"
-#include "eventide/deco/deco.h"
-#include "eventide/ipc/peer.h"
-#include "eventide/ipc/recording_transport.h"
-#include "eventide/ipc/transport.h"
 #include "server/master_server.h"
 #include "server/stateful_worker.h"
 #include "server/stateless_worker.h"
 #include "support/logging.h"
 
+#include "kota/async/async.h"
+#include "kota/deco/deco.h"
+#include "kota/ipc/codec/json.h"
+#include "kota/ipc/peer.h"
+#include "kota/ipc/recording_transport.h"
+#include "kota/ipc/transport.h"
+
 namespace clice {
 
-using deco::decl::KVStyle;
+using kota::deco::decl::KVStyle;
 
 struct Options {
     DecoKV(style = KVStyle::JoinedOrSeparate,
@@ -72,8 +74,8 @@ int main(int argc, const char** argv) {
     signal(SIGPIPE, SIG_IGN);
 #endif
 
-    auto args = deco::util::argvify(argc, argv);
-    auto result = deco::cli::parse<clice::Options>(args);
+    auto args = kota::deco::util::argvify(argc, argv);
+    auto result = kota::deco::cli::parse<clice::Options>(args);
 
     if(!result.has_value()) {
         LOG_ERROR("{}", result.error().message);
@@ -83,7 +85,7 @@ int main(int argc, const char** argv) {
     auto& opts = result->options;
 
     if(opts.help.value_or(false)) {
-        deco::cli::write_usage_for<clice::Options>(std::cout, "clice [OPTIONS]");
+        kota::deco::cli::write_usage_for<clice::Options>(std::cout, "clice [OPTIONS]");
         return 0;
     }
 
@@ -132,23 +134,22 @@ int main(int argc, const char** argv) {
     if(mode == "pipe") {
         clice::logging::stderr_logger("master", clice::logging::options);
 
-        namespace et = eventide;
-        et::event_loop loop;
+        kota::event_loop loop;
 
-        auto transport = et::ipc::StreamTransport::open_stdio(loop);
+        auto transport = kota::ipc::StreamTransport::open_stdio(loop);
         if(!transport) {
             LOG_ERROR("failed to open stdio transport");
             return 1;
         }
 
-        std::unique_ptr<et::ipc::Transport> final_transport = std::move(*transport);
+        std::unique_ptr<kota::ipc::Transport> final_transport = std::move(*transport);
         if(opts.record.has_value()) {
             final_transport =
-                std::make_unique<et::ipc::RecordingTransport>(std::move(final_transport),
-                                                              *opts.record);
+                std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport),
+                                                                *opts.record);
         }
 
-        et::ipc::JsonPeer peer(loop, std::move(final_transport));
+        kota::ipc::JsonPeer peer(loop, std::move(final_transport));
         clice::MasterServer server(loop, peer, std::move(self_path));
         server.register_handlers();
 
@@ -160,13 +161,12 @@ int main(int argc, const char** argv) {
     if(mode == "socket") {
         clice::logging::stderr_logger("master", clice::logging::options);
 
-        namespace et = eventide;
-        et::event_loop loop;
+        kota::event_loop loop;
 
         auto host = opts.host.value_or("127.0.0.1");
         auto port = opts.port.value_or(50051);
 
-        auto acceptor = et::tcp::listen(host, port, {}, loop);
+        auto acceptor = kota::tcp::listen(host, port, {}, loop);
         if(!acceptor) {
             LOG_ERROR("failed to listen on {}:{}", host, port);
             return 1;
@@ -174,7 +174,7 @@ int main(int argc, const char** argv) {
 
         LOG_INFO("Listening on {}:{} ...", host, port);
 
-        auto task = [&]() -> et::task<> {
+        auto task = [&]() -> kota::task<> {
             auto client = co_await acceptor->accept();
             if(!client.has_value()) {
                 LOG_ERROR("failed to accept connection");
@@ -184,13 +184,13 @@ int main(int argc, const char** argv) {
 
             LOG_INFO("Client connected");
 
-            std::unique_ptr<et::ipc::Transport> transport =
-                std::make_unique<et::ipc::StreamTransport>(std::move(client.value()));
+            std::unique_ptr<kota::ipc::Transport> transport =
+                std::make_unique<kota::ipc::StreamTransport>(std::move(client.value()));
             if(opts.record.has_value()) {
-                transport = std::make_unique<et::ipc::RecordingTransport>(std::move(transport),
-                                                                          *opts.record);
+                transport = std::make_unique<kota::ipc::RecordingTransport>(std::move(transport),
+                                                                            *opts.record);
             }
-            et::ipc::JsonPeer peer(loop, std::move(transport));
+            kota::ipc::JsonPeer peer(loop, std::move(transport));
             clice::MasterServer server(loop, peer, std::string(self_path));
             server.register_handlers();
 
