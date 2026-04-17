@@ -179,6 +179,55 @@ def parse_version_tuple(text: str) -> tuple[int, ...]:
     return tuple(digits)
 
 
+#  When building with pixi or NixOS, the compiler is sandboxed inside its own
+#  sysroot.  System LLVM at /usr is outside that sysroot, so linking against it
+#  pulls in libraries built for the host's libc/libstdc++ which may be
+#  ABI-incompatible with the ones inside the sandbox.  Detect this and refuse to
+#  use any LLVM install that falls outside the compiler's sysroot.
+def compiler_sysroot() -> Path | None:
+    """Return the ``--sysroot`` from clang++'s per-target config, if any."""
+    compiler = shutil.which("clang++")
+    if not compiler:
+        return None
+
+    try:
+        triple = subprocess.check_output([compiler, "-dumpmachine"], text=True).strip()
+    except (subprocess.CalledProcessError, OSError):
+        return None
+
+    if not triple:
+        return None
+
+    cfg = Path(compiler).with_name(f"{triple}.cfg")
+    if not cfg.is_file():
+        return None
+
+    try:
+        for line in cfg.read_text(encoding="utf-8").splitlines():
+            if not line.startswith("--sysroot="):
+                continue
+            sysroot = Path(line.split("=", 1)[1]).resolve()
+            if sysroot.exists():
+                return sysroot
+    except OSError:
+        return None
+
+    return None
+
+
+def llvm_install_matches_compiler(prefix: Path) -> bool:
+    """True when *prefix* is inside the compiler's sysroot (or no sysroot)."""
+    sysroot = compiler_sysroot()
+    if sysroot is None:
+        return True
+
+    try:
+        prefix.resolve().relative_to(sysroot)
+        return True
+    except ValueError:
+        return False
+
+
 def system_llvm_ok(required_version: str, build_type: str) -> Path | None:
     if build_type.lower().startswith("debug"):
         return None
@@ -194,7 +243,12 @@ def system_llvm_ok(required_version: str, build_type: str) -> Path | None:
     found = parse_version_tuple(version)
     if not found or found < required:
         return None
-    return Path(prefix)
+
+    prefix_path = Path(prefix)
+    if not llvm_install_matches_compiler(prefix_path):
+        return None
+
+    return prefix_path
 
 
 def github_api(url: str, token: str | None) -> dict:
@@ -287,13 +341,21 @@ def main() -> None:
     if args.install_path:
         candidate = Path(args.install_path)
         if candidate.exists():
-            log(f"Using provided LLVM install at {candidate}")
+            if llvm_install_matches_compiler(candidate):
+                log(f"Using provided LLVM install at {candidate}")
+                install_path = candidate
+            else:
+                log(
+                    f"Provided LLVM install at {candidate} is outside the active compiler sysroot; "
+                    "will install a bundled LLVM instead"
+                )
+                needs_install = True
         else:
             log(
                 f"Provided LLVM install path does not exist; will install to {candidate}"
             )
             needs_install = True
-        install_path = candidate
+            install_path = candidate
     else:
         detected = system_llvm_ok(args.version, build_type)
         if detected:
