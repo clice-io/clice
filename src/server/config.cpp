@@ -8,7 +8,6 @@
 
 #include "kota/codec/json/json.h"
 #include "kota/codec/toml.h"
-#include "toml++/toml.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
@@ -131,27 +130,13 @@ std::optional<CliceConfig> CliceConfig::load(llvm::StringRef path, llvm::StringR
     if(!content)
         return std::nullopt;
 
-    // Parse with toml++ directly to capture line/column/description on failure
-    // (kotatsu's wrapper discards the underlying parse_error detail).
-    auto parsed = ::toml::parse(std::string_view(*content));
-    if(!parsed) {
-        auto& err = parsed.error();
-        auto& src = err.source();
-        LOG_ERROR("Invalid clice.toml {} at line {} col {}: {}",
-                  path,
-                  src.begin.line,
-                  src.begin.column,
-                  err.description());
+    auto result = kota::codec::toml::parse<CliceConfig>(*content);
+    if(!result) {
+        LOG_ERROR("Invalid clice.toml {}: {}", path, result.error().to_string());
         return std::nullopt;
     }
 
-    auto from_result = kota::codec::toml::from_toml<CliceConfig>(parsed.table());
-    if(!from_result) {
-        LOG_ERROR("Invalid clice.toml {}: schema error: {}", path, from_result.error().message());
-        return std::nullopt;
-    }
-
-    auto config = std::move(*from_result);
+    auto config = std::move(*result);
     config.apply_defaults(workspace_root);
     LOG_INFO("Loaded config from {}", path);
     return config;

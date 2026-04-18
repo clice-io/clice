@@ -337,8 +337,6 @@ TEST_CASE(CompilePathsList) {
 
 TEST_CASE(TomlErrorLocated) {
     // Malformed TOML (bad table header, missing close-bracket) must return nullopt.
-    // The LOG_ERROR path is exercised to include line/col/description — verified by
-    // inspection; here we assert the failure return.
     TempDir tmp;
     tmp.touch("clice.toml", "[project\nclang_tidy = true\n");
     auto result = CliceConfig::load(tmp.path("clice.toml"), tmp.root.str());
