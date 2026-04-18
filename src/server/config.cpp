@@ -3,9 +3,10 @@
 #include <algorithm>
 #include <thread>
 
-#include "eventide/serde/toml.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+
+#include "kota/codec/toml.h"
 
 namespace clice {
 
@@ -59,7 +60,7 @@ std::optional<CliceConfig> CliceConfig::load(const std::string& path,
         return std::nullopt;
     }
 
-    auto result = eventide::serde::toml::parse<CliceConfig>(*content);
+    auto result = kota::codec::toml::parse<CliceConfig>(*content);
     if(!result) {
         LOG_WARN("Failed to parse config file {}", path);
         return std::nullopt;

@@ -7,8 +7,9 @@
 
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
-#include "eventide/ipc/lsp/position.h"
-#include "eventide/ipc/lsp/protocol.h"
+
+#include "kota/ipc/lsp/position.h"
+#include "kota/ipc/lsp/protocol.h"
 
 namespace clang {
 
@@ -18,11 +19,11 @@ class NamedDecl;
 
 namespace clice::feature {
 
-namespace protocol = eventide::ipc::protocol;
+namespace protocol = kota::ipc::protocol;
 
-using eventide::ipc::lsp::PositionEncoding;
-using eventide::ipc::lsp::PositionMapper;
-using eventide::ipc::lsp::parse_position_encoding;
+using kota::ipc::lsp::PositionEncoding;
+using kota::ipc::lsp::PositionMapper;
+using kota::ipc::lsp::parse_position_encoding;
 
 inline auto to_range(const PositionMapper& converter, LocalSourceRange range) -> protocol::Range {
     return protocol::Range{

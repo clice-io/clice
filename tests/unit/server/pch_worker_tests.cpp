@@ -10,8 +10,6 @@ namespace clice::testing {
 
 namespace {
 
-namespace et = eventide;
-
 // ============================================================================
 // End-to-end PCH compilation through real workers:
 //   1. Stateless worker builds PCH for preamble headers
@@ -39,7 +37,7 @@ TEST_CASE(BuildPCHThenCompile) {
     std::string pch_path;
     bool phase1_done = false;
 
-    sl.run([&]() -> et::task<> {
+    sl.run([&]() -> kota::task<> {
         worker::BuildParams params;
         params.kind = worker::BuildKind::BuildPCH;
         params.file = main_file;
@@ -79,7 +77,7 @@ TEST_CASE(BuildPCHThenCompile) {
 
     auto preamble_bound = compute_preamble_bound(main_text);
 
-    sf.run([&]() -> et::task<> {
+    sf.run([&]() -> kota::task<> {
         worker::CompileParams params;
         params.path = main_file;
         params.version = 1;
@@ -123,7 +121,7 @@ TEST_CASE(CompileWithoutPCHStillWorks) {
 
     bool compile_done = false;
 
-    sf.run([&]() -> et::task<> {
+    sf.run([&]() -> kota::task<> {
         worker::CompileParams params;
         params.path = main_file;
         params.version = 1;

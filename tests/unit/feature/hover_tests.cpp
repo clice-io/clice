@@ -8,7 +8,7 @@ namespace clice::testing {
 
 namespace {
 
-namespace protocol = eventide::ipc::protocol;
+namespace protocol = kota::ipc::protocol;
 
 TEST_SUITE(Hover, Tester) {
 

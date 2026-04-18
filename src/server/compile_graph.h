@@ -4,15 +4,12 @@
 #include <functional>
 #include <memory>
 
-#include "eventide/async/async.h"
-
+#include "kota/async/async.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace clice {
-
-namespace et = eventide;
 
 struct CompileUnit {
     std::uint32_t path_id = 0;
@@ -33,14 +30,15 @@ struct CompileUnit {
     /// stale completions without ABA risk from raw-pointer comparison.
     std::uint64_t generation = 0;
 
-    std::unique_ptr<et::cancellation_source> source = std::make_unique<et::cancellation_source>();
-    std::unique_ptr<et::event> completion;
+    std::unique_ptr<kota::cancellation_source> source =
+        std::make_unique<kota::cancellation_source>();
+    std::unique_ptr<kota::event> completion;
 };
 
 class CompileGraph {
 public:
     /// Performs the actual compilation (e.g. produce PCM file).
-    using dispatch_fn = std::function<et::task<bool>(std::uint32_t path_id)>;
+    using dispatch_fn = std::function<kota::task<bool>(std::uint32_t path_id)>;
 
     /// Returns the dependency path_ids for a given path_id (called lazily on first compile).
     using resolve_fn = std::function<llvm::SmallVector<std::uint32_t>(std::uint32_t path_id)>;
@@ -48,11 +46,11 @@ public:
     CompileGraph(dispatch_fn dispatch, resolve_fn resolve);
 
     /// Compile a unit and all its transitive dependencies.
-    et::task<bool> compile(std::uint32_t path_id);
+    kota::task<bool> compile(std::uint32_t path_id);
 
     /// Compile all transitive module dependencies of path_id, but NOT path_id itself.
     /// Used for non-module files (plain .cpp) that import modules.
-    et::task<bool> compile_deps(std::uint32_t path_id);
+    kota::task<bool> compile_deps(std::uint32_t path_id);
 
     /// Mark path_id and all transitive dependents as dirty,
     /// cancelling any in-progress compilations.
@@ -70,9 +68,9 @@ private:
     void ensure_resolved(std::uint32_t path_id);
 
     /// Internal compile with ancestor tracking for cycle detection.
-    et::task<bool> compile_impl(std::uint32_t path_id,
-                                llvm::DenseSet<std::uint32_t> ancestors,
-                                bool dispatch_self = true);
+    kota::task<bool> compile_impl(std::uint32_t path_id,
+                                  llvm::DenseSet<std::uint32_t> ancestors,
+                                  bool dispatch_self = true);
 
     /// Check if waiting on `target` would deadlock given our `ancestors` chain.
     /// Walks the dependency graph through compiling units to see if any dep

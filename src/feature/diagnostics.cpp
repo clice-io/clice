@@ -2,14 +2,15 @@
 #include <string>
 #include <vector>
 
-#include "eventide/ipc/lsp/uri.h"
 #include "feature/feature.h"
+
+#include "kota/ipc/lsp/uri.h"
 
 namespace clice::feature {
 
 namespace {
 
-namespace lsp = eventide::ipc::lsp;
+namespace lsp = kota::ipc::lsp;
 
 auto to_uri(llvm::StringRef file) -> std::string {
     const auto file_view = std::string_view(file.data(), file.size());

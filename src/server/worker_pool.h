@@ -6,17 +6,17 @@
 #include <list>
 #include <memory>
 
-#include "eventide/async/async.h"
-#include "eventide/ipc/peer.h"
 #include "server/protocol.h"
 
+#include "kota/async/async.h"
+#include "kota/ipc/codec/bincode.h"
+#include "kota/ipc/peer.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace clice {
 
-namespace et = eventide;
-using et::ipc::RequestResult;
+using kota::ipc::RequestResult;
 
 struct WorkerPoolOptions {
     std::string self_path;
@@ -28,23 +28,24 @@ struct WorkerPoolOptions {
 
 class WorkerPool {
 public:
-    WorkerPool(et::event_loop& loop) : loop(loop) {}
+    WorkerPool(kota::event_loop& loop) : loop(loop) {}
 
     /// Spawn all worker processes. Returns false on failure.
     bool start(const WorkerPoolOptions& options);
 
     /// Gracefully stop all workers.
-    et::task<> stop();
+    kota::task<> stop();
 
     /// Send a request to a stateful worker with path_id affinity routing.
     template <typename Params>
     RequestResult<Params> send_stateful(std::uint32_t path_id,
                                         const Params& params,
-                                        et::ipc::request_options opts = {});
+                                        kota::ipc::request_options opts = {});
 
     /// Send a request to a stateless worker with round-robin dispatch.
     template <typename Params>
-    RequestResult<Params> send_stateless(const Params& params, et::ipc::request_options opts = {});
+    RequestResult<Params> send_stateless(const Params& params,
+                                         kota::ipc::request_options opts = {});
 
     /// Send a notification to the stateful worker owning path_id (if any).
     template <typename Params>
@@ -60,12 +61,12 @@ public:
 
 private:
     struct WorkerProcess {
-        et::process proc;
-        std::unique_ptr<et::ipc::BincodePeer> peer;
+        kota::process proc;
+        std::unique_ptr<kota::ipc::BincodePeer> peer;
         std::size_t owned_documents = 0;
     };
 
-    et::event_loop& loop;
+    kota::event_loop& loop;
     llvm::SmallVector<WorkerProcess> stateless_workers;
     llvm::SmallVector<WorkerProcess> stateful_workers;
     std::size_t next_stateless = 0;
@@ -86,13 +87,13 @@ private:
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
                                                 const Params& params,
-                                                et::ipc::request_options opts) {
+                                                kota::ipc::request_options opts) {
     if(stateful_workers.empty()) {
-        co_return et::outcome_error(et::ipc::Error{"No stateful workers available"});
+        co_return kota::outcome_error(kota::ipc::Error{"No stateful workers available"});
     }
     // No timeout: compile tasks run as detached tasks (loop.schedule) that
     // are immune to LSP $/cancelRequest.  Adding a timeout here would use
-    // eventide's with_token/when_any which has a spurious-cancellation bug
+    // kotatsu's with_token/when_any which has a spurious-cancellation bug
     // that kills requests within milliseconds instead of the configured period.
     auto idx = assign_worker(path_id);
     co_return co_await stateful_workers[idx].peer->send_request(params, opts);
@@ -100,9 +101,9 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
 
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
-                                                 et::ipc::request_options opts) {
+                                                 kota::ipc::request_options opts) {
     if(stateless_workers.empty()) {
-        co_return et::outcome_error(et::ipc::Error{"No stateless workers available"});
+        co_return kota::outcome_error(kota::ipc::Error{"No stateless workers available"});
     }
     auto idx = next_stateless;
     next_stateless = (next_stateless + 1) % stateless_workers.size();

@@ -151,13 +151,13 @@ target_link_libraries(clice-core PUBLIC
     spdlog::spdlog
     roaring::roaring
     flatbuffers
-    eventide::ipc::lsp
-    eventide::serde::toml
+    kota::ipc::lsp
+    kota::codec::toml
     simdjson::simdjson
 )
 
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
-target_link_libraries(clice PRIVATE clice::core eventide::deco)
+target_link_libraries(clice PRIVATE clice::core kota::deco)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_custom_target(copy_clang_resource ALL
@@ -189,7 +189,7 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/src"
         "${PROJECT_SOURCE_DIR}/tests/unit"
     )
-    target_link_libraries(unit_tests PRIVATE clice::core eventide::zest eventide::deco)
+    target_link_libraries(unit_tests PRIVATE clice::core kota::zest kota::deco)
 endif()
 
 if(CLICE_ENABLE_BENCHMARK)
@@ -199,7 +199,7 @@ if(CLICE_ENABLE_BENCHMARK)
     target_include_directories(scan_benchmark PRIVATE
         "${PROJECT_SOURCE_DIR}/src"
     )
-    target_link_libraries(scan_benchmark PRIVATE clice::core eventide::deco)
+    target_link_libraries(scan_benchmark PRIVATE clice::core kota::deco)
 endif()
 
 if(CLICE_RELEASE)

@@ -5,10 +5,10 @@
 #include <vector>
 
 #include "command/argument_parser.h"
-#include "eventide/reflection/enum.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
+#include "kota/meta/enum.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -363,7 +363,7 @@ std::vector<const char*> query_toolchain(const QueryParams& params) {
         case CompilerFamily::Unknown: {
             /// TODO: nvcc and intel compilers need further exploration.
             LOG_ERROR("Fail to query driver, unknown supported driver kind: {}, driver is {}",
-                      eventide::refl::enum_name(family),
+                      kota::meta::enum_name(family),
                       driver);
 
             std::vector<const char*> result;

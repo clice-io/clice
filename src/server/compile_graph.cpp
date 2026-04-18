@@ -33,19 +33,19 @@ void CompileGraph::ensure_resolved(std::uint32_t path_id) {
     }
 }
 
-et::task<bool> CompileGraph::compile_deps(std::uint32_t path_id) {
+kota::task<bool> CompileGraph::compile_deps(std::uint32_t path_id) {
     llvm::DenseSet<std::uint32_t> ancestors;
     co_return co_await compile_impl(path_id, ancestors, false);
 }
 
-et::task<bool> CompileGraph::compile(std::uint32_t path_id) {
+kota::task<bool> CompileGraph::compile(std::uint32_t path_id) {
     llvm::DenseSet<std::uint32_t> ancestors;
     co_return co_await compile_impl(path_id, ancestors);
 }
 
-et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
-                                          llvm::DenseSet<std::uint32_t> ancestors,
-                                          bool dispatch_self) {
+kota::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
+                                            llvm::DenseSet<std::uint32_t> ancestors,
+                                            bool dispatch_self) {
     ensure_resolved(path_id);
 
     // Cycle detection: if this unit is already in the compile chain, bail out.
@@ -63,12 +63,12 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
             co_return true;
         }
 
-        std::vector<et::task<bool>> dep_tasks;
+        std::vector<kota::task<bool>> dep_tasks;
         dep_tasks.reserve(deps.size());
         for(auto dep_id: deps) {
             dep_tasks.push_back(compile_impl(dep_id, ancestors));
         }
-        auto results = co_await et::when_all(std::move(dep_tasks));
+        auto results = co_await kota::when_all(std::move(dep_tasks));
         for(auto ok: results) {
             if(!ok) {
                 co_return false;
@@ -96,7 +96,7 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
     // Begin compilation. The finish lambda ensures compiling/completion state
     // is always cleaned up, regardless of how the function exits.
     it->second.compiling = true;
-    it->second.completion = std::make_unique<et::event>();
+    it->second.completion = std::make_unique<kota::event>();
 
     auto finish = [&, path_id] {
         auto& u = units.find(path_id)->second;
@@ -113,17 +113,17 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
     // Deadlocks from cross-branch cycles (e.g. 1->{2,3}, 2->3, 3->2) are
     // prevented by has_wait_cycle() checking before completion.wait().
     if(!deps.empty()) {
-        std::vector<et::task<bool, void, et::cancellation>> dep_tasks;
+        std::vector<kota::task<bool, void, kota::cancellation>> dep_tasks;
         dep_tasks.reserve(deps.size());
         for(auto dep_id: deps) {
-            dep_tasks.push_back(et::with_token(compile_impl(dep_id, ancestors), token));
+            dep_tasks.push_back(kota::with_token(compile_impl(dep_id, ancestors), token));
         }
 
-        auto results = co_await et::when_all(std::move(dep_tasks));
+        auto results = co_await kota::when_all(std::move(dep_tasks));
 
         if(results.is_cancelled()) {
             finish();
-            co_await et::cancel();
+            co_await kota::cancel();
         }
 
         for(auto ok: *results) {
@@ -135,11 +135,11 @@ et::task<bool> CompileGraph::compile_impl(std::uint32_t path_id,
     }
 
     // Dispatch the actual compilation, cancellable via the pre-captured token.
-    auto result = co_await et::with_token(dispatch(path_id), token);
+    auto result = co_await kota::with_token(dispatch(path_id), token);
 
     if(!result.has_value()) {
         finish();
-        co_await et::cancel();
+        co_await kota::cancel();
     }
 
     if(!*result) {
@@ -199,7 +199,7 @@ llvm::SmallVector<std::uint32_t> CompileGraph::update(std::uint32_t path_id) {
         // Cancel in-flight compilation if running.
         if(unit.compiling) {
             unit.source->cancel();
-            unit.source = std::make_unique<et::cancellation_source>();
+            unit.source = std::make_unique<kota::cancellation_source>();
         }
         unit.dirty = true;
         unit.generation++;
@@ -247,7 +247,7 @@ bool CompileGraph::has_wait_cycle(std::uint32_t target,
 void CompileGraph::cancel_all() {
     for(auto& [_, unit]: units) {
         unit.source->cancel();
-        unit.source = std::make_unique<et::cancellation_source>();
+        unit.source = std::make_unique<kota::cancellation_source>();
     }
 }
 

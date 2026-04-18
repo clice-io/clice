@@ -2,16 +2,15 @@
 #include <vector>
 
 #include "test/test.h"
-#include "eventide/serde/bincode/bincode.h"
-#include "eventide/serde/serde/raw_value.h"
 #include "server/protocol.h"
 #include "server/worker_test_helpers.h"
+
+#include "kota/codec/bincode/bincode.h"
+#include "kota/codec/raw_value.h"
 
 namespace clice::testing {
 
 namespace {
-
-namespace et = eventide;
 
 // ============================================================================
 // Bincode Serialization Tests
@@ -20,7 +19,7 @@ namespace et = eventide;
 TEST_SUITE(BincodeRoundTrip) {
 
 TEST_CASE(CompileParamsRoundTrip) {
-    namespace bincode = eventide::serde::bincode;
+    namespace bincode = kota::codec::bincode;
 
     worker::CompileParams params;
     params.path = "/tmp/test.cpp";
@@ -47,7 +46,7 @@ TEST_CASE(CompileParamsRoundTrip) {
 }
 
 TEST_CASE(CompileResultRoundTrip) {
-    namespace bincode = eventide::serde::bincode;
+    namespace bincode = kota::codec::bincode;
 
     worker::CompileResult result;
     result.version = 1;
@@ -92,7 +91,7 @@ TEST_CASE(BuildPCHRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::BuildParams params;
         params.kind = worker::BuildKind::BuildPCH;
         params.file = hdr;
@@ -127,7 +126,7 @@ TEST_CASE(IndexRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::BuildParams params;
         params.kind = worker::BuildKind::Index;
         params.file = src;
@@ -162,7 +161,7 @@ TEST_CASE(BuildPCMRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::BuildParams params;
         params.kind = worker::BuildKind::BuildPCM;
         params.file = src;
@@ -196,7 +195,7 @@ TEST_CASE(CompletionRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::BuildParams params;
         params.kind = worker::BuildKind::Completion;
         params.file = src;
@@ -226,7 +225,7 @@ TEST_CASE(SignatureHelpRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::BuildParams params;
         params.kind = worker::BuildKind::SignatureHelp;
         params.file = src;
@@ -261,7 +260,7 @@ TEST_CASE(MultipleStatelessRequests) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         // Send multiple index requests to test stateless worker handles them sequentially.
         for(int i = 0; i < 3; i++) {
             worker::BuildParams params;

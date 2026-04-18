@@ -11,8 +11,6 @@
 namespace clice::testing {
 namespace {
 
-namespace et = eventide;
-
 /// Build a dispatch_fn that compiles PCMs in-process (no workers).
 /// Clang requires ALL transitive PCM deps (not just direct imports)
 /// in PrebuiltModuleFiles, so we pass every available PCM.
@@ -20,7 +18,7 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
                                         PathPool& pool,
                                         DependencyGraph& graph,
                                         llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
-    return [&](std::uint32_t path_id) -> et::task<bool> {
+    return [&](std::uint32_t path_id) -> kota::task<bool> {
         auto file_path = pool.resolve(path_id);
         auto results = cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
         if(results.empty()) {
@@ -123,8 +121,8 @@ TEST_CASE(SingleModuleNoDeps) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_a]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_a]() -> kota::task<> {
         auto result = co_await cg.compile(pid_a).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -157,8 +155,8 @@ TEST_CASE(ChainedModules) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_a, pid_b]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_a, pid_b]() -> kota::task<> {
         auto result = co_await cg.compile(pid_b).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -202,8 +200,8 @@ TEST_CASE(DiamondModules) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_top]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_top]() -> kota::task<> {
         auto result = co_await cg.compile(pid_top).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -238,8 +236,8 @@ TEST_CASE(DottedModuleName) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_app]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_app]() -> kota::task<> {
         auto result = co_await cg.compile(pid_app).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -280,8 +278,8 @@ TEST_CASE(ReExport) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_user]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_user]() -> kota::task<> {
         auto result = co_await cg.compile(pid_user).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -324,8 +322,8 @@ TEST_CASE(ExportBlock) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid]() -> kota::task<> {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -360,8 +358,8 @@ TEST_CASE(GlobalModuleFragment) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid]() -> kota::task<> {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -396,8 +394,8 @@ TEST_CASE(PrivateModuleFragment) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid]() -> kota::task<> {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -436,8 +434,8 @@ TEST_CASE(PartitionInterface) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_m]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_m]() -> kota::task<> {
         auto result = co_await cg.compile(pid_m).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -476,8 +474,8 @@ TEST_CASE(MultiplePartitions) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_lib]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_lib]() -> kota::task<> {
         auto result = co_await cg.compile(pid_lib).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -519,8 +517,8 @@ TEST_CASE(PartitionChain) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_sys]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_sys]() -> kota::task<> {
         auto result = co_await cg.compile(pid_sys).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -561,8 +559,8 @@ TEST_CASE(ExportNamespace) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid]() -> kota::task<> {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -600,8 +598,8 @@ TEST_CASE(GMFWithImport) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid]() -> kota::task<> {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -651,8 +649,8 @@ TEST_CASE(DeepChain) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid]() -> kota::task<> {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -686,8 +684,8 @@ TEST_CASE(IndependentModules) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_x, pid_y]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_x, pid_y]() -> kota::task<> {
         auto r1 = co_await cg.compile(pid_x).catch_cancel();
         EXPECT_TRUE(r1.has_value() && *r1);
         auto r2 = co_await cg.compile(pid_y).catch_cancel();
@@ -728,8 +726,8 @@ TEST_CASE(TemplateExport) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid]() -> kota::task<> {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -775,8 +773,8 @@ TEST_CASE(ClassExportAndInheritance) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid]() -> kota::task<> {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -813,8 +811,8 @@ TEST_CASE(RecompileAfterUpdate) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_leaf, pid_mid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_leaf, pid_mid]() -> kota::task<> {
         // First compile.
         auto r1 = co_await cg.compile(pid_mid).catch_cancel();
         EXPECT_TRUE(r1.has_value() && *r1);
@@ -864,8 +862,8 @@ TEST_CASE(PartitionWithGMF) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid]() -> kota::task<> {
         auto result = co_await cg.compile(pid).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -905,8 +903,8 @@ TEST_CASE(PartitionWithExternalImport) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_app]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_app]() -> kota::task<> {
         auto result = co_await cg.compile(pid_app).catch_cancel();
         EXPECT_TRUE(result.has_value());
         EXPECT_TRUE(*result);
@@ -958,8 +956,8 @@ TEST_CASE(DiamondUpdateCascade) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_base, pid_left, pid_right, pid_top]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_base, pid_left, pid_right, pid_top]() -> kota::task<> {
         // Initial compile.
         auto r1 = co_await cg.compile(pid_top).catch_cancel();
         EXPECT_TRUE(r1.has_value() && *r1);
@@ -1046,8 +1044,8 @@ TEST_CASE(ReResolveAfterUpdate) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     std::move(counting_resolver));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, &resolve_count, pid_mid]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, &resolve_count, pid_mid]() -> kota::task<> {
         // First compile: resolve_fn called once for Mid.
         auto r1 = co_await cg.compile(pid_mid).catch_cancel();
         EXPECT_TRUE(r1.has_value() && *r1);
@@ -1092,8 +1090,8 @@ TEST_CASE(CompileFailurePropagation) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_bad]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_bad]() -> kota::task<> {
         auto result = co_await cg.compile(pid_bad).catch_cancel();
         EXPECT_TRUE(result.has_value());
         // Compilation should fail due to undefined symbol.
@@ -1133,8 +1131,8 @@ TEST_CASE(ModuleImplementationUnit) {
     CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
                     make_resolver(env.cdb, env.pool, env.graph));
 
-    et::event_loop loop;
-    auto test = [this, &cg, &env, pid_iface]() -> et::task<> {
+    kota::event_loop loop;
+    auto test = [this, &cg, &env, pid_iface]() -> kota::task<> {
         // Build the interface PCM via CompileGraph.
         auto r1 = co_await cg.compile(pid_iface).catch_cancel();
         EXPECT_TRUE(r1.has_value() && *r1);

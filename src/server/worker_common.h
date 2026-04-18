@@ -7,9 +7,10 @@
 #include <vector>
 
 #include "compile/compilation.h"
-#include "eventide/ipc/json_codec.h"
-#include "eventide/serde/json/serializer.h"
-#include "eventide/serde/serde/raw_value.h"
+
+#include "kota/codec/json/serializer.h"
+#include "kota/codec/raw_value.h"
+#include "kota/ipc/codec/json.h"
 
 namespace clice {
 
@@ -36,9 +37,9 @@ inline void fill_args(CompilationParams& cp,
 
 /// Serialize a value to JSON RawValue using LSP config.
 template <typename T>
-inline eventide::serde::RawValue to_raw(const T& value) {
-    auto json = eventide::serde::json::to_json<eventide::ipc::lsp_config>(value);
-    return eventide::serde::RawValue{json ? std::move(*json) : "null"};
+inline kota::codec::RawValue to_raw(const T& value) {
+    auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(value);
+    return kota::codec::RawValue{json ? std::move(*json) : "null"};
 }
 
 }  // namespace clice

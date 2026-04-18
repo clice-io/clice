@@ -2,15 +2,14 @@
 #include <vector>
 
 #include "test/test.h"
-#include "eventide/serde/serde/raw_value.h"
 #include "server/protocol.h"
 #include "server/worker_test_helpers.h"
+
+#include "kota/codec/raw_value.h"
 
 namespace clice::testing {
 
 namespace {
-
-namespace et = eventide;
 
 TEST_SUITE(StatefulWorker) {
 
@@ -33,7 +32,7 @@ TEST_CASE(CompileRequest) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::CompileParams params;
         params.path = src;
         params.version = 1;
@@ -59,7 +58,7 @@ TEST_CASE(HoverWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         // Hover on a file that hasn't been compiled should return null.
         worker::QueryParams params;
         params.kind = worker::QueryKind::Hover;
@@ -88,7 +87,7 @@ TEST_CASE(CompileThenHover) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         // First compile
         worker::CompileParams cp;
         cp.path = src;
@@ -129,7 +128,7 @@ TEST_CASE(DocumentUpdate) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         // Compile first
         worker::CompileParams cp;
         cp.path = src;
@@ -170,7 +169,7 @@ TEST_CASE(CodeActionReturnsEmpty) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::QueryParams params;
         params.kind = worker::QueryKind::CodeAction;
         params.path = "/tmp/test.cpp";
@@ -192,7 +191,7 @@ TEST_CASE(GoToDefinitionReturnsEmpty) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::QueryParams params;
         params.kind = worker::QueryKind::GoToDefinition;
         params.path = "/tmp/test.cpp";
@@ -215,7 +214,7 @@ TEST_CASE(SemanticTokensWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::QueryParams params;
         params.kind = worker::QueryKind::SemanticTokens;
         params.path = "/tmp/nonexistent.cpp";
@@ -236,7 +235,7 @@ TEST_CASE(FoldingRangeWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::QueryParams params;
         params.kind = worker::QueryKind::FoldingRange;
         params.path = "/tmp/nonexistent.cpp";
@@ -257,7 +256,7 @@ TEST_CASE(DocumentSymbolWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::QueryParams params;
         params.kind = worker::QueryKind::DocumentSymbol;
         params.path = "/tmp/nonexistent.cpp";
@@ -278,7 +277,7 @@ TEST_CASE(DocumentLinkWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::QueryParams params;
         params.kind = worker::QueryKind::DocumentLink;
         params.path = "/tmp/nonexistent.cpp";
@@ -299,7 +298,7 @@ TEST_CASE(InlayHintsWithoutCompile) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         worker::QueryParams params;
         params.kind = worker::QueryKind::InlayHints;
         params.path = "/tmp/nonexistent.cpp";
@@ -330,7 +329,7 @@ TEST_CASE(MultipleSequentialRequests) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         // Compile first so feature requests return real data.
         worker::CompileParams cp;
         cp.path = src;
@@ -402,7 +401,7 @@ TEST_CASE(MultipleDocuments) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         // Compile 3 different documents.
         for(int i = 0; i < 3; i++) {
             worker::CompileParams cp;
@@ -440,7 +439,7 @@ TEST_CASE(EvictNotification) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         // Send an evict notification — worker should remove the document without crashing.
         worker::EvictParams ep;
         ep.path = "/tmp/evict_test.cpp";
@@ -474,7 +473,7 @@ TEST_CASE(SpawnWithMemoryLimit) {
 
     bool test_done = false;
 
-    w.run([&]() -> et::task<> {
+    w.run([&]() -> kota::task<> {
         // Compile first.
         worker::CompileParams cp;
         cp.path = src;

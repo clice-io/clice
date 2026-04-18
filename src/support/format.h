@@ -6,11 +6,10 @@
 #include <system_error>
 #include <type_traits>
 
-#include "eventide/common/meta.h"
-#include "eventide/common/ranges.h"
-#include "eventide/reflection/enum.h"
-#include "eventide/reflection/struct.h"
-
+#include "kota/meta/enum.h"
+#include "kota/meta/struct.h"
+#include "kota/support/ranges.h"
+#include "kota/support/type_traits.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
@@ -86,7 +85,7 @@ struct std::formatter<std::error_code> : std::formatter<std::string_view> {
     }
 };
 
-template <eventide::refl::enum_type E>
+template <kota::meta::enum_type E>
 struct std::formatter<E> : std::formatter<std::string> {
     using Base = std::formatter<std::string>;
 
@@ -97,7 +96,7 @@ struct std::formatter<E> : std::formatter<std::string> {
 
     template <typename FormatContext>
     auto format(const E& value, FormatContext& ctx) const {
-        auto name = eventide::refl::enum_name(value);
+        auto name = kota::meta::enum_name(value);
         if(name.empty()) {
             using U = std::underlying_type_t<E>;
             return Base::format(std::format("{}", static_cast<U>(value)), ctx);
@@ -107,9 +106,8 @@ struct std::formatter<E> : std::formatter<std::string> {
 };
 
 template <typename T>
-concept clice_reflectable_class =
-    eventide::refl::reflectable_class<T> && !eventide::sequence_range<T> &&
-    !eventide::set_range<T> && !eventide::map_range<T>;
+concept clice_reflectable_class = kota::meta::reflectable_class<T> && !kota::sequence_range<T> &&
+                                  !kota::set_range<T> && !kota::map_range<T>;
 
 template <clice_reflectable_class T>
 struct std::formatter<T> : std::formatter<std::string> {
@@ -138,7 +136,7 @@ std::string dump(const Object& object) {
         return std::format("\"{}\"", object);
     } else if constexpr(std::is_same_v<T, llvm::StringRef>) {
         return std::format("\"{}\"", object);
-    } else if constexpr(eventide::map_range<T>) {
+    } else if constexpr(kota::map_range<T>) {
         std::string result = "{";
         bool first = true;
         for(auto&& [key, value]: object) {
@@ -150,8 +148,8 @@ std::string dump(const Object& object) {
         }
         result += "}";
         return result;
-    } else if constexpr(eventide::set_range<T> || eventide::sequence_range<T>) {
-        std::string result = eventide::set_range<T> ? "{" : "[";
+    } else if constexpr(kota::set_range<T> || kota::sequence_range<T>) {
+        std::string result = kota::set_range<T> ? "{" : "[";
         bool first = true;
         for(auto&& value: object) {
             if(!first) {
@@ -160,10 +158,10 @@ std::string dump(const Object& object) {
             first = false;
             result += dump(value);
         }
-        result += eventide::set_range<T> ? "}" : "]";
+        result += kota::set_range<T> ? "}" : "]";
         return result;
-    } else if constexpr(eventide::refl::enum_type<T>) {
-        auto name = eventide::refl::enum_name(object);
+    } else if constexpr(kota::meta::enum_type<T>) {
+        auto name = kota::meta::enum_name(object);
         if(!name.empty()) {
             return std::format("\"{}\"", name);
         }
@@ -172,7 +170,7 @@ std::string dump(const Object& object) {
     } else if constexpr(clice_reflectable_class<T>) {
         std::string result = "{";
         bool first = true;
-        eventide::refl::for_each(object, [&](auto field) {
+        kota::meta::for_each(object, [&](auto field) {
             if(!first) {
                 result += ", ";
             }
@@ -181,7 +179,7 @@ std::string dump(const Object& object) {
         });
         result += "}";
         return result;
-    } else if constexpr(eventide::Formattable<T>) {
+    } else if constexpr(kota::Formattable<T>) {
         return std::format("{}", object);
     } else {
         return "<unformattable>";

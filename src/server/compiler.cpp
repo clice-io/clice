@@ -5,9 +5,6 @@
 #include <string>
 
 #include "command/search_config.h"
-#include "eventide/ipc/lsp/position.h"
-#include "eventide/ipc/lsp/uri.h"
-#include "eventide/serde/json/json.h"
 #include "index/tu_index.h"
 #include "server/protocol.h"
 #include "support/filesystem.h"
@@ -15,6 +12,9 @@
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
+#include "kota/codec/json/json.h"
+#include "kota/ipc/lsp/position.h"
+#include "kota/ipc/lsp/uri.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -22,13 +22,13 @@
 
 namespace clice {
 
-namespace lsp = eventide::ipc::lsp;
-using serde_raw = et::serde::RawValue;
+namespace lsp = kota::ipc::lsp;
+using serde_raw = kota::codec::RawValue;
 
 /// Detect whether the cursor is inside a preamble directive (include/import).
 
-Compiler::Compiler(et::event_loop& loop,
-                   et::ipc::JsonPeer& peer,
+Compiler::Compiler(kota::event_loop& loop,
+                   kota::ipc::JsonPeer& peer,
                    Workspace& workspace,
                    WorkerPool& pool,
                    llvm::DenseMap<std::uint32_t, Session>& sessions) :
@@ -75,7 +75,7 @@ void Compiler::init_compile_graph() {
     };
 
     // Dispatch: sends BuildPCM request to a stateless worker.
-    auto dispatch = [this](std::uint32_t path_id) -> et::task<bool> {
+    auto dispatch = [this](std::uint32_t path_id) -> kota::task<bool> {
         auto mod_it = workspace.path_to_module.find(path_id);
         if(mod_it == workspace.path_to_module.end())
             co_return false;
@@ -393,10 +393,10 @@ std::string uri_to_path(const std::string& uri) {
 
 void Compiler::publish_diagnostics(const std::string& uri,
                                    int version,
-                                   const et::serde::RawValue& diagnostics_json) {
+                                   const kota::codec::RawValue& diagnostics_json) {
     std::vector<protocol::Diagnostic> diagnostics;
     if(!diagnostics_json.empty()) {
-        auto status = et::serde::json::from_json(diagnostics_json.data, diagnostics);
+        auto status = kota::codec::json::from_json(diagnostics_json.data, diagnostics);
         if(!status) {
             LOG_WARN("Failed to deserialize diagnostics JSON for {}", uri);
         }
@@ -415,9 +415,9 @@ void Compiler::clear_diagnostics(const std::string& uri) {
     peer.send_notification(params);
 }
 
-et::task<bool> Compiler::ensure_pch(Session& session,
-                                    const std::string& directory,
-                                    const std::vector<std::string>& arguments) {
+kota::task<bool> Compiler::ensure_pch(Session& session,
+                                      const std::string& directory,
+                                      const std::vector<std::string>& arguments) {
     auto path_id = session.path_id;
     auto path = workspace.path_pool.resolve(path_id);
     auto& text = session.text;
@@ -471,7 +471,7 @@ et::task<bool> Compiler::ensure_pch(Session& session,
     }
 
     // Register in-flight build so concurrent requests wait on us.
-    auto completion = std::make_shared<et::event>();
+    auto completion = std::make_shared<kota::event>();
     workspace.pch_cache[path_id].building = completion;
 
     // Build a new PCH via stateless worker.
@@ -519,11 +519,11 @@ et::task<bool> Compiler::ensure_pch(Session& session,
 /// Compile module dependencies, build/reuse PCH, and fill PCM paths.
 /// Shared preparation step used by both ensure_compiled() (stateful path)
 /// and forward_stateless() (completion/signatureHelp path).
-et::task<bool> Compiler::ensure_deps(Session& session,
-                                     const std::string& directory,
-                                     const std::vector<std::string>& arguments,
-                                     std::pair<std::string, uint32_t>& pch,
-                                     std::unordered_map<std::string, std::string>& pcms) {
+kota::task<bool> Compiler::ensure_deps(Session& session,
+                                       const std::string& directory,
+                                       const std::vector<std::string>& arguments,
+                                       std::pair<std::string, uint32_t>& pch,
+                                       std::unordered_map<std::string, std::string>& pcms) {
     auto path_id = session.path_id;
 
     // Compile C++20 module dependencies (PCMs).
@@ -620,7 +620,7 @@ void Compiler::record_deps(Session& session, llvm::ArrayRef<std::string> deps) {
 /// task via loop.schedule(); subsequent ones wait on the shared event.
 /// The detached task cannot be cancelled by LSP $/cancelRequest, preventing
 /// the race where cancellation wakes all waiters and they all start compiles.
-et::task<bool> Compiler::ensure_compiled(Session& session) {
+kota::task<bool> Compiler::ensure_compiled(Session& session) {
     auto path_id = session.path_id;
 
     LOG_DEBUG("ensure_compiled: path_id={} version={} gen={} ast_dirty={}",
@@ -663,7 +663,7 @@ et::task<bool> Compiler::ensure_compiled(Session& session) {
     // from the sessions map after co_await (DenseMap may invalidate pointers).
     loop.schedule([](Compiler* self,
                      std::uint32_t pid,
-                     std::shared_ptr<Session::PendingCompile> pc) -> et::task<> {
+                     std::shared_ptr<Session::PendingCompile> pc) -> kota::task<> {
         // Re-lookup session from the sessions map (pointer may have been
         // invalidated by DenseMap growth during co_await).
         auto find_session = [&]() -> Session* {
@@ -894,7 +894,7 @@ Compiler::RawResult Compiler::handle_completion(const protocol::Position& positi
                 item.kind = protocol::CompletionItemKind::File;
                 items.push_back(std::move(item));
             }
-            auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
+            auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(items);
             co_return serde_raw{json ? std::move(*json) : "[]"};
         }
         if(pctx.kind == CompletionContext::Import) {
@@ -909,7 +909,7 @@ Compiler::RawResult Compiler::handle_completion(const protocol::Position& positi
                 item.insert_text = name + ";";
                 items.push_back(std::move(item));
             }
-            auto json = et::serde::json::to_json<et::ipc::lsp_config>(items);
+            auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(items);
             co_return serde_raw{json ? std::move(*json) : "[]"};
         }
     }

@@ -1,22 +1,22 @@
 #include "server/stateless_worker.h"
 
 #include "compile/compilation.h"
-#include "eventide/async/async.h"
-#include "eventide/ipc/peer.h"
-#include "eventide/ipc/transport.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
 #include "server/protocol.h"
 #include "server/worker_common.h"
 #include "support/logging.h"
 
+#include "kota/async/async.h"
+#include "kota/ipc/codec/bincode.h"
+#include "kota/ipc/peer.h"
+#include "kota/ipc/transport.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
-namespace et = eventide;
-using et::ipc::RequestResult;
-using RequestContext = et::ipc::BincodePeer::RequestContext;
+using kota::ipc::RequestResult;
+using RequestContext = kota::ipc::BincodePeer::RequestContext;
 
 /// Extract error messages from compilation diagnostics.
 static std::string collect_errors(CompilationUnit& unit) {
@@ -266,20 +266,20 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 
     LOG_INFO("Starting stateless worker");
 
-    et::event_loop loop;
+    kota::event_loop loop;
 
-    auto transport_result = et::ipc::StreamTransport::open_stdio(loop);
+    auto transport_result = kota::ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {
         LOG_ERROR("Failed to open stdio transport");
         return 1;
     }
 
-    et::ipc::BincodePeer peer(loop, std::move(*transport_result));
+    kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
 
     peer.on_request([&](RequestContext& ctx,
                         const worker::BuildParams& params) -> RequestResult<worker::BuildParams> {
         using K = worker::BuildKind;
-        auto result = co_await et::queue([&]() -> worker::BuildResult {
+        auto result = co_await kota::queue([&]() -> worker::BuildResult {
             switch(params.kind) {
                 case K::BuildPCH: return handle_build_pch(params);
                 case K::BuildPCM: return handle_build_pcm(params);

@@ -1,13 +1,14 @@
 #include <string>
 #include <string_view>
 
-#include "eventide/deco/deco.h"
-#include "eventide/zest/zest.h"
 #include "support/logging.h"
+
+#include "kota/deco/deco.h"
+#include "kota/zest/zest.h"
 
 namespace {
 
-using deco::decl::KVStyle;
+using kota::deco::decl::KVStyle;
 
 struct TestOptions {
     DecoKV(style = KVStyle::JoinedOrSeparate,
@@ -32,8 +33,8 @@ struct TestOptions {
 }  // namespace
 
 int main(int argc, const char** argv) {
-    auto args = deco::util::argvify(argc, argv);
-    auto parsed = deco::cli::parse<TestOptions>(args);
+    auto args = kota::deco::util::argvify(argc, argv);
+    auto parsed = kota::deco::cli::parse<TestOptions>(args);
 
     std::string_view filter = {};
     if(parsed.has_value() && parsed->options.test_filter.has_value()) {
@@ -57,5 +58,5 @@ int main(int argc, const char** argv) {
 
     clice::logging::stderr_logger("test", clice::logging::options);
 
-    return eventide::zest::Runner::instance().run_tests(filter);
+    return kota::zest::Runner::instance().run_tests(filter);
 }

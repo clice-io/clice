@@ -7,22 +7,21 @@
 #include <string>
 #include <vector>
 
-#include "eventide/async/async.h"
-#include "eventide/ipc/lsp/position.h"
-#include "eventide/ipc/lsp/protocol.h"
 #include "semantic/relation_kind.h"
 #include "semantic/symbol_kind.h"
 #include "server/workspace.h"
 
+#include "kota/async/async.h"
+#include "kota/ipc/lsp/position.h"
+#include "kota/ipc/lsp/protocol.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
 
-namespace et = eventide;
-namespace protocol = et::ipc::protocol;
-namespace lsp = et::ipc::lsp;
+namespace protocol = kota::ipc::protocol;
+namespace lsp = kota::ipc::lsp;
 
 struct Session;
 class Compiler;
@@ -54,7 +53,7 @@ struct SymbolInfo {
 ///   - Document lifecycle — handled by MasterServer
 class Indexer {
 public:
-    Indexer(et::event_loop& loop,
+    Indexer(kota::event_loop& loop,
             Workspace& workspace,
             llvm::DenseMap<std::uint32_t, Session>& sessions,
             WorkerPool& pool,
@@ -165,7 +164,7 @@ private:
     }
 
 private:
-    et::event_loop& loop;
+    kota::event_loop& loop;
     Workspace& workspace;
     llvm::DenseMap<std::uint32_t, Session>& sessions;
     WorkerPool& pool;
@@ -181,9 +180,9 @@ private:
     std::size_t index_queue_pos = 0;
     bool indexing_active = false;
     bool indexing_scheduled = false;
-    std::shared_ptr<et::timer> index_idle_timer;
+    std::shared_ptr<kota::timer> index_idle_timer;
 
-    et::task<> run_background_indexing();
+    kota::task<> run_background_indexing();
 };
 
 }  // namespace clice

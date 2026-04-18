@@ -7,14 +7,15 @@
 #include <utility>
 #include <vector>
 
-#include "eventide/ipc/lsp/protocol.h"
-#include "eventide/ipc/protocol.h"
-#include "eventide/serde/serde/raw_value.h"
 #include "syntax/token.h"
+
+#include "kota/codec/raw_value.h"
+#include "kota/ipc/lsp/protocol.h"
+#include "kota/ipc/protocol.h"
 
 namespace clice::worker {
 
-namespace protocol = eventide::ipc::protocol;
+namespace protocol = kota::ipc::protocol;
 
 /// Kind of AST query dispatched to a stateful worker.
 enum class QueryKind : uint8_t {
@@ -51,7 +52,7 @@ struct CompileParams {
 struct CompileResult {
     int version;
     /// Diagnostics serialized as JSON (RawValue) to avoid bincode/serde annotation conflicts.
-    eventide::serde::RawValue diagnostics;
+    kota::codec::RawValue diagnostics;
     std::size_t memory_usage;
     std::vector<std::string> deps;
     /// Serialized TUIndex for the main file (interested_only=true).
@@ -102,8 +103,8 @@ struct BuildResult {
     std::string output_path;  ///< PCH or PCM path
     std::vector<std::string> deps;
     std::string tu_index_data;
-    std::string pch_links_json;             ///< Pre-serialized DocumentLink[] from PCH
-    eventide::serde::RawValue result_json;  ///< Completion/SignatureHelp result
+    std::string pch_links_json;         ///< Pre-serialized DocumentLink[] from PCH
+    kota::codec::RawValue result_json;  ///< Completion/SignatureHelp result
 };
 
 struct DocumentUpdateParams {
@@ -158,7 +159,7 @@ struct SwitchContextResult {
 
 }  // namespace clice::ext
 
-namespace eventide::ipc::protocol {
+namespace kota::ipc::protocol {
 
 template <>
 struct RequestTraits<clice::worker::CompileParams> {
@@ -168,7 +169,7 @@ struct RequestTraits<clice::worker::CompileParams> {
 
 template <>
 struct RequestTraits<clice::worker::QueryParams> {
-    using Result = eventide::serde::RawValue;
+    using Result = kota::codec::RawValue;
     constexpr inline static std::string_view method = "clice/worker/query";
 };
 
@@ -193,4 +194,4 @@ struct NotificationTraits<clice::worker::EvictedParams> {
     constexpr inline static std::string_view method = "clice/worker/evicted";
 };
 
-}  // namespace eventide::ipc::protocol
+}  // namespace kota::ipc::protocol

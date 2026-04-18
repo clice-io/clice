@@ -4,9 +4,6 @@
 #include <variant>
 #include <vector>
 
-#include "eventide/ipc/lsp/position.h"
-#include "eventide/ipc/lsp/protocol.h"
-#include "eventide/ipc/lsp/uri.h"
 #include "index/tu_index.h"
 #include "server/compiler.h"
 #include "server/protocol.h"
@@ -15,6 +12,9 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 
+#include "kota/ipc/lsp/position.h"
+#include "kota/ipc/lsp/protocol.h"
+#include "kota/ipc/lsp/uri.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -22,7 +22,7 @@
 
 namespace clice {
 
-namespace lsp = eventide::ipc::lsp;
+namespace lsp = kota::ipc::lsp;
 
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
     auto tu_index = index::TUIndex::from(tu_index_data);
@@ -630,13 +630,13 @@ void Indexer::schedule() {
     indexing_scheduled = true;
 
     if(!index_idle_timer) {
-        index_idle_timer = std::make_shared<et::timer>(et::timer::create(loop));
+        index_idle_timer = std::make_shared<kota::timer>(kota::timer::create(loop));
     }
     index_idle_timer->start(std::chrono::milliseconds(workspace.config.idle_timeout_ms));
     loop.schedule(run_background_indexing());
 }
 
-et::task<> Indexer::run_background_indexing() {
+kota::task<> Indexer::run_background_indexing() {
     if(index_idle_timer) {
         co_await index_idle_timer->wait();
     }
