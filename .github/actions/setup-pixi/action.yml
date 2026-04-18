@@ -13,7 +13,7 @@ runs:
     - name: Setup Pixi
       uses: prefix-dev/setup-pixi@v0.9.3
       with:
-        pixi-version: v0.62.0
+        pixi-version: v0.67.0
         environments: ${{ inputs.environments }}
         activate-environment: true
         cache: true
