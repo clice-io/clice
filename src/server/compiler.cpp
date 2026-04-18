@@ -45,11 +45,15 @@ void Compiler::init_compile_graph() {
     }
 
     // Lazy dependency resolver: scans a module file on demand to discover imports.
-    // FIXME: should also apply match_rules() for consistency with fill_compile_args().
     auto resolve = [this](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         auto file_path = workspace.path_pool.resolve(path_id);
-        auto results =
-            workspace.cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
+        std::vector<std::string> rule_append, rule_remove;
+        workspace.config.match_rules(file_path, rule_append, rule_remove);
+        auto results = workspace.cdb.lookup(file_path,
+                                            {.query_toolchain = true,
+                                             .suppress_logging = true,
+                                             .remove = rule_remove,
+                                             .append = rule_append});
         if(results.empty())
             return {};
 

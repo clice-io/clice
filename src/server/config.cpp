@@ -96,6 +96,13 @@ void CliceConfig::apply_defaults(const std::string& workspace_root) {
             }
             compiled.patterns.push_back(std::move(*pat));
         }
+        // Drop the whole rule if no pattern compiled successfully — otherwise the
+        // append/remove flags would be silently attached to a rule that can never match.
+        if(compiled.patterns.empty()) {
+            if(!rule.patterns.empty())
+                LOG_WARN("Rule dropped: all glob patterns failed to compile");
+            continue;
+        }
         compiled.append.assign(rule.append.begin(), rule.append.end());
         compiled.remove.assign(rule.remove.begin(), rule.remove.end());
         compiled_rules.push_back(std::move(compiled));
@@ -137,7 +144,7 @@ std::optional<CliceConfig> CliceConfig::load_from_json(llvm::StringRef json,
                                                        const std::string& workspace_root) {
     auto result = kota::codec::json::from_json<CliceConfig>(json);
     if(!result) {
-        LOG_WARN("Failed to parse initializationOptions JSON");
+        LOG_WARN("Failed to parse initializationOptions JSON: {}", result.error().message());
         return std::nullopt;
     }
 
