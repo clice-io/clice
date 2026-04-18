@@ -117,14 +117,9 @@ jobs:
           free -h
           df -h
 
-      - name: Setup Pixi
-        uses: prefix-dev/setup-pixi@v0.9.3
+      - uses: ./.github/actions/setup-pixi
         with:
-          pixi-version: v0.67.0
           environments: ${{ matrix.pixi_env || 'package' }}
-          activate-environment: true
-          cache: true
-          locked: true
 
       - name: Clone llvm-project
         shell: bash
