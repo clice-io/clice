@@ -19,9 +19,9 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64", "win-
 [environments]
 default = ["build", "test"]
 package = ["build", "test", "package"]
-cross-macos-x64 = ["build", "cross-macos-x64"]
-cross-linux-aarch64 = ["build", "cross-linux-aarch64"]
-cross-windows-arm64 = ["build", "cross-windows-arm64"]
+cross-macos-x64 = ["build", "package", "cross-macos-x64"]
+cross-linux-aarch64 = ["build", "package", "cross-linux-aarch64"]
+cross-windows-arm64 = ["build", "package", "cross-windows-arm64"]
 node = ["node"]
 format = ["format"]
 test-run = ["test"]
@@ -65,6 +65,9 @@ scripts = ["scripts/activate_asan.bat"]
 # macOS x64 (from arm64): clang natively supports cross-arch, no extra deps.
 [feature.cross-macos-x64.target.osx-arm64.dependencies]
 
+[feature.cross-macos-x64.target.osx-arm64.activation]
+scripts = ["scripts/activate_cross_macos.sh"]
+
 # Linux aarch64 (from x64): needs aarch64 sysroot and cross gcc for libstdc++.
 [feature.cross-linux-aarch64.target.linux-64.dependencies]
 sysroot_linux-aarch64 = "==2.17"
@@ -76,6 +79,9 @@ scripts = ["scripts/activate_cross_linux.sh"]
 
 # Windows arm64 (from x64): Windows SDK on CI already includes ARM64 libs.
 [feature.cross-windows-arm64.target.win-64.dependencies]
+
+[feature.cross-windows-arm64.target.win-64.activation]
+scripts = ["scripts/activate_cross_windows.bat"]
 
 [feature.test.dependencies]
 python = ">=3.13"
@@ -102,14 +108,21 @@ lsprotocol = ">=2024.0.0"
 [feature.package.dependencies]
 xz = ">=5.8.1,<6"
 
-[feature.package.tasks.package]
+[feature.package.tasks.package-config]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-cmake -B build/RelWithDebInfo -G Ninja \
-    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+cmake -B build/{{ type }} -G Ninja \
+    -DCMAKE_BUILD_TYPE={{ type }} \
     -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-    -DCLICE_RELEASE=ON && \
-cmake --build build/RelWithDebInfo
+    -DCLICE_RELEASE=ON
 """
+
+[feature.package.tasks.package]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+depends-on = [
+    { task = "package-config", args = ["{{ type }}"] },
+    { task = "cmake-build", args = ["{{ type }}"] },
+]
 
 # ============================================================================== #
 #                                   CMAKE                                        #
@@ -118,14 +131,13 @@ cmake --build build/RelWithDebInfo
 args = [
     { arg = "type", default = "RelWithDebInfo" },
     { arg = "ci", default = "OFF" },
-    { arg = "extra", default = "" },
 ]
 cmd = """
 cmake -B build/{{ type }} -G Ninja \
     -DCMAKE_BUILD_TYPE={{ type }} \
     -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
     -DCLICE_ENABLE_TEST=ON \
-    -DCLICE_CI_ENVIRONMENT={{ ci }} {{extra}} \
+    -DCLICE_CI_ENVIRONMENT={{ ci }}
 """
 
 [feature.build.tasks.cmake-build]
@@ -136,10 +148,9 @@ cmd = "cmake --build build/{{ type }}"
 args = [
     { arg = "type", default = "RelWithDebInfo" },
     { arg = "ci", default = "OFF" },
-    { arg = "extra", default = "" },
 ]
 depends-on = [
-    { task = "cmake-config", args = ["{{ type }}", "{{ ci }}", "{{extra}}"] },
+    { task = "cmake-config", args = ["{{ type }}", "{{ ci }}"] },
     { task = "cmake-build", args = ["{{ type }}"] },
 ]
 

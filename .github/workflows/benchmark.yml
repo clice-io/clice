@@ -21,7 +21,7 @@ jobs:
 
       - name: Build scan_benchmark
         run: |
-          pixi run cmake-config RelWithDebInfo ON "-DCLICE_ENABLE_BENCHMARK=ON"
+          pixi run cmake-config RelWithDebInfo ON -- -DCLICE_ENABLE_BENCHMARK=ON
           cmake --build build/RelWithDebInfo --target scan_benchmark
 
       - name: Clone LLVM

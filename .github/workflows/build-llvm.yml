@@ -159,37 +159,27 @@ jobs:
         if: ${{ !matrix.target_triple }}
         shell: bash
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ matrix.llvm_mode }} \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-            -DCLICE_ENABLE_TEST=ON \
-            -DCLICE_CI_ENVIRONMENT=ON \
-            -DCLICE_ENABLE_LTO=${{ matrix.lto }} \
-            -DLLVM_INSTALL_PATH=".llvm/build-install"
-          cmake --build build
+          pixi run cmake-config ${{ matrix.llvm_mode }} ON -- \
+            "-DCLICE_ENABLE_LTO=${{ matrix.lto }}" \
+            "-DLLVM_INSTALL_PATH=.llvm/build-install"
+          pixi run cmake-build ${{ matrix.llvm_mode }}
 
       - name: Build clice using installed LLVM (cross-compile)
         if: ${{ matrix.target_triple }}
         shell: bash
         run: |
           ENV="${{ matrix.pixi_env || 'package' }}"
-          pixi run -e "$ENV" -- env -u LIBRARY_PATH -u LDFLAGS -u CFLAGS -u CXXFLAGS -u CPPFLAGS \
-            cmake -B build-clice -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ matrix.llvm_mode }} \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-            -DCLICE_ENABLE_TEST=ON \
-            -DCLICE_CI_ENVIRONMENT=ON \
-            -DCLICE_ENABLE_LTO=${{ matrix.lto }} \
+          pixi run -e "$ENV" cmake-config ${{ matrix.llvm_mode }} ON -- \
+            "-DCLICE_ENABLE_LTO=${{ matrix.lto }}" \
             "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}" \
-            -DLLVM_INSTALL_PATH=".llvm/build-install"
-          pixi run -e "$ENV" -- env -u LIBRARY_PATH -u LDFLAGS -u CFLAGS -u CXXFLAGS -u CPPFLAGS \
-            cmake --build build-clice
+            "-DLLVM_INSTALL_PATH=.llvm/build-install"
+          pixi run -e "$ENV" cmake-build ${{ matrix.llvm_mode }}
 
       - name: Verify cross-compiled binary architecture
         if: ${{ matrix.target_triple && runner.os != 'Windows' }}
         shell: bash
         run: |
-          BINARY="build-clice/bin/clice"
+          BINARY="build/${{ matrix.llvm_mode }}/bin/clice"
           echo "Binary info:"
           file "$BINARY"
           case "${{ matrix.target_triple }}" in
@@ -203,8 +193,8 @@ jobs:
         with:
           name: cross-clice-${{ matrix.target_triple }}-${{ matrix.llvm_mode }}
           path: |
-            build-clice/bin/
-            build-clice/lib/
+            build/${{ matrix.llvm_mode }}/bin/
+            build/${{ matrix.llvm_mode }}/lib/
           if-no-files-found: error
           retention-days: 1
 
@@ -212,12 +202,8 @@ jobs:
         if: ${{ !matrix.target_triple }}
         shell: bash
         run: |
-          EXE_EXT=""
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            EXE_EXT=".exe"
-          fi
-          ./build/bin/unit_tests${EXE_EXT} --test-dir="./tests/data"
-          pip install uv && uv run --project tests pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice${EXE_EXT}
+          pixi run unit-test ${{ matrix.llvm_mode }}
+          pixi run integration-test ${{ matrix.llvm_mode }}
 
       # Prune is only supported for native builds (requires linking clice to test).
       # Cross-compiled targets reuse the native prune manifest of the same OS.
@@ -230,7 +216,7 @@ jobs:
           python3 scripts/prune-llvm-bin.py \
             --action discover \
             --install-dir ".llvm/build-install/lib" \
-            --build-dir "build" \
+            --build-dir "build/${{ matrix.llvm_mode }}" \
             --max-attempts 60 \
             --sleep-seconds 60 \
             --manifest "${MANIFEST}"
@@ -255,7 +241,7 @@ jobs:
             --action apply \
             --manifest "${MANIFEST}" \
             --install-dir ".llvm/build-install/lib" \
-            --build-dir "build" \
+            --build-dir "build/${{ matrix.llvm_mode }}" \
             --gh-run-id "${{ github.run_id }}" \
             --gh-artifact "llvm-pruned-libs-${{ matrix.os }}" \
             --gh-download-dir "artifacts" \
@@ -275,7 +261,7 @@ jobs:
             --action apply \
             --manifest "${MANIFEST}" \
             --install-dir ".llvm/build-install/lib" \
-            --build-dir "build" \
+            --build-dir "build/${{ matrix.llvm_mode }}" \
             --gh-run-id "${{ github.run_id }}" \
             --gh-artifact "llvm-pruned-libs-${{ matrix.os }}" \
             --gh-download-dir "artifacts" \

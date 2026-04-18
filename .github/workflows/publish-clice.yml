@@ -31,7 +31,7 @@ jobs:
           # Cross-compilation builds
           - os: macos-15
             target_triple: x86_64-apple-darwin
-            pixi_env: package
+            pixi_env: cross-macos-x64
             artifact_name: clice.tar.gz
             asset_name: clice-x86_64-macos-darwin.tar.gz
             symbol_artifact_name: clice-symbol.tar.gz
@@ -75,14 +75,9 @@ jobs:
         if: ${{ matrix.target_triple }}
         run: |
           ENV="${{ matrix.pixi_env }}"
-          pixi run -e "$ENV" -- env -u LIBRARY_PATH -u LDFLAGS -u CFLAGS -u CXXFLAGS -u CPPFLAGS \
-            cmake -B build/RelWithDebInfo -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-            -DCLICE_RELEASE=ON \
+          pixi run -e "$ENV" package-config -- \
             "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
-          pixi run -e "$ENV" -- env -u LIBRARY_PATH -u LDFLAGS -u CFLAGS -u CXXFLAGS -u CPPFLAGS \
-            cmake --build build/RelWithDebInfo
+          pixi run -e "$ENV" cmake-build
 
       - name: Upload Main Package to Release
         if: startsWith(github.ref, 'refs/tags/v')

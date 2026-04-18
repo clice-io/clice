@@ -81,15 +81,9 @@ jobs:
         shell: bash
         run: |
           ENV="${{ matrix.pixi_env || 'default' }}"
-          pixi run -e "$ENV" -- env -u LIBRARY_PATH -u LDFLAGS -u CFLAGS -u CXXFLAGS -u CPPFLAGS \
-            cmake -B "build/${{ matrix.build_type }}" -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-            -DCLICE_ENABLE_TEST=ON \
-            -DCLICE_CI_ENVIRONMENT=OFF \
+          pixi run -e "$ENV" cmake-config ${{ matrix.build_type }} OFF -- \
             "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
-          pixi run -e "$ENV" -- env -u LIBRARY_PATH -u LDFLAGS -u CFLAGS -u CXXFLAGS -u CPPFLAGS \
-            cmake --build "build/${{ matrix.build_type }}"
+          pixi run -e "$ENV" cmake-build ${{ matrix.build_type }}
 
       - name: Upload cross-compiled binaries
         if: ${{ matrix.build_only }}
