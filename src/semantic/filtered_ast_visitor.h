@@ -48,11 +48,7 @@ public:
             return Base::TraverseDecl(decl);
         }
 
-        if constexpr(requires { getDerived().on_traverse_decl(decl, &Base::TraverseDecl); }) {
-            return getDerived().on_traverse_decl(decl, &Base::TraverseDecl);
-        } else {
-            return Base::TraverseDecl(decl);
-        }
+        return Base::TraverseDecl(decl);
     }
 
     bool TraverseStmt(clang::Stmt* stmt) {
