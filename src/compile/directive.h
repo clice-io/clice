@@ -117,18 +117,6 @@ struct Pragma {
     clang::SourceLocation loc;
 };
 
-struct Import {
-    /// The name of imported module.
-    std::string name;
-
-    /// The location of import keyword, may comes from macro expansion.
-    clang::SourceLocation location;
-
-    /// The locations of tokens that make up the token name, may comes
-    /// from macro expansion.
-    std::vector<clang::SourceLocation> name_locations;
-};
-
 /// Information about `#embed` directive.
 struct Embed {
     /// The file name in the embed directive, not including quotes or angle brackets.
@@ -168,7 +156,6 @@ struct Directive {
     std::vector<Condition> conditions;
     std::vector<MacroRef> macros;
     std::vector<Pragma> pragmas;
-    std::vector<Import> imports;
     std::vector<Embed> embeds;
     std::vector<HasEmbed> has_embeds;
 };
