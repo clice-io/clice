@@ -196,9 +196,7 @@ jobs:
       - name: Run tests
         if: ${{ !matrix.target_triple }}
         shell: bash
-        run: |
-          pixi run unit-test ${{ matrix.llvm_mode }}
-          pixi run integration-test ${{ matrix.llvm_mode }}
+        run: pixi run test ${{ matrix.llvm_mode }}
 
       # Prune is only supported for native builds (requires linking clice to test).
       # Cross-compiled targets reuse the native prune manifest of the same OS.
@@ -350,15 +348,8 @@ jobs:
         if: runner.os != 'Windows'
         run: chmod +x build/${{ matrix.llvm_mode }}/bin/*
 
-      - name: Unit Test
-        run: pixi run -e test-run unit-test ${{ matrix.llvm_mode }}
-
-      - name: Integration Test
-        run: pixi run -e test-run integration-test ${{ matrix.llvm_mode }}
-
-      - name: Smoke Test
-        if: success() || failure()
-        run: pixi run -e test-run smoke-test ${{ matrix.llvm_mode }}
+      - name: Run tests
+        run: pixi run -e test-run test ${{ matrix.llvm_mode }}
 
   upload:
     needs: build

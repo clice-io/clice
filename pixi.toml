@@ -181,6 +181,7 @@ args = [{ arg = "type", default = "RelWithDebInfo" }]
 depends-on = [
     { task = "unit-test", args = ["{{ type }}"] },
     { task = "integration-test", args = ["{{ type }}"] },
+    { task = "smoke-test", args = ["{{ type }}"] },
 ]
 
 # ============================================================================== #

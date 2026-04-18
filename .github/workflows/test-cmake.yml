@@ -96,17 +96,9 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Unit Test
+      - name: Run tests
         if: ${{ !matrix.build_only }}
-        run: pixi run unit-test ${{ matrix.build_type }}
-
-      - name: Integration Test
-        if: ${{ !matrix.build_only }}
-        run: pixi run integration-test ${{ matrix.build_type }}
-
-      - name: Smoke Test
-        if: ${{ !matrix.build_only && (success() || failure()) }}
-        run: pixi run smoke-test ${{ matrix.build_type }}
+        run: pixi run test ${{ matrix.build_type }}
 
       - name: Print cache stats and stop server
         if: always()
@@ -154,12 +146,5 @@ jobs:
         if: runner.os != 'Windows'
         run: chmod +x build/${{ matrix.build_type }}/bin/*
 
-      - name: Unit Test
-        run: pixi run -e test-run unit-test ${{ matrix.build_type }}
-
-      - name: Integration Test
-        run: pixi run -e test-run integration-test ${{ matrix.build_type }}
-
-      - name: Smoke Test
-        if: success() || failure()
-        run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
+      - name: Run tests
+        run: pixi run -e test-run test ${{ matrix.build_type }}
