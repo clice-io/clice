@@ -126,7 +126,7 @@ def main() -> None:
     print(f"Found {len(source_targets)} targets in LLVM source tree")
     print(f"Components file lists {len(components)} entries")
 
-    # --- Check for components that are missing from the source tree -----------
+    # Check for components that are missing from the source tree.
     missing: list[tuple[str, list[str]]] = []
     for name in components:
         if name not in source_targets:
@@ -143,7 +143,7 @@ def main() -> None:
                 print(f"    Did you mean: {', '.join(suggestions)}?")
         sys.exit(1)
 
-    # --- Warn about source targets not present in the component list ----------
+    # Warn about source targets not present in the component list.
     component_set = set(components)
     new_targets = sorted(source_targets - component_set - KNOWN_HEADER_TARGETS)
     # Filter to targets that follow LLVM/Clang naming conventions to reduce noise.

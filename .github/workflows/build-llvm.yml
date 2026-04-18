@@ -28,7 +28,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ── Native builds ──────────────────────────────────────────────
+          # Native builds
           - os: windows-2025
             llvm_mode: RelWithDebInfo
             lto: OFF
@@ -54,7 +54,7 @@ jobs:
             llvm_mode: RelWithDebInfo
             lto: ON
 
-          # ── Cross-compilation builds ───────────────────────────────────
+          # Cross-compilation builds
           # macOS x64 (from arm64 macos-15)
           - os: macos-15
             llvm_mode: RelWithDebInfo
@@ -197,6 +197,17 @@ jobs:
             x86_64-apple-darwin) file "$BINARY" | grep -q "x86_64" ;;
           esac
 
+      - name: Upload cross-compiled clice for functional test
+        if: ${{ matrix.target_triple && matrix.lto == 'OFF' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-clice-${{ matrix.target_triple }}-${{ matrix.llvm_mode }}
+          path: |
+            build-clice/bin/
+            build-clice/lib/
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Run tests
         if: ${{ !matrix.target_triple }}
         shell: bash
@@ -324,7 +335,50 @@ jobs:
           path: ${{ env.LLVM_INSTALL_ARCHIVE }}
           if-no-files-found: error
 
-  # ── Upload to clice-llvm ────────────────────────────────────────────────
+  test-cross:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            llvm_mode: RelWithDebInfo
+            target_triple: x86_64-apple-darwin
+          - os: ubuntu-24.04-arm
+            llvm_mode: RelWithDebInfo
+            target_triple: aarch64-linux-gnu
+          - os: windows-11-arm
+            llvm_mode: RelWithDebInfo
+            target_triple: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: test-run
+
+      - name: Download cross-compiled clice
+        uses: actions/download-artifact@v4
+        with:
+          name: cross-clice-${{ matrix.target_triple }}-${{ matrix.llvm_mode }}
+          path: build/${{ matrix.llvm_mode }}/
+
+      - name: Make binaries executable
+        if: runner.os != 'Windows'
+        run: chmod +x build/${{ matrix.llvm_mode }}/bin/*
+
+      - name: Unit Test
+        run: pixi run -e test-run unit-test ${{ matrix.llvm_mode }}
+
+      - name: Integration Test
+        run: pixi run -e test-run integration-test ${{ matrix.llvm_mode }}
+
+      - name: Smoke Test
+        if: success() || failure()
+        run: pixi run -e test-run smoke-test ${{ matrix.llvm_mode }}
+
   upload:
     needs: build
     if: ${{ !cancelled() && inputs.llvm_version && !inputs.skip_upload }}
@@ -353,7 +407,6 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-  # ── Auto-create PR to update clice LLVM dependency ──────────────────────
   update-clice:
     needs: upload
     if: ${{ !inputs.skip_pr }}

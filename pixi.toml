@@ -62,7 +62,6 @@ scripts = ["scripts/activate_linux.sh"]
 [feature.build.target.win-64.activation]
 scripts = ["scripts/activate_asan.bat"]
 
-# ── Cross-compilation environments ───────────────────────────────────────────
 # macOS x64 (from arm64): clang natively supports cross-arch, no extra deps.
 [feature.cross-macos-x64.target.osx-arm64.dependencies]
 

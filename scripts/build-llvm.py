@@ -270,18 +270,19 @@ def main():
         cmake_args.append(f"-DCLICE_TARGET_TRIPLE={args.target_triple}")
         cmake_args.append(f"-DLLVM_HOST_TRIPLE={args.target_triple}")
 
+        # When cross-compiling, clear conda's host-platform flags so they
+        # don't leak into the target build (e.g. -L pointing to x86_64 libs).
+        # This must happen before the native-tools build too so we don't
+        # contaminate the native configure with target-arch link flags.
+        for var in ["LIBRARY_PATH", "LDFLAGS", "CFLAGS", "CXXFLAGS", "CPPFLAGS"]:
+            os.environ.pop(var, None)
+
         # Cross-compilation needs native host tools (tablegen, etc.) that can
         # run on the build machine.  macOS handles this transparently via
         # Rosetta 2, but Linux and Windows require a separate native build.
         if sys.platform != "darwin":
             native_bin_dir = build_native_tools(project_root, build_dir)
             cmake_args.append(f"-DLLVM_NATIVE_TOOL_DIR={native_bin_dir}")
-
-    # When cross-compiling, clear conda's host-platform flags so they
-    # don't leak into the target build (e.g. -L pointing to x86_64 libs).
-    if args.target_triple:
-        for var in ["LIBRARY_PATH", "LDFLAGS", "CFLAGS", "CXXFLAGS", "CPPFLAGS"]:
-            os.environ.pop(var, None)
 
     build_dir.mkdir(exist_ok=True)
 

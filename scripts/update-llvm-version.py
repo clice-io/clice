@@ -58,19 +58,62 @@ def update_package_cmake(path: Path, version: str) -> None:
     print(f"Updated {path}: {old_call} -> {new_call}")
 
 
+def check_package_cmake(path: Path) -> None:
+    """Verify package.cmake has exactly one setup_llvm(...) call that the
+    update script can rewrite. Used by CI to catch drift before the next bump."""
+    text = path.read_text(encoding="utf-8")
+    matches = re.findall(r'setup_llvm\("[^"]*"\)', text)
+    if len(matches) == 0:
+        print(f"Error: no setup_llvm(...) call found in {path}", file=sys.stderr)
+        sys.exit(1)
+    if len(matches) > 1:
+        print(
+            f"Error: expected exactly 1 setup_llvm(...) call in {path}, "
+            f"found {len(matches)}: {matches}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(f"OK: {path} has a single setup_llvm(...) call: {matches[0]}")
+
+
+def check_manifest(path: Path) -> None:
+    """Verify the manifest is a well-formed non-empty array with required fields."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as err:
+        print(f"Error: {path} is not valid JSON: {err}", file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(data, list) or len(data) == 0:
+        print(f"Error: {path} must be a non-empty JSON array", file=sys.stderr)
+        sys.exit(1)
+    required = ("version", "platform", "arch", "build_type", "filename", "sha256")
+    for idx, entry in enumerate(data):
+        missing = [k for k in required if k not in entry]
+        if missing:
+            print(
+                f"Error: {path} entry {idx} is missing fields: {missing}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    print(f"OK: {path} has {len(data)} well-formed entries")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Update LLVM version references in the clice project."
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate existing state without modifying files (for CI drift checks)",
+    )
+    parser.add_argument(
         "--version",
-        required=True,
-        help="New LLVM version string (e.g. 21.2.0)",
+        help="New LLVM version string (e.g. 21.2.0); required unless --check",
     )
     parser.add_argument(
         "--manifest-src",
-        required=True,
-        help="Path to the source llvm-manifest.json (downloaded from build)",
+        help="Path to the source llvm-manifest.json; required unless --check",
     )
     parser.add_argument(
         "--manifest-dest",
@@ -84,16 +127,29 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    manifest_src = Path(args.manifest_src)
     manifest_dest = Path(args.manifest_dest)
     package_cmake = Path(args.package_cmake)
 
-    if not manifest_src.is_file():
-        print(f"Error: manifest source not found: {manifest_src}", file=sys.stderr)
-        sys.exit(1)
-
     if not package_cmake.is_file():
         print(f"Error: package.cmake not found: {package_cmake}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.check:
+        check_package_cmake(package_cmake)
+        check_manifest(manifest_dest)
+        print("Done (check mode).")
+        return
+
+    if not args.version or not args.manifest_src:
+        print(
+            "Error: --version and --manifest-src are required unless --check is set",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    manifest_src = Path(args.manifest_src)
+    if not manifest_src.is_file():
+        print(f"Error: manifest source not found: {manifest_src}", file=sys.stderr)
         sys.exit(1)
 
     copy_manifest(manifest_src, manifest_dest)

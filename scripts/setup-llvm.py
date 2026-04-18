@@ -60,18 +60,29 @@ def pick_artifact(
     arch: str,
 ) -> dict:
     base_version = version.split("+", 1)[0]
+    saw_missing_arch = False
     for entry in manifest:
         if entry.get("version") != version:
             continue
         if entry.get("platform") != platform.lower():
             continue
-        if entry.get("arch") != arch:
+        entry_arch = entry.get("arch")
+        if entry_arch is None:
+            saw_missing_arch = True
+            continue
+        if entry_arch != arch:
             continue
         if entry.get("build_type") != build_type:
             continue
         if bool(entry.get("lto")) != is_lto:
             continue
         return entry
+    if saw_missing_arch:
+        raise RuntimeError(
+            f"Manifest contains entries without an 'arch' field for version={base_version}, "
+            f"platform={platform}. The manifest format changed to require explicit "
+            f"architectures; regenerate it via scripts/update-llvm-version.py."
+        )
     raise RuntimeError(
         f"No matching LLVM artifact in manifest for version={base_version}, platform={platform}, "
         f"arch={arch}, build_type={build_type}, lto={is_lto}"

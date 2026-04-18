@@ -14,6 +14,12 @@ jobs:
         with:
           environments: format
 
+      - name: Validate update-llvm-version.py can still patch package.cmake
+        run: |
+          python3 scripts/update-llvm-version.py --check \
+            --manifest-dest config/llvm-manifest.json \
+            --package-cmake cmake/package.cmake
+
       - name: Run formatter
         run: pixi run format
         continue-on-error: true
