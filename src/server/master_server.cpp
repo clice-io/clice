@@ -184,7 +184,8 @@ void MasterServer::register_handlers() {
 
         // Capture initializationOptions as raw JSON for config loading.
         if(init.initialization_options.has_value()) {
-            auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(*init.initialization_options);
+            auto json =
+                kota::codec::json::to_json<kota::ipc::lsp_config>(*init.initialization_options);
             if(json)
                 init_options_json = std::move(*json);
         }

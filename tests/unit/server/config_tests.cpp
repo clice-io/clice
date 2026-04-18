@@ -1,6 +1,7 @@
 #include "test/test.h"
-#include "kota/codec/toml.h"
 #include "server/config.h"
+
+#include "kota/codec/toml.h"
 
 namespace clice::testing {
 

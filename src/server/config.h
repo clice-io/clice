@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-#include "kota/meta/annotation.h"
 #include "support/glob_pattern.h"
 
+#include "kota/meta/annotation.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
