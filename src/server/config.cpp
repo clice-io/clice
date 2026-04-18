@@ -1,7 +1,6 @@
 #include "server/config.h"
 
 #include <algorithm>
-#include <thread>
 
 #include "support/filesystem.h"
 #include "support/glob_pattern.h"
@@ -9,6 +8,7 @@
 
 #include "kota/codec/json/json.h"
 #include "kota/codec/toml.h"
+#include "toml++/toml.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
@@ -17,9 +17,13 @@
 namespace clice {
 
 /// Replace all occurrences of ${workspace} with the workspace root.
-static void substitute_workspace(std::string& value, const std::string& workspace_root) {
+/// No-op when workspace_root is empty, to avoid producing paths like "/cache"
+/// from "${workspace}/cache".
+static void substitute_workspace(std::string& value, llvm::StringRef workspace_root) {
+    if(workspace_root.empty())
+        return;
     constexpr std::string_view placeholder = "${workspace}";
-    std::string::size_type pos = 0;
+    std::size_t pos = 0;
     while((pos = value.find(placeholder, pos)) != std::string::npos) {
         value.replace(pos, placeholder.size(), workspace_root);
         pos += workspace_root.size();
@@ -28,7 +32,7 @@ static void substitute_workspace(std::string& value, const std::string& workspac
 
 /// Try to resolve the default cache directory using XDG_CACHE_HOME.
 /// Returns empty string on failure.
-static std::string resolve_xdg_cache_dir(const std::string& workspace_root) {
+static std::string resolve_xdg_cache_dir(llvm::StringRef workspace_root) {
     // Determine base: $XDG_CACHE_HOME or ~/.cache
     std::string base;
     if(auto xdg = llvm::sys::Process::GetEnv("XDG_CACHE_HOME"); xdg && !xdg->empty()) {
@@ -50,7 +54,7 @@ static std::string resolve_xdg_cache_dir(const std::string& workspace_root) {
     return dir;
 }
 
-void CliceConfig::apply_defaults(const std::string& workspace_root) {
+void CliceConfig::apply_defaults(llvm::StringRef workspace_root) {
     auto& p = project;
 
     if(p.max_active_file == 0)
@@ -81,8 +85,8 @@ void CliceConfig::apply_defaults(const std::string& workspace_root) {
     substitute_workspace(p.cache_dir, workspace_root);
     substitute_workspace(p.index_dir, workspace_root);
     substitute_workspace(p.logging_dir, workspace_root);
-    for(auto& path: p.compile_commands_paths)
-        substitute_workspace(path, workspace_root);
+    for(auto& entry: p.compile_commands_paths)
+        substitute_workspace(entry, workspace_root);
 
     // Pre-compile glob patterns from rules.
     compiled_rules.clear();
@@ -122,26 +126,39 @@ void CliceConfig::match_rules(llvm::StringRef file_path,
     }
 }
 
-std::optional<CliceConfig> CliceConfig::load(const std::string& path,
-                                             const std::string& workspace_root) {
+std::optional<CliceConfig> CliceConfig::load(llvm::StringRef path, llvm::StringRef workspace_root) {
     auto content = fs::read(path);
     if(!content)
         return std::nullopt;
 
-    auto result = kota::codec::toml::parse<CliceConfig>(*content);
-    if(!result) {
-        LOG_WARN("Failed to parse config file {}: {}", path, result.error().message());
+    // Parse with toml++ directly to capture line/column/description on failure
+    // (kotatsu's wrapper discards the underlying parse_error detail).
+    auto parsed = ::toml::parse(std::string_view(*content));
+    if(!parsed) {
+        auto& err = parsed.error();
+        auto& src = err.source();
+        LOG_ERROR("Invalid clice.toml {} at line {} col {}: {}",
+                  path,
+                  src.begin.line,
+                  src.begin.column,
+                  err.description());
         return std::nullopt;
     }
 
-    auto config = std::move(*result);
+    auto from_result = kota::codec::toml::from_toml<CliceConfig>(parsed.table());
+    if(!from_result) {
+        LOG_ERROR("Invalid clice.toml {}: schema error: {}", path, from_result.error().message());
+        return std::nullopt;
+    }
+
+    auto config = std::move(*from_result);
     config.apply_defaults(workspace_root);
     LOG_INFO("Loaded config from {}", path);
     return config;
 }
 
 std::optional<CliceConfig> CliceConfig::load_from_json(llvm::StringRef json,
-                                                       const std::string& workspace_root) {
+                                                       llvm::StringRef workspace_root) {
     auto result = kota::codec::json::from_json<CliceConfig>(json);
     if(!result) {
         LOG_WARN("Failed to parse initializationOptions JSON: {}", result.error().message());
@@ -154,14 +171,17 @@ std::optional<CliceConfig> CliceConfig::load_from_json(llvm::StringRef json,
     return config;
 }
 
-CliceConfig CliceConfig::load_from_workspace(const std::string& workspace_root) {
+CliceConfig CliceConfig::load_from_workspace(llvm::StringRef workspace_root) {
     if(!workspace_root.empty()) {
         for(auto* name: {"clice.toml", ".clice/config.toml"}) {
             auto config_path = path::join(workspace_root, name);
-            if(llvm::sys::fs::exists(config_path)) {
-                if(auto config = load(config_path, workspace_root))
-                    return std::move(*config);
-            }
+            if(!llvm::sys::fs::exists(config_path))
+                continue;
+            if(auto config = load(config_path, workspace_root))
+                return std::move(*config);
+            // Present but malformed: fall through to defaults, but surface
+            // the situation clearly so users know their config wasn't applied.
+            LOG_WARN("Falling back to default configuration because {} is invalid", config_path);
         }
     }
 

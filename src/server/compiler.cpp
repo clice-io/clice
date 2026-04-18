@@ -215,7 +215,13 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     }
 
     auto host_path = workspace.path_pool.resolve(ctx_ptr->host_path_id);
-    auto host_results = workspace.cdb.lookup(host_path, {.query_toolchain = true});
+    // Apply rules matching the HEADER path (what the user is editing) on top of
+    // the host's command — rules are expected to apply uniformly to every file.
+    std::vector<std::string> rule_append, rule_remove;
+    workspace.config.match_rules(path, rule_append, rule_remove);
+    auto host_results = workspace.cdb.lookup(
+        host_path,
+        {.query_toolchain = true, .remove = rule_remove, .append = rule_append});
     if(host_results.empty()) {
         LOG_WARN("fill_header_context_args: host {} has no CDB entry", host_path);
         return false;

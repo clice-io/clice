@@ -12,35 +12,31 @@
 
 namespace clice {
 
-using kota::meta::annotation;
-using kota::meta::defaulted;
-namespace serde_schema = kota::meta::attrs;
-
 /// A file-pattern rule that appends/removes compilation flags.
 /// Corresponds to `[[rules]]` in clice.toml.
 struct ConfigRule {
-    defaulted<std::vector<std::string>> patterns;
-    defaulted<std::vector<std::string>> append;
-    defaulted<std::vector<std::string>> remove;
+    kota::meta::defaulted<std::vector<std::string>> patterns;
+    kota::meta::defaulted<std::vector<std::string>> append;
+    kota::meta::defaulted<std::vector<std::string>> remove;
 };
 
 /// Corresponds to the `[project]` section in clice.toml.
 struct ProjectConfig {
-    defaulted<bool> clang_tidy = {};
-    defaulted<int> max_active_file = {};
+    kota::meta::defaulted<bool> clang_tidy = {};
+    kota::meta::defaulted<int> max_active_file = {};
 
-    defaulted<std::string> cache_dir;
-    defaulted<std::string> index_dir;
-    defaulted<std::string> logging_dir;
+    kota::meta::defaulted<std::string> cache_dir;
+    kota::meta::defaulted<std::string> index_dir;
+    kota::meta::defaulted<std::string> logging_dir;
 
-    defaulted<std::vector<std::string>> compile_commands_paths;
+    kota::meta::defaulted<std::vector<std::string>> compile_commands_paths;
 
     std::optional<bool> enable_indexing;
     std::optional<int> idle_timeout_ms;
 
-    defaulted<std::uint32_t> stateful_worker_count = {};
-    defaulted<std::uint32_t> stateless_worker_count = {};
-    defaulted<std::uint64_t> worker_memory_limit = {};
+    kota::meta::defaulted<std::uint32_t> stateful_worker_count = {};
+    kota::meta::defaulted<std::uint32_t> stateless_worker_count = {};
+    kota::meta::defaulted<std::uint64_t> worker_memory_limit = {};
 };
 
 struct CompiledRule {
@@ -52,14 +48,14 @@ struct CompiledRule {
 /// Configuration for the clice LSP server, loadable from clice.toml
 /// or passed via LSP initializationOptions.
 struct CliceConfig {
-    defaulted<ProjectConfig> project;
+    kota::meta::defaulted<ProjectConfig> project;
 
-    defaulted<std::vector<ConfigRule>> rules;
+    kota::meta::defaulted<std::vector<ConfigRule>> rules;
 
-    annotation<std::vector<CompiledRule>, serde_schema::skip> compiled_rules;
+    kota::meta::annotation<std::vector<CompiledRule>, kota::meta::attrs::skip> compiled_rules;
 
     /// Compute default values for any field left at its zero/empty sentinel.
-    void apply_defaults(const std::string& workspace_root);
+    void apply_defaults(llvm::StringRef workspace_root);
 
     /// Collect append/remove flags from all rules whose patterns match `path`.
     void match_rules(llvm::StringRef path,
@@ -67,16 +63,15 @@ struct CliceConfig {
                      std::vector<std::string>& remove) const;
 
     /// Try to load configuration from a TOML file.
-    static std::optional<CliceConfig> load(const std::string& path,
-                                           const std::string& workspace_root);
+    static std::optional<CliceConfig> load(llvm::StringRef path, llvm::StringRef workspace_root);
 
     /// Try to load configuration from a JSON string (e.g. initializationOptions).
     static std::optional<CliceConfig> load_from_json(llvm::StringRef json,
-                                                     const std::string& workspace_root);
+                                                     llvm::StringRef workspace_root);
 
     /// Load config from the workspace, trying standard locations.
     /// Returns a default config (with apply_defaults) if no file is found.
-    static CliceConfig load_from_workspace(const std::string& workspace_root);
+    static CliceConfig load_from_workspace(llvm::StringRef workspace_root);
 };
 
 }  // namespace clice

@@ -55,7 +55,7 @@ TEST_CASE(ParseEmptyConfig) {
     auto result = kota::codec::toml::parse<CliceConfig>("");
     EXPECT_TRUE(result.has_value());
     EXPECT_TRUE(result->rules.empty());
-    EXPECT_EQ(result->project.cache_dir, std::string());
+    EXPECT_TRUE(std::string_view(result->project.cache_dir).empty());
 }
 
 TEST_CASE(ParseOnlyRules) {
@@ -68,7 +68,7 @@ remove = ["-Werror"]
     EXPECT_EQ(result->rules.size(), 1u);
     EXPECT_EQ(result->rules[0].patterns[0], "*.h");
     EXPECT_EQ(result->rules[0].remove[0], "-Werror");
-    EXPECT_EQ(result->project.cache_dir, std::string());
+    EXPECT_TRUE(std::string_view(result->project.cache_dir).empty());
 }
 
 TEST_CASE(MatchRulesBasic) {
@@ -244,6 +244,116 @@ TEST_CASE(ConfigPriorityJson) {
     // Unset fields still receive defaults.
     EXPECT_EQ(*from_json->project.enable_indexing, true);
     EXPECT_EQ(from_json->project.stateful_worker_count.value, 2u);
+}
+
+TEST_CASE(XdgHashUnique) {
+    // Different workspace roots must map to different cache dirs,
+    // same workspace root must map to the same dir (deterministic).
+    TempDir tmp;
+    auto cache_base = tmp.path("xdg");
+    ::setenv("XDG_CACHE_HOME", cache_base.c_str(), 1);
+
+    CliceConfig a, b, c;
+    a.apply_defaults("/ws/project-a");
+    b.apply_defaults("/ws/project-b");
+    c.apply_defaults("/ws/project-a");
+    ::unsetenv("XDG_CACHE_HOME");
+
+    EXPECT_NE(std::string_view(a.project.cache_dir), std::string_view(b.project.cache_dir));
+    EXPECT_EQ(std::string_view(a.project.cache_dir), std::string_view(c.project.cache_dir));
+}
+
+TEST_CASE(HomeFallback) {
+    // With XDG_CACHE_HOME unset but HOME set, cache dir should be under $HOME/.cache/clice.
+    TempDir tmp;
+    ::unsetenv("XDG_CACHE_HOME");
+    auto home = tmp.path("home");
+    // Save prior value so we restore cleanly.
+    const char* prior = std::getenv("HOME");
+    std::string prior_home = prior ? prior : "";
+    ::setenv("HOME", home.c_str(), 1);
+
+    CliceConfig config;
+    config.apply_defaults("/some/ws");
+
+    if(prior_home.empty())
+        ::unsetenv("HOME");
+    else
+        ::setenv("HOME", prior_home.c_str(), 1);
+
+    std::string_view cache(config.project.cache_dir);
+    EXPECT_TRUE(cache.starts_with(home + "/.cache/clice/"));
+}
+
+TEST_CASE(WorkspaceCacheFallback) {
+    // No XDG, no HOME → should fall back to ${workspace}/.clice.
+    ::unsetenv("XDG_CACHE_HOME");
+    const char* prior = std::getenv("HOME");
+    std::string prior_home = prior ? prior : "";
+    ::unsetenv("HOME");
+
+    CliceConfig config;
+    config.apply_defaults("/ws/root");
+
+    if(!prior_home.empty())
+        ::setenv("HOME", prior_home.c_str(), 1);
+
+    EXPECT_EQ(std::string_view(config.project.cache_dir), "/ws/root/.clice");
+    EXPECT_EQ(std::string_view(config.project.index_dir), "/ws/root/.clice/index");
+    EXPECT_EQ(std::string_view(config.project.logging_dir), "/ws/root/.clice/logs");
+}
+
+TEST_CASE(WorkspaceSubstEmpty) {
+    // Empty workspace_root must not rewrite "${workspace}" into "" and produce
+    // bogus paths like "/cache" — the placeholder should be left intact.
+    CliceConfig config;
+    config.project.cache_dir = "${workspace}/cache";
+    config.apply_defaults("");
+    EXPECT_EQ(std::string_view(config.project.cache_dir), "${workspace}/cache");
+}
+
+TEST_CASE(WorkspaceSubstRepeated) {
+    // Multiple ${workspace} occurrences in one string all get substituted.
+    CliceConfig config;
+    config.project.cache_dir = "${workspace}/a/${workspace}/b";
+    config.apply_defaults("/root");
+    EXPECT_EQ(std::string_view(config.project.cache_dir), "/root/a//root/b");
+}
+
+TEST_CASE(CompilePathsList) {
+    // compile_commands_paths should substitute ${workspace} on every entry.
+    CliceConfig config;
+    config.project.compile_commands_paths = {
+        "${workspace}/build",
+        "/abs/path/compile_commands.json",
+        "${workspace}/out",
+    };
+    config.apply_defaults("/ws");
+    EXPECT_EQ(config.project.compile_commands_paths.size(), 3u);
+    EXPECT_EQ(config.project.compile_commands_paths[0], "/ws/build");
+    EXPECT_EQ(config.project.compile_commands_paths[1], "/abs/path/compile_commands.json");
+    EXPECT_EQ(config.project.compile_commands_paths[2], "/ws/out");
+}
+
+TEST_CASE(TomlErrorLocated) {
+    // Malformed TOML (bad table header, missing close-bracket) must return nullopt.
+    // The LOG_ERROR path is exercised to include line/col/description — verified by
+    // inspection; here we assert the failure return.
+    TempDir tmp;
+    tmp.touch("clice.toml", "[project\nclang_tidy = true\n");
+    auto result = CliceConfig::load(tmp.path("clice.toml"), tmp.root.str());
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST_CASE(WorkspaceMalformedFallback) {
+    // load_from_workspace must fall back to defaults when clice.toml is malformed,
+    // not propagate the failure.
+    TempDir tmp;
+    tmp.touch("clice.toml", "[project\ninvalid");
+    auto config = CliceConfig::load_from_workspace(tmp.root.str());
+    // Defaults still applied.
+    EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
+    EXPECT_EQ(*config.project.enable_indexing, true);
 }
 
 };  // TEST_SUITE(Config)
