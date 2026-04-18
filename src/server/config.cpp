@@ -115,13 +115,23 @@ void CliceConfig::apply_defaults(llvm::StringRef workspace_root) {
 void CliceConfig::match_rules(llvm::StringRef file_path,
                               std::vector<std::string>& append,
                               std::vector<std::string>& remove) const {
+    // Rules are processed in declaration order so that a later rule can
+    // override an earlier one. Specifically, when a later rule removes
+    // an argument, we also strip any string-equal entry already added
+    // to `append` by an earlier matching rule — otherwise the append
+    // would silently survive (lookup applies removes to the base flags
+    // only, not to entries contributed via `append`).
     for(auto& rule: compiled_rules) {
         bool matched =
             std::ranges::any_of(rule.patterns, [&](auto& pat) { return pat.match(file_path); });
-        if(matched) {
-            append.insert(append.end(), rule.append.begin(), rule.append.end());
-            remove.insert(remove.end(), rule.remove.begin(), rule.remove.end());
+        if(!matched)
+            continue;
+
+        for(auto& r: rule.remove) {
+            std::erase(append, r);
+            remove.push_back(r);
         }
+        append.insert(append.end(), rule.append.begin(), rule.append.end());
     }
 }
 

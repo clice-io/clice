@@ -4,6 +4,7 @@
 #include "test/test.h"
 #include "server/config.h"
 
+#include "kota/codec/json/json.h"
 #include "kota/codec/toml.h"
 
 namespace clice::testing {
@@ -352,6 +353,121 @@ TEST_CASE(WorkspaceMalformedFallback) {
     // Defaults still applied.
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
     EXPECT_EQ(*config.project.enable_indexing, true);
+}
+
+TEST_CASE(RuleOrderLaterRemoveWins) {
+    // Later rule's `remove` must cancel an earlier rule's matching `append`.
+    CliceConfig config;
+    config.rules.push_back(ConfigRule{
+        .patterns = {"**/*.cpp"},
+        .append = {"-DFOO", "-DBAR"},
+    });
+    config.rules.push_back(ConfigRule{
+        .patterns = {"**/*.cpp"},
+        .remove = {"-DFOO"},
+    });
+    config.apply_defaults("");
+
+    std::vector<std::string> append, remove;
+    config.match_rules("/src/a.cpp", append, remove);
+
+    // -DFOO should have been stripped from append; -DBAR remains.
+    EXPECT_EQ(append.size(), 1u);
+    EXPECT_EQ(append[0], "-DBAR");
+    // remove is still forwarded so base CDB flags also get filtered.
+    EXPECT_EQ(remove.size(), 1u);
+    EXPECT_EQ(remove[0], "-DFOO");
+}
+
+TEST_CASE(RuleOrderLaterAppendWins) {
+    // Later append comes after earlier append — at compiler level, last wins
+    // for flags like -O; verify the ordering is preserved.
+    CliceConfig config;
+    config.rules.push_back(ConfigRule{
+        .patterns = {"**/*.cpp"},
+        .append = {"-O2"},
+    });
+    config.rules.push_back(ConfigRule{
+        .patterns = {"**/*.cpp"},
+        .append = {"-O3"},
+    });
+    config.apply_defaults("");
+
+    std::vector<std::string> append, remove;
+    config.match_rules("/src/a.cpp", append, remove);
+    EXPECT_EQ(append.size(), 2u);
+    EXPECT_EQ(append[0], "-O2");
+    EXPECT_EQ(append[1], "-O3");
+}
+
+TEST_CASE(InitOptionsOverlayPreservesToml) {
+    // Mirror the master_server flow: load workspace config from clice.toml first,
+    // then overlay initializationOptions JSON. Fields absent in the JSON must
+    // keep their clice.toml values; fields present in the JSON override.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"(
+[project]
+cache_dir = "/from/toml"
+clang_tidy = true
+max_active_file = 16
+
+[[rules]]
+patterns = ["**/*.cpp"]
+append = ["-DFROM_TOML"]
+)");
+
+    auto config = CliceConfig::load_from_workspace(tmp.root.str());
+    EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
+    EXPECT_EQ(config.project.clang_tidy.value, true);
+    EXPECT_EQ(config.project.max_active_file.value, 16);
+    EXPECT_EQ(config.compiled_rules.size(), 1u);
+
+    // Overlay only `max_active_file` via JSON.
+    auto ov = kota::codec::json::parse(R"({ "project": { "max_active_file": 99 } })", config);
+    EXPECT_TRUE(ov.has_value());
+    config.apply_defaults(tmp.root.str());
+
+    // Overridden field.
+    EXPECT_EQ(config.project.max_active_file.value, 99);
+    // Untouched fields stay at TOML values.
+    EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
+    EXPECT_EQ(config.project.clang_tidy.value, true);
+    // Rules from clice.toml must survive the overlay.
+    EXPECT_EQ(config.rules.size(), 1u);
+    EXPECT_EQ(config.compiled_rules.size(), 1u);
+    EXPECT_EQ(config.rules[0].append[0], "-DFROM_TOML");
+}
+
+TEST_CASE(InitOptionsOverlayRulesReplace) {
+    // When `rules` is present in the overlay JSON, it replaces the whole array
+    // (kotatsu deserializes the vector by value). `compiled_rules` must be
+    // rebuilt after apply_defaults so stale compiled entries don't linger.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"(
+[[rules]]
+patterns = ["**/*.cpp"]
+append = ["-DTOML_ONLY"]
+)");
+    auto config = CliceConfig::load_from_workspace(tmp.root.str());
+    EXPECT_EQ(config.compiled_rules.size(), 1u);
+
+    auto ov = kota::codec::json::parse(
+        R"({ "rules": [ { "patterns": ["**/*.cc"], "append": ["-DFROM_JSON"] } ] })",
+        config);
+    EXPECT_TRUE(ov.has_value());
+    config.apply_defaults(tmp.root.str());
+
+    EXPECT_EQ(config.rules.size(), 1u);
+    EXPECT_EQ(config.rules[0].append[0], "-DFROM_JSON");
+    EXPECT_EQ(config.compiled_rules.size(), 1u);
+
+    // Original TOML rule no longer applies.
+    std::vector<std::string> append, remove;
+    config.match_rules("/src/x.cpp", append, remove);
+    EXPECT_TRUE(append.empty());
+    config.match_rules("/src/x.cc", append, remove);
+    EXPECT_EQ(append.size(), 1u);
+    EXPECT_EQ(append[0], "-DFROM_JSON");
 }
 
 };  // TEST_SUITE(Config)

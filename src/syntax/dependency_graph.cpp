@@ -256,7 +256,8 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                        DependencyGraph& graph,
                        ScanReport& report,
                        ScanCache* ext_cache,
-                       kota::event_loop& loop) {
+                       kota::event_loop& loop,
+                       const RuleMatcher& rule_matcher) {
     auto start_time = std::chrono::steady_clock::now();
 
     // Reuse context groups and configs from cache when available (warm runs).
@@ -355,9 +356,19 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             std::uint32_t config_id = next_config_id++;
             context_to_config_id[context] = config_id;
             auto representative_path = path_pool.resolve(file_ids[0]);
+
+            // Apply per-file rules so that `[[rules]]`-modified -I/-isystem/-std
+            // flags are reflected in the search config used by the scan.
+            // Rules are applied to the representative file and assumed to hold
+            // for the whole context group (same CompilationInfo).
+            std::vector<std::string> rule_append, rule_remove;
+            if(rule_matcher)
+                rule_matcher(representative_path, rule_append, rule_remove);
+
             auto t0 = std::chrono::steady_clock::now();
-            configs[config_id] =
-                cdb.lookup_search_config(representative_path, {.query_toolchain = true});
+            configs[config_id] = cdb.lookup_search_config(
+                representative_path,
+                {.query_toolchain = true, .remove = rule_remove, .append = rule_append});
             auto t1 = std::chrono::steady_clock::now();
             lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
         }
@@ -819,14 +830,15 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
                                  PathPool& path_pool,
                                  DependencyGraph& graph,
-                                 ScanCache* cache) {
+                                 ScanCache* cache,
+                                 const RuleMatcher& rule_matcher) {
     ScanReport report;
     if(cdb.get_entries().empty()) {
         return report;
     }
 
     kota::event_loop loop;
-    loop.schedule(scan_impl(cdb, path_pool, graph, report, cache, loop));
+    loop.schedule(scan_impl(cdb, path_pool, graph, report, cache, loop, rule_matcher));
     loop.run();
     return report;
 }

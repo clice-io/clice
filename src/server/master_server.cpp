@@ -131,7 +131,15 @@ kota::task<> MasterServer::load_workspace() {
     auto count = workspace.cdb.load(cdb_path);
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
 
-    auto report = scan_dependency_graph(workspace.cdb, workspace.path_pool, workspace.dep_graph);
+    auto report = scan_dependency_graph(workspace.cdb,
+                                        workspace.path_pool,
+                                        workspace.dep_graph,
+                                        /*cache=*/nullptr,
+                                        [this](llvm::StringRef path,
+                                               std::vector<std::string>& append,
+                                               std::vector<std::string>& remove) {
+                                            workspace.config.match_rules(path, append, remove);
+                                        });
     workspace.dep_graph.build_reverse_map();
 
     auto unresolved = report.includes_found - report.includes_resolved;
@@ -271,15 +279,23 @@ void MasterServer::register_handlers() {
 
     peer.on_notification([this](const protocol::InitializedParams& params) {
         // Config priority: initializationOptions > clice.toml > defaults.
+        // Load the workspace config (with defaults applied) first, then overlay
+        // any initializationOptions on top so fields not mentioned in the JSON
+        // keep the values from clice.toml — kotatsu's deserializer only touches
+        // fields that are present in the input.
+        workspace.config = CliceConfig::load_from_workspace(workspace_root);
         if(!init_options_json.empty()) {
-            auto cfg = CliceConfig::load_from_json(init_options_json, workspace_root);
-            if(cfg)
-                workspace.config = std::move(*cfg);
-            else
-                workspace.config = CliceConfig::load_from_workspace(workspace_root);
+            if(auto ov = kota::codec::json::parse(init_options_json, workspace.config); !ov) {
+                LOG_WARN("Failed to apply initializationOptions: {}", ov.error().to_string());
+            } else {
+                // Re-run apply_defaults so overridden strings get workspace
+                // substitution and `compiled_rules` is rebuilt if `rules`
+                // changed. Defaults are gated on zero/empty sentinels, so
+                // existing values from the overlay are preserved.
+                workspace.config.apply_defaults(workspace_root);
+                LOG_INFO("Applied initializationOptions overlay");
+            }
             init_options_json.clear();
-        } else {
-            workspace.config = CliceConfig::load_from_workspace(workspace_root);
         }
 
         auto& cfg = workspace.config.project;
