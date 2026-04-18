@@ -1,5 +1,6 @@
 #pragma once
 
+#include "compile/directive.h"
 #include "semantic/ast_utility.h"
 #include "semantic/filtered_ast_visitor.h"
 #include "semantic/relation_kind.h"
@@ -111,18 +112,9 @@ public:
 
         for(auto directive: unit.directives()) {
             for(auto macro: directive.second.macros) {
-                switch(macro.kind) {
-                    case MacroRef::Kind::Def: {
-                        handleMacroOccurrence(macro.macro, RelationKind::Definition, macro.loc);
-                        break;
-                    }
-
-                    case MacroRef::Kind::Ref:
-                    case MacroRef::Kind::Undef: {
-                        handleMacroOccurrence(macro.macro, RelationKind::Reference, macro.loc);
-                        break;
-                    }
-                }
+                auto kind = macro.kind == MacroRef::Kind::Def ? RelationKind::Definition
+                                                              : RelationKind::Reference;
+                handleMacroOccurrence(macro.macro, kind, macro.loc);
             }
         }
     }
