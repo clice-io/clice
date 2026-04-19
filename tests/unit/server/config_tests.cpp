@@ -9,6 +9,24 @@
 
 namespace clice::testing {
 
+// POSIX setenv/unsetenv don't exist on Windows; map to _putenv_s
+// (passing an empty value to _putenv_s removes the variable).
+static void set_env(const char* name, const char* value) {
+#ifdef _WIN32
+    ::_putenv_s(name, value);
+#else
+    ::setenv(name, value, 1);
+#endif
+}
+
+static void unset_env(const char* name) {
+#ifdef _WIN32
+    ::_putenv_s(name, "");
+#else
+    ::unsetenv(name);
+#endif
+}
+
 TEST_SUITE(Config) {
 
 TEST_CASE(ParsePartialProject) {
@@ -205,10 +223,10 @@ TEST_CASE(WorkspaceVarSubst) {
 TEST_CASE(XdgCacheDir) {
     TempDir tmp;
     auto cache_base = tmp.path("xdg");
-    ::setenv("XDG_CACHE_HOME", cache_base.c_str(), 1);
+    set_env("XDG_CACHE_HOME", cache_base.c_str());
     CliceConfig config;
     config.apply_defaults("/some/ws");
-    ::unsetenv("XDG_CACHE_HOME");
+    unset_env("XDG_CACHE_HOME");
 
     std::string_view cache(config.project.cache_dir);
     EXPECT_TRUE(cache.starts_with(cache_base));
@@ -252,13 +270,13 @@ TEST_CASE(XdgHashUnique) {
     // same workspace root must map to the same dir (deterministic).
     TempDir tmp;
     auto cache_base = tmp.path("xdg");
-    ::setenv("XDG_CACHE_HOME", cache_base.c_str(), 1);
+    set_env("XDG_CACHE_HOME", cache_base.c_str());
 
     CliceConfig a, b, c;
     a.apply_defaults("/ws/project-a");
     b.apply_defaults("/ws/project-b");
     c.apply_defaults("/ws/project-a");
-    ::unsetenv("XDG_CACHE_HOME");
+    unset_env("XDG_CACHE_HOME");
 
     EXPECT_NE(std::string_view(a.project.cache_dir), std::string_view(b.project.cache_dir));
     EXPECT_EQ(std::string_view(a.project.cache_dir), std::string_view(c.project.cache_dir));
@@ -267,20 +285,20 @@ TEST_CASE(XdgHashUnique) {
 TEST_CASE(HomeFallback) {
     // With XDG_CACHE_HOME unset but HOME set, cache dir should be under $HOME/.cache/clice.
     TempDir tmp;
-    ::unsetenv("XDG_CACHE_HOME");
+    unset_env("XDG_CACHE_HOME");
     auto home = tmp.path("home");
     // Save prior value so we restore cleanly.
     const char* prior = std::getenv("HOME");
     std::string prior_home = prior ? prior : "";
-    ::setenv("HOME", home.c_str(), 1);
+    set_env("HOME", home.c_str());
 
     CliceConfig config;
     config.apply_defaults("/some/ws");
 
     if(prior_home.empty())
-        ::unsetenv("HOME");
+        unset_env("HOME");
     else
-        ::setenv("HOME", prior_home.c_str(), 1);
+        set_env("HOME", prior_home.c_str());
 
     std::string_view cache(config.project.cache_dir);
     EXPECT_TRUE(cache.starts_with(home + "/.cache/clice/"));
@@ -288,16 +306,16 @@ TEST_CASE(HomeFallback) {
 
 TEST_CASE(WorkspaceCacheFallback) {
     // No XDG, no HOME → should fall back to ${workspace}/.clice.
-    ::unsetenv("XDG_CACHE_HOME");
+    unset_env("XDG_CACHE_HOME");
     const char* prior = std::getenv("HOME");
     std::string prior_home = prior ? prior : "";
-    ::unsetenv("HOME");
+    unset_env("HOME");
 
     CliceConfig config;
     config.apply_defaults("/ws/root");
 
     if(!prior_home.empty())
-        ::setenv("HOME", prior_home.c_str(), 1);
+        set_env("HOME", prior_home.c_str());
 
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/ws/root/.clice");
     EXPECT_EQ(std::string_view(config.project.index_dir), "/ws/root/.clice/index");
