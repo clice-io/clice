@@ -7,6 +7,7 @@
 
 #include "syntax/token.h"
 
+#include "kota/meta/annotation.h"
 #include "llvm/ADT/DenseMap.h"
 
 namespace clice {
@@ -42,7 +43,10 @@ struct IncludeGraph {
     /// Each `FileID` represents a new header context and is introduced
     /// by a new include directive. So a include directive is a new header
     /// context. A map between FileID and its include location.
-    llvm::DenseMap<clang::FileID, std::uint32_t> file_table;
+    ///
+    /// Runtime-only: `clang::FileID` is an AST-scoped handle; on-disk the
+    /// include graph is fully described by `paths` + `locations`.
+    kota::meta::skip<llvm::DenseMap<clang::FileID, std::uint32_t>> file_table;
 
     static IncludeGraph from(CompilationUnitRef unit);
 

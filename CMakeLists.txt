@@ -124,42 +124,21 @@ if(CLICE_CI_ENVIRONMENT)
     target_compile_definitions(clice_options INTERFACE CLICE_CI_ENVIRONMENT=1)
 endif()
 
-set(FBS_SCHEMA_FILE "${PROJECT_SOURCE_DIR}/src/index/schema.fbs")
-set(GENERATED_HEADER "${PROJECT_BINARY_DIR}/generated/schema_generated.h")
-
-if(CMAKE_CROSSCOMPILING)
-    find_program(FLATC_EXECUTABLE flatc REQUIRED)
-    set(FLATC_CMD "${FLATC_EXECUTABLE}")
-else()
-    set(FLATC_CMD "$<TARGET_FILE:flatc>")
-endif()
-
-add_custom_command(
-    OUTPUT "${GENERATED_HEADER}"
-    COMMAND ${FLATC_CMD} --cpp -o "${PROJECT_BINARY_DIR}/generated" "${FBS_SCHEMA_FILE}"
-    DEPENDS "${FBS_SCHEMA_FILE}"
-    COMMENT "Generating C++ header from ${FBS_SCHEMA_FILE}"
-)
-
-add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
-
 file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
 add_library(clice-core STATIC ${CLICE_CORE_SOURCES})
 add_library(clice::core ALIAS clice-core)
-add_dependencies(clice-core generate_flatbuffers_schema)
 
 target_include_directories(clice-core PUBLIC
     "${PROJECT_SOURCE_DIR}/src"
-    "${PROJECT_BINARY_DIR}/generated"
 )
 target_link_libraries(clice-core PUBLIC
     clice_options
     llvm-libs
     spdlog::spdlog
     roaring::roaring
-    flatbuffers
     kota::ipc::lsp
     kota::codec::toml
+    kota::codec::flatbuffers
     simdjson::simdjson
 )
 

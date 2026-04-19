@@ -12,6 +12,7 @@
 #include "semantic/symbol_kind.h"
 #include "support/bitmap.h"
 
+#include "kota/meta/annotation.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice::index {
@@ -35,6 +36,10 @@ struct Relation {
     constexpr auto definition_range() {
         return std::bit_cast<LocalSourceRange>(target_symbol);
     }
+
+    friend bool operator==(const Relation&, const Relation&) = default;
+
+    friend auto operator<=>(const Relation&, const Relation&) = default;
 };
 
 struct Occurrence {
@@ -45,6 +50,8 @@ struct Occurrence {
     SymbolHash target;
 
     friend bool operator==(const Occurrence&, const Occurrence&) = default;
+
+    friend auto operator<=>(const Occurrence&, const Occurrence&) = default;
 };
 
 struct FileIndex {
@@ -77,19 +84,21 @@ struct TUIndex {
 
     SymbolTable symbols;
 
-    llvm::DenseMap<clang::FileID, FileIndex> file_indices;
+    /// Runtime-only: keyed by AST-scoped `clang::FileID` during build; flushed
+    /// into `path_file_indices` (keyed by path id) before serialization.
+    kota::meta::skip<llvm::DenseMap<clang::FileID, FileIndex>> file_indices;
 
-    /// File indices keyed by path_id, populated by from() for deserialized data.
-    /// When built from AST, this is empty and file_indices (keyed by FileID) is used.
+    /// File indices keyed by path_id. Populated from `file_indices` at
+    /// serialize time, and directly from the wire on deserialize.
     llvm::DenseMap<std::uint32_t, FileIndex> path_file_indices;
 
     FileIndex main_file_index;
 
     static TUIndex build(CompilationUnitRef unit, bool interested_only = false);
 
-    void serialize(llvm::raw_ostream& os) const;
+    void serialize(llvm::raw_ostream& os);
 
-    static TUIndex from(const void* data);
+    static TUIndex from(const void* data, std::size_t size);
 };
 
 }  // namespace clice::index

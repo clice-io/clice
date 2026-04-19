@@ -71,6 +71,10 @@ constexpr bool operator==(RelationKind lhs, RelationKind rhs) {
     return lhs.value() == rhs.value();
 }
 
+constexpr auto operator<=>(RelationKind lhs, RelationKind rhs) {
+    return lhs.value() <=> rhs.value();
+}
+
 constexpr bool operator&(RelationKind lhs, RelationKind rhs) {
     return lhs.value() == rhs.value();
 }

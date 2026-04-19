@@ -1,8 +1,21 @@
 #include "index/project_index.h"
 
-#include "index/serialization.h"
+#include <cassert>
+#include <cstdint>
+#include <span>
+
+#include "index/kotatsu_adapters.h"  // type_adapter specializations
+
+#include "kota/codec/flatbuffers/deserializer.h"
+#include "kota/codec/flatbuffers/serializer.h"
 
 namespace clice::index {
+
+namespace {
+
+namespace kfb = kota::codec::flatbuffers;
+
+}  // namespace
 
 llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self, TUIndex& index) {
     auto& paths = index.graph.paths;
@@ -28,79 +41,22 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self, TU
 }
 
 void ProjectIndex::serialize(this ProjectIndex& self, llvm::raw_ostream& os) {
-    fbs::FlatBufferBuilder builder(1024);
-
-    llvm::SmallVector<char, 1024> buffer;
-
-    auto i = 0;
-    auto paths = transform(self.path_pool.paths, [&](llvm::StringRef path) {
-        auto entry =
-            binary::CreatePathEntry(builder, CreateString(builder, self.path_pool.paths[i]), i);
-        i += 1;
-        return entry;
-    });
-
-    auto indices = transform(self.indices, [&](auto&& value) {
-        auto&& [source, index] = value;
-        return binary::PathMapEntry(source, index);
-    });
-
-    auto symbols = transform(self.symbols, [&](auto&& value) {
-        auto& [symbol_id, symbol] = value;
-
-        buffer.clear();
-        buffer.resize_for_overwrite(symbol.reference_files.getSizeInBytes(false));
-        symbol.reference_files.write(buffer.data(), false);
-
-        return binary::CreateSymbolEntry(builder,
-                                         symbol_id,
-                                         binary::CreateSymbol(builder,
-                                                              CreateString(builder, symbol.name),
-                                                              symbol.kind.value(),
-                                                              CreateVector(builder, buffer)));
-    });
-
-    auto project_index =
-        binary::CreateProjectIndex(builder,
-                                   CreateVector(builder, paths),
-                                   CreateStructVector<binary::PathMapEntry>(builder, indices),
-                                   CreateVector(builder, symbols));
-
-    builder.Finish(project_index);
-    os.write(safe_cast<const char>(builder.GetBufferPointer()), builder.GetSize());
+    auto bytes = kfb::to_flatbuffer(self);
+    assert(bytes && "ProjectIndex flatbuffer serialization failed");
+    os.write(reinterpret_cast<const char*>(bytes->data()), bytes->size());
 }
 
-ProjectIndex ProjectIndex::from(const void* data) {
-    auto root = fbs::GetRoot<binary::ProjectIndex>(data);
-
+ProjectIndex ProjectIndex::from(const void* data, std::size_t size) {
     ProjectIndex index;
-
-    auto& pool = index.path_pool;
-    pool.paths.resize(root->paths()->size());
-    for(auto entry: *root->paths()) {
-        // Normalize backslashes to forward slashes for cross-platform consistency
-        // (persisted index may contain native-separator paths from Windows).
-        llvm::SmallString<256> normalized(entry->path()->string_view());
-        std::replace(normalized.begin(), normalized.end(), '\\', '/');
-        auto k = pool.save(normalized.str());
-        pool.paths[entry->id()] = k;
-        pool.cache.try_emplace(k, entry->id());
+    if(data == nullptr || size == 0) {
+        return index;
     }
 
-    for(auto entry: *root->indices()) {
-        index.indices.try_emplace(entry->source(), entry->index());
+    std::span<const std::uint8_t> bytes(static_cast<const std::uint8_t*>(data), size);
+    auto result = kfb::from_flatbuffer(bytes, index);
+    if(!result) {
+        return ProjectIndex();
     }
-
-    for(auto entry: *root->symbols()) {
-        auto& symbol = index.symbols[entry->symbol_id()];
-        auto* fb_symbol = entry->symbol();
-        if(auto* name = fb_symbol->name()) {
-            symbol.name = name->str();
-        }
-        symbol.kind = SymbolKind(static_cast<std::uint8_t>(fb_symbol->kind()));
-        symbol.reference_files = read_bitmap(fb_symbol->refs());
-    }
-
     return index;
 }
 

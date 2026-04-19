@@ -128,7 +128,7 @@ TEST_CASE(SerializationRoundTrip) {
     project.serialize(os);
 
     // Deserialize.
-    auto restored = index::ProjectIndex::from(buf.data());
+    auto restored = index::ProjectIndex::from(buf.data(), buf.size());
 
     // Path pools should match.
     ASSERT_EQ(project.path_pool.paths.size(), restored.path_pool.paths.size());
@@ -190,7 +190,7 @@ TEST_CASE(NameSurvivesRoundTrip) {
     llvm::SmallString<4096> buf;
     llvm::raw_svector_ostream os(buf);
     project.serialize(os);
-    auto restored = index::ProjectIndex::from(buf.data());
+    auto restored = index::ProjectIndex::from(buf.data(), buf.size());
 
     // Verify names survive round-trip.
     for(auto& [hash, symbol]: project.symbols) {
