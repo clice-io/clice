@@ -109,7 +109,9 @@ async def client(
     await c.start_io(*cmd)
 
     if workspace is not None:
-        await c.initialize(workspace)
+        init_options_marker = request.node.get_closest_marker("init_options")
+        init_options = init_options_marker.args[0] if init_options_marker else None
+        await c.initialize(workspace, initialization_options=init_options)
 
     yield c
 
@@ -238,6 +240,15 @@ def _generate_test_data_cdbs(data_dir: Path) -> None:
         _write(
             dl_dir, [_entry(dl_dir, dl_main, [f"-I{dl_dir.as_posix()}", "-std=c++23"])]
         )
+
+    # config_rules_toml / config_rules_no_config — rules tests must start
+    # from a CDB that does NOT include the flag the rule will append, so the
+    # rule's effect is observable through diagnostics.
+    for name in ("config_rules_toml", "config_rules_no_config"):
+        cr_dir = data_dir / name
+        cr_main = cr_dir / "main.cpp"
+        if cr_main.exists():
+            _write(cr_dir, [_entry(cr_dir, cr_main)])
 
     # pch_test
     pt_dir = data_dir / "pch_test"

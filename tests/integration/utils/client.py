@@ -86,16 +86,20 @@ class CliceClient(BaseLanguageClient):
 
     # ── Lifecycle ────────────────────────────────────────────────────
 
-    async def initialize(self, workspace: Path) -> InitializeResult:
-        result = await self.initialize_async(
-            InitializeParams(
-                capabilities=ClientCapabilities(),
-                root_uri=workspace.as_uri(),
-                workspace_folders=[
-                    WorkspaceFolder(uri=workspace.as_uri(), name="test")
-                ],
-            )
+    async def initialize(
+        self,
+        workspace: Path,
+        *,
+        initialization_options: dict | None = None,
+    ) -> InitializeResult:
+        params = InitializeParams(
+            capabilities=ClientCapabilities(),
+            root_uri=workspace.as_uri(),
+            workspace_folders=[WorkspaceFolder(uri=workspace.as_uri(), name="test")],
         )
+        if initialization_options is not None:
+            params.initialization_options = initialization_options
+        result = await self.initialize_async(params)
         self.initialized(InitializedParams())
         self.init_result = result
         return result
