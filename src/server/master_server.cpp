@@ -283,7 +283,7 @@ void MasterServer::register_handlers() {
         // any initializationOptions on top so fields not mentioned in the JSON
         // keep the values from clice.toml — kotatsu's deserializer only touches
         // fields that are present in the input.
-        workspace.config = CliceConfig::load_from_workspace(workspace_root);
+        workspace.config = Config::load_from_workspace(workspace_root);
         if(!init_options_json.empty()) {
             if(auto ov = kota::codec::json::parse(init_options_json, workspace.config); !ov) {
                 LOG_WARN("Failed to apply initializationOptions: {}", ov.error().to_string());

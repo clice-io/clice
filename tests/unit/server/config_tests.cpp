@@ -52,7 +52,7 @@ append = ["-std=c++20"]
 }
 
 TEST_CASE(ParseFullConfig) {
-    auto result = kota::codec::toml::parse<CliceConfig>(R"(
+    auto result = kota::codec::toml::parse<Config>(R"(
 [project]
 cache_dir = "/tmp/test"
 clang_tidy = true
@@ -71,14 +71,14 @@ append = ["-std=c++20"]
 }
 
 TEST_CASE(ParseEmptyConfig) {
-    auto result = kota::codec::toml::parse<CliceConfig>("");
+    auto result = kota::codec::toml::parse<Config>("");
     EXPECT_TRUE(result.has_value());
     EXPECT_TRUE(result->rules.empty());
     EXPECT_TRUE(std::string_view(result->project.cache_dir).empty());
 }
 
 TEST_CASE(ParseOnlyRules) {
-    auto result = kota::codec::toml::parse<CliceConfig>(R"(
+    auto result = kota::codec::toml::parse<Config>(R"(
 [[rules]]
 patterns = ["*.h"]
 remove = ["-Werror"]
@@ -91,7 +91,7 @@ remove = ["-Werror"]
 }
 
 TEST_CASE(MatchRulesBasic) {
-    CliceConfig config;
+    Config config;
     config.rules.push_back(ConfigRule{
         .patterns = {"**/*.cpp"},
         .append = {"-std=c++20"},
@@ -108,7 +108,7 @@ TEST_CASE(MatchRulesBasic) {
 }
 
 TEST_CASE(MatchRulesNoMatch) {
-    CliceConfig config;
+    Config config;
     config.rules.push_back(ConfigRule{
         .patterns = {"**/*.cpp"},
         .append = {"-DFOO"},
@@ -122,7 +122,7 @@ TEST_CASE(MatchRulesNoMatch) {
 }
 
 TEST_CASE(MatchRulesMultiple) {
-    CliceConfig config;
+    Config config;
     config.rules.push_back(ConfigRule{
         .patterns = {"**/*.cpp"},
         .append = {"-DCPP"},
@@ -141,7 +141,7 @@ TEST_CASE(MatchRulesMultiple) {
 }
 
 TEST_CASE(ApplyDefaults) {
-    CliceConfig config;
+    Config config;
     config.apply_defaults("/workspace");
     EXPECT_EQ(*config.project.enable_indexing, true);
     EXPECT_EQ(*config.project.idle_timeout_ms, 3000);
@@ -154,7 +154,7 @@ TEST_CASE(ApplyDefaults) {
 }
 
 TEST_CASE(ApplyDefaultsEmptyWorkspace) {
-    CliceConfig config;
+    Config config;
     config.apply_defaults("");
     EXPECT_TRUE(config.project.cache_dir.empty());
     EXPECT_TRUE(config.project.index_dir.empty());
@@ -162,7 +162,7 @@ TEST_CASE(ApplyDefaultsEmptyWorkspace) {
 }
 
 TEST_CASE(ApplyDefaultsPreserveSet) {
-    CliceConfig config;
+    Config config;
     config.project.cache_dir = "/custom";
     config.project.enable_indexing = false;
     config.apply_defaults("/workspace");
@@ -171,7 +171,7 @@ TEST_CASE(ApplyDefaultsPreserveSet) {
 }
 
 TEST_CASE(LoadFromJson) {
-    auto result = CliceConfig::load_from_json(R"({
+    auto result = Config::load_from_json(R"({
         "project": {
             "cache_dir": "/opt/cache",
             "clang_tidy": true,
@@ -181,7 +181,7 @@ TEST_CASE(LoadFromJson) {
             { "patterns": ["**/*.cpp"], "append": ["-DFOO"] }
         ]
     })",
-                                              "/workspace");
+                                         "/workspace");
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(std::string_view(result->project.cache_dir), "/opt/cache");
     EXPECT_EQ(result->project.clang_tidy.value, true);
@@ -191,24 +191,24 @@ TEST_CASE(LoadFromJson) {
 }
 
 TEST_CASE(LoadFromJsonInvalid) {
-    auto result = CliceConfig::load_from_json("{not valid json", "/workspace");
+    auto result = Config::load_from_json("{not valid json", "/workspace");
     EXPECT_FALSE(result.has_value());
 }
 
 TEST_CASE(LoadMalformedToml) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\nbroken");
-    auto result = CliceConfig::load(tmp.path("clice.toml"), tmp.root.str().str());
+    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str().str());
     EXPECT_FALSE(result.has_value());
 }
 
 TEST_CASE(LoadMissingFile) {
-    auto result = CliceConfig::load("/nonexistent/clice.toml", "/workspace");
+    auto result = Config::load("/nonexistent/clice.toml", "/workspace");
     EXPECT_FALSE(result.has_value());
 }
 
 TEST_CASE(WorkspaceVarSubst) {
-    CliceConfig config;
+    Config config;
     config.project.cache_dir = "${workspace}/cache";
     config.project.index_dir = "${workspace}/idx";
     config.project.logging_dir = "${workspace}/logs";
@@ -224,7 +224,7 @@ TEST_CASE(XdgCacheDir) {
     TempDir tmp;
     auto cache_base = tmp.path("xdg");
     set_env("XDG_CACHE_HOME", cache_base.c_str());
-    CliceConfig config;
+    Config config;
     config.apply_defaults("/some/ws");
     unset_env("XDG_CACHE_HOME");
 
@@ -234,7 +234,7 @@ TEST_CASE(XdgCacheDir) {
 }
 
 TEST_CASE(InvalidGlobPattern) {
-    CliceConfig config;
+    Config config;
     // All-invalid patterns: rule must be dropped entirely, not appended as empty.
     config.rules.push_back(ConfigRule{
         .patterns = {"**/****.{c,cc}"},
@@ -257,7 +257,7 @@ TEST_CASE(InvalidGlobPattern) {
 TEST_CASE(ConfigPriorityJson) {
     // initializationOptions-sourced config should override an on-disk default.
     auto from_json =
-        CliceConfig::load_from_json(R"({ "project": { "max_active_file": 42 } })", "/workspace");
+        Config::load_from_json(R"({ "project": { "max_active_file": 42 } })", "/workspace");
     EXPECT_TRUE(from_json.has_value());
     EXPECT_EQ(from_json->project.max_active_file.value, 42);
     // Unset fields still receive defaults.
@@ -272,7 +272,7 @@ TEST_CASE(XdgHashUnique) {
     auto cache_base = tmp.path("xdg");
     set_env("XDG_CACHE_HOME", cache_base.c_str());
 
-    CliceConfig a, b, c;
+    Config a, b, c;
     a.apply_defaults("/ws/project-a");
     b.apply_defaults("/ws/project-b");
     c.apply_defaults("/ws/project-a");
@@ -292,7 +292,7 @@ TEST_CASE(HomeFallback) {
     std::string prior_home = prior ? prior : "";
     set_env("HOME", home.c_str());
 
-    CliceConfig config;
+    Config config;
     config.apply_defaults("/some/ws");
 
     if(prior_home.empty())
@@ -311,7 +311,7 @@ TEST_CASE(WorkspaceCacheFallback) {
     std::string prior_home = prior ? prior : "";
     unset_env("HOME");
 
-    CliceConfig config;
+    Config config;
     config.apply_defaults("/ws/root");
 
     if(!prior_home.empty())
@@ -325,7 +325,7 @@ TEST_CASE(WorkspaceCacheFallback) {
 TEST_CASE(WorkspaceSubstEmpty) {
     // Empty workspace_root must not rewrite "${workspace}" into "" and produce
     // bogus paths like "/cache" — the placeholder should be left intact.
-    CliceConfig config;
+    Config config;
     config.project.cache_dir = "${workspace}/cache";
     config.apply_defaults("");
     EXPECT_EQ(std::string_view(config.project.cache_dir), "${workspace}/cache");
@@ -333,7 +333,7 @@ TEST_CASE(WorkspaceSubstEmpty) {
 
 TEST_CASE(WorkspaceSubstRepeated) {
     // Multiple ${workspace} occurrences in one string all get substituted.
-    CliceConfig config;
+    Config config;
     config.project.cache_dir = "${workspace}/a/${workspace}/b";
     config.apply_defaults("/root");
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/root/a//root/b");
@@ -341,7 +341,7 @@ TEST_CASE(WorkspaceSubstRepeated) {
 
 TEST_CASE(CompilePathsList) {
     // compile_commands_paths should substitute ${workspace} on every entry.
-    CliceConfig config;
+    Config config;
     config.project.compile_commands_paths = {
         "${workspace}/build",
         "/abs/path/compile_commands.json",
@@ -358,7 +358,7 @@ TEST_CASE(TomlErrorLocated) {
     // Malformed TOML (bad table header, missing close-bracket) must return nullopt.
     TempDir tmp;
     tmp.touch("clice.toml", "[project\nclang_tidy = true\n");
-    auto result = CliceConfig::load(tmp.path("clice.toml"), tmp.root.str());
+    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str());
     EXPECT_FALSE(result.has_value());
 }
 
@@ -367,7 +367,7 @@ TEST_CASE(WorkspaceMalformedFallback) {
     // not propagate the failure.
     TempDir tmp;
     tmp.touch("clice.toml", "[project\ninvalid");
-    auto config = CliceConfig::load_from_workspace(tmp.root.str());
+    auto config = Config::load_from_workspace(tmp.root.str());
     // Defaults still applied.
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
     EXPECT_EQ(*config.project.enable_indexing, true);
@@ -375,7 +375,7 @@ TEST_CASE(WorkspaceMalformedFallback) {
 
 TEST_CASE(RuleOrderLaterRemoveWins) {
     // Later rule's `remove` must cancel an earlier rule's matching `append`.
-    CliceConfig config;
+    Config config;
     config.rules.push_back(ConfigRule{
         .patterns = {"**/*.cpp"},
         .append = {"-DFOO", "-DBAR"},
@@ -400,7 +400,7 @@ TEST_CASE(RuleOrderLaterRemoveWins) {
 TEST_CASE(RuleOrderLaterAppendWins) {
     // Later append comes after earlier append — at compiler level, last wins
     // for flags like -O; verify the ordering is preserved.
-    CliceConfig config;
+    Config config;
     config.rules.push_back(ConfigRule{
         .patterns = {"**/*.cpp"},
         .append = {"-O2"},
@@ -434,7 +434,7 @@ patterns = ["**/*.cpp"]
 append = ["-DFROM_TOML"]
 )");
 
-    auto config = CliceConfig::load_from_workspace(tmp.root.str());
+    auto config = Config::load_from_workspace(tmp.root.str());
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
     EXPECT_EQ(config.project.clang_tidy.value, true);
     EXPECT_EQ(config.project.max_active_file.value, 16);
@@ -466,7 +466,7 @@ TEST_CASE(InitOptionsOverlayRulesReplace) {
 patterns = ["**/*.cpp"]
 append = ["-DTOML_ONLY"]
 )");
-    auto config = CliceConfig::load_from_workspace(tmp.root.str());
+    auto config = Config::load_from_workspace(tmp.root.str());
     EXPECT_EQ(config.compiled_rules.size(), 1u);
 
     auto ov = kota::codec::json::parse(

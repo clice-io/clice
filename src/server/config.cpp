@@ -53,7 +53,7 @@ static std::string resolve_xdg_cache_dir(llvm::StringRef workspace_root) {
     return dir;
 }
 
-void CliceConfig::apply_defaults(llvm::StringRef workspace_root) {
+void Config::apply_defaults(llvm::StringRef workspace_root) {
     auto& p = project;
 
     if(p.max_active_file == 0)
@@ -112,9 +112,9 @@ void CliceConfig::apply_defaults(llvm::StringRef workspace_root) {
     }
 }
 
-void CliceConfig::match_rules(llvm::StringRef file_path,
-                              std::vector<std::string>& append,
-                              std::vector<std::string>& remove) const {
+void Config::match_rules(llvm::StringRef file_path,
+                         std::vector<std::string>& append,
+                         std::vector<std::string>& remove) const {
     // Rules are processed in declaration order so that a later rule can
     // override an earlier one. Specifically, when a later rule removes
     // an argument, we also strip any string-equal entry already added
@@ -135,12 +135,12 @@ void CliceConfig::match_rules(llvm::StringRef file_path,
     }
 }
 
-std::optional<CliceConfig> CliceConfig::load(llvm::StringRef path, llvm::StringRef workspace_root) {
+std::optional<Config> Config::load(llvm::StringRef path, llvm::StringRef workspace_root) {
     auto content = fs::read(path);
     if(!content)
         return std::nullopt;
 
-    auto result = kota::codec::toml::parse<CliceConfig>(*content);
+    auto result = kota::codec::toml::parse<Config>(*content);
     if(!result) {
         LOG_ERROR("Invalid clice.toml {}: {}", path, result.error().to_string());
         return std::nullopt;
@@ -152,9 +152,8 @@ std::optional<CliceConfig> CliceConfig::load(llvm::StringRef path, llvm::StringR
     return config;
 }
 
-std::optional<CliceConfig> CliceConfig::load_from_json(llvm::StringRef json,
-                                                       llvm::StringRef workspace_root) {
-    auto result = kota::codec::json::from_json<CliceConfig>(json);
+std::optional<Config> Config::load_from_json(llvm::StringRef json, llvm::StringRef workspace_root) {
+    auto result = kota::codec::json::from_json<Config>(json);
     if(!result) {
         LOG_WARN("Failed to parse initializationOptions JSON: {}", result.error().message());
         return std::nullopt;
@@ -166,7 +165,7 @@ std::optional<CliceConfig> CliceConfig::load_from_json(llvm::StringRef json,
     return config;
 }
 
-CliceConfig CliceConfig::load_from_workspace(llvm::StringRef workspace_root) {
+Config Config::load_from_workspace(llvm::StringRef workspace_root) {
     if(!workspace_root.empty()) {
         for(auto* name: {"clice.toml", ".clice/config.toml"}) {
             auto config_path = path::join(workspace_root, name);
@@ -180,7 +179,7 @@ CliceConfig CliceConfig::load_from_workspace(llvm::StringRef workspace_root) {
         }
     }
 
-    CliceConfig config;
+    Config config;
     config.apply_defaults(workspace_root);
     LOG_INFO(
         "No clice.toml found, using default configuration " "(stateful={}, stateless={}, memory_limit={}MB)",

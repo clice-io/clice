@@ -47,7 +47,7 @@ struct CompiledRule {
 
 /// Configuration for the clice LSP server, loadable from clice.toml
 /// or passed via LSP initializationOptions.
-struct CliceConfig {
+struct Config {
     kota::meta::defaulted<ProjectConfig> project;
 
     kota::meta::defaulted<std::vector<ConfigRule>> rules;
@@ -63,15 +63,15 @@ struct CliceConfig {
                      std::vector<std::string>& remove) const;
 
     /// Try to load configuration from a TOML file.
-    static std::optional<CliceConfig> load(llvm::StringRef path, llvm::StringRef workspace_root);
+    static std::optional<Config> load(llvm::StringRef path, llvm::StringRef workspace_root);
 
     /// Try to load configuration from a JSON string (e.g. initializationOptions).
-    static std::optional<CliceConfig> load_from_json(llvm::StringRef json,
-                                                     llvm::StringRef workspace_root);
+    static std::optional<Config> load_from_json(llvm::StringRef json,
+                                                llvm::StringRef workspace_root);
 
     /// Load config from the workspace, trying standard locations.
     /// Returns a default config (with apply_defaults) if no file is found.
-    static CliceConfig load_from_workspace(llvm::StringRef workspace_root);
+    static Config load_from_workspace(llvm::StringRef workspace_root);
 };
 
 }  // namespace clice

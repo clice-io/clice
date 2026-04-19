@@ -170,7 +170,7 @@ struct PCMState {
 ///   - didSave         (on_file_saved: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
 struct Workspace {
-    CliceConfig config;
+    Config config;
     CompilationDatabase cdb;
 
     PathPool path_pool;
