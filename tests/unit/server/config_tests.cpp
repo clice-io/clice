@@ -3,6 +3,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "server/config.h"
+#include "support/filesystem.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/codec/toml.h"
@@ -228,9 +229,12 @@ TEST_CASE(XdgCacheDir) {
     config.apply_defaults("/some/ws");
     unset_env("XDG_CACHE_HOME");
 
-    std::string_view cache(config.project.cache_dir);
-    EXPECT_TRUE(cache.starts_with(cache_base));
-    EXPECT_TRUE(cache.find("/clice/") != std::string_view::npos);
+    // Normalize separators: on Windows path::join uses '\\' but the test
+    // expects posix-style comparisons.
+    std::string cache = path::convert_to_slash(std::string_view(config.project.cache_dir));
+    std::string base = path::convert_to_slash(cache_base);
+    EXPECT_TRUE(llvm::StringRef(cache).starts_with(base));
+    EXPECT_TRUE(cache.find("/clice/") != std::string::npos);
 }
 
 TEST_CASE(InvalidGlobPattern) {
@@ -300,8 +304,9 @@ TEST_CASE(HomeFallback) {
     else
         set_env("HOME", prior_home.c_str());
 
-    std::string_view cache(config.project.cache_dir);
-    EXPECT_TRUE(cache.starts_with(home + "/.cache/clice/"));
+    std::string cache = path::convert_to_slash(std::string_view(config.project.cache_dir));
+    std::string home_posix = path::convert_to_slash(home);
+    EXPECT_TRUE(llvm::StringRef(cache).starts_with(home_posix + "/.cache/clice/"));
 }
 
 TEST_CASE(WorkspaceCacheFallback) {
@@ -317,9 +322,12 @@ TEST_CASE(WorkspaceCacheFallback) {
     if(!prior_home.empty())
         set_env("HOME", prior_home.c_str());
 
-    EXPECT_EQ(std::string_view(config.project.cache_dir), "/ws/root/.clice");
-    EXPECT_EQ(std::string_view(config.project.index_dir), "/ws/root/.clice/index");
-    EXPECT_EQ(std::string_view(config.project.logging_dir), "/ws/root/.clice/logs");
+    EXPECT_EQ(path::convert_to_slash(std::string_view(config.project.cache_dir)),
+              "/ws/root/.clice");
+    EXPECT_EQ(path::convert_to_slash(std::string_view(config.project.index_dir)),
+              "/ws/root/.clice/index");
+    EXPECT_EQ(path::convert_to_slash(std::string_view(config.project.logging_dir)),
+              "/ws/root/.clice/logs");
 }
 
 TEST_CASE(WorkspaceSubstEmpty) {
