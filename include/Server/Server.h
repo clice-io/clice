@@ -170,7 +170,7 @@ private:
 
     async::Task<> on_exit(proto::ExitParams params);
 
-private:
+public:
     /// Load the cache info from disk.
     void load_cache_info();
 
@@ -223,7 +223,7 @@ private:
 
     auto on_inlay_hint(proto::InlayHintParams params) -> Result;
 
-private:
+public:
     /// The current request id.
     std::uint32_t server_request_id = 0;
     std::uint32_t client_request_id = 0;
@@ -247,7 +247,7 @@ private:
 
     Indexer indexer;
 
-private:
+public:
     friend struct ServerPluginBuilder;
     using lifecycle_hook_t = llvm::unique_function<async::Task<>()>;
     using command_handler_t = llvm::unique_function<async::Task<llvm::json::Value>(
