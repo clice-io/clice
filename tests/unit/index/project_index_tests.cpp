@@ -200,6 +200,58 @@ TEST_CASE(NameSurvivesRoundTrip) {
     }
 }
 
+TEST_CASE(SelectiveMergeFilters) {
+    add_file("header.h", R"(
+            #pragma once
+            inline int shared() { return 1; }
+        )");
+    add_main("main.cpp", R"(
+            #include "header.h"
+            int use() { return shared(); }
+        )");
+    ASSERT_TRUE(compile());
+    auto tu = index::TUIndex::build(*unit);
+
+    // Build a bitmap containing only the main file's path index.
+    auto main_path_id = static_cast<std::uint32_t>(tu.graph.paths.size() - 1);
+    Bitmap new_file_ids;
+    new_file_ids.add(main_path_id);
+
+    index::ProjectIndex project;
+    project.merge(tu, new_file_ids);
+
+    // Symbols that reference the main file should be present.
+    bool has_main_symbols = false;
+    for(auto& [hash, symbol]: tu.symbols) {
+        for(auto ref: symbol.reference_files) {
+            if(ref == main_path_id && project.symbols.contains(hash)) {
+                has_main_symbols = true;
+                // ALL reference_files should be added, not just the new ones.
+                auto& proj_sym = project.symbols[hash];
+                ASSERT_TRUE(proj_sym.reference_files.cardinality() >=
+                            symbol.reference_files.cardinality());
+                break;
+            }
+        }
+    }
+    ASSERT_TRUE(has_main_symbols);
+}
+
+TEST_CASE(SelectiveMergeEmpty) {
+    index::TUIndex tu;
+    ASSERT_TRUE(build_and_index(R"(
+            int foo() { return 42; }
+        )",
+                                tu));
+
+    Bitmap empty_bitmap;
+    index::ProjectIndex project;
+    project.merge(tu, empty_bitmap);
+
+    // No symbols should be added when the bitmap is empty.
+    ASSERT_TRUE(project.symbols.empty());
+}
+
 };  // TEST_SUITE(ProjectIndex)
 }  // namespace
 }  // namespace clice::testing

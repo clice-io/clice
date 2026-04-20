@@ -207,6 +207,14 @@ if(CLICE_ENABLE_BENCHMARK)
         "${PROJECT_SOURCE_DIR}/src"
     )
     target_link_libraries(scan_benchmark PRIVATE clice::core kota::deco)
+
+    add_executable(index_benchmark
+        "${PROJECT_SOURCE_DIR}/benchmarks/index_benchmark.cpp"
+    )
+    target_include_directories(index_benchmark PRIVATE
+        "${PROJECT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(index_benchmark PRIVATE clice::core kota::deco)
 endif()
 
 if(CLICE_RELEASE)
