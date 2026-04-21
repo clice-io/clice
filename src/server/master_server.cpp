@@ -331,7 +331,11 @@ void MasterServer::register_handlers() {
             indexer.schedule();
         };
 
-        load_workspace();
+        indexer.set_peer(&peer);
+        indexer.set_max_concurrency(
+            std::max<std::uint32_t>(cfg.stateless_worker_count.value / 2, 1));
+
+        loop.schedule(load_workspace());
     });
 
     peer.on_request(
@@ -670,28 +674,35 @@ void MasterServer::register_handlers() {
 
     /// Feature requests — stateless forwarding.
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::CompletionParams& params) -> RawResult {
-        auto path = uri_to_path(params.text_document_position_params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
-        auto sit = sessions.find(path_id);
-        if(sit == sessions.end())
-            co_return serde_raw{"null"};
-        co_return co_await compiler.handle_completion(params.text_document_position_params.position,
-                                                      sit->second);
-    });
-
     peer.on_request(
-        [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
+        [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = workspace.path_pool.intern(path);
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
                 co_return serde_raw{"null"};
-            co_return co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
+            indexer.pause_indexing();
+            auto result =
+                co_await compiler.handle_completion(params.text_document_position_params.position,
+                                                    sit->second);
+            indexer.resume_indexing();
+            co_return std::move(result);
+        });
+
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::SignatureHelpParams& params) -> RawResult {
+        auto path = uri_to_path(params.text_document_position_params.text_document.uri);
+        auto path_id = workspace.path_pool.intern(path);
+        auto sit = sessions.find(path_id);
+        if(sit == sessions.end())
+            co_return serde_raw{"null"};
+        indexer.pause_indexing();
+        auto result = co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
                                                       params.text_document_position_params.position,
                                                       sit->second);
-        });
+        indexer.resume_indexing();
+        co_return std::move(result);
+    });
 
     /// Hierarchy queries — index-based.
 

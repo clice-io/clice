@@ -12,7 +12,9 @@
 #include "server/workspace.h"
 
 #include "kota/async/async.h"
+#include "kota/ipc/codec/json.h"
 #include "kota/ipc/lsp/position.h"
+#include "kota/ipc/lsp/progress.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -61,6 +63,25 @@ public:
             std::function<bool(std::uint32_t)> is_file_open = {}) :
         loop(loop), workspace(workspace), sessions(sessions), pool(pool), compiler(compiler),
         is_file_open(std::move(is_file_open)) {}
+
+    /// Set the LSP peer for progress reporting.  Must be called before
+    /// schedule() if progress notifications are desired.
+    void set_peer(kota::ipc::JsonPeer* p) {
+        peer = p;
+    }
+
+    /// Temporarily pause background indexing to give priority to user
+    /// requests.  Indexing tasks already dispatched to workers continue,
+    /// but no new tasks will be sent until resume_indexing() is called.
+    void pause_indexing();
+
+    /// Resume background indexing after a pause.
+    void resume_indexing();
+
+    /// Set the maximum number of concurrent index tasks.
+    void set_max_concurrency(std::size_t n) {
+        max_concurrent = std::max<std::size_t>(n, 1);
+    }
 
     /// Add a file to the background indexing queue.
     void enqueue(std::uint32_t server_path_id);
@@ -175,6 +196,9 @@ private:
     /// server-path-id-keyed sessions map to project-level path_ids.
     std::function<bool(std::uint32_t)> is_file_open;
 
+    /// LSP peer for progress reporting (optional, not owned).
+    kota::ipc::JsonPeer* peer = nullptr;
+
     /// Background indexing queue and scheduling state.
     std::vector<std::uint32_t> index_queue;
     std::size_t index_queue_pos = 0;
@@ -182,7 +206,17 @@ private:
     bool indexing_scheduled = false;
     std::shared_ptr<kota::timer> index_idle_timer;
 
+    /// Concurrency control for background indexing.
+    std::size_t max_concurrent = 2;
+    std::size_t inflight = 0;
+
+    /// Pause/resume: when paused, new index tasks wait on this event.
+    /// Uses a counter so nested pause/resume pairs work correctly.
+    std::size_t pause_depth = 0;
+    kota::event resume_event{true};
+
     kota::task<> run_background_indexing();
+    kota::task<> index_one(std::uint32_t server_path_id);
 };
 
 }  // namespace clice

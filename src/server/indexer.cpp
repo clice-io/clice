@@ -624,6 +624,23 @@ void Indexer::enqueue(std::uint32_t server_path_id) {
     index_queue.push_back(server_path_id);
 }
 
+void Indexer::pause_indexing() {
+    ++pause_depth;
+    if(pause_depth == 1) {
+        resume_event.reset();
+        LOG_DEBUG("Background indexing paused");
+    }
+}
+
+void Indexer::resume_indexing() {
+    if(pause_depth > 0)
+        --pause_depth;
+    if(pause_depth == 0) {
+        resume_event.set();
+        LOG_DEBUG("Background indexing resumed");
+    }
+}
+
 void Indexer::schedule() {
     if(!*workspace.config.project.enable_indexing || indexing_active || indexing_scheduled)
         return;
@@ -634,6 +651,40 @@ void Indexer::schedule() {
     }
     index_idle_timer->start(std::chrono::milliseconds(*workspace.config.project.idle_timeout_ms));
     loop.schedule(run_background_indexing());
+}
+
+kota::task<> Indexer::index_one(std::uint32_t server_path_id) {
+    auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
+
+    if(sessions.contains(server_path_id))
+        co_return;
+
+    if(!need_update(file_path))
+        co_return;
+
+    worker::BuildParams params;
+    params.kind = worker::BuildKind::Index;
+    params.file = file_path;
+    if(!compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr))
+        co_return;
+
+    workspace.fill_pcm_deps(params.pcms);
+
+    LOG_INFO("Background indexing: {}", file_path);
+
+    auto result = co_await pool.send_stateless(params);
+    if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
+        LOG_INFO("Background indexing got TUIndex for {}: {} bytes",
+                 file_path,
+                 result.value().tu_index_data.size());
+        merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
+    } else if(result.has_value() && !result.value().success) {
+        LOG_WARN("Background index failed for {}: {}", file_path, result.value().error);
+    } else if(result.has_value() && result.value().tu_index_data.empty()) {
+        LOG_WARN("Background index returned empty TUIndex for {}", file_path);
+    } else {
+        LOG_WARN("Background index IPC error for {}: {}", file_path, result.error().message);
+    }
 }
 
 kota::task<> Indexer::run_background_indexing() {
@@ -648,48 +699,79 @@ kota::task<> Indexer::run_background_indexing() {
     }
 
     indexing_active = true;
-    std::size_t processed = 0;
 
-    while(index_queue_pos < index_queue.size()) {
-        auto server_path_id = index_queue[index_queue_pos];
-        index_queue_pos++;
+    auto total = index_queue.size();
+    std::size_t dispatched = 0;
+    std::size_t completed = 0;
 
-        auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
-
-        if(sessions.contains(server_path_id))
-            continue;
-
-        if(!need_update(file_path))
-            continue;
-
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::Index;
-        params.file = file_path;
-        if(!compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr))
-            continue;
-
-        workspace.fill_pcm_deps(params.pcms);
-
-        LOG_INFO("Background indexing: {}", file_path);
-
-        auto result = co_await pool.send_stateless(params);
-        if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
-            LOG_INFO("Background indexing got TUIndex for {}: {} bytes",
-                     file_path,
-                     result.value().tu_index_data.size());
-            merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
-            ++processed;
-        } else if(result.has_value() && !result.value().success) {
-            LOG_WARN("Background index failed for {}: {}", file_path, result.value().error);
-        } else if(result.has_value() && result.value().tu_index_data.empty()) {
-            LOG_WARN("Background index returned empty TUIndex for {}", file_path);
+    // Progress reporting via LSP $/progress.
+    std::optional<lsp::ProgressReporter<kota::ipc::JsonPeer>> progress;
+    if(peer) {
+        progress.emplace(*peer, protocol::ProgressToken(std::string("clice/backgroundIndex")));
+        auto create_result = co_await progress->create();
+        if(!create_result.has_error()) {
+            progress->begin("Indexing", std::format("0/{} files", total - index_queue_pos), 0);
         } else {
-            LOG_WARN("Background index IPC error for {}: {}", file_path, result.error().message);
+            progress.reset();
         }
     }
 
+    // Completion event — each finished task signals this so the main loop
+    // can track progress and release concurrency slots.
+    kota::event completion_event;
+
+    while(index_queue_pos < index_queue.size() || inflight > 0) {
+        // Dispatch new tasks up to max_concurrent.
+        while(index_queue_pos < index_queue.size() && inflight < max_concurrent) {
+            // Wait if paused by a user request.
+            if(pause_depth > 0) {
+                co_await resume_event.wait();
+            }
+
+            auto server_path_id = index_queue[index_queue_pos++];
+
+            // Quick pre-filter: skip open files and fresh files without
+            // consuming a concurrency slot.
+            auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
+            if(sessions.contains(server_path_id) || !need_update(file_path)) {
+                ++completed;
+                continue;
+            }
+
+            ++inflight;
+            ++dispatched;
+
+            // Launch the index task.  When it finishes it decrements
+            // inflight and signals so we can dispatch more.
+            loop.schedule([](Indexer* self, std::uint32_t id, kota::event& done) -> kota::task<> {
+                co_await self->index_one(id);
+                --self->inflight;
+                done.set();
+            }(this, server_path_id, completion_event));
+        }
+
+        if(inflight == 0)
+            break;
+
+        // Wait for at least one task to finish.
+        co_await completion_event.wait();
+        completion_event.reset();
+        ++completed;
+
+        // Report progress.
+        if(progress) {
+            auto done = completed;
+            auto pct = static_cast<std::uint32_t>(done * 100 / total);
+            progress->report(std::format("{}/{} files", done, total), pct);
+        }
+    }
+
+    if(progress) {
+        progress->end(std::format("Indexed {} files", dispatched));
+    }
+
     indexing_active = false;
-    LOG_INFO("Background indexing complete: {} files processed", processed);
+    LOG_INFO("Background indexing complete: {} files dispatched", dispatched);
     save(workspace.config.project.index_dir);
 }
 
