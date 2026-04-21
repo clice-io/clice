@@ -68,7 +68,7 @@ tests/unit/Local/
 .pixi/*
 !.pixi/config.toml
 
-.codex/
+.codex
 .claude/*
 !.claude/CLAUDE.md
 !.claude/commands/
