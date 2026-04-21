@@ -89,7 +89,7 @@ bool is_implicit_template_instantiation(const clang::NamedDecl* decl) {
 bool can_highlight_name(clang::DeclarationName name) {
     switch(name.getNameKind()) {
         case clang::DeclarationName::Identifier: {
-            auto* info = Name.getAsIdentifierInfo();
+            auto* info = name.getAsIdentifierInfo();
             return info && !info->getName().empty();
         }
 
