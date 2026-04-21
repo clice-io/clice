@@ -21,6 +21,9 @@ bool is_inside_main_file(clang::SourceLocation loc, const clang::SourceManager& 
 /// Checks whether the decl is an implicit template instantiation.
 bool is_implicit_template_instantiation(const clang::NamedDecl* decl);
 
+/// Whether a declaration name is backed by source text that should be highlighted.
+bool can_highlight_name(clang::DeclarationName name);
+
 /// Return the decl where it is instantiated from. If could be a template decl
 /// or a member of a class template. If the decl is a full specialization, return
 /// itself.

@@ -177,6 +177,10 @@ public:
     void handleDeclOccurrence(const clang::NamedDecl* decl,
                               RelationKind relation,
                               clang::SourceLocation location) {
+        if(relation.isReference() && !ast::can_highlight_name(decl->getDeclName())) {
+            return;
+        }
+
         std::uint32_t modifiers = 0;
         if(relation.is_one_of(RelationKind::Definition)) {
             // todo: clangd add both Declaration and Definition modifiers for definitions.

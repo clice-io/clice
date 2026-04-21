@@ -86,6 +86,32 @@ bool is_implicit_template_instantiation(const clang::NamedDecl* decl) {
     return is_template_specialization_kind(decl, clang::TSK_ImplicitInstantiation);
 }
 
+bool can_highlight_name(clang::DeclarationName name) {
+    switch(name.getNameKind()) {
+        case clang::DeclarationName::Identifier: {
+            return name.getAsIdentifierInfo() != nullptr;
+        }
+
+        case clang::DeclarationName::CXXConstructorName:
+        case clang::DeclarationName::CXXDestructorName: {
+            return true;
+        }
+
+        case clang::DeclarationName::CXXConversionFunctionName:
+        case clang::DeclarationName::CXXOperatorName:
+        case clang::DeclarationName::CXXDeductionGuideName:
+        case clang::DeclarationName::CXXLiteralOperatorName:
+        case clang::DeclarationName::CXXUsingDirective:
+        case clang::DeclarationName::ObjCZeroArgSelector:
+        case clang::DeclarationName::ObjCOneArgSelector:
+        case clang::DeclarationName::ObjCMultiArgSelector: {
+            return false;
+        }
+    }
+
+    std::unreachable();
+}
+
 const static clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clang::Decl* D) {
     if(const auto* CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(D->getDeclContext())) {
         return CTSD->getTemplateInstantiationPattern();
