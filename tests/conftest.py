@@ -110,7 +110,11 @@ async def client(
 
     if workspace is not None:
         init_options_marker = request.node.get_closest_marker("init_options")
-        init_options = init_options_marker.args[0] if init_options_marker else None
+        init_options = init_options_marker.args[0] if init_options_marker else {}
+        # Force cache_dir into the workspace so .clice/ cleanup prevents stale PCH.
+        if "project" not in init_options:
+            init_options["project"] = {}
+        init_options["project"].setdefault("cache_dir", str(workspace / ".clice"))
         await c.initialize(workspace, initialization_options=init_options)
 
     yield c
