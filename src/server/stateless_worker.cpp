@@ -13,28 +13,23 @@
 #include "kota/ipc/transport.h"
 #include "llvm/Support/raw_ostream.h"
 
-#ifndef _WIN32
-#include <sys/resource.h>
-#endif
-
 namespace clice {
 
-#ifndef _WIN32
-/// RAII guard that lowers the calling thread's scheduling priority and
-/// restores it on destruction.  On Linux (NPTL) setpriority(PRIO_PROCESS, 0, …)
-/// affects only the calling thread.
+/// RAII guard that lowers the current process's scheduling priority and
+/// restores it on destruction.
 struct ScopedNice {
     int saved;
 
-    explicit ScopedNice(int increment = 10) : saved(getpriority(PRIO_PROCESS, 0)) {
-        setpriority(PRIO_PROCESS, 0, saved + increment);
+    explicit ScopedNice(int increment = 10) {
+        auto p = kota::sys::priority();
+        saved = p ? *p : 0;
+        kota::sys::set_priority(saved + increment);
     }
 
     ~ScopedNice() {
-        setpriority(PRIO_PROCESS, 0, saved);
+        kota::sys::set_priority(saved);
     }
 };
-#endif
 
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::BincodePeer::RequestContext;
@@ -305,9 +300,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                 case K::BuildPCH: return handle_build_pch(params);
                 case K::BuildPCM: return handle_build_pcm(params);
                 case K::Index: {
-#ifndef _WIN32
                     ScopedNice guard;
-#endif
                     return handle_index(params);
                 }
                 case K::Completion: return handle_completion(params);
