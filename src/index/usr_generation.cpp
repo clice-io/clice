@@ -510,7 +510,7 @@ static void printQualifier(llvm::raw_ostream& Out,
     PO.SuppressTagKeyword = true;
     PO.SuppressUnwrittenScope = true;
     PO.ConstantArraySizeAsWritten = false;
-    PO.AnonymousTagNameStyle = llvm::to_underlying(PrintingPolicy::AnonymousTagMode::Plain);
+    PO.AnonymousTagLocations = false;
     NNS.print(Out, PO);
 }
 

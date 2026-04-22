@@ -63,8 +63,7 @@ auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> 
     clang::PrintingPolicy policy(context.getPrintingPolicy());
     policy.SuppressScope = true;
     policy.SuppressUnwrittenScope = true;
-    policy.AnonymousTagNameStyle =
-        llvm::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
+    policy.AnonymousTagLocations = false;
     policy.PolishForDeclaration = true;
 
     std::string detail;

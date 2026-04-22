@@ -132,8 +132,7 @@ public:
         // The sugared type is more useful in some cases, and the canonical
         // type in other cases.
         policy.SuppressScope = true;  // keep type names short
-        policy.AnonymousTagNameStyle =
-            llvm::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
+        policy.AnonymousTagLocations = false;
         // Not setting PrintCanonicalTypes for "auto" allows
         // SuppressDefaultTemplateArgs (set by default) to have an effect.
     }
