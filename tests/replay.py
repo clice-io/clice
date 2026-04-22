@@ -109,7 +109,9 @@ async def write_lsp_message(writer: asyncio.StreamWriter, payload: str):
     await writer.drain()
 
 
-async def replay_one(trace_path: Path, clice_bin: Path, timeout: int) -> bool | None:
+async def replay_one(
+    trace_path: Path, clice_bin: Path, timeout: int, wall_timeout: int = 300
+) -> bool | None:
     """Replay a single trace. Returns True=PASS, False=FAIL, None=SKIP."""
     records = load_trace(trace_path)
     if not records:
@@ -179,8 +181,21 @@ async def replay_one(trace_path: Path, clice_bin: Path, timeout: int) -> bool | 
     last_method = None
     sent_count = 0
 
+    wall_deadline = wall_start + wall_timeout
+
+    def remaining_wall():
+        return max(0, wall_deadline - time.monotonic())
+
     try:
         for i, rec in enumerate(records):
+            if remaining_wall() <= 0:
+                elapsed = time.monotonic() - wall_start
+                print(
+                    f"  result: TIMEOUT (wall-clock {wall_timeout}s exceeded, {elapsed:.1f}s)"
+                )
+                success = False
+                break
+
             if i > 0:
                 delay = rec["ts"] - records[i - 1]["ts"]
                 if delay > 0:
@@ -196,7 +211,7 @@ async def replay_one(trace_path: Path, clice_bin: Path, timeout: int) -> bool | 
                 try:
                     await asyncio.wait_for(
                         asyncio.gather(*pending.values(), return_exceptions=True),
-                        timeout=timeout,
+                        timeout=min(timeout, remaining_wall()),
                     )
                 except asyncio.TimeoutError:
                     elapsed = time.monotonic() - wall_start
@@ -210,7 +225,19 @@ async def replay_one(trace_path: Path, clice_bin: Path, timeout: int) -> bool | 
             if msg_id is not None and method is not None:
                 pending[msg_id] = asyncio.get_event_loop().create_future()
 
-            await write_lsp_message(proc.stdin, rec["msg"])
+            try:
+                await asyncio.wait_for(
+                    write_lsp_message(proc.stdin, rec["msg"]),
+                    timeout=min(30, remaining_wall()),
+                )
+            except asyncio.TimeoutError:
+                elapsed = time.monotonic() - wall_start
+                print(
+                    f"  result: HANG (write blocked at {last_method},"
+                    f" sent={sent_count}/{len(records)}, {elapsed:.1f}s)"
+                )
+                success = False
+                break
             sent_count = i + 1
 
     except (ConnectionError, BrokenPipeError):
@@ -231,7 +258,7 @@ async def replay_one(trace_path: Path, clice_bin: Path, timeout: int) -> bool | 
         try:
             await asyncio.wait_for(
                 asyncio.gather(*pending.values(), return_exceptions=True),
-                timeout=timeout,
+                timeout=min(timeout, remaining_wall()),
             )
         except asyncio.TimeoutError:
             elapsed = time.monotonic() - wall_start
@@ -294,7 +321,7 @@ async def async_main(args):
             print(f"SKIP: {trace} (not found)")
             skipped += 1
             continue
-        result = await replay_one(trace, args.clice, args.timeout)
+        result = await replay_one(trace, args.clice, args.timeout, args.wall_timeout)
         if result is None:
             skipped += 1
         elif result:
@@ -317,7 +344,16 @@ def main():
     p.add_argument("traces", nargs="+", type=Path, help="JSONL trace files")
     p.add_argument("--clice", required=True, type=Path, help="Path to clice binary")
     p.add_argument(
-        "--timeout", type=int, default=120, help="Timeout in seconds (default: 120)"
+        "--timeout",
+        type=int,
+        default=120,
+        help="Per-request timeout in seconds (default: 120)",
+    )
+    p.add_argument(
+        "--wall-timeout",
+        type=int,
+        default=300,
+        help="Max wall-clock time per trace in seconds (default: 300)",
     )
     args = p.parse_args()
     sys.exit(asyncio.run(async_main(args)))

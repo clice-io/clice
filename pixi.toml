@@ -102,6 +102,7 @@ lld = "==20.1.8"
 [feature.test.pypi-dependencies]
 pytest = "*"
 pytest-asyncio = ">=1.1.0"
+pytest-timeout = "*"
 pygls = ">=2.0.0"
 lsprotocol = ">=2024.0.0"
 
@@ -165,8 +166,8 @@ cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data"'
 [feature.test.tasks.integration-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-pytest -s --log-cli-level=INFO tests/integration \
-    --executable=./build/{{ type }}/bin/clice
+pytest -s --log-cli-level=INFO --timeout=300 --timeout-method=thread \
+    tests/integration --executable=./build/{{ type }}/bin/clice
 """
 
 [feature.test.tasks.smoke-test]

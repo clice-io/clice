@@ -104,11 +104,10 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     if(stateful_workers.empty()) {
         co_return kota::outcome_error(kota::ipc::Error{"No stateful workers available"});
     }
-    // No timeout: compile tasks run as detached tasks (loop.schedule) that
-    // are immune to LSP $/cancelRequest.  Adding a timeout here would use
-    // kotatsu's with_token/when_any which has a spurious-cancellation bug
-    // that kills requests within milliseconds instead of the configured period.
     auto idx = assign_worker(path_id);
+    if(!stateful_workers[idx].alive) {
+        co_return kota::outcome_error(kota::ipc::Error{"Assigned stateful worker is down"});
+    }
     co_return co_await stateful_workers[idx].peer->send_request(params, opts);
 }
 
@@ -134,6 +133,8 @@ template <typename Params>
 void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
     auto it = owner.find(path_id);
     if(it == owner.end())
+        return;
+    if(!stateful_workers[it->second].alive)
         return;
     stateful_workers[it->second].peer->send_notification(params);
 }

@@ -197,7 +197,10 @@ std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
 std::size_t WorkerPool::pick_least_loaded() {
     std::size_t best = 0;
     for(std::size_t i = 1; i < stateful_workers.size(); ++i) {
-        if(stateful_workers[i].owned_documents < stateful_workers[best].owned_documents) {
+        if(!stateful_workers[i].alive)
+            continue;
+        if(!stateful_workers[best].alive ||
+           stateful_workers[i].owned_documents < stateful_workers[best].owned_documents) {
             best = i;
         }
     }
