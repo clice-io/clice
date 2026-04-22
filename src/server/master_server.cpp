@@ -332,8 +332,7 @@ void MasterServer::register_handlers() {
         };
 
         indexer.set_peer(&peer);
-        indexer.set_max_concurrency(
-            std::max<std::uint32_t>(cfg.stateless_worker_count.value / 2, 1));
+        indexer.set_max_concurrency(cfg.stateless_worker_count.value);
 
         loop.schedule(load_workspace());
     });

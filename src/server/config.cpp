@@ -6,6 +6,7 @@
 #include "support/glob_pattern.h"
 #include "support/logging.h"
 
+#include "kota/async/io/system.h"
 #include "kota/codec/json/json.h"
 #include "kota/codec/toml/toml.h"
 #include "llvm/Support/FileSystem.h"
@@ -65,8 +66,10 @@ void Config::apply_defaults(llvm::StringRef workspace_root) {
 
     if(p.stateful_worker_count == 0)
         p.stateful_worker_count = 2;
-    if(p.stateless_worker_count == 0)
-        p.stateless_worker_count = 3;
+    if(p.stateless_worker_count == 0) {
+        auto cores = kota::sys::parallelism();
+        p.stateless_worker_count = std::max(cores / 2, 2u);
+    }
     if(p.worker_memory_limit == 0)
         p.worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB
 

@@ -64,6 +64,8 @@ private:
         kota::process proc;
         std::unique_ptr<kota::ipc::BincodePeer> peer;
         std::size_t owned_documents = 0;
+        bool alive = true;
+        unsigned restart_count = 0;
     };
 
     kota::event_loop& loop;
@@ -80,8 +82,15 @@ private:
     void clear_owner(std::size_t worker_index);
     std::size_t pick_least_loaded();
 
+    bool shutting_down_ = false;
+    std::size_t alive_count_ = 0;
+    kota::event all_exited_{true};  // Signalled when alive_count_ reaches 0.
+    WorkerPoolOptions options_;
     std::string log_dir_;
+
     bool spawn_worker(const std::string& self_path, bool stateful, std::uint64_t memory_limit);
+    bool respawn_worker(std::size_t index, bool stateful);
+    kota::task<> monitor_worker(std::size_t index, bool stateful);
 };
 
 template <typename Params>
@@ -105,9 +114,16 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     if(stateless_workers.empty()) {
         co_return kota::outcome_error(kota::ipc::Error{"No stateless workers available"});
     }
-    auto idx = next_stateless;
-    next_stateless = (next_stateless + 1) % stateless_workers.size();
-    co_return co_await stateless_workers[idx].peer->send_request(params, opts);
+    // Round-robin, skipping dead workers.
+    auto start = next_stateless;
+    for(std::size_t i = 0; i < stateless_workers.size(); ++i) {
+        auto idx = (start + i) % stateless_workers.size();
+        if(stateless_workers[idx].alive) {
+            next_stateless = (idx + 1) % stateless_workers.size();
+            co_return co_await stateless_workers[idx].peer->send_request(params, opts);
+        }
+    }
+    co_return kota::outcome_error(kota::ipc::Error{"All stateless workers are down"});
 }
 
 template <typename Params>

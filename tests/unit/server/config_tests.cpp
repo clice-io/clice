@@ -148,7 +148,7 @@ TEST_CASE(ApplyDefaults) {
     EXPECT_EQ(*config.project.idle_timeout_ms, 3000);
     EXPECT_EQ(config.project.max_active_file.value, 8);
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
-    EXPECT_EQ(config.project.stateless_worker_count.value, 3u);
+    EXPECT_GE(config.project.stateless_worker_count.value, 2u);
     EXPECT_FALSE(config.project.cache_dir.empty());
     EXPECT_FALSE(config.project.index_dir.empty());
     EXPECT_FALSE(config.project.logging_dir.empty());

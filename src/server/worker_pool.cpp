@@ -13,14 +13,13 @@ namespace {
 
 /// Coroutine that drains a worker's stderr pipe.
 /// Workers write their own log files, so this only captures unexpected output
-/// (crash stacktraces, assertion failures, etc.) that bypasses spdlog.
+/// (crash stacktraces, assertion failures, sanitizer reports, etc.).
 kota::task<> drain_stderr(kota::pipe stderr_pipe, std::string prefix) {
     std::string buffer;
     while(true) {
         auto result = co_await stderr_pipe.read();
-        if(!result.has_value()) {
+        if(!result.has_value())
             break;
-        }
         auto& chunk = result.value();
         if(chunk.empty())
             break;
@@ -34,7 +33,7 @@ kota::task<> drain_stderr(kota::pipe stderr_pipe, std::string prefix) {
                 break;
             auto line = buffer.substr(pos, nl - pos);
             if(!line.empty()) {
-                LOG_DEBUG("{} {}", prefix, line);
+                LOG_WARN("{} {}", prefix, line);
             }
             pos = nl + 1;
         }
@@ -42,7 +41,7 @@ kota::task<> drain_stderr(kota::pipe stderr_pipe, std::string prefix) {
     }
 
     if(!buffer.empty()) {
-        LOG_DEBUG("{} {}", prefix, buffer);
+        LOG_WARN("{} {}", prefix, buffer);
     }
 }
 
@@ -108,24 +107,29 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     });
 
     auto& w = workers.back();
+    w.alive = true;
+    ++alive_count_;
     loop.schedule(w.peer->run());
 
     return true;
 }
 
 bool WorkerPool::start(const WorkerPoolOptions& options) {
+    options_ = options;
     log_dir_ = options.log_dir;
 
     for(std::uint32_t i = 0; i < options.stateless_count; ++i) {
         if(!spawn_worker(options.self_path, false, 0)) {
             return false;
         }
+        loop.schedule(monitor_worker(stateless_workers.size() - 1, false));
     }
 
     for(std::uint32_t i = 0; i < options.stateful_count; ++i) {
         if(!spawn_worker(options.self_path, true, options.worker_memory_limit)) {
             return false;
         }
+        loop.schedule(monitor_worker(stateful_workers.size() - 1, true));
     }
 
     // Register evicted notification handler for each stateful worker
@@ -145,29 +149,24 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
 
 kota::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopping...");
+    shutting_down_ = true;
 
-    // Close output pipes to signal workers to exit gracefully
-    for(auto& w: stateless_workers) {
+    // Close output pipes to signal workers to exit gracefully.
+    for(auto& w: stateless_workers)
         w.peer->close_output();
-    }
-    for(auto& w: stateful_workers) {
+    for(auto& w: stateful_workers)
         w.peer->close_output();
-    }
 
-    // Send SIGTERM to all workers
-    for(auto& w: stateless_workers) {
+    // Send SIGTERM.  monitor_worker coroutines handle the wait.
+    for(auto& w: stateless_workers)
         w.proc.kill(SIGTERM);
-    }
-    for(auto& w: stateful_workers) {
+    for(auto& w: stateful_workers)
         w.proc.kill(SIGTERM);
-    }
 
-    // Wait for all worker processes to exit
-    for(auto& w: stateless_workers) {
-        co_await w.proc.wait();
-    }
-    for(auto& w: stateful_workers) {
-        co_await w.proc.wait();
+    // Wait until all monitor_worker coroutines have finished.
+    if(alive_count_ > 0) {
+        all_exited_.reset();
+        co_await all_exited_.wait();
     }
 
     LOG_INFO("WorkerPool stopped");
@@ -231,6 +230,122 @@ void WorkerPool::clear_owner(std::size_t worker_index) {
     for(auto pid: to_remove) {
         remove_owner(pid);
     }
+}
+
+kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
+    auto& workers = stateful ? stateful_workers : stateless_workers;
+    auto& w = workers[index];
+    auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
+
+    auto result = co_await w.proc.wait();
+    w.alive = false;
+    --alive_count_;
+
+    if(shutting_down_) {
+        if(alive_count_ == 0)
+            all_exited_.set();
+        co_return;
+    }
+
+    if(result.has_value()) {
+        auto& exit = result.value();
+        if(exit.term_signal != 0) {
+            LOG_ERROR("Worker {} killed by signal {} (restarts: {})",
+                      name,
+                      exit.term_signal,
+                      w.restart_count);
+        } else {
+            LOG_ERROR("Worker {} exited with code {} (restarts: {})",
+                      name,
+                      exit.status,
+                      w.restart_count);
+        }
+    } else {
+        LOG_ERROR("Worker {} lost: {} (restarts: {})",
+                  name,
+                  result.error().message(),
+                  w.restart_count);
+    }
+
+    if(stateful)
+        clear_owner(index);
+
+    constexpr unsigned max_restarts = 5;
+    if(w.restart_count >= max_restarts) {
+        LOG_ERROR("Worker {} exceeded max restarts ({}), giving up", name, max_restarts);
+        co_return;
+    }
+
+    if(!respawn_worker(index, stateful)) {
+        LOG_ERROR("Worker {} respawn failed", name);
+    }
+}
+
+bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
+    auto& workers = stateful ? stateful_workers : stateless_workers;
+    auto old_restart_count = workers[index].restart_count + 1;
+    auto worker_name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
+
+    kota::process::options opts;
+    opts.file = options_.self_path;
+    if(stateful) {
+        opts.args = {options_.self_path,
+                     "--mode",
+                     "stateful-worker",
+                     "--worker-memory-limit",
+                     std::to_string(options_.worker_memory_limit)};
+    } else {
+        opts.args = {options_.self_path, "--mode", "stateless-worker"};
+    }
+    opts.args.push_back("--worker-name");
+    opts.args.push_back(worker_name);
+    if(!log_dir_.empty()) {
+        opts.args.push_back("--log-dir");
+        opts.args.push_back(log_dir_);
+    }
+    opts.streams = {
+        kota::process::stdio::pipe(true, false),
+        kota::process::stdio::pipe(false, true),
+        kota::process::stdio::pipe(false, true),
+    };
+
+    auto result = kota::process::spawn(opts, loop);
+    if(!result) {
+        LOG_ERROR("Failed to respawn worker {}: {}", worker_name, result.error().message());
+        return false;
+    }
+
+    auto& spawn = *result;
+    auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(spawn.stdout_pipe),
+                                                                  std::move(spawn.stdin_pipe));
+    auto peer = std::make_unique<kota::ipc::BincodePeer>(loop, std::move(transport));
+
+    std::string prefix = "[" + worker_name + "]";
+    loop.schedule(drain_stderr(std::move(spawn.stderr_pipe), prefix));
+
+    workers[index] = WorkerProcess{
+        .proc = std::move(spawn.proc),
+        .peer = std::move(peer),
+        .owned_documents = 0,
+        .alive = true,
+        .restart_count = old_restart_count,
+    };
+
+    auto& w = workers[index];
+    ++alive_count_;
+    loop.schedule(w.peer->run());
+
+    if(stateful) {
+        w.peer->on_notification([this](const worker::EvictedParams& params) {
+            if(on_evicted)
+                on_evicted(params.path);
+        });
+    }
+
+    loop.schedule(monitor_worker(index, stateful));
+
+    LOG_INFO("Worker {} restarted (attempt {})", worker_name, old_restart_count);
+    return true;
 }
 
 }  // namespace clice
