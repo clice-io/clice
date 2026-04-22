@@ -239,6 +239,12 @@ private:
     std::size_t pause_depth = 0;
     kota::event resume_event{true};
 
+    /// Completion event — signalled by each finished dispatch task so the
+    /// main loop can wake up.  Must be a member (not local to the coroutine)
+    /// because inflight tasks capture it by reference and may outlive the
+    /// coroutine frame during server shutdown.
+    kota::event completion_event;
+
     /// Generation counter — incremented each run so a stale monitor_resources
     /// coroutine can detect that its owning run has ended.
     std::uint32_t monitor_generation = 0;

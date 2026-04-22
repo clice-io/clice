@@ -1,5 +1,6 @@
 #include "server/indexer.h"
 
+#include <algorithm>
 #include <string>
 #include <variant>
 #include <vector>
@@ -662,6 +663,12 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id) {
     if(!need_update(file_path))
         co_return;
 
+    // For module interface units, compile their PCM (and transitive deps)
+    // first so the stateless worker has the artifacts it needs.
+    if(workspace.compile_graph && workspace.path_to_module.contains(server_path_id)) {
+        co_await workspace.compile_graph->compile(server_path_id);
+    }
+
     worker::BuildParams params;
     params.kind = worker::BuildKind::Index;
     params.file = file_path;
@@ -732,6 +739,13 @@ kota::task<> Indexer::run_background_indexing() {
     ++monitor_generation;
     loop.schedule(monitor_resources(monitor_generation));
 
+    // Put module interface units first so their PCMs are built before
+    // non-module files that might import them.
+    std::stable_partition(
+        index_queue.begin() + index_queue_pos,
+        index_queue.end(),
+        [this](std::uint32_t id) { return workspace.path_to_module.contains(id); });
+
     auto batch = index_queue.size() - index_queue_pos;
     std::size_t dispatched = 0;
     std::size_t completed = 0;
@@ -748,10 +762,6 @@ kota::task<> Indexer::run_background_indexing() {
             progress.reset();
         }
     }
-
-    // Completion event — each finished task signals this so the main loop
-    // can wake up and check progress.
-    kota::event completion_event;
 
     while(index_queue_pos < index_queue.size() || inflight > 0) {
         // Dispatch new tasks up to max_concurrent.

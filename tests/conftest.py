@@ -175,7 +175,9 @@ async def _shutdown_client(c: CliceClient) -> None:
             if server.stderr:
                 stderr_data = await asyncio.wait_for(server.stderr.read(), timeout=2.0)
                 if stderr_data:
-                    for line in stderr_data.decode("utf-8", errors="replace").splitlines():
+                    for line in stderr_data.decode(
+                        "utf-8", errors="replace"
+                    ).splitlines():
                         if "[warn]" in line or "[error]" in line or "Sanitizer" in line:
                             print(f"[server] {line}", flush=True)
     except Exception:
