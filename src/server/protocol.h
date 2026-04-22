@@ -9,7 +9,7 @@
 
 #include "syntax/token.h"
 
-#include "kota/codec/raw_value.h"
+#include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/protocol.h"
 

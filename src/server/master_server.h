@@ -12,7 +12,7 @@
 #include "server/workspace.h"
 
 #include "kota/async/async.h"
-#include "kota/codec/raw_value.h"
+#include "kota/codec/json/json.h"
 #include "kota/ipc/peer.h"
 #include "llvm/ADT/DenseMap.h"
 

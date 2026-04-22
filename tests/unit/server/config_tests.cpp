@@ -6,7 +6,7 @@
 #include "support/filesystem.h"
 
 #include "kota/codec/json/json.h"
-#include "kota/codec/toml.h"
+#include "kota/codec/toml/toml.h"
 
 namespace clice::testing {
 

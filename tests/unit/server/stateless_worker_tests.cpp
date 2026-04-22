@@ -6,7 +6,6 @@
 #include "server/worker_test_helpers.h"
 
 #include "kota/codec/bincode/bincode.h"
-#include "kota/codec/raw_value.h"
 
 namespace clice::testing {
 

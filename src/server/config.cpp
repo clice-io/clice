@@ -7,7 +7,7 @@
 #include "support/logging.h"
 
 #include "kota/codec/json/json.h"
-#include "kota/codec/toml.h"
+#include "kota/codec/toml/toml.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"

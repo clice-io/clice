@@ -26,7 +26,7 @@
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
-#include "kota/codec/json/serializer.h"
+#include "kota/codec/json/json.h"
 #include "kota/deco/deco.h"
 #include "llvm/Support/FileSystem.h"
 

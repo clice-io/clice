@@ -5,7 +5,7 @@
 #include "server/protocol.h"
 #include "server/worker_test_helpers.h"
 
-#include "kota/codec/raw_value.h"
+#include "kota/codec/json/json.h"
 
 namespace clice::testing {
 
