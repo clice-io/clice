@@ -88,6 +88,10 @@ private:
     WorkerPoolOptions options_;
     std::string log_dir_;
 
+    /// Peers moved here during respawn so their coroutines can finish
+    /// before the object is destroyed.
+    llvm::SmallVector<std::unique_ptr<kota::ipc::BincodePeer>> retired_peers;
+
     bool spawn_worker(const std::string& self_path, bool stateful, std::uint64_t memory_limit);
     bool respawn_worker(std::size_t index, bool stateful);
     kota::task<> monitor_worker(std::size_t index, bool stateful);

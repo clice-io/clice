@@ -286,6 +286,13 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     auto old_restart_count = workers[index].restart_count + 1;
     auto worker_name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
 
+    // Close the old peer and retire it so its coroutines (run/write_loop)
+    // can finish naturally before the object is destroyed.
+    if(workers[index].peer) {
+        workers[index].peer->close();
+        retired_peers.push_back(std::move(workers[index].peer));
+    }
+
     kota::process::options opts;
     opts.file = options_.self_path;
     if(stateful) {
