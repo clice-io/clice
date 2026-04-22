@@ -56,9 +56,9 @@ MasterServer::MasterServer(kota::event_loop& loop,
 
 MasterServer::~MasterServer() = default;
 
-kota::task<> MasterServer::load_workspace() {
+void MasterServer::load_workspace() {
     if(workspace_root.empty())
-        co_return;
+        return;
 
     auto& cfg = workspace.config.project;
 
@@ -125,7 +125,7 @@ kota::task<> MasterServer::load_workspace() {
 
     if(cdb_path.empty()) {
         LOG_WARN("No compile_commands.json found in workspace {}", workspace_root);
-        co_return;
+        return;
     }
 
     auto count = workspace.cdb.load(cdb_path);
@@ -331,7 +331,7 @@ void MasterServer::register_handlers() {
             indexer.schedule();
         };
 
-        loop.schedule(load_workspace());
+        load_workspace();
     });
 
     peer.on_request(

@@ -73,7 +73,7 @@ private:
     std::string session_log_dir;
     std::string init_options_json;  ///< Raw JSON from initializationOptions, consumed once.
 
-    kota::task<> load_workspace();
+    void load_workspace();
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 };

@@ -490,6 +490,22 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto completion = std::make_shared<kota::event>();
     workspace.pch_cache[path_id].building = completion;
 
+    if(workspace.config.project.cache_dir.empty()) {
+        LOG_WARN("PCH build skipped: cache_dir is not configured");
+        workspace.pch_cache[path_id].building.reset();
+        completion->set();
+        co_return false;
+    }
+
+    // Ensure the PCH cache directory exists.
+    auto pch_dir = path::join(workspace.config.project.cache_dir, "cache", "pch");
+    if(auto ec = llvm::sys::fs::create_directories(pch_dir)) {
+        LOG_WARN("Cannot create PCH cache dir {}: {}", pch_dir, ec.message());
+        workspace.pch_cache[path_id].building.reset();
+        completion->set();
+        co_return false;
+    }
+
     // Build a new PCH via stateless worker.
     worker::BuildParams bp;
     bp.kind = worker::BuildKind::BuildPCH;

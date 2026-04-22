@@ -219,9 +219,10 @@ public:
 
     auto CreateASTConsumer(clang::CompilerInstance& instance, llvm::StringRef file)
         -> std::unique_ptr<clang::ASTConsumer> final {
-        return std::make_unique<ProxyASTConsumer>(
-            WrapperFrontendAction::CreateASTConsumer(instance, file),
-            unit);
+        auto consumer = WrapperFrontendAction::CreateASTConsumer(instance, file);
+        if(!consumer)
+            return nullptr;
+        return std::make_unique<ProxyASTConsumer>(std::move(consumer), unit);
     }
 
     /// Make this public.

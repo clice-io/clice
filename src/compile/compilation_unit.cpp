@@ -81,7 +81,8 @@ auto CompilationUnitRef::file_offset(clang::SourceLocation location) -> std::uin
 }
 
 auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
-    assert(fid.isValid() && "Invalid fid");
+    if(!fid.isValid())
+        return {};
     if(auto it = self->path_cache.find(fid); it != self->path_cache.end()) {
         return it->second;
     }
