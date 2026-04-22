@@ -79,8 +79,10 @@ public:
     void resume_indexing();
 
     /// Set the maximum number of concurrent index tasks.
+    /// Also sets the baseline that dynamic adjustment will restore to.
     void set_max_concurrency(std::size_t n) {
         max_concurrent = std::max<std::size_t>(n, 1);
+        baseline_concurrent = max_concurrent;
     }
 
     /// Add a file to the background indexing queue.
@@ -208,6 +210,7 @@ private:
 
     /// Concurrency control for background indexing.
     std::size_t max_concurrent = 2;
+    std::size_t baseline_concurrent = 2;
     std::size_t inflight = 0;
 
     /// Pause/resume: when paused, new index tasks wait on this event.
@@ -217,6 +220,7 @@ private:
 
     kota::task<> run_background_indexing();
     kota::task<> index_one(std::uint32_t server_path_id);
+    kota::task<> monitor_resources();
 };
 
 }  // namespace clice

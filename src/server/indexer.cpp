@@ -687,6 +687,36 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id) {
     }
 }
 
+kota::task<> Indexer::monitor_resources() {
+    while(indexing_active) {
+        co_await kota::sleep(std::chrono::milliseconds(3000), loop);
+
+        if(!indexing_active)
+            break;
+
+        auto mem = kota::sys::memory();
+        if(mem.total == 0)
+            continue;
+
+        // Respect cgroup/container limits when present.
+        auto effective_total =
+            (mem.constrained > 0 && mem.constrained < mem.total) ? mem.constrained : mem.total;
+        auto ratio = static_cast<double>(mem.available) / static_cast<double>(effective_total);
+
+        if(ratio < 0.15 && max_concurrent > 1) {
+            --max_concurrent;
+            LOG_INFO("Index concurrency -> {} (memory pressure: {:.0f}% available)",
+                     max_concurrent,
+                     ratio * 100);
+        } else if(ratio > 0.30 && max_concurrent < baseline_concurrent) {
+            ++max_concurrent;
+            LOG_DEBUG("Index concurrency -> {} (memory OK: {:.0f}% available)",
+                      max_concurrent,
+                      ratio * 100);
+        }
+    }
+}
+
 kota::task<> Indexer::run_background_indexing() {
     if(index_idle_timer) {
         co_await index_idle_timer->wait();
@@ -699,6 +729,7 @@ kota::task<> Indexer::run_background_indexing() {
     }
 
     indexing_active = true;
+    loop.schedule(monitor_resources());
 
     auto total = index_queue.size();
     std::size_t dispatched = 0;
