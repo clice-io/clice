@@ -681,11 +681,10 @@ void MasterServer::register_handlers() {
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
                 co_return serde_raw{"null"};
-            indexer.pause_indexing();
+            auto pause = indexer.scoped_pause();
             auto result =
                 co_await compiler.handle_completion(params.text_document_position_params.position,
                                                     sit->second);
-            indexer.resume_indexing();
             co_return std::move(result);
         });
 
@@ -696,11 +695,10 @@ void MasterServer::register_handlers() {
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
             co_return serde_raw{"null"};
-        indexer.pause_indexing();
+        auto pause = indexer.scoped_pause();
         auto result = co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
                                                       params.text_document_position_params.position,
                                                       sit->second);
-        indexer.resume_indexing();
         co_return std::move(result);
     });
 

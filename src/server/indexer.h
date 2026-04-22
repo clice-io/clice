@@ -78,6 +78,26 @@ public:
     /// Resume background indexing after a pause.
     void resume_indexing();
 
+    /// RAII guard that pauses indexing for its lifetime.
+    struct [[nodiscard]] ScopedPause {
+        Indexer& indexer;
+
+        explicit ScopedPause(Indexer& idx) : indexer(idx) {
+            indexer.pause_indexing();
+        }
+
+        ~ScopedPause() {
+            indexer.resume_indexing();
+        }
+
+        ScopedPause(const ScopedPause&) = delete;
+        ScopedPause& operator=(const ScopedPause&) = delete;
+    };
+
+    ScopedPause scoped_pause() {
+        return ScopedPause{*this};
+    }
+
     /// Set the maximum number of concurrent index tasks.
     /// Also sets the baseline that dynamic adjustment will restore to.
     void set_max_concurrency(std::size_t n) {
@@ -212,15 +232,20 @@ private:
     std::size_t max_concurrent = 2;
     std::size_t baseline_concurrent = 2;
     std::size_t inflight = 0;
+    std::size_t finished = 0;  ///< Incremented by each completed dispatch task.
 
     /// Pause/resume: when paused, new index tasks wait on this event.
     /// Uses a counter so nested pause/resume pairs work correctly.
     std::size_t pause_depth = 0;
     kota::event resume_event{true};
 
+    /// Generation counter — incremented each run so a stale monitor_resources
+    /// coroutine can detect that its owning run has ended.
+    std::uint32_t monitor_generation = 0;
+
     kota::task<> run_background_indexing();
     kota::task<> index_one(std::uint32_t server_path_id);
-    kota::task<> monitor_resources();
+    kota::task<> monitor_resources(std::uint32_t generation);
 };
 
 }  // namespace clice
