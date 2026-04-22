@@ -26,7 +26,9 @@ llvm::StringRef DiagnosticID::diagnostic_code() const {
              SHOWINSYSHEADER,                                                                      \
              SHOWINSYSMACRO,                                                                       \
              DEFERRABLE,                                                                           \
-             CATEGORY)                                                                             \
+             CATEGORY,                                                                             \
+             DIAGID,                                                                               \
+             FLAGS)                                                                                \
     case clang::diag::ENUM: return #ENUM;
 #include "clang/Basic/DiagnosticASTKinds.inc"
 #include "clang/Basic/DiagnosticAnalysisKinds.inc"

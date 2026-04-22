@@ -7,9 +7,9 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
-#include "clang/Driver/Driver.h"
-#include "clang/Driver/Options.h"
 #include "clang/Driver/Types.h"
+#include "clang/Options/OptionUtils.h"
+#include "clang/Options/Options.h"
 
 namespace clice {
 
@@ -35,7 +35,7 @@ struct Thief {
 
 template struct Thief<&opt::OptTable::DashDashParsing, &opt::OptTable::GroupedShortOptions>;
 
-auto& option_table = driver::getDriverOptTable();
+auto& option_table = clang::getDriverOptTable();
 
 }  // namespace
 
@@ -45,7 +45,7 @@ std::unique_ptr<llvm::opt::Arg> ArgumentParser::parse_one(unsigned& index) {
     return option_table.ParseOneArg(*this, index, opt::Visibility(visibility_mask));
 }
 
-using ID = clang::driver::options::ID;
+using ID = clang::options::ID;
 
 bool is_discarded_option(unsigned id) {
     switch(id) {
@@ -165,7 +165,7 @@ llvm::StringRef resource_dir() {
         if(exe.empty()) {
             return std::string{};
         }
-        return clang::driver::Driver::GetResourcesPath(exe);
+        return clang::GetResourcesPath(exe);
     }();
     return dir;
 }
@@ -246,7 +246,7 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
 }
 
 unsigned default_visibility(llvm::StringRef driver) {
-    namespace options = clang::driver::options;
+    namespace options = clang::options;
     auto name = llvm::sys::path::filename(driver);
     name.consume_back(".exe");
 

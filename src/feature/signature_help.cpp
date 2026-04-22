@@ -25,7 +25,8 @@ public:
         auto range = llvm::make_range(candidates, candidates + candidate_count);
 
         auto policy = sema.getPrintingPolicy();
-        policy.AnonymousTagLocations = false;
+        policy.AnonymousTagNameStyle =
+            llvm::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
         policy.SuppressStrongLifetime = true;
         policy.SuppressUnwrittenScope = true;
         policy.SuppressScope = true;

@@ -515,7 +515,7 @@ public:
     /// using Foo = int; Foo foo;
     ///                   ^~~~ reference
     VISIT_TYPELOC(TypedefTypeLoc) {
-        auto decl = loc.getTypedefNameDecl();
+        auto decl = loc.getDecl();
         auto location = loc.getNameLoc();
         handleDeclOccurrence(decl, RelationKind::Reference, location);
         handleRelation(decl, RelationKind::Reference, decl, location);
@@ -561,14 +561,9 @@ public:
 
     /// std::allocator<T>::rebind<U>
     ///                       ^~~~ reference
-    VISIT_TYPELOC(DependentTemplateSpecializationTypeLoc) {
-        auto location = loc.getTemplateNameLoc();
-        // for(auto decl: resolver.lookup(loc.getTypePtr())) {
-        //     handleDeclOccurrence(decl, RelationKind::WeakReference, location);
-        //     handleRelation(decl, RelationKind::WeakReference, decl, location);
-        // }
-        return true;
-    }
+    /// Note: In LLVM 22+, DependentTemplateSpecializationTypeLoc was merged
+    /// into TemplateSpecializationTypeLoc. Dependent template cases are now
+    /// handled by the TemplateSpecializationTypeLoc visitor above.
 
     /// ============================================================================
     ///                                Specifier
@@ -576,32 +571,19 @@ public:
 
     bool VisitNestedNameSpecifierLoc(clang::NestedNameSpecifierLoc loc) {
         auto NNS = loc.getNestedNameSpecifier();
-        switch(NNS->getKind()) {
-            case clang::NestedNameSpecifier::Namespace: {
-                auto decl = NNS->getAsNamespace();
+        switch(NNS.getKind()) {
+            case clang::NestedNameSpecifier::Kind::Namespace: {
+                auto [ns, prefix] = NNS.getAsNamespaceAndPrefix();
                 auto location = loc.getLocalBeginLoc();
-                handleDeclOccurrence(decl, RelationKind::Reference, location);
-                handleRelation(decl, RelationKind::Reference, decl, location);
+                handleDeclOccurrence(ns, RelationKind::Reference, location);
+                handleRelation(ns, RelationKind::Reference, ns, location);
                 break;
             }
 
-            case clang::NestedNameSpecifier::NamespaceAlias: {
-                auto decl = NNS->getAsNamespaceAlias();
-                auto location = loc.getLocalBeginLoc();
-                handleDeclOccurrence(decl, RelationKind::Reference, location);
-                handleRelation(decl, RelationKind::Reference, decl, location);
-                break;
-            }
-
-            case clang::NestedNameSpecifier::Identifier: {
-                assert(NNS->isDependent() && "Identifier NNS should be dependent");
-                // FIXME: use TemplateResolver here.
-                break;
-            }
-
-            case clang::NestedNameSpecifier::TypeSpec:
-            case clang::NestedNameSpecifier::Global:
-            case clang::NestedNameSpecifier::Super: {
+            case clang::NestedNameSpecifier::Kind::Type:
+            case clang::NestedNameSpecifier::Kind::Global:
+            case clang::NestedNameSpecifier::Kind::MicrosoftSuper:
+            case clang::NestedNameSpecifier::Kind::Null: {
                 break;
             };
         }

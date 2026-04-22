@@ -6,11 +6,11 @@
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
-#include "clang/Driver/Options.h"
+#include "clang/Options/Options.h"
 
 namespace clice {
 
-using ID = clang::driver::options::ID;
+using ID = clang::options::ID;
 
 SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
                                    llvm::StringRef directory) {
@@ -24,9 +24,12 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
     std::vector<SearchDir> after;
 
     auto make_absolute = [&](llvm::StringRef path) -> std::string {
-        llvm::SmallString<256> abs_path(path);
-        if(!llvm::sys::path::is_absolute(abs_path)) {
-            llvm::sys::fs::make_absolute(directory, abs_path);
+        llvm::SmallString<256> abs_path;
+        if(llvm::sys::path::is_absolute(path)) {
+            abs_path = path;
+        } else {
+            abs_path = directory;
+            llvm::sys::path::append(abs_path, path);
         }
         llvm::sys::path::remove_dots(abs_path, true);
         return abs_path.str().str();

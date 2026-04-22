@@ -200,10 +200,6 @@ llvm::StringRef identifier_of(const clang::NamedDecl& D) {
 }
 
 llvm::StringRef identifier_of(clang::QualType type) {
-    if(const auto* ET = llvm::dyn_cast<clang::ElaboratedType>(type)) {
-        return identifier_of(ET->getNamedType());
-    }
-
     if(const auto* BT = llvm::dyn_cast<clang::BuiltinType>(type)) {
         clang::PrintingPolicy PP(clang::LangOptions{});
         PP.adjustForCPlusPlus();
@@ -308,12 +304,6 @@ const clang::NamedDecl* decl_of_impl(const void* T) {
 }
 
 auto decl_of(clang::QualType type) -> const clang::NamedDecl* {
-    // Strip type-sugar that wraps the underlying type without adding a decl
-    // (e.g. ElaboratedType for "struct Foo" vs plain "Foo").
-    if(auto ET = type->getAs<clang::ElaboratedType>()) {
-        type = ET->getNamedType();
-    }
-
     if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
         auto decl = TST->getTemplateName().getAsTemplateDecl();
         if(type->isDependentType()) {
@@ -405,8 +395,8 @@ std::string display_name_of(const clang::NamedDecl* decl) {
     // Handle 'using namespace'. They all have the same name - <using-directive>.
     if(auto* UD = llvm::dyn_cast<clang::UsingDirectiveDecl>(decl)) {
         out << "using namespace ";
-        if(auto* Qual = UD->getQualifier())
-            Qual->print(out, policy);
+        if(auto Qual = UD->getQualifier())
+            Qual.print(out, policy);
         UD->getNominatedNamespaceAsWritten()->printName(out);
         return out.str();
     }
@@ -433,8 +423,8 @@ std::string display_name_of(const clang::NamedDecl* decl) {
     }
 
     // Print nested name qualifier if it was written in the source code.
-    if(auto* qualifier = get_qualifier_loc(decl).getNestedNameSpecifier()) {
-        qualifier->print(out, policy);
+    if(auto qualifier = get_qualifier_loc(decl).getNestedNameSpecifier()) {
+        qualifier.print(out, policy);
     }
 
     // Print the name itself.
