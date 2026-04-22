@@ -16,19 +16,7 @@ namespace clice {
 
 llvm::StringRef DiagnosticID::diagnostic_code() const {
     switch(value) {
-#define DIAG(ENUM,                                                                                 \
-             CLASS,                                                                                \
-             DEFAULT_MAPPING,                                                                      \
-             DESC,                                                                                 \
-             GROPU,                                                                                \
-             SFINAE,                                                                               \
-             NOWERROR,                                                                             \
-             SHOWINSYSHEADER,                                                                      \
-             SHOWINSYSMACRO,                                                                       \
-             DEFERRABLE,                                                                           \
-             CATEGORY,                                                                             \
-             DIAGID,                                                                               \
-             FLAGS)                                                                                \
+#define DIAG(ENUM, ...)                                                                            \
     case clang::diag::ENUM: return #ENUM;
 #include "clang/Basic/DiagnosticASTKinds.inc"
 #include "clang/Basic/DiagnosticAnalysisKinds.inc"
