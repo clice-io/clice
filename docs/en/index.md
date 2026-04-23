@@ -8,13 +8,13 @@ hero:
   actions:
     - theme: brand
       text: What is clice?
-      link: /guide/what-is-clice
+      link: ./guide/what-is-clice
     - theme: alt
       text: Quick Start
-      link: /guide/quick-start
+      link: ./guide/quick-start
     - theme: alt
       text: Contribution
-      link: /dev/contribution
+      link: ./dev/contribution
   image:
     src: /image.png
     alt: clice
