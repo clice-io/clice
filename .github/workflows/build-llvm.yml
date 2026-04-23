@@ -7,11 +7,6 @@ on:
         description: "LLVM version to build (e.g., 21.1.8)"
         required: true
         type: string
-      skip_upload:
-        description: "Skip upload and PR creation (build-only mode)"
-        required: false
-        type: boolean
-        default: false
       skip_pr:
         description: "Skip PR creation (upload only, no PR)"
         required: false
@@ -221,7 +216,7 @@ jobs:
 
   upload:
     needs: [build-llvm, validate]
-    if: ${{ inputs.llvm_version && !inputs.skip_upload }}
+    if: ${{ inputs.llvm_version }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
