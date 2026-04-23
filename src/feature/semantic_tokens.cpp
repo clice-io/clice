@@ -242,7 +242,13 @@ public:
         add_token(location, SymbolKind::Macro, modifiers);
     }
 
-    // handleModuleOccurrence
+    void handleModuleOccurrence(clang::SourceLocation keyword,
+                                llvm::ArrayRef<clang::SourceLocation> identifiers) {
+        add_token(keyword, SymbolKind::Keyword, 0);
+        for(auto loc: identifiers) {
+            add_token(loc, SymbolKind::Module, 0);
+        }
+    }
 
     // handleRelation
 
@@ -295,16 +301,6 @@ private:
 
     void highlight_modules() {
         auto interested = unit.interested_file();
-
-        auto directives_it = unit.directives().find(interested);
-        if(directives_it != unit.directives().end()) {
-            for(const auto& import: directives_it->second.imports) {
-                add_token(import.location, SymbolKind::Keyword, 0);
-                for(auto loc: import.name_locations) {
-                    add_token(loc, SymbolKind::Module, 0);
-                }
-            }
-        }
 
         auto* mod = unit.context().getCurrentNamedModule();
         if(!mod) {
