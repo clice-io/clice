@@ -53,6 +53,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.llvm_from_artifact && github.ref_name || '' }}
 
       - uses: ./.github/actions/setup-pixi
         with:
