@@ -941,12 +941,16 @@ TEST_CASE(Standard) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
+    auto old_level = clice::logging::options.level;
+    clice::logging::options.level = clice::logging::Level::debug;
+
     auto input = unit->resolver().resolve(finder.input);
     auto target = finder.expect;
-    llvm::errs() << "input: " << input << "\n";
+
+    clice::logging::options.level = old_level;
+
+    llvm::errs() << "resolved: " << input << "\n";
     llvm::errs() << "target: " << target << "\n";
-    llvm::errs() << "input canonical: " << input.getCanonicalType() << "\n";
-    llvm::errs() << "target canonical: " << target.getCanonicalType() << "\n";
     ASSERT_FALSE(input.isNull() || target.isNull());
     EXPECT_EQ(input.getCanonicalType(), target.getCanonicalType());
 };
