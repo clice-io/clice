@@ -66,8 +66,10 @@ function(setup_llvm LLVM_VERSION)
     # set llvm include and lib path
     add_library(llvm-libs INTERFACE IMPORTED)
 
-    # add to include directories
-    target_include_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/include")
+    target_include_directories(llvm-libs INTERFACE
+        "${LLVM_INSTALL_PATH}/include"
+        "${CMAKE_CURRENT_BINARY_DIR}/include"
+    )
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT WIN32)
         target_link_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/lib")
