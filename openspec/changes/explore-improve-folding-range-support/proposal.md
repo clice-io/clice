@@ -6,6 +6,8 @@ This exploration branch needs a fixed upstream reference instead of relying on m
 
 More importantly, `clice` already has preprocessor metadata that clangd does not fully exploit, such as `directive.macros`, `directive.includes`, `directive.imports`, and evaluated conditional-branch state. That means `clice` should not stop at matching clangd: after filling the real parity gaps, folding ranges can become a more useful C/C++ feature by covering macro definitions, `#if` branches, and include/import groups that clangd does not currently handle well.
 
+Follow-up discussion clarified the split with `split-folding-range-pipeline`: the existing `RawFoldingRange` model is finished for the current architecture work. The missing capability path is explicit folding options, passed as `Opts`/`FoldingRangeOptions`, so `line_folding_only` can be requested by server capability plumbing and consumed by the renderer.
+
 ## What Changes
 
 - Download the clangd folding-range reference files for tag `llvmorg-21.1.8` into `openspec/changes/explore-improve-folding-range-support/reference/clangd/llvmorg-21.1.8/` using `curl` from GitHub raw URLs.
@@ -14,7 +16,7 @@ More importantly, `clice` already has preprocessor metadata that clangd does not
 - Complete preprocessor-related folding so full `#if/#elif/#else/#endif` branch regions, nested `#pragma region` blocks, and inactive branches have well-defined behavior.
 - Add folding features that take advantage of `clice`'s existing preprocessor metadata, including multiline macro definitions and grouped `#include` / `import` blocks.
 - Normalize `FoldingRange.kind` output so standard kinds remain compatible while clice-specific fold categories degrade predictably.
-- Make folding range responses honor client capabilities such as `lineFoldingOnly`, optional `collapsedText` support, and range limiting.
+- Make folding range responses honor client capabilities such as `lineFoldingOnly`, optional `collapsedText` support, and range limiting, using folding options rather than collector-specific state.
 - Expand unit and integration coverage for AST folds, comments, preprocessor regions, macros, include/import groups, and protocol negotiation behavior.
 
 ## Capabilities
@@ -29,6 +31,6 @@ More importantly, `clice` already has preprocessor metadata that clangd does not
 
 - A change-local upstream reference set has been downloaded under `openspec/changes/explore-improve-folding-range-support/reference/clangd/llvmorg-21.1.8/`, limited to the folding-range implementation, protocol, and tests needed for analysis.
 - The side-by-side analysis is recorded in `openspec/changes/explore-improve-folding-range-support/comparison.md`.
-- Primary runtime impact is in `src/feature/folding_ranges.cpp`, the compile-unit/preprocessor metadata access paths, request handling in `src/server/master_server.cpp`, and any future capability negotiation path.
+- Primary runtime impact is in `src/feature/folding_ranges.cpp`, the compile-unit/preprocessor metadata access paths, request handling in `src/server/master_server.cpp`, and the folding options object used to carry capability-derived rendering choices.
 - Tests need expansion in `tests/unit/feature/folding_range_tests.cpp`, server/integration coverage, and any required fixtures for preprocessor and module scenarios.
 - User-visible behavior will be folding results that are closer to clangd where clangd already has coverage, while also adding high-value C/C++ folds that clangd does not currently provide well, especially macro-definition and conditional-compilation folding.

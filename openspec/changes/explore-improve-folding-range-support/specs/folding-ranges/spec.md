@@ -7,6 +7,11 @@ The server SHALL render folding ranges according to the client's declared foldin
 - **WHEN** the client declares `textDocument.foldingRange.lineFoldingOnly = true`
 - **THEN** the server MUST return folding ranges that remain valid when interpreted as whole-line folds, including adjusting end boundaries for bracketed or comment ranges whose closing delimiter is on the last line
 
+#### Scenario: Client line-only support is propagated through folding options
+- **WHEN** the client declares `textDocument.foldingRange.lineFoldingOnly = true`
+- **THEN** the server MUST invoke folding rendering with options equivalent to `line_folding_only = true`
+- **AND** collectors MUST NOT need to inspect client capability state to produce different raw ranges
+
 #### Scenario: Collapsed text is gated by client support
 - **WHEN** the client does not declare support for `textDocument.foldingRange.foldingRange.collapsedText`
 - **THEN** the server MUST omit `collapsedText` from the folding range response

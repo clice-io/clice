@@ -88,6 +88,8 @@ Why:
 - comments, macros, and include/import groups do not naturally belong inside the AST visitor
 - future range limiting or prioritization should also live in normalization/rendering instead of collector code
 
+Follow-up discussion narrows this design point: the existing `RawFoldingRange` model is finished for the current pipeline work and should not be redesigned here. The missing part is an explicit options object, passed as `Opts`/`FoldingRangeOptions`, that lets callers configure renderer behavior such as `line_folding_only`.
+
 Alternative considered:
 
 - Keep generating final LSP ranges directly inside the visitor. Rejected because capability negotiation and multi-source collection will keep making the function larger and harder to test.
@@ -133,7 +135,7 @@ Multiline comments are handled independently in clangd's pseudo-parser path, and
 - fold multiline `/* ... */` block comments
 - fold contiguous `//` comment groups
 - do not fold single-line comments
-- adjust closing boundaries for `lineFoldingOnly` mode so the final visible line is not swallowed incorrectly
+- preserve source spans that let the renderer adjust closing boundaries for `lineFoldingOnly` mode
 
 Why:
 
@@ -209,15 +211,26 @@ The master server currently only advertises `foldingRangeProvider = true`, but i
 - whether `collapsedText` is supported
 - optional `rangeLimit`
 
+Capability state should be translated into a feature-layer options object before rendering. The initial option needed by the current discussion is:
+
+```cpp
+struct FoldingRangeOptions {
+    bool line_folding_only = false;
+};
+```
+
+The feature API should accept that options object separately from the source collector inputs, for example as `folding_ranges(unit, opts, encoding)`. Later protocol work can extend the same object for collapsed-text gating or range limiting without changing collectors.
+
 Rendering rules:
 
-- when `lineFoldingOnly = true`, only emit ranges that remain meaningful as line-based folds, adjusting end lines where necessary
+- when `opts.line_folding_only = true`, only emit ranges that remain meaningful as line-based folds, adjusting end lines where necessary
 - when the client does not support `collapsedText`, omit it
 - when a `rangeLimit` is declared, trim results deterministically rather than arbitrarily
 
 Alternative considered:
 
 - Continue always returning exact columns and `collapsedText`. Rejected because that relies on client tolerance instead of following the protocol contract.
+- Thread capability state into collectors directly. Rejected because it would reopen the raw model and collection contract even though line-only behavior is a renderer policy.
 
 ### 10. Organize tests by source category and protocol behavior
 
@@ -245,7 +258,7 @@ Alternative considered:
 
 1. Download the focused clangd `llvmorg-21.1.8` folding reference files into `openspec/changes/explore-improve-folding-range-support/reference/clangd/llvmorg-21.1.8/`.
 2. Record the confirmed clangd-vs-clice comparison in this change, including exact URLs, which behaviors are parity gaps, and which are clice-specific extensions.
-3. Refactor the internal folding-range data flow and add render options plus standard kind mapping.
+3. Keep the existing `RawFoldingRange` data flow, add `FoldingRangeOptions` for `line_folding_only`, and add standard kind mapping.
 4. Add the comment collector and assertion-backed tests for multiline comment folding.
 5. Rewrite conditional-directive and `#pragma region` collection so `#if` branches close correctly through `#endif`.
 6. Add multiline macro folding and grouped include/import collectors.

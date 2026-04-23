@@ -4,7 +4,7 @@
 The server SHALL convert collected folding candidates into a deterministic normalized set before emitting the folding range response.
 
 #### Scenario: Duplicate candidates collapse to one emitted fold
-- **WHEN** multiple collectors produce the same folding candidate for the same source span and internal category
+- **WHEN** multiple collectors produce the same folding candidate for the same source span and raw metadata
 - **THEN** the server MUST emit at most one folding range for that candidate
 
 #### Scenario: Invalid candidates are dropped during normalization
@@ -36,3 +36,15 @@ The server SHALL derive final LSP folding-range output from normalized internal 
 #### Scenario: Metadata hints remain optional until rendering
 - **WHEN** a collected or normalized fold carries optional kind or collapsed-text hints
 - **THEN** the renderer MUST decide whether to surface, transform, or suppress that metadata in the emitted LSP range
+
+### Requirement: Folding rendering is configured through explicit options
+The server SHALL expose folding-specific rendering options so client capability behavior can be selected without changing collectors or raw ranges.
+
+#### Scenario: Default options preserve existing output
+- **WHEN** folding ranges are requested without explicit folding options
+- **THEN** rendering MUST behave as if `line_folding_only = false`
+
+#### Scenario: Line-only rendering is selected by options
+- **WHEN** folding ranges are rendered with `line_folding_only = true`
+- **THEN** the renderer MUST emit ranges that remain valid when interpreted as whole-line folds
+- **AND** collectors MUST NOT need to inspect client capability state or emit different raw ranges for line-only clients

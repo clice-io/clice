@@ -7,7 +7,7 @@
 ## 2. Comparison and Pipeline
 
 - [x] 2.1 Record a side-by-side comparison in the change artifacts between clangd's folding path and clice's current path, calling out confirmed parity gaps, clice-only capabilities, and known bugs.
-- [ ] 2.2 Continue refactoring `src/feature/folding_ranges.cpp` so collection, normalization, and LSP rendering are fully separated by an internal raw-range model and render options.
+- [ ] 2.2 Keep the existing `RawFoldingRange` model as the settled collection contract while completing normalization and options-driven rendering.
 - [ ] 2.3 Replace direct exposure of clice-specific public folding kinds with a stable mapping to standard LSP `comment` / `imports` / `region` kinds.
 
 ## 3. Comment and Structural Baseline
@@ -24,8 +24,8 @@
 
 ## 5. Protocol and Rendering
 
-- [ ] 5.1 Capture client folding capabilities during initialize and use them when serving `textDocument/foldingRange`.
-- [ ] 5.2 Honor `lineFoldingOnly`, gate `collapsedText`, and apply deterministic `rangeLimit` trimming during folding-range rendering.
+- [ ] 5.1 Capture client folding capabilities during initialize and translate them into `FoldingRangeOptions`/`Opts` when serving `textDocument/foldingRange`.
+- [ ] 5.2 Honor `lineFoldingOnly` through `opts.line_folding_only`, gate `collapsedText`, and apply deterministic `rangeLimit` trimming during folding-range rendering.
 - [ ] 5.3 Add integration coverage for line-only rendering, standard kind output, optional collapsed text, and range limiting.
 
 ## 6. Clice-Specific Folding Extensions
