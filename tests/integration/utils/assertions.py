@@ -1,6 +1,6 @@
-"""Diagnostic assertion helpers for integration tests."""
+"""Diagnostic and log message assertion helpers for integration tests."""
 
-from lsprotocol.types import Diagnostic, DiagnosticSeverity
+from lsprotocol.types import Diagnostic, DiagnosticSeverity, MessageType
 
 
 def get_errors(diagnostics: list[Diagnostic]) -> list[Diagnostic]:
@@ -48,3 +48,23 @@ def assert_clean_compile(client, uri: str) -> None:
     """Assert the file compiled without any diagnostics at all."""
     diags = client.diagnostics.get(uri, [])
     assert len(diags) == 0, f"Expected clean compile, got: {diags}"
+
+
+def has_log_message(
+    client, substring: str, *, severity: MessageType | None = None
+) -> bool:
+    """Check if any log message contains the given substring."""
+    for msg in client.log_messages:
+        if severity is not None and msg.type != severity:
+            continue
+        if substring in msg.message:
+            return True
+    return False
+
+
+def assert_no_log_errors(client) -> None:
+    """Assert that no error-level log messages were received."""
+    errors = [m for m in client.log_messages if m.type == MessageType.Error]
+    assert len(errors) == 0, (
+        f"Expected no log errors, got: {[e.message for e in errors]}"
+    )

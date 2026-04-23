@@ -21,11 +21,6 @@ void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
     links = feature::document_links(*unit, feature::PositionEncoding::UTF8);
 }
 
-auto to_local_range(const protocol::Range& range) -> LocalSourceRange {
-    feature::PositionMapper converter(unit->interested_content(), feature::PositionEncoding::UTF8);
-    return LocalSourceRange(*converter.to_offset(range.start), *converter.to_offset(range.end));
-}
-
 void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) {
     auto& link = links[index];
     auto expected = range(name, "main.cpp");

@@ -168,7 +168,7 @@ std::optional<Config> Config::load_from_json(llvm::StringRef json, llvm::StringR
     return config;
 }
 
-Config Config::load_from_workspace(llvm::StringRef workspace_root) {
+Config Config::load_from_workspace(llvm::StringRef workspace_root, std::string* warning) {
     if(!workspace_root.empty()) {
         for(auto* name: {"clice.toml", ".clice/config.toml"}) {
             auto config_path = path::join(workspace_root, name);
@@ -179,6 +179,9 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root) {
             // Present but malformed: fall through to defaults, but surface
             // the situation clearly so users know their config wasn't applied.
             LOG_WARN("Falling back to default configuration because {} is invalid", config_path);
+            if(warning)
+                *warning = std::format("Configuration file {} is invalid, falling back to defaults",
+                                       config_path);
         }
     }
 

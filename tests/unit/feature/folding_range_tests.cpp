@@ -37,19 +37,10 @@ void run(llvm::StringRef code) {
 }
 
 auto to_local_range(const protocol::FoldingRange& range) -> LocalSourceRange {
-    feature::PositionMapper converter(unit->interested_content(), feature::PositionEncoding::UTF8);
-
-    auto start = protocol::Position{
-        .line = range.start_line,
-        .character = range.start_character.value_or(0),
-    };
-
-    auto end = protocol::Position{
-        .line = range.end_line,
-        .character = range.end_character.value_or(0),
-    };
-
-    return LocalSourceRange(*converter.to_offset(start), *converter.to_offset(end));
+    return Tester::to_local_range(protocol::Range{
+        .start = {.line = range.start_line, .character = range.start_character.value_or(0)},
+        .end = {.line = range.end_line,   .character = range.end_character.value_or(0)  },
+    });
 }
 
 void EXPECT_FOLDING(std::uint32_t index,

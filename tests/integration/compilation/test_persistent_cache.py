@@ -16,6 +16,7 @@ from lsprotocol.types import (
 
 from tests.conftest import make_client, shutdown_client
 from tests.integration.utils import write_cdb, doc
+from tests.integration.utils.wait import MTIME_GRANULARITY, SETTLE_TIME
 from tests.integration.utils.cache import (
     list_pch_files,
     list_pcm_files,
@@ -100,7 +101,7 @@ async def test_pch_reused_on_close_reopen(client, tmp_path):
 
     # Close.
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=doc(uri)))
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(SETTLE_TIME)
 
     # Clear diagnostics so we can wait for fresh ones.
     client.diagnostics.pop(uri, None)
@@ -227,7 +228,7 @@ async def test_pch_rebuilt_on_header_change(client, tmp_path):
     assert len(pch_before) >= 1
 
     # Modify header — changes preamble content hash.
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     (tmp_path / "header.h").write_text("#pragma once\nstruct V2 { int b; };\n")
     # Also update main.cpp to use V2 so it compiles cleanly.
     (tmp_path / "main.cpp").write_text(
@@ -236,7 +237,7 @@ async def test_pch_rebuilt_on_header_change(client, tmp_path):
 
     # Close and reopen to get fresh preamble.
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=doc(uri)))
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(SETTLE_TIME)
     client.diagnostics.pop(uri, None)
 
     uri2, _ = await client.open_and_wait(tmp_path / "main.cpp")

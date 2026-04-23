@@ -242,6 +242,7 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     std::unique_ptr diagnostic_consumer = self.create_diagnostic();
     std::unique_ptr invocation = self.create_invocation(params, diagnostic_consumer.get());
     if(!invocation) {
+        LOG_WARN("run_clang: invocation creation failed");
         return CompilationStatus::SetupFail;
     }
 
@@ -256,6 +257,7 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     }
 
     if(!instance.createTarget()) {
+        LOG_WARN("run_clang: target creation failed");
         return CompilationStatus::SetupFail;
     }
 
@@ -270,6 +272,7 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
         /// But if we fail to `BeginSourceFile` we don't need to call `EndSourceFile`. So just
         /// reset it.
         self.action.reset();
+        LOG_WARN("run_clang: BeginSourceFile failed");
         return CompilationStatus::SetupFail;
     }
 
@@ -303,6 +306,8 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     /// in crash frequently. So forbidden it here and return as error.
     if(!instance.getFrontendOpts().OutputFile.empty() &&
        instance.getDiagnostics().hasErrorOccurred()) {
+        LOG_WARN("run_clang: errors during PCH/PCM generation, output={}",
+                 instance.getFrontendOpts().OutputFile);
         return CompilationStatus::FatalError;
     }
 

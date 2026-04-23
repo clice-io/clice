@@ -7,6 +7,7 @@ from urllib.parse import unquote
 from lsprotocol.types import (
     PROGRESS,
     TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS,
+    WINDOW_LOG_MESSAGE,
     WINDOW_WORK_DONE_PROGRESS_CREATE,
     ClientCapabilities,
     CodeActionContext,
@@ -24,6 +25,7 @@ from lsprotocol.types import (
     InitializeParams,
     InitializeResult,
     InitializedParams,
+    LogMessageParams,
     Position,
     ProgressParams,
     PublishDiagnosticsParams,
@@ -48,6 +50,7 @@ class CliceClient(BaseLanguageClient):
         super().__init__("clice-test-client", "0.1.0")
         self.diagnostics: dict[str, list[Diagnostic]] = {}
         self.diagnostics_events: dict[str, asyncio.Event] = {}
+        self.log_messages: list[LogMessageParams] = []
         self.progress_tokens: list[str] = []
         self.progress_events: list[dict] = []
         self.init_result: InitializeResult | None = None
@@ -63,6 +66,10 @@ class CliceClient(BaseLanguageClient):
             for key in (raw_uri, normalized):
                 if key in self.diagnostics_events:
                     self.diagnostics_events[key].set()
+
+        @self.feature(WINDOW_LOG_MESSAGE)
+        def on_log_message(params: LogMessageParams) -> None:
+            self.log_messages.append(params)
 
         @self.feature(WINDOW_WORK_DONE_PROGRESS_CREATE)
         def on_create_progress(params: WorkDoneProgressCreateParams) -> None:
