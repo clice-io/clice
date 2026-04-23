@@ -72,4 +72,3 @@ tests/unit/Local/
 .claude/*
 !.claude/CLAUDE.md
 !.claude/commands/
-openspec/
