@@ -334,7 +334,7 @@ void MasterServer::register_handlers() {
         indexer.set_peer(&peer);
         indexer.set_max_concurrency(cfg.stateless_worker_count.value);
 
-        loop.schedule(load_workspace());
+        load_workspace();
     });
 
     peer.on_request(

@@ -13,6 +13,9 @@ import re
 import signal
 import sys
 import time
+
+# Force line-buffered stdout so CI sees output immediately.
+sys.stdout.reconfigure(line_buffering=True)
 from pathlib import Path
 from urllib.parse import quote, unquote
 

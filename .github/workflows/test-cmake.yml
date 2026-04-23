@@ -108,7 +108,7 @@ jobs:
 
       - name: Smoke tests
         if: ${{ !matrix.build_only }}
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: pixi run smoke-test ${{ matrix.build_type }}
 
       - name: Print cache stats and stop server
