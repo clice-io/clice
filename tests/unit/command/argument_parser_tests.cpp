@@ -1,7 +1,7 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 
-#include "clang/Driver/Options.h"
+#include "clang/Options/Options.h"
 
 namespace clice::testing {
 
@@ -9,7 +9,7 @@ namespace {
 
 TEST_SUITE(ArgumentParser) {
 
-using option = clang::driver::options::ID;
+using option = clang::options::ID;
 
 void EXPECT_ID(llvm::StringRef command, option opt) {
     auto id = get_option_id(command);
