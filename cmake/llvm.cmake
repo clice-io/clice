@@ -81,6 +81,7 @@ function(setup_llvm LLVM_VERSION)
             clangBasic
             clangDriver
             clangFormat
+            clangOptions
             clangFrontend
             clangLex
             clangSema

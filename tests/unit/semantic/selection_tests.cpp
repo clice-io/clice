@@ -444,7 +444,7 @@ TEST_CASE(CXXFeatures) {
           template <typename T>
           int x = @[T::$U::]ccc();
           )",
-                  "NestedNameSpecifierLoc");
+                  "DependentNameTypeLoc");
     EXPECT_SELECT(R"(
           struct Foo {};
           struct Bar : @[v$ir$tual private Foo] {};
@@ -488,7 +488,7 @@ TEST_CASE(UsingEnum) {
         namespace ns { enum class A {}; };
         using enum @[$ns::]A;
         )",
-                  "NestedNameSpecifierLoc");
+                  "UsingEnumDecl");
     EXPECT_SELECT(R"(
         namespace ns { enum class A {}; };
         @[using $enum ns::A];

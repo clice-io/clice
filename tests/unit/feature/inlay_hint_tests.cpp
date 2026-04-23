@@ -621,7 +621,7 @@ TEST_CASE(Types) {
         )c");
     EXPECT_SIZE(2);
     EXPECT_HINT("0", ": S1");
-    EXPECT_HINT("1", ": S2::Inner<int>");
+    EXPECT_HINT("1", ": Inner<int>");
 
     // Lambda
     run(R"c(
