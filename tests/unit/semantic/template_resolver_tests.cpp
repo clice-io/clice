@@ -941,14 +941,40 @@ TEST_CASE(Standard) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto old_level = clice::logging::options.level;
-    clice::logging::options.level = clice::logging::Level::debug;
+    // Dump the actual libstdc++ definition chain for reference
+    auto& sema = unit->sema();
+    auto& ctx = unit->context();
+    if(auto DNT = finder.input->getAs<clang::DependentNameType>()) {
+        auto NNS = DNT->getQualifier();
+        if(NNS.getKind() == clang::NestedNameSpecifier::Kind::Type) {
+            if(auto TST = NNS.getAsType()->getAs<clang::TemplateSpecializationType>()) {
+                if(auto CTD = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
+                       TST->getTemplateName().getAsTemplateDecl())) {
+                    auto CRD = CTD->getTemplatedDecl();
+                    auto name = DNT->getIdentifier();
+                    auto members = CRD->lookup(name);
+                    llvm::errs() << "lookup '" << name->getName() << "' in vector primary:\n";
+                    for(auto d: members) {
+                        llvm::errs() << "  found: " << d->getDeclKindName() << "\n";
+                        if(auto TND = llvm::dyn_cast<clang::TypedefNameDecl>(d)) {
+                            llvm::errs() << "  underlying: " << TND->getUnderlyingType() << "\n";
+                        }
+                    }
+                    if(members.empty()) {
+                        llvm::errs() << "  not found in primary, checking bases\n";
+                        if(CRD->hasDefinition()) {
+                            for(auto base: CRD->bases()) {
+                                llvm::errs() << "  base: " << base.getType() << "\n";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     auto input = unit->resolver().resolve(finder.input);
     auto target = finder.expect;
-
-    clice::logging::options.level = old_level;
-
     llvm::errs() << "resolved: " << input << "\n";
     llvm::errs() << "target: " << target << "\n";
     ASSERT_FALSE(input.isNull() || target.isNull());
