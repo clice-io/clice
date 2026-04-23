@@ -942,8 +942,6 @@ TEST_CASE(Standard) {
     finder.TraverseAST(unit->context());
 
     // Dump the actual libstdc++ definition chain for reference
-    auto& sema = unit->sema();
-    auto& ctx = unit->context();
     if(auto DNT = finder.input->getAs<clang::DependentNameType>()) {
         auto NNS = DNT->getQualifier();
         if(NNS.getKind() == clang::NestedNameSpecifier::Kind::Type) {
