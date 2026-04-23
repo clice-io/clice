@@ -10,7 +10,7 @@ fi
 WORKFLOW_ID="$1"
 
 mkdir -p artifacts
-gh run download "${WORKFLOW_ID}" --dir artifacts
+gh run download "${WORKFLOW_ID}" --dir artifacts --pattern "*.tar.xz"
 
 echo "Downloaded artifacts:"
 find artifacts -maxdepth 4 -type f -print

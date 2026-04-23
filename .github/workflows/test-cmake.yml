@@ -2,6 +2,11 @@ name: cmake
 
 on:
   workflow_call:
+    inputs:
+      llvm_from_artifact:
+        description: "Download LLVM from workflow artifacts instead of release"
+        type: boolean
+        default: false
 
 env:
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
@@ -53,7 +58,15 @@ jobs:
         with:
           environments: ${{ matrix.pixi_env || 'default' }}
 
+      - name: Download LLVM install
+        if: ${{ inputs.llvm_from_artifact }}
+        uses: actions/download-artifact@v4
+        with:
+          name: llvm-install-${{ matrix.target_triple || matrix.os }}-${{ matrix.build_type }}
+          path: .llvm-install/
+
       - name: Restore compiler cache
+        if: ${{ !inputs.llvm_from_artifact }}
         uses: actions/cache@v4
         with:
           path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
@@ -62,6 +75,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.target_triple || 'native' }}-ccache-
 
       - name: Zero cache stats
+        if: ${{ !inputs.llvm_from_artifact }}
         run: |
           ENV="${{ matrix.pixi_env || 'default' }}"
           if [ "$RUNNER_OS" = "Windows" ]; then
@@ -74,15 +88,28 @@ jobs:
 
       - name: Build (native)
         if: ${{ !matrix.target_triple }}
-        run: pixi run build ${{ matrix.build_type }} ON
+        shell: bash
+        run: |
+          if [ "${{ inputs.llvm_from_artifact }}" = "true" ]; then
+            pixi run cmake-config ${{ matrix.build_type }} ON -- \
+              "-DLLVM_INSTALL_PATH=.llvm-install"
+            pixi run cmake-build ${{ matrix.build_type }}
+          else
+            pixi run build ${{ matrix.build_type }} ON
+          fi
 
       - name: Build (cross-compile)
         if: ${{ matrix.target_triple }}
         shell: bash
         run: |
           ENV="${{ matrix.pixi_env || 'default' }}"
+          EXTRA_ARGS=""
+          if [ "${{ inputs.llvm_from_artifact }}" = "true" ]; then
+            EXTRA_ARGS="-DLLVM_INSTALL_PATH=.llvm-install"
+          fi
           pixi run -e "$ENV" cmake-config ${{ matrix.build_type }} OFF -- \
-            "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
+            "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}" \
+            $EXTRA_ARGS
           pixi run -e "$ENV" cmake-build ${{ matrix.build_type }}
 
       - name: Upload cross-compiled binaries
@@ -101,7 +128,7 @@ jobs:
         run: pixi run test ${{ matrix.build_type }}
 
       - name: Print cache stats and stop server
-        if: always()
+        if: ${{ always() && !inputs.llvm_from_artifact }}
         run: |
           ENV="${{ matrix.pixi_env || 'default' }}"
           if [ "$RUNNER_OS" = "Windows" ]; then

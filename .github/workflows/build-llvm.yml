@@ -23,7 +23,7 @@ on:
     branches: [main-turn-off]
 
 jobs:
-  build:
+  build-llvm:
     strategy:
       fail-fast: false
       matrix:
@@ -150,117 +150,17 @@ jobs:
             --build-dir=build \
             ${EXTRA_ARGS}
 
-      - name: Build clice using installed LLVM
-        if: ${{ !matrix.target_triple }}
-        shell: bash
-        run: |
-          pixi run cmake-config ${{ matrix.llvm_mode }} ON -- \
-            "-DCLICE_ENABLE_LTO=${{ matrix.lto }}" \
-            "-DLLVM_INSTALL_PATH=.llvm/build-install"
-          pixi run cmake-build ${{ matrix.llvm_mode }}
-
-      - name: Build clice using installed LLVM (cross-compile)
-        if: ${{ matrix.target_triple }}
-        shell: bash
-        run: |
-          ENV="${{ matrix.pixi_env || 'package' }}"
-          pixi run -e "$ENV" cmake-config ${{ matrix.llvm_mode }} ON -- \
-            "-DCLICE_ENABLE_LTO=${{ matrix.lto }}" \
-            "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}" \
-            "-DLLVM_INSTALL_PATH=.llvm/build-install"
-          pixi run -e "$ENV" cmake-build ${{ matrix.llvm_mode }}
-
-      - name: Verify cross-compiled binary architecture
-        if: ${{ matrix.target_triple && runner.os != 'Windows' }}
-        shell: bash
-        run: |
-          BINARY="build/${{ matrix.llvm_mode }}/bin/clice"
-          echo "Binary info:"
-          file "$BINARY"
-          case "${{ matrix.target_triple }}" in
-            aarch64-linux-gnu)   file "$BINARY" | grep -q "aarch64" ;;
-            x86_64-apple-darwin) file "$BINARY" | grep -q "x86_64" ;;
-          esac
-
-      - name: Upload cross-compiled clice for functional test
-        if: ${{ matrix.target_triple && matrix.lto == 'OFF' }}
+      # Upload raw install directory for validation (non-LTO only, one per platform/config).
+      # Artifact name matches the key used by test-cmake.yml: llvm-install-{target_triple|os}-{mode}
+      - name: Upload LLVM install for validation
+        if: ${{ matrix.lto == 'OFF' }}
         uses: actions/upload-artifact@v4
         with:
-          name: cross-clice-${{ matrix.target_triple }}-${{ matrix.llvm_mode }}
-          path: |
-            build/${{ matrix.llvm_mode }}/bin/
-            build/${{ matrix.llvm_mode }}/lib/
-          if-no-files-found: error
+          name: llvm-install-${{ matrix.target_triple || matrix.os }}-${{ matrix.llvm_mode }}
+          path: .llvm/build-install/
           retention-days: 1
 
-      - name: Run tests
-        if: ${{ !matrix.target_triple }}
-        shell: bash
-        run: pixi run test ${{ matrix.llvm_mode }}
-
-      # Prune is only supported for native builds (requires linking clice to test).
-      # Cross-compiled targets reuse the native prune manifest of the same OS.
-      - name: Prune LLVM static libraries (Debug/RelWithDebInfo no LTO)
-        if: (!matrix.target_triple) && (matrix.llvm_mode == 'Debug' || (matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'))
-        shell: bash
-        run: |
-          MANIFEST="pruned-libs-${{ matrix.os }}.json"
-          echo "LLVM_PRUNED_MANIFEST=${MANIFEST}" >> "${GITHUB_ENV}"
-          python3 scripts/prune-llvm-bin.py \
-            --action discover \
-            --install-dir ".llvm/build-install/lib" \
-            --build-dir "build/${{ matrix.llvm_mode }}" \
-            --max-attempts 60 \
-            --sleep-seconds 60 \
-            --manifest "${MANIFEST}"
-
-      - name: Upload pruned-libs manifest
-        if: (!matrix.target_triple) && matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'
-        uses: actions/upload-artifact@v4
-        with:
-          name: llvm-pruned-libs-${{ matrix.os }}
-          path: ${{ env.LLVM_PRUNED_MANIFEST }}
-          if-no-files-found: error
-          compression-level: 0
-
-      - name: Apply pruned-libs manifest (RelWithDebInfo + LTO, native only)
-        if: (!matrix.target_triple) && matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'ON'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          MANIFEST="pruned-libs-${{ matrix.os }}.json"
-          python3 scripts/prune-llvm-bin.py \
-            --action apply \
-            --manifest "${MANIFEST}" \
-            --install-dir ".llvm/build-install/lib" \
-            --build-dir "build/${{ matrix.llvm_mode }}" \
-            --gh-run-id "${{ github.run_id }}" \
-            --gh-artifact "llvm-pruned-libs-${{ matrix.os }}" \
-            --gh-download-dir "artifacts" \
-            --max-attempts 60 \
-            --sleep-seconds 60
-
-      # For cross-compiled LTO builds, apply the native prune manifest.
-      # The unused library set is arch-independent (same API surface).
-      - name: Apply pruned-libs manifest (cross-compile + LTO)
-        if: matrix.target_triple && matrix.lto == 'ON'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          MANIFEST="pruned-libs-${{ matrix.os }}.json"
-          python3 scripts/prune-llvm-bin.py \
-            --action apply \
-            --manifest "${MANIFEST}" \
-            --install-dir ".llvm/build-install/lib" \
-            --build-dir "build/${{ matrix.llvm_mode }}" \
-            --gh-run-id "${{ github.run_id }}" \
-            --gh-artifact "llvm-pruned-libs-${{ matrix.os }}" \
-            --gh-download-dir "artifacts" \
-            --max-attempts 60 \
-            --sleep-seconds 60
-
+      # Package as .tar.xz for the final clice-llvm release (all entries).
       - name: Package LLVM install directory
         shell: bash
         run: |
@@ -269,7 +169,6 @@ jobs:
             MODE_TAG="debug"
           fi
 
-          # Determine arch/platform/toolchain from target triple or runner OS
           if [[ -n "${{ matrix.target_triple }}" ]]; then
             case "${{ matrix.target_triple }}" in
               x86_64-apple-darwin)
@@ -304,56 +203,25 @@ jobs:
           ARCHIVE="${ARCH}-${PLATFORM}-${TOOLCHAIN}-${MODE_TAG}${SUFFIX}.tar.xz"
 
           set -eo pipefail
-          tar -C .llvm -cf - build-install | xz -T0 -9 -c > "${ARCHIVE}"
+          tar -C .llvm/build-install -cf - . | xz -T0 -9 -c > "${ARCHIVE}"
           echo "LLVM_INSTALL_ARCHIVE=${ARCHIVE}" >> "${GITHUB_ENV}"
 
-      - name: Upload LLVM install artifact
+      - name: Upload LLVM release archive
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.LLVM_INSTALL_ARCHIVE }}
           path: ${{ env.LLVM_INSTALL_ARCHIVE }}
           if-no-files-found: error
 
-  test-cross:
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15-intel
-            llvm_mode: RelWithDebInfo
-            target_triple: x86_64-apple-darwin
-          - os: ubuntu-24.04-arm
-            llvm_mode: RelWithDebInfo
-            target_triple: aarch64-linux-gnu
-          - os: windows-11-arm
-            llvm_mode: RelWithDebInfo
-            target_triple: aarch64-pc-windows-msvc
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: test-run
-
-      - name: Download cross-compiled clice
-        uses: actions/download-artifact@v4
-        with:
-          name: cross-clice-${{ matrix.target_triple }}-${{ matrix.llvm_mode }}
-          path: build/${{ matrix.llvm_mode }}/
-
-      - name: Make binaries executable
-        if: runner.os != 'Windows'
-        run: chmod +x build/${{ matrix.llvm_mode }}/bin/*
-
-      - name: Run tests
-        run: pixi run -e test-run test ${{ matrix.llvm_mode }}
+  validate:
+    needs: build-llvm
+    uses: ./.github/workflows/test-cmake.yml
+    with:
+      llvm_from_artifact: true
 
   upload:
-    needs: build
-    if: ${{ !cancelled() && inputs.llvm_version && !inputs.skip_upload }}
+    needs: [build-llvm, validate]
+    if: ${{ inputs.llvm_version && !inputs.skip_upload }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
