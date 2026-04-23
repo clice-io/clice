@@ -122,9 +122,11 @@ void Compiler::init_compile_graph() {
 
         auto result = co_await pool.send_stateless(bp);
         if(!result.has_value() || !result.value().success) {
-            LOG_WARN("BuildPCM failed for module {}: {}",
-                     mod_it->second,
-                     result.has_value() ? result.value().error : result.error().message);
+            auto error_msg = result.has_value() ? result.value().error : result.error().message;
+            LOG_WARN("BuildPCM failed for module {}: {}", mod_it->second, error_msg);
+            peer.send_notification(protocol::LogMessageParams{
+                protocol::MessageType::Warning,
+                std::format("PCM build failed for module {}: {}", mod_it->second, error_msg)});
             co_return false;
         }
 
@@ -171,6 +173,10 @@ bool Compiler::fill_compile_args(llvm::StringRef path,
         auto& cmd = results.front();
         directory = cmd.resolved.directory.str();
         arguments = cmd.to_string_argv();
+        LOG_DEBUG("fill_compile_args: CDB match for {} (dir={}, {} args)",
+                  path,
+                  directory,
+                  arguments.size());
         return true;
     }
 
@@ -521,9 +527,11 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto result = co_await pool.send_stateless(bp);
 
     if(!result.has_value() || !result.value().success) {
-        LOG_WARN("PCH build failed for {}: {}",
-                 path,
-                 result.has_value() ? result.value().error : result.error().message);
+        auto error_msg = result.has_value() ? result.value().error : result.error().message;
+        LOG_WARN("PCH build failed for {}: {}", path, error_msg);
+        peer.send_notification(protocol::LogMessageParams{
+            protocol::MessageType::Warning,
+            std::format("PCH build failed for {}: {}", path, error_msg)});
         workspace.pch_cache[path_id].building.reset();
         completion->set();
         co_return false;
@@ -730,6 +738,10 @@ kota::task<bool> Compiler::ensure_compiled(Session& session) {
         params.version = sess->version;
         params.text = sess->text;
         if(!self->fill_compile_args(file_path, params.directory, params.arguments, sess)) {
+            LOG_WARN("ensure_compiled: no compile args for {}", uri_str);
+            self->peer.send_notification(protocol::LogMessageParams{
+                protocol::MessageType::Warning,
+                std::format("No compile arguments available for {}", file_path)});
             finish_compile();
             co_return;
         }
@@ -737,6 +749,9 @@ kota::task<bool> Compiler::ensure_compiled(Session& session) {
         if(!co_await self
                 ->ensure_deps(*sess, params.directory, params.arguments, params.pch, params.pcms)) {
             LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
+            self->peer.send_notification(protocol::LogMessageParams{
+                protocol::MessageType::Warning,
+                std::format("Dependency preparation failed for {}", file_path)});
             finish_compile();
             co_return;
         }
@@ -768,6 +783,9 @@ kota::task<bool> Compiler::ensure_compiled(Session& session) {
 
         if(!result.has_value()) {
             LOG_WARN("Compile failed for {}: {}", uri_str, result.error().message);
+            self->peer.send_notification(protocol::LogMessageParams{
+                protocol::MessageType::Error,
+                std::format("Compilation failed for {}: {}", file_path, result.error().message)});
             self->clear_diagnostics(uri_str);
             finish_compile();
             co_return;
@@ -816,11 +834,17 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     auto text = session.text;
 
     if(!co_await ensure_compiled(session)) {
-        co_return serde_raw{"null"};
+        LOG_WARN("forward_query: compilation failed for {}", path);
+        co_await kota::fail("Compilation failed");
     }
 
     auto sit = sessions.find(path_id);
-    if(sit == sessions.end() || sit->second.ast_dirty) {
+    if(sit == sessions.end()) {
+        LOG_WARN("forward_query: session lost after compile for {}", path);
+        co_await kota::fail("Document was closed during compilation");
+    }
+    if(sit->second.ast_dirty) {
+        LOG_DEBUG("forward_query: still dirty after compile for {} (concurrent edit)", path);
         co_return serde_raw{"null"};
     }
 
@@ -832,8 +856,13 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
 
     if(position) {
         auto offset = mapper.to_offset(*position);
-        if(!offset)
-            co_return serde_raw{"null"};
+        if(!offset) {
+            LOG_WARN("forward_query: invalid position {}:{} for {}",
+                     position->line,
+                     position->character,
+                     path);
+            co_await kota::fail("Invalid position: failed to convert to byte offset");
+        }
         wp.offset = *offset;
     }
 
@@ -847,7 +876,8 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
 
     auto result = co_await pool.send_stateful(path_id, wp);
     if(!result.has_value()) {
-        co_return serde_raw{};
+        LOG_WARN("forward_query: worker failed for {}: {}", path, result.error().message);
+        co_await kota::fail(result.error().message);
     }
     co_return std::move(result.value());
 }
@@ -866,27 +896,36 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     wp.version = session.version;
     wp.text = session.text;
     if(!fill_compile_args(path, wp.directory, wp.arguments, &session)) {
-        co_return serde_raw{};
+        LOG_WARN("forward_build: compile args not available for {}", path);
+        co_await kota::fail("Compile arguments not available");
     }
 
     if(!co_await ensure_deps(session, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
-        co_return serde_raw{};
+        LOG_WARN("forward_build: dependency preparation failed for {}", path);
+        co_await kota::fail("Dependency preparation failed");
     }
 
     // After co_await, verify session still exists.
     if(sessions.find(path_id) == sessions.end()) {
-        co_return serde_raw{};
+        LOG_WARN("forward_build: session lost after co_await for {}", path);
+        co_await kota::fail("Document was closed during compilation");
     }
 
     lsp::PositionMapper mapper(wp.text, lsp::PositionEncoding::UTF16);
     auto offset = mapper.to_offset(position);
-    if(!offset)
-        co_return serde_raw{"null"};
+    if(!offset) {
+        LOG_WARN("forward_build: invalid position {}:{} for {}",
+                 position.line,
+                 position.character,
+                 path);
+        co_await kota::fail("Invalid position: failed to convert to byte offset");
+    }
     wp.offset = *offset;
 
     auto result = co_await pool.send_stateless(wp);
     if(!result.has_value()) {
-        co_return serde_raw{};
+        LOG_WARN("forward_build: worker failed for {}: {}", path, result.error().message);
+        co_await kota::fail(result.error().message);
     }
     co_return std::move(result.value().result_json);
 }
@@ -904,8 +943,10 @@ Compiler::RawResult Compiler::handle_completion(const protocol::Position& positi
            pctx.kind == CompletionContext::IncludeAngled) {
             std::string directory;
             std::vector<std::string> arguments;
-            if(!fill_compile_args(path, directory, arguments))
-                co_return serde_raw{"[]"};
+            if(!fill_compile_args(path, directory, arguments)) {
+                LOG_WARN("handle_completion: compile args not available for {}", path);
+                co_await kota::fail("Compile arguments not available for include completion");
+            }
 
             std::vector<const char*> args_ptrs;
             args_ptrs.reserve(arguments.size());

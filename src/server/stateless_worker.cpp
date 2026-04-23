@@ -244,6 +244,8 @@ static worker::BuildResult handle_completion(const worker::BuildParams& params) 
     cp.completion = {params.file, params.offset};
 
     auto items = feature::code_complete(cp);
+    if(items.empty())
+        LOG_DEBUG("Completion: no items returned for {}:{}", params.file, params.offset);
     LOG_DEBUG("Completion done: {} items, {}ms", items.size(), timer.ms());
 
     worker::BuildResult result;
@@ -267,7 +269,7 @@ static worker::BuildResult handle_signature_help(const worker::BuildParams& para
     cp.completion = {params.file, params.offset};
 
     auto help = feature::signature_help(cp);
-    LOG_DEBUG("SignatureHelp done: {}ms", timer.ms());
+    LOG_DEBUG("SignatureHelp done: {} signatures, {}ms", help.signatures.size(), timer.ms());
 
     worker::BuildResult result;
     result.result_json = to_raw(help);

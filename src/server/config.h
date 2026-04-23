@@ -73,7 +73,10 @@ struct Config {
 
     /// Load config from the workspace, trying standard locations.
     /// Returns a default config (with apply_defaults) if no file is found.
-    static Config load_from_workspace(llvm::StringRef workspace_root);
+    /// If `warning` is non-null and a config file was found but malformed,
+    /// the warning message is written there.
+    static Config load_from_workspace(llvm::StringRef workspace_root,
+                                      std::string* warning = nullptr);
 };
 
 }  // namespace clice

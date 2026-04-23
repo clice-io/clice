@@ -125,6 +125,9 @@ void MasterServer::load_workspace() {
 
     if(cdb_path.empty()) {
         LOG_WARN("No compile_commands.json found in workspace {}", workspace_root);
+        peer.send_notification(protocol::LogMessageParams{
+            protocol::MessageType::Warning,
+            std::format("No compile_commands.json found in workspace {}", workspace_root)});
         return;
     }
 
@@ -283,10 +286,18 @@ void MasterServer::register_handlers() {
         // any initializationOptions on top so fields not mentioned in the JSON
         // keep the values from clice.toml — kotatsu's deserializer only touches
         // fields that are present in the input.
-        workspace.config = Config::load_from_workspace(workspace_root);
+        std::string config_warning;
+        workspace.config = Config::load_from_workspace(workspace_root, &config_warning);
+        if(!config_warning.empty())
+            peer.send_notification(
+                protocol::LogMessageParams{protocol::MessageType::Warning, config_warning});
         if(!init_options_json.empty()) {
             if(auto ov = kota::codec::json::parse(init_options_json, workspace.config); !ov) {
                 LOG_WARN("Failed to apply initializationOptions: {}", ov.error().to_string());
+                peer.send_notification(protocol::LogMessageParams{
+                    protocol::MessageType::Warning,
+                    std::format("Failed to apply initializationOptions: {}",
+                                ov.error().to_string())});
             } else {
                 // Re-run apply_defaults so overridden strings get workspace
                 // substitution and `compiled_rules` is rebuilt if `rules`
@@ -322,6 +333,8 @@ void MasterServer::register_handlers() {
         pool_opts.log_dir = session_log_dir;
         if(!pool.start(pool_opts)) {
             LOG_ERROR("Failed to start worker pool");
+            peer.send_notification(protocol::LogMessageParams{protocol::MessageType::Error,
+                                                              "Failed to start worker pool"});
             return;
         }
 
@@ -488,7 +501,7 @@ void MasterServer::register_handlers() {
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
-            co_return serde_raw{"null"};
+            co_await kota::fail("Document not open");
         co_return co_await compiler.forward_query(worker::QueryKind::Hover,
                                                   sit->second,
                                                   params.text_document_position_params.position);
@@ -500,7 +513,7 @@ void MasterServer::register_handlers() {
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
-            co_return serde_raw{"null"};
+            co_await kota::fail("Document not open");
         co_return co_await compiler.forward_query(worker::QueryKind::SemanticTokens, sit->second);
     });
 
@@ -510,7 +523,7 @@ void MasterServer::register_handlers() {
             auto path_id = workspace.path_pool.intern(path);
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
-                co_return serde_raw{"null"};
+                co_await kota::fail("Document not open");
             co_return co_await compiler.forward_query(worker::QueryKind::InlayHints,
                                                       sit->second,
                                                       {},
@@ -523,7 +536,7 @@ void MasterServer::register_handlers() {
             auto path_id = workspace.path_pool.intern(path);
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
-                co_return serde_raw{"null"};
+                co_await kota::fail("Document not open");
             co_return co_await compiler.forward_query(worker::QueryKind::FoldingRange, sit->second);
         });
 
@@ -533,7 +546,7 @@ void MasterServer::register_handlers() {
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
-            co_return serde_raw{"null"};
+            co_await kota::fail("Document not open");
         co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol, sit->second);
     });
 
@@ -543,7 +556,7 @@ void MasterServer::register_handlers() {
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
-            co_return serde_raw{"null"};
+            co_await kota::fail("Document not open");
         auto& session = sit->second;
         auto result = co_await compiler.forward_query(worker::QueryKind::DocumentLink, session);
         if(!result.has_value())
@@ -576,7 +589,7 @@ void MasterServer::register_handlers() {
             auto path_id = workspace.path_pool.intern(path);
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
-                co_return serde_raw{"null"};
+                co_await kota::fail("Document not open");
             co_return co_await compiler.forward_query(worker::QueryKind::CodeAction, sit->second);
         });
 
@@ -631,7 +644,7 @@ void MasterServer::register_handlers() {
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
-            co_return serde_raw{"null"};
+            co_await kota::fail("Document not open");
         co_return co_await compiler.forward_query(worker::QueryKind::GoToDefinition,
                                                   sit->second,
                                                   pos);
@@ -679,7 +692,7 @@ void MasterServer::register_handlers() {
             auto path_id = workspace.path_pool.intern(path);
             auto sit = sessions.find(path_id);
             if(sit == sessions.end())
-                co_return serde_raw{"null"};
+                co_await kota::fail("Document not open");
             auto pause = indexer.scoped_pause();
             auto result =
                 co_await compiler.handle_completion(params.text_document_position_params.position,
@@ -693,7 +706,7 @@ void MasterServer::register_handlers() {
         auto path_id = workspace.path_pool.intern(path);
         auto sit = sessions.find(path_id);
         if(sit == sessions.end())
-            co_return serde_raw{"null"};
+            co_await kota::fail("Document not open");
         auto pause = indexer.scoped_pause();
         auto result = co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
                                                       params.text_document_position_params.position,
@@ -725,10 +738,8 @@ void MasterServer::register_handlers() {
                         const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
-            co_return serde_raw{"null"};
+            co_await kota::fail("Failed to resolve call hierarchy item");
         auto results = indexer.find_incoming_calls(info->hash);
-        if(results.empty())
-            co_return serde_raw{"null"};
         co_return to_raw(results);
     });
 
@@ -737,10 +748,8 @@ void MasterServer::register_handlers() {
                         const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
-            co_return serde_raw{"null"};
+            co_await kota::fail("Failed to resolve call hierarchy item");
         auto results = indexer.find_outgoing_calls(info->hash);
-        if(results.empty())
-            co_return serde_raw{"null"};
         co_return to_raw(results);
     });
 
@@ -767,10 +776,8 @@ void MasterServer::register_handlers() {
                              const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
             auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
             if(!info)
-                co_return serde_raw{"null"};
+                co_await kota::fail("Failed to resolve type hierarchy item");
             auto results = indexer.find_supertypes(info->hash);
-            if(results.empty())
-                co_return serde_raw{"null"};
             co_return to_raw(results);
         });
 
@@ -779,18 +786,14 @@ void MasterServer::register_handlers() {
                              const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
             auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
             if(!info)
-                co_return serde_raw{"null"};
+                co_await kota::fail("Failed to resolve type hierarchy item");
             auto results = indexer.find_subtypes(info->hash);
-            if(results.empty())
-                co_return serde_raw{"null"};
             co_return to_raw(results);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::WorkspaceSymbolParams& params) -> RawResult {
             auto results = indexer.search_symbols(params.query);
-            if(results.empty())
-                co_return serde_raw{"null"};
             co_return to_raw(results);
         });
 

@@ -10,6 +10,14 @@ import pytest
 from tests.integration.utils.client import CliceClient
 
 
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Store test outcome so fixtures can detect failures."""
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, f"rep_{rep.when}", rep)
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--executable",
@@ -75,7 +83,8 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
     """
     marker = request.node.get_closest_marker("workspace")
     if marker is None:
-        return None
+        yield None
+        return
     if not marker.args or not isinstance(marker.args[0], str):
         raise pytest.UsageError(
             "@pytest.mark.workspace requires a string argument, e.g. "
@@ -88,7 +97,10 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
     clice_dir = path / ".clice"
     if clice_dir.exists():
         shutil.rmtree(clice_dir)
-    return path
+    yield path
+    # Post-test cleanup: remove cache generated during the test.
+    if clice_dir.exists():
+        shutil.rmtree(clice_dir)
 
 
 @pytest.fixture
@@ -119,7 +131,11 @@ async def client(
 
     yield c
 
-    await _shutdown_client(c)
+    test_failed = (
+        getattr(request.node, "rep_call", None) is not None
+        and request.node.rep_call.failed
+    )
+    await _shutdown_client(c, verbose=test_failed)
 
 
 def generate_cdb(workspace: Path) -> None:
@@ -152,8 +168,12 @@ async def make_client(executable: Path, workspace: Path) -> CliceClient:
     return c
 
 
-async def _shutdown_client(c: CliceClient) -> None:
-    """Gracefully shut down a client, force-kill if needed."""
+async def _shutdown_client(c: CliceClient, *, verbose: bool = False) -> None:
+    """Gracefully shut down a client, force-kill if needed.
+
+    When verbose=True (typically on test failure), dump collected log messages
+    and server stderr to help diagnose the failure.
+    """
     try:
         await asyncio.wait_for(c.shutdown_async(None), timeout=3.0)
     except Exception:
@@ -182,6 +202,11 @@ async def _shutdown_client(c: CliceClient) -> None:
                             print(f"[server] {line}", flush=True)
     except Exception:
         pass
+
+    if verbose and c.log_messages:
+        for msg in c.log_messages:
+            level = {1: "ERROR", 2: "WARN", 3: "INFO", 4: "LOG"}.get(msg.type, "?")
+            print(f"[logMessage/{level}] {msg.message}", flush=True)
 
     try:
         c._stop_event.set()

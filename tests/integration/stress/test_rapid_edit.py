@@ -10,6 +10,7 @@ from lsprotocol.types import (
 )
 
 from tests.integration.utils import doc
+from tests.integration.utils.wait import SETTLE_TIME
 from tests.integration.utils.workspace import did_change
 
 
@@ -53,7 +54,7 @@ async def test_rapid_edits_with_hover(client, workspace):
         await asyncio.sleep(0.02)  # ~20ms between edits
 
     # Wait a moment for in-flight requests to settle.
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(SETTLE_TIME * 2)
 
     # Final hover must succeed and return correct result.
     final_hover = await asyncio.wait_for(

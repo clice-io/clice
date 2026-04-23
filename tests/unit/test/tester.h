@@ -8,6 +8,7 @@
 #include "test/test.h"
 #include "command/command.h"
 #include "compile/compilation.h"
+#include "feature/feature.h"
 #include "support/logging.h"
 
 namespace clice::testing {
@@ -81,6 +82,12 @@ struct Tester {
     llvm::ArrayRef<std::uint32_t> nameless_points(llvm::StringRef file = "");
 
     LocalSourceRange range(llvm::StringRef name = "", llvm::StringRef file = "");
+
+    LocalSourceRange to_local_range(const kota::ipc::protocol::Range& range) {
+        feature::PositionMapper converter(unit->interested_content(),
+                                          feature::PositionEncoding::UTF8);
+        return LocalSourceRange(*converter.to_offset(range.start), *converter.to_offset(range.end));
+    }
 
     void clear();
 };

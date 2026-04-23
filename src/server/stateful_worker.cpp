@@ -94,6 +94,7 @@ class StatefulWorker {
     kota::task<kota::codec::RawValue> with_ast(llvm::StringRef path, F&& fn) {
         auto it = documents.find(path);
         if(it == documents.end()) {
+            LOG_WARN("with_ast: document not found: {}", path.str());
             co_return kota::codec::RawValue{"null"};
         }
 
@@ -105,8 +106,10 @@ class StatefulWorker {
         co_await doc->strand.lock();
 
         auto result = co_await kota::queue([&]() -> kota::codec::RawValue {
-            if(!doc->has_ast || (!doc->unit.completed() && !doc->unit.fatal_error()))
+            if(!doc->has_ast || (!doc->unit.completed() && !doc->unit.fatal_error())) {
+                LOG_WARN("with_ast: AST not available for {}", path.str());
                 return kota::codec::RawValue{"null"};
+            }
             return fn(*doc);
         });
 
