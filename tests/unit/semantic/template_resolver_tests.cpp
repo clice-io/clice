@@ -943,6 +943,10 @@ TEST_CASE(Standard) {
 
     auto input = unit->resolver().resolve(finder.input);
     auto target = finder.expect;
+    llvm::errs() << "input: " << input << "\n";
+    llvm::errs() << "target: " << target << "\n";
+    llvm::errs() << "input canonical: " << input.getCanonicalType() << "\n";
+    llvm::errs() << "target canonical: " << target.getCanonicalType() << "\n";
     ASSERT_FALSE(input.isNull() || target.isNull());
     EXPECT_EQ(input.getCanonicalType(), target.getCanonicalType());
 };

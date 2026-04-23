@@ -442,7 +442,7 @@ TEST_CASE(Types) {
 TEST_CASE(CXXFeatures) {
     EXPECT_SELECT(R"(
           template <typename T>
-          int x = @[T::$U::]ccc();
+          int x = T::@[$U]::ccc();
           )",
                   "DependentNameTypeLoc");
     EXPECT_SELECT(R"(
@@ -486,7 +486,7 @@ TEST_CASE(UsingEnum) {
                   "TypedefTypeLoc");
     EXPECT_SELECT(R"(
         namespace ns { enum class A {}; };
-        using enum @[$ns::]A;
+        @[using enum $ns::A];
         )",
                   "UsingEnumDecl");
     EXPECT_SELECT(R"(
