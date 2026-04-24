@@ -126,17 +126,18 @@ struct InstantiationStack {
         return data;
     }
 
-    /// Look up a template type parameter in the stack by matching its depth against
-    /// each frame's template parameter list depth. Searches from innermost (top) to
-    /// outermost (bottom). Returns nullptr if no matching frame or index out of range.
+    /// Look up a template type parameter in the stack by matching its depth and
+    /// ownership against each frame. Searches from innermost (top) to outermost
+    /// (bottom). Returns nullptr if no matching frame or index out of range.
     ///
-    /// IMPORTANT: depth alone identifies the template "level", not the specific template.
-    /// Different templates at the same depth (e.g. vector and test both at depth 0) will
-    /// match the FIRST frame found. Callers must ensure the stack only contains relevant
-    /// frames when calling this.
+    /// When the TTP has a declaration, ownership is verified: the frame's template
+    /// parameter at the same index must be the exact same TemplateTypeParmDecl.
+    /// This prevents depth collisions between unrelated templates at the same
+    /// nesting level (e.g. __alloc_traits and vector both at depth 0).
     const clang::TemplateArgument* find_argument(const clang::TemplateTypeParmType* T) const {
         auto depth = T->getDepth();
         auto index = T->getIndex();
+        auto* decl = T->getDecl();
         for(auto it = data.rbegin(); it != data.rend(); ++it) {
             clang::TemplateParameterList* params = nullptr;
             if(auto* CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(it->first)) {
@@ -150,10 +151,16 @@ struct InstantiationStack {
                 params = FTD->getTemplateParameters();
             }
             if(params && params->getDepth() == depth) {
-                if(index < it->second.size()) {
-                    return &it->second[index];
+                if(index >= it->second.size()) {
+                    return nullptr;
                 }
-                return nullptr;
+                // If the TTP has a declaration, verify it actually belongs to this
+                // frame's template by checking the parameter list. Skip frames from
+                // unrelated templates that happen to share the same depth.
+                if(decl && index < params->size() && params->getParam(index) != decl) {
+                    continue;
+                }
+                return &it->second[index];
             }
         }
         return nullptr;
@@ -417,7 +424,8 @@ public:
             visit_template_decl_contexts(
                 llvm::dyn_cast<clang::Decl>(decl->getDeclContext()),
                 [&](clang::Decl* decl, clang::TemplateParameterList* params) {
-                    stack.push(decl, params->getInjectedTemplateArgs(context));
+                    auto args = params->getInjectedTemplateArgs(context);
+                    stack.push(decl, args);
                 });
             std::ranges::reverse(stack.frames());
         }
@@ -479,32 +487,46 @@ public:
     lookup_result lookup(clang::QualType type, clang::DeclarationName name) {
         clang::Decl* TD = nullptr;
         llvm::ArrayRef<clang::TemplateArgument> args;
-        type = TransformType(type);
 
-        if(type.isNull()) {
-            return lookup_result();
-        }
-
+        // For concrete TSTs (non-dependent template name), extract template info directly
+        // without calling TransformType. This avoids corrupting template arguments when
+        // unrelated stack frames match by depth (e.g. __alloc_traits at depth 0 would
+        // incorrectly substitute test's T which is also at depth 0).
         if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
-            if(auto* DTN = TST->getTemplateName().getAsDependentTemplateName()) {
-                // If this dependent TST was already resolved (possibly to itself when
-                // unresolvable), skip the redundant lookup.
-                if(resolved.count(TST)) {
-                    return lookup_result();
-                }
-
-                auto name = DTN->getName().getIdentifier();
-                if(!name) {
-                    return {};
-                }
-
-                if(auto decl = preferred(lookup(DTN->getQualifier(), name))) {
-                    TD = decl;
-                    args = TST->template_arguments();
-                }
-            } else {
+            if(!TST->getTemplateName().getAsDependentTemplateName()) {
                 TD = TST->getTemplateName().getAsTemplateDecl();
                 args = TST->template_arguments();
+            }
+        }
+
+        if(!TD) {
+            type = TransformType(type);
+
+            if(type.isNull()) {
+                return lookup_result();
+            }
+
+            if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
+                if(auto* DTN = TST->getTemplateName().getAsDependentTemplateName()) {
+                    // If this dependent TST was already resolved (possibly to itself when
+                    // unresolvable), skip the redundant lookup.
+                    if(resolved.count(TST)) {
+                        return lookup_result();
+                    }
+
+                    auto name = DTN->getName().getIdentifier();
+                    if(!name) {
+                        return {};
+                    }
+
+                    if(auto decl = preferred(lookup(DTN->getQualifier(), name))) {
+                        TD = decl;
+                        args = TST->template_arguments();
+                    }
+                } else {
+                    TD = TST->getTemplateName().getAsTemplateDecl();
+                    args = TST->template_arguments();
+                }
             }
         }
 
@@ -829,6 +851,34 @@ public:
         return TL.getType();
     }
 
+    /// Push frames for outer templates in a DependentTemplateName qualifier chain.
+    /// For `A<X>::template B<Y>::template C<Z>::type`, walking the chain from the
+    /// DependentNameType's NNS pushes frames for A (T1→X) and B (T2→Y) so that
+    /// when "type" is found in C<Z>, the substitute step correctly maps outer
+    /// template parameters to the actual arguments from the NNS chain.
+    void push_nns_qualifier_frames(clang::NestedNameSpecifier NNS) {
+        if(!NNS || NNS.getKind() != clang::NestedNameSpecifier::Kind::Type)
+            return;
+
+        auto* TST = NNS.getAsType()->getAs<clang::TemplateSpecializationType>();
+        if(!TST)
+            return;
+
+        if(auto* DTN = TST->getTemplateName().getAsDependentTemplateName()) {
+            push_nns_qualifier_frames(DTN->getQualifier());
+
+            if(auto it = resolved.find(TST); it != resolved.end()) {
+                if(auto* rTST = it->second->getAs<clang::TemplateSpecializationType>()) {
+                    if(auto* TD = rTST->getTemplateName().getAsTemplateDecl()) {
+                        stack.push(TD, TST->template_arguments());
+                    }
+                }
+            }
+        } else if(auto* TD = TST->getTemplateName().getAsTemplateDecl()) {
+            stack.push(TD, TST->template_arguments());
+        }
+    }
+
     clang::QualType TransformDependentNameType(clang::TypeLocBuilder& TLB,
                                                clang::DependentNameTypeLoc TL,
                                                bool DeducedTSTContext = false,
@@ -858,8 +908,14 @@ public:
             return original;
         }
 
+        // Save entry stack size to clean up any frames leaked by nested operations
+        // (NNS transform, push_nns_qualifier_frames, lookup, TransformType).
+        auto entry_stack_size = stack.data.size();
+
         auto NNSLoc = TransformNestedNameSpecifierLoc(TL.getQualifierLoc());
         if(!NNSLoc) {
+            while(stack.data.size() > entry_stack_size)
+                stack.pop();
             active_resolutions.erase(DNT);
             LOG_DEBUG("{}→ <unresolved>", pad());
             --indent;
@@ -872,6 +928,20 @@ public:
         }
 
         auto NNS = NNSLoc.getNestedNameSpecifier();
+
+        // For nested dependent template specializations like A<X>::B<Y>::C<Z>::type,
+        // push frames for outer templates (A, B) using args from the original NNS
+        // chain. Without this, the lookup fabricates self-referential injected args
+        // for outer templates, leaving their parameters unresolved.
+        auto origNNS = DNT->getQualifier();
+        if(origNNS.getKind() == clang::NestedNameSpecifier::Kind::Type) {
+            if(auto* TST = origNNS.getAsType()->getAs<clang::TemplateSpecializationType>()) {
+                if(auto* DTN = TST->getTemplateName().getAsDependentTemplateName()) {
+                    push_nns_qualifier_frames(DTN->getQualifier());
+                }
+            }
+        }
+
         auto stack_size = stack.data.size();
         auto* decl = preferred(lookup(NNS, DNT->getIdentifier()));
         auto type = get_decl_type(decl);
@@ -916,6 +986,11 @@ public:
                 stack.pop();
             }
         }
+
+        // Clean up all frames pushed during this resolution (push_nns_qualifier_frames,
+        // nested lookups via TransformType, etc.) to prevent leaking into sibling calls.
+        while(stack.data.size() > entry_stack_size)
+            stack.pop();
 
         active_resolutions.erase(DNT);
 
@@ -968,8 +1043,13 @@ public:
             return iter->second;
         }
 
+        // Save stack state to clean up frames pushed by NNS/lookup side effects.
+        auto stack_size = stack.data.size();
+
         auto NNSLoc = TransformNestedNameSpecifierLoc(TL.getQualifierLoc());
         if(!NNSLoc) {
+            while(stack.data.size() > stack_size)
+                stack.pop();
             LOG_DEBUG("{}→ <unresolved dependent TST>", pad());
             --indent;
             return rebuild_tst(TLB, TL);
@@ -1005,7 +1085,6 @@ public:
             return result;
         }
 
-        auto stack_size = stack.data.size();
         if(auto* decl = preferred(lookup(NNS, name))) {
             if(auto* TATD = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(decl)) {
                 if(deduce_template_arguments(TATD, arguments)) {
@@ -1026,6 +1105,10 @@ public:
                     }
                 }
             } else if(auto* CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(decl)) {
+                // Pop lookup frames — we only needed them to find the CTD.
+                while(stack.data.size() > stack_size) {
+                    stack.pop();
+                }
                 clang::TemplateName TN(CTD);
                 llvm::SmallVector<clang::TemplateArgument> canonArgs;
                 for(auto& arg: arguments) {
