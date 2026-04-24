@@ -26,7 +26,7 @@ namespace clice {
 namespace lsp = kota::ipc::lsp;
 
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
-    auto tu_index = index::TUIndex::from(tu_index_data);
+    auto tu_index = index::TUIndex::from(tu_index_data, size);
     if(tu_index.graph.paths.empty()) {
         LOG_WARN("Ignoring TUIndex with empty path graph");
         return;
@@ -145,7 +145,8 @@ void Indexer::load(llvm::StringRef index_dir) {
     auto project_path = path::join(index_dir, "project.idx");
     auto buf = llvm::MemoryBuffer::getFile(project_path);
     if(buf) {
-        workspace.project_index = index::ProjectIndex::from((*buf)->getBufferStart());
+        workspace.project_index =
+            index::ProjectIndex::from((*buf)->getBufferStart(), (*buf)->getBufferSize());
         LOG_INFO("Loaded ProjectIndex: {} symbols", workspace.project_index.symbols.size());
     }
 

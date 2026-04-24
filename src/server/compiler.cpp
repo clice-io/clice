@@ -779,7 +779,8 @@ kota::task<bool> Compiler::ensure_compiled(Session& session) {
 
         // Store open file index from the stateful worker's TUIndex.
         if(!result.value().tu_index_data.empty()) {
-            auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
+            auto tu_index = index::TUIndex::from(result.value().tu_index_data.data(),
+                                                 result.value().tu_index_data.size());
             OpenFileIndex ofi;
             ofi.file_index = std::move(tu_index.main_file_index);
             ofi.symbols = std::move(tu_index.symbols);

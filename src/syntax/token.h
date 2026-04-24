@@ -46,6 +46,8 @@ struct LocalSourceRange {
 
     constexpr bool operator==(const LocalSourceRange& other) const = default;
 
+    constexpr auto operator<=>(const LocalSourceRange& other) const = default;
+
     constexpr std::uint32_t length() const {
         return end - begin;
     }
