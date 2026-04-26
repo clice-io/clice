@@ -1,12 +1,14 @@
 import asyncio
 import json
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from tests.integration.utils.agentic_client import AgenticClient
 from tests.integration.utils.client import CliceClient
 
 
@@ -91,19 +93,30 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
     return path
 
 
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture
+def agentic_port() -> int:
+    return _find_free_port()
+
+
 @pytest.fixture
 async def client(
-    request: pytest.FixtureRequest, executable: Path, workspace: Path | None
+    request: pytest.FixtureRequest,
+    executable: Path,
+    workspace: Path | None,
+    agentic_port: int,
 ):
     """Spawn clice server, auto-initialize if @pytest.mark.workspace is present."""
     config = request.config
     mode = config.getoption("--mode")
+    host = config.getoption("--host")
 
-    cmd = [str(executable), "--mode", mode]
-    if mode == "socket":
-        host = config.getoption("--host")
-        port = config.getoption("--port")
-        cmd += ["--host", host, "--port", str(port)]
+    cmd = [str(executable), "--mode", mode, "--host", host, "--port", str(agentic_port)]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -120,6 +133,14 @@ async def client(
     yield c
 
     await _shutdown_client(c)
+
+
+@pytest.fixture
+async def agentic(agentic_port: int, client) -> AgenticClient:
+    """Connect to the agentic TCP endpoint of a running server."""
+    ac = await AgenticClient.connect("127.0.0.1", agentic_port)
+    yield ac
+    await ac.close()
 
 
 def generate_cdb(workspace: Path) -> None:
