@@ -11,6 +11,7 @@ class MasterServer;
 class LSPClient {
 public:
     LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer);
+    ~LSPClient();
 
 private:
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;

@@ -167,8 +167,9 @@ def generate_cdb(workspace: Path) -> None:
 
 async def make_client(executable: Path, workspace: Path) -> CliceClient:
     """Spawn a fresh clice server and initialize it. For multi-session tests."""
+    port = _find_free_port()
     c = CliceClient()
-    await c.start_io(str(executable), "--mode", "pipe")
+    await c.start_io(str(executable), "--mode", "pipe", "--port", str(port))
     await c.initialize(workspace)
     return c
 

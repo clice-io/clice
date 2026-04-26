@@ -56,7 +56,7 @@ private:
 struct ServerOptions {
     std::string mode;
     std::string host = "127.0.0.1";
-    int port = 50051;
+    int port = 0;
     std::string self_path;
     std::string record;
 };

@@ -24,8 +24,10 @@ struct Options {
     DecoKV(style = KVStyle::JoinedOrSeparate, help = "Socket mode address", required = false)
     <std::string> host = "127.0.0.1";
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "Socket mode port", required = false)
-    <int> port = 50051;
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Agentic TCP port (0 = disabled)",
+           required = false)
+    <int> port = 0;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            names = {"--log-level", "--log-level="},
@@ -125,7 +127,7 @@ int main(int argc, const char** argv) {
         clice::ServerOptions server_opts;
         server_opts.mode = mode;
         server_opts.host = opts.host.value_or("127.0.0.1");
-        server_opts.port = opts.port.value_or(50051);
+        server_opts.port = opts.port.value_or(0);
         server_opts.self_path = argv[0];
         server_opts.record = opts.record.value_or("");
         return clice::run_server_mode(server_opts);

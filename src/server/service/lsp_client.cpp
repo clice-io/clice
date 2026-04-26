@@ -200,18 +200,17 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             co_return nullptr;
         });
 
-    peer.on_notification([this](const protocol::ExitParams& params) {
-        auto& srv = this->server;
-        srv.lifecycle = ServerLifecycle::Exited;
+    peer.on_notification([srv = &this->server](const protocol::ExitParams& params) {
+        srv->lifecycle = ServerLifecycle::Exited;
         LOG_INFO("Exit notification received");
 
-        srv.indexer.save(srv.workspace.config.project.index_dir);
-        srv.workspace.save_cache();
+        srv->indexer.save(srv->workspace.config.project.index_dir);
+        srv->workspace.save_cache();
 
-        srv.loop.schedule([&srv]() -> kota::task<> {
-            co_await srv.pool.stop();
-            srv.loop.stop();
-        }());
+        srv->loop.schedule([](MasterServer* s) -> kota::task<> {
+            co_await s->pool.stop();
+            s->loop.stop();
+        }(srv));
     });
 
     peer.on_notification([this](const protocol::DidOpenTextDocumentParams& params) {
@@ -774,6 +773,11 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             result.success = true;
             co_return to_raw(result);
         });
+}
+
+LSPClient::~LSPClient() {
+    server.compiler.set_peer(nullptr);
+    server.indexer.set_peer(nullptr);
 }
 
 }  // namespace clice

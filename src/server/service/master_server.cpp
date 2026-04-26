@@ -185,11 +185,13 @@ static kota::task<> accept_connections(kota::event_loop& loop,
                                           .agent_client = std::move(agent),
                                       });
 
-        loop.schedule([peer_ptr, &connections, it]() -> kota::task<> {
-            co_await peer_ptr->run();
+        loop.schedule([](kota::ipc::JsonPeer* p,
+                         std::list<Connection>& conns,
+                         std::list<Connection>::iterator pos) -> kota::task<> {
+            co_await p->run();
             LOG_INFO("Client disconnected");
-            connections.erase(it);
-        }());
+            conns.erase(pos);
+        }(peer_ptr, connections, it));
     }
 }
 
@@ -217,11 +219,15 @@ int run_server_mode(const ServerOptions& opts) {
         kota::ipc::JsonPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
 
-        auto acceptor = kota::tcp::listen(opts.host, opts.port, {}, loop);
-        if(acceptor) {
-            LOG_INFO("Agentic protocol listening on {}:{}", opts.host, opts.port);
-            loop.schedule(
-                accept_connections(loop, server, std::move(*acceptor), false, connections));
+        if(opts.port > 0) {
+            auto acceptor = kota::tcp::listen(opts.host, opts.port, {}, loop);
+            if(acceptor) {
+                LOG_INFO("Agentic protocol listening on {}:{}", opts.host, opts.port);
+                loop.schedule(
+                    accept_connections(loop, server, std::move(*acceptor), false, connections));
+            } else {
+                LOG_WARN("Failed to start agentic listener on {}:{}", opts.host, opts.port);
+            }
         }
 
         loop.schedule(lsp_peer.run());

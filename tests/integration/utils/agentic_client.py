@@ -63,5 +63,8 @@ class AgenticClient:
         return json.loads(await self._reader.readexactly(int(match.group(1))))
 
     async def close(self):
-        self._writer.close()
-        await self._writer.wait_closed()
+        try:
+            self._writer.close()
+            await self._writer.wait_closed()
+        except (ConnectionError, OSError):
+            pass

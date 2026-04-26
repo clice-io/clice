@@ -19,7 +19,7 @@ struct QueryContextParams {
 
 struct QueryContextResult {
     std::vector<ContextItem> contexts;
-    int total;
+    int total = 0;
 };
 
 struct CurrentContextParams {
@@ -36,7 +36,7 @@ struct SwitchContextParams {
 };
 
 struct SwitchContextResult {
-    bool success;
+    bool success = false;
 };
 
 }  // namespace clice::ext
