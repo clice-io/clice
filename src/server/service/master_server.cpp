@@ -34,6 +34,14 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
 
 MasterServer::~MasterServer() = default;
 
+void MasterServer::initialize(llvm::StringRef root) {
+    workspace_root = root.str();
+    workspace.config = Config::load_from_workspace(workspace_root);
+    workspace.config.apply_defaults(workspace_root);
+    lifecycle = ServerLifecycle::Ready;
+    load_workspace();
+}
+
 void MasterServer::load_workspace() {
     if(workspace_root.empty())
         return;
@@ -157,6 +165,14 @@ struct Connection {
     std::unique_ptr<AgentClient> agent_client;
 };
 
+static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
+                                   std::list<Connection>& connections,
+                                   std::list<Connection>::iterator pos) {
+    co_await peer->run();
+    LOG_INFO("Client disconnected");
+    connections.erase(pos);
+}
+
 static kota::task<> accept_connections(kota::event_loop& loop,
                                        MasterServer& server,
                                        kota::tcp::acceptor acceptor,
@@ -185,13 +201,7 @@ static kota::task<> accept_connections(kota::event_loop& loop,
                                           .agent_client = std::move(agent),
                                       });
 
-        loop.schedule([](kota::ipc::JsonPeer* p,
-                         std::list<Connection>& conns,
-                         std::list<Connection>::iterator pos) -> kota::task<> {
-            co_await p->run();
-            LOG_INFO("Client disconnected");
-            conns.erase(pos);
-        }(peer_ptr, connections, it));
+        loop.schedule(run_connection(peer_ptr, connections, it));
     }
 }
 

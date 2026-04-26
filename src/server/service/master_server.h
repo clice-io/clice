@@ -35,6 +35,8 @@ public:
     MasterServer(kota::event_loop& loop, std::string self_path);
     ~MasterServer();
 
+    void initialize(llvm::StringRef root);
+
 private:
     void load_workspace();
 

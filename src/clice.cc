@@ -4,6 +4,7 @@
 #include <print>
 #include <string>
 
+#include "server/service/agentic.h"
 #include "server/service/master_server.h"
 #include "server/worker/stateful_worker.h"
 #include "server/worker/stateless_worker.h"
@@ -39,6 +40,11 @@ struct Options {
            help = "Record LSP input to file for replay testing",
            required = false)
     <std::string> record;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "File path for agentic queries",
+           required = false)
+    <std::string> path;
 
     // Internal options (passed from master to worker processes)
     DecoKV(style = KVStyle::JoinedOrSeparate,
@@ -134,8 +140,18 @@ int main(int argc, const char** argv) {
     }
 
     if(mode == "agentic") {
-        LOG_ERROR("agentic client mode is not yet implemented");
-        return 1;
+        auto host = opts.host.value_or("127.0.0.1");
+        auto port = opts.port.value_or(0);
+        auto path = opts.path.value_or("");
+        if(port <= 0) {
+            LOG_ERROR("--port is required for agentic mode");
+            return 1;
+        }
+        if(path.empty()) {
+            LOG_ERROR("--path is required for agentic mode");
+            return 1;
+        }
+        return clice::run_agentic_mode(host, port, path);
     }
 
     LOG_ERROR("unknown mode '{}'", mode);

@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from tests.integration.utils.agentic_client import AgenticClient
 from tests.integration.utils.client import CliceClient
 
 
@@ -93,30 +92,18 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
     return path
 
 
-def _find_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture
-def agentic_port() -> int:
-    return _find_free_port()
-
-
 @pytest.fixture
 async def client(
     request: pytest.FixtureRequest,
     executable: Path,
     workspace: Path | None,
-    agentic_port: int,
 ):
     """Spawn clice server, auto-initialize if @pytest.mark.workspace is present."""
     config = request.config
     mode = config.getoption("--mode")
     host = config.getoption("--host")
 
-    cmd = [str(executable), "--mode", mode, "--host", host, "--port", str(agentic_port)]
+    cmd = [str(executable), "--mode", mode, "--host", host]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -135,12 +122,37 @@ async def client(
     await _shutdown_client(c)
 
 
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 @pytest.fixture
-async def agentic(agentic_port: int, client) -> AgenticClient:
-    """Connect to the agentic TCP endpoint of a running server."""
-    ac = await AgenticClient.connect("127.0.0.1", agentic_port)
-    yield ac
-    await ac.close()
+async def agentic(
+    request: pytest.FixtureRequest,
+    executable: Path,
+    workspace: Path | None,
+):
+    """Start a server with agentic TCP port, yield (executable, host, port)."""
+    host = "127.0.0.1"
+    port = _find_free_port()
+    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+
+    c = CliceClient()
+    await c.start_io(*cmd)
+
+    if workspace is not None:
+        init_options_marker = request.node.get_closest_marker("init_options")
+        init_options = dict(init_options_marker.args[0]) if init_options_marker else {}
+        project = dict(init_options.get("project", {}))
+        project.setdefault("cache_dir", str(workspace / ".clice"))
+        init_options["project"] = project
+        await c.initialize(workspace, initialization_options=init_options)
+
+    yield executable, host, port
+
+    await _shutdown_client(c)
 
 
 def generate_cdb(workspace: Path) -> None:
@@ -167,9 +179,8 @@ def generate_cdb(workspace: Path) -> None:
 
 async def make_client(executable: Path, workspace: Path) -> CliceClient:
     """Spawn a fresh clice server and initialize it. For multi-session tests."""
-    port = _find_free_port()
     c = CliceClient()
-    await c.start_io(str(executable), "--mode", "pipe", "--port", str(port))
+    await c.start_io(str(executable), "--mode", "pipe")
     await c.initialize(workspace)
     return c
 
