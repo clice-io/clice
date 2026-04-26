@@ -5,7 +5,7 @@
 #include <optional>
 #include <string>
 
-#include "server/workspace.h"
+#include "server/workspace/workspace.h"
 
 #include "kota/async/async.h"
 #include "llvm/ADT/SmallVector.h"

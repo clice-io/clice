@@ -1,4 +1,4 @@
-#include "server/compile_graph.h"
+#include "server/compiler/compile_graph.h"
 
 #include <algorithm>
 

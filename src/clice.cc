@@ -4,17 +4,13 @@
 #include <print>
 #include <string>
 
-#include "server/master_server.h"
-#include "server/stateful_worker.h"
-#include "server/stateless_worker.h"
+#include "server/service/agentic.h"
+#include "server/service/master_server.h"
+#include "server/worker/stateful_worker.h"
+#include "server/worker/stateless_worker.h"
 #include "support/logging.h"
 
-#include "kota/async/async.h"
 #include "kota/deco/deco.h"
-#include "kota/ipc/codec/json.h"
-#include "kota/ipc/peer.h"
-#include "kota/ipc/recording_transport.h"
-#include "kota/ipc/transport.h"
 
 namespace clice {
 
@@ -22,15 +18,17 @@ using kota::deco::decl::KVStyle;
 
 struct Options {
     DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Running mode: pipe, socket, stateless-worker, stateful-worker",
+           help = "Running mode: pipe, socket, agentic, stateless-worker, stateful-worker",
            required = false)
     <std::string> mode;
 
     DecoKV(style = KVStyle::JoinedOrSeparate, help = "Socket mode address", required = false)
     <std::string> host = "127.0.0.1";
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "Socket mode port", required = false)
-    <int> port = 50051;
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Agentic TCP port (0 = disabled)",
+           required = false)
+    <int> port = 0;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            names = {"--log-level", "--log-level="},
@@ -42,6 +40,11 @@ struct Options {
            help = "Record LSP input to file for replay testing",
            required = false)
     <std::string> record;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "File path for agentic queries",
+           required = false)
+    <std::string> path;
 
     // Internal options (passed from master to worker processes)
     DecoKV(style = KVStyle::JoinedOrSeparate,
@@ -68,9 +71,6 @@ struct Options {
 
 int main(int argc, const char** argv) {
 #ifndef _WIN32
-    // On POSIX systems, ignore SIGPIPE so that writing to a closed pipe
-    // (e.g. when the LSP client disconnects) returns EPIPE instead of
-    // killing the process.  This is standard practice for pipe-based servers.
     signal(SIGPIPE, SIG_IGN);
 #endif
 
@@ -110,8 +110,6 @@ int main(int argc, const char** argv) {
         return 1;
     }
 
-    std::string self_path = argv[0];
-
     auto& mode = *opts.mode;
 
     auto worker_name = opts.worker_name.value_or("");
@@ -131,77 +129,29 @@ int main(int argc, const char** argv) {
                                                log_dir);
     }
 
-    if(mode == "pipe") {
-        clice::logging::stderr_logger("master", clice::logging::options);
-
-        kota::event_loop loop;
-
-        auto transport = kota::ipc::StreamTransport::open_stdio(loop);
-        if(!transport) {
-            LOG_ERROR("failed to open stdio transport");
-            return 1;
-        }
-
-        std::unique_ptr<kota::ipc::Transport> final_transport = std::move(*transport);
-        if(opts.record.has_value()) {
-            final_transport =
-                std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport),
-                                                                *opts.record);
-        }
-
-        kota::ipc::JsonPeer peer(loop, std::move(final_transport));
-        clice::MasterServer server(loop, peer, std::move(self_path));
-        server.register_handlers();
-
-        loop.schedule(peer.run());
-        loop.run();
-        return 0;
+    if(mode == "pipe" || mode == "socket") {
+        clice::ServerOptions server_opts;
+        server_opts.mode = mode;
+        server_opts.host = opts.host.value_or("127.0.0.1");
+        server_opts.port = opts.port.value_or(0);
+        server_opts.self_path = argv[0];
+        server_opts.record = opts.record.value_or("");
+        return clice::run_server_mode(server_opts);
     }
 
-    if(mode == "socket") {
-        clice::logging::stderr_logger("master", clice::logging::options);
-
-        kota::event_loop loop;
-
+    if(mode == "agentic") {
         auto host = opts.host.value_or("127.0.0.1");
-        auto port = opts.port.value_or(50051);
-
-        auto acceptor = kota::tcp::listen(host, port, {}, loop);
-        if(!acceptor) {
-            LOG_ERROR("failed to listen on {}:{}", host, port);
+        auto port = opts.port.value_or(0);
+        auto path = opts.path.value_or("");
+        if(port <= 0) {
+            LOG_ERROR("--port is required for agentic mode");
             return 1;
         }
-
-        LOG_INFO("Listening on {}:{} ...", host, port);
-
-        auto task = [&]() -> kota::task<> {
-            auto client = co_await acceptor->accept();
-            if(!client.has_value()) {
-                LOG_ERROR("failed to accept connection");
-                loop.stop();
-                co_return;
-            }
-
-            LOG_INFO("Client connected");
-
-            std::unique_ptr<kota::ipc::Transport> transport =
-                std::make_unique<kota::ipc::StreamTransport>(std::move(client.value()));
-            if(opts.record.has_value()) {
-                transport = std::make_unique<kota::ipc::RecordingTransport>(std::move(transport),
-                                                                            *opts.record);
-            }
-            kota::ipc::JsonPeer peer(loop, std::move(transport));
-            clice::MasterServer server(loop, peer, std::string(self_path));
-            server.register_handlers();
-
-            co_await peer.run();
-            peer.close();
-            loop.stop();
-        };
-
-        loop.schedule(task());
-        loop.run();
-        return 0;
+        if(path.empty()) {
+            LOG_ERROR("--path is required for agentic mode");
+            return 1;
+        }
+        return clice::run_agentic_mode(host, port, path);
     }
 
     LOG_ERROR("unknown mode '{}'", mode);

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -93,17 +94,16 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
 
 @pytest.fixture
 async def client(
-    request: pytest.FixtureRequest, executable: Path, workspace: Path | None
+    request: pytest.FixtureRequest,
+    executable: Path,
+    workspace: Path | None,
 ):
     """Spawn clice server, auto-initialize if @pytest.mark.workspace is present."""
     config = request.config
     mode = config.getoption("--mode")
+    host = config.getoption("--host")
 
-    cmd = [str(executable), "--mode", mode]
-    if mode == "socket":
-        host = config.getoption("--host")
-        port = config.getoption("--port")
-        cmd += ["--host", host, "--port", str(port)]
+    cmd = [str(executable), "--mode", mode, "--host", host]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -118,6 +118,39 @@ async def client(
         await c.initialize(workspace, initialization_options=init_options)
 
     yield c
+
+    await _shutdown_client(c)
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture
+async def agentic(
+    request: pytest.FixtureRequest,
+    executable: Path,
+    workspace: Path | None,
+):
+    """Start a server with agentic TCP port, yield (executable, host, port)."""
+    host = "127.0.0.1"
+    port = _find_free_port()
+    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+
+    c = CliceClient()
+    await c.start_io(*cmd)
+
+    if workspace is not None:
+        init_options_marker = request.node.get_closest_marker("init_options")
+        init_options = dict(init_options_marker.args[0]) if init_options_marker else {}
+        project = dict(init_options.get("project", {}))
+        project.setdefault("cache_dir", str(workspace / ".clice"))
+        init_options["project"] = project
+        await c.initialize(workspace, initialization_options=init_options)
+
+    yield executable, host, port
 
     await _shutdown_client(c)
 

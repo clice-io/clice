@@ -3,7 +3,7 @@
 #include "test/test.h"
 #include "command/command.h"
 #include "compile/compilation.h"
-#include "server/compile_graph.h"
+#include "server/compiler/compile_graph.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 #include "syntax/scan.h"

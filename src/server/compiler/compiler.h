@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "command/command.h"
-#include "server/session.h"
-#include "server/worker_pool.h"
-#include "server/workspace.h"
+#include "server/service/session.h"
+#include "server/worker/worker_pool.h"
+#include "server/workspace/workspace.h"
 #include "syntax/completion.h"
 
 #include "kota/async/async.h"
@@ -50,10 +50,14 @@ std::string uri_to_path(const std::string& uri);
 class Compiler {
 public:
     Compiler(kota::event_loop& loop,
-             kota::ipc::JsonPeer& peer,
              Workspace& workspace,
              WorkerPool& pool,
              llvm::DenseMap<std::uint32_t, Session>& sessions);
+
+    void set_peer(kota::ipc::JsonPeer* p) {
+        peer = p;
+    }
+
     ~Compiler();
 
     void init_compile_graph();
@@ -125,7 +129,7 @@ private:
 
 private:
     kota::event_loop& loop;
-    kota::ipc::JsonPeer& peer;
+    kota::ipc::JsonPeer* peer = nullptr;
     Workspace& workspace;
     WorkerPool& pool;
     llvm::DenseMap<std::uint32_t, Session>& sessions;

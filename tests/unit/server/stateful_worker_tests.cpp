@@ -2,7 +2,7 @@
 #include <vector>
 
 #include "test/test.h"
-#include "server/protocol.h"
+#include "server/protocol/worker.h"
 #include "server/worker_test_helpers.h"
 
 #include "kota/codec/json/json.h"

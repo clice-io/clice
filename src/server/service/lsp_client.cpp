@@ -1,4 +1,4 @@
-#include "server/master_server.h"
+#include "server/service/lsp_client.h"
 
 #include <algorithm>
 #include <format>
@@ -7,7 +7,9 @@
 #include <variant>
 
 #include "semantic/symbol_kind.h"
-#include "server/protocol.h"
+#include "server/protocol/extension.h"
+#include "server/protocol/worker.h"
+#include "server/service/master_server.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
@@ -16,7 +18,6 @@
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
 #include "kota/meta/enum.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 
@@ -29,177 +30,38 @@ using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::JsonPeer::RequestContext;
 using serde_raw = kota::codec::RawValue;
 
-/// Serialize a value to a JSON RawValue using LSP config.
 template <typename T>
 static serde_raw to_raw(const T& value) {
     auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(value);
     return serde_raw{json ? std::move(*json) : "null"};
 }
 
-MasterServer::MasterServer(kota::event_loop& loop,
-                           kota::ipc::JsonPeer& peer,
-                           std::string self_path) :
-    loop(loop), peer(peer), pool(loop), compiler(loop, peer, workspace, pool, sessions),
-    indexer(loop,
-            workspace,
-            sessions,
-            pool,
-            compiler,
-            [this](uint32_t proj_path_id) {
-                // Bridge project-level path_id to server-level path_id.
-                // The two PathPools may assign different IDs to the same path.
-                auto path = workspace.project_index.path_pool.path(proj_path_id);
-                auto server_id = workspace.path_pool.intern(path);
-                return sessions.contains(server_id);
-            }),
-    self_path(std::move(self_path)) {}
+LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
+    server.compiler.set_peer(&peer);
+    server.indexer.set_peer(&peer);
 
-MasterServer::~MasterServer() = default;
-
-void MasterServer::load_workspace() {
-    if(workspace_root.empty())
-        return;
-
-    auto& cfg = workspace.config.project;
-
-    if(!cfg.cache_dir.empty()) {
-        auto ec = llvm::sys::fs::create_directories(cfg.cache_dir);
-        if(ec) {
-            LOG_WARN("Failed to create cache directory {}: {}",
-                     std::string_view(cfg.cache_dir),
-                     ec.message());
-        } else {
-            LOG_INFO("Cache directory: {}", std::string_view(cfg.cache_dir));
-        }
-
-        for(auto* subdir: {"cache/pch", "cache/pcm"}) {
-            auto dir = path::join(cfg.cache_dir, subdir);
-            if(auto ec2 = llvm::sys::fs::create_directories(dir))
-                LOG_WARN("Failed to create {}: {}", dir, ec2.message());
-        }
-
-        workspace.cleanup_cache();
-        workspace.load_cache();
-    }
-
-    // Discover compile_commands.json: configured paths first, then auto-scan.
-    std::string cdb_path;
-    for(auto& configured: cfg.compile_commands_paths) {
-        // Each entry can be a file or a directory containing compile_commands.json.
-        if(llvm::sys::fs::is_directory(configured)) {
-            auto candidate = path::join(configured, "compile_commands.json");
-            if(llvm::sys::fs::exists(candidate)) {
-                cdb_path = std::move(candidate);
-                break;
-            }
-        } else if(llvm::sys::fs::exists(configured)) {
-            cdb_path = configured;
-            break;
-        } else {
-            LOG_WARN("Configured compile_commands_path not found: {}", configured);
-        }
-    }
-
-    // Auto-scan: workspace root + all immediate subdirectories.
-    if(cdb_path.empty()) {
-        auto try_candidate = [&](llvm::StringRef dir) -> bool {
-            auto candidate = path::join(dir, "compile_commands.json");
-            if(llvm::sys::fs::exists(candidate)) {
-                cdb_path = std::move(candidate);
-                return true;
-            }
-            return false;
-        };
-
-        if(!try_candidate(workspace_root)) {
-            std::error_code ec;
-            for(llvm::sys::fs::directory_iterator it(workspace_root, ec), end; it != end && !ec;
-                it.increment(ec)) {
-                if(it->type() == llvm::sys::fs::file_type::directory_file) {
-                    if(try_candidate(it->path()))
-                        break;
-                }
-            }
-        }
-    }
-
-    if(cdb_path.empty()) {
-        LOG_WARN("No compile_commands.json found in workspace {}", workspace_root);
-        return;
-    }
-
-    auto count = workspace.cdb.load(cdb_path);
-    LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
-
-    auto report = scan_dependency_graph(workspace.cdb,
-                                        workspace.path_pool,
-                                        workspace.dep_graph,
-                                        /*cache=*/nullptr,
-                                        [this](llvm::StringRef path,
-                                               std::vector<std::string>& append,
-                                               std::vector<std::string>& remove) {
-                                            workspace.config.match_rules(path, append, remove);
-                                        });
-    workspace.dep_graph.build_reverse_map();
-
-    auto unresolved = report.includes_found - report.includes_resolved;
-    double accuracy =
-        report.includes_found > 0
-            ? 100.0 * static_cast<double>(report.includes_resolved) / report.includes_found
-            : 100.0;
-    LOG_INFO(
-        "Dependency scan: {}ms, {} files ({} source + {} header), " "{} edges, {}/{} resolved ({:.1f}%), {} waves",
-        report.elapsed_ms,
-        report.total_files,
-        report.source_files,
-        report.header_files,
-        report.total_edges,
-        report.includes_resolved,
-        report.includes_found,
-        accuracy,
-        report.waves);
-    if(unresolved > 0)
-        LOG_WARN("{} unresolved includes", unresolved);
-
-    workspace.build_module_map();
-    indexer.load(cfg.index_dir);
-
-    if(*cfg.enable_indexing) {
-        for(auto& entry: workspace.cdb.get_entries()) {
-            auto file = workspace.cdb.resolve_path(entry.file);
-            auto server_id = workspace.path_pool.intern(file);
-            indexer.enqueue(server_id);
-        }
-        indexer.schedule();
-    }
-
-    compiler.init_compile_graph();
-}
-
-void MasterServer::register_handlers() {
     using StringVec = std::vector<std::string>;
 
     peer.on_request([this](RequestContext& ctx, const protocol::InitializeParams& params)
                         -> RequestResult<protocol::InitializeParams> {
-        if(lifecycle != ServerLifecycle::Uninitialized) {
+        if(this->server.lifecycle != ServerLifecycle::Uninitialized) {
             co_return kota::outcome_error(protocol::Error{"Server already initialized"});
         }
 
         auto& init = params.lsp__initialize_params;
         if(init.root_uri.has_value()) {
-            workspace_root = uri_to_path(*init.root_uri);
+            this->server.workspace_root = uri_to_path(*init.root_uri);
         }
 
-        // Capture initializationOptions as raw JSON for config loading.
         if(init.initialization_options.has_value()) {
             auto json =
                 kota::codec::json::to_json<kota::ipc::lsp_config>(*init.initialization_options);
             if(json)
-                init_options_json = std::move(*json);
+                this->server.init_options_json = std::move(*json);
         }
 
-        lifecycle = ServerLifecycle::Initialized;
-        LOG_INFO("Initialized with workspace: {}", workspace_root);
+        this->server.lifecycle = ServerLifecycle::Initialized;
+        LOG_INFO("Initialized with workspace: {}", this->server.workspace_root);
 
         protocol::InitializeResult result;
         auto& caps = result.capabilities;
@@ -222,7 +84,6 @@ void MasterServer::register_handlers() {
         caps.signature_help_provider = protocol::SignatureHelpOptions{
             .trigger_characters = StringVec{"(", ")", "{", "}", "<", ">", ","},
         };
-        /// FIXME: In the future, we would support work done progress.
         caps.declaration_provider = protocol::DeclarationOptions{
             .work_done_progress = false,
         };
@@ -278,27 +139,21 @@ void MasterServer::register_handlers() {
     });
 
     peer.on_notification([this](const protocol::InitializedParams& params) {
-        // Config priority: initializationOptions > clice.toml > defaults.
-        // Load the workspace config (with defaults applied) first, then overlay
-        // any initializationOptions on top so fields not mentioned in the JSON
-        // keep the values from clice.toml — kotatsu's deserializer only touches
-        // fields that are present in the input.
-        workspace.config = Config::load_from_workspace(workspace_root);
-        if(!init_options_json.empty()) {
-            if(auto ov = kota::codec::json::parse(init_options_json, workspace.config); !ov) {
+        auto& srv = this->server;
+
+        srv.workspace.config = Config::load_from_workspace(srv.workspace_root);
+        if(!srv.init_options_json.empty()) {
+            if(auto ov = kota::codec::json::parse(srv.init_options_json, srv.workspace.config);
+               !ov) {
                 LOG_WARN("Failed to apply initializationOptions: {}", ov.error().to_string());
             } else {
-                // Re-run apply_defaults so overridden strings get workspace
-                // substitution and `compiled_rules` is rebuilt if `rules`
-                // changed. Defaults are gated on zero/empty sentinels, so
-                // existing values from the overlay are preserved.
-                workspace.config.apply_defaults(workspace_root);
+                srv.workspace.config.apply_defaults(srv.workspace_root);
                 LOG_INFO("Applied initializationOptions overlay");
             }
-            init_options_json.clear();
+            srv.init_options_json.clear();
         }
 
-        auto& cfg = workspace.config.project;
+        auto& cfg = srv.workspace.config.project;
 
         if(!cfg.logging_dir.empty()) {
             auto now = std::chrono::system_clock::now();
@@ -306,7 +161,7 @@ void MasterServer::register_handlers() {
             auto session_dir =
                 path::join(cfg.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
             logging::file_logger("master", session_dir, logging::options);
-            session_log_dir = session_dir;
+            srv.session_log_dir = session_dir;
         }
 
         LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
@@ -315,62 +170,60 @@ void MasterServer::register_handlers() {
                  *cfg.idle_timeout_ms);
 
         WorkerPoolOptions pool_opts;
-        pool_opts.self_path = self_path;
+        pool_opts.self_path = srv.self_path;
         pool_opts.stateful_count = cfg.stateful_worker_count;
         pool_opts.stateless_count = cfg.stateless_worker_count;
         pool_opts.worker_memory_limit = cfg.worker_memory_limit;
-        pool_opts.log_dir = session_log_dir;
-        if(!pool.start(pool_opts)) {
+        pool_opts.log_dir = srv.session_log_dir;
+        if(!srv.pool.start(pool_opts)) {
             LOG_ERROR("Failed to start worker pool");
             return;
         }
 
-        lifecycle = ServerLifecycle::Ready;
+        srv.lifecycle = ServerLifecycle::Ready;
 
-        compiler.on_indexing_needed = [this]() {
-            indexer.schedule();
+        srv.compiler.on_indexing_needed = [&srv]() {
+            srv.indexer.schedule();
         };
 
-        indexer.set_peer(&peer);
-        indexer.set_max_concurrency(cfg.stateless_worker_count.value);
+        srv.indexer.set_peer(&this->peer);
+        srv.indexer.set_max_concurrency(cfg.stateless_worker_count.value);
 
-        load_workspace();
+        srv.load_workspace();
     });
 
     peer.on_request(
         [this](RequestContext& ctx,
                const protocol::ShutdownParams& params) -> RequestResult<protocol::ShutdownParams> {
-            lifecycle = ServerLifecycle::ShuttingDown;
+            this->server.lifecycle = ServerLifecycle::ShuttingDown;
             LOG_INFO("Shutdown requested");
             co_return nullptr;
         });
 
-    peer.on_notification([this](const protocol::ExitParams& params) {
-        lifecycle = ServerLifecycle::Exited;
+    peer.on_notification([srv = &this->server](const protocol::ExitParams& params) {
+        srv->lifecycle = ServerLifecycle::Exited;
         LOG_INFO("Exit notification received");
 
-        indexer.save(workspace.config.project.index_dir);
-        workspace.save_cache();
+        srv->indexer.save(srv->workspace.config.project.index_dir);
+        srv->workspace.save_cache();
 
-        loop.schedule([this]() -> kota::task<> {
-            co_await pool.stop();
-            loop.stop();
-        }());
+        srv->loop.schedule([](MasterServer* s) -> kota::task<> {
+            co_await s->pool.stop();
+            s->loop.stop();
+        }(srv));
     });
 
-    /// Document lifecycle — handled directly by MasterServer.
-
     peer.on_notification([this](const protocol::DidOpenTextDocumentParams& params) {
-        if(lifecycle != ServerLifecycle::Ready)
+        auto& srv = this->server;
+        if(srv.lifecycle != ServerLifecycle::Ready)
             return;
 
         auto path = uri_to_path(params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
+        auto path_id = srv.workspace.path_pool.intern(path);
 
-        auto [it, inserted] = sessions.try_emplace(path_id);
+        auto [it, inserted] = srv.sessions.try_emplace(path_id);
         auto& session = it->second;
         if(!inserted) {
-            // DenseMap tombstone may retain stale data — reset to a fresh Session.
             session = Session{};
         }
         session.path_id = path_id;
@@ -382,14 +235,15 @@ void MasterServer::register_handlers() {
     });
 
     peer.on_notification([this](const protocol::DidChangeTextDocumentParams& params) {
-        if(lifecycle != ServerLifecycle::Ready)
+        auto& srv = this->server;
+        if(srv.lifecycle != ServerLifecycle::Ready)
             return;
 
         auto path = uri_to_path(params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
+        auto path_id = srv.workspace.path_pool.intern(path);
 
-        auto it = sessions.find(path_id);
-        if(it == sessions.end())
+        auto it = srv.sessions.find(path_id);
+        if(it == srv.sessions.end())
             return;
 
         auto& session = it->second;
@@ -426,142 +280,146 @@ void MasterServer::register_handlers() {
         worker::DocumentUpdateParams update;
         update.path = path;
         update.version = session.version;
-        pool.notify_stateful(path_id, update);
+        srv.pool.notify_stateful(path_id, update);
     });
 
     peer.on_notification([this](const protocol::DidCloseTextDocumentParams& params) {
-        if(lifecycle != ServerLifecycle::Ready)
+        auto& srv = this->server;
+        if(srv.lifecycle != ServerLifecycle::Ready)
             return;
 
         auto path = uri_to_path(params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
+        auto path_id = srv.workspace.path_pool.intern(path);
 
-        workspace.on_file_closed(path_id);
-        pool.notify_stateful(path_id, worker::EvictParams{path});
+        srv.workspace.on_file_closed(path_id);
+        srv.pool.notify_stateful(path_id, worker::EvictParams{path});
 
-        // Clear diagnostics for the closed file.
         protocol::PublishDiagnosticsParams diag_params;
         diag_params.uri = params.text_document.uri;
-        peer.send_notification(diag_params);
+        this->peer.send_notification(diag_params);
 
-        sessions.erase(path_id);
+        srv.sessions.erase(path_id);
 
-        indexer.enqueue(path_id);
-        indexer.schedule();
+        srv.indexer.enqueue(path_id);
+        srv.indexer.schedule();
 
         LOG_DEBUG("didClose: {}", path);
     });
 
     peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {
-        if(lifecycle != ServerLifecycle::Ready)
+        auto& srv = this->server;
+        if(srv.lifecycle != ServerLifecycle::Ready)
             return;
 
         auto path = uri_to_path(params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
+        auto path_id = srv.workspace.path_pool.intern(path);
 
-        auto dirtied = workspace.on_file_saved(path_id);
+        auto dirtied = srv.workspace.on_file_saved(path_id);
         for(auto dirty_id: dirtied) {
-            if(auto sit = sessions.find(dirty_id); sit != sessions.end()) {
+            if(auto sit = srv.sessions.find(dirty_id); sit != srv.sessions.end()) {
                 sit->second.ast_dirty = true;
             } else {
-                indexer.enqueue(dirty_id);
+                srv.indexer.enqueue(dirty_id);
             }
         }
 
-        // Invalidate header contexts for sessions whose host is this file.
-        for(auto& [hdr_id, session]: sessions) {
+        for(auto& [hdr_id, session]: srv.sessions) {
             if(session.header_context && session.header_context->host_path_id == path_id) {
                 session.header_context.reset();
                 session.ast_dirty = true;
             }
         }
 
-        indexer.schedule();
+        srv.indexer.schedule();
 
         LOG_DEBUG("didSave: {}", path);
     });
 
-    /// Feature requests — stateful forwarding.
-
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
+        auto& srv = this->server;
         auto path = uri_to_path(params.text_document_position_params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
-        auto sit = sessions.find(path_id);
-        if(sit == sessions.end())
+        auto path_id = srv.workspace.path_pool.intern(path);
+        auto sit = srv.sessions.find(path_id);
+        if(sit == srv.sessions.end())
             co_return serde_raw{"null"};
-        co_return co_await compiler.forward_query(worker::QueryKind::Hover,
-                                                  sit->second,
-                                                  params.text_document_position_params.position);
+        co_return co_await srv.compiler.forward_query(
+            worker::QueryKind::Hover,
+            sit->second,
+            params.text_document_position_params.position);
     });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::SemanticTokensParams& params) -> RawResult {
-        auto path = uri_to_path(params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
-        auto sit = sessions.find(path_id);
-        if(sit == sessions.end())
-            co_return serde_raw{"null"};
-        co_return co_await compiler.forward_query(worker::QueryKind::SemanticTokens, sit->second);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto path = uri_to_path(params.text_document.uri);
+            auto path_id = srv.workspace.path_pool.intern(path);
+            auto sit = srv.sessions.find(path_id);
+            if(sit == srv.sessions.end())
+                co_return serde_raw{"null"};
+            co_return co_await srv.compiler.forward_query(worker::QueryKind::SemanticTokens,
+                                                          sit->second);
+        });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
+            auto& srv = this->server;
             auto path = uri_to_path(params.text_document.uri);
-            auto path_id = workspace.path_pool.intern(path);
-            auto sit = sessions.find(path_id);
-            if(sit == sessions.end())
+            auto path_id = srv.workspace.path_pool.intern(path);
+            auto sit = srv.sessions.find(path_id);
+            if(sit == srv.sessions.end())
                 co_return serde_raw{"null"};
-            co_return co_await compiler.forward_query(worker::QueryKind::InlayHints,
-                                                      sit->second,
-                                                      {},
-                                                      params.range);
-        });
-
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document.uri);
-            auto path_id = workspace.path_pool.intern(path);
-            auto sit = sessions.find(path_id);
-            if(sit == sessions.end())
-                co_return serde_raw{"null"};
-            co_return co_await compiler.forward_query(worker::QueryKind::FoldingRange, sit->second);
+            co_return co_await srv.compiler.forward_query(worker::QueryKind::InlayHints,
+                                                          sit->second,
+                                                          {},
+                                                          params.range);
         });
 
     peer.on_request([this](RequestContext& ctx,
-                           const protocol::DocumentSymbolParams& params) -> RawResult {
+                           const protocol::FoldingRangeParams& params) -> RawResult {
+        auto& srv = this->server;
         auto path = uri_to_path(params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
-        auto sit = sessions.find(path_id);
-        if(sit == sessions.end())
+        auto path_id = srv.workspace.path_pool.intern(path);
+        auto sit = srv.sessions.find(path_id);
+        if(sit == srv.sessions.end())
             co_return serde_raw{"null"};
-        co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol, sit->second);
+        co_return co_await srv.compiler.forward_query(worker::QueryKind::FoldingRange, sit->second);
     });
+
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto path = uri_to_path(params.text_document.uri);
+            auto path_id = srv.workspace.path_pool.intern(path);
+            auto sit = srv.sessions.find(path_id);
+            if(sit == srv.sessions.end())
+                co_return serde_raw{"null"};
+            co_return co_await srv.compiler.forward_query(worker::QueryKind::DocumentSymbol,
+                                                          sit->second);
+        });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::DocumentLinkParams& params) -> RawResult {
+        auto& srv = this->server;
         auto path = uri_to_path(params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
-        auto sit = sessions.find(path_id);
-        if(sit == sessions.end())
+        auto path_id = srv.workspace.path_pool.intern(path);
+        auto sit = srv.sessions.find(path_id);
+        if(sit == srv.sessions.end())
             co_return serde_raw{"null"};
         auto& session = sit->second;
-        auto result = co_await compiler.forward_query(worker::QueryKind::DocumentLink, session);
+        auto result = co_await srv.compiler.forward_query(worker::QueryKind::DocumentLink, session);
         if(!result.has_value())
             co_return serde_raw{"null"};
-        // Merge document links from PCH if available.
         auto& links = result.value();
-        // Re-lookup session after co_await since iterators may be invalidated.
-        auto sit2 = sessions.find(path_id);
-        if(sit2 != sessions.end() && sit2->second.pch_ref) {
-            auto pch_it = workspace.pch_cache.find(sit2->second.pch_ref->path_id);
-            if(pch_it != workspace.pch_cache.end() && !pch_it->second.document_links_json.empty()) {
+        auto sit2 = srv.sessions.find(path_id);
+        if(sit2 != srv.sessions.end() && sit2->second.pch_ref) {
+            auto pch_it = srv.workspace.pch_cache.find(sit2->second.pch_ref->path_id);
+            if(pch_it != srv.workspace.pch_cache.end() &&
+               !pch_it->second.document_links_json.empty()) {
                 auto& pch_json = pch_it->second.document_links_json;
-                // Merge two JSON arrays.
                 if(!links.data.empty() && links.data != "null" && links.data.size() > 2) {
-                    // "[a,b]" + "[c,d]" -> "[a,b,c,d]"
-                    links.data.pop_back();  // remove trailing ']'
+                    links.data.pop_back();
                     links.data += ',';
-                    links.data.append(pch_json.begin() + 1, pch_json.end());  // skip '['
+                    links.data.append(pch_json.begin() + 1, pch_json.end());
                 } else {
                     links.data = pch_json;
                 }
@@ -570,17 +428,17 @@ void MasterServer::register_handlers() {
         co_return std::move(links);
     });
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document.uri);
-            auto path_id = workspace.path_pool.intern(path);
-            auto sit = sessions.find(path_id);
-            if(sit == sessions.end())
-                co_return serde_raw{"null"};
-            co_return co_await compiler.forward_query(worker::QueryKind::CodeAction, sit->second);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::CodeActionParams& params) -> RawResult {
+        auto& srv = this->server;
+        auto path = uri_to_path(params.text_document.uri);
+        auto path_id = srv.workspace.path_pool.intern(path);
+        auto sit = srv.sessions.find(path_id);
+        if(sit == srv.sessions.end())
+            co_return serde_raw{"null"};
+        co_return co_await srv.compiler.forward_query(worker::QueryKind::CodeAction, sit->second);
+    });
 
-    /// Helper: resolve URI to path, path_id, and Session pointer.
     auto resolve_uri = [this](const std::string& uri) {
         struct Result {
             std::string path;
@@ -588,22 +446,22 @@ void MasterServer::register_handlers() {
             Session* session;
         };
         auto path = uri_to_path(uri);
-        auto path_id = workspace.path_pool.intern(path);
-        auto sit = sessions.find(path_id);
-        Session* session = (sit != sessions.end()) ? &sit->second : nullptr;
+        auto path_id = this->server.workspace.path_pool.intern(path);
+        auto sit = this->server.sessions.find(path_id);
+        Session* session = (sit != this->server.sessions.end()) ? &sit->second : nullptr;
         return Result{std::move(path), path_id, session};
     };
 
     auto lookup_at = [this, resolve_uri](const std::string& uri, const protocol::Position& pos) {
         auto [path, path_id, session] = resolve_uri(uri);
-        return indexer.lookup_symbol(uri, path, pos, session);
+        return this->server.indexer.lookup_symbol(uri, path, pos, session);
     };
 
     auto query_at = [this, resolve_uri](const std::string& uri,
                                         const protocol::Position& pos,
                                         RelationKind kind) -> std::vector<protocol::Location> {
         auto [path, path_id, session] = resolve_uri(uri);
-        return indexer.query_relations(path, pos, kind, session);
+        return this->server.indexer.query_relations(path, pos, kind, session);
     };
 
     auto resolve_item =
@@ -612,10 +470,8 @@ void MasterServer::register_handlers() {
                       const protocol::Range& range,
                       const std::optional<protocol::LSPAny>& data) -> std::optional<SymbolInfo> {
         auto [path, path_id, session] = resolve_uri(uri);
-        return indexer.resolve_hierarchy_item(uri, path, range, data, session);
+        return this->server.indexer.resolve_hierarchy_item(uri, path, range, data, session);
     };
-
-    /// Feature requests — index-based with AST fallback.
 
     peer.on_request([this, query_at](RequestContext& ctx,
                                      const protocol::DefinitionParams& params) -> RawResult {
@@ -627,14 +483,15 @@ void MasterServer::register_handlers() {
             co_return to_raw(result);
         }
 
+        auto& srv = this->server;
         auto path = uri_to_path(uri);
-        auto path_id = workspace.path_pool.intern(path);
-        auto sit = sessions.find(path_id);
-        if(sit == sessions.end())
+        auto path_id = srv.workspace.path_pool.intern(path);
+        auto sit = srv.sessions.find(path_id);
+        if(sit == srv.sessions.end())
             co_return serde_raw{"null"};
-        co_return co_await compiler.forward_query(worker::QueryKind::GoToDefinition,
-                                                  sit->second,
-                                                  pos);
+        co_return co_await srv.compiler.forward_query(worker::QueryKind::GoToDefinition,
+                                                      sit->second,
+                                                      pos);
     });
 
     peer.on_request([this, query_at](RequestContext& ctx,
@@ -671,37 +528,36 @@ void MasterServer::register_handlers() {
             co_return serde_raw{"null"};
         });
 
-    /// Feature requests — stateless forwarding.
-
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
-            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
-            auto path_id = workspace.path_pool.intern(path);
-            auto sit = sessions.find(path_id);
-            if(sit == sessions.end())
-                co_return serde_raw{"null"};
-            auto pause = indexer.scoped_pause();
-            auto result =
-                co_await compiler.handle_completion(params.text_document_position_params.position,
-                                                    sit->second);
-            co_return std::move(result);
-        });
-
     peer.on_request([this](RequestContext& ctx,
-                           const protocol::SignatureHelpParams& params) -> RawResult {
+                           const protocol::CompletionParams& params) -> RawResult {
+        auto& srv = this->server;
         auto path = uri_to_path(params.text_document_position_params.text_document.uri);
-        auto path_id = workspace.path_pool.intern(path);
-        auto sit = sessions.find(path_id);
-        if(sit == sessions.end())
+        auto path_id = srv.workspace.path_pool.intern(path);
+        auto sit = srv.sessions.find(path_id);
+        if(sit == srv.sessions.end())
             co_return serde_raw{"null"};
-        auto pause = indexer.scoped_pause();
-        auto result = co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
-                                                      params.text_document_position_params.position,
-                                                      sit->second);
+        auto pause = srv.indexer.scoped_pause();
+        auto result =
+            co_await srv.compiler.handle_completion(params.text_document_position_params.position,
+                                                    sit->second);
         co_return std::move(result);
     });
 
-    /// Hierarchy queries — index-based.
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
+            auto path_id = srv.workspace.path_pool.intern(path);
+            auto sit = srv.sessions.find(path_id);
+            if(sit == srv.sessions.end())
+                co_return serde_raw{"null"};
+            auto pause = srv.indexer.scoped_pause();
+            auto result =
+                co_await srv.compiler.forward_build(worker::BuildKind::SignatureHelp,
+                                                    params.text_document_position_params.position,
+                                                    sit->second);
+            co_return std::move(result);
+        });
 
     peer.on_request(
         [this, lookup_at](RequestContext& ctx,
@@ -726,7 +582,7 @@ void MasterServer::register_handlers() {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
-        auto results = indexer.find_incoming_calls(info->hash);
+        auto results = this->server.indexer.find_incoming_calls(info->hash);
         if(results.empty())
             co_return serde_raw{"null"};
         co_return to_raw(results);
@@ -738,7 +594,7 @@ void MasterServer::register_handlers() {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return serde_raw{"null"};
-        auto results = indexer.find_outgoing_calls(info->hash);
+        auto results = this->server.indexer.find_outgoing_calls(info->hash);
         if(results.empty())
             co_return serde_raw{"null"};
         co_return to_raw(results);
@@ -768,7 +624,7 @@ void MasterServer::register_handlers() {
             auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
             if(!info)
                 co_return serde_raw{"null"};
-            auto results = indexer.find_supertypes(info->hash);
+            auto results = this->server.indexer.find_supertypes(info->hash);
             if(results.empty())
                 co_return serde_raw{"null"};
             co_return to_raw(results);
@@ -780,7 +636,7 @@ void MasterServer::register_handlers() {
             auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
             if(!info)
                 co_return serde_raw{"null"};
-            auto results = indexer.find_subtypes(info->hash);
+            auto results = this->server.indexer.find_subtypes(info->hash);
             if(results.empty())
                 co_return serde_raw{"null"};
             co_return to_raw(results);
@@ -788,29 +644,28 @@ void MasterServer::register_handlers() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::WorkspaceSymbolParams& params) -> RawResult {
-            auto results = indexer.search_symbols(params.query);
+            auto results = this->server.indexer.search_symbols(params.query);
             if(results.empty())
                 co_return serde_raw{"null"};
             co_return to_raw(results);
         });
 
-    /// clice/ extension commands.
-
     peer.on_request(
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
+            auto& srv = this->server;
             auto path = uri_to_path(params.uri);
-            auto path_id = workspace.path_pool.intern(path);
+            auto path_id = srv.workspace.path_pool.intern(path);
             int offset_val = std::max(0, params.offset.value_or(0));
             constexpr int page_size = 10;
 
             ext::QueryContextResult result;
             std::vector<ext::ContextItem> all_items;
 
-            auto hosts = workspace.dep_graph.find_host_sources(path_id);
+            auto hosts = srv.workspace.dep_graph.find_host_sources(path_id);
             for(auto host_id: hosts) {
-                auto host_path = workspace.path_pool.resolve(host_id);
-                auto host_cdb = workspace.cdb.lookup(host_path, {.suppress_logging = true});
+                auto host_path = srv.workspace.path_pool.resolve(host_id);
+                auto host_cdb = srv.workspace.cdb.lookup(host_path, {.suppress_logging = true});
                 if(host_cdb.empty())
                     continue;
                 auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
@@ -824,7 +679,7 @@ void MasterServer::register_handlers() {
             }
 
             if(hosts.empty()) {
-                auto entries = workspace.cdb.lookup(path, {.suppress_logging = true});
+                auto entries = srv.workspace.cdb.lookup(path, {.suppress_logging = true});
                 for(std::size_t i = 0; i < entries.size(); ++i) {
                     auto& cmd = entries[i];
                     auto argv = cmd.to_argv();
@@ -866,13 +721,14 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "clice/currentContext",
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
+            auto& srv = this->server;
             auto path = uri_to_path(params.uri);
-            auto path_id = workspace.path_pool.intern(path);
+            auto path_id = srv.workspace.path_pool.intern(path);
 
             ext::CurrentContextResult result;
-            auto sit = sessions.find(path_id);
-            if(sit != sessions.end() && sit->second.active_context) {
-                auto ctx_path = workspace.path_pool.resolve(*sit->second.active_context);
+            auto sit = srv.sessions.find(path_id);
+            if(sit != srv.sessions.end() && sit->second.active_context) {
+                auto ctx_path = srv.workspace.path_pool.resolve(*sit->second.active_context);
                 auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
                 if(ctx_uri_opt) {
                     ext::ContextItem item;
@@ -888,21 +744,22 @@ void MasterServer::register_handlers() {
     peer.on_request(
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
+            auto& srv = this->server;
             auto path = uri_to_path(params.uri);
-            auto path_id = workspace.path_pool.intern(path);
+            auto path_id = srv.workspace.path_pool.intern(path);
             auto context_path = uri_to_path(params.context_uri);
-            auto context_path_id = workspace.path_pool.intern(context_path);
+            auto context_path_id = srv.workspace.path_pool.intern(context_path);
 
             ext::SwitchContextResult result;
 
-            auto context_cdb = workspace.cdb.lookup(context_path, {.suppress_logging = true});
+            auto context_cdb = srv.workspace.cdb.lookup(context_path, {.suppress_logging = true});
             if(context_cdb.empty()) {
                 result.success = false;
                 co_return to_raw(result);
             }
 
-            auto sit = sessions.find(path_id);
-            if(sit == sessions.end()) {
+            auto sit = srv.sessions.find(path_id);
+            if(sit == srv.sessions.end()) {
                 result.success = false;
                 co_return to_raw(result);
             }
@@ -916,6 +773,11 @@ void MasterServer::register_handlers() {
             result.success = true;
             co_return to_raw(result);
         });
+}
+
+LSPClient::~LSPClient() {
+    server.compiler.set_peer(nullptr);
+    server.indexer.set_peer(nullptr);
 }
 
 }  // namespace clice

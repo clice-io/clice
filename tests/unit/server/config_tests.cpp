@@ -2,7 +2,7 @@
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "server/config.h"
+#include "server/workspace/config.h"
 #include "support/filesystem.h"
 
 #include "kota/codec/json/json.h"
