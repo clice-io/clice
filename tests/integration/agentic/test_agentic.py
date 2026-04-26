@@ -5,11 +5,11 @@ import pytest
 
 @pytest.mark.workspace("hello_world")
 async def test_compile_command(agentic, workspace):
-    main_cpp = str(workspace / "main.cpp")
+    main_cpp = (workspace / "main.cpp").as_posix()
     resp = await agentic.request("agentic/compileCommand", {"path": main_cpp})
     result = resp["result"]
     assert result["file"] == main_cpp
-    assert result["directory"] == str(workspace)
+    assert result["directory"] == workspace.as_posix()
     assert len(result["arguments"]) > 0
 
 
@@ -24,7 +24,7 @@ async def test_compile_command_fallback(agentic, workspace):
 
 @pytest.mark.workspace("hello_world")
 async def test_multiple_requests(agentic, workspace):
-    main_cpp = str(workspace / "main.cpp")
+    main_cpp = (workspace / "main.cpp").as_posix()
     for _ in range(3):
         resp = await agentic.request("agentic/compileCommand", {"path": main_cpp})
         assert "result" in resp
