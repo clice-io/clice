@@ -2,7 +2,7 @@
 #include <vector>
 
 #include "test/test.h"
-#include "server/compiler/protocol.h"
+#include "protocol/worker.h"
 #include "server/worker_test_helpers.h"
 #include "syntax/scan.h"
 

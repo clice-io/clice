@@ -6,7 +6,7 @@
 
 #include "command/search_config.h"
 #include "index/tu_index.h"
-#include "server/compiler/protocol.h"
+#include "protocol/worker.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
@@ -28,11 +28,10 @@ using serde_raw = kota::codec::RawValue;
 /// Detect whether the cursor is inside a preamble directive (include/import).
 
 Compiler::Compiler(kota::event_loop& loop,
-                   kota::ipc::JsonPeer& peer,
                    Workspace& workspace,
                    WorkerPool& pool,
                    llvm::DenseMap<std::uint32_t, Session>& sessions) :
-    loop(loop), peer(peer), workspace(workspace), pool(pool), sessions(sessions) {}
+    loop(loop), workspace(workspace), pool(pool), sessions(sessions) {}
 
 Compiler::~Compiler() {
     workspace.cancel_all();
@@ -410,6 +409,8 @@ std::string uri_to_path(const std::string& uri) {
 void Compiler::publish_diagnostics(const std::string& uri,
                                    int version,
                                    const kota::codec::RawValue& diagnostics_json) {
+    if(!peer)
+        return;
     std::vector<protocol::Diagnostic> diagnostics;
     if(!diagnostics_json.empty()) {
         auto status = kota::codec::json::from_json(diagnostics_json.data, diagnostics);
@@ -421,14 +422,16 @@ void Compiler::publish_diagnostics(const std::string& uri,
     params.uri = uri;
     params.version = version;
     params.diagnostics = std::move(diagnostics);
-    peer.send_notification(params);
+    peer->send_notification(params);
 }
 
 void Compiler::clear_diagnostics(const std::string& uri) {
+    if(!peer)
+        return;
     protocol::PublishDiagnosticsParams params;
     params.uri = uri;
     params.diagnostics = {};
-    peer.send_notification(params);
+    peer->send_notification(params);
 }
 
 kota::task<bool> Compiler::ensure_pch(Session& session,
