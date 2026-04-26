@@ -3,7 +3,7 @@
 #include <print>
 #include <string>
 
-#include "protocol/agentic.h"
+#include "server/protocol/agentic.h"
 #include "support/logging.h"
 
 #include "kota/async/async.h"

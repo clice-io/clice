@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "protocol/agentic.h"
+#include "server/protocol/agentic.h"
 #include "server/service/master_server.h"
 
 namespace clice {

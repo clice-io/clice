@@ -10,7 +10,7 @@
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
-#include "protocol/worker.h"
+#include "server/protocol/worker.h"
 #include "server/worker/worker_common.h"
 #include "support/logging.h"
 

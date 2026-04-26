@@ -6,9 +6,9 @@
 #include <type_traits>
 #include <variant>
 
-#include "protocol/extension.h"
-#include "protocol/worker.h"
 #include "semantic/symbol_kind.h"
+#include "server/protocol/extension.h"
+#include "server/protocol/worker.h"
 #include "server/service/master_server.h"
 #include "support/filesystem.h"
 #include "support/logging.h"

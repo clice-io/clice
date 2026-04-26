@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "index/tu_index.h"
-#include "protocol/worker.h"
 #include "server/compiler/compiler.h"
+#include "server/protocol/worker.h"
 #include "server/service/session.h"
 #include "server/worker/worker_pool.h"
 #include "support/filesystem.h"

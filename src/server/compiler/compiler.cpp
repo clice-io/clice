@@ -6,7 +6,7 @@
 
 #include "command/search_config.h"
 #include "index/tu_index.h"
-#include "protocol/worker.h"
+#include "server/protocol/worker.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
