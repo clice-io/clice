@@ -9,7 +9,7 @@
 
 #include "semantic/relation_kind.h"
 #include "semantic/symbol_kind.h"
-#include "server/workspace.h"
+#include "server/workspace/workspace.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/json.h"

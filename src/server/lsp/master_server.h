@@ -1,19 +1,21 @@
 #pragma once
 
 #include <cstdint>
+#include <list>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "server/compiler.h"
-#include "server/indexer.h"
-#include "server/session.h"
-#include "server/worker_pool.h"
-#include "server/workspace.h"
+#include "server/compiler/compiler.h"
+#include "server/compiler/indexer.h"
+#include "server/lsp/session.h"
+#include "server/worker/worker_pool.h"
+#include "server/workspace/workspace.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
 #include "kota/ipc/peer.h"
+#include "kota/ipc/transport.h"
 #include "llvm/ADT/DenseMap.h"
 
 namespace clice {
@@ -47,7 +49,20 @@ public:
 
     void register_handlers();
 
+    /// Start accepting agent connections on the given host:port.
+    /// Each agent gets `agentic/*` handlers registered.
+    /// Agent disconnections are handled gracefully without affecting the server.
+    kota::task<> listen_for_agents(std::string host, int port);
+
 private:
+    void register_agent_handlers(kota::ipc::JsonPeer& agent_peer);
+
+    struct AgentConnection {
+        std::unique_ptr<kota::ipc::Transport> transport;
+        std::unique_ptr<kota::ipc::JsonPeer> peer;
+    };
+
+    std::list<AgentConnection> agent_connections;
     kota::event_loop& loop;
     kota::ipc::JsonPeer& peer;
 

@@ -1,4 +1,4 @@
-#include "server/master_server.h"
+#include "server/lsp/master_server.h"
 
 #include <algorithm>
 #include <format>
@@ -7,7 +7,8 @@
 #include <variant>
 
 #include "semantic/symbol_kind.h"
-#include "server/protocol.h"
+#include "server/agentic_protocol.h"
+#include "server/compiler/protocol.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
@@ -916,6 +917,60 @@ void MasterServer::register_handlers() {
             result.success = true;
             co_return to_raw(result);
         });
+}
+
+void MasterServer::register_agent_handlers(kota::ipc::JsonPeer& agent_peer) {
+    using namespace agentic;
+
+    agent_peer.on_request(
+        [this](RequestContext&,
+               const CompileCommandParams& params) -> RequestResult<CompileCommandParams> {
+            std::string directory;
+            std::vector<std::string> arguments;
+            if(!compiler.fill_compile_args(params.path, directory, arguments)) {
+                co_return kota::outcome_error(
+                    kota::ipc::Error{std::format("no compile command found for {}", params.path)});
+            }
+
+            co_return CompileCommandResult{
+                .file = params.path,
+                .directory = std::move(directory),
+                .arguments = std::move(arguments),
+            };
+        });
+}
+
+kota::task<> MasterServer::listen_for_agents(std::string host, int port) {
+    auto acceptor = kota::tcp::listen(host, port, {}, loop);
+    if(!acceptor) {
+        LOG_ERROR("failed to listen for agents on {}:{}", host, port);
+        co_return;
+    }
+
+    LOG_INFO("Agentic protocol listening on {}:{}", host, port);
+
+    while(true) {
+        auto conn = co_await acceptor->accept();
+        if(!conn.has_value()) {
+            break;
+        }
+
+        LOG_INFO("Agent connected");
+
+        auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
+        auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+        register_agent_handlers(*peer);
+
+        auto* peer_ptr = peer.get();
+        auto it = agent_connections.emplace(agent_connections.end(),
+                                            AgentConnection{nullptr, std::move(peer)});
+
+        loop.schedule([this, peer_ptr, it]() -> kota::task<> {
+            co_await peer_ptr->run();
+            LOG_INFO("Agent disconnected");
+            agent_connections.erase(it);
+        }());
+    }
 }
 
 }  // namespace clice

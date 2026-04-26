@@ -1,4 +1,4 @@
-#include "server/indexer.h"
+#include "server/compiler/indexer.h"
 
 #include <algorithm>
 #include <string>
@@ -6,10 +6,10 @@
 #include <vector>
 
 #include "index/tu_index.h"
-#include "server/compiler.h"
-#include "server/protocol.h"
-#include "server/session.h"
-#include "server/worker_pool.h"
+#include "server/compiler/compiler.h"
+#include "server/compiler/protocol.h"
+#include "server/lsp/session.h"
+#include "server/worker/worker_pool.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 

@@ -1,4 +1,4 @@
-#include "server/compiler.h"
+#include "server/compiler/compiler.h"
 
 #include <format>
 #include <ranges>
@@ -6,7 +6,7 @@
 
 #include "command/search_config.h"
 #include "index/tu_index.h"
-#include "server/protocol.h"
+#include "server/compiler/protocol.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"

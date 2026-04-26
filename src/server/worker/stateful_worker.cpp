@@ -1,4 +1,4 @@
-#include "server/stateful_worker.h"
+#include "server/worker/stateful_worker.h"
 
 #include <atomic>
 #include <cstdint>
@@ -10,8 +10,8 @@
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
-#include "server/protocol.h"
-#include "server/worker_common.h"
+#include "server/compiler/protocol.h"
+#include "server/worker/worker_common.h"
 #include "support/logging.h"
 
 #include "kota/async/async.h"

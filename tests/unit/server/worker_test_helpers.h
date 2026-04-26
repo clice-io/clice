@@ -11,7 +11,7 @@
 #include "test/temp_dir.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
-#include "server/protocol.h"
+#include "server/compiler/protocol.h"
 #include "support/filesystem.h"
 
 #include "kota/async/async.h"

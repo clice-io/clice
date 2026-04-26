@@ -6,7 +6,7 @@
 #include <list>
 #include <memory>
 
-#include "server/protocol.h"
+#include "server/compiler/protocol.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/bincode.h"

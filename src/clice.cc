@@ -4,9 +4,9 @@
 #include <print>
 #include <string>
 
-#include "server/master_server.h"
-#include "server/stateful_worker.h"
-#include "server/stateless_worker.h"
+#include "server/lsp/master_server.h"
+#include "server/worker/stateful_worker.h"
+#include "server/worker/stateless_worker.h"
 #include "support/logging.h"
 
 #include "kota/async/async.h"
@@ -62,6 +62,11 @@ struct Options {
 
     DecoFlag(names = {"-v", "--version"}, help = "Show version", required = false)
     version;
+
+    DecoFlag(names = {"--agentic"},
+             help = "Enable agentic protocol listener on host:port (pipe mode only)",
+             required = false)
+    agentic;
 };
 
 }  // namespace clice
@@ -110,6 +115,13 @@ int main(int argc, const char** argv) {
         return 1;
     }
 
+    auto agentic = opts.agentic.value_or(false);
+
+    if(agentic && *opts.mode != "pipe") {
+        LOG_ERROR("--agentic is only supported in pipe mode");
+        return 1;
+    }
+
     std::string self_path = argv[0];
 
     auto& mode = *opts.mode;
@@ -152,6 +164,12 @@ int main(int argc, const char** argv) {
         kota::ipc::JsonPeer peer(loop, std::move(final_transport));
         clice::MasterServer server(loop, peer, std::move(self_path));
         server.register_handlers();
+
+        if(agentic) {
+            auto host = opts.host.value_or("127.0.0.1");
+            auto port = opts.port.value_or(50051);
+            loop.schedule(server.listen_for_agents(std::move(host), port));
+        }
 
         loop.schedule(peer.run());
         loop.run();

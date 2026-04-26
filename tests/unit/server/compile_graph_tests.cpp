@@ -1,7 +1,7 @@
 #include <optional>
 
 #include "test/test.h"
-#include "server/compile_graph.h"
+#include "server/compiler/compile_graph.h"
 
 namespace clice::testing {
 namespace {

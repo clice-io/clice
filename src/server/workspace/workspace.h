@@ -11,8 +11,8 @@
 #include "index/merged_index.h"
 #include "index/project_index.h"
 #include "semantic/relation_kind.h"
-#include "server/compile_graph.h"
-#include "server/config.h"
+#include "server/compiler/compile_graph.h"
+#include "server/workspace/config.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
