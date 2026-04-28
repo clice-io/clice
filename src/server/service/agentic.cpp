@@ -1,5 +1,6 @@
 #include "server/service/agentic.h"
 
+#include <memory>
 #include <print>
 #include <string>
 
@@ -29,6 +30,7 @@ static kota::task<> agentic_request(kota::ipc::JsonPeer& peer, int& exit_code, s
 
 static kota::task<> agentic_client(kota::event_loop& loop,
                                    int& exit_code,
+                                   std::unique_ptr<kota::ipc::JsonPeer>& peer_out,
                                    std::string host,
                                    int port,
                                    std::string path) {
@@ -38,8 +40,9 @@ static kota::task<> agentic_client(kota::event_loop& loop,
         co_return;
     }
 
-    kota::ipc::JsonPeer peer(loop, std::move(*transport));
-    co_await kota::when_all(peer.run(), agentic_request(peer, exit_code, std::move(path)));
+    peer_out = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(*transport));
+    co_await kota::when_all(peer_out->run(),
+                            agentic_request(*peer_out, exit_code, std::move(path)));
 }
 
 int run_agentic_mode(llvm::StringRef host, int port, llvm::StringRef path) {
@@ -47,7 +50,8 @@ int run_agentic_mode(llvm::StringRef host, int port, llvm::StringRef path) {
 
     kota::event_loop loop;
     int exit_code = 1;
-    loop.schedule(agentic_client(loop, exit_code, host.str(), port, path.str()));
+    std::unique_ptr<kota::ipc::JsonPeer> peer;
+    loop.schedule(agentic_client(loop, exit_code, peer, host.str(), port, path.str()));
     loop.run();
     return exit_code;
 }
