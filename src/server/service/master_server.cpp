@@ -173,11 +173,13 @@ static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
     connections.erase(pos);
 }
 
-static kota::task<> accept_connections(kota::event_loop& loop,
-                                       MasterServer& server,
+static kota::task<> accept_connections(MasterServer& server,
                                        kota::tcp::acceptor acceptor,
                                        bool register_lsp,
                                        std::list<Connection>& connections) {
+    auto& loop = kota::event_loop::current();
+    kota::task_group<> connection_group(loop);
+
     while(true) {
         auto conn = co_await acceptor.accept();
         if(!conn.has_value())
@@ -201,8 +203,10 @@ static kota::task<> accept_connections(kota::event_loop& loop,
                                           .agent_client = std::move(agent),
                                       });
 
-        loop.schedule(run_connection(peer_ptr, connections, it));
+        connection_group.spawn(run_connection(peer_ptr, connections, it));
     }
+
+    co_await connection_group.join();
 }
 
 int run_server_mode(const ServerOptions& opts) {
@@ -233,8 +237,7 @@ int run_server_mode(const ServerOptions& opts) {
             auto acceptor = kota::tcp::listen(opts.host, opts.port, {}, loop);
             if(acceptor) {
                 LOG_INFO("Agentic protocol listening on {}:{}", opts.host, opts.port);
-                loop.schedule(
-                    accept_connections(loop, server, std::move(*acceptor), false, connections));
+                loop.schedule(accept_connections(server, std::move(*acceptor), false, connections));
             } else {
                 LOG_WARN("Failed to start agentic listener on {}:{}", opts.host, opts.port);
             }
@@ -253,7 +256,7 @@ int run_server_mode(const ServerOptions& opts) {
         }
 
         LOG_INFO("Listening on {}:{} ...", opts.host, opts.port);
-        loop.schedule(accept_connections(loop, server, std::move(*acceptor), true, connections));
+        loop.schedule(accept_connections(server, std::move(*acceptor), true, connections));
         loop.run();
         return 0;
     }

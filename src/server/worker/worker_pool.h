@@ -83,8 +83,7 @@ private:
     std::size_t pick_least_loaded();
 
     bool shutting_down_ = false;
-    std::size_t alive_count_ = 0;
-    kota::event all_exited_{true};  // Signalled when alive_count_ reaches 0.
+    kota::task_group<> monitor_group{loop};
     WorkerPoolOptions options_;
     std::string log_dir_;
 

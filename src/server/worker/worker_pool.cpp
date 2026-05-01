@@ -108,7 +108,6 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
 
     auto& w = workers.back();
     w.alive = true;
-    ++alive_count_;
     loop.schedule(w.peer->run());
 
     return true;
@@ -122,14 +121,14 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
         if(!spawn_worker(options.self_path, false, 0)) {
             return false;
         }
-        loop.schedule(monitor_worker(stateless_workers.size() - 1, false));
+        monitor_group.spawn(monitor_worker(stateless_workers.size() - 1, false));
     }
 
     for(std::uint32_t i = 0; i < options.stateful_count; ++i) {
         if(!spawn_worker(options.self_path, true, options.worker_memory_limit)) {
             return false;
         }
-        loop.schedule(monitor_worker(stateful_workers.size() - 1, true));
+        monitor_group.spawn(monitor_worker(stateful_workers.size() - 1, true));
     }
 
     // Register evicted notification handler for each stateful worker
@@ -151,23 +150,17 @@ kota::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopping...");
     shutting_down_ = true;
 
-    // Close output pipes to signal workers to exit gracefully.
     for(auto& w: stateless_workers)
         w.peer->close_output();
     for(auto& w: stateful_workers)
         w.peer->close_output();
 
-    // Send SIGTERM.  monitor_worker coroutines handle the wait.
     for(auto& w: stateless_workers)
         w.proc.kill(SIGTERM);
     for(auto& w: stateful_workers)
         w.proc.kill(SIGTERM);
 
-    // Wait until all monitor_worker coroutines have finished.
-    if(alive_count_ > 0) {
-        all_exited_.reset();
-        co_await all_exited_.wait();
-    }
+    co_await monitor_group.join();
 
     LOG_INFO("WorkerPool stopped");
 }
@@ -242,13 +235,9 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
 
     auto result = co_await w.proc.wait();
     w.alive = false;
-    --alive_count_;
 
-    if(shutting_down_) {
-        if(alive_count_ == 0)
-            all_exited_.set();
+    if(shutting_down_)
         co_return;
-    }
 
     if(result.has_value()) {
         auto& exit = result.value();
@@ -342,7 +331,6 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     };
 
     auto& w = workers[index];
-    ++alive_count_;
     loop.schedule(w.peer->run());
 
     if(stateful) {
@@ -352,7 +340,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
         });
     }
 
-    loop.schedule(monitor_worker(index, stateful));
+    monitor_group.spawn(monitor_worker(index, stateful));
 
     LOG_INFO("Worker {} restarted (attempt {})", worker_name, old_restart_count);
     return true;

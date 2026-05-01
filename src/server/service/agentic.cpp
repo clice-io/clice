@@ -28,12 +28,12 @@ static kota::task<> agentic_request(kota::ipc::JsonPeer& peer, int& exit_code, s
     peer.close();
 }
 
-static kota::task<> agentic_client(kota::event_loop& loop,
-                                   int& exit_code,
+static kota::task<> agentic_client(int& exit_code,
                                    std::unique_ptr<kota::ipc::JsonPeer>& peer_out,
                                    std::string host,
                                    int port,
                                    std::string path) {
+    auto& loop = kota::event_loop::current();
     auto transport = co_await kota::ipc::StreamTransport::connect_tcp(host, port, loop);
     if(!transport) {
         LOG_ERROR("failed to connect to {}:{}", host, port);
@@ -51,7 +51,7 @@ int run_agentic_mode(llvm::StringRef host, int port, llvm::StringRef path) {
     kota::event_loop loop;
     int exit_code = 1;
     std::unique_ptr<kota::ipc::JsonPeer> peer;
-    loop.schedule(agentic_client(loop, exit_code, peer, host.str(), port, path.str()));
+    loop.schedule(agentic_client(exit_code, peer, host.str(), port, path.str()));
     loop.run();
     return exit_code;
 }

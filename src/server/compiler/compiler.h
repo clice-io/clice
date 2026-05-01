@@ -100,7 +100,12 @@ public:
     /// Callback invoked when indexing should be scheduled.
     std::function<void()> on_indexing_needed;
 
+    /// Cancel in-flight compile tasks and wait for them to finish.
+    kota::task<> stop();
+
 private:
+    kota::task<> run_compile(std::uint32_t path_id, std::shared_ptr<Session::PendingCompile> pc);
+
     kota::task<bool> ensure_deps(Session& session,
                                  const std::string& directory,
                                  const std::vector<std::string>& arguments,
@@ -133,6 +138,7 @@ private:
     Workspace& workspace;
     WorkerPool& pool;
     llvm::DenseMap<std::uint32_t, Session>& sessions;
+    kota::task_group<> compile_tasks{loop};
 };
 
 }  // namespace clice

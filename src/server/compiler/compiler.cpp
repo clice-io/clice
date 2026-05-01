@@ -37,6 +37,11 @@ Compiler::~Compiler() {
     workspace.cancel_all();
 }
 
+kota::task<> Compiler::stop() {
+    compile_tasks.cancel();
+    co_await compile_tasks.join();
+}
+
 void Compiler::init_compile_graph() {
     if(workspace.path_to_module.empty()) {
         LOG_INFO("No C++20 modules detected, skipping CompileGraph");
@@ -632,6 +637,101 @@ void Compiler::record_deps(Session& session, llvm::ArrayRef<std::string> deps) {
 /// Called lazily by forward_query() / forward_build() before every
 /// feature request (hover, semantic tokens, etc.). Guarantees that when it
 /// returns true the stateful worker assigned to `path_id` holds an up-to-date
+kota::task<> Compiler::run_compile(std::uint32_t pid, std::shared_ptr<Session::PendingCompile> pc) {
+    auto find_session = [&]() -> Session* {
+        auto it = sessions.find(pid);
+        return it != sessions.end() ? &it->second : nullptr;
+    };
+
+    auto* sess = find_session();
+    if(!sess) {
+        pc->done.set();
+        co_return;
+    }
+
+    auto finish_compile = [&]() {
+        auto* s = find_session();
+        if(s && s->compiling == pc) {
+            s->compiling.reset();
+        }
+        LOG_INFO("ensure_compiled: finish path_id={}", pid);
+        pc->done.set();
+    };
+
+    auto gen = sess->generation;
+    LOG_INFO("ensure_compiled: starting compile path_id={} gen={}", pid, gen);
+
+    auto file_path = std::string(workspace.path_pool.resolve(pid));
+    auto uri = lsp::URI::from_file_path(file_path);
+    std::string uri_str = uri.has_value() ? uri->str() : file_path;
+
+    worker::CompileParams params;
+    params.path = file_path;
+    params.version = sess->version;
+    params.text = sess->text;
+    if(!fill_compile_args(file_path, params.directory, params.arguments, sess)) {
+        finish_compile();
+        co_return;
+    }
+
+    if(!co_await ensure_deps(*sess, params.directory, params.arguments, params.pch, params.pcms)) {
+        LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
+        finish_compile();
+        co_return;
+    }
+
+    sess = find_session();
+    if(!sess) {
+        pc->done.set();
+        co_return;
+    }
+
+    auto result = co_await pool.send_stateful(pid, params);
+
+    sess = find_session();
+    if(!sess) {
+        pc->done.set();
+        co_return;
+    }
+
+    if(sess->generation != gen) {
+        LOG_INFO("ensure_compiled: generation mismatch ({} vs {}) for {}",
+                 sess->generation,
+                 gen,
+                 uri_str);
+        finish_compile();
+        co_return;
+    }
+
+    if(!result.has_value()) {
+        LOG_WARN("Compile failed for {}: {}", uri_str, result.error().message);
+        clear_diagnostics(uri_str);
+        finish_compile();
+        co_return;
+    }
+
+    sess->ast_dirty = false;
+    pc->succeeded = true;
+    record_deps(*sess, result.value().deps);
+
+    if(!result.value().tu_index_data.empty()) {
+        auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
+        OpenFileIndex ofi;
+        ofi.file_index = std::move(tu_index.main_file_index);
+        ofi.symbols = std::move(tu_index.symbols);
+        ofi.content = sess->text;
+        ofi.mapper.emplace(ofi.content, lsp::PositionEncoding::UTF16);
+        sess->file_index = std::move(ofi);
+    }
+
+    auto version = sess->version;
+    finish_compile();
+
+    publish_diagnostics(uri_str, version, result.value().diagnostics);
+    if(on_indexing_needed)
+        on_indexing_needed();
+}
+
 /// AST and diagnostics have been published to the client.
 ///
 /// Lifecycle overview (pull-based model):
@@ -651,9 +751,9 @@ void Compiler::record_deps(Session& session, llvm::ArrayRef<std::string> deps) {
 /// worker); every other file is read from disk by the compiler.
 ///
 /// Concurrency: multiple concurrent feature requests for the same file will
-/// each call ensure_compiled(). The first one launches a detached compile
-/// task via loop.schedule(); subsequent ones wait on the shared event.
-/// The detached task cannot be cancelled by LSP $/cancelRequest, preventing
+/// each call ensure_compiled(). The first one spawns a compile task into the
+/// Compiler's task_group; subsequent ones wait on the shared event.
+/// The spawned task is not cancelled by LSP $/cancelRequest, preventing
 /// the race where cancellation wakes all waiters and they all start compiles.
 kota::task<bool> Compiler::ensure_compiled(Session& session) {
     auto path_id = session.path_id;
@@ -682,124 +782,12 @@ kota::task<bool> Compiler::ensure_compiled(Session& session) {
             co_return true;
     }
 
-    // No compile in flight and AST is dirty — launch a detached compile task.
-    // The detached task is scheduled via loop.schedule() so it is NOT subject
-    // to LSP $/cancelRequest cancellation.  This eliminates the race where
-    // cancellation fires the RAII guard, waking all waiters simultaneously
-    // and causing them all to start new compiles.
     auto pending_compile = std::make_shared<Session::PendingCompile>();
     session.compiling = pending_compile;
 
-    LOG_INFO("ensure_compiled: launching detached compile path_id={} gen={}",
-             path_id,
-             session.generation);
+    LOG_INFO("ensure_compiled: launching compile path_id={} gen={}", path_id, session.generation);
 
-    // Capture path_id by value so the detached lambda can re-lookup the session
-    // from the sessions map after co_await (DenseMap may invalidate pointers).
-    loop.schedule([](Compiler* self,
-                     std::uint32_t pid,
-                     std::shared_ptr<Session::PendingCompile> pc) -> kota::task<> {
-        // Re-lookup session from the sessions map (pointer may have been
-        // invalidated by DenseMap growth during co_await).
-        auto find_session = [&]() -> Session* {
-            auto it = self->sessions.find(pid);
-            return it != self->sessions.end() ? &it->second : nullptr;
-        };
-
-        auto* sess = find_session();
-        if(!sess) {
-            pc->done.set();
-            co_return;
-        }
-
-        auto finish_compile = [&]() {
-            auto* s = find_session();
-            if(s && s->compiling == pc) {
-                s->compiling.reset();
-            }
-            LOG_INFO("ensure_compiled: finish_compile (detached) path_id={}", pid);
-            pc->done.set();
-        };
-
-        auto gen = sess->generation;
-        LOG_INFO("ensure_compiled: starting compile (detached) path_id={} gen={}", pid, gen);
-
-        auto file_path = std::string(self->workspace.path_pool.resolve(pid));
-        auto uri = lsp::URI::from_file_path(file_path);
-        std::string uri_str = uri.has_value() ? uri->str() : file_path;
-
-        worker::CompileParams params;
-        params.path = file_path;
-        params.version = sess->version;
-        params.text = sess->text;
-        if(!self->fill_compile_args(file_path, params.directory, params.arguments, sess)) {
-            finish_compile();
-            co_return;
-        }
-
-        if(!co_await self
-                ->ensure_deps(*sess, params.directory, params.arguments, params.pch, params.pcms)) {
-            LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
-            finish_compile();
-            co_return;
-        }
-
-        // Re-lookup after co_await (DenseMap may have grown).
-        sess = find_session();
-        if(!sess) {
-            pc->done.set();
-            co_return;
-        }
-
-        auto result = co_await self->pool.send_stateful(pid, params);
-
-        // Re-lookup after co_await.
-        sess = find_session();
-        if(!sess) {
-            pc->done.set();
-            co_return;
-        }
-
-        if(sess->generation != gen) {
-            LOG_INFO("ensure_compiled: generation mismatch ({} vs {}) for {}",
-                     sess->generation,
-                     gen,
-                     uri_str);
-            finish_compile();
-            co_return;
-        }
-
-        if(!result.has_value()) {
-            LOG_WARN("Compile failed for {}: {}", uri_str, result.error().message);
-            self->clear_diagnostics(uri_str);
-            finish_compile();
-            co_return;
-        }
-
-        sess->ast_dirty = false;
-        pc->succeeded = true;
-        self->record_deps(*sess, result.value().deps);
-
-        // Store open file index from the stateful worker's TUIndex.
-        if(!result.value().tu_index_data.empty()) {
-            auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
-            OpenFileIndex ofi;
-            ofi.file_index = std::move(tu_index.main_file_index);
-            ofi.symbols = std::move(tu_index.symbols);
-            ofi.content = sess->text;
-            ofi.mapper.emplace(ofi.content, lsp::PositionEncoding::UTF16);
-            sess->file_index = std::move(ofi);
-        }
-
-        auto version = sess->version;
-        finish_compile();
-
-        // Publish diagnostics AFTER marking compile as done, so that concurrent
-        // forward_query() calls can proceed immediately.
-        self->publish_diagnostics(uri_str, version, result.value().diagnostics);
-        if(self->on_indexing_needed)
-            self->on_indexing_needed();
-    }(this, path_id, pending_compile));
+    compile_tasks.spawn(run_compile(path_id, pending_compile));
 
     // Wait for the detached compile to finish.  If this wait is cancelled
     // by LSP $/cancelRequest, the detached task continues unaffected.

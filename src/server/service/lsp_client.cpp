@@ -208,6 +208,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         srv->workspace.save_cache();
 
         srv->loop.schedule([](MasterServer* s) -> kota::task<> {
+            co_await s->compiler.stop();
             co_await s->pool.stop();
             s->loop.stop();
         }(srv));

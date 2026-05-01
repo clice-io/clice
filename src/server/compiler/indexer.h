@@ -231,27 +231,15 @@ private:
     /// Concurrency control for background indexing.
     std::size_t max_concurrent = 2;
     std::size_t baseline_concurrent = 2;
-    std::size_t inflight = 0;
-    std::size_t finished = 0;  ///< Incremented by each completed dispatch task.
 
     /// Pause/resume: when paused, new index tasks wait on this event.
     /// Uses a counter so nested pause/resume pairs work correctly.
     std::size_t pause_depth = 0;
     kota::event resume_event{true};
 
-    /// Completion event — signalled by each finished dispatch task so the
-    /// main loop can wake up.  Must be a member (not local to the coroutine)
-    /// because inflight tasks capture it by reference and may outlive the
-    /// coroutine frame during server shutdown.
-    kota::event completion_event;
-
-    /// Generation counter — incremented each run so a stale monitor_resources
-    /// coroutine can detect that its owning run has ended.
-    std::uint32_t monitor_generation = 0;
-
     kota::task<> run_background_indexing();
     kota::task<> index_one(std::uint32_t server_path_id);
-    kota::task<> monitor_resources(std::uint32_t generation);
+    kota::task<> monitor_resources();
 };
 
 }  // namespace clice
