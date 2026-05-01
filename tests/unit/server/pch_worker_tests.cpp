@@ -30,7 +30,6 @@ TEST_CASE(BuildPCHThenCompile) {
 
     auto dir = std::string(tmp.root);
 
-    // --- Phase 1: Build PCH via stateless worker ---
     WorkerHandle sl;
     ASSERT_TRUE(sl.spawn("stateless-worker"));
 
@@ -69,7 +68,6 @@ TEST_CASE(BuildPCHThenCompile) {
     // Verify the PCH file exists on disk.
     ASSERT_TRUE(llvm::sys::fs::exists(pch_path));
 
-    // --- Phase 2: Compile with PCH via stateful worker ---
     WorkerHandle sf;
     ASSERT_TRUE(sf.spawn("stateful-worker"));
 

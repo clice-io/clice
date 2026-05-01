@@ -92,14 +92,10 @@ tidy::ClangTidyOptions create_options() {
                          // include-cleaner is directly integrated in IncludeCleaner.cpp
                          "-misc-include-cleaner",
 
-                         // ----- False Positives -----
-
                          // Check relies on seeing ifndef/define/endif directives,
                          // clangd doesn't replay those when using a preamble.
                          "-llvm-header-guard",
                          "-modernize-macro-to-enum",
-
-                         // ----- Crashing Checks -----
 
                          // Check can choke on invalid (intermediate) c++
                          // code, which is often the case when clangd

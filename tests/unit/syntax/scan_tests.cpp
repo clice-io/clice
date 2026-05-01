@@ -291,8 +291,6 @@ int x;
 
 TEST_SUITE(PreambleComplete) {
 
-// --- #include completeness ---
-
 TEST_CASE(CompleteQuotedInclude) {
     llvm::StringRef content = "#include \"foo.h\"\nint x;";
     auto bound = compute_preamble_bound(content);
@@ -341,8 +339,7 @@ TEST_CASE(MultipleIncludesLastIncomplete) {
     EXPECT_FALSE(is_preamble_complete(content, bound));
 }
 
-// --- C++20 module statements ---
-// Note: compute_preamble_bound does not include import/export lines in its
+// compute_preamble_bound does not include import/export lines in its
 // bound, so we pass manual bounds covering the relevant lines.
 
 TEST_CASE(CompleteImport) {
@@ -380,8 +377,6 @@ TEST_CASE(CompleteExportImport) {
     // Bound covers "export import std;\n".
     EXPECT_TRUE(is_preamble_complete(content, 19));
 }
-
-// --- Edge cases ---
 
 TEST_CASE(EmptyPreamble) {
     llvm::StringRef content = "int x;";

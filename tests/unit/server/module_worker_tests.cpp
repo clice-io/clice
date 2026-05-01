@@ -29,7 +29,6 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
     tmp.touch("consumer.cpp", "import Hello;\n" "int main() { return hello()[0]; }\n");
     auto consumer = tmp.path("consumer.cpp");
 
-    // --- Phase 1: Build PCM via stateless worker ---
     WorkerHandle sl;
     ASSERT_TRUE(sl.spawn("stateless-worker"));
 
@@ -63,7 +62,6 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
     ASSERT_TRUE(phase1_done);
     ASSERT_FALSE(pcm_path.empty());
 
-    // --- Phase 2: Compile consumer with the PCM via stateful worker ---
     WorkerHandle sf;
     ASSERT_TRUE(sf.spawn("stateful-worker"));
 

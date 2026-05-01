@@ -1111,8 +1111,6 @@ public:
         return Base::TransformDecltypeType(TLB, TL);
     }
 
-    // --- State ---
-
 private:
     clang::Sema& sema;
     clang::ASTContext& context;
