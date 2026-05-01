@@ -17,9 +17,11 @@ namespace clice {
 using kota::deco::decl::KVStyle;
 
 struct Options {
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Running mode: pipe, socket, agentic, stateless-worker, stateful-worker",
-           required = false)
+    DecoKV(
+        style = KVStyle::JoinedOrSeparate,
+        help =
+            "Running mode: pipe, socket, daemon, relay, agentic, stateless-worker, stateful-worker",
+        required = false)
     <std::string> mode;
 
     DecoKV(style = KVStyle::JoinedOrSeparate, help = "Socket mode address", required = false)
@@ -45,6 +47,16 @@ struct Options {
            help = "File path for agentic queries",
            required = false)
     <std::string> path;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Unix domain socket path for daemon mode",
+           required = false)
+    <std::string> socket;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Workspace root directory for daemon mode",
+           required = false)
+    <std::string> workspace;
 
     // Internal options (passed from master to worker processes)
     DecoKV(style = KVStyle::JoinedOrSeparate,
@@ -139,6 +151,14 @@ int main(int argc, const char** argv) {
         return clice::run_server_mode(server_opts);
     }
 
+    if(mode == "daemon") {
+        clice::DaemonOptions daemon_opts;
+        daemon_opts.socket_path = opts.socket.value_or("");
+        daemon_opts.workspace = opts.workspace.value_or("");
+        daemon_opts.self_path = argv[0];
+        return clice::run_daemon_mode(daemon_opts);
+    }
+
     if(mode == "agentic") {
         auto host = opts.host.value_or("127.0.0.1");
         auto port = opts.port.value_or(0);
@@ -152,6 +172,11 @@ int main(int argc, const char** argv) {
             return 1;
         }
         return clice::run_agentic_mode(host, port, path);
+    }
+
+    if(mode == "relay") {
+        auto socket = opts.socket.value_or("");
+        return clice::run_relay_mode(socket);
     }
 
     LOG_ERROR("unknown mode '{}'", mode);

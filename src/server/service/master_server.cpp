@@ -12,6 +12,7 @@
 #include "support/logging.h"
 
 #include "kota/async/async.h"
+#include "kota/async/io/fs_event.h"
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
 #include "kota/ipc/lsp/protocol.h"
@@ -19,6 +20,7 @@
 #include "kota/ipc/recording_transport.h"
 #include "kota/ipc/transport.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 
 namespace clice {
@@ -89,6 +91,52 @@ void MasterServer::initialize() {
     indexer.set_max_concurrency(cfg.stateless_worker_count.value);
 
     load_workspace();
+}
+
+void MasterServer::initialize(llvm::StringRef root) {
+    workspace_root = root.str();
+    initialize();
+}
+
+void MasterServer::start_file_watcher() {
+    if(workspace_root.empty())
+        return;
+
+    loop.schedule([this]() -> kota::task<> {
+        auto watcher = kota::fs_event::create(workspace_root, {}, loop);
+        if(!watcher) {
+            LOG_WARN("Failed to start file watcher for {}", workspace_root);
+            co_return;
+        }
+
+        LOG_INFO("File watcher started for {}", workspace_root);
+
+        while(true) {
+            auto changes = co_await watcher->next();
+            if(!changes)
+                break;
+
+            for(auto& change: *changes) {
+                if(change.type != kota::fs_event::effect::modify &&
+                   change.type != kota::fs_event::effect::create)
+                    continue;
+
+                llvm::StringRef file(change.path);
+                if(file.ends_with("compile_commands.json")) {
+                    LOG_INFO("CDB changed, reloading workspace");
+                    load_workspace();
+                    continue;
+                }
+
+                if(file.ends_with(".cpp") || file.ends_with(".cc") || file.ends_with(".cxx") ||
+                   file.ends_with(".c") || file.ends_with(".h") || file.ends_with(".hpp") ||
+                   file.ends_with(".hxx") || file.ends_with(".cppm") || file.ends_with(".ixx")) {
+                    auto path_id = workspace.path_pool.intern(file);
+                    on_file_saved(path_id);
+                }
+            }
+        }
+    }());
 }
 
 Session* MasterServer::find_session(std::uint32_t path_id) {
@@ -382,6 +430,95 @@ int run_server_mode(const ServerOptions& opts) {
 
     LOG_ERROR("unknown server mode '{}'", opts.mode);
     return 1;
+}
+
+struct DaemonConnection {
+    std::unique_ptr<kota::ipc::JsonPeer> peer;
+    std::unique_ptr<AgentClient> agent_client;
+};
+
+static kota::task<> run_daemon_connection(kota::ipc::JsonPeer* peer,
+                                          std::list<DaemonConnection>& connections,
+                                          std::list<DaemonConnection>::iterator pos) {
+    co_await peer->run();
+    LOG_INFO("Daemon client disconnected");
+    connections.erase(pos);
+}
+
+static kota::task<> accept_daemon_connections(MasterServer& server,
+                                              kota::pipe::acceptor acceptor,
+                                              std::list<DaemonConnection>& connections) {
+    auto& loop = kota::event_loop::current();
+    kota::task_group<> connection_group(loop);
+
+    while(true) {
+        auto conn = co_await acceptor.accept();
+        if(!conn.has_value())
+            break;
+
+        LOG_INFO("Daemon client connected");
+
+        auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
+        auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+        auto agent = std::make_unique<AgentClient>(server, *peer);
+
+        auto* peer_ptr = peer.get();
+        auto it = connections.emplace(connections.end(),
+                                      DaemonConnection{
+                                          .peer = std::move(peer),
+                                          .agent_client = std::move(agent),
+                                      });
+
+        connection_group.spawn(run_daemon_connection(peer_ptr, connections, it));
+    }
+
+    co_await connection_group.join();
+}
+
+static std::string default_socket_path() {
+    llvm::SmallString<128> home;
+    if(!llvm::sys::path::home_directory(home))
+        return "/tmp/clice.sock";
+    llvm::sys::path::append(home, ".clice", "clice.sock");
+    return home.str().str();
+}
+
+int run_daemon_mode(const DaemonOptions& opts) {
+    logging::stderr_logger("daemon", logging::options);
+
+    auto socket_path = opts.socket_path.empty() ? default_socket_path() : opts.socket_path;
+
+    auto socket_dir = llvm::sys::path::parent_path(socket_path);
+    if(auto ec = llvm::sys::fs::create_directories(socket_dir)) {
+        LOG_ERROR("Failed to create socket directory {}: {}", socket_dir, ec.message());
+        return 1;
+    }
+
+    if(llvm::sys::fs::exists(socket_path)) {
+        llvm::sys::fs::remove(socket_path);
+    }
+
+    kota::event_loop loop;
+    MasterServer server(loop, opts.self_path);
+    std::list<DaemonConnection> connections;
+
+    if(!opts.workspace.empty()) {
+        server.initialize(opts.workspace);
+        server.start_file_watcher();
+    }
+
+    auto acceptor = kota::pipe::listen(socket_path, {}, loop);
+    if(!acceptor) {
+        LOG_ERROR("Failed to listen on {}", socket_path);
+        return 1;
+    }
+
+    LOG_INFO("Daemon listening on {}", socket_path);
+    loop.schedule(accept_daemon_connections(server, std::move(*acceptor), connections));
+    loop.run();
+
+    llvm::sys::fs::remove(socket_path);
+    return 0;
 }
 
 }  // namespace clice

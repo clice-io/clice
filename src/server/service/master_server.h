@@ -37,6 +37,9 @@ public:
     ~MasterServer();
 
     void initialize();
+    void initialize(llvm::StringRef root);
+
+    void start_file_watcher();
 
     Session* find_session(std::uint32_t path_id);
     Session& open_session(std::uint32_t path_id);
@@ -73,5 +76,13 @@ struct ServerOptions {
 };
 
 int run_server_mode(const ServerOptions& opts);
+
+struct DaemonOptions {
+    std::string socket_path;
+    std::string workspace;
+    std::string self_path;
+};
+
+int run_daemon_mode(const DaemonOptions& opts);
 
 }  // namespace clice
