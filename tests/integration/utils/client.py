@@ -92,13 +92,18 @@ class CliceClient(BaseLanguageClient):
         *,
         initialization_options: dict | None = None,
     ) -> InitializeResult:
+        if initialization_options is None:
+            initialization_options = {}
+        project = dict(initialization_options.get("project", {}))
+        project.setdefault("cache_dir", str(workspace / ".clice"))
+        initialization_options["project"] = project
+
         params = InitializeParams(
             capabilities=ClientCapabilities(),
             root_uri=workspace.as_uri(),
             workspace_folders=[WorkspaceFolder(uri=workspace.as_uri(), name="test")],
         )
-        if initialization_options is not None:
-            params.initialization_options = initialization_options
+        params.initialization_options = initialization_options
         result = await self.initialize_async(params)
         self.initialized(InitializedParams())
         self.init_result = result

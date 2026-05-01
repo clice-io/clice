@@ -5,18 +5,26 @@
 #include <string>
 #include <vector>
 
+#include "server/protocol/worker.h"
 #include "server/service/agent_client.h"
 #include "server/service/lsp_client.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/async/async.h"
+#include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
+#include "kota/ipc/lsp/protocol.h"
+#include "kota/ipc/lsp/uri.h"
 #include "kota/ipc/recording_transport.h"
 #include "kota/ipc/transport.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Process.h"
 
 namespace clice {
+
+namespace lsp = kota::ipc::lsp;
+namespace protocol = kota::ipc::protocol;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), compiler(loop, workspace, pool, sessions),
@@ -34,12 +42,120 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
 
 MasterServer::~MasterServer() = default;
 
-void MasterServer::initialize(llvm::StringRef root) {
-    workspace_root = root.str();
+void MasterServer::initialize() {
     workspace.config = Config::load_from_workspace(workspace_root);
-    workspace.config.apply_defaults(workspace_root);
+    if(!init_options_json.empty()) {
+        if(auto ov = kota::codec::json::parse(init_options_json, workspace.config); !ov) {
+            LOG_WARN("Failed to apply initializationOptions: {}", ov.error().to_string());
+        } else {
+            workspace.config.apply_defaults(workspace_root);
+            LOG_INFO("Applied initializationOptions overlay");
+        }
+        init_options_json.clear();
+    }
+
+    auto& cfg = workspace.config.project;
+
+    if(!cfg.logging_dir.empty()) {
+        auto now = std::chrono::system_clock::now();
+        auto pid = llvm::sys::Process::getProcessId();
+        session_log_dir =
+            path::join(cfg.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
+        logging::file_logger("master", session_log_dir, logging::options);
+    }
+
+    LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
+             cfg.stateful_worker_count.value,
+             cfg.stateless_worker_count.value,
+             *cfg.idle_timeout_ms);
+
+    WorkerPoolOptions pool_opts;
+    pool_opts.self_path = self_path;
+    pool_opts.stateful_count = cfg.stateful_worker_count;
+    pool_opts.stateless_count = cfg.stateless_worker_count;
+    pool_opts.worker_memory_limit = cfg.worker_memory_limit;
+    pool_opts.log_dir = session_log_dir;
+    if(!pool.start(pool_opts)) {
+        LOG_ERROR("Failed to start worker pool");
+        return;
+    }
+
     lifecycle = ServerLifecycle::Ready;
+
+    compiler.on_indexing_needed = [this]() {
+        indexer.schedule();
+    };
+
+    indexer.set_max_concurrency(cfg.stateless_worker_count.value);
+
     load_workspace();
+}
+
+Session* MasterServer::find_session(std::uint32_t path_id) {
+    auto it = sessions.find(path_id);
+    return it != sessions.end() ? &it->second : nullptr;
+}
+
+Session& MasterServer::open_session(std::uint32_t path_id) {
+    auto [it, inserted] = sessions.try_emplace(path_id);
+    auto& session = it->second;
+    if(!inserted)
+        session = Session{};
+    session.path_id = path_id;
+    return session;
+}
+
+void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& peer) {
+    namespace protocol = kota::ipc::protocol;
+
+    auto path = workspace.path_pool.resolve(path_id);
+    workspace.on_file_closed(path_id);
+    pool.notify_stateful(path_id, worker::EvictParams{std::string(path)});
+
+    protocol::PublishDiagnosticsParams diag_params;
+    auto uri = lsp::URI::from_file_path(std::string(path));
+    if(uri)
+        diag_params.uri = uri->str();
+    diag_params.diagnostics = {};
+    peer.send_notification(diag_params);
+
+    sessions.erase(path_id);
+
+    indexer.enqueue(path_id);
+    indexer.schedule();
+
+    LOG_DEBUG("didClose: {}", path);
+}
+
+void MasterServer::on_file_saved(std::uint32_t path_id) {
+    auto dirtied = workspace.on_file_saved(path_id);
+    for(auto dirty_id: dirtied) {
+        if(auto* session = find_session(dirty_id)) {
+            session->ast_dirty = true;
+        } else {
+            indexer.enqueue(dirty_id);
+        }
+    }
+
+    for(auto& [hdr_id, session]: sessions) {
+        if(session.header_context && session.header_context->host_path_id == path_id) {
+            session.header_context.reset();
+            session.ast_dirty = true;
+        }
+    }
+
+    indexer.schedule();
+}
+
+void MasterServer::schedule_shutdown() {
+    indexer.save(workspace.config.project.index_dir);
+    workspace.save_cache();
+
+    loop.schedule([this]() -> kota::task<> {
+        co_await compiler.stop();
+        co_await pool.stop();
+        loop.stop();
+    }());
 }
 
 void MasterServer::load_workspace() {
@@ -179,6 +295,7 @@ static kota::task<> accept_connections(MasterServer& server,
                                        std::list<Connection>& connections) {
     auto& loop = kota::event_loop::current();
     kota::task_group<> connection_group(loop);
+    bool lsp_registered = false;
 
     while(true) {
         auto conn = co_await acceptor.accept();
@@ -191,8 +308,10 @@ static kota::task<> accept_connections(MasterServer& server,
         auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
 
         std::unique_ptr<LSPClient> lsp;
-        if(register_lsp)
+        if(register_lsp && !lsp_registered) {
             lsp = std::make_unique<LSPClient>(server, *peer);
+            lsp_registered = true;
+        }
         auto agent = std::make_unique<AgentClient>(server, *peer);
 
         auto* peer_ptr = peer.get();

@@ -21,7 +21,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                const CompileCommandParams& params) -> RequestResult<CompileCommandParams> {
             std::string directory;
             std::vector<std::string> arguments;
-            if(!this->server.compiler.fill_compile_args(params.path, directory, arguments)) {
+            if(!this->server.get_compiler().fill_compile_args(params.path, directory, arguments)) {
                 co_return kota::outcome_error(
                     kota::ipc::Error{std::format("no compile command found for {}", params.path)});
             }

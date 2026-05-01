@@ -153,7 +153,7 @@ String values support `${workspace}` substitution.
 
 ## IPC Protocol
 
-The master and workers communicate using custom RPC messages defined in `src/server/protocol.h`. Each message type has a `RequestTraits` or `NotificationTraits` specialization that defines the method name and result type.
+The master and workers communicate using custom RPC messages defined in `src/server/protocol/`. Each message type has a `RequestTraits` or `NotificationTraits` specialization that defines the method name and result type.
 
 ### Stateful Worker Messages
 
