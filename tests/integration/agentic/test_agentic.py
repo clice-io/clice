@@ -217,8 +217,13 @@ async def test_rpc_symbol_search(indexed_agentic, workspace):
     rpc, _ = indexed_agentic
     resp = rpc.request("agentic/symbolSearch", {"query": "add"})
     assert "result" in resp, f"unexpected response: {resp}"
-    names = [s["name"] for s in resp["result"]["symbols"]]
-    assert "add" in names
+    symbols = resp["result"]["symbols"]
+    add_sym = next((s for s in symbols if s["name"] == "add"), None)
+    assert add_sym is not None, f"'add' not found in {[s['name'] for s in symbols]}"
+    assert add_sym["kind"] == "Function"
+    assert add_sym["line"] == 19
+    assert add_sym["symbolId"] != 0
+    assert "main.cpp" in add_sym["file"]
 
 
 @pytest.mark.workspace("index_features")
@@ -248,7 +253,10 @@ async def test_rpc_read_symbol(indexed_agentic, workspace):
     result = resp["result"]
     assert result["name"] == "add"
     assert result["symbolId"] != 0
-    assert "int" in result["text"] or "add" in result["text"]
+    assert result["startLine"] == 19
+    assert result["endLine"] == 21
+    assert "int add(int a, int b)" in result["text"]
+    assert "return a + b;" in result["text"]
 
 
 @pytest.mark.workspace("index_features")
@@ -270,9 +278,15 @@ async def test_rpc_document_symbols(indexed_agentic, workspace):
     path = (workspace / "main.cpp").as_posix()
     resp = rpc.request("agentic/documentSymbols", {"path": path})
     assert "result" in resp, f"unexpected response: {resp}"
-    names = [s["name"] for s in resp["result"]["symbols"]]
-    assert any("add" in n for n in names), f"expected 'add' in {names}"
-    assert any("main" in n for n in names), f"expected 'main' in {names}"
+    symbols = resp["result"]["symbols"]
+    names = [s["name"] for s in symbols]
+    kinds = [s["kind"] for s in symbols]
+    assert "add" in names, f"expected 'add' in {names}"
+    assert "main" in names, f"expected 'main' in {names}"
+    assert "global_var" in names, f"expected 'global_var' in {names}"
+    assert "Parameter" not in kinds, (
+        f"Parameters should be filtered: {list(zip(names, kinds))}"
+    )
 
 
 @pytest.mark.workspace("index_features")
@@ -283,7 +297,12 @@ async def test_rpc_definition(indexed_agentic, workspace):
     result = resp["result"]
     assert result["name"] == "add"
     assert result["definition"] is not None
-    assert "main.cpp" in result["definition"]["file"]
+    defn = result["definition"]
+    assert "main.cpp" in defn["file"]
+    assert defn["startLine"] == 19
+    assert defn["endLine"] == 21
+    assert "int add(int a, int b)" in defn["text"]
+    assert "return a + b;" in defn["text"]
 
 
 @pytest.mark.workspace("index_features")
@@ -302,7 +321,12 @@ async def test_rpc_references(indexed_agentic, workspace):
     assert "result" in resp, f"unexpected response: {resp}"
     result = resp["result"]
     assert result["name"] == "global_var"
-    assert result["total"] >= 2
+    assert result["total"] == 2
+    lines = sorted(r["line"] for r in result["references"])
+    assert lines == [34, 38]
+    contexts = [r["context"] for r in result["references"]]
+    assert any("global_var + 1" in c for c in contexts)
+    assert any("global_var * 2" in c for c in contexts)
 
 
 @pytest.mark.workspace("index_features")
@@ -312,7 +336,10 @@ async def test_rpc_references_include_decl(indexed_agentic, workspace):
         "agentic/references", {"name": "global_var", "includeDeclaration": True}
     )
     assert "result" in resp
-    assert resp["result"]["total"] >= 3
+    result = resp["result"]
+    assert result["total"] == 3
+    lines = sorted(r["line"] for r in result["references"])
+    assert 31 in lines, f"expected declaration line 31 in {lines}"
 
 
 @pytest.mark.workspace("index_features")
@@ -322,8 +349,15 @@ async def test_rpc_call_graph_incoming(indexed_agentic, workspace):
     assert "result" in resp, f"unexpected response: {resp}"
     result = resp["result"]
     assert result["root"]["name"] == "add"
-    caller_names = [c["name"] for c in result["callers"]]
+    assert result["root"]["line"] == 19
+    assert result["root"]["symbolId"] != 0
+    callers = result["callers"]
+    caller_names = [c["name"] for c in callers]
     assert "compute" in caller_names, f"expected 'compute' in {caller_names}"
+    compute = next(c for c in callers if c["name"] == "compute")
+    assert compute["line"] == 24
+    assert compute["symbolId"] != 0
+    assert result["callees"] == []
 
 
 @pytest.mark.workspace("index_features")
@@ -331,8 +365,14 @@ async def test_rpc_call_graph_outgoing(indexed_agentic, workspace):
     rpc, _ = indexed_agentic
     resp = rpc.request("agentic/callGraph", {"name": "compute", "direction": "callees"})
     assert "result" in resp, f"unexpected response: {resp}"
-    callee_names = [c["name"] for c in resp["result"]["callees"]]
+    result = resp["result"]
+    assert result["root"]["name"] == "compute"
+    callees = result["callees"]
+    callee_names = [c["name"] for c in callees]
     assert "add" in callee_names, f"expected 'add' in {callee_names}"
+    add_entry = next(c for c in callees if c["name"] == "add")
+    assert add_entry["line"] == 19
+    assert result["callers"] == []
 
 
 @pytest.mark.workspace("index_features")
@@ -344,8 +384,13 @@ async def test_rpc_type_hierarchy_supertypes(indexed_agentic, workspace):
     assert "result" in resp, f"unexpected response: {resp}"
     result = resp["result"]
     assert result["root"]["name"] == "Dog"
-    supertype_names = [t["name"] for t in result["supertypes"]]
+    assert result["root"]["line"] == 9
+    supertypes = result["supertypes"]
+    supertype_names = [t["name"] for t in supertypes]
     assert "Animal" in supertype_names, f"expected 'Animal' in {supertype_names}"
+    animal = next(t for t in supertypes if t["name"] == "Animal")
+    assert animal["line"] == 2
+    assert animal["symbolId"] != 0
 
 
 @pytest.mark.workspace("index_features")
@@ -355,9 +400,17 @@ async def test_rpc_type_hierarchy_subtypes(indexed_agentic, workspace):
         "agentic/typeHierarchy", {"name": "Animal", "direction": "subtypes"}
     )
     assert "result" in resp, f"unexpected response: {resp}"
-    subtype_names = [t["name"] for t in resp["result"]["subtypes"]]
+    result = resp["result"]
+    assert result["root"]["name"] == "Animal"
+    assert result["root"]["line"] == 2
+    subtypes = result["subtypes"]
+    subtype_names = [t["name"] for t in subtypes]
     assert "Dog" in subtype_names, f"expected 'Dog' in {subtype_names}"
     assert "Cat" in subtype_names, f"expected 'Cat' in {subtype_names}"
+    dog = next(t for t in subtypes if t["name"] == "Dog")
+    assert dog["line"] == 9
+    cat = next(t for t in subtypes if t["name"] == "Cat")
+    assert cat["line"] == 14
 
 
 @pytest.mark.workspace("index_features")

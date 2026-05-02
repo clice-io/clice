@@ -75,6 +75,80 @@ static std::string read_file_lines(llvm::StringRef file_path, int start_line, in
     return content.slice(start_pos, end_pos).str();
 }
 
+struct DefinitionText {
+    std::string text;
+    int end_line;
+};
+
+static DefinitionText read_definition_text(llvm::StringRef file_path, int start_line) {
+    auto buf = llvm::MemoryBuffer::getFile(file_path);
+    if(!buf)
+        return {"", start_line};
+    llvm::StringRef content = (*buf)->getBuffer();
+
+    int current = 1;
+    std::size_t start_pos = 0;
+    while(current < start_line && start_pos < content.size()) {
+        if(content[start_pos] == '\n')
+            ++current;
+        ++start_pos;
+    }
+    if(current != start_line)
+        return {"", start_line};
+
+    int depth = 0;
+    bool found_brace = false;
+    std::size_t end_pos = start_pos;
+    int end_line = start_line;
+
+    while(end_pos < content.size()) {
+        char c = content[end_pos];
+        if(c == '{') {
+            ++depth;
+            found_brace = true;
+        } else if(c == '}') {
+            --depth;
+            if(found_brace && depth == 0) {
+                ++end_pos;
+                while(end_pos < content.size() && content[end_pos] != '\n')
+                    ++end_pos;
+                if(end_pos < content.size())
+                    ++end_pos;
+                return {content.slice(start_pos, end_pos).str(), end_line};
+            }
+        } else if(c == '\n') {
+            ++end_line;
+        } else if(c == '/' && end_pos + 1 < content.size()) {
+            if(content[end_pos + 1] == '/') {
+                while(end_pos < content.size() && content[end_pos] != '\n')
+                    ++end_pos;
+                continue;
+            }
+        } else if(c == '\'' || c == '"') {
+            char quote = c;
+            ++end_pos;
+            while(end_pos < content.size() && content[end_pos] != quote) {
+                if(content[end_pos] == '\\')
+                    ++end_pos;
+                ++end_pos;
+            }
+        }
+
+        if(!found_brace && c == ';') {
+            ++end_pos;
+            while(end_pos < content.size() && content[end_pos] != '\n')
+                ++end_pos;
+            if(end_pos < content.size())
+                ++end_pos;
+            return {content.slice(start_pos, end_pos).str(), end_line};
+        }
+
+        ++end_pos;
+    }
+
+    return {content.slice(start_pos, end_pos).str(), end_line};
+}
+
 static std::string path_from_uri(llvm::StringRef uri) {
     auto parsed = lsp::URI::parse(uri);
     if(parsed.has_value()) {
@@ -479,10 +553,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
             auto file = path_from_uri(def_loc->uri);
             int start = static_cast<int>(def_loc->range.start.line) + 1;
-            int end = static_cast<int>(def_loc->range.end.line) + 1;
-            if(end < start)
-                end = start;
-            auto text = read_file_lines(file, start, end);
+            auto [text, end] = read_definition_text(file, start);
 
             co_return ReadSymbolResult{
                 .name = rs.name,
@@ -498,6 +569,11 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     peer.on_request(
         [&srv](RequestContext&,
                const DocumentSymbolsParams& params) -> RequestResult<DocumentSymbolsParams> {
+            auto is_document_level = [](SymbolKind kind) {
+                return kind != SymbolKind::Parameter && kind != SymbolKind::Label &&
+                       kind != SymbolKind::MacroParameter;
+            };
+
             DocumentSymbolsResult result;
 
             auto server_id = srv.workspace.path_pool.intern(params.path);
@@ -511,6 +587,8 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                         std::string name;
                         SymbolKind kind;
                         if(!srv.indexer.find_symbol_info(hash, name, kind))
+                            continue;
+                        if(!is_document_level(kind))
                             continue;
                         if(fi.mapper) {
                             auto start = fi.mapper->to_position(rel.range.begin);
@@ -542,6 +620,8 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
             for(auto& [hash, symbol]: srv.workspace.project_index.symbols) {
                 if(symbol.name.empty())
+                    continue;
+                if(!is_document_level(symbol.kind))
                     continue;
                 if(!symbol.reference_files.contains(proj_id))
                     continue;
@@ -590,10 +670,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(def_loc) {
                 auto file = path_from_uri(def_loc->uri);
                 int start = static_cast<int>(def_loc->range.start.line) + 1;
-                int end = static_cast<int>(def_loc->range.end.line) + 1;
-                if(end < start)
-                    end = start;
-                auto text = read_file_lines(file, start, end);
+                auto [text, end] = read_definition_text(file, start);
                 result.definition = LocationEntry{
                     .file = std::move(file),
                     .start_line = start,
