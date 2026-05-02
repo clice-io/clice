@@ -69,6 +69,8 @@ static kota::task<> agentic_request(kota::ipc::JsonPeer& peer,
                                      agentic::FileDepsParams{.path = opts.path, .direction = dir});
     } else if(opts.method == "impactAnalysis") {
         ok = co_await send_and_print(peer, agentic::ImpactAnalysisParams{.path = opts.path});
+    } else if(opts.method == "status") {
+        ok = co_await send_and_print(peer, agentic::StatusParams{});
     } else {
         LOG_ERROR("unknown agentic method '{}'", opts.method);
     }

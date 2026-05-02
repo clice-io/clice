@@ -51,7 +51,7 @@ struct Options {
     DecoKV(
         style = KVStyle::JoinedOrSeparate,
         help =
-            "Agentic method (compileCommand, symbolSearch, definition, references, " "documentSymbols, readSymbol, callGraph, typeHierarchy, projectFiles)",
+            "Agentic method (compileCommand, symbolSearch, definition, references, " "documentSymbols, readSymbol, callGraph, typeHierarchy, projectFiles, status)",
         required = false)
     <std::string> method;
 

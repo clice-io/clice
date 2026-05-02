@@ -167,6 +167,21 @@ public:
     std::vector<protocol::SymbolInformation> search_symbols(llvm::StringRef query,
                                                             std::size_t max_results = 100);
 
+    /// Whether background indexing is currently idle (no active or queued work).
+    bool is_idle() const {
+        return !indexing_active && index_queue_pos >= index_queue.size();
+    }
+
+    /// Number of files remaining in the indexing queue.
+    std::size_t pending_files() const {
+        return index_queue_pos < index_queue.size() ? index_queue.size() - index_queue_pos : 0;
+    }
+
+    /// Total files that were enqueued in the current (or last) indexing round.
+    std::size_t total_queued() const {
+        return index_queue.size();
+    }
+
     /// Convert internal SymbolKind to LSP SymbolKind.
     static protocol::SymbolKind to_lsp_symbol_kind(SymbolKind kind);
 

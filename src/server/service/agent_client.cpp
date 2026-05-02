@@ -864,6 +864,16 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
             co_return result;
         });
+
+    peer.on_request([&srv](RequestContext&, const StatusParams&) -> RequestResult<StatusParams> {
+        auto& ws = srv.workspace;
+        StatusResult result;
+        result.idle = srv.indexer.is_idle();
+        result.pending = static_cast<int>(srv.indexer.pending_files());
+        result.total = static_cast<int>(ws.cdb.get_entries().size());
+        result.indexed = static_cast<int>(ws.merged_indices.size());
+        co_return result;
+    });
 }
 
 }  // namespace clice

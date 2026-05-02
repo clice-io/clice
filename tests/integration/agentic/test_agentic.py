@@ -414,6 +414,18 @@ async def test_rpc_type_hierarchy_subtypes(indexed_agentic, workspace):
 
 
 @pytest.mark.workspace("index_features")
+async def test_rpc_status(indexed_agentic, workspace):
+    rpc, _ = indexed_agentic
+    resp = rpc.request("agentic/status", {})
+    assert "result" in resp, f"unexpected response: {resp}"
+    result = resp["result"]
+    assert isinstance(result["idle"], bool)
+    assert result["total"] > 0
+    assert isinstance(result["pending"], int)
+    assert isinstance(result["indexed"], int)
+
+
+@pytest.mark.workspace("index_features")
 async def test_rpc_symbol_not_found(indexed_agentic, workspace):
     rpc, _ = indexed_agentic
     resp = rpc.request("agentic/definition", {"name": "nonexistent_symbol_xyz"})

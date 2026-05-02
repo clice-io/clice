@@ -202,6 +202,15 @@ struct TypeHierarchyResult {
     std::vector<TypeHierarchyEntry> subtypes;
 };
 
+struct StatusParams {};
+
+struct StatusResult {
+    bool idle = true;
+    int pending = 0;
+    int total = 0;
+    int indexed = 0;
+};
+
 }  // namespace clice::agentic
 
 namespace kota::ipc::protocol {
@@ -270,6 +279,12 @@ template <>
 struct RequestTraits<clice::agentic::TypeHierarchyParams> {
     using Result = clice::agentic::TypeHierarchyResult;
     constexpr inline static std::string_view method = "agentic/typeHierarchy";
+};
+
+template <>
+struct RequestTraits<clice::agentic::StatusParams> {
+    using Result = clice::agentic::StatusResult;
+    constexpr inline static std::string_view method = "agentic/status";
 };
 
 }  // namespace kota::ipc::protocol

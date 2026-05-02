@@ -175,3 +175,15 @@ async def test_cli_project_files(indexed_server, workspace):
     assert data["total"] > 0
     paths = [f["path"] for f in data["files"]]
     assert any("main.cpp" in p for p in paths)
+
+
+@pytest.mark.workspace("index_features")
+async def test_cli_status(indexed_server, workspace):
+    exe, host, port, _ = indexed_server
+    r = run_cli(exe, host, port, "status")
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    data = json.loads(r.stdout)
+    assert isinstance(data["idle"], bool)
+    assert data["total"] > 0
+    assert isinstance(data["pending"], int)
+    assert isinstance(data["indexed"], int)
