@@ -48,6 +48,33 @@ struct Options {
            required = false)
     <std::string> path;
 
+    DecoKV(
+        style = KVStyle::JoinedOrSeparate,
+        help =
+            "Agentic method (compileCommand, symbolSearch, definition, references, " "documentSymbols, readSymbol, callGraph, typeHierarchy, projectFiles)",
+        required = false)
+    <std::string> method;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Symbol name for agentic queries",
+           required = false)
+    <std::string> name;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Search query for symbolSearch",
+           required = false)
+    <std::string> query;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Line number for position-based lookup",
+           required = false)
+    <int> line;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Direction: callers/callees or supertypes/subtypes",
+           required = false)
+    <std::string> direction;
+
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Unix domain socket path for daemon mode",
            required = false)
@@ -160,18 +187,21 @@ int main(int argc, const char** argv) {
     }
 
     if(mode == "agentic") {
-        auto host = opts.host.value_or("127.0.0.1");
         auto port = opts.port.value_or(0);
-        auto path = opts.path.value_or("");
         if(port <= 0) {
             LOG_ERROR("--port is required for agentic mode");
             return 1;
         }
-        if(path.empty()) {
-            LOG_ERROR("--path is required for agentic mode");
-            return 1;
-        }
-        return clice::run_agentic_mode(host, port, path);
+        clice::AgenticQueryOptions aq;
+        aq.host = opts.host.value_or("127.0.0.1");
+        aq.port = port;
+        aq.method = opts.method.value_or("compileCommand");
+        aq.path = opts.path.value_or("");
+        aq.name = opts.name.value_or("");
+        aq.query = opts.query.value_or("");
+        aq.line = opts.line.value_or(0);
+        aq.direction = opts.direction.value_or("");
+        return clice::run_agentic_mode(aq);
     }
 
     if(mode == "relay") {

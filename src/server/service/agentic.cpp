@@ -14,45 +14,91 @@
 
 namespace clice {
 
-static kota::task<> agentic_request(kota::ipc::JsonPeer& peer, int& exit_code, std::string path) {
-    auto result =
-        co_await peer.send_request(agentic::CompileCommandParams{.path = std::move(path)});
-
+template <typename Params>
+static kota::task<bool> send_and_print(kota::ipc::JsonPeer& peer, Params params) {
+    auto result = co_await peer.send_request(std::move(params));
     if(!result) {
         LOG_ERROR("request failed: {}", result.error().message);
+        co_return false;
+    }
+    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(*result);
+    std::println("{}", json ? *json : "null");
+    co_return true;
+}
+
+static kota::task<> agentic_request(kota::ipc::JsonPeer& peer,
+                                    int& exit_code,
+                                    const AgenticQueryOptions& opts) {
+    bool ok = false;
+
+    if(opts.method == "compileCommand") {
+        ok = co_await send_and_print(peer, agentic::CompileCommandParams{.path = opts.path});
+    } else if(opts.method == "projectFiles") {
+        auto filter = opts.query.empty() ? std::nullopt : std::optional(opts.query);
+        ok = co_await send_and_print(peer, agentic::ProjectFilesParams{.filter = filter});
+    } else if(opts.method == "symbolSearch") {
+        ok = co_await send_and_print(peer, agentic::SymbolSearchParams{.query = opts.query});
+    } else if(opts.method == "definition") {
+        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
+        auto path = opts.path.empty() ? std::nullopt : std::optional(opts.path);
+        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
+        ok = co_await send_and_print(
+            peer,
+            agentic::DefinitionParams{.name = name, .path = path, .line = line});
+    } else if(opts.method == "references") {
+        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
+        ok = co_await send_and_print(peer, agentic::ReferencesParams{.name = name});
+    } else if(opts.method == "readSymbol") {
+        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
+        ok = co_await send_and_print(peer, agentic::ReadSymbolParams{.name = name});
+    } else if(opts.method == "documentSymbols") {
+        ok = co_await send_and_print(peer, agentic::DocumentSymbolsParams{.path = opts.path});
+    } else if(opts.method == "callGraph") {
+        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
+        auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
+        ok =
+            co_await send_and_print(peer, agentic::CallGraphParams{.name = name, .direction = dir});
+    } else if(opts.method == "typeHierarchy") {
+        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
+        auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
+        ok = co_await send_and_print(peer,
+                                     agentic::TypeHierarchyParams{.name = name, .direction = dir});
+    } else if(opts.method == "fileDeps") {
+        auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
+        ok = co_await send_and_print(peer,
+                                     agentic::FileDepsParams{.path = opts.path, .direction = dir});
+    } else if(opts.method == "impactAnalysis") {
+        ok = co_await send_and_print(peer, agentic::ImpactAnalysisParams{.path = opts.path});
     } else {
-        auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(*result);
-        std::println("{}", json ? *json : "null");
-        exit_code = 0;
+        LOG_ERROR("unknown agentic method '{}'", opts.method);
     }
 
+    if(ok)
+        exit_code = 0;
     peer.close();
 }
 
 static kota::task<> agentic_client(int& exit_code,
                                    std::unique_ptr<kota::ipc::JsonPeer>& peer_out,
-                                   std::string host,
-                                   int port,
-                                   std::string path) {
+                                   const AgenticQueryOptions& opts) {
     auto& loop = kota::event_loop::current();
-    auto transport = co_await kota::ipc::StreamTransport::connect_tcp(host, port, loop);
+    auto transport = co_await kota::ipc::StreamTransport::connect_tcp(opts.host, opts.port, loop);
     if(!transport) {
-        LOG_ERROR("failed to connect to {}:{}", host, port);
+        LOG_ERROR("failed to connect to {}:{}", opts.host, opts.port);
         co_return;
     }
 
     peer_out = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(*transport));
-    co_await kota::when_all(peer_out->run(),
-                            agentic_request(*peer_out, exit_code, std::move(path)));
+    co_await kota::when_all(peer_out->run(), agentic_request(*peer_out, exit_code, opts));
 }
 
-int run_agentic_mode(llvm::StringRef host, int port, llvm::StringRef path) {
+int run_agentic_mode(const AgenticQueryOptions& opts) {
     logging::stderr_logger("agentic", logging::options);
 
     kota::event_loop loop;
     int exit_code = 1;
     std::unique_ptr<kota::ipc::JsonPeer> peer;
-    loop.schedule(agentic_client(exit_code, peer, host.str(), port, path.str()));
+    loop.schedule(agentic_client(exit_code, peer, opts));
     loop.run();
     return exit_code;
 }
