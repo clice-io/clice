@@ -37,6 +37,14 @@ inline std::string real_path(llvm::StringRef file) {
     return path.str().str();
 }
 
+inline std::string default_socket_path() {
+    llvm::SmallString<128> home;
+    if(!llvm::sys::path::home_directory(home))
+        return "/tmp/clice.sock";
+    llvm::sys::path::append(home, ".clice", "clice.sock");
+    return home.str().str();
+}
+
 }  // namespace path
 
 namespace fs {

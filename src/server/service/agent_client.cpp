@@ -31,16 +31,6 @@ static std::string_view symbol_kind_name(SymbolKind kind) {
     return "Unknown";
 }
 
-static std::string path_from_uri(llvm::StringRef uri) {
-    auto parsed = lsp::URI::parse(uri);
-    if(parsed.has_value()) {
-        auto fp = parsed->file_path();
-        if(fp.has_value())
-            return std::move(*fp);
-    }
-    return uri.str();
-}
-
 struct ResolvedSymbol {
     index::SymbolHash hash = 0;
     std::string name;
@@ -62,7 +52,7 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
         auto def_loc = indexer.find_definition_location(hash);
         if(!def_loc)
             return {};
-        auto file = path_from_uri(def_loc->uri);
+        auto file = uri_to_path(def_loc->uri);
         int line_num = static_cast<int>(def_loc->range.start.line) + 1;
         return {
             {hash, std::move(name), kind, std::move(file), line_num}
@@ -86,7 +76,7 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
             if(!seen.insert(hash).second)
                 return;
 
-            auto file = path_from_uri(def_loc->uri);
+            auto file = uri_to_path(def_loc->uri);
             int line_num = static_cast<int>(def_loc->range.start.line) + 1;
 
             if(loc.path.has_value() && !loc.path->empty()) {
@@ -187,21 +177,12 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
     return {};
 }
 
-static agentic::SymbolEntry to_symbol_entry(const ResolvedSymbol& rs) {
-    return {
-        .name = rs.name,
-        .kind = std::string(symbol_kind_name(rs.kind)),
-        .file = rs.file,
-        .line = rs.line,
-        .symbol_id = rs.hash,
-    };
-}
-
 static std::uint64_t extract_symbol_id(const std::optional<protocol::LSPAny>& data) {
     if(!data.has_value())
         return 0;
     if(auto* val = std::get_if<std::int64_t>(&static_cast<const protocol::LSPVariant&>(*data)))
         return static_cast<std::uint64_t>(*val);
+    LOG_WARN("extract_symbol_id: unexpected LSPAny variant type");
     return 0;
 }
 
@@ -237,11 +218,15 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         llvm::DenseSet<std::uint32_t> seen;
 
         for(auto& entry: ws.cdb.get_entries()) {
-            if(!seen.insert(entry.file).second)
-                continue;
             auto file_path = ws.cdb.resolve_path(entry.file);
             if(file_path.empty())
                 continue;
+
+            auto proj_it = ws.project_index.path_pool.find(file_path);
+            if(proj_it != ws.project_index.path_pool.cache.end()) {
+                if(!seen.insert(proj_it->second).second)
+                    continue;
+            }
 
             std::string kind_str;
             auto mod_it = ws.path_to_module.find(ws.path_pool.intern(file_path));
@@ -342,8 +327,11 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 if(max_depth == 0 || max_depth > 1) {
                     llvm::DenseSet<std::uint32_t> visited;
                     visited.insert(path_id);
-                    for(auto& dep: result.includers)
-                        visited.insert(ws.path_pool.cache.find(dep.path)->second);
+                    for(auto& dep: result.includers) {
+                        auto it = ws.path_pool.cache.find(dep.path);
+                        if(it != ws.path_pool.cache.end())
+                            visited.insert(it->second);
+                    }
 
                     for(std::size_t i = 0; i < result.includers.size(); ++i) {
                         if(max_depth > 0 && result.includers[i].depth >= max_depth)
@@ -433,7 +421,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 return;
             if(!seen.insert(hash).second)
                 return;
-            auto file = path_from_uri(def_loc->uri);
+            auto file = uri_to_path(def_loc->uri);
             result.symbols.push_back(SymbolEntry{
                 .name = symbol.name,
                 .kind = std::string(symbol_kind_name(symbol.kind)),
@@ -486,8 +474,14 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         [&srv](RequestContext&,
                const DocumentSymbolsParams& params) -> RequestResult<DocumentSymbolsParams> {
             auto is_document_level = [](SymbolKind kind) {
-                return kind != SymbolKind::Parameter && kind != SymbolKind::Label &&
-                       kind != SymbolKind::MacroParameter;
+                return kind == SymbolKind::Namespace || kind == SymbolKind::Class ||
+                       kind == SymbolKind::Struct || kind == SymbolKind::Union ||
+                       kind == SymbolKind::Enum || kind == SymbolKind::Type ||
+                       kind == SymbolKind::Field || kind == SymbolKind::EnumMember ||
+                       kind == SymbolKind::Function || kind == SymbolKind::Method ||
+                       kind == SymbolKind::Variable || kind == SymbolKind::Macro ||
+                       kind == SymbolKind::Concept || kind == SymbolKind::Module ||
+                       kind == SymbolKind::Operator || kind == SymbolKind::Attribute;
             };
 
             DocumentSymbolsResult result;
@@ -520,9 +514,9 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                                     .end_line = static_cast<int>(end->line) + 1,
                                     .symbol_id = hash,
                                 });
+                                break;
                             }
                         }
-                        break;
                     }
                 }
                 co_return result;
@@ -667,15 +661,26 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 .symbol_id = rs.hash,
             };
 
+            auto resolve_kind = [&](std::uint64_t sym_id) -> std::string {
+                if(sym_id == 0)
+                    return "Function";
+                std::string name;
+                SymbolKind kind;
+                if(srv.indexer.find_symbol_info(sym_id, name, kind))
+                    return std::string(symbol_kind_name(kind));
+                return "Function";
+            };
+
             if(direction == "callers" || direction == "both") {
                 auto incoming = srv.indexer.find_incoming_calls(rs.hash);
                 for(auto& call: incoming) {
+                    auto sid = extract_symbol_id(call.from.data);
                     result.callers.push_back(CallGraphEntry{
                         .name = call.from.name,
-                        .kind = std::string("Function"),
-                        .file = path_from_uri(call.from.uri),
+                        .kind = resolve_kind(sid),
+                        .file = uri_to_path(call.from.uri),
                         .line = static_cast<int>(call.from.range.start.line) + 1,
-                        .symbol_id = extract_symbol_id(call.from.data),
+                        .symbol_id = sid,
                     });
                 }
             }
@@ -683,12 +688,13 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(direction == "callees" || direction == "both") {
                 auto outgoing = srv.indexer.find_outgoing_calls(rs.hash);
                 for(auto& call: outgoing) {
+                    auto sid = extract_symbol_id(call.to.data);
                     result.callees.push_back(CallGraphEntry{
                         .name = call.to.name,
-                        .kind = std::string("Function"),
-                        .file = path_from_uri(call.to.uri),
+                        .kind = resolve_kind(sid),
+                        .file = uri_to_path(call.to.uri),
                         .line = static_cast<int>(call.to.range.start.line) + 1,
-                        .symbol_id = extract_symbol_id(call.to.data),
+                        .symbol_id = sid,
                     });
                 }
             }
@@ -724,26 +730,38 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 .symbol_id = rs.hash,
             };
 
+            auto resolve_kind = [&](std::uint64_t sym_id) -> std::string {
+                if(sym_id == 0)
+                    return "Class";
+                std::string name;
+                SymbolKind kind;
+                if(srv.indexer.find_symbol_info(sym_id, name, kind))
+                    return std::string(symbol_kind_name(kind));
+                return "Class";
+            };
+
             if(direction == "supertypes" || direction == "both") {
                 for(auto& item: srv.indexer.find_supertypes(rs.hash)) {
+                    auto sid = extract_symbol_id(item.data);
                     result.supertypes.push_back(TypeHierarchyEntry{
                         .name = item.name,
-                        .kind = std::string("Class"),
-                        .file = path_from_uri(item.uri),
+                        .kind = resolve_kind(sid),
+                        .file = uri_to_path(item.uri),
                         .line = static_cast<int>(item.range.start.line) + 1,
-                        .symbol_id = extract_symbol_id(item.data),
+                        .symbol_id = sid,
                     });
                 }
             }
 
             if(direction == "subtypes" || direction == "both") {
                 for(auto& item: srv.indexer.find_subtypes(rs.hash)) {
+                    auto sid = extract_symbol_id(item.data);
                     result.subtypes.push_back(TypeHierarchyEntry{
                         .name = item.name,
-                        .kind = std::string("Class"),
-                        .file = path_from_uri(item.uri),
+                        .kind = resolve_kind(sid),
+                        .file = uri_to_path(item.uri),
                         .line = static_cast<int>(item.range.start.line) + 1,
-                        .symbol_id = extract_symbol_id(item.data),
+                        .symbol_id = sid,
                     });
                 }
             }

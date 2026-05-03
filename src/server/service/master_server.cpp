@@ -486,7 +486,7 @@ static kota::task<> daemon_main(MasterServer& server, kota::pipe::acceptor accep
             }
         }(),
         [&]() -> kota::task<> {
-            co_await server.shutdown_event.wait();
+            co_await server.get_shutdown_event().wait();
             acceptor.stop();
             for(auto& conn: connections) {
                 conn.peer->close();
@@ -496,18 +496,10 @@ static kota::task<> daemon_main(MasterServer& server, kota::pipe::acceptor accep
     co_await connection_group.join();
 }
 
-static std::string default_socket_path() {
-    llvm::SmallString<128> home;
-    if(!llvm::sys::path::home_directory(home))
-        return "/tmp/clice.sock";
-    llvm::sys::path::append(home, ".clice", "clice.sock");
-    return home.str().str();
-}
-
 int run_daemon_mode(const DaemonOptions& opts) {
     logging::stderr_logger("daemon", logging::options);
 
-    auto socket_path = opts.socket_path.empty() ? default_socket_path() : opts.socket_path;
+    auto socket_path = opts.socket_path.empty() ? path::default_socket_path() : opts.socket_path;
 
     auto socket_dir = llvm::sys::path::parent_path(socket_path);
     if(auto ec = llvm::sys::fs::create_directories(socket_dir)) {

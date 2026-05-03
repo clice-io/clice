@@ -5,12 +5,12 @@
 #include <string>
 
 #include "server/protocol/agentic.h"
+#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/json.h"
 #include "kota/ipc/transport.h"
-#include "llvm/Support/Path.h"
 
 namespace clice {
 
@@ -162,18 +162,10 @@ static kota::task<> relay_main(kota::event_loop& loop, int& exit_code, std::stri
     loop.stop();
 }
 
-static std::string default_socket_path() {
-    llvm::SmallString<128> home;
-    if(!llvm::sys::path::home_directory(home))
-        return "/tmp/clice.sock";
-    llvm::sys::path::append(home, ".clice", "clice.sock");
-    return home.str().str();
-}
-
 int run_relay_mode(llvm::StringRef socket_path) {
     logging::stderr_logger("relay", logging::options);
 
-    auto path = socket_path.empty() ? default_socket_path() : socket_path.str();
+    auto path = socket_path.empty() ? path::default_socket_path() : socket_path.str();
 
     kota::event_loop loop;
     int exit_code = 1;

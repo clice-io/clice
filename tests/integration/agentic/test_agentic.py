@@ -83,9 +83,6 @@ def run_agentic(executable, host, port, path, timeout=10):
     return result
 
 
-# ── Existing CLI tests ──────────────────────────────────────────────
-
-
 @pytest.mark.workspace("hello_world")
 async def test_compile_command(agentic, workspace):
     executable, host, port = agentic
@@ -141,10 +138,6 @@ async def test_concurrent_connections(agentic, workspace):
         assert r.returncode == 0, f"stderr: {r.stderr}"
         data = json.loads(r.stdout)
         assert data["file"] == main_cpp
-
-
-# ── Agentic protocol handler tests ─────────────────────────────────
-# Wire format uses camelCase field names (lsp_config lower_camel rename).
 
 
 @pytest.fixture
@@ -482,6 +475,56 @@ async def test_rpc_symbol_id_roundtrip(indexed_agentic, workspace):
     assert "result" in defn
     assert defn["result"]["name"] == "compute"
     assert defn["result"]["symbolId"] == compute["symbolId"]
+
+
+@pytest.mark.workspace("index_features")
+async def test_rpc_file_deps(indexed_agentic, workspace):
+    rpc, _ = indexed_agentic
+    path = (workspace / "main.cpp").as_posix()
+    resp = rpc.request("agentic/fileDeps", {"path": path})
+    assert "result" in resp, f"unexpected response: {resp}"
+    result = resp["result"]
+    assert result["file"] == path
+    assert isinstance(result["includes"], list)
+    assert isinstance(result["includers"], list)
+
+
+@pytest.mark.workspace("index_features")
+async def test_rpc_file_deps_direction(indexed_agentic, workspace):
+    rpc, _ = indexed_agentic
+    path = (workspace / "main.cpp").as_posix()
+    resp = rpc.request("agentic/fileDeps", {"path": path, "direction": "includes"})
+    assert "result" in resp
+    assert resp["result"]["includers"] == []
+
+
+@pytest.mark.workspace("index_features")
+async def test_rpc_file_deps_unknown(indexed_agentic, workspace):
+    rpc, _ = indexed_agentic
+    resp = rpc.request("agentic/fileDeps", {"path": "/nonexistent/file.cpp"})
+    assert "result" in resp
+    assert resp["result"]["includes"] == []
+    assert resp["result"]["includers"] == []
+
+
+@pytest.mark.workspace("index_features")
+async def test_rpc_impact_analysis(indexed_agentic, workspace):
+    rpc, _ = indexed_agentic
+    path = (workspace / "main.cpp").as_posix()
+    resp = rpc.request("agentic/impactAnalysis", {"path": path})
+    assert "result" in resp, f"unexpected response: {resp}"
+    result = resp["result"]
+    assert isinstance(result["directDependents"], list)
+    assert isinstance(result["transitiveDependents"], list)
+    assert isinstance(result["affectedModules"], list)
+
+
+@pytest.mark.workspace("index_features")
+async def test_rpc_impact_analysis_unknown(indexed_agentic, workspace):
+    rpc, _ = indexed_agentic
+    resp = rpc.request("agentic/impactAnalysis", {"path": "/nonexistent/file.cpp"})
+    assert "result" in resp
+    assert resp["result"]["directDependents"] == []
 
 
 async def test_shutdown_during_indexing(executable, tmp_path):

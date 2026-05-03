@@ -805,6 +805,7 @@ void Indexer::schedule() {
 
     if(!bg_tasks.spawn(run_background_indexing())) {
         indexing_scheduled = false;
+        LOG_WARN("Failed to spawn background indexing task (task group stopped)");
     }
 }
 
@@ -910,34 +911,41 @@ kota::task<> Indexer::run_background_indexing() {
         }
     }
 
+    kota::task_group<> workers(loop);
+    std::size_t in_flight = 0;
+    kota::event slot_available;
+
     while(index_queue_pos < index_queue.size()) {
-        if(pause_depth > 0) {
+        if(pause_depth > 0)
             co_await resume_event.wait();
+
+        auto server_path_id = index_queue[index_queue_pos++];
+        auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
+        if(sessions.contains(server_path_id) || !need_update(file_path)) {
+            ++completed;
+            continue;
         }
 
-        kota::task_group<> batch(loop);
-        std::size_t batch_dispatched = 0;
+        while(in_flight >= max_concurrent) {
+            slot_available.reset();
+            co_await slot_available.wait();
+        }
 
-        while(index_queue_pos < index_queue.size() && batch_dispatched < max_concurrent) {
-            auto server_path_id = index_queue[index_queue_pos++];
-            auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
-            if(sessions.contains(server_path_id) || !need_update(file_path)) {
-                ++completed;
-                continue;
+        ++in_flight;
+        ++dispatched;
+        workers.spawn([&, server_path_id]() -> kota::task<> {
+            co_await index_one(server_path_id);
+            --in_flight;
+            ++completed;
+            if(progress) {
+                auto pct = total > 0 ? static_cast<std::uint32_t>(completed * 100 / total) : 100;
+                progress->report(std::format("{}/{} files", completed, total), pct);
             }
-            batch.spawn(index_one(server_path_id));
-            ++batch_dispatched;
-        }
-
-        co_await batch.join();
-        dispatched += batch_dispatched;
-        completed += batch_dispatched;
-
-        if(progress) {
-            auto pct = total > 0 ? static_cast<std::uint32_t>(completed * 100 / total) : 100;
-            progress->report(std::format("{}/{} files", completed, total), pct);
-        }
+            slot_available.set();
+        }());
     }
+
+    co_await workers.join();
 
     if(progress) {
         progress->end(std::format("Indexed {} files", dispatched));

@@ -49,9 +49,12 @@ public:
 
     void schedule_shutdown();
 
-    kota::event shutdown_event;
+    kota::event& get_shutdown_event() {
+        return shutdown_event;
+    }
 
 private:
+    kota::event shutdown_event;
     void load_workspace();
 
     kota::event_loop& loop;
