@@ -84,6 +84,7 @@ private:
 
     bool shutting_down_ = false;
     kota::task_group<> monitor_group{loop};
+    kota::task_group<> io_group{loop};
     WorkerPoolOptions options_;
     std::string log_dir_;
 

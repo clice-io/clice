@@ -196,12 +196,16 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
 }
 
 void MasterServer::schedule_shutdown() {
+    if(lifecycle == ServerLifecycle::Exited)
+        return;
+    lifecycle = ServerLifecycle::Exited;
+
     indexer.save(workspace.config.project.index_dir);
     workspace.save_cache();
+    shutdown_event.set();
 
     loop.schedule([this]() -> kota::task<> {
-        co_await compiler.stop();
-        co_await pool.stop();
+        co_await kota::when_all(indexer.stop(), compiler.stop(), pool.stop());
         loop.stop();
     }());
 }
@@ -445,32 +449,41 @@ static kota::task<> run_daemon_connection(kota::ipc::JsonPeer* peer,
     connections.erase(pos);
 }
 
-static kota::task<> accept_daemon_connections(MasterServer& server,
-                                              kota::pipe::acceptor acceptor,
-                                              std::list<DaemonConnection>& connections) {
+static kota::task<> daemon_main(MasterServer& server, kota::pipe::acceptor acceptor) {
     auto& loop = kota::event_loop::current();
+    std::list<DaemonConnection> connections;
     kota::task_group<> connection_group(loop);
 
-    while(true) {
-        auto conn = co_await acceptor.accept();
-        if(!conn.has_value())
-            break;
+    co_await kota::when_all(
+        [&]() -> kota::task<> {
+            while(true) {
+                auto conn = co_await acceptor.accept();
+                if(!conn.has_value())
+                    break;
 
-        LOG_INFO("Daemon client connected");
+                LOG_INFO("Daemon client connected");
 
-        auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-        auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
-        auto agent = std::make_unique<AgentClient>(server, *peer);
+                auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
+                auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+                auto agent = std::make_unique<AgentClient>(server, *peer);
 
-        auto* peer_ptr = peer.get();
-        auto it = connections.emplace(connections.end(),
-                                      DaemonConnection{
-                                          .peer = std::move(peer),
-                                          .agent_client = std::move(agent),
-                                      });
+                auto* peer_ptr = peer.get();
+                auto it = connections.emplace(connections.end(),
+                                              DaemonConnection{
+                                                  .peer = std::move(peer),
+                                                  .agent_client = std::move(agent),
+                                              });
 
-        connection_group.spawn(run_daemon_connection(peer_ptr, connections, it));
-    }
+                connection_group.spawn(run_daemon_connection(peer_ptr, connections, it));
+            }
+        }(),
+        [&]() -> kota::task<> {
+            co_await server.shutdown_event.wait();
+            acceptor.stop();
+            for(auto& conn: connections) {
+                conn.peer->close();
+            }
+        }());
 
     co_await connection_group.join();
 }
@@ -500,7 +513,6 @@ int run_daemon_mode(const DaemonOptions& opts) {
 
     kota::event_loop loop;
     MasterServer server(loop, opts.self_path);
-    std::list<DaemonConnection> connections;
 
     if(!opts.workspace.empty()) {
         server.initialize(opts.workspace);
@@ -514,7 +526,7 @@ int run_daemon_mode(const DaemonOptions& opts) {
     }
 
     LOG_INFO("Daemon listening on {}", socket_path);
-    loop.schedule(accept_daemon_connections(server, std::move(*acceptor), connections));
+    loop.schedule(daemon_main(server, std::move(*acceptor)));
     loop.run();
 
     llvm::sys::fs::remove(socket_path);

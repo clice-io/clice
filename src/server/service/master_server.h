@@ -49,6 +49,8 @@ public:
 
     void schedule_shutdown();
 
+    kota::event shutdown_event;
+
 private:
     void load_workspace();
 

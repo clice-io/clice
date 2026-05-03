@@ -642,6 +642,11 @@ void Indexer::resume_indexing() {
     }
 }
 
+kota::task<> Indexer::stop() {
+    bg_tasks.cancel();
+    co_await bg_tasks.join();
+}
+
 void Indexer::schedule() {
     if(!*workspace.config.project.enable_indexing || indexing_active || indexing_scheduled)
         return;
@@ -651,7 +656,10 @@ void Indexer::schedule() {
         index_idle_timer = std::make_shared<kota::timer>(kota::timer::create(loop));
     }
     index_idle_timer->start(std::chrono::milliseconds(*workspace.config.project.idle_timeout_ms));
-    loop.schedule(run_background_indexing());
+
+    if(!bg_tasks.spawn(run_background_indexing())) {
+        indexing_scheduled = false;
+    }
 }
 
 kota::task<> Indexer::index_one(std::uint32_t server_path_id) {
@@ -734,72 +742,54 @@ kota::task<> Indexer::run_background_indexing() {
     indexing_active = true;
 
     kota::cancellation_source monitor_cancel;
-    kota::task_group<> index_group(loop);
-    index_group.spawn(kota::with_token(monitor_resources(), monitor_cancel.token()));
+    bg_tasks.spawn(kota::with_token(monitor_resources(), monitor_cancel.token()));
 
     std::stable_partition(
         index_queue.begin() + index_queue_pos,
         index_queue.end(),
         [this](std::uint32_t id) { return workspace.path_to_module.contains(id); });
 
-    auto batch = index_queue.size() - index_queue_pos;
-    std::size_t inflight = 0;
+    auto total = index_queue.size() - index_queue_pos;
     std::size_t dispatched = 0;
     std::size_t completed = 0;
-    std::size_t finished = 0;
-    kota::event completion_event;
 
     std::optional<lsp::ProgressReporter<kota::ipc::JsonPeer>> progress;
     if(peer) {
         progress.emplace(*peer, protocol::ProgressToken(std::string("clice/backgroundIndex")));
         auto create_result = co_await progress->create();
         if(!create_result.has_error()) {
-            progress->begin("Indexing", std::format("0/{} files", batch), 0);
+            progress->begin("Indexing", std::format("0/{} files", total), 0);
         } else {
             progress.reset();
         }
     }
 
-    while(index_queue_pos < index_queue.size() || inflight > 0) {
-        while(index_queue_pos < index_queue.size() && inflight < max_concurrent) {
-            if(pause_depth > 0) {
-                co_await resume_event.wait();
-            }
+    while(index_queue_pos < index_queue.size()) {
+        if(pause_depth > 0) {
+            co_await resume_event.wait();
+        }
 
+        kota::task_group<> batch(loop);
+        std::size_t batch_dispatched = 0;
+
+        while(index_queue_pos < index_queue.size() && batch_dispatched < max_concurrent) {
             auto server_path_id = index_queue[index_queue_pos++];
-
             auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
             if(sessions.contains(server_path_id) || !need_update(file_path)) {
                 ++completed;
                 continue;
             }
-
-            ++inflight;
-            ++dispatched;
-
-            index_group.spawn([](Indexer* self,
-                                 std::uint32_t id,
-                                 std::size_t& inflight_ref,
-                                 std::size_t& finished_ref,
-                                 kota::event& done) -> kota::task<> {
-                co_await self->index_one(id);
-                --inflight_ref;
-                ++finished_ref;
-                done.set();
-            }(this, server_path_id, inflight, finished, completion_event));
+            batch.spawn(index_one(server_path_id));
+            ++batch_dispatched;
         }
 
-        if(inflight == 0)
-            break;
-
-        co_await completion_event.wait();
-        completion_event.reset();
-
-        completed += std::exchange(finished, 0);
+        co_await batch.join();
+        dispatched += batch_dispatched;
+        completed += batch_dispatched;
 
         if(progress) {
-            auto pct = batch > 0 ? static_cast<std::uint32_t>(completed * 100 / batch) : 100;
-            progress->report(std::format("{}/{} files", completed, batch), pct);
+            auto pct = total > 0 ? static_cast<std::uint32_t>(completed * 100 / total) : 100;
+            progress->report(std::format("{}/{} files", completed, total), pct);
         }
     }
 
@@ -808,7 +798,6 @@ kota::task<> Indexer::run_background_indexing() {
     }
 
     monitor_cancel.cancel();
-    co_await index_group.join();
 
     indexing_active = false;
     LOG_INFO("Background indexing complete: {} files dispatched", dispatched);

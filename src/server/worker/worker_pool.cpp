@@ -96,9 +96,8 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
                                                                   std::move(spawn.stdin_pipe));
     auto peer = std::make_unique<kota::ipc::BincodePeer>(loop, std::move(transport));
 
-    // Schedule stderr log collection
     std::string prefix = "[" + worker_name + "]";
-    loop.schedule(drain_stderr(std::move(spawn.stderr_pipe), prefix));
+    io_group.spawn(drain_stderr(std::move(spawn.stderr_pipe), prefix));
 
     workers.push_back(WorkerProcess{
         .proc = std::move(spawn.proc),
@@ -108,7 +107,7 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
 
     auto& w = workers.back();
     w.alive = true;
-    loop.schedule(w.peer->run());
+    io_group.spawn(w.peer->run());
 
     return true;
 }
@@ -160,7 +159,7 @@ kota::task<> WorkerPool::stop() {
     for(auto& w: stateful_workers)
         w.proc.kill(SIGTERM);
 
-    co_await monitor_group.join();
+    co_await kota::when_all(monitor_group.join(), io_group.join());
 
     LOG_INFO("WorkerPool stopped");
 }
@@ -320,7 +319,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     auto peer = std::make_unique<kota::ipc::BincodePeer>(loop, std::move(transport));
 
     std::string prefix = "[" + worker_name + "]";
-    loop.schedule(drain_stderr(std::move(spawn.stderr_pipe), prefix));
+    io_group.spawn(drain_stderr(std::move(spawn.stderr_pipe), prefix));
 
     workers[index] = WorkerProcess{
         .proc = std::move(spawn.proc),
@@ -331,7 +330,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     };
 
     auto& w = workers[index];
-    loop.schedule(w.peer->run());
+    io_group.spawn(w.peer->run());
 
     if(stateful) {
         w.peer->on_notification([this](const worker::EvictedParams& params) {

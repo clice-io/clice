@@ -480,3 +480,68 @@ async def test_rpc_symbol_id_roundtrip(indexed_agentic, workspace):
     assert "result" in defn
     assert defn["result"]["name"] == "compute"
     assert defn["result"]["symbolId"] == compute["symbolId"]
+
+
+async def test_shutdown_during_indexing(executable, tmp_path):
+    """Shutdown during active background indexing must exit cleanly."""
+    from tests.integration.utils.client import CliceClient
+    from tests.conftest import _find_free_port
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+
+    entries = []
+    for i in range(20):
+        src = workspace / f"file_{i}.cpp"
+        src.write_text(
+            f"struct Type_{i} {{ int v = {i}; void m() {{}} }};\n"
+            f"int func_{i}(int x) {{ return x + {i}; }}\n"
+            f"int caller_{i}() {{ return func_{i}({i}); }}\n"
+        )
+        entries.append(
+            {
+                "directory": workspace.as_posix(),
+                "file": src.as_posix(),
+                "arguments": ["clang++", "-std=c++17", "-fsyntax-only", src.as_posix()],
+            }
+        )
+
+    (workspace / "compile_commands.json").write_text(json.dumps(entries))
+
+    host = "127.0.0.1"
+    port = _find_free_port()
+    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+
+    c = CliceClient()
+    await c.start_io(*cmd)
+
+    init_options = {
+        "project": {
+            "cache_dir": str(workspace / ".clice"),
+            "idle_timeout_ms": 0,
+        }
+    }
+    await c.initialize(workspace, initialization_options=init_options)
+
+    # Give indexing a moment to start, then send shutdown
+    await asyncio.sleep(0.5)
+
+    rpc = AgenticRpcClient(host, port)
+    body = json.dumps({"jsonrpc": "2.0", "method": "agentic/shutdown", "params": {}})
+    rpc.sock.sendall(f"Content-Length: {len(body)}\r\n\r\n{body}".encode())
+    rpc.sock.settimeout(5)
+    try:
+        rpc.sock.recv(4096)
+    except Exception:
+        pass
+    rpc.sock.close()
+
+    for _ in range(30):
+        if c._server.returncode is not None:
+            break
+        await asyncio.sleep(0.5)
+
+    assert c._server.returncode is not None, "Server did not exit after shutdown"
+    assert c._server.returncode >= 0, (
+        f"Server crashed with signal {-c._server.returncode}"
+    )
