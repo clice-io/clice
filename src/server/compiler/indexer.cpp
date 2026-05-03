@@ -447,6 +447,152 @@ std::optional<SymbolInfo> Indexer::resolve_symbol(index::SymbolHash hash) {
     return SymbolInfo{hash, std::move(name), kind, def_loc->uri, def_loc->range};
 }
 
+static std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
+    if(content.empty() || offset >= content.size())
+        return {};
+    std::size_t line_start = 0;
+    if(offset > 0) {
+        auto pos = content.rfind('\n', offset - 1);
+        if(pos != llvm::StringRef::npos)
+            line_start = pos + 1;
+    }
+    auto line_end = content.find('\n', offset);
+    if(line_end == llvm::StringRef::npos)
+        line_end = content.size();
+    return content.slice(line_start, line_end).str();
+}
+
+std::optional<Indexer::DefinitionText> Indexer::get_definition_text(index::SymbolHash hash) {
+    for(auto& [id, sess]: sessions) {
+        if(!sess.file_index || !sess.file_index->mapper)
+            continue;
+        auto it = sess.file_index->file_index.relations.find(hash);
+        if(it == sess.file_index->file_index.relations.end())
+            continue;
+        for(auto& rel: it->second) {
+            if(rel.kind.value() != RelationKind::Definition)
+                continue;
+            auto def_range = std::bit_cast<LocalSourceRange>(rel.target_symbol);
+            if(def_range.begin >= def_range.end)
+                continue;
+            llvm::StringRef content = sess.file_index->content;
+            if(def_range.end > content.size())
+                continue;
+            auto start = sess.file_index->mapper->to_position(def_range.begin);
+            auto end = sess.file_index->mapper->to_position(def_range.end);
+            if(!start || !end)
+                continue;
+            return DefinitionText{
+                .file = std::string(workspace.path_pool.resolve(id)),
+                .start_line = static_cast<int>(start->line) + 1,
+                .end_line = static_cast<int>(end->line) + 1,
+                .text =
+                    std::string(content.substr(def_range.begin, def_range.end - def_range.begin)),
+            };
+        }
+    }
+
+    auto sym_it = workspace.project_index.symbols.find(hash);
+    if(sym_it == workspace.project_index.symbols.end())
+        return std::nullopt;
+
+    for(auto file_id: sym_it->second.reference_files) {
+        if(is_proj_path_open(file_id))
+            continue;
+        auto shard_it = workspace.merged_indices.find(file_id);
+        if(shard_it == workspace.merged_indices.end())
+            continue;
+        auto* m = shard_it->second.mapper();
+        if(!m)
+            continue;
+        auto content = shard_it->second.index.content();
+
+        std::optional<DefinitionText> result;
+        shard_it->second.index.lookup(
+            hash,
+            RelationKind::Definition,
+            [&](const index::Relation& r) {
+                auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
+                if(def_range.begin >= def_range.end || def_range.end > content.size())
+                    return true;
+                auto start = m->to_position(def_range.begin);
+                auto end = m->to_position(def_range.end);
+                if(!start || !end)
+                    return true;
+                result = DefinitionText{
+                    .file = workspace.project_index.path_pool.path(file_id).str(),
+                    .start_line = static_cast<int>(start->line) + 1,
+                    .end_line = static_cast<int>(end->line) + 1,
+                    .text = std::string(
+                        content.substr(def_range.begin, def_range.end - def_range.begin)),
+                };
+                return false;
+            });
+        if(result)
+            return result;
+    }
+
+    return std::nullopt;
+}
+
+std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::SymbolHash hash,
+                                                                       RelationKind kind) {
+    std::vector<ReferenceWithContext> results;
+
+    auto sym_it = workspace.project_index.symbols.find(hash);
+    if(sym_it != workspace.project_index.symbols.end()) {
+        for(auto file_id: sym_it->second.reference_files) {
+            if(is_proj_path_open(file_id))
+                continue;
+            auto shard_it = workspace.merged_indices.find(file_id);
+            if(shard_it == workspace.merged_indices.end())
+                continue;
+            auto* m = shard_it->second.mapper();
+            if(!m)
+                continue;
+            auto content = shard_it->second.index.content();
+            auto file_path = workspace.project_index.path_pool.path(file_id);
+
+            shard_it->second.index.lookup(hash, kind, [&](const index::Relation& r) {
+                auto start = m->to_position(r.range.begin);
+                if(!start)
+                    return true;
+                results.push_back(ReferenceWithContext{
+                    .file = file_path.str(),
+                    .line = static_cast<int>(start->line) + 1,
+                    .context = extract_line(content, r.range.begin),
+                });
+                return true;
+            });
+        }
+    }
+
+    for(auto& [id, sess]: sessions) {
+        if(!sess.file_index || !sess.file_index->mapper)
+            continue;
+        auto it = sess.file_index->file_index.relations.find(hash);
+        if(it == sess.file_index->file_index.relations.end())
+            continue;
+        auto file_path = workspace.path_pool.resolve(id);
+        llvm::StringRef content = sess.file_index->content;
+
+        for(auto& rel: it->second) {
+            if(rel.kind != kind)
+                continue;
+            auto start = sess.file_index->mapper->to_position(rel.range.begin);
+            if(!start)
+                continue;
+            results.push_back(ReferenceWithContext{
+                .file = file_path.str(),
+                .line = static_cast<int>(start->line) + 1,
+                .context = extract_line(content, rel.range.begin),
+            });
+        }
+    }
+
+    return results;
+}
+
 std::vector<protocol::CallHierarchyIncomingCall>
     Indexer::find_incoming_calls(index::SymbolHash hash) {
     llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> caller_ranges;

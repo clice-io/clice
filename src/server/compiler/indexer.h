@@ -167,6 +167,25 @@ public:
     std::vector<protocol::SymbolInformation> search_symbols(llvm::StringRef query,
                                                             std::size_t max_results = 100);
 
+    struct DefinitionText {
+        std::string file;
+        int start_line;
+        int end_line;
+        std::string text;
+    };
+
+    /// Get full definition text for a symbol, using stored index ranges and content.
+    std::optional<DefinitionText> get_definition_text(index::SymbolHash hash);
+
+    struct ReferenceWithContext {
+        std::string file;
+        int line;
+        std::string context;
+    };
+
+    /// Collect references (or definitions) with context lines from stored content.
+    std::vector<ReferenceWithContext> collect_references(index::SymbolHash hash, RelationKind kind);
+
     /// Cancel background indexing and wait for all tasks to settle.
     kota::task<> stop();
 

@@ -173,6 +173,8 @@ async def indexed_agentic(request, executable, workspace):
         if "result" in resp and resp["result"]["symbols"]:
             break
         await asyncio.sleep(1)
+    else:
+        pytest.fail("agentic/symbolSearch never returned indexed symbols")
 
     yield rpc, workspace
 
@@ -446,7 +448,7 @@ async def test_rpc_shutdown(executable, workspace):
     rpc.sock.settimeout(5)
     try:
         rpc.sock.recv(4096)
-    except Exception:
+    except (socket.timeout, OSError):
         pass
     rpc.sock.close()
 
@@ -532,7 +534,7 @@ async def test_shutdown_during_indexing(executable, tmp_path):
     rpc.sock.settimeout(5)
     try:
         rpc.sock.recv(4096)
-    except Exception:
+    except (socket.timeout, OSError):
         pass
     rpc.sock.close()
 

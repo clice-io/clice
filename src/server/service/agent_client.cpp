@@ -15,7 +15,6 @@
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/MemoryBuffer.h"
 
 namespace clice {
 
@@ -30,123 +29,6 @@ static std::string_view symbol_kind_name(SymbolKind kind) {
     if(idx < names.size())
         return names[idx];
     return "Unknown";
-}
-
-static std::string read_file_line(llvm::StringRef file_path, int line) {
-    auto buf = llvm::MemoryBuffer::getFile(file_path);
-    if(!buf)
-        return {};
-    llvm::StringRef content = (*buf)->getBuffer();
-    int current = 1;
-    std::size_t pos = 0;
-    while(current < line && pos < content.size()) {
-        if(content[pos] == '\n')
-            ++current;
-        ++pos;
-    }
-    if(current != line)
-        return {};
-    auto end = content.find('\n', pos);
-    if(end == llvm::StringRef::npos)
-        end = content.size();
-    return content.slice(pos, end).str();
-}
-
-static std::string read_file_lines(llvm::StringRef file_path, int start_line, int end_line) {
-    auto buf = llvm::MemoryBuffer::getFile(file_path);
-    if(!buf)
-        return {};
-    llvm::StringRef content = (*buf)->getBuffer();
-    int current = 1;
-    std::size_t start_pos = 0;
-    while(current < start_line && start_pos < content.size()) {
-        if(content[start_pos] == '\n')
-            ++current;
-        ++start_pos;
-    }
-    if(current != start_line)
-        return {};
-    std::size_t end_pos = start_pos;
-    while(current <= end_line && end_pos < content.size()) {
-        if(content[end_pos] == '\n')
-            ++current;
-        ++end_pos;
-    }
-    return content.slice(start_pos, end_pos).str();
-}
-
-struct DefinitionText {
-    std::string text;
-    int end_line;
-};
-
-static DefinitionText read_definition_text(llvm::StringRef file_path, int start_line) {
-    auto buf = llvm::MemoryBuffer::getFile(file_path);
-    if(!buf)
-        return {"", start_line};
-    llvm::StringRef content = (*buf)->getBuffer();
-
-    int current = 1;
-    std::size_t start_pos = 0;
-    while(current < start_line && start_pos < content.size()) {
-        if(content[start_pos] == '\n')
-            ++current;
-        ++start_pos;
-    }
-    if(current != start_line)
-        return {"", start_line};
-
-    int depth = 0;
-    bool found_brace = false;
-    std::size_t end_pos = start_pos;
-    int end_line = start_line;
-
-    while(end_pos < content.size()) {
-        char c = content[end_pos];
-        if(c == '{') {
-            ++depth;
-            found_brace = true;
-        } else if(c == '}') {
-            --depth;
-            if(found_brace && depth == 0) {
-                ++end_pos;
-                while(end_pos < content.size() && content[end_pos] != '\n')
-                    ++end_pos;
-                if(end_pos < content.size())
-                    ++end_pos;
-                return {content.slice(start_pos, end_pos).str(), end_line};
-            }
-        } else if(c == '\n') {
-            ++end_line;
-        } else if(c == '/' && end_pos + 1 < content.size()) {
-            if(content[end_pos + 1] == '/') {
-                while(end_pos < content.size() && content[end_pos] != '\n')
-                    ++end_pos;
-                continue;
-            }
-        } else if(c == '\'' || c == '"') {
-            char quote = c;
-            ++end_pos;
-            while(end_pos < content.size() && content[end_pos] != quote) {
-                if(content[end_pos] == '\\')
-                    ++end_pos;
-                ++end_pos;
-            }
-        }
-
-        if(!found_brace && c == ';') {
-            ++end_pos;
-            while(end_pos < content.size() && content[end_pos] != '\n')
-                ++end_pos;
-            if(end_pos < content.size())
-                ++end_pos;
-            return {content.slice(start_pos, end_pos).str(), end_line};
-        }
-
-        ++end_pos;
-    }
-
-    return {content.slice(start_pos, end_pos).str(), end_line};
 }
 
 static std::string path_from_uri(llvm::StringRef uri) {
@@ -208,9 +90,14 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
             int line_num = static_cast<int>(def_loc->range.start.line) + 1;
 
             if(loc.path.has_value() && !loc.path->empty()) {
-                if(!llvm::StringRef(file).ends_with(*loc.path) &&
-                   !llvm::StringRef(*loc.path).ends_with(llvm::sys::path::filename(file)))
+                llvm::StringRef wanted(*loc.path);
+                bool basename_only = wanted.find_last_of("/\\") == llvm::StringRef::npos;
+                if(basename_only) {
+                    if(llvm::sys::path::filename(file) != wanted)
+                        return;
+                } else if(!llvm::StringRef(file).ends_with(wanted)) {
                     return;
+                }
             }
 
             bool is_exact = llvm::StringRef(symbol.name).lower() == query_lower ||
@@ -241,8 +128,10 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
         auto path_str = *loc.path;
         auto target_line = static_cast<protocol::uinteger>(*loc.line - 1);
 
-        auto server_id = workspace.path_pool.intern(path_str);
-        auto* sess = sessions.contains(server_id) ? &sessions[server_id] : nullptr;
+        auto pool_it = workspace.path_pool.cache.find(path_str);
+        auto server_id = pool_it != workspace.path_pool.cache.end() ? pool_it->second : ~0u;
+        auto* sess =
+            server_id != ~0u && sessions.contains(server_id) ? &sessions[server_id] : nullptr;
         if(sess && sess->file_index) {
             auto& fi = *sess->file_index;
             if(fi.mapper) {
@@ -400,7 +289,10 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     peer.on_request(
         [&srv](RequestContext&, const FileDepsParams& params) -> RequestResult<FileDepsParams> {
             auto& ws = srv.workspace;
-            auto path_id = ws.path_pool.intern(params.path);
+            auto pool_it = ws.path_pool.cache.find(params.path);
+            if(pool_it == ws.path_pool.cache.end())
+                co_return FileDepsResult{.file = params.path};
+            auto path_id = pool_it->second;
             auto direction = params.direction.value_or("both");
             auto max_depth = params.depth.value_or(1);
 
@@ -446,6 +338,31 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     auto inc_path = ws.path_pool.resolve(inc_id);
                     result.includers.push_back(DepEntry{.path = inc_path.str(), .depth = 1});
                 }
+
+                if(max_depth == 0 || max_depth > 1) {
+                    llvm::DenseSet<std::uint32_t> visited;
+                    visited.insert(path_id);
+                    for(auto& dep: result.includers)
+                        visited.insert(ws.path_pool.cache.find(dep.path)->second);
+
+                    for(std::size_t i = 0; i < result.includers.size(); ++i) {
+                        if(max_depth > 0 && result.includers[i].depth >= max_depth)
+                            continue;
+                        auto dep_it = ws.path_pool.cache.find(result.includers[i].path);
+                        if(dep_it == ws.path_pool.cache.end())
+                            continue;
+                        auto sub = ws.dep_graph.get_includers(dep_it->second);
+                        for(auto sub_id: sub) {
+                            if(!visited.insert(sub_id).second)
+                                continue;
+                            auto sub_path = ws.path_pool.resolve(sub_id);
+                            result.includers.push_back(DepEntry{
+                                .path = sub_path.str(),
+                                .depth = result.includers[i].depth + 1,
+                            });
+                        }
+                    }
+                }
             }
 
             co_return result;
@@ -455,7 +372,10 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         [&srv](RequestContext&,
                const ImpactAnalysisParams& params) -> RequestResult<ImpactAnalysisParams> {
             auto& ws = srv.workspace;
-            auto path_id = ws.path_pool.intern(params.path);
+            auto pool_it = ws.path_pool.cache.find(params.path);
+            if(pool_it == ws.path_pool.cache.end())
+                co_return ImpactAnalysisResult{};
+            auto path_id = pool_it->second;
 
             ImpactAnalysisResult result;
 
@@ -547,21 +467,17 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             }
 
             auto& rs = candidates[0];
-            auto def_loc = srv.indexer.find_definition_location(rs.hash);
-            if(!def_loc)
+            auto def_text = srv.indexer.get_definition_text(rs.hash);
+            if(!def_text)
                 co_return kota::outcome_error(kota::ipc::Error{"definition not found"});
-
-            auto file = path_from_uri(def_loc->uri);
-            int start = static_cast<int>(def_loc->range.start.line) + 1;
-            auto [text, end] = read_definition_text(file, start);
 
             co_return ReadSymbolResult{
                 .name = rs.name,
                 .kind = std::string(symbol_kind_name(rs.kind)),
-                .file = std::move(file),
-                .start_line = start,
-                .end_line = end,
-                .text = std::move(text),
+                .file = std::move(def_text->file),
+                .start_line = def_text->start_line,
+                .end_line = def_text->end_line,
+                .text = std::move(def_text->text),
                 .symbol_id = rs.hash,
             };
         });
@@ -576,7 +492,10 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
             DocumentSymbolsResult result;
 
-            auto server_id = srv.workspace.path_pool.intern(params.path);
+            auto pool_it = srv.workspace.path_pool.cache.find(params.path);
+            if(pool_it == srv.workspace.path_pool.cache.end())
+                co_return result;
+            auto server_id = pool_it->second;
             auto sess_it = srv.sessions.find(server_id);
             if(sess_it != srv.sessions.end() && sess_it->second.file_index) {
                 auto& fi = *sess_it->second.file_index;
@@ -660,22 +579,18 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             }
 
             auto& rs = candidates[0];
-            auto def_loc = srv.indexer.find_definition_location(rs.hash);
 
             DefinitionResult result;
             result.name = rs.name;
             result.kind = std::string(symbol_kind_name(rs.kind));
             result.symbol_id = rs.hash;
 
-            if(def_loc) {
-                auto file = path_from_uri(def_loc->uri);
-                int start = static_cast<int>(def_loc->range.start.line) + 1;
-                auto [text, end] = read_definition_text(file, start);
+            if(auto def_text = srv.indexer.get_definition_text(rs.hash)) {
                 result.definition = LocationEntry{
-                    .file = std::move(file),
-                    .start_line = start,
-                    .end_line = end,
-                    .text = std::move(text),
+                    .file = std::move(def_text->file),
+                    .start_line = def_text->start_line,
+                    .end_line = def_text->end_line,
+                    .text = std::move(def_text->text),
                 };
             }
 
@@ -698,57 +613,28 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             }
 
             auto& rs = candidates[0];
-            auto& ws = srv.workspace;
 
             ReferencesResult result;
             result.name = rs.name;
             result.kind = std::string(symbol_kind_name(rs.kind));
             result.symbol_id = rs.hash;
 
-            auto collect = [&](RelationKind kind) {
-                auto sym_it = ws.project_index.symbols.find(rs.hash);
-                if(sym_it != ws.project_index.symbols.end()) {
-                    for(auto file_id: sym_it->second.reference_files) {
-                        auto shard_it = ws.merged_indices.find(file_id);
-                        if(shard_it == ws.merged_indices.end())
-                            continue;
-                        auto file_path = ws.project_index.path_pool.path(file_id);
-                        shard_it->second.find_relations(
-                            rs.hash,
-                            kind,
-                            [&](const auto&, protocol::Range range) {
-                                int line_num = static_cast<int>(range.start.line) + 1;
-                                result.references.push_back(ReferenceEntry{
-                                    .file = file_path.str(),
-                                    .line = line_num,
-                                    .context = read_file_line(file_path, line_num),
-                                });
-                                return true;
-                            });
-                    }
+            for(auto& ref: srv.indexer.collect_references(rs.hash, RelationKind::Reference)) {
+                result.references.push_back(ReferenceEntry{
+                    .file = std::move(ref.file),
+                    .line = ref.line,
+                    .context = std::move(ref.context),
+                });
+            }
+            if(params.include_declaration.value_or(false)) {
+                for(auto& ref: srv.indexer.collect_references(rs.hash, RelationKind::Definition)) {
+                    result.references.push_back(ReferenceEntry{
+                        .file = std::move(ref.file),
+                        .line = ref.line,
+                        .context = std::move(ref.context),
+                    });
                 }
-                for(auto& [sid, sess]: srv.sessions) {
-                    if(!sess.file_index)
-                        continue;
-                    auto file_path = ws.path_pool.resolve(sid);
-                    sess.file_index->find_relations(
-                        rs.hash,
-                        kind,
-                        [&](const auto&, protocol::Range range) {
-                            int line_num = static_cast<int>(range.start.line) + 1;
-                            result.references.push_back(ReferenceEntry{
-                                .file = file_path.str(),
-                                .line = line_num,
-                                .context = read_file_line(file_path, line_num),
-                            });
-                            return true;
-                        });
-                }
-            };
-
-            collect(RelationKind::Reference);
-            if(params.include_declaration.value_or(false))
-                collect(RelationKind::Definition);
+            }
 
             result.total = static_cast<int>(result.references.size());
             co_return result;
@@ -866,12 +752,11 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         });
 
     peer.on_request([&srv](RequestContext&, const StatusParams&) -> RequestResult<StatusParams> {
-        auto& ws = srv.workspace;
         StatusResult result;
         result.idle = srv.indexer.is_idle();
         result.pending = static_cast<int>(srv.indexer.pending_files());
-        result.total = static_cast<int>(ws.cdb.get_entries().size());
-        result.indexed = static_cast<int>(ws.merged_indices.size());
+        result.total = static_cast<int>(srv.indexer.total_queued());
+        result.indexed = std::max(0, result.total - result.pending);
         co_return result;
     });
 

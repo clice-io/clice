@@ -1,9 +1,17 @@
 #include "server/service/master_server.h"
 
+#include <cerrno>
+#include <cstring>
 #include <list>
 #include <memory>
 #include <string>
 #include <vector>
+
+#ifndef _WIN32
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
 
 #include "server/protocol/worker.h"
 #include "server/service/agent_client.h"
@@ -508,6 +516,21 @@ int run_daemon_mode(const DaemonOptions& opts) {
     }
 
     if(llvm::sys::fs::exists(socket_path)) {
+#ifndef _WIN32
+        int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+        if(fd >= 0) {
+            struct sockaddr_un addr{};
+            addr.sun_family = AF_UNIX;
+            auto len = std::min(socket_path.size(), sizeof(addr.sun_path) - 1);
+            std::memcpy(addr.sun_path, socket_path.data(), len);
+            bool live = ::connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) == 0;
+            ::close(fd);
+            if(live) {
+                LOG_ERROR("Another daemon is already running on {}", socket_path);
+                return 1;
+            }
+        }
+#endif
         llvm::sys::fs::remove(socket_path);
     }
 

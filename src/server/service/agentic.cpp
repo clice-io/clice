@@ -47,22 +47,44 @@ static kota::task<> agentic_request(kota::ipc::JsonPeer& peer,
             agentic::DefinitionParams{.name = name, .path = path, .line = line});
     } else if(opts.method == "references") {
         auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
-        ok = co_await send_and_print(peer, agentic::ReferencesParams{.name = name});
+        auto path = opts.path.empty() ? std::nullopt : std::optional(opts.path);
+        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
+        ok = co_await send_and_print(
+            peer,
+            agentic::ReferencesParams{.name = name, .path = path, .line = line});
     } else if(opts.method == "readSymbol") {
         auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
-        ok = co_await send_and_print(peer, agentic::ReadSymbolParams{.name = name});
+        auto path = opts.path.empty() ? std::nullopt : std::optional(opts.path);
+        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
+        ok = co_await send_and_print(
+            peer,
+            agentic::ReadSymbolParams{.name = name, .path = path, .line = line});
     } else if(opts.method == "documentSymbols") {
         ok = co_await send_and_print(peer, agentic::DocumentSymbolsParams{.path = opts.path});
     } else if(opts.method == "callGraph") {
         auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
-        auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
-        ok =
-            co_await send_and_print(peer, agentic::CallGraphParams{.name = name, .direction = dir});
-    } else if(opts.method == "typeHierarchy") {
-        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
+        auto path = opts.path.empty() ? std::nullopt : std::optional(opts.path);
+        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
         auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
         ok = co_await send_and_print(peer,
-                                     agentic::TypeHierarchyParams{.name = name, .direction = dir});
+                                     agentic::CallGraphParams{
+                                         .name = name,
+                                         .path = path,
+                                         .line = line,
+                                         .direction = dir,
+                                     });
+    } else if(opts.method == "typeHierarchy") {
+        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
+        auto path = opts.path.empty() ? std::nullopt : std::optional(opts.path);
+        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
+        auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
+        ok = co_await send_and_print(peer,
+                                     agentic::TypeHierarchyParams{
+                                         .name = name,
+                                         .path = path,
+                                         .line = line,
+                                         .direction = dir,
+                                     });
     } else if(opts.method == "fileDeps") {
         auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
         ok = co_await send_and_print(peer,
@@ -118,7 +140,7 @@ static kota::task<> relay_forward(kota::ipc::Transport& from, kota::ipc::Transpo
     to.close();
 }
 
-static kota::task<> relay_main(kota::event_loop& loop, std::string socket_path) {
+static kota::task<> relay_main(kota::event_loop& loop, int& exit_code, std::string socket_path) {
     auto stdio = kota::ipc::StreamTransport::open_stdio(loop);
     if(!stdio) {
         LOG_ERROR("failed to open stdio transport");
@@ -136,6 +158,7 @@ static kota::task<> relay_main(kota::event_loop& loop, std::string socket_path) 
     auto socket = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
 
     co_await kota::when_all(relay_forward(**stdio, *socket), relay_forward(*socket, **stdio));
+    exit_code = 0;
     loop.stop();
 }
 
@@ -153,9 +176,10 @@ int run_relay_mode(llvm::StringRef socket_path) {
     auto path = socket_path.empty() ? default_socket_path() : socket_path.str();
 
     kota::event_loop loop;
-    loop.schedule(relay_main(loop, std::move(path)));
+    int exit_code = 1;
+    loop.schedule(relay_main(loop, exit_code, std::move(path)));
     loop.run();
-    return 0;
+    return exit_code;
 }
 
 }  // namespace clice

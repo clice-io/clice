@@ -51,7 +51,9 @@ struct Options {
     DecoKV(
         style = KVStyle::JoinedOrSeparate,
         help =
-            "Agentic method (compileCommand, symbolSearch, definition, references, " "documentSymbols, readSymbol, callGraph, typeHierarchy, projectFiles, status, shutdown)",
+            "Agentic method (compileCommand, symbolSearch, definition, references, "
+            "documentSymbols, readSymbol, callGraph, typeHierarchy, projectFiles, "
+            "fileDeps, impactAnalysis, status, shutdown)",
         required = false)
     <std::string> method;
 
@@ -179,9 +181,15 @@ int main(int argc, const char** argv) {
     }
 
     if(mode == "daemon") {
+        auto workspace = opts.workspace.value_or("");
+        if(workspace.empty()) {
+            LOG_ERROR("--workspace is required for daemon mode");
+            return 1;
+        }
+
         clice::DaemonOptions daemon_opts;
         daemon_opts.socket_path = opts.socket.value_or("");
-        daemon_opts.workspace = opts.workspace.value_or("");
+        daemon_opts.workspace = std::move(workspace);
         daemon_opts.self_path = argv[0];
         return clice::run_daemon_mode(daemon_opts);
     }
