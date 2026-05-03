@@ -211,6 +211,8 @@ struct StatusResult {
     int indexed = 0;
 };
 
+struct ShutdownParams {};
+
 }  // namespace clice::agentic
 
 namespace kota::ipc::protocol {
@@ -285,6 +287,11 @@ template <>
 struct RequestTraits<clice::agentic::StatusParams> {
     using Result = clice::agentic::StatusResult;
     constexpr inline static std::string_view method = "agentic/status";
+};
+
+template <>
+struct NotificationTraits<clice::agentic::ShutdownParams> {
+    constexpr inline static std::string_view method = "agentic/shutdown";
 };
 
 }  // namespace kota::ipc::protocol

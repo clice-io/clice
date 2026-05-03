@@ -425,6 +425,40 @@ async def test_rpc_status(indexed_agentic, workspace):
     assert isinstance(result["indexed"], int)
 
 
+@pytest.mark.workspace("hello_world")
+async def test_rpc_shutdown(executable, workspace):
+    """Shutdown notification should cause the server to exit."""
+    from tests.integration.utils.client import CliceClient
+    from tests.conftest import _shutdown_client, _find_free_port
+
+    host = "127.0.0.1"
+    port = _find_free_port()
+    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+
+    c = CliceClient()
+    await c.start_io(*cmd)
+    init_options = {"project": {"cache_dir": str(workspace / ".clice")}}
+    await c.initialize(workspace, initialization_options=init_options)
+
+    rpc = AgenticRpcClient(host, port)
+    body = json.dumps({"jsonrpc": "2.0", "method": "agentic/shutdown", "params": {}})
+    rpc.sock.sendall(f"Content-Length: {len(body)}\r\n\r\n{body}".encode())
+    rpc.sock.settimeout(5)
+    try:
+        rpc.sock.recv(4096)
+    except Exception:
+        pass
+    rpc.sock.close()
+
+    import asyncio
+
+    for _ in range(20):
+        if c._server.returncode is not None:
+            break
+        await asyncio.sleep(0.5)
+    assert c._server.returncode is not None, "Server did not exit after shutdown"
+
+
 @pytest.mark.workspace("index_features")
 async def test_rpc_symbol_not_found(indexed_agentic, workspace):
     rpc, _ = indexed_agentic

@@ -71,6 +71,9 @@ static kota::task<> agentic_request(kota::ipc::JsonPeer& peer,
         ok = co_await send_and_print(peer, agentic::ImpactAnalysisParams{.path = opts.path});
     } else if(opts.method == "status") {
         ok = co_await send_and_print(peer, agentic::StatusParams{});
+    } else if(opts.method == "shutdown") {
+        peer.send_notification(agentic::ShutdownParams{});
+        ok = true;
     } else {
         LOG_ERROR("unknown agentic method '{}'", opts.method);
     }

@@ -874,6 +874,11 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         result.indexed = static_cast<int>(ws.merged_indices.size());
         co_return result;
     });
+
+    peer.on_notification([&srv](const ShutdownParams&) {
+        LOG_INFO("agentic/shutdown received, shutting down");
+        srv.schedule_shutdown();
+    });
 }
 
 }  // namespace clice
