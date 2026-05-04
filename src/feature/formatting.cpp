@@ -66,4 +66,20 @@ auto document_format(llvm::StringRef file,
     return edits;
 }
 
+auto format_code(llvm::StringRef file, llvm::StringRef code) -> std::string {
+    auto style = clang::format::getStyle(clang::format::DefaultFormatStyle,
+                                         file,
+                                         clang::format::DefaultFallbackStyle,
+                                         code);
+    if(!style)
+        return code.str();
+
+    auto replacements = clang::format::reformat(*style, code, {tooling::Range(0, code.size())});
+    auto result = tooling::applyAllReplacements(code, replacements);
+    if(!result)
+        return code.str();
+
+    return llvm::StringRef(*result).trim().str();
+}
+
 }  // namespace clice::feature

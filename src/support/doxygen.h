@@ -49,6 +49,9 @@ public:
         return doc_for_return;
     }
 
+    std::vector<std::pair<llvm::StringRef, const ParamCommandCommentContent*>>
+        get_param_command_comments() const;
+
 private:
     llvm::SmallDenseMap<llvm::StringRef, std::vector<BlockCommandCommentContent>>
         block_command_comments;

@@ -35,6 +35,18 @@ TEST_CASE(IncludeSort) {
     ASSERT_NE(edits.size(), 0U);
 }
 
+TEST_CASE(FormatCode) {
+    auto result = feature::format_code("main.cpp", "int   add(  int a,int    b ){return a+b;}");
+    EXPECT_NE(result.find("int add("), std::string::npos);
+    EXPECT_EQ(result.find("  int a,int"), std::string::npos);
+}
+
+TEST_CASE(FormatCodeIdempotent) {
+    auto first = feature::format_code("main.cpp", "int   add(  int a,int    b ){return a+b;}");
+    auto second = feature::format_code("main.cpp", first);
+    EXPECT_EQ(first, second);
+}
+
 };  // TEST_SUITE(Formatting)
 
 }  // namespace
