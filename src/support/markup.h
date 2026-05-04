@@ -5,11 +5,11 @@
 #include <string>
 #include <vector>
 
-#include "llvm/Support/raw_os_ostream.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
-/// Base class of structed text
+/// Base class of markup blocks
 class Block {
 public:
     virtual void render_markdown(llvm::raw_ostream& os) const = 0;
@@ -31,7 +31,7 @@ public:
         Italic,
         PlainText,
         InlineCode,
-        Strikethough,
+        Strikethrough,
     };
     void render_markdown(llvm::raw_ostream& os) const override;
 
@@ -54,7 +54,7 @@ private:
     std::vector<Chunk> chunks;
 };
 
-class StructedText;
+class Markup;
 
 /// Allow nested structure
 class BulletList : public Block {
@@ -65,23 +65,23 @@ public:
 
     std::unique_ptr<Block> clone() const override;
 
-    StructedText& add_item();
+    Markup& add_item();
 
 private:
-    std::vector<StructedText> items;
+    std::vector<Markup> items;
 };
 
-class StructedText {
+class Markup {
 public:
-    StructedText() = default;
+    Markup() = default;
 
-    StructedText(const StructedText& other) {
+    Markup(const Markup& other) {
         *this = other;
     }
 
-    StructedText(StructedText&&) = default;
+    Markup(Markup&&) = default;
 
-    StructedText& operator=(const StructedText& other) {
+    Markup& operator=(const Markup& other) {
         blocks.clear();
         for(auto& b: other.blocks) {
             blocks.push_back(b->clone());
@@ -89,9 +89,9 @@ public:
         return *this;
     }
 
-    StructedText& operator=(StructedText&&) = default;
+    Markup& operator=(Markup&&) = default;
 
-    void append(StructedText& doc);
+    void append(Markup& doc);
 
     Paragraph& add_paragraph();
 

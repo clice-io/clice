@@ -51,6 +51,15 @@ std::vector<std::pair<llvm::StringRef, llvm::ArrayRef<DoxygenInfo::BlockCommandC
     return res;
 }
 
+std::vector<std::pair<llvm::StringRef, const DoxygenInfo::ParamCommandCommentContent*>>
+    DoxygenInfo::get_param_command_comments() const {
+    std::vector<std::pair<llvm::StringRef, const ParamCommandCommentContent*>> res;
+    for(const auto& [name, info]: param_command_comments) {
+        res.emplace_back(name, &info);
+    }
+    return res;
+}
+
 /// Process inline commands, we only interested in `\b` (bold), `\e` (italic) and `\c` (inline code)
 ///
 /// \param line   The line
