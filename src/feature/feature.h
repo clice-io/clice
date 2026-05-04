@@ -104,4 +104,6 @@ auto document_format(llvm::StringRef file,
                      PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::TextEdit>;
 
+auto format_code(llvm::StringRef file, llvm::StringRef code) -> std::string;
+
 }  // namespace clice::feature

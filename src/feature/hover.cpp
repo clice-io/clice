@@ -643,7 +643,7 @@ auto format_param(const Param& p) -> std::string {
     return result;
 }
 
-auto present(const HoverInfo& hi) -> std::string {
+auto present(const HoverInfo& hi, llvm::StringRef file = "") -> std::string {
     Markup output;
 
     Paragraph& header = output.add_heading(3);
@@ -805,6 +805,8 @@ auto present(const HoverInfo& hi) -> std::string {
             code += hi.access_specifier + ": ";
 
         code += hi.definition;
+        if(!file.empty())
+            code = feature::format_code(file, code);
         output.add_code_block(std::move(code), "cpp");
     }
 
@@ -901,7 +903,7 @@ auto build_hover(const HoverInfo& hi,
         .contents =
             protocol::MarkupContent{
                                     .kind = protocol::MarkupKind::Markdown,
-                                    .value = present(hi),
+                                    .value = present(hi, unit.file_path(unit.interested_file())),
                                     },
     };
 
@@ -1029,7 +1031,7 @@ auto hover(CompilationUnitRef unit,
         .contents =
             protocol::MarkupContent{
                                     .kind = protocol::MarkupKind::Markdown,
-                                    .value = present(*hi),
+                                    .value = present(*hi, unit.file_path(unit.interested_file())),
                                     },
     };
 
