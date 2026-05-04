@@ -108,6 +108,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         caps.call_hierarchy_provider = true;
         caps.type_hierarchy_provider = true;
         caps.workspace_symbol_provider = true;
+        caps.document_formatting_provider = true;
+        caps.document_range_formatting_provider = true;
 
         protocol::SemanticTokensOptions sem_opts;
         {
@@ -461,6 +463,28 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                                                     *session);
             co_return std::move(result);
         });
+
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentFormattingParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto path = uri_to_path(params.text_document.uri);
+            auto path_id = srv.workspace.path_pool.intern(path);
+            auto* session = srv.find_session(path_id);
+            if(!session)
+                co_return serde_raw{"null"};
+            co_return co_await srv.compiler.forward_format(*session);
+        });
+
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentRangeFormattingParams& params) -> RawResult {
+        auto& srv = this->server;
+        auto path = uri_to_path(params.text_document.uri);
+        auto path_id = srv.workspace.path_pool.intern(path);
+        auto* session = srv.find_session(path_id);
+        if(!session)
+            co_return serde_raw{"null"};
+        co_return co_await srv.compiler.forward_format(*session, params.range);
+    });
 
     peer.on_request(
         [this, lookup_at](RequestContext& ctx,

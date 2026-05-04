@@ -90,6 +90,9 @@ public:
                             const protocol::Position& position,
                             Session& session);
 
+    /// Forward a formatting request to a stateless worker.
+    RawResult forward_format(Session& session, std::optional<protocol::Range> range = {});
+
     /// Handle completion requests.  Detects preamble context (include/import)
     /// and serves those locally; delegates code completion to a stateless worker.
     RawResult handle_completion(const protocol::Position& position, Session& session);

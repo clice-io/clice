@@ -882,6 +882,32 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     co_return std::move(result.value().result_json);
 }
 
+Compiler::RawResult Compiler::forward_format(Session& session,
+                                             std::optional<protocol::Range> range) {
+    auto path_id = session.path_id;
+    auto path = std::string(workspace.path_pool.resolve(path_id));
+
+    worker::BuildParams wp;
+    wp.kind = worker::BuildKind::Format;
+    wp.file = path;
+    wp.text = session.text;
+
+    if(range) {
+        lsp::PositionMapper mapper(wp.text, lsp::PositionEncoding::UTF16);
+        auto begin = mapper.to_offset(range->start);
+        auto end = mapper.to_offset(range->end);
+        if(!begin || !end)
+            co_return serde_raw{"null"};
+        wp.format_range = {*begin, *end};
+    }
+
+    auto result = co_await pool.send_stateless(wp);
+    if(!result.has_value()) {
+        co_return serde_raw{};
+    }
+    co_return std::move(result.value().result_json);
+}
+
 Compiler::RawResult Compiler::handle_completion(const protocol::Position& position,
                                                 Session& session) {
     auto path_id = session.path_id;

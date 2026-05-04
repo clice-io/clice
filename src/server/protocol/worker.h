@@ -64,6 +64,7 @@ enum class BuildKind : uint8_t {
     Index,
     Completion,
     SignatureHelp,
+    Format,
 };
 
 /// Unified parameters for all stateless build/compilation tasks.
@@ -74,6 +75,7 @@ enum class BuildKind : uint8_t {
 ///   - Index:         + pcms
 ///   - Completion:    + text, version, offset, pch, pcms
 ///   - SignatureHelp: + text, version, offset, pch, pcms
+///   - Format:        + text, format_range (optional)
 struct BuildParams {
     BuildKind kind;
     std::string file;
@@ -90,6 +92,7 @@ struct BuildParams {
     std::string output_path;               ///< BuildPCH, BuildPCM
     std::string module_name;               ///< BuildPCM
     uint32_t preamble_bound = UINT32_MAX;  ///< BuildPCH
+    LocalSourceRange format_range;         ///< Format (default = full document)
 };
 
 /// Unified result for stateless build tasks.

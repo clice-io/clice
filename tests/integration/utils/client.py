@@ -16,9 +16,12 @@ from lsprotocol.types import (
     Diagnostic,
     DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
+    DocumentFormattingParams,
     DocumentLinkParams,
+    DocumentRangeFormattingParams,
     DocumentSymbolParams,
     FoldingRangeParams,
+    FormattingOptions,
     HoverParams,
     InlayHintParams,
     InitializeParams,
@@ -308,6 +311,29 @@ class CliceClient(BaseLanguageClient):
         return await asyncio.wait_for(
             self.text_document_document_link_async(
                 DocumentLinkParams(text_document=TextDocumentIdentifier(uri=uri))
+            ),
+            timeout=timeout,
+        )
+
+    async def format_document(self, uri: str, *, timeout: float = 30.0):
+        return await asyncio.wait_for(
+            self.text_document_formatting_async(
+                DocumentFormattingParams(
+                    text_document=TextDocumentIdentifier(uri=uri),
+                    options=FormattingOptions(tab_size=4, insert_spaces=True),
+                )
+            ),
+            timeout=timeout,
+        )
+
+    async def format_range(self, uri: str, range_: Range, *, timeout: float = 30.0):
+        return await asyncio.wait_for(
+            self.text_document_range_formatting_async(
+                DocumentRangeFormattingParams(
+                    text_document=TextDocumentIdentifier(uri=uri),
+                    range=range_,
+                    options=FormattingOptions(tab_size=4, insert_spaces=True),
+                )
             ),
             timeout=timeout,
         )

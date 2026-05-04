@@ -292,6 +292,12 @@ def _generate_test_data_cdbs(data_dir: Path) -> None:
         if cr_main.exists():
             _write(cr_dir, [_entry(cr_dir, cr_main)])
 
+    # formatting
+    fmt_dir = data_dir / "formatting"
+    fmt_main = fmt_dir / "main.cpp"
+    if fmt_main.exists():
+        _write(fmt_dir, [_entry(fmt_dir, fmt_main)])
+
     # pch_test
     pt_dir = data_dir / "pch_test"
     if pt_dir.exists():

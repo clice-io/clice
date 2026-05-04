@@ -274,6 +274,22 @@ static worker::BuildResult handle_signature_help(const worker::BuildParams& para
     return result;
 }
 
+static worker::BuildResult handle_format(const worker::BuildParams& params) {
+    ScopedTimer timer;
+
+    std::optional<LocalSourceRange> range;
+    if(params.format_range.begin != static_cast<std::uint32_t>(-1)) {
+        range = params.format_range;
+    }
+
+    auto edits = feature::document_format(params.file, params.text, range);
+    LOG_DEBUG("Format done: {} edits, {}ms", edits.size(), timer.ms());
+
+    worker::BuildResult result;
+    result.result_json = to_raw(edits);
+    return result;
+}
+
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
     logging::stderr_logger(worker_name, logging::options);
     if(!log_dir.empty()) {
@@ -305,6 +321,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
                 }
                 case K::Completion: return handle_completion(params);
                 case K::SignatureHelp: return handle_signature_help(params);
+                case K::Format: return handle_format(params);
             }
             return {false, "Unknown build kind"};
         });
