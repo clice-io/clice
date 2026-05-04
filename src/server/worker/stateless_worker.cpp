@@ -278,7 +278,7 @@ static worker::BuildResult handle_format(const worker::BuildParams& params) {
     ScopedTimer timer;
 
     std::optional<LocalSourceRange> range;
-    if(params.format_range.begin != static_cast<std::uint32_t>(-1)) {
+    if(params.format_range.valid()) {
         range = params.format_range;
     }
 

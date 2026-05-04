@@ -34,6 +34,8 @@ async def test_capabilities(client, workspace):
     assert capability_enabled(caps.folding_range_provider)
     assert capability_enabled(caps.inlay_hint_provider)
     assert capability_enabled(caps.code_action_provider)
+    assert caps.document_formatting_provider is True
+    assert caps.document_range_formatting_provider is True
     assert caps.semantic_tokens_provider is not None
 
 

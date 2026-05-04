@@ -49,7 +49,7 @@ auto document_format(llvm::StringRef file,
         range ? tooling::Range(range->begin, range->length()) : tooling::Range(0, content.size());
     auto replacements = format_content(file, content, selection);
     if(!replacements) {
-        LOG_INFO("Fail to format for {}\n{}", file, replacements.error());
+        LOG_WARN("Failed to format {}: {}", file, replacements.error());
         return edits;
     }
 

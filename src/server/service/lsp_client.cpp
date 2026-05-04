@@ -472,6 +472,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto* session = srv.find_session(path_id);
             if(!session)
                 co_return serde_raw{"null"};
+            auto pause = srv.indexer.scoped_pause();
             co_return co_await srv.compiler.forward_format(*session);
         });
 
@@ -483,6 +484,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto* session = srv.find_session(path_id);
         if(!session)
             co_return serde_raw{"null"};
+        auto pause = srv.indexer.scoped_pause();
         co_return co_await srv.compiler.forward_format(*session, params.range);
     });
 

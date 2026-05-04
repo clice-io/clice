@@ -903,7 +903,7 @@ Compiler::RawResult Compiler::forward_format(Session& session,
 
     auto result = co_await pool.send_stateless(wp);
     if(!result.has_value()) {
-        co_return serde_raw{};
+        co_return serde_raw{"null"};
     }
     co_return std::move(result.value().result_json);
 }
