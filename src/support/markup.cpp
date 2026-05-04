@@ -171,7 +171,7 @@ static std::string render_blocks(llvm::ArrayRef<std::unique_ptr<Block>> blocks) 
         }
         last_block_was_ruler = b->is_ruler();
         b->render_markdown(os);
-        os << '\n';
+        os << "\n\n";
     }
 
     // Collapse runs of 3+ newlines down to 2 (one blank line max).
