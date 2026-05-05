@@ -142,6 +142,11 @@ static void process_paragragh(llvm::SmallVector<llvm::StringRef>::iterator& line
             rest_of_line = trimed.drop_front(command_end);
         }
 
+        if(command == "b" | command == "e" | command == "c") {
+            // Just start with inline command leave it.
+            goto normal_line;
+        }
+
         if(command.equals_insensitive("param")) {
             // Got param command
             auto direction = DoxygenInfo::ParamCommandCommentContent::ParamDirection::Unspecified;
@@ -230,6 +235,7 @@ static void process_paragragh(llvm::SmallVector<llvm::StringRef>::iterator& line
             return;
         }
     }
+normal_line:
     // Not a command block, but may include commands like '@b', '@e'
     process_non_command_line(*line_ref, rest);
     ++line_ref;
