@@ -158,12 +158,28 @@ auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
     return signature;
 }
 
+/// Find the first non-whitespace character after the given offset in content.
+/// Returns '\0' if none found (end of content).
+auto next_token_char(llvm::StringRef content, std::uint32_t offset) -> char {
+    for(auto i = offset; i < content.size(); ++i) {
+        char c = content[i];
+        if(c != ' ' && c != '\t' && c != '\n' && c != '\r') {
+            return c;
+        }
+    }
+    return '\0';
+}
+
 /// Build a snippet string from a CodeCompletionString.
 /// Produces e.g. "funcName(${1:int x}, ${2:float y})" for functions,
 /// or "ClassName<${1:T}>" for class templates.
-auto build_snippet(const clang::CodeCompletionString& ccs) -> std::string {
+/// If skip_parens is true, omits everything from '(' onward (when the next
+/// token after the cursor is already '(').
+auto build_snippet(const clang::CodeCompletionString& ccs, bool skip_parens = false)
+    -> std::string {
     std::string snippet;
     unsigned placeholder_index = 0;
+    bool in_parens = false;
 
     for(const auto& chunk: ccs) {
         using CK = clang::CodeCompletionString::ChunkKind;
@@ -174,33 +190,47 @@ auto build_snippet(const clang::CodeCompletionString& ccs) -> std::string {
                 }
                 break;
             case CK::CK_Placeholder:
+                if(in_parens && skip_parens) {
+                    break;
+                }
                 if(chunk.Text) {
                     snippet += std::format("${{{0}:{1}}}", ++placeholder_index, chunk.Text);
                 }
                 break;
-            case CK::CK_LeftParen: snippet += '('; break;
-            case CK::CK_RightParen: snippet += ')'; break;
+            case CK::CK_LeftParen:
+                in_parens = true;
+                if(!skip_parens) {
+                    snippet += '(';
+                }
+                break;
+            case CK::CK_RightParen:
+                in_parens = false;
+                if(!skip_parens) {
+                    snippet += ')';
+                }
+                break;
             case CK::CK_LeftAngle: snippet += '<'; break;
             case CK::CK_RightAngle: snippet += '>'; break;
-            case CK::CK_Comma: snippet += ", "; break;
+            case CK::CK_Comma:
+                if(!(in_parens && skip_parens)) {
+                    snippet += ", ";
+                }
+                break;
             case CK::CK_Text:
-                if(chunk.Text) {
+                if(!(in_parens && skip_parens) && chunk.Text) {
                     snippet += chunk.Text;
                 }
                 break;
-            case CK::CK_Optional:
-                // Optional chunks contain default arguments — skip for snippet.
-                break;
+            case CK::CK_Optional: break;
             case CK::CK_Informative:
             case CK::CK_ResultType:
-            case CK::CK_CurrentParameter:
-                // Display-only chunks, not part of insertion.
-                break;
+            case CK::CK_CurrentParameter: break;
             default: break;
         }
     }
 
-    // If no placeholders were generated, return empty to signal plain text.
+    // If no placeholders were generated and parens were skipped,
+    // return empty to signal plain text.
     if(placeholder_index == 0) {
         return {};
     }
@@ -229,9 +259,11 @@ public:
     CodeCompletionCollector(std::uint32_t offset,
                             PositionEncoding encoding,
                             std::vector<protocol::CompletionItem>& output,
-                            const CodeCompletionOptions& options) :
+                            const CodeCompletionOptions& options,
+                            llvm::StringRef original_content) :
         clang::CodeCompleteConsumer({}), offset(offset), encoding(encoding), output(output),
-        options(options), info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
+        options(options), original_content(original_content),
+        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
         return info.getAllocator();
@@ -432,7 +464,8 @@ public:
                         // Generate snippet for non-bundled callables.
                         if(is_callable && !options.bundle_overloads &&
                            options.enable_function_arguments_snippet) {
-                            snippet = build_snippet(*ccs);
+                            bool next_is_paren = next_token_char(original_content, offset) == '(';
+                            snippet = build_snippet(*ccs, /*skip_parens=*/next_is_paren);
                         }
                     }
 
@@ -504,6 +537,7 @@ private:
     std::uint32_t offset;
     PositionEncoding encoding;
     std::vector<protocol::CompletionItem>& output;
+    llvm::StringRef original_content;
     const CodeCompletionOptions& options;
     clang::CodeCompletionTUInfo info;
 };
@@ -518,7 +552,15 @@ auto code_complete(CompilationParams& params,
     auto& [file, offset] = params.completion;
     (void)file;
 
-    auto* consumer = new CodeCompletionCollector(offset, encoding, items, options);
+    // Get the original file content for lookahead (smart parens detection).
+    llvm::StringRef original_content;
+    auto buf_it = params.buffers.find(file);
+    if(buf_it != params.buffers.end()) {
+        original_content = buf_it->second->getBuffer();
+    }
+
+    auto* consumer =
+        new CodeCompletionCollector(offset, encoding, items, options, original_content);
     auto unit = complete(params, consumer);
     (void)unit;
 
