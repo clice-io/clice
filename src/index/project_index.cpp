@@ -27,6 +27,42 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self, TU
     return file_ids_map;
 }
 
+llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self,
+                                                     TUIndex& index,
+                                                     const Bitmap& new_file_ids) {
+    auto& paths = index.graph.paths;
+    llvm::SmallVector<std::uint32_t> file_ids_map;
+    file_ids_map.resize_for_overwrite(paths.size());
+
+    for(std::uint32_t i = 0; i < paths.size(); i++) {
+        file_ids_map[i] = self.path_pool.path_id(paths[i]);
+    }
+
+    for(auto& [symbol_id, symbol]: index.symbols) {
+        // Skip symbols that don't reference any new file.
+        bool references_new = false;
+        for(auto ref: symbol.reference_files) {
+            if(new_file_ids.contains(ref)) {
+                references_new = true;
+                break;
+            }
+        }
+        if(!references_new)
+            continue;
+
+        auto& target_symbol = self.symbols[symbol_id];
+        if(target_symbol.name.empty()) {
+            target_symbol.name = symbol.name;
+            target_symbol.kind = symbol.kind;
+        }
+        for(auto ref: symbol.reference_files) {
+            target_symbol.reference_files.add(file_ids_map[ref]);
+        }
+    }
+
+    return file_ids_map;
+}
+
 void ProjectIndex::serialize(this ProjectIndex& self, llvm::raw_ostream& os) {
     fbs::FlatBufferBuilder builder(1024);
 

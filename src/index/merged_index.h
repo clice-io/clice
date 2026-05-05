@@ -68,7 +68,8 @@ public:
     llvm::StringRef content(this const Self& self);
 
     /// Merge the index with given compilation context.
-    void merge(this Self& self,
+    /// Returns true if this was a cache hit (no new data inserted).
+    bool merge(this Self& self,
                std::uint32_t path_id,
                std::chrono::milliseconds build_at,
                std::vector<IncludeLocation> include_locations,
@@ -76,7 +77,8 @@ public:
                llvm::StringRef content);
 
     /// Merge the index with given header context.
-    void merge(this Self& self,
+    /// Returns true if this was a cache hit (no new data inserted).
+    bool merge(this Self& self,
                std::uint32_t path_id,
                std::uint32_t include_id,
                FileIndex& index,

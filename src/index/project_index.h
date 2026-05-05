@@ -82,6 +82,12 @@ struct ProjectIndex {
 
     llvm::SmallVector<std::uint32_t> merge(this ProjectIndex& self, TUIndex& index);
 
+    /// Selective merge: only update symbols referenced by files in new_file_ids.
+    /// new_file_ids contains TU-local path indices for cache-miss FileIndices.
+    llvm::SmallVector<std::uint32_t> merge(this ProjectIndex& self,
+                                           TUIndex& index,
+                                           const Bitmap& new_file_ids);
+
     void serialize(this ProjectIndex& self, llvm::raw_ostream& os);
 
     static ProjectIndex from(const void* data);
