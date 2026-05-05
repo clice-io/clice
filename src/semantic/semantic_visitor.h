@@ -63,12 +63,10 @@ public:
 
     /// Invoked when a module occurrence is seen in source code.
     /// @param keyword The location of the `module` or `import` keyword.
-    /// @param identifiers Tokens that make up the module name.
+    /// @param identifiers Source locations of identifiers that make up the module name.
     void handleModuleOccurrence(clang::SourceLocation keyword,
-                                llvm::ArrayRef<clang::syntax::Token> identifiers) {
+                                llvm::ArrayRef<clang::SourceLocation> identifiers) {
         assert(keyword.isValid() && keyword.isFileID() && "Invalid keyword location");
-
-        /// FIXME: Check whether identifiers are valid.
 
         if constexpr(!std::same_as<decltype(&SemanticVisitor::handleModuleOccurrence),
                                    decltype(&Derived::handleModuleOccurrence)>) {
@@ -145,30 +143,16 @@ public:
 #define VISIT_TYPELOC(type) bool Visit##type(clang::type loc)
 
     VISIT_DECL(ImportDecl) {
-        /// FIXME:
-        // auto tokens = TB.expandedTokens(decl->getSourceRange());
-        //
-        // assert(tokens.size() >= 2 && tokens[0].kind() == clang::tok::identifier &&
-        //       tokens[0].text(SM) == "import" && "Invalid import declaration");
-        // assert([&]() {
-        //    auto range = tokens.drop_front(1);
-        //    for(auto iter = range.begin(); iter != range.end(); ++iter) {
-        //        if(iter->kind() == clang::tok::identifier) {
-        //            if(auto next = iter + 1;
-        //               next != range.end() && (next->kind() == clang::tok::coloncolon ||
-        //                                       next->kind() == clang::tok::period)) {
-        //                continue;
-        //            }
-        //            break;
-        //        } else {
-        //            return false;
-        //        }
-        //    }
-        //    return true;
-        //}() && "Invalid import declaration");
-        //
-        // handleModuleOccurrence(tokens[0].location(), tokens.drop_front(1));
+        auto keyword = decl->getLocation();
+        auto tokens = unit.expanded_tokens(decl->getSourceRange());
+        for(const auto& token: tokens) {
+            if(token.text(unit.context().getSourceManager()) == "import") {
+                keyword = token.location();
+                break;
+            }
+        }
 
+        handleModuleOccurrence(keyword, decl->getIdentifierLocs());
         return true;
     }
 
