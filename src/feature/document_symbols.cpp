@@ -111,63 +111,67 @@ class DocumentSymbolCollector : public FilteredASTVisitor<DocumentSymbolCollecto
 public:
     explicit DocumentSymbolCollector(CompilationUnitRef unit) : FilteredASTVisitor(unit, true) {}
 
-    bool on_traverse_decl(clang::Decl* decl, auto traverse) {
-        if(!is_interested(decl)) {
-            return (this->*traverse)(decl);
-        }
+private:
+    auto push_symbol(clang::NamedDecl* decl) {
+        struct Guard {
+            std::vector<InternalSymbol>* previous;
+            std::vector<InternalSymbol>** cursor;
 
-        auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
-        if(!named) {
-            return (this->*traverse)(decl);
-        }
+            ~Guard() {
+                if(previous) {
+                    *cursor = previous;
+                }
+            }
+        };
 
         auto [fid, selection_range] =
-            unit.decompose_range(unit.expansion_location(named->getLocation()));
-        auto [fid2, range] = unit.decompose_expansion_range(named->getSourceRange());
+            unit.decompose_range(unit.expansion_location(decl->getLocation()));
+        auto [fid2, range] = unit.decompose_expansion_range(decl->getSourceRange());
         if(fid != fid2 || fid != unit.interested_file() || !selection_range.valid() ||
            !range.valid()) {
-            return true;
+            return Guard{nullptr, nullptr};
         }
 
         auto* previous = result.cursor;
         auto& symbol = result.cursor->emplace_back();
         symbol.kind = SymbolKind::from(decl);
-        symbol.name = ast::display_name_of(named);
-        symbol.detail = symbol_detail(unit.context(), *named);
+        symbol.name = ast::display_name_of(decl);
+        symbol.detail = symbol_detail(unit.context(), *decl);
         symbol.selection_range = selection_range;
         symbol.range = range;
 
         result.cursor = &symbol.children;
-        auto ok = (this->*traverse)(decl);
-        result.cursor = previous;
-        return ok;
+        return Guard{previous, &result.cursor};
     }
+
+public:
+#define TRAVERSE_SYMBOL_DECL(type)                                                                 \
+    bool Traverse##type##Decl(clang::type##Decl* decl) {                                           \
+        auto guard = this->push_symbol(decl);                                                      \
+        return Base::Traverse##type##Decl(decl);                                                   \
+    }
+
+    TRAVERSE_SYMBOL_DECL(Namespace);
+    TRAVERSE_SYMBOL_DECL(Enum);
+    TRAVERSE_SYMBOL_DECL(EnumConstant);
+    TRAVERSE_SYMBOL_DECL(Function);
+    TRAVERSE_SYMBOL_DECL(CXXMethod);
+    TRAVERSE_SYMBOL_DECL(CXXConstructor);
+    TRAVERSE_SYMBOL_DECL(CXXDestructor);
+    TRAVERSE_SYMBOL_DECL(CXXConversion);
+    TRAVERSE_SYMBOL_DECL(CXXDeductionGuide);
+    TRAVERSE_SYMBOL_DECL(Record);
+    TRAVERSE_SYMBOL_DECL(CXXRecord);
+    TRAVERSE_SYMBOL_DECL(Field);
+    TRAVERSE_SYMBOL_DECL(Var);
+    TRAVERSE_SYMBOL_DECL(Binding);
+    TRAVERSE_SYMBOL_DECL(Concept);
+
+#undef TRAVERSE_SYMBOL_DECL
 
     auto collect() -> std::vector<InternalSymbol> {
         TraverseDecl(unit.tu());
         return std::move(result.symbols);
-    }
-
-private:
-    static bool is_interested(clang::Decl* decl) {
-        switch(decl->getKind()) {
-            case clang::Decl::Namespace:
-            case clang::Decl::Enum:
-            case clang::Decl::EnumConstant:
-            case clang::Decl::Function:
-            case clang::Decl::CXXMethod:
-            case clang::Decl::CXXConstructor:
-            case clang::Decl::CXXDestructor:
-            case clang::Decl::CXXConversion:
-            case clang::Decl::CXXDeductionGuide:
-            case clang::Decl::Record:
-            case clang::Decl::CXXRecord:
-            case clang::Decl::Field:
-            case clang::Decl::Var:
-            case clang::Decl::Binding:
-            case clang::Decl::Concept: return true;
-            default: return false;
-        }
     }
 
 private:

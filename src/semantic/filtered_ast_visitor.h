@@ -33,6 +33,8 @@ public:
             return true;
         }
 
+        /// Clang doesn't visit implicit declarations and
+        /// implicit template instantiations by default.
         if(llvm::isa<clang::TranslationUnitDecl>(decl)) {
             if(interested_only) {
                 for(auto top: unit.top_level_decls()) {
@@ -46,34 +48,7 @@ public:
             return Base::TraverseDecl(decl);
         }
 
-        if(decl->isImplicit()) {
-            return true;
-        }
-
-        /// We don't want to visit implicit instantiation.
-        if(auto SD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
-            if(SD->getSpecializationKind() == clang::TSK_ImplicitInstantiation) {
-                return true;
-            }
-        }
-
-        if(auto SD = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-            if(SD->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation) {
-                return true;
-            }
-        }
-
-        if(auto SD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(decl)) {
-            if(SD->getSpecializationKind() == clang::TSK_ImplicitInstantiation) {
-                return true;
-            }
-        }
-
-        if constexpr(requires { getDerived().on_traverse_decl(decl, &Base::TraverseDecl); }) {
-            return getDerived().on_traverse_decl(decl, &Base::TraverseDecl);
-        } else {
-            return Base::TraverseDecl(decl);
-        }
+        return Base::TraverseDecl(decl);
     }
 
     bool TraverseStmt(clang::Stmt* stmt) {
