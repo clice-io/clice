@@ -40,6 +40,34 @@ bool is_dependent(const clang::Decl* D) {
     return isa<clang::UnresolvedUsingValueDecl>(D);
 }
 
+/// Whether a declaration name is backed by source text that should be highlighted.
+bool can_highlight_name(clang::DeclarationName name) {
+    switch(name.getNameKind()) {
+        case clang::DeclarationName::Identifier: {
+            auto* info = name.getAsIdentifierInfo();
+            return info && !info->getName().empty();
+        }
+
+        case clang::DeclarationName::CXXConstructorName:
+        case clang::DeclarationName::CXXDestructorName: {
+            return true;
+        }
+
+        case clang::DeclarationName::CXXConversionFunctionName:
+        case clang::DeclarationName::CXXOperatorName:
+        case clang::DeclarationName::CXXDeductionGuideName:
+        case clang::DeclarationName::CXXLiteralOperatorName:
+        case clang::DeclarationName::CXXUsingDirective:
+        case clang::DeclarationName::ObjCZeroArgSelector:
+        case clang::DeclarationName::ObjCOneArgSelector:
+        case clang::DeclarationName::ObjCMultiArgSelector: {
+            return false;
+        }
+    }
+
+    std::unreachable();
+}
+
 /// Returns true if `decl` is considered to be from a default/system library.
 /// This currently checks the systemness of the file by include type, although
 /// different heuristics may be used in the future (e.g. sysroot paths).
@@ -177,7 +205,7 @@ public:
     void handleDeclOccurrence(const clang::NamedDecl* decl,
                               RelationKind relation,
                               clang::SourceLocation location) {
-        if(relation.isReference() && !ast::can_highlight_name(decl->getDeclName())) {
+        if(relation.isReference() && !can_highlight_name(decl->getDeclName())) {
             return;
         }
 
