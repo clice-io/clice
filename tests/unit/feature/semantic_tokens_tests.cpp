@@ -138,6 +138,10 @@ void EXPECT_TOKEN(llvm::StringRef name,
     ASSERT_EQ(token->modifiers, expected_modifiers);
 }
 
+void EXPECT_NO_TOKEN(llvm::StringRef name) {
+    ASSERT_TRUE(find_by_range(name) == nullptr);
+}
+
 TEST_CASE(BasicLexicalKinds) {
     run_utf8(R"cpp(
 @d1[#define] @m0[FOO]
@@ -262,6 +266,44 @@ int main() {
     EXPECT_TOKEN("y1", SymbolKind::Variable, declaration | templated);
     EXPECT_TOKEN("y2", SymbolKind::Variable, definition | templated);
     EXPECT_TOKEN("x3", SymbolKind::Variable, 0);
+}
+
+TEST_CASE(IneligibleOperatorReferenceIsSuppressed) {
+    run_utf8(R"cpp(
+struct S {};
+
+S operator+(S lhs, S rhs);
+
+void use(S lhs, S rhs) {
+    (void)(lhs @plus[+] rhs);
+}
+)cpp");
+
+    EXPECT_NO_TOKEN("plus");
+}
+
+TEST_CASE(ConstructorAndDestructorNamesRemainHighlighted) {
+    run_utf8(R"cpp(
+struct S {
+    @ctor_decl[S]();
+    @dtor_decl[~]S();
+};
+
+S::@ctor_def[S]() {}
+
+void use(S* value) {
+    value->@dtor_ref[~]S();
+}
+)cpp");
+
+    auto declaration = modifier_mask({SymbolModifiers::Declaration});
+    auto definition = modifier_mask({SymbolModifiers::Definition});
+    auto special_member = modifier_mask({SymbolModifiers::ConstructorOrDestructor});
+
+    EXPECT_TOKEN("ctor_decl", SymbolKind::Method, declaration | special_member);
+    EXPECT_TOKEN("dtor_decl", SymbolKind::Method, declaration | special_member);
+    EXPECT_TOKEN("ctor_def", SymbolKind::Method, definition | special_member);
+    EXPECT_TOKEN("dtor_ref", SymbolKind::Method, special_member);
 }
 
 TEST_CASE(LegacyVarDeclTemplates) {
