@@ -1,0 +1,14 @@
+---
+source: document_symbol_tests.cpp
+created_at: 2026-05-20
+input_file: ../../corpus/statements/if/basic_if.cpp
+---
+- {name: "basic_if", kind: Namespace, range: "1:0-35:1", selection_range: "1:10-1:18"}
+  - {name: "abs_val", kind: Function, range: "3:0-7:1", selection_range: "3:4-3:11", detail: "int (int)"}
+  - {name: "sign", kind: Function, range: "9:0-17:1", selection_range: "9:12-9:16", detail: "const char *(int)"}
+  - {name: "nested_if", kind: Function, range: "20:0-27:1", selection_range: "20:4-20:13", detail: "int (int, int)"}
+  - {name: "test", kind: Function, range: "29:0-33:1", selection_range: "29:5-29:9", detail: "void ()"}
+    - {name: "r1", kind: Variable, range: "30:21-30:41", selection_range: "30:25-30:27", detail: "int"}
+    - {name: "r2", kind: Variable, range: "31:21-31:38", selection_range: "31:26-31:28", detail: "const char *"}
+    - {name: "r3", kind: Variable, range: "32:21-32:46", selection_range: "32:25-32:27", detail: "int"}
+

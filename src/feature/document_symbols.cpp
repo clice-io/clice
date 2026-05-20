@@ -93,18 +93,9 @@ auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> 
     return detail;
 }
 
-struct InternalSymbol {
-    std::string name;
-    std::string detail;
-    SymbolKind kind = SymbolKind::Invalid;
-    LocalSourceRange range;
-    LocalSourceRange selection_range;
-    std::vector<InternalSymbol> children;
-};
-
 struct SymbolFrame {
-    std::vector<InternalSymbol> symbols;
-    std::vector<InternalSymbol>* cursor = &symbols;
+    std::vector<DocumentSymbol> symbols;
+    std::vector<DocumentSymbol>* cursor = &symbols;
 };
 
 class DocumentSymbolCollector : public FilteredASTVisitor<DocumentSymbolCollector> {
@@ -143,7 +134,7 @@ public:
         return ok;
     }
 
-    auto collect() -> std::vector<InternalSymbol> {
+    auto collect() -> std::vector<DocumentSymbol> {
         TraverseDecl(unit.tu());
         return std::move(result.symbols);
     }
@@ -174,8 +165,8 @@ private:
     SymbolFrame result;
 };
 
-void sort_symbols(std::vector<InternalSymbol>& symbols) {
-    std::ranges::sort(symbols, [](const InternalSymbol& lhs, const InternalSymbol& rhs) {
+void sort_symbols(std::vector<DocumentSymbol>& symbols) {
+    std::ranges::sort(symbols, [](const DocumentSymbol& lhs, const DocumentSymbol& rhs) {
         if(lhs.range.begin != rhs.range.begin) {
             return lhs.range.begin < rhs.range.begin;
         }
@@ -187,7 +178,7 @@ void sort_symbols(std::vector<InternalSymbol>& symbols) {
     }
 }
 
-auto to_protocol_symbol(const InternalSymbol& symbol, const PositionMapper& converter)
+auto to_protocol_symbol(const DocumentSymbol& symbol, const PositionMapper& converter)
     -> protocol::DocumentSymbol {
     protocol::DocumentSymbol result{
         .name = symbol.name,
@@ -215,10 +206,15 @@ auto to_protocol_symbol(const InternalSymbol& symbol, const PositionMapper& conv
 
 }  // namespace
 
+auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol> {
+    auto result = DocumentSymbolCollector(unit).collect();
+    sort_symbols(result);
+    return result;
+}
+
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol> {
-    auto internal = DocumentSymbolCollector(unit).collect();
-    sort_symbols(internal);
+    auto internal = document_symbols(unit);
 
     PositionMapper converter(unit.interested_content(), encoding);
     std::vector<protocol::DocumentSymbol> symbols;

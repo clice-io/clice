@@ -7,6 +7,7 @@
 
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
+#include "semantic/symbol_kind.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
@@ -59,17 +60,65 @@ struct InlayHintsOptions {
 
 struct SignatureHelpOptions {};
 
-auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
+struct SemanticToken {
+    LocalSourceRange range;
+    SymbolKind kind = SymbolKind::Invalid;
+    std::uint32_t modifiers = 0;
+};
+
+struct FoldingRange {
+    LocalSourceRange range;
+    std::optional<protocol::FoldingRangeKind> kind;
+    std::string collapsed_text;
+};
+
+struct DocumentSymbol {
+    std::string name;
+    std::string detail;
+    SymbolKind kind = SymbolKind::Invalid;
+    LocalSourceRange range;
+    LocalSourceRange selection_range;
+    std::vector<DocumentSymbol> children;
+};
+
+enum class HintCategory : std::uint8_t {
+    Parameter,
+    DefaultArgument,
+    Type,
+    Designator,
+    BlockEnd,
+};
+
+struct InlayHint {
+    std::uint32_t offset = 0;
+    HintCategory kind = HintCategory::Type;
+    std::string label;
+    bool padding_left = false;
+    bool padding_right = false;
+};
+
+auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken>;
+auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     -> protocol::SemanticTokens;
+
+auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange>;
+auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
+    -> std::vector<protocol::FoldingRange>;
+
+auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
+auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
+    -> std::vector<protocol::DocumentSymbol>;
+
+auto inlay_hints(CompilationUnitRef unit,
+                 LocalSourceRange target,
+                 const InlayHintsOptions& options = {}) -> std::vector<InlayHint>;
+auto inlay_hints(CompilationUnitRef unit,
+                 LocalSourceRange target,
+                 const InlayHintsOptions& options,
+                 PositionEncoding encoding) -> std::vector<protocol::InlayHint>;
 
 auto document_links(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::DocumentLink>;
-
-auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
-    -> std::vector<protocol::DocumentSymbol>;
-
-auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
-    -> std::vector<protocol::FoldingRange>;
 
 auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::Diagnostic>;
@@ -88,12 +137,6 @@ auto hover(CompilationUnitRef unit,
            std::uint32_t offset,
            const HoverOptions& options = {},
            PositionEncoding encoding = PositionEncoding::UTF16) -> std::optional<protocol::Hover>;
-
-auto inlay_hints(CompilationUnitRef unit,
-                 LocalSourceRange target,
-                 const InlayHintsOptions& options = {},
-                 PositionEncoding encoding = PositionEncoding::UTF16)
-    -> std::vector<protocol::InlayHint>;
 
 auto signature_help(CompilationParams& params, const SignatureHelpOptions& options = {})
     -> protocol::SignatureHelp;

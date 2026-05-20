@@ -1,9 +1,17 @@
+#include <string>
+
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/VirtualFileSystem.h"
 
 namespace clice::testing {
+
+/// Set by --test-dir from the command line; empty if not specified.
+inline std::string test_dir;
+
+/// Set by --corpus-dir from the command line; empty if not specified.
+inline std::string corpus_dir;
 
 #ifdef _WIN32
 constexpr inline bool Windows = true;

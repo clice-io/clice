@@ -9,6 +9,8 @@
 #include "feature/feature.h"
 #include "semantic/symbol_kind.h"
 
+#include "kota/meta/enum.h"
+
 namespace clice::testing {
 
 namespace {
@@ -99,7 +101,7 @@ auto decode_relative_tokens(const protocol::SemanticTokens& tokens) -> std::vect
     return result;
 }
 
-TEST_SUITE(SemanticTokens, Tester) {
+TEST_SUITE(semantic_tokens, Tester) {
 
 protocol::SemanticTokens tokens;
 std::vector<DecodedToken> decoded;
@@ -539,7 +541,57 @@ void f() {
     EXPECT_TOKEN("v2", SymbolKind::Variable, definition);
 }
 
-};  // TEST_SUITE(SemanticTokens)
+std::string format_semantic_tokens(llvm::StringRef content,
+                                   llvm::ArrayRef<feature::SemanticToken> tokens) {
+    feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+    std::string result;
+    for(auto& token: tokens) {
+        if(!token.range.valid() || token.range.end <= token.range.begin ||
+           token.range.end > content.size())
+            continue;
+
+        auto pos = mapper.to_position(token.range.begin);
+        if(!pos)
+            continue;
+
+        auto text = content.substr(token.range.begin, token.range.length());
+        auto kind = kota::meta::enum_name(static_cast<SymbolKind::Kind>(token.kind), "Unknown");
+
+        result += std::format("- {{loc: \"{}:{}\", text: {}, kind: {}",
+                              pos->line,
+                              pos->character,
+                              yaml_str(text),
+                              kind);
+
+        std::string mods;
+        for(std::uint32_t i = 0; i < 32; ++i) {
+            if(token.modifiers & (1u << i)) {
+                auto name = kota::meta::enum_name(static_cast<SymbolModifiers::Kind>(i));
+                if(!name.empty()) {
+                    if(!mods.empty())
+                        mods += ", ";
+                    mods += name;
+                }
+            }
+        }
+        if(!mods.empty()) {
+            result += std::format(", modifiers: [{}]", mods);
+        }
+        result += "}\n";
+    }
+    return result;
+}
+
+TEST_CASE(snapshot) {
+    ASSERT_SNAPSHOT_GLOB(corpus_dir, "**/*.cpp", [&](std::string_view path) -> std::string {
+        clear();
+        if(!compile_file(path))
+            return "COMPILE_ERROR";
+        return format_semantic_tokens(unit->interested_content(), feature::semantic_tokens(*unit));
+    });
+}
+
+};  // TEST_SUITE(semantic_tokens)
 
 }  // namespace
 

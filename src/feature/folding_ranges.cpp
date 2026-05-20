@@ -53,12 +53,6 @@ auto to_kind(FoldingKind kind) -> protocol::FoldingRangeKind {
     return protocol::FoldingRangeKind(protocol::FoldingRangeKind::region);
 }
 
-struct RawFoldingRange {
-    LocalSourceRange range;
-    std::optional<protocol::FoldingRangeKind> kind;
-    std::string collapsed_text;
-};
-
 class FoldingRangeCollector : public FilteredASTVisitor<FoldingRangeCollector> {
 public:
     explicit FoldingRangeCollector(CompilationUnitRef unit) : FilteredASTVisitor(unit, true) {}
@@ -185,7 +179,7 @@ public:
         return true;
     }
 
-    auto collect() -> std::vector<RawFoldingRange> {
+    auto collect() -> std::vector<FoldingRange> {
         TraverseDecl(unit.tu());
 
         auto directives_it = unit.directives().find(unit.interested_file());
@@ -193,7 +187,7 @@ public:
             collect_directives(directives_it->second);
         }
 
-        std::ranges::sort(ranges, [](const RawFoldingRange& lhs, const RawFoldingRange& rhs) {
+        std::ranges::sort(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
             if(lhs.range.begin != rhs.range.begin) {
                 return lhs.range.begin < rhs.range.begin;
             }
@@ -343,14 +337,18 @@ private:
     }
 
 private:
-    std::vector<RawFoldingRange> ranges;
+    std::vector<FoldingRange> ranges;
 };
 
 }  // namespace
 
+auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange> {
+    return FoldingRangeCollector(unit).collect();
+}
+
 auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::FoldingRange> {
-    auto collected = FoldingRangeCollector(unit).collect();
+    auto collected = folding_ranges(unit);
     PositionMapper converter(unit.interested_content(), encoding);
 
     std::vector<protocol::FoldingRange> result;

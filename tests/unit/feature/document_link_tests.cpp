@@ -11,7 +11,7 @@ namespace {
 
 namespace protocol = kota::ipc::protocol;
 
-TEST_SUITE(DocumentLink, Tester) {
+TEST_SUITE(document_link, Tester) {
 
 std::vector<protocol::DocumentLink> links;
 
@@ -136,7 +136,33 @@ ABCDE
     EXPECT_LINK(0, "0", TestVFS::path("data.bin"));
 }
 
-};  // TEST_SUITE(DocumentLink)
+std::string format_document_links(llvm::ArrayRef<protocol::DocumentLink> links) {
+    std::string result;
+    for(auto& link: links) {
+        result += std::format("- {{range: \"{}:{}-{}:{}\"",
+                              link.range.start.line,
+                              link.range.start.character,
+                              link.range.end.line,
+                              link.range.end.character);
+        if(link.target.has_value()) {
+            result += std::format(", target: {}", yaml_str(*link.target));
+        }
+        result += "}\n";
+    }
+    return result;
+}
+
+TEST_CASE(snapshot) {
+    ASSERT_SNAPSHOT_GLOB(corpus_dir, "**/*.cpp", [&](std::string_view path) -> std::string {
+        clear();
+        if(!compile_file(path))
+            return "COMPILE_ERROR";
+        return format_document_links(
+            feature::document_links(*unit, feature::PositionEncoding::UTF8));
+    });
+}
+
+};  // TEST_SUITE(document_link)
 
 }  // namespace
 
