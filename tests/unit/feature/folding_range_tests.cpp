@@ -11,7 +11,7 @@ namespace {
 
 namespace protocol = kota::ipc::protocol;
 
-TEST_SUITE(FoldingRange, Tester) {
+TEST_SUITE(folding_range, Tester) {
 
 std::vector<protocol::FoldingRange> ranges;
 
@@ -429,7 +429,41 @@ $(1)#pragma region level1
 )cpp");
 }
 
-};  // TEST_SUITE(FoldingRange)
+std::string format_folding_ranges(llvm::StringRef content,
+                                  llvm::ArrayRef<feature::FoldingRange> ranges) {
+    feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+    std::string result;
+    for(auto& r: ranges) {
+        auto start = mapper.to_position(r.range.begin);
+        auto end = mapper.to_position(r.range.end);
+        if(!start || !end)
+            continue;
+        result += std::format("- {{range: \"{}:{}-{}:{}\"",
+                              start->line,
+                              start->character,
+                              end->line,
+                              end->character);
+        if(r.kind.has_value()) {
+            result += std::format(", kind: {}", static_cast<const std::string&>(*r.kind));
+        }
+        if(!r.collapsed_text.empty()) {
+            result += std::format(", collapsed_text: {}", yaml_str(r.collapsed_text));
+        }
+        result += "}\n";
+    }
+    return result;
+}
+
+TEST_CASE(snapshot) {
+    ASSERT_SNAPSHOT_GLOB("../../corpus/**/*.cpp", [&](std::string_view path) -> std::string {
+        clear();
+        if(!compile_file(path))
+            return "COMPILE_ERROR";
+        return format_folding_ranges(unit->interested_content(), feature::folding_ranges(*unit));
+    });
+}
+
+};  // TEST_SUITE(folding_range)
 
 }  // namespace
 

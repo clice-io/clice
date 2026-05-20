@@ -1,13 +1,18 @@
+#include <algorithm>
+#include <format>
 #include <set>
 
 #include "test/test.h"
 #include "test/tester.h"
+#include "feature/feature.h"
 #include "index/tu_index.h"
+
+#include "kota/meta/enum.h"
 
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(TUIndex, Tester) {
+TEST_SUITE(tu_index, Tester) {
 
 index::TUIndex tu_index;
 
@@ -500,6 +505,64 @@ TEST_CASE(SymbolKinds) {
     check_kind("ns", SymbolKind::Namespace);
 }
 
-};  // TEST_SUITE(TUIndex)
+std::string format_tu_index(const index::TUIndex& idx, llvm::StringRef content) {
+    feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+    std::string result;
+
+    auto sorted = idx.main_file_index.occurrences;
+    std::ranges::sort(sorted, {}, [](auto& o) { return o.range.begin; });
+
+    for(auto& occ: sorted) {
+        auto text = content.substr(occ.range.begin, occ.range.end - occ.range.begin);
+        auto pos = mapper.to_position(occ.range.begin);
+        if(!pos)
+            continue;
+
+        auto sym_it = idx.symbols.find(occ.target);
+        std::string_view kind_name = "?";
+        if(sym_it != idx.symbols.end()) {
+            kind_name = kota::meta::enum_name(static_cast<SymbolKind::Kind>(sym_it->second.kind),
+                                              "Unknown");
+        }
+
+        result += std::format("- {{loc: \"{}:{}\", kind: {}, text: {}",
+                              pos->line,
+                              pos->character,
+                              kind_name,
+                              yaml_str(text));
+
+        auto rel_it = idx.main_file_index.relations.find(occ.target);
+        if(rel_it != idx.main_file_index.relations.end()) {
+            std::string rels;
+            for(auto& rel: rel_it->second) {
+                if(rel.range != occ.range)
+                    continue;
+                if(!rels.empty())
+                    rels += ", ";
+                rels += kota::meta::enum_name(static_cast<RelationKind::Kind>(rel.kind), "?");
+            }
+            if(!rels.empty()) {
+                result += std::format(", relations: [{}]", rels);
+            }
+        }
+
+        result += "}\n";
+    }
+
+    return result;
+}
+
+TEST_CASE(snapshot) {
+    ASSERT_SNAPSHOT_GLOB("../../corpus/**/*.cpp", [&](std::string_view path) -> std::string {
+        clear();
+        if(!compile_file(path))
+            return "COMPILE_ERROR";
+        auto tu_index = index::TUIndex::build(*unit);
+        return format_tu_index(tu_index, unit->interested_content());
+    });
+}
+
+};  // TEST_SUITE(tu_index)
+
 }  // namespace
 }  // namespace clice::testing

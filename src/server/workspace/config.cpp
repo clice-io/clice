@@ -156,13 +156,13 @@ std::optional<Config> Config::load(llvm::StringRef path, llvm::StringRef workspa
 }
 
 std::optional<Config> Config::load_from_json(llvm::StringRef json, llvm::StringRef workspace_root) {
-    auto result = kota::codec::json::from_json<Config>(json);
+    Config config{};
+    auto result = kota::codec::json::from_json(json, config);
     if(!result) {
-        LOG_WARN("Failed to parse initializationOptions JSON: {}", result.error().message());
+        LOG_WARN("Failed to parse initializationOptions JSON: {}", result.error().message);
         return std::nullopt;
     }
 
-    auto config = std::move(*result);
     config.apply_defaults(workspace_root);
     LOG_INFO("Loaded config from initializationOptions");
     return config;

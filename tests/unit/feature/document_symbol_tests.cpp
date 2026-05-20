@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <format>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -7,13 +8,15 @@
 #include "test/tester.h"
 #include "feature/feature.h"
 
+#include "kota/meta/enum.h"
+
 namespace clice::testing {
 
 namespace {
 
 namespace protocol = kota::ipc::protocol;
 
-TEST_SUITE(DocumentSymbol, Tester) {
+TEST_SUITE(document_symbol, Tester) {
 
 std::vector<protocol::DocumentSymbol> symbols;
 
@@ -180,7 +183,63 @@ VAR(test)
     ASSERT_EQ(total_size(symbols), 3U);
 }
 
-};  // TEST_SUITE(DocumentSymbol)
+void format_document_symbols(std::string& out,
+                             const feature::PositionMapper& mapper,
+                             llvm::ArrayRef<feature::DocumentSymbol> nodes,
+                             int depth) {
+    auto pad = std::string(depth * 2, ' ');
+    for(auto& node: nodes) {
+        auto kind = kota::meta::enum_name(static_cast<SymbolKind::Kind>(node.kind), "Unknown");
+        auto start = mapper.to_position(node.range.begin);
+        auto end = mapper.to_position(node.range.end);
+        if(!start || !end)
+            continue;
+        auto sel_start = mapper.to_position(node.selection_range.begin);
+        auto sel_end = mapper.to_position(node.selection_range.end);
+        out += std::format("{}- {{name: {}, kind: {}, range: \"{}:{}-{}:{}\"",
+                           pad,
+                           yaml_str(node.name),
+                           kind,
+                           start->line,
+                           start->character,
+                           end->line,
+                           end->character);
+        if(sel_start && sel_end) {
+            out += std::format(", selection_range: \"{}:{}-{}:{}\"",
+                               sel_start->line,
+                               sel_start->character,
+                               sel_end->line,
+                               sel_end->character);
+        }
+        if(!node.detail.empty()) {
+            out += std::format(", detail: {}", yaml_str(node.detail));
+        }
+        out += "}\n";
+        if(!node.children.empty()) {
+            format_document_symbols(out, mapper, node.children, depth + 1);
+        }
+    }
+}
+
+std::string format_document_symbols(llvm::StringRef content,
+                                    llvm::ArrayRef<feature::DocumentSymbol> symbols) {
+    feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+    std::string result;
+    format_document_symbols(result, mapper, symbols, 0);
+    return result;
+}
+
+TEST_CASE(snapshot) {
+    ASSERT_SNAPSHOT_GLOB("../../corpus/**/*.cpp", [&](std::string_view path) -> std::string {
+        clear();
+        if(!compile_file(path))
+            return "COMPILE_ERROR";
+        return format_document_symbols(unit->interested_content(),
+                                       feature::document_symbols(*unit));
+    });
+}
+
+};  // TEST_SUITE(document_symbol)
 
 }  // namespace
 

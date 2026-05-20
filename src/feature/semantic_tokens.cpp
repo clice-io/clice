@@ -18,12 +18,6 @@ namespace clice::feature {
 
 namespace {
 
-struct RawToken {
-    LocalSourceRange range;
-    SymbolKind kind = SymbolKind::Invalid;
-    std::uint32_t modifiers = 0;
-};
-
 void add_modifier(std::uint32_t& modifiers, SymbolModifiers::Kind kind) {
     modifiers |= SymbolModifiers::to_mask(kind);
 }
@@ -166,7 +160,7 @@ class SemanticTokensCollector : public SemanticVisitor<SemanticTokensCollector> 
 public:
     explicit SemanticTokensCollector(CompilationUnitRef unit) : SemanticVisitor(unit, true) {}
 
-    auto collect() -> std::vector<RawToken> {
+    auto collect() -> std::vector<SemanticToken> {
         highlight_lexical(unit.interested_file());
         run();
         highlight_modules();
@@ -398,7 +392,7 @@ private:
         }
     }
 
-    static void resolve_conflict(RawToken& last, const RawToken& current) {
+    static void resolve_conflict(SemanticToken& last, const SemanticToken& current) {
         if(last.kind == SymbolKind::Conflict) {
             return;
         }
@@ -414,14 +408,14 @@ private:
     }
 
     void merge_tokens() {
-        std::ranges::sort(tokens, [](const RawToken& lhs, const RawToken& rhs) {
+        std::ranges::sort(tokens, [](const SemanticToken& lhs, const SemanticToken& rhs) {
             if(lhs.range.begin != rhs.range.begin) {
                 return lhs.range.begin < rhs.range.begin;
             }
             return lhs.range.end < rhs.range.end;
         });
 
-        std::vector<RawToken> merged;
+        std::vector<SemanticToken> merged;
         merged.reserve(tokens.size());
 
         for(const auto& token: tokens) {
@@ -448,7 +442,7 @@ private:
     }
 
 public:
-    std::vector<RawToken> tokens;
+    std::vector<SemanticToken> tokens;
 };
 
 class SemanticTokenEncoder {
@@ -458,7 +452,7 @@ public:
                          protocol::SemanticTokens& output) :
         content(content), converter(content, encoding), output(output) {}
 
-    void append(const RawToken& token) {
+    void append(const SemanticToken& token) {
         if(!token.range.valid() || token.range.end <= token.range.begin ||
            token.range.end > content.size()) {
             return;
@@ -542,10 +536,14 @@ private:
 
 }  // namespace
 
+auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken> {
+    SemanticTokensCollector collector(unit);
+    return collector.collect();
+}
+
 auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     -> protocol::SemanticTokens {
-    SemanticTokensCollector collector(unit);
-    auto tokens = collector.collect();
+    auto tokens = semantic_tokens(unit);
 
     protocol::SemanticTokens result;
     result.data.reserve(tokens.size() * 5);

@@ -1,0 +1,27 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-05-20
+input_file: ../../corpus/statements/if/basic_if.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "basic_if", relations: [Definition] }
+- { loc: "3:4", kind: Function, text: "abs_val", relations: [Definition] }
+- { loc: "3:16", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "4:7", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "5:16", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "6:11", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "9:12", kind: Function, text: "sign", relations: [Definition] }
+- { loc: "9:21", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "10:7", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "12:14", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "20:4", kind: Function, text: "nested_if", relations: [Definition] }
+- { loc: "20:18", kind: Parameter, text: "a", relations: [Definition] }
+- { loc: "20:25", kind: Parameter, text: "b", relations: [Definition] }
+- { loc: "21:7", kind: Parameter, text: "a", relations: [Reference] }
+- { loc: "22:11", kind: Parameter, text: "b", relations: [Reference] }
+- { loc: "29:5", kind: Function, text: "test", relations: [Definition] }
+- { loc: "30:25", kind: Variable, text: "r1", relations: [Definition] }
+- { loc: "30:30", kind: Function, text: "abs_val", relations: [Reference] }
+- { loc: "31:26", kind: Variable, text: "r2", relations: [Definition] }
+- { loc: "31:31", kind: Function, text: "sign", relations: [Reference] }
+- { loc: "32:25", kind: Variable, text: "r3", relations: [Definition] }
+- { loc: "32:30", kind: Function, text: "nested_if", relations: [Reference] }
