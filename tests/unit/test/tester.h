@@ -1,5 +1,6 @@
 #pragma once
 
+#include <format>
 #include <optional>
 #include <string>
 #include <vector>
@@ -63,6 +64,9 @@ struct Tester {
 
     bool compile_with_modules(llvm::StringRef standard = "-std=c++20");
 
+    /// Read a file from disk and compile it directly (no VFS content needed).
+    bool compile_file(llvm::StringRef path, llvm::StringRef standard = "-std=c++20");
+
     /// Driver path: uses CompilationDatabase + toolchain cache, has system headers.
     void prepare_driver(llvm::StringRef standard = "-std=c++20");
 
@@ -84,5 +88,29 @@ struct Tester {
 
     void clear();
 };
+
+inline std::string yaml_str(llvm::StringRef s) {
+    std::string result;
+    result.reserve(s.size() + 2);
+    result += '"';
+    for(char c: s) {
+        switch(c) {
+            case '"': result += "\\\""; break;
+            case '\\': result += "\\\\"; break;
+            case '\n': result += "\\n"; break;
+            case '\r': result += "\\r"; break;
+            case '\t': result += "\\t"; break;
+            default:
+                if(static_cast<unsigned char>(c) < 0x20) {
+                    result += std::format("\\x{:02x}", static_cast<unsigned char>(c));
+                } else {
+                    result += c;
+                }
+                break;
+        }
+    }
+    result += '"';
+    return result;
+}
 
 }  // namespace clice::testing

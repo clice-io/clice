@@ -245,22 +245,28 @@ void StatefulWorker::register_handlers() {
                     co_return kota::codec::RawValue{"[]"};
                 case K::SemanticTokens:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-                        return to_raw(feature::semantic_tokens(doc.unit));
+                        return to_raw(
+                            feature::semantic_tokens(doc.unit, feature::PositionEncoding::UTF16));
                     });
                 case K::InlayHints:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
                         auto range = params.range;
                         if(range.begin == static_cast<uint32_t>(-1))
                             range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
-                        return to_raw(feature::inlay_hints(doc.unit, range));
+                        return to_raw(feature::inlay_hints(doc.unit,
+                                                           range,
+                                                           {},
+                                                           feature::PositionEncoding::UTF16));
                     });
                 case K::FoldingRange:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-                        return to_raw(feature::folding_ranges(doc.unit));
+                        return to_raw(
+                            feature::folding_ranges(doc.unit, feature::PositionEncoding::UTF16));
                     });
                 case K::DocumentSymbol:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-                        return to_raw(feature::document_symbols(doc.unit));
+                        return to_raw(
+                            feature::document_symbols(doc.unit, feature::PositionEncoding::UTF16));
                     });
                 case K::DocumentLink:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {

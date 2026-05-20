@@ -26,22 +26,6 @@ using llvm::dyn_cast_or_null;
 // For now, inlay hints are always anchored at the left or right of their range.
 enum class HintSide { Left, Right };
 
-enum class HintCategory : std::uint8_t {
-    Parameter,
-    DefaultArgument,
-    Type,
-    Designator,
-    BlockEnd,
-};
-
-struct RawInlayHint {
-    std::uint32_t offset = 0;
-    HintCategory kind = HintCategory::Type;
-    std::string label;
-    bool padding_left = false;
-    bool padding_right = false;
-};
-
 bool is_expanded_from_param_pack(const clang::ParmVarDecl* param) {
     return ast::underlying_pack_type(param) != nullptr;
 }
@@ -123,7 +107,7 @@ struct Callee {
 
 class Builder {
 public:
-    Builder(std::vector<RawInlayHint>& result,
+    Builder(std::vector<InlayHint>& result,
             CompilationUnitRef unit,
             LocalSourceRange restrict_range,
             const InlayHintsOptions& options) :
@@ -499,7 +483,7 @@ public:
         bool pad_left = prefix.consume_front(" ");
         bool pad_right = suffix.consume_back(" ");
 
-        RawInlayHint hint{
+        InlayHint hint{
             .offset = offset,
             .kind = kind,
             .label = (prefix + label + suffix).str(),
@@ -554,7 +538,7 @@ public:
     }
 
 private:
-    std::vector<RawInlayHint>& result;
+    std::vector<InlayHint>& result;
     CompilationUnitRef unit;
     LocalSourceRange restrict_range;
     const InlayHintsOptions& options;
@@ -913,36 +897,43 @@ private:
 
 }  // namespace
 
-auto inlay_hints(CompilationUnitRef unit,
-                 LocalSourceRange target,
-                 const InlayHintsOptions& options,
-                 PositionEncoding encoding) -> std::vector<protocol::InlayHint> {
+auto inlay_hints(CompilationUnitRef unit, LocalSourceRange target, const InlayHintsOptions& options)
+    -> std::vector<InlayHint> {
     if(!options.enabled) {
         return {};
     }
 
-    std::vector<RawInlayHint> raw_hints;
+    std::vector<InlayHint> raw_hints;
 
     Builder builder(raw_hints, unit, target, options);
     Visitor visitor(builder, unit, target, options);
     visitor.TraverseDecl(unit.tu());
 
-    std::ranges::sort(raw_hints, [](const RawInlayHint& lhs, const RawInlayHint& rhs) {
+    std::ranges::sort(raw_hints, [](const InlayHint& lhs, const InlayHint& rhs) {
         return std::tie(lhs.offset, lhs.label, lhs.kind, lhs.padding_left, lhs.padding_right) <
                std::tie(rhs.offset, rhs.label, rhs.kind, rhs.padding_left, rhs.padding_right);
     });
     auto unique_begin =
-        std::ranges::unique(raw_hints, [](const RawInlayHint& lhs, const RawInlayHint& rhs) {
+        std::ranges::unique(raw_hints, [](const InlayHint& lhs, const InlayHint& rhs) {
             return lhs.offset == rhs.offset && lhs.kind == rhs.kind && lhs.label == rhs.label &&
                    lhs.padding_left == rhs.padding_left && lhs.padding_right == rhs.padding_right;
         });
     raw_hints.erase(unique_begin.begin(), unique_begin.end());
 
+    return raw_hints;
+}
+
+auto inlay_hints(CompilationUnitRef unit,
+                 LocalSourceRange target,
+                 const InlayHintsOptions& options,
+                 PositionEncoding encoding) -> std::vector<protocol::InlayHint> {
+    auto collected = inlay_hints(unit, target, options);
+
     PositionMapper converter(unit.interested_content(), encoding);
     std::vector<protocol::InlayHint> hints;
-    hints.reserve(raw_hints.size());
+    hints.reserve(collected.size());
 
-    for(const auto& hint: raw_hints) {
+    for(const auto& hint: collected) {
         protocol::InlayHint out{
             .position = *converter.to_position(hint.offset),
             .label = hint.label,

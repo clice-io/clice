@@ -230,6 +230,17 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     return try_compile();
 }
 
+bool Tester::compile_file(llvm::StringRef path, llvm::StringRef standard) {
+    auto buffer = llvm::MemoryBuffer::getFile(path);
+    if(!buffer) {
+        LOG_ERROR("Failed to read file: {}", path);
+        return false;
+    }
+    auto filename = llvm::sys::path::filename(path);
+    add_main(filename, (*buffer)->getBuffer());
+    return compile(standard);
+}
+
 std::uint32_t Tester::point(llvm::StringRef name, llvm::StringRef file) {
     if(file.empty()) {
         file = src_path;

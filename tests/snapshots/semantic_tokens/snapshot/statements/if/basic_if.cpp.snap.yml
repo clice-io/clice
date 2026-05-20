@@ -1,0 +1,74 @@
+---
+source: semantic_tokens_tests.cpp
+created_at: 2026-05-20
+input_file: ../../corpus/statements/if/basic_if.cpp
+---
+- { loc: "0:0", text: "// basic if and if-else", kind: Comment }
+- { loc: "1:0", text: "namespace", kind: Keyword }
+- { loc: "1:10", text: "basic_if", kind: Namespace, modifiers: [Definition] }
+- { loc: "3:0", text: "int", kind: Keyword }
+- { loc: "3:4", text: "abs_val", kind: Function, modifiers: [Definition] }
+- { loc: "3:12", text: "int", kind: Keyword }
+- { loc: "3:16", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "4:4", text: "if", kind: Keyword }
+- { loc: "4:7", text: "x", kind: Parameter }
+- { loc: "4:11", text: "0", kind: Number }
+- { loc: "5:8", text: "return", kind: Keyword }
+- { loc: "5:16", text: "x", kind: Parameter }
+- { loc: "6:4", text: "return", kind: Keyword }
+- { loc: "6:11", text: "x", kind: Parameter }
+- { loc: "9:0", text: "const", kind: Keyword }
+- { loc: "9:6", text: "char", kind: Keyword }
+- { loc: "9:12", text: "sign", kind: Function, modifiers: [Definition, Readonly] }
+- { loc: "9:17", text: "int", kind: Keyword }
+- { loc: "9:21", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "10:4", text: "if", kind: Keyword }
+- { loc: "10:7", text: "x", kind: Parameter }
+- { loc: "10:11", text: "0", kind: Number }
+- { loc: "11:8", text: "return", kind: Keyword }
+- { loc: "11:15", text: '"positive"', kind: String }
+- { loc: "12:6", text: "else", kind: Keyword }
+- { loc: "12:11", text: "if", kind: Keyword }
+- { loc: "12:14", text: "x", kind: Parameter }
+- { loc: "12:18", text: "0", kind: Number }
+- { loc: "13:8", text: "return", kind: Keyword }
+- { loc: "13:15", text: '"negative"', kind: String }
+- { loc: "14:6", text: "else", kind: Keyword }
+- { loc: "15:8", text: "return", kind: Keyword }
+- { loc: "15:15", text: '"zero"', kind: String }
+- { loc: "19:0", text: "// dangling else: else binds to nearest if", kind: Comment }
+- { loc: "20:0", text: "int", kind: Keyword }
+- { loc: "20:4", text: "nested_if", kind: Function, modifiers: [Definition] }
+- { loc: "20:14", text: "int", kind: Keyword }
+- { loc: "20:18", text: "a", kind: Parameter, modifiers: [Definition] }
+- { loc: "20:21", text: "int", kind: Keyword }
+- { loc: "20:25", text: "b", kind: Parameter, modifiers: [Definition] }
+- { loc: "21:4", text: "if", kind: Keyword }
+- { loc: "21:7", text: "a", kind: Parameter }
+- { loc: "21:11", text: "0", kind: Number }
+- { loc: "22:8", text: "if", kind: Keyword }
+- { loc: "22:11", text: "b", kind: Parameter }
+- { loc: "22:15", text: "0", kind: Number }
+- { loc: "23:12", text: "return", kind: Keyword }
+- { loc: "23:19", text: "1", kind: Number }
+- { loc: "24:8", text: "else", kind: Keyword }
+- { loc: "25:12", text: "return", kind: Keyword }
+- { loc: "25:19", text: "2", kind: Number }
+- { loc: "26:4", text: "return", kind: Keyword }
+- { loc: "26:11", text: "0", kind: Number }
+- { loc: "29:0", text: "void", kind: Keyword }
+- { loc: "29:5", text: "test", kind: Function, modifiers: [Definition] }
+- { loc: "30:21", text: "int", kind: Keyword }
+- { loc: "30:25", text: "r1", kind: Variable, modifiers: [Definition] }
+- { loc: "30:30", text: "abs_val", kind: Function }
+- { loc: "30:39", text: "3", kind: Number }
+- { loc: "31:21", text: "auto", kind: Keyword }
+- { loc: "31:26", text: "r2", kind: Variable, modifiers: [Definition, Readonly] }
+- { loc: "31:31", text: "sign", kind: Function, modifiers: [Readonly] }
+- { loc: "31:36", text: "5", kind: Number }
+- { loc: "32:21", text: "int", kind: Keyword }
+- { loc: "32:25", text: "r3", kind: Variable, modifiers: [Definition] }
+- { loc: "32:30", text: "nested_if", kind: Function }
+- { loc: "32:40", text: "1", kind: Number }
+- { loc: "32:44", text: "1", kind: Number }
+- { loc: "35:3", text: "// namespace basic_if", kind: Comment }

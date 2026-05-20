@@ -197,6 +197,12 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/tests/unit"
     )
     target_link_libraries(unit_tests PRIVATE clice::core kota::zest kota::deco)
+
+    # Ensure __FILE__ / source_location::file_name() produce absolute paths even when
+    # ccache rewrites source paths to be relative (via CCACHE_BASEDIR).
+    file(RELATIVE_PATH _build_to_source "${CMAKE_CURRENT_BINARY_DIR}" "${PROJECT_SOURCE_DIR}")
+    target_compile_options(unit_tests PRIVATE
+        "-ffile-prefix-map=${_build_to_source}/=${PROJECT_SOURCE_DIR}/")
 endif()
 
 if(CLICE_ENABLE_BENCHMARK)
