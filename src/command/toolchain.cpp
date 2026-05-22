@@ -9,6 +9,7 @@
 #include "support/logging.h"
 
 #include "kota/meta/enum.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -17,6 +18,7 @@
 #include "llvm/TargetParser/Host.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
+#include "clang/Driver/Options.h"
 #include "clang/Driver/Tool.h"
 
 #ifndef _WIN32
@@ -470,11 +472,32 @@ std::vector<const char*> query_clang_toolchain(const QueryParams& params) {
                 continue;
             }
 
-            for(auto arg: args) {
-                if(arg == "-###"sv) {
+            // FIXME: the system compiler may be newer than our embedded LLVM,
+            // producing cc1 flags we don't recognize. Filter them out here.
+            // Long-term we should unify the command pipeline so the driver
+            // version always matches the embedded LLVM.
+            auto& table = clang::driver::getDriverOptTable();
+            auto cc1_args = llvm::ArrayRef(args).drop_front(2);
+            unsigned missing_index = 0, missing_count = 0;
+            auto parsed = table.ParseArgs(cc1_args, missing_index, missing_count);
+
+            llvm::DenseSet<unsigned> unknown_indices;
+            for(auto* a: parsed) {
+                if(a->getOption().getKind() == llvm::opt::Option::UnknownClass) {
+                    unknown_indices.insert(a->getIndex());
+                }
+            }
+
+            result.emplace_back(params.callback(args[0]));
+            result.emplace_back(params.callback(args[1]));
+            for(unsigned i = 0; i < cc1_args.size(); ++i) {
+                if(unknown_indices.contains(i)) {
                     continue;
                 }
-                result.emplace_back(params.callback(arg));
+                if(cc1_args[i] == "-###"sv) {
+                    continue;
+                }
+                result.emplace_back(params.callback(cc1_args[i]));
             }
         }
     }
