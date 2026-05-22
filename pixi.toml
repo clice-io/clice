@@ -257,7 +257,7 @@ format-markdown = "fd -H -e md -x prettier --write"
 format-json = "fd -H -e json -E package-lock.json -x prettier --write"
 format-toml = "fd -H -e toml -x tombi format"
 format-yaml = """
-fd -H -e yaml -e yml -E pnpm-lock.yaml -x prettier --write && \
+fd -H -e yaml -e yml -E pnpm-lock.yaml -E '*.snap.yml' -x prettier --write && \
 fd -H "^\\.clang-(format|tidy)$" -x prettier --write --parser yaml
 """
 format = { depends-on = [

@@ -1,10 +1,11 @@
 ---
 source: folding_range_tests.cpp
 created_at: 2026-05-20
-input_file: statements/if/basic_if.cpp
+input_file: ../../corpus/statements/if/basic_if.cpp
 ---
-- { range: "1:19-35:1", kind: namespace, collapsed_text: "{...}" }
-- { range: "3:19-7:1", kind: functionBody, collapsed_text: "{...}" }
-- { range: "9:24-17:1", kind: functionBody, collapsed_text: "{...}" }
-- { range: "20:28-27:1", kind: functionBody, collapsed_text: "{...}" }
-- { range: "29:12-33:1", kind: functionBody, collapsed_text: "{...}" }
+- {range: "1:19-35:1", kind: namespace, collapsed_text: "{...}"}
+- {range: "3:19-7:1", kind: functionBody, collapsed_text: "{...}"}
+- {range: "9:24-17:1", kind: functionBody, collapsed_text: "{...}"}
+- {range: "20:28-27:1", kind: functionBody, collapsed_text: "{...}"}
+- {range: "29:12-33:1", kind: functionBody, collapsed_text: "{...}"}
+
