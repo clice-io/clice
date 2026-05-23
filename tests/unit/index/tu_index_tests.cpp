@@ -510,7 +510,10 @@ std::string format_tu_index(const index::TUIndex& idx, llvm::StringRef content) 
     std::string result;
 
     auto sorted = idx.main_file_index.occurrences;
-    std::ranges::sort(sorted, {}, [](auto& o) { return o.range.begin; });
+    std::ranges::sort(sorted, [](auto& lhs, auto& rhs) {
+        return std::tuple(lhs.range.begin, lhs.range.end, lhs.target) <
+               std::tuple(rhs.range.begin, rhs.range.end, rhs.target);
+    });
 
     for(auto& occ: sorted) {
         auto text = content.substr(occ.range.begin, occ.range.end - occ.range.begin);
