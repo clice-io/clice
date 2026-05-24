@@ -541,53 +541,49 @@ void f() {
     EXPECT_TOKEN("v2", SymbolKind::Variable, definition);
 }
 
-std::string format_semantic_tokens(llvm::StringRef content,
-                                   llvm::ArrayRef<feature::SemanticToken> tokens) {
-    feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
-    std::string result;
-    for(auto& token: tokens) {
-        if(!token.range.valid() || token.range.end <= token.range.begin ||
-           token.range.end > content.size())
-            continue;
-
-        auto pos = mapper.to_position(token.range.begin);
-        if(!pos)
-            continue;
-
-        auto text = content.substr(token.range.begin, token.range.length());
-        auto kind = kota::meta::enum_name(static_cast<SymbolKind::Kind>(token.kind), "Unknown");
-
-        result += std::format("- {{loc: \"{}:{}\", text: {}, kind: {}",
-                              pos->line,
-                              pos->character,
-                              yaml_str(text),
-                              kind);
-
-        std::string mods;
-        for(std::uint32_t i = 0; i < 32; ++i) {
-            if(token.modifiers & (1u << i)) {
-                auto name = kota::meta::enum_name(static_cast<SymbolModifiers::Kind>(i));
-                if(!name.empty()) {
-                    if(!mods.empty())
-                        mods += ", ";
-                    mods += name;
-                }
-            }
-        }
-        if(!mods.empty()) {
-            result += std::format(", modifiers: [{}]", mods);
-        }
-        result += "}\n";
-    }
-    return result;
-}
-
 TEST_CASE(snapshot) {
     ASSERT_SNAPSHOT_GLOB(corpus_dir, "**/*.cpp", [&](std::string_view path) -> std::string {
-        clear();
         if(!compile_file(path))
             return "COMPILE_ERROR";
-        return format_semantic_tokens(unit->interested_content(), feature::semantic_tokens(*unit));
+        auto content = unit->interested_content();
+        auto tokens = feature::semantic_tokens(*unit);
+        feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+        std::string result;
+        for(auto& token: tokens) {
+            if(!token.range.valid() || token.range.end <= token.range.begin ||
+               token.range.end > content.size())
+                continue;
+
+            auto pos = mapper.to_position(token.range.begin);
+            if(!pos)
+                continue;
+
+            auto text = content.substr(token.range.begin, token.range.length());
+            auto kind = kota::meta::enum_name(static_cast<SymbolKind::Kind>(token.kind), "Unknown");
+
+            result += std::format("- {{ loc: \"{}:{}\", text: {}, kind: {}",
+                                  pos->line,
+                                  pos->character,
+                                  yaml_str(text),
+                                  kind);
+
+            std::string mods;
+            for(std::uint32_t i = 0; i < 32; ++i) {
+                if(token.modifiers & (1u << i)) {
+                    auto name = kota::meta::enum_name(static_cast<SymbolModifiers::Kind>(i));
+                    if(!name.empty()) {
+                        if(!mods.empty())
+                            mods += ", ";
+                        mods += name;
+                    }
+                }
+            }
+            if(!mods.empty()) {
+                result += std::format(", modifiers: [{}]", mods);
+            }
+            result += " }\n";
+        }
+        return result;
     });
 }
 

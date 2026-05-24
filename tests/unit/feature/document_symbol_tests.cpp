@@ -196,7 +196,7 @@ void format_document_symbols(std::string& out,
             continue;
         auto sel_start = mapper.to_position(node.selection_range.begin);
         auto sel_end = mapper.to_position(node.selection_range.end);
-        out += std::format("{}- {{name: {}, kind: {}, range: \"{}:{}-{}:{}\"",
+        out += std::format("- {}{{ name: {}, kind: {}, range: \"{}:{}-{}:{}\"",
                            pad,
                            yaml_str(node.name),
                            kind,
@@ -214,28 +214,22 @@ void format_document_symbols(std::string& out,
         if(!node.detail.empty()) {
             out += std::format(", detail: {}", yaml_str(node.detail));
         }
-        out += "}\n";
+        out += " }\n";
         if(!node.children.empty()) {
             format_document_symbols(out, mapper, node.children, depth + 1);
         }
     }
 }
 
-std::string format_document_symbols(llvm::StringRef content,
-                                    llvm::ArrayRef<feature::DocumentSymbol> symbols) {
-    feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
-    std::string result;
-    format_document_symbols(result, mapper, symbols, 0);
-    return result;
-}
-
 TEST_CASE(snapshot) {
     ASSERT_SNAPSHOT_GLOB(corpus_dir, "**/*.cpp", [&](std::string_view path) -> std::string {
-        clear();
         if(!compile_file(path))
             return "COMPILE_ERROR";
-        return format_document_symbols(unit->interested_content(),
-                                       feature::document_symbols(*unit));
+        auto content = unit->interested_content();
+        feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+        std::string result;
+        format_document_symbols(result, mapper, feature::document_symbols(*unit), 0);
+        return result;
     });
 }
 

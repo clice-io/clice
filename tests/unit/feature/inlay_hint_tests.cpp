@@ -1532,37 +1532,34 @@ TEST_CASE(Dependent, skip = true) {
     EXPECT_HINT("2", "par3:");
 }
 
-std::string format_inlay_hints(llvm::StringRef content, llvm::ArrayRef<feature::InlayHint> hints) {
-    feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
-    std::string result;
-    for(auto& hint: hints) {
-        auto pos = mapper.to_position(hint.offset);
-        if(!pos)
-            continue;
-        auto kind = kota::meta::enum_name(hint.kind, "Unknown");
-        result += std::format("- {{pos: \"{}:{}\", kind: {}, label: {}",
-                              pos->line,
-                              pos->character,
-                              kind,
-                              yaml_str(hint.label));
-        if(hint.padding_left) {
-            result += ", padding_left: true";
-        }
-        if(hint.padding_right) {
-            result += ", padding_right: true";
-        }
-        result += "}\n";
-    }
-    return result;
-}
-
 TEST_CASE(snapshot) {
     ASSERT_SNAPSHOT_GLOB(corpus_dir, "**/*.cpp", [&](std::string_view path) -> std::string {
-        clear();
         if(!compile_file(path))
             return "COMPILE_ERROR";
-        LocalSourceRange range(0, unit->interested_content().size());
-        return format_inlay_hints(unit->interested_content(), feature::inlay_hints(*unit, range));
+        auto content = unit->interested_content();
+        LocalSourceRange range(0, content.size());
+        auto hints = feature::inlay_hints(*unit, range);
+        feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+        std::string result;
+        for(auto& hint: hints) {
+            auto pos = mapper.to_position(hint.offset);
+            if(!pos)
+                continue;
+            auto kind = kota::meta::enum_name(hint.kind, "Unknown");
+            result += std::format("- {{ pos: \"{}:{}\", kind: {}, label: {}",
+                                  pos->line,
+                                  pos->character,
+                                  kind,
+                                  yaml_str(hint.label));
+            if(hint.padding_left) {
+                result += ", padding_left: true";
+            }
+            if(hint.padding_right) {
+                result += ", padding_right: true";
+            }
+            result += " }\n";
+        }
+        return result;
     });
 }
 
