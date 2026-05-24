@@ -1,0 +1,28 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_constexpr_variadic.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "if_constexpr_variadic", relations: [Definition] }
+- { loc: "4:19", kind: Type, text: "T", relations: [Definition] }
+- { loc: "4:34", kind: Type, text: "Rest", relations: [Definition] }
+- { loc: "5:10", kind: Type, text: "T", relations: [Reference] }
+- { loc: "5:12", kind: Function, text: "sum", relations: [Definition] }
+- { loc: "5:16", kind: Type, text: "T", relations: [Reference] }
+- { loc: "5:18", kind: Parameter, text: "first", relations: [Definition] }
+- { loc: "5:25", kind: Type, text: "Rest", relations: [Reference] }
+- { loc: "5:33", kind: Parameter, text: "rest", relations: [Definition] }
+- { loc: "7:15", kind: Parameter, text: "first", relations: [Reference] }
+- { loc: "9:15", kind: Parameter, text: "first", relations: [Reference] }
+- { loc: "9:27", kind: Parameter, text: "rest", relations: [Reference] }
+- { loc: "13:14", kind: Function, text: "sum", relations: [Reference] }
+- { loc: "14:14", kind: Function, text: "sum", relations: [Reference] }
+- { loc: "15:14", kind: Function, text: "sum", relations: [Reference] }
+- { loc: "18:19", kind: Type, text: "T", relations: [Definition] }
+- { loc: "19:14", kind: Function, text: "count_one", relations: [Definition] }
+- { loc: "20:31", kind: Type, text: "T", relations: [Reference] }
+- { loc: "27:22", kind: Type, text: "Ts", relations: [Definition] }
+- { loc: "28:14", kind: Function, text: "count_integrals", relations: [Definition] }
+- { loc: "29:22", kind: Type, text: "Ts", relations: [Reference] }
+- { loc: "32:14", kind: Function, text: "count_integrals", relations: [Reference] }
+

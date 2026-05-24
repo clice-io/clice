@@ -1,0 +1,17 @@
+---
+source: document_symbol_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_chain_patterns.cpp
+---
+- { name: "if_chain", kind: Namespace, range: "1:0-48:1", selection_range: "1:10-1:18" }
+-   { name: "classify_char", kind: Function, range: "3:0-12:1", selection_range: "3:4-3:17", detail: "int (char)" }
+-   { name: "validate", kind: Function, range: "15:0-25:1", selection_range: "15:5-15:13", detail: "bool (int, int, int)" }
+-   { name: "process", kind: Function, range: "28:0-39:1", selection_range: "28:4-28:11", detail: "int (int *, int)" }
+-     { name: "sum", kind: Variable, range: "29:4-29:15", selection_range: "29:8-29:11", detail: "int" }
+-     { name: "i", kind: Variable, range: "30:8-30:17", selection_range: "30:12-30:13", detail: "int" }
+-   { name: "test", kind: Function, range: "41:0-46:1", selection_range: "41:5-41:9", detail: "void ()" }
+-     { name: "r1", kind: Variable, range: "42:21-42:48", selection_range: "42:25-42:27", detail: "int" }
+-     { name: "r2", kind: Variable, range: "43:21-43:48", selection_range: "43:26-43:28", detail: "bool" }
+-     { name: "arr", kind: Variable, range: "44:4-44:31", selection_range: "44:8-44:11", detail: "int[4]" }
+-     { name: "r3", kind: Variable, range: "45:21-45:45", selection_range: "45:25-45:27", detail: "int" }
+

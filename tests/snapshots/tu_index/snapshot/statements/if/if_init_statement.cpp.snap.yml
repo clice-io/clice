@@ -1,0 +1,49 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_init_statement.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "if_init", relations: [Definition] }
+- { loc: "3:7", kind: Struct, text: "Result", relations: [Definition] }
+- { loc: "4:8", kind: Field, text: "value", relations: [Definition] }
+- { loc: "5:9", kind: Field, text: "ok", relations: [Definition] }
+- { loc: "8:0", kind: Struct, text: "Result", relations: [Reference] }
+- { loc: "8:7", kind: Function, text: "compute", relations: [Definition] }
+- { loc: "8:19", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "9:7", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "10:16", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "14:4", kind: Function, text: "with_init", relations: [Definition] }
+- { loc: "14:18", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "15:12", kind: Variable, text: "r", relations: [Definition] }
+- { loc: "15:16", kind: Function, text: "compute", relations: [Reference] }
+- { loc: "15:24", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "15:28", kind: Variable, text: "r", relations: [Reference] }
+- { loc: "15:30", kind: Field, text: "ok", relations: [Reference] }
+- { loc: "16:15", kind: Variable, text: "r", relations: [Reference] }
+- { loc: "16:17", kind: Field, text: "value", relations: [Reference] }
+- { loc: "22:5", kind: Function, text: "find_char", relations: [Definition] }
+- { loc: "22:27", kind: Parameter, text: "str", relations: [Definition] }
+- { loc: "22:37", kind: Parameter, text: "target", relations: [Definition] }
+- { loc: "23:11", kind: Variable, text: "i", relations: [Definition] }
+- { loc: "23:18", kind: Parameter, text: "str", relations: [Reference] }
+- { loc: "24:14", kind: Parameter, text: "str", relations: [Reference] }
+- { loc: "24:18", kind: Variable, text: "i", relations: [Reference] }
+- { loc: "25:15", kind: Parameter, text: "str", relations: [Reference] }
+- { loc: "25:19", kind: Variable, text: "i", relations: [Reference] }
+- { loc: "25:25", kind: Parameter, text: "target", relations: [Reference] }
+- { loc: "27:14", kind: Variable, text: "i", relations: [Reference] }
+- { loc: "34:4", kind: Function, text: "scoping_demo", relations: [Definition] }
+- { loc: "34:21", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "35:11", kind: Variable, text: "doubled", relations: [Definition] }
+- { loc: "35:21", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "35:28", kind: Variable, text: "doubled", relations: [Reference] }
+- { loc: "36:15", kind: Variable, text: "doubled", relations: [Reference] }
+- { loc: "38:15", kind: Variable, text: "doubled", relations: [Reference] }
+- { loc: "42:5", kind: Function, text: "test", relations: [Definition] }
+- { loc: "43:25", kind: Variable, text: "r1", relations: [Definition] }
+- { loc: "43:30", kind: Function, text: "with_init", relations: [Reference] }
+- { loc: "44:26", kind: Variable, text: "r2", relations: [Definition] }
+- { loc: "44:31", kind: Function, text: "find_char", relations: [Reference] }
+- { loc: "45:25", kind: Variable, text: "r3", relations: [Definition] }
+- { loc: "45:30", kind: Function, text: "scoping_demo", relations: [Reference] }
+

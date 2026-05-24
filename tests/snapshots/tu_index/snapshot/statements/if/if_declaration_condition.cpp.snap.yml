@@ -1,0 +1,50 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_declaration_condition.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "if_declaration", relations: [Definition] }
+- { loc: "3:7", kind: Struct, text: "Optional", relations: [Definition] }
+- { loc: "4:8", kind: Field, text: "value", relations: [Definition] }
+- { loc: "5:9", kind: Field, text: "valid", relations: [Definition] }
+- { loc: "7:13", kind: Method, text: "operator", relations: [Definition] }
+- { loc: "8:15", kind: Field, text: "valid", relations: [Reference] }
+- { loc: "12:0", kind: Struct, text: "Optional", relations: [Reference] }
+- { loc: "12:9", kind: Function, text: "try_parse", relations: [Definition] }
+- { loc: "12:23", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "13:7", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "14:16", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "18:4", kind: Function, text: "use_declaration_condition", relations: [Definition] }
+- { loc: "18:34", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "19:7", kind: Struct, text: "Optional", relations: [Reference] }
+- { loc: "19:16", kind: Variable, text: "result", relations: [Definition, Reference] }
+- { loc: "19:25", kind: Function, text: "try_parse", relations: [Reference] }
+- { loc: "19:35", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "20:15", kind: Variable, text: "result", relations: [Reference] }
+- { loc: "20:22", kind: Field, text: "value", relations: [Reference] }
+- { loc: "26:7", kind: Struct, text: "Node", relations: [Definition] }
+- { loc: "27:8", kind: Field, text: "data", relations: [Definition] }
+- { loc: "28:4", kind: Struct, text: "Node", relations: [Reference] }
+- { loc: "28:10", kind: Field, text: "next", relations: [Definition] }
+- { loc: "31:4", kind: Function, text: "walk_list", relations: [Definition] }
+- { loc: "31:14", kind: Struct, text: "Node", relations: [Reference] }
+- { loc: "31:20", kind: Parameter, text: "head", relations: [Definition] }
+- { loc: "32:8", kind: Variable, text: "sum", relations: [Definition] }
+- { loc: "33:7", kind: Struct, text: "Node", relations: [Reference] }
+- { loc: "33:13", kind: Variable, text: "p", relations: [Definition, Reference] }
+- { loc: "33:17", kind: Parameter, text: "head", relations: [Reference] }
+- { loc: "34:8", kind: Variable, text: "sum", relations: [Reference] }
+- { loc: "34:15", kind: Variable, text: "p", relations: [Reference] }
+- { loc: "34:18", kind: Field, text: "data", relations: [Reference] }
+- { loc: "36:11", kind: Variable, text: "sum", relations: [Reference] }
+- { loc: "39:5", kind: Function, text: "test", relations: [Definition] }
+- { loc: "40:25", kind: Variable, text: "r1", relations: [Definition] }
+- { loc: "40:30", kind: Function, text: "use_declaration_condition", relations: [Reference] }
+- { loc: "41:25", kind: Variable, text: "r2", relations: [Definition] }
+- { loc: "41:30", kind: Function, text: "use_declaration_condition", relations: [Reference] }
+- { loc: "42:4", kind: Struct, text: "Node", relations: [Reference] }
+- { loc: "42:9", kind: Variable, text: "n", relations: [Definition] }
+- { loc: "43:25", kind: Variable, text: "r3", relations: [Definition] }
+- { loc: "43:30", kind: Function, text: "walk_list", relations: [Reference] }
+- { loc: "43:41", kind: Variable, text: "n", relations: [Reference] }
+

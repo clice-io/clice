@@ -1,0 +1,69 @@
+---
+source: semantic_tokens_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_constexpr_requires.cpp
+---
+- { loc: "0:0", text: "// if constexpr with requires-expression", kind: Comment }
+- { loc: "1:0", text: "namespace", kind: Keyword }
+- { loc: "1:10", text: "if_constexpr_requires", kind: Namespace, modifiers: [Definition] }
+- { loc: "3:0", text: "template", kind: Keyword }
+- { loc: "3:10", text: "typename", kind: Keyword }
+- { loc: "3:19", text: "T", kind: Type, modifiers: [Definition] }
+- { loc: "4:0", text: "int", kind: Keyword }
+- { loc: "4:4", text: "get_length", kind: Function, modifiers: [Definition, Templated] }
+- { loc: "4:15", text: "const", kind: Keyword }
+- { loc: "4:21", text: "T", kind: Type }
+- { loc: "4:24", text: "x", kind: Parameter, modifiers: [Definition, Readonly] }
+- { loc: "5:4", text: "if", kind: Keyword }
+- { loc: "5:7", text: "constexpr", kind: Keyword }
+- { loc: "5:17", text: "requires", kind: Keyword }
+- { loc: "5:28", text: "x", kind: Parameter, modifiers: [Readonly] }
+- { loc: "6:8", text: "return", kind: Keyword }
+- { loc: "6:15", text: "static_cast", kind: Keyword }
+- { loc: "6:27", text: "int", kind: Keyword }
+- { loc: "6:32", text: "x", kind: Parameter, modifiers: [Readonly] }
+- { loc: "7:6", text: "else", kind: Keyword }
+- { loc: "7:11", text: "if", kind: Keyword }
+- { loc: "7:14", text: "constexpr", kind: Keyword }
+- { loc: "7:24", text: "requires", kind: Keyword }
+- { loc: "7:35", text: "x", kind: Parameter, modifiers: [Readonly] }
+- { loc: "8:8", text: "return", kind: Keyword }
+- { loc: "8:15", text: "x", kind: Parameter, modifiers: [Readonly] }
+- { loc: "9:6", text: "else", kind: Keyword }
+- { loc: "10:8", text: "return", kind: Keyword }
+- { loc: "10:15", text: "1", kind: Number }
+- { loc: "14:0", text: "struct", kind: Keyword }
+- { loc: "14:7", text: "WithLength", kind: Struct, modifiers: [Definition] }
+- { loc: "15:4", text: "int", kind: Keyword }
+- { loc: "15:8", text: "length", kind: Field, modifiers: [Definition] }
+- { loc: "18:0", text: "struct", kind: Keyword }
+- { loc: "18:7", text: "Container", kind: Struct, modifiers: [Definition] }
+- { loc: "19:4", text: "int", kind: Keyword }
+- { loc: "19:8", text: "data", kind: Field, modifiers: [Definition] }
+- { loc: "19:13", text: "4", kind: Number }
+- { loc: "21:4", text: "int", kind: Keyword }
+- { loc: "21:8", text: "size", kind: Method, modifiers: [Definition, Readonly] }
+- { loc: "21:15", text: "const", kind: Keyword }
+- { loc: "22:8", text: "return", kind: Keyword }
+- { loc: "22:15", text: "4", kind: Number }
+- { loc: "26:0", text: "void", kind: Keyword }
+- { loc: "26:5", text: "test", kind: Function, modifiers: [Definition] }
+- { loc: "27:4", text: "Container", kind: Struct }
+- { loc: "27:14", text: "c", kind: Variable, modifiers: [Definition] }
+- { loc: "28:21", text: "int", kind: Keyword }
+- { loc: "28:25", text: "r1", kind: Variable, modifiers: [Definition] }
+- { loc: "28:30", text: "get_length", kind: Function }
+- { loc: "28:41", text: "c", kind: Variable }
+- { loc: "30:4", text: "WithLength", kind: Struct }
+- { loc: "30:15", text: "wl", kind: Variable, modifiers: [Definition] }
+- { loc: "30:18", text: "10", kind: Number }
+- { loc: "31:21", text: "int", kind: Keyword }
+- { loc: "31:25", text: "r2", kind: Variable, modifiers: [Definition] }
+- { loc: "31:30", text: "get_length", kind: Function }
+- { loc: "31:41", text: "wl", kind: Variable }
+- { loc: "33:21", text: "int", kind: Keyword }
+- { loc: "33:25", text: "r3", kind: Variable, modifiers: [Definition] }
+- { loc: "33:30", text: "get_length", kind: Function }
+- { loc: "33:41", text: "42", kind: Number }
+- { loc: "36:3", text: "// namespace if_constexpr_requires", kind: Comment }
+

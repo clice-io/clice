@@ -1,0 +1,10 @@
+---
+source: folding_range_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_constexpr_basic.cpp
+---
+- { range: "1:29-37:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "4:26-14:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "23:24-29:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "31:12-35:1", kind: functionBody, collapsed_text: "{...}" }
+

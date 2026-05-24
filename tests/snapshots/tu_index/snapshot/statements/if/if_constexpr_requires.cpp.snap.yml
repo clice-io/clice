@@ -1,0 +1,33 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_constexpr_requires.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "if_constexpr_requires", relations: [Definition] }
+- { loc: "3:19", kind: Type, text: "T", relations: [Definition] }
+- { loc: "4:4", kind: Function, text: "get_length", relations: [Definition] }
+- { loc: "4:21", kind: Type, text: "T", relations: [Reference] }
+- { loc: "4:24", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "5:28", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "6:32", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "7:35", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "8:15", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "14:7", kind: Struct, text: "WithLength", relations: [Definition] }
+- { loc: "15:8", kind: Field, text: "length", relations: [Definition] }
+- { loc: "18:7", kind: Struct, text: "Container", relations: [Definition] }
+- { loc: "19:8", kind: Field, text: "data", relations: [Definition] }
+- { loc: "21:8", kind: Method, text: "size", relations: [Definition] }
+- { loc: "26:5", kind: Function, text: "test", relations: [Definition] }
+- { loc: "27:4", kind: Struct, text: "Container", relations: [Reference] }
+- { loc: "27:14", kind: Variable, text: "c", relations: [Definition] }
+- { loc: "28:25", kind: Variable, text: "r1", relations: [Definition] }
+- { loc: "28:30", kind: Function, text: "get_length", relations: [Reference] }
+- { loc: "28:41", kind: Variable, text: "c", relations: [Reference] }
+- { loc: "30:4", kind: Struct, text: "WithLength", relations: [Reference] }
+- { loc: "30:15", kind: Variable, text: "wl", relations: [Definition] }
+- { loc: "31:25", kind: Variable, text: "r2", relations: [Definition] }
+- { loc: "31:30", kind: Function, text: "get_length", relations: [Reference] }
+- { loc: "31:41", kind: Variable, text: "wl", relations: [Reference] }
+- { loc: "33:25", kind: Variable, text: "r3", relations: [Definition] }
+- { loc: "33:30", kind: Function, text: "get_length", relations: [Reference] }
+

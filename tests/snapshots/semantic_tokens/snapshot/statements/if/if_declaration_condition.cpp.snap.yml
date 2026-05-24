@@ -1,0 +1,91 @@
+---
+source: semantic_tokens_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_declaration_condition.cpp
+---
+- { loc: "0:0", text: "// if with declaration as condition", kind: Comment }
+- { loc: "1:0", text: "namespace", kind: Keyword }
+- { loc: "1:10", text: "if_declaration", kind: Namespace, modifiers: [Definition] }
+- { loc: "3:0", text: "struct", kind: Keyword }
+- { loc: "3:7", text: "Optional", kind: Struct, modifiers: [Definition] }
+- { loc: "4:4", text: "int", kind: Keyword }
+- { loc: "4:8", text: "value", kind: Field, modifiers: [Definition] }
+- { loc: "5:4", text: "bool", kind: Keyword }
+- { loc: "5:9", text: "valid", kind: Field, modifiers: [Definition] }
+- { loc: "7:4", text: "explicit", kind: Keyword }
+- { loc: "7:13", text: "operator", kind: Conflict, modifiers: [Definition, Readonly] }
+- { loc: "7:22", text: "bool", kind: Keyword }
+- { loc: "7:29", text: "const", kind: Keyword }
+- { loc: "8:8", text: "return", kind: Keyword }
+- { loc: "8:15", text: "valid", kind: Field }
+- { loc: "12:0", text: "Optional", kind: Struct }
+- { loc: "12:9", text: "try_parse", kind: Function, modifiers: [Definition] }
+- { loc: "12:19", text: "int", kind: Keyword }
+- { loc: "12:23", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "13:4", text: "if", kind: Keyword }
+- { loc: "13:7", text: "x", kind: Parameter }
+- { loc: "13:12", text: "0", kind: Number }
+- { loc: "14:8", text: "return", kind: Keyword }
+- { loc: "14:16", text: "x", kind: Parameter }
+- { loc: "14:20", text: "2", kind: Number }
+- { loc: "14:23", text: "true", kind: Keyword }
+- { loc: "15:4", text: "return", kind: Keyword }
+- { loc: "15:12", text: "0", kind: Number }
+- { loc: "15:15", text: "false", kind: Keyword }
+- { loc: "18:0", text: "int", kind: Keyword }
+- { loc: "18:4", text: "use_declaration_condition", kind: Function, modifiers: [Definition] }
+- { loc: "18:30", text: "int", kind: Keyword }
+- { loc: "18:34", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "19:4", text: "if", kind: Keyword }
+- { loc: "19:7", text: "Optional", kind: Struct }
+- { loc: "19:16", text: "result", kind: Conflict, modifiers: [Definition] }
+- { loc: "19:25", text: "try_parse", kind: Function }
+- { loc: "19:35", text: "x", kind: Parameter }
+- { loc: "20:8", text: "return", kind: Keyword }
+- { loc: "20:15", text: "result", kind: Variable }
+- { loc: "20:22", text: "value", kind: Field }
+- { loc: "22:4", text: "return", kind: Keyword }
+- { loc: "22:12", text: "1", kind: Number }
+- { loc: "25:0", text: "// pointer declaration as condition", kind: Comment }
+- { loc: "26:0", text: "struct", kind: Keyword }
+- { loc: "26:7", text: "Node", kind: Struct, modifiers: [Definition] }
+- { loc: "27:4", text: "int", kind: Keyword }
+- { loc: "27:8", text: "data", kind: Field, modifiers: [Definition] }
+- { loc: "28:4", text: "Node", kind: Struct }
+- { loc: "28:10", text: "next", kind: Field, modifiers: [Definition] }
+- { loc: "31:0", text: "int", kind: Keyword }
+- { loc: "31:4", text: "walk_list", kind: Function, modifiers: [Definition] }
+- { loc: "31:14", text: "Node", kind: Struct }
+- { loc: "31:20", text: "head", kind: Parameter, modifiers: [Definition] }
+- { loc: "32:4", text: "int", kind: Keyword }
+- { loc: "32:8", text: "sum", kind: Variable, modifiers: [Definition] }
+- { loc: "32:14", text: "0", kind: Number }
+- { loc: "33:4", text: "if", kind: Keyword }
+- { loc: "33:7", text: "Node", kind: Struct }
+- { loc: "33:13", text: "p", kind: Conflict }
+- { loc: "33:17", text: "head", kind: Parameter }
+- { loc: "34:8", text: "sum", kind: Variable }
+- { loc: "34:15", text: "p", kind: Variable }
+- { loc: "34:18", text: "data", kind: Field }
+- { loc: "36:4", text: "return", kind: Keyword }
+- { loc: "36:11", text: "sum", kind: Variable }
+- { loc: "39:0", text: "void", kind: Keyword }
+- { loc: "39:5", text: "test", kind: Function, modifiers: [Definition] }
+- { loc: "40:21", text: "int", kind: Keyword }
+- { loc: "40:25", text: "r1", kind: Variable, modifiers: [Definition] }
+- { loc: "40:30", text: "use_declaration_condition", kind: Function }
+- { loc: "40:56", text: "5", kind: Number }
+- { loc: "41:21", text: "int", kind: Keyword }
+- { loc: "41:25", text: "r2", kind: Variable, modifiers: [Definition] }
+- { loc: "41:30", text: "use_declaration_condition", kind: Function }
+- { loc: "41:57", text: "1", kind: Number }
+- { loc: "42:4", text: "Node", kind: Struct }
+- { loc: "42:9", text: "n", kind: Variable, modifiers: [Definition] }
+- { loc: "42:11", text: "42", kind: Number }
+- { loc: "42:15", text: "nullptr", kind: Keyword }
+- { loc: "43:21", text: "int", kind: Keyword }
+- { loc: "43:25", text: "r3", kind: Variable, modifiers: [Definition] }
+- { loc: "43:30", text: "walk_list", kind: Function }
+- { loc: "43:41", text: "n", kind: Variable }
+- { loc: "46:3", text: "// namespace if_declaration", kind: Comment }
+

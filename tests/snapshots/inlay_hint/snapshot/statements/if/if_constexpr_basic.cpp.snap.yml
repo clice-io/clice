@@ -1,0 +1,8 @@
+---
+source: inlay_hint_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_constexpr_basic.cpp
+---
+- { pos: "33:42", kind: Parameter, label: "val:", padding_right: true }
+- { pos: "34:42", kind: Parameter, label: "val:", padding_right: true }
+

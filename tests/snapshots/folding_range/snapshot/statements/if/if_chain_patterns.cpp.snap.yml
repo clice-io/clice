@@ -1,0 +1,11 @@
+---
+source: folding_range_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_chain_patterns.cpp
+---
+- { range: "1:19-48:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "3:26-12:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "15:35-25:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "28:33-39:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "41:12-46:1", kind: functionBody, collapsed_text: "{...}" }
+

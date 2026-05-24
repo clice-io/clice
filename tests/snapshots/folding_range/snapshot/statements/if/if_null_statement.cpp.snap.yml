@@ -1,0 +1,11 @@
+---
+source: folding_range_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_null_statement.cpp
+---
+- { range: "1:18-39:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "4:26-9:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "12:23-18:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "21:18-31:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "33:12-37:1", kind: functionBody, collapsed_text: "{...}" }
+

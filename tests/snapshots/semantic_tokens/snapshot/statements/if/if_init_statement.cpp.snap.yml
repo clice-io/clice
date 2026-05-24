@@ -1,0 +1,105 @@
+---
+source: semantic_tokens_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_init_statement.cpp
+---
+- { loc: "0:0", text: "// C++17 if with init-statement", kind: Comment }
+- { loc: "1:0", text: "namespace", kind: Keyword }
+- { loc: "1:10", text: "if_init", kind: Namespace, modifiers: [Definition] }
+- { loc: "3:0", text: "struct", kind: Keyword }
+- { loc: "3:7", text: "Result", kind: Struct, modifiers: [Definition] }
+- { loc: "4:4", text: "int", kind: Keyword }
+- { loc: "4:8", text: "value", kind: Field, modifiers: [Definition] }
+- { loc: "5:4", text: "bool", kind: Keyword }
+- { loc: "5:9", text: "ok", kind: Field, modifiers: [Definition] }
+- { loc: "8:0", text: "Result", kind: Struct }
+- { loc: "8:7", text: "compute", kind: Function, modifiers: [Definition] }
+- { loc: "8:15", text: "int", kind: Keyword }
+- { loc: "8:19", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "9:4", text: "if", kind: Keyword }
+- { loc: "9:7", text: "x", kind: Parameter }
+- { loc: "9:11", text: "0", kind: Number }
+- { loc: "10:8", text: "return", kind: Keyword }
+- { loc: "10:16", text: "x", kind: Parameter }
+- { loc: "10:20", text: "10", kind: Number }
+- { loc: "10:24", text: "true", kind: Keyword }
+- { loc: "11:4", text: "return", kind: Keyword }
+- { loc: "11:12", text: "0", kind: Number }
+- { loc: "11:15", text: "false", kind: Keyword }
+- { loc: "14:0", text: "int", kind: Keyword }
+- { loc: "14:4", text: "with_init", kind: Function, modifiers: [Definition] }
+- { loc: "14:14", text: "int", kind: Keyword }
+- { loc: "14:18", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "15:4", text: "if", kind: Keyword }
+- { loc: "15:7", text: "auto", kind: Keyword }
+- { loc: "15:12", text: "r", kind: Variable, modifiers: [Definition] }
+- { loc: "15:16", text: "compute", kind: Function }
+- { loc: "15:24", text: "x", kind: Parameter }
+- { loc: "15:28", text: "r", kind: Variable }
+- { loc: "15:30", text: "ok", kind: Field }
+- { loc: "16:8", text: "return", kind: Keyword }
+- { loc: "16:15", text: "r", kind: Variable }
+- { loc: "16:17", text: "value", kind: Field }
+- { loc: "18:4", text: "return", kind: Keyword }
+- { loc: "18:12", text: "1", kind: Number }
+- { loc: "21:0", text: "// init-statement with array", kind: Comment }
+- { loc: "22:0", text: "bool", kind: Keyword }
+- { loc: "22:5", text: "find_char", kind: Function, modifiers: [Definition] }
+- { loc: "22:15", text: "const", kind: Keyword }
+- { loc: "22:21", text: "char", kind: Keyword }
+- { loc: "22:27", text: "str", kind: Parameter, modifiers: [Definition, Readonly] }
+- { loc: "22:32", text: "char", kind: Keyword }
+- { loc: "22:37", text: "target", kind: Parameter, modifiers: [Definition] }
+- { loc: "23:4", text: "if", kind: Keyword }
+- { loc: "23:7", text: "int", kind: Keyword }
+- { loc: "23:11", text: "i", kind: Variable, modifiers: [Definition] }
+- { loc: "23:15", text: "0", kind: Number }
+- { loc: "23:18", text: "str", kind: Parameter, modifiers: [Readonly] }
+- { loc: "24:8", text: "while", kind: Keyword }
+- { loc: "24:14", text: "str", kind: Parameter, modifiers: [Readonly] }
+- { loc: "24:18", text: "i", kind: Variable }
+- { loc: "25:12", text: "if", kind: Keyword }
+- { loc: "25:15", text: "str", kind: Parameter, modifiers: [Readonly] }
+- { loc: "25:19", text: "i", kind: Variable }
+- { loc: "25:25", text: "target", kind: Parameter }
+- { loc: "26:16", text: "return", kind: Keyword }
+- { loc: "26:23", text: "true", kind: Keyword }
+- { loc: "27:14", text: "i", kind: Variable }
+- { loc: "30:4", text: "return", kind: Keyword }
+- { loc: "30:11", text: "false", kind: Keyword }
+- { loc: "33:0", text: "// init-statement scoping: variables not visible outside", kind: Comment }
+- { loc: "34:0", text: "int", kind: Keyword }
+- { loc: "34:4", text: "scoping_demo", kind: Function, modifiers: [Definition] }
+- { loc: "34:17", text: "int", kind: Keyword }
+- { loc: "34:21", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "35:4", text: "if", kind: Keyword }
+- { loc: "35:7", text: "int", kind: Keyword }
+- { loc: "35:11", text: "doubled", kind: Variable, modifiers: [Definition] }
+- { loc: "35:21", text: "x", kind: Parameter }
+- { loc: "35:25", text: "2", kind: Number }
+- { loc: "35:28", text: "doubled", kind: Variable }
+- { loc: "35:38", text: "10", kind: Number }
+- { loc: "36:8", text: "return", kind: Keyword }
+- { loc: "36:15", text: "doubled", kind: Variable }
+- { loc: "37:6", text: "else", kind: Keyword }
+- { loc: "38:8", text: "return", kind: Keyword }
+- { loc: "38:15", text: "doubled", kind: Variable }
+- { loc: "38:25", text: "1", kind: Number }
+- { loc: "38:29", text: "// doubled visible in else", kind: Comment }
+- { loc: "42:0", text: "void", kind: Keyword }
+- { loc: "42:5", text: "test", kind: Function, modifiers: [Definition] }
+- { loc: "43:21", text: "int", kind: Keyword }
+- { loc: "43:25", text: "r1", kind: Variable, modifiers: [Definition] }
+- { loc: "43:30", text: "with_init", kind: Function }
+- { loc: "43:40", text: "5", kind: Number }
+- { loc: "44:21", text: "bool", kind: Keyword }
+- { loc: "44:26", text: "r2", kind: Variable, modifiers: [Definition] }
+- { loc: "44:31", text: "find_char", kind: Function }
+- { loc: "44:41", text: "\"hello\"", kind: String }
+- { loc: "44:50", text: "'l'", kind: Character }
+- { loc: "45:21", text: "int", kind: Keyword }
+- { loc: "45:25", text: "r3", kind: Variable, modifiers: [Definition] }
+- { loc: "45:30", text: "scoping_demo", kind: Function }
+- { loc: "45:43", text: "3", kind: Number }
+- { loc: "48:3", text: "// namespace if_init", kind: Comment }
+

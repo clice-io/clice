@@ -1,0 +1,92 @@
+---
+source: semantic_tokens_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_consteval.cpp
+---
+- { loc: "0:0", text: "// C++23 if consteval", kind: Comment }
+- { loc: "1:0", text: "namespace", kind: Keyword }
+- { loc: "1:10", text: "if_consteval", kind: Namespace, modifiers: [Definition] }
+- { loc: "3:0", text: "constexpr", kind: Keyword }
+- { loc: "3:10", text: "int", kind: Keyword }
+- { loc: "3:14", text: "compute", kind: Function, modifiers: [Definition] }
+- { loc: "3:22", text: "int", kind: Keyword }
+- { loc: "3:26", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "4:4", text: "if", kind: Keyword }
+- { loc: "4:7", text: "consteval", kind: Keyword }
+- { loc: "5:8", text: "return", kind: Keyword }
+- { loc: "5:15", text: "x", kind: Parameter }
+- { loc: "5:19", text: "x", kind: Parameter }
+- { loc: "5:23", text: "// compile-time path", kind: Comment }
+- { loc: "6:6", text: "else", kind: Keyword }
+- { loc: "7:8", text: "return", kind: Keyword }
+- { loc: "7:15", text: "x", kind: Parameter }
+- { loc: "7:19", text: "x", kind: Parameter }
+- { loc: "7:23", text: "// runtime path", kind: Comment }
+- { loc: "11:0", text: "// negated form: if !consteval", kind: Comment }
+- { loc: "12:0", text: "constexpr", kind: Keyword }
+- { loc: "12:10", text: "int", kind: Keyword }
+- { loc: "12:14", text: "runtime_prefer", kind: Function, modifiers: [Definition] }
+- { loc: "12:29", text: "int", kind: Keyword }
+- { loc: "12:33", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "13:4", text: "if", kind: Keyword }
+- { loc: "13:8", text: "consteval", kind: Keyword }
+- { loc: "14:8", text: "return", kind: Keyword }
+- { loc: "14:15", text: "x", kind: Parameter }
+- { loc: "14:19", text: "1", kind: Number }
+- { loc: "14:23", text: "// runtime path", kind: Comment }
+- { loc: "15:6", text: "else", kind: Keyword }
+- { loc: "16:8", text: "return", kind: Keyword }
+- { loc: "16:15", text: "x", kind: Parameter }
+- { loc: "16:19", text: "1", kind: Number }
+- { loc: "16:23", text: "// compile-time path", kind: Comment }
+- { loc: "20:0", text: "// consteval function callable only at compile time", kind: Comment }
+- { loc: "21:0", text: "consteval", kind: Keyword }
+- { loc: "21:10", text: "int", kind: Keyword }
+- { loc: "21:14", text: "ct_only", kind: Function, modifiers: [Definition] }
+- { loc: "21:22", text: "int", kind: Keyword }
+- { loc: "21:26", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "22:4", text: "return", kind: Keyword }
+- { loc: "22:11", text: "x", kind: Parameter }
+- { loc: "22:15", text: "3", kind: Number }
+- { loc: "25:0", text: "constexpr", kind: Keyword }
+- { loc: "25:10", text: "int", kind: Keyword }
+- { loc: "25:14", text: "dispatch", kind: Function, modifiers: [Definition] }
+- { loc: "25:23", text: "int", kind: Keyword }
+- { loc: "25:27", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "26:4", text: "if", kind: Keyword }
+- { loc: "26:7", text: "consteval", kind: Keyword }
+- { loc: "27:8", text: "return", kind: Keyword }
+- { loc: "27:15", text: "ct_only", kind: Function }
+- { loc: "27:23", text: "x", kind: Parameter }
+- { loc: "27:28", text: "// OK: in immediate context", kind: Comment }
+- { loc: "28:6", text: "else", kind: Keyword }
+- { loc: "29:8", text: "return", kind: Keyword }
+- { loc: "29:15", text: "x", kind: Parameter }
+- { loc: "33:0", text: "// if consteval without else", kind: Comment }
+- { loc: "34:0", text: "constexpr", kind: Keyword }
+- { loc: "34:10", text: "int", kind: Keyword }
+- { loc: "34:14", text: "maybe_optimize", kind: Function, modifiers: [Definition] }
+- { loc: "34:29", text: "int", kind: Keyword }
+- { loc: "34:33", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "35:4", text: "if", kind: Keyword }
+- { loc: "35:7", text: "consteval", kind: Keyword }
+- { loc: "36:8", text: "return", kind: Keyword }
+- { loc: "36:15", text: "x", kind: Parameter }
+- { loc: "36:19", text: "x", kind: Parameter }
+- { loc: "36:23", text: "x", kind: Parameter }
+- { loc: "38:4", text: "return", kind: Keyword }
+- { loc: "38:11", text: "x", kind: Parameter }
+- { loc: "41:0", text: "static_assert", kind: Keyword }
+- { loc: "41:14", text: "compute", kind: Function }
+- { loc: "41:22", text: "5", kind: Number }
+- { loc: "41:28", text: "25", kind: Number }
+- { loc: "42:0", text: "static_assert", kind: Keyword }
+- { loc: "42:14", text: "dispatch", kind: Function }
+- { loc: "42:23", text: "3", kind: Number }
+- { loc: "42:29", text: "9", kind: Number }
+- { loc: "43:0", text: "static_assert", kind: Keyword }
+- { loc: "43:14", text: "maybe_optimize", kind: Function }
+- { loc: "43:29", text: "4", kind: Number }
+- { loc: "43:35", text: "64", kind: Number }
+- { loc: "45:3", text: "// namespace if_consteval", kind: Comment }
+

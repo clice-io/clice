@@ -1,0 +1,12 @@
+---
+source: document_symbol_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_consteval.cpp
+---
+- { name: "if_consteval", kind: Namespace, range: "1:0-45:1", selection_range: "1:10-1:22" }
+-   { name: "compute", kind: Function, range: "3:0-9:1", selection_range: "3:14-3:21", detail: "int (int)" }
+-   { name: "runtime_prefer", kind: Function, range: "12:0-18:1", selection_range: "12:14-12:28", detail: "int (int)" }
+-   { name: "ct_only", kind: Function, range: "21:0-23:1", selection_range: "21:14-21:21", detail: "int (int)" }
+-   { name: "dispatch", kind: Function, range: "25:0-31:1", selection_range: "25:14-25:22", detail: "int (int)" }
+-   { name: "maybe_optimize", kind: Function, range: "34:0-39:1", selection_range: "34:14-34:28", detail: "int (int)" }
+

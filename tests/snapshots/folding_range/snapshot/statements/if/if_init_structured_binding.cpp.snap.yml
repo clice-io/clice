@@ -1,0 +1,14 @@
+---
+source: folding_range_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_init_structured_binding.cpp
+---
+- { range: "1:21-45:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "3:12-6:1", kind: struct, collapsed_text: "{...}" }
+- { range: "8:26-12:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "14:30-19:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "21:19-25:1", kind: struct, collapsed_text: "{...}" }
+- { range: "27:25-31:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "33:21-38:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "40:12-43:1", kind: functionBody, collapsed_text: "{...}" }
+

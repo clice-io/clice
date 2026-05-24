@@ -1,0 +1,29 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_null_statement.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "if_null", relations: [Definition] }
+- { loc: "4:4", kind: Function, text: "with_null_init", relations: [Definition] }
+- { loc: "4:23", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "5:9", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "6:15", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "12:4", kind: Function, text: "single_stmt", relations: [Definition] }
+- { loc: "12:20", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "13:7", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "14:15", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "15:7", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "16:15", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "21:5", kind: Function, text: "scope_test", relations: [Definition] }
+- { loc: "23:29", kind: Variable, text: "x", relations: [Definition] }
+- { loc: "27:11", kind: Variable, text: "y", relations: [Definition] }
+- { loc: "27:19", kind: Variable, text: "y", relations: [Reference] }
+- { loc: "28:29", kind: Variable, text: "z", relations: [Definition] }
+- { loc: "28:33", kind: Variable, text: "y", relations: [Reference] }
+- { loc: "33:5", kind: Function, text: "test", relations: [Definition] }
+- { loc: "34:25", kind: Variable, text: "r1", relations: [Definition] }
+- { loc: "34:30", kind: Function, text: "with_null_init", relations: [Reference] }
+- { loc: "35:25", kind: Variable, text: "r2", relations: [Definition] }
+- { loc: "35:30", kind: Function, text: "single_stmt", relations: [Reference] }
+- { loc: "36:4", kind: Function, text: "scope_test", relations: [Reference] }
+

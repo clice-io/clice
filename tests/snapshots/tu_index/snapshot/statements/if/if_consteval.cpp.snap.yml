@@ -1,0 +1,34 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_consteval.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "if_consteval", relations: [Definition] }
+- { loc: "3:14", kind: Function, text: "compute", relations: [Definition] }
+- { loc: "3:26", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "5:15", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "5:19", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "7:15", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "7:19", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "12:14", kind: Function, text: "runtime_prefer", relations: [Definition] }
+- { loc: "12:33", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "14:15", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "16:15", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "21:14", kind: Function, text: "ct_only", relations: [Definition] }
+- { loc: "21:26", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "22:11", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "25:14", kind: Function, text: "dispatch", relations: [Definition] }
+- { loc: "25:27", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "27:15", kind: Function, text: "ct_only", relations: [Reference] }
+- { loc: "27:23", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "29:15", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "34:14", kind: Function, text: "maybe_optimize", relations: [Definition] }
+- { loc: "34:33", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "36:15", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "36:19", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "36:23", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "38:11", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "41:14", kind: Function, text: "compute", relations: [Reference] }
+- { loc: "42:14", kind: Function, text: "dispatch", relations: [Reference] }
+- { loc: "43:14", kind: Function, text: "maybe_optimize", relations: [Reference] }
+

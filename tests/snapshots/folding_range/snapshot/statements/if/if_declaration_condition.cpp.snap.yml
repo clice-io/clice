@@ -1,0 +1,14 @@
+---
+source: folding_range_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_declaration_condition.cpp
+---
+- { range: "1:25-46:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "3:16-10:1", kind: struct, collapsed_text: "{...}" }
+- { range: "7:35-9:5", kind: functionBody, collapsed_text: "{...}" }
+- { range: "12:26-16:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "18:37-23:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "26:12-29:1", kind: struct, collapsed_text: "{...}" }
+- { range: "31:26-37:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "39:12-44:1", kind: functionBody, collapsed_text: "{...}" }
+

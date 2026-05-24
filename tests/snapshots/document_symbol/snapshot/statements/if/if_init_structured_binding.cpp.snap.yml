@@ -1,0 +1,26 @@
+---
+source: document_symbol_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_init_structured_binding.cpp
+---
+- { name: "if_init_sb", kind: Namespace, range: "1:0-45:1", selection_range: "1:10-1:20" }
+-   { name: "Pair", kind: Struct, range: "3:0-6:1", selection_range: "3:7-3:11", detail: "struct" }
+-     { name: "first", kind: Field, range: "4:4-4:13", selection_range: "4:8-4:13", detail: "int" }
+-     { name: "second", kind: Field, range: "5:4-5:14", selection_range: "5:8-5:14", detail: "int" }
+-   { name: "divide", kind: Function, range: "8:0-12:1", selection_range: "8:5-8:11", detail: "Pair (int, int)" }
+-   { name: "safe_divide", kind: Function, range: "14:0-19:1", selection_range: "14:4-14:15", detail: "int (int, int)" }
+-     { name: "quot", kind: Variable, range: "15:13-15:17", selection_range: "15:13-15:17", detail: "int" }
+-     { name: "rem", kind: Variable, range: "15:19-15:22", selection_range: "15:19-15:22", detail: "int" }
+-   { name: "ParseResult", kind: Struct, range: "21:0-25:1", selection_range: "21:7-21:18", detail: "struct" }
+-     { name: "success", kind: Field, range: "22:4-22:16", selection_range: "22:9-22:16", detail: "bool" }
+-     { name: "value", kind: Field, range: "23:4-23:13", selection_range: "23:8-23:13", detail: "int" }
+-     { name: "error", kind: Field, range: "24:4-24:21", selection_range: "24:16-24:21", detail: "const char *" }
+-   { name: "parse", kind: Function, range: "27:0-31:1", selection_range: "27:12-27:17", detail: "ParseResult (int)" }
+-   { name: "try_parse", kind: Function, range: "33:0-38:1", selection_range: "33:4-33:13", detail: "int (int)" }
+-     { name: "ok", kind: Variable, range: "34:13-34:15", selection_range: "34:13-34:15", detail: "bool" }
+-     { name: "val", kind: Variable, range: "34:17-34:20", selection_range: "34:17-34:20", detail: "int" }
+-     { name: "err", kind: Variable, range: "34:22-34:25", selection_range: "34:22-34:25", detail: "const char *" }
+-   { name: "test", kind: Function, range: "40:0-43:1", selection_range: "40:5-40:9", detail: "void ()" }
+-     { name: "r1", kind: Variable, range: "41:21-41:48", selection_range: "41:25-41:27", detail: "int" }
+-     { name: "r2", kind: Variable, range: "42:21-42:43", selection_range: "42:25-42:27", detail: "int" }
+

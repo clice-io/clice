@@ -1,0 +1,70 @@
+---
+source: semantic_tokens_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_null_statement.cpp
+---
+- { loc: "0:0", text: "// if with null statement and single-statement bodies", kind: Comment }
+- { loc: "1:0", text: "namespace", kind: Keyword }
+- { loc: "1:10", text: "if_null", kind: Namespace, modifiers: [Definition] }
+- { loc: "3:0", text: "// null init-statement in C++17 if", kind: Comment }
+- { loc: "4:0", text: "int", kind: Keyword }
+- { loc: "4:4", text: "with_null_init", kind: Function, modifiers: [Definition] }
+- { loc: "4:19", text: "int", kind: Keyword }
+- { loc: "4:23", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "5:4", text: "if", kind: Keyword }
+- { loc: "5:9", text: "x", kind: Parameter }
+- { loc: "5:13", text: "0", kind: Number }
+- { loc: "6:8", text: "return", kind: Keyword }
+- { loc: "6:15", text: "x", kind: Parameter }
+- { loc: "8:4", text: "return", kind: Keyword }
+- { loc: "8:11", text: "0", kind: Number }
+- { loc: "11:0", text: "// single statement body (no braces)", kind: Comment }
+- { loc: "12:0", text: "int", kind: Keyword }
+- { loc: "12:4", text: "single_stmt", kind: Function, modifiers: [Definition] }
+- { loc: "12:16", text: "int", kind: Keyword }
+- { loc: "12:20", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "13:4", text: "if", kind: Keyword }
+- { loc: "13:7", text: "x", kind: Parameter }
+- { loc: "13:11", text: "10", kind: Number }
+- { loc: "14:8", text: "return", kind: Keyword }
+- { loc: "14:15", text: "x", kind: Parameter }
+- { loc: "15:4", text: "if", kind: Keyword }
+- { loc: "15:7", text: "x", kind: Parameter }
+- { loc: "15:11", text: "5", kind: Number }
+- { loc: "16:8", text: "return", kind: Keyword }
+- { loc: "16:15", text: "x", kind: Parameter }
+- { loc: "16:19", text: "1", kind: Number }
+- { loc: "17:4", text: "return", kind: Keyword }
+- { loc: "17:11", text: "0", kind: Number }
+- { loc: "20:0", text: "// scope of variable declared in if body", kind: Comment }
+- { loc: "21:0", text: "void", kind: Keyword }
+- { loc: "21:5", text: "scope_test", kind: Function, modifiers: [Definition] }
+- { loc: "22:4", text: "if", kind: Keyword }
+- { loc: "22:7", text: "true", kind: Keyword }
+- { loc: "23:25", text: "int", kind: Keyword }
+- { loc: "23:29", text: "x", kind: Variable, modifiers: [Definition] }
+- { loc: "23:33", text: "42", kind: Number }
+- { loc: "25:4", text: "// x is out of scope here", kind: Comment }
+- { loc: "27:4", text: "if", kind: Keyword }
+- { loc: "27:7", text: "int", kind: Keyword }
+- { loc: "27:11", text: "y", kind: Variable, modifiers: [Definition] }
+- { loc: "27:15", text: "10", kind: Number }
+- { loc: "27:19", text: "y", kind: Variable }
+- { loc: "27:23", text: "0", kind: Number }
+- { loc: "28:25", text: "int", kind: Keyword }
+- { loc: "28:29", text: "z", kind: Variable, modifiers: [Definition] }
+- { loc: "28:33", text: "y", kind: Variable }
+- { loc: "30:4", text: "// y and z are out of scope here", kind: Comment }
+- { loc: "33:0", text: "void", kind: Keyword }
+- { loc: "33:5", text: "test", kind: Function, modifiers: [Definition] }
+- { loc: "34:21", text: "int", kind: Keyword }
+- { loc: "34:25", text: "r1", kind: Variable, modifiers: [Definition] }
+- { loc: "34:30", text: "with_null_init", kind: Function }
+- { loc: "34:45", text: "5", kind: Number }
+- { loc: "35:21", text: "int", kind: Keyword }
+- { loc: "35:25", text: "r2", kind: Variable, modifiers: [Definition] }
+- { loc: "35:30", text: "single_stmt", kind: Function }
+- { loc: "35:42", text: "7", kind: Number }
+- { loc: "36:4", text: "scope_test", kind: Function }
+- { loc: "39:3", text: "// namespace if_null", kind: Comment }
+

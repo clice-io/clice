@@ -1,0 +1,12 @@
+---
+source: folding_range_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_consteval.cpp
+---
+- { range: "1:23-45:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "3:29-9:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "12:36-18:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "21:29-23:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "25:30-31:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "34:36-39:1", kind: functionBody, collapsed_text: "{...}" }
+

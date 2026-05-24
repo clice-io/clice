@@ -1,0 +1,25 @@
+---
+source: document_symbol_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_declaration_condition.cpp
+---
+- { name: "if_declaration", kind: Namespace, range: "1:0-46:1", selection_range: "1:10-1:24" }
+-   { name: "Optional", kind: Struct, range: "3:0-10:1", selection_range: "3:7-3:15", detail: "struct" }
+-     { name: "value", kind: Field, range: "4:4-4:13", selection_range: "4:8-4:13", detail: "int" }
+-     { name: "valid", kind: Field, range: "5:4-5:14", selection_range: "5:9-5:14", detail: "bool" }
+-     { name: "operator bool", kind: Method, range: "7:4-9:5", selection_range: "7:13-7:21", detail: "bool () const" }
+-   { name: "try_parse", kind: Function, range: "12:0-16:1", selection_range: "12:9-12:18", detail: "Optional (int)" }
+-   { name: "use_declaration_condition", kind: Function, range: "18:0-23:1", selection_range: "18:4-18:29", detail: "int (int)" }
+-     { name: "result", kind: Variable, range: "19:7-19:37", selection_range: "19:16-19:22", detail: "Optional" }
+-   { name: "Node", kind: Struct, range: "26:0-29:1", selection_range: "26:7-26:11", detail: "struct" }
+-     { name: "data", kind: Field, range: "27:4-27:12", selection_range: "27:8-27:12", detail: "int" }
+-     { name: "next", kind: Field, range: "28:4-28:14", selection_range: "28:10-28:14", detail: "Node *" }
+-   { name: "walk_list", kind: Function, range: "31:0-37:1", selection_range: "31:4-31:13", detail: "int (Node *)" }
+-     { name: "sum", kind: Variable, range: "32:4-32:15", selection_range: "32:8-32:11", detail: "int" }
+-     { name: "p", kind: Variable, range: "33:7-33:21", selection_range: "33:13-33:14", detail: "Node *" }
+-   { name: "test", kind: Function, range: "39:0-44:1", selection_range: "39:5-39:9", detail: "void ()" }
+-     { name: "r1", kind: Variable, range: "40:21-40:58", selection_range: "40:25-40:27", detail: "int" }
+-     { name: "r2", kind: Variable, range: "41:21-41:59", selection_range: "41:25-41:27", detail: "int" }
+-     { name: "n", kind: Variable, range: "42:4-42:23", selection_range: "42:9-42:10", detail: "Node" }
+-     { name: "r3", kind: Variable, range: "43:21-43:43", selection_range: "43:25-43:27", detail: "int" }
+

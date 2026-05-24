@@ -1,0 +1,16 @@
+---
+source: document_symbol_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_null_statement.cpp
+---
+- { name: "if_null", kind: Namespace, range: "1:0-39:1", selection_range: "1:10-1:17" }
+-   { name: "with_null_init", kind: Function, range: "4:0-9:1", selection_range: "4:4-4:18", detail: "int (int)" }
+-   { name: "single_stmt", kind: Function, range: "12:0-18:1", selection_range: "12:4-12:15", detail: "int (int)" }
+-   { name: "scope_test", kind: Function, range: "21:0-31:1", selection_range: "21:5-21:15", detail: "void ()" }
+-     { name: "x", kind: Variable, range: "23:25-23:35", selection_range: "23:29-23:30", detail: "int" }
+-     { name: "y", kind: Variable, range: "27:7-27:17", selection_range: "27:11-27:12", detail: "int" }
+-     { name: "z", kind: Variable, range: "28:25-28:34", selection_range: "28:29-28:30", detail: "int" }
+-   { name: "test", kind: Function, range: "33:0-37:1", selection_range: "33:5-33:9", detail: "void ()" }
+-     { name: "r1", kind: Variable, range: "34:21-34:47", selection_range: "34:25-34:27", detail: "int" }
+-     { name: "r2", kind: Variable, range: "35:21-35:44", selection_range: "35:25-35:27", detail: "int" }
+

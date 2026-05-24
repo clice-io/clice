@@ -1,0 +1,137 @@
+---
+source: semantic_tokens_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_chain_patterns.cpp
+---
+- { loc: "0:0", text: "// if-else chain patterns and compound conditions", kind: Comment }
+- { loc: "1:0", text: "namespace", kind: Keyword }
+- { loc: "1:10", text: "if_chain", kind: Namespace, modifiers: [Definition] }
+- { loc: "3:0", text: "int", kind: Keyword }
+- { loc: "3:4", text: "classify_char", kind: Function, modifiers: [Definition] }
+- { loc: "3:18", text: "char", kind: Keyword }
+- { loc: "3:23", text: "c", kind: Parameter, modifiers: [Definition] }
+- { loc: "4:4", text: "if", kind: Keyword }
+- { loc: "4:7", text: "c", kind: Parameter }
+- { loc: "4:12", text: "'a'", kind: Character }
+- { loc: "4:19", text: "c", kind: Parameter }
+- { loc: "4:24", text: "'z'", kind: Character }
+- { loc: "5:8", text: "return", kind: Keyword }
+- { loc: "5:15", text: "1", kind: Number }
+- { loc: "5:19", text: "// lowercase", kind: Comment }
+- { loc: "6:4", text: "else", kind: Keyword }
+- { loc: "6:9", text: "if", kind: Keyword }
+- { loc: "6:12", text: "c", kind: Parameter }
+- { loc: "6:17", text: "'A'", kind: Character }
+- { loc: "6:24", text: "c", kind: Parameter }
+- { loc: "6:29", text: "'Z'", kind: Character }
+- { loc: "7:8", text: "return", kind: Keyword }
+- { loc: "7:15", text: "2", kind: Number }
+- { loc: "7:19", text: "// uppercase", kind: Comment }
+- { loc: "8:4", text: "else", kind: Keyword }
+- { loc: "8:9", text: "if", kind: Keyword }
+- { loc: "8:12", text: "c", kind: Parameter }
+- { loc: "8:17", text: "'0'", kind: Character }
+- { loc: "8:24", text: "c", kind: Parameter }
+- { loc: "8:29", text: "'9'", kind: Character }
+- { loc: "9:8", text: "return", kind: Keyword }
+- { loc: "9:15", text: "3", kind: Number }
+- { loc: "9:19", text: "// digit", kind: Comment }
+- { loc: "10:4", text: "else", kind: Keyword }
+- { loc: "11:8", text: "return", kind: Keyword }
+- { loc: "11:15", text: "0", kind: Number }
+- { loc: "11:19", text: "// other", kind: Comment }
+- { loc: "14:0", text: "// early return pattern", kind: Comment }
+- { loc: "15:0", text: "bool", kind: Keyword }
+- { loc: "15:5", text: "validate", kind: Function, modifiers: [Definition] }
+- { loc: "15:14", text: "int", kind: Keyword }
+- { loc: "15:18", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "15:21", text: "int", kind: Keyword }
+- { loc: "15:25", text: "y", kind: Parameter, modifiers: [Definition] }
+- { loc: "15:28", text: "int", kind: Keyword }
+- { loc: "15:32", text: "z", kind: Parameter, modifiers: [Definition] }
+- { loc: "16:4", text: "if", kind: Keyword }
+- { loc: "16:7", text: "x", kind: Parameter }
+- { loc: "16:11", text: "0", kind: Number }
+- { loc: "17:8", text: "return", kind: Keyword }
+- { loc: "17:15", text: "false", kind: Keyword }
+- { loc: "18:4", text: "if", kind: Keyword }
+- { loc: "18:7", text: "y", kind: Parameter }
+- { loc: "18:11", text: "0", kind: Number }
+- { loc: "19:8", text: "return", kind: Keyword }
+- { loc: "19:15", text: "false", kind: Keyword }
+- { loc: "20:4", text: "if", kind: Keyword }
+- { loc: "20:7", text: "z", kind: Parameter }
+- { loc: "20:11", text: "0", kind: Number }
+- { loc: "21:8", text: "return", kind: Keyword }
+- { loc: "21:15", text: "false", kind: Keyword }
+- { loc: "22:4", text: "if", kind: Keyword }
+- { loc: "22:7", text: "x", kind: Parameter }
+- { loc: "22:11", text: "y", kind: Parameter }
+- { loc: "22:15", text: "z", kind: Parameter }
+- { loc: "22:19", text: "100", kind: Number }
+- { loc: "23:8", text: "return", kind: Keyword }
+- { loc: "23:15", text: "false", kind: Keyword }
+- { loc: "24:4", text: "return", kind: Keyword }
+- { loc: "24:11", text: "true", kind: Keyword }
+- { loc: "27:0", text: "// if with compound statement and multiple effects", kind: Comment }
+- { loc: "28:0", text: "int", kind: Keyword }
+- { loc: "28:4", text: "process", kind: Function, modifiers: [Definition] }
+- { loc: "28:12", text: "int", kind: Keyword }
+- { loc: "28:17", text: "data", kind: Parameter, modifiers: [Definition] }
+- { loc: "28:23", text: "int", kind: Keyword }
+- { loc: "28:27", text: "size", kind: Parameter, modifiers: [Definition] }
+- { loc: "29:4", text: "int", kind: Keyword }
+- { loc: "29:8", text: "sum", kind: Variable, modifiers: [Definition] }
+- { loc: "29:14", text: "0", kind: Number }
+- { loc: "30:4", text: "for", kind: Keyword }
+- { loc: "30:8", text: "int", kind: Keyword }
+- { loc: "30:12", text: "i", kind: Variable, modifiers: [Definition] }
+- { loc: "30:16", text: "0", kind: Number }
+- { loc: "30:19", text: "i", kind: Variable }
+- { loc: "30:23", text: "size", kind: Parameter }
+- { loc: "30:31", text: "i", kind: Variable }
+- { loc: "31:8", text: "if", kind: Keyword }
+- { loc: "31:11", text: "data", kind: Parameter }
+- { loc: "31:16", text: "i", kind: Variable }
+- { loc: "31:21", text: "0", kind: Number }
+- { loc: "32:12", text: "sum", kind: Variable }
+- { loc: "32:19", text: "data", kind: Parameter }
+- { loc: "32:24", text: "i", kind: Variable }
+- { loc: "33:12", text: "data", kind: Parameter }
+- { loc: "33:17", text: "i", kind: Variable }
+- { loc: "33:22", text: "0", kind: Number }
+- { loc: "34:10", text: "else", kind: Keyword }
+- { loc: "34:15", text: "if", kind: Keyword }
+- { loc: "34:18", text: "data", kind: Parameter }
+- { loc: "34:23", text: "i", kind: Variable }
+- { loc: "34:29", text: "10", kind: Number }
+- { loc: "35:12", text: "sum", kind: Variable }
+- { loc: "35:19", text: "data", kind: Parameter }
+- { loc: "35:24", text: "i", kind: Variable }
+- { loc: "38:4", text: "return", kind: Keyword }
+- { loc: "38:11", text: "sum", kind: Variable }
+- { loc: "41:0", text: "void", kind: Keyword }
+- { loc: "41:5", text: "test", kind: Function, modifiers: [Definition] }
+- { loc: "42:21", text: "int", kind: Keyword }
+- { loc: "42:25", text: "r1", kind: Variable, modifiers: [Definition] }
+- { loc: "42:30", text: "classify_char", kind: Function }
+- { loc: "42:44", text: "'a'", kind: Character }
+- { loc: "43:21", text: "bool", kind: Keyword }
+- { loc: "43:26", text: "r2", kind: Variable, modifiers: [Definition] }
+- { loc: "43:31", text: "validate", kind: Function }
+- { loc: "43:40", text: "1", kind: Number }
+- { loc: "43:43", text: "2", kind: Number }
+- { loc: "43:46", text: "3", kind: Number }
+- { loc: "44:4", text: "int", kind: Keyword }
+- { loc: "44:8", text: "arr", kind: Variable, modifiers: [Definition] }
+- { loc: "44:17", text: "1", kind: Number }
+- { loc: "44:21", text: "20", kind: Number }
+- { loc: "44:25", text: "3", kind: Number }
+- { loc: "44:29", text: "5", kind: Number }
+- { loc: "45:21", text: "int", kind: Keyword }
+- { loc: "45:25", text: "r3", kind: Variable, modifiers: [Definition] }
+- { loc: "45:30", text: "process", kind: Function }
+- { loc: "45:38", text: "arr", kind: Variable }
+- { loc: "45:43", text: "4", kind: Number }
+- { loc: "48:3", text: "// namespace if_chain", kind: Comment }
+

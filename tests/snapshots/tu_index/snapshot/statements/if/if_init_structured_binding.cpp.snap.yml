@@ -1,0 +1,54 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-05-24
+input_file: statements/if/if_init_structured_binding.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "if_init_sb", relations: [Definition] }
+- { loc: "3:7", kind: Struct, text: "Pair", relations: [Definition] }
+- { loc: "4:8", kind: Field, text: "first", relations: [Definition] }
+- { loc: "5:8", kind: Field, text: "second", relations: [Definition] }
+- { loc: "8:0", kind: Struct, text: "Pair", relations: [Reference] }
+- { loc: "8:5", kind: Function, text: "divide", relations: [Definition] }
+- { loc: "8:16", kind: Parameter, text: "a", relations: [Definition] }
+- { loc: "8:23", kind: Parameter, text: "b", relations: [Definition] }
+- { loc: "9:7", kind: Parameter, text: "b", relations: [Reference] }
+- { loc: "11:12", kind: Parameter, text: "a", relations: [Reference] }
+- { loc: "11:16", kind: Parameter, text: "b", relations: [Reference] }
+- { loc: "11:19", kind: Parameter, text: "a", relations: [Reference] }
+- { loc: "11:23", kind: Parameter, text: "b", relations: [Reference] }
+- { loc: "14:4", kind: Function, text: "safe_divide", relations: [Definition] }
+- { loc: "14:20", kind: Parameter, text: "a", relations: [Definition] }
+- { loc: "14:27", kind: Parameter, text: "b", relations: [Definition] }
+- { loc: "15:12", kind: Variable, text: "[", relations: [Definition] }
+- { loc: "15:13", kind: Variable, text: "quot", relations: [Definition] }
+- { loc: "15:19", kind: Variable, text: "rem", relations: [Definition] }
+- { loc: "15:26", kind: Function, text: "divide", relations: [Reference] }
+- { loc: "15:33", kind: Parameter, text: "a", relations: [Reference] }
+- { loc: "15:36", kind: Parameter, text: "b", relations: [Reference] }
+- { loc: "15:40", kind: Parameter, text: "b", relations: [Reference] }
+- { loc: "16:15", kind: Variable, text: "quot", relations: [Reference] }
+- { loc: "21:7", kind: Struct, text: "ParseResult", relations: [Definition] }
+- { loc: "22:9", kind: Field, text: "success", relations: [Definition] }
+- { loc: "23:8", kind: Field, text: "value", relations: [Definition] }
+- { loc: "24:16", kind: Field, text: "error", relations: [Definition] }
+- { loc: "27:0", kind: Struct, text: "ParseResult", relations: [Reference] }
+- { loc: "27:12", kind: Function, text: "parse", relations: [Definition] }
+- { loc: "27:22", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "28:7", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "30:18", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "33:4", kind: Function, text: "try_parse", relations: [Definition] }
+- { loc: "33:18", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "34:12", kind: Variable, text: "[", relations: [Definition] }
+- { loc: "34:13", kind: Variable, text: "ok", relations: [Definition] }
+- { loc: "34:17", kind: Variable, text: "val", relations: [Definition] }
+- { loc: "34:22", kind: Variable, text: "err", relations: [Definition] }
+- { loc: "34:29", kind: Function, text: "parse", relations: [Reference] }
+- { loc: "34:35", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "34:39", kind: Variable, text: "ok", relations: [Reference] }
+- { loc: "35:15", kind: Variable, text: "val", relations: [Reference] }
+- { loc: "40:5", kind: Function, text: "test", relations: [Definition] }
+- { loc: "41:25", kind: Variable, text: "r1", relations: [Definition] }
+- { loc: "41:30", kind: Function, text: "safe_divide", relations: [Reference] }
+- { loc: "42:25", kind: Variable, text: "r2", relations: [Definition] }
+- { loc: "42:30", kind: Function, text: "try_parse", relations: [Reference] }
+
