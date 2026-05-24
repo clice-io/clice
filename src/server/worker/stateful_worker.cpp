@@ -270,7 +270,8 @@ void StatefulWorker::register_handlers() {
                     });
                 case K::DocumentLink:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-                        return to_raw(feature::document_links(doc.unit));
+                        return to_raw(
+                            feature::document_links(doc.unit, feature::PositionEncoding::UTF16));
                     });
                 case K::CodeAction:
                     // TODO: Implement code actions
