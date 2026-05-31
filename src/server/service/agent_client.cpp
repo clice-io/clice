@@ -778,9 +778,10 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         co_return result;
     });
 
-    peer.on_notification([&srv](const ShutdownParams&) {
+    peer.on_notification([this, &srv](const ShutdownParams&) {
         LOG_INFO("agentic/shutdown received, shutting down");
         srv.schedule_shutdown();
+        this->peer.close();
     });
 }
 

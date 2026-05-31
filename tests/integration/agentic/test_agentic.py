@@ -83,6 +83,57 @@ def run_agentic(executable, host, port, path, timeout=10):
     return result
 
 
+SANITIZER_MARKERS = (
+    "AddressSanitizer",
+    "LeakSanitizer",
+    "MemorySanitizer",
+    "ThreadSanitizer",
+    "UndefinedBehaviorSanitizer",
+    "==ERROR:",
+    "runtime error:",
+)
+
+
+async def assert_server_exited_cleanly(server, timeout=15.0):
+    failures = []
+
+    if server.returncode is None:
+        try:
+            await asyncio.wait_for(server.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            server.kill()
+            await server.wait()
+            failures.append(f"server did not exit within {timeout:g}s")
+
+    stderr_text = ""
+    if server.stderr:
+        try:
+            data = await asyncio.wait_for(server.stderr.read(), timeout=2.0)
+            stderr_text = data.decode("utf-8", errors="replace")
+        except Exception as exc:
+            failures.append(f"failed to read server stderr: {exc!r}")
+
+    if server.returncode != 0:
+        failures.append(f"server exited with code {server.returncode}")
+
+    if any(marker in stderr_text for marker in SANITIZER_MARKERS):
+        failures.append("server stderr contains sanitizer/runtime error output")
+
+    if failures:
+        interesting = [
+            line
+            for line in stderr_text.splitlines()
+            if "[warn]" in line
+            or "[error]" in line
+            or "Sanitizer" in line
+            or "==ERROR:" in line
+            or "runtime error:" in line
+        ]
+        if interesting:
+            failures.append("server stderr excerpt:\n" + "\n".join(interesting[-80:]))
+        pytest.fail("\n".join(failures))
+
+
 @pytest.mark.workspace("hello_world")
 async def test_compile_command(agentic, workspace):
     executable, host, port = agentic
@@ -560,33 +611,38 @@ async def test_shutdown_during_indexing(executable, tmp_path):
     c = CliceClient()
     await c.start_io(*cmd)
 
-    init_options = {
-        "project": {
-            "cache_dir": str(workspace / ".clice"),
-            "idle_timeout_ms": 0,
-        }
-    }
-    await c.initialize(workspace, initialization_options=init_options)
-
-    # Give indexing a moment to start, then send shutdown
-    await asyncio.sleep(0.5)
-
-    rpc = AgenticRpcClient(host, port)
-    body = json.dumps({"jsonrpc": "2.0", "method": "agentic/shutdown", "params": {}})
-    rpc.sock.sendall(f"Content-Length: {len(body)}\r\n\r\n{body}".encode())
-    rpc.sock.settimeout(5)
     try:
-        rpc.sock.recv(4096)
-    except (socket.timeout, OSError):
-        pass
-    rpc.sock.close()
+        init_options = {
+            "project": {
+                "cache_dir": str(workspace / ".clice"),
+                "idle_timeout_ms": 0,
+            }
+        }
+        try:
+            await c.initialize(workspace, initialization_options=init_options)
+        except Exception:
+            if c._server.returncode is not None:
+                await assert_server_exited_cleanly(c._server)
+            raise
 
-    for _ in range(30):
-        if c._server.returncode is not None:
-            break
+        # Give indexing a moment to start, then send shutdown
         await asyncio.sleep(0.5)
 
-    assert c._server.returncode is not None, "Server did not exit after shutdown"
-    assert c._server.returncode >= 0, (
-        f"Server crashed with signal {-c._server.returncode}"
-    )
+        rpc = AgenticRpcClient(host, port)
+        body = json.dumps(
+            {"jsonrpc": "2.0", "method": "agentic/shutdown", "params": {}}
+        )
+        rpc.sock.sendall(f"Content-Length: {len(body)}\r\n\r\n{body}".encode())
+        rpc.sock.settimeout(5)
+        try:
+            rpc.sock.recv(4096)
+        except (socket.timeout, OSError):
+            pass
+        rpc.sock.close()
+
+        await assert_server_exited_cleanly(c._server)
+    finally:
+        c._stop_event.set()
+        for task in c._async_tasks:
+            task.cancel()
+        await asyncio.sleep(0.1)

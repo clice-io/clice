@@ -54,6 +54,9 @@ public:
     }
 
 private:
+    kota::task<> run_file_watcher();
+    kota::task<> stop_services();
+
     kota::event shutdown_event;
     void load_workspace();
 
