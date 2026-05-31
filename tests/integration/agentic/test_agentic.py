@@ -530,7 +530,7 @@ async def test_rpc_impact_analysis_unknown(indexed_agentic, workspace):
 async def test_shutdown_during_indexing(executable, tmp_path):
     """Shutdown during active background indexing must exit cleanly."""
     from tests.integration.utils.client import CliceClient
-    from tests.conftest import _find_free_port
+    from tests.conftest import _find_free_port, assert_server_exited_cleanly
 
     workspace = tmp_path / "ws"
     workspace.mkdir()
@@ -560,33 +560,38 @@ async def test_shutdown_during_indexing(executable, tmp_path):
     c = CliceClient()
     await c.start_io(*cmd)
 
-    init_options = {
-        "project": {
-            "cache_dir": str(workspace / ".clice"),
-            "idle_timeout_ms": 0,
-        }
-    }
-    await c.initialize(workspace, initialization_options=init_options)
-
-    # Give indexing a moment to start, then send shutdown
-    await asyncio.sleep(0.5)
-
-    rpc = AgenticRpcClient(host, port)
-    body = json.dumps({"jsonrpc": "2.0", "method": "agentic/shutdown", "params": {}})
-    rpc.sock.sendall(f"Content-Length: {len(body)}\r\n\r\n{body}".encode())
-    rpc.sock.settimeout(5)
     try:
-        rpc.sock.recv(4096)
-    except (socket.timeout, OSError):
-        pass
-    rpc.sock.close()
+        init_options = {
+            "project": {
+                "cache_dir": str(workspace / ".clice"),
+                "idle_timeout_ms": 0,
+            }
+        }
+        try:
+            await c.initialize(workspace, initialization_options=init_options)
+        except Exception:
+            if c._server.returncode is not None:
+                await assert_server_exited_cleanly(c._server, timeout=15.0)
+            raise
 
-    for _ in range(30):
-        if c._server.returncode is not None:
-            break
+        # Give indexing a moment to start, then send shutdown
         await asyncio.sleep(0.5)
 
-    assert c._server.returncode is not None, "Server did not exit after shutdown"
-    assert c._server.returncode >= 0, (
-        f"Server crashed with signal {-c._server.returncode}"
-    )
+        rpc = AgenticRpcClient(host, port)
+        body = json.dumps(
+            {"jsonrpc": "2.0", "method": "agentic/shutdown", "params": {}}
+        )
+        rpc.sock.sendall(f"Content-Length: {len(body)}\r\n\r\n{body}".encode())
+        rpc.sock.settimeout(5)
+        try:
+            rpc.sock.recv(4096)
+        except (socket.timeout, OSError):
+            pass
+        rpc.sock.close()
+
+        await assert_server_exited_cleanly(c._server, timeout=15.0)
+    finally:
+        c._stop_event.set()
+        for task in c._async_tasks:
+            task.cancel()
+        await asyncio.sleep(0.1)

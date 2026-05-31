@@ -212,10 +212,10 @@ void MasterServer::schedule_shutdown() {
     workspace.save_cache();
     shutdown_event.set();
 
-    loop.schedule([this]() -> kota::task<> {
-        co_await kota::when_all(indexer.stop(), compiler.stop(), pool.stop());
-        loop.stop();
-    }());
+    loop.schedule([](MasterServer& server) -> kota::task<> {
+        co_await kota::when_all(server.indexer.stop(), server.compiler.stop(), server.pool.stop());
+        server.loop.stop();
+    }(*this));
 }
 
 void MasterServer::load_workspace() {
@@ -355,35 +355,53 @@ static kota::task<> accept_connections(MasterServer& server,
                                        std::list<Connection>& connections) {
     auto& loop = kota::event_loop::current();
     kota::task_group<> connection_group(loop);
-    bool lsp_registered = false;
 
-    while(true) {
-        auto conn = co_await acceptor.accept();
-        if(!conn.has_value())
-            break;
+    co_await kota::when_all(
+        [](MasterServer& server,
+           kota::tcp::acceptor& acceptor,
+           bool register_lsp,
+           std::list<Connection>& connections,
+           kota::task_group<>& connection_group) -> kota::task<> {
+            auto& loop = kota::event_loop::current();
+            bool lsp_registered = false;
 
-        LOG_INFO("Client connected");
+            while(true) {
+                auto conn = co_await acceptor.accept();
+                if(!conn.has_value())
+                    break;
 
-        auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-        auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+                LOG_INFO("Client connected");
 
-        std::unique_ptr<LSPClient> lsp;
-        if(register_lsp && !lsp_registered) {
-            lsp = std::make_unique<LSPClient>(server, *peer);
-            lsp_registered = true;
-        }
-        auto agent = std::make_unique<AgentClient>(server, *peer);
+                auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
+                auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
 
-        auto* peer_ptr = peer.get();
-        auto it = connections.emplace(connections.end(),
-                                      Connection{
-                                          .peer = std::move(peer),
-                                          .lsp_client = std::move(lsp),
-                                          .agent_client = std::move(agent),
-                                      });
+                std::unique_ptr<LSPClient> lsp;
+                if(register_lsp && !lsp_registered) {
+                    lsp = std::make_unique<LSPClient>(server, *peer);
+                    lsp_registered = true;
+                }
+                auto agent = std::make_unique<AgentClient>(server, *peer);
 
-        connection_group.spawn(run_connection(peer_ptr, connections, it));
-    }
+                auto* peer_ptr = peer.get();
+                auto it = connections.emplace(connections.end(),
+                                              Connection{
+                                                  .peer = std::move(peer),
+                                                  .lsp_client = std::move(lsp),
+                                                  .agent_client = std::move(agent),
+                                              });
+
+                connection_group.spawn(run_connection(peer_ptr, connections, it));
+            }
+        }(server, acceptor, register_lsp, connections, connection_group),
+        [](MasterServer& server,
+           kota::tcp::acceptor& acceptor,
+           std::list<Connection>& connections) -> kota::task<> {
+            co_await server.get_shutdown_event().wait();
+            acceptor.stop();
+            for(auto& conn: connections) {
+                conn.peer->close();
+            }
+        }(server, acceptor, connections));
 
     co_await connection_group.join();
 }
@@ -411,6 +429,10 @@ int run_server_mode(const ServerOptions& opts) {
 
         kota::ipc::JsonPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
+        loop.schedule([](MasterServer& server, kota::ipc::JsonPeer& peer) -> kota::task<> {
+            co_await server.get_shutdown_event().wait();
+            peer.close();
+        }(server, lsp_peer));
 
         if(opts.port > 0) {
             auto acceptor = kota::tcp::listen(opts.host, opts.port, {}, loop);

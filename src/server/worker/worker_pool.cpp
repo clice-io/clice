@@ -116,6 +116,9 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
     options_ = options;
     log_dir_ = options.log_dir;
 
+    stateless_workers.reserve(options.stateless_count);
+    stateful_workers.reserve(options.stateful_count);
+
     for(std::uint32_t i = 0; i < options.stateless_count; ++i) {
         if(!spawn_worker(options.self_path, false, 0)) {
             return false;
@@ -229,10 +232,10 @@ void WorkerPool::clear_owner(std::size_t worker_index) {
 
 kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
-    auto& w = workers[index];
     auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
 
-    auto result = co_await w.proc.wait();
+    auto result = co_await workers[index].proc.wait();
+    auto& w = workers[index];
     w.alive = false;
 
     if(shutting_down_)
