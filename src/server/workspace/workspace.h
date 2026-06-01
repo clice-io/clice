@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "command/command.h"
+#include "command/toolchain.h"
 #include "index/merged_index.h"
 #include "index/project_index.h"
 #include "semantic/relation_kind.h"
@@ -172,6 +173,7 @@ struct PCMState {
 struct Workspace {
     Config config;
     CompilationDatabase cdb;
+    Toolchain toolchain;
 
     PathPool path_pool;
 

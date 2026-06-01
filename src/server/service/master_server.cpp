@@ -286,6 +286,7 @@ void MasterServer::load_workspace() {
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
 
     auto report = scan_dependency_graph(workspace.cdb,
+                                        workspace.toolchain,
                                         workspace.path_pool,
                                         workspace.dep_graph,
                                         /*cache=*/nullptr,

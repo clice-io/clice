@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "command/argument_parser.h"
-#include "command/search_config.h"
 #include "support/object_pool.h"
 #include "support/path_pool.h"
 
@@ -20,15 +19,6 @@
 namespace clice {
 
 struct CommandOptions {
-    /// Query the compiler driver for additional information, such as system includes and target.
-    /// When enabled, also replaces the queried resource dir with our own (clang tools must use
-    /// builtin headers matching their parser version — see clangd's CommandMangler for precedent).
-    bool query_toolchain = false;
-
-    /// Suppress the warning log if failed to query driver info.
-    /// Set true in unittests to avoid cluttering test output.
-    bool suppress_logging = false;
-
     /// Inject our resource dir into the flags if not already present.
     /// Enabled by default so clang tools always use matching builtin headers.
     /// Disable in unit tests that assert exact argument counts.
@@ -108,20 +98,6 @@ struct CompilationEntry {
     object_ptr<CompilationInfo> info;
 };
 
-/// A pending toolchain query, ready to be executed (possibly in parallel).
-struct ToolchainQuery {
-    std::string key;
-    std::vector<const char*> query_args;
-    std::string file;
-    std::string directory;
-};
-
-/// Result of a toolchain query, to be injected back into the cache.
-struct ToolchainResult {
-    std::string key;
-    std::vector<std::string> cc1_args;
-};
-
 }  // namespace clice
 
 namespace llvm {
@@ -145,9 +121,6 @@ struct DenseMapInfo<clice::CanonicalCommand> {
     }
 
     static bool isEqual(const T& lhs, const T& rhs) {
-        // Sentinels have distinct data pointers but both have size 0,
-        // and ArrayRef equality is content-based — so we must compare
-        // data pointers first to keep sentinels distinguishable.
         if(lhs.arguments.data() == rhs.arguments.data())
             return lhs.arguments.size() == rhs.arguments.size();
         if(lhs.arguments.data() == getEmptyKey().arguments.data() ||
@@ -198,20 +171,14 @@ public:
 
 public:
     /// Load (or reload) the compilation database from the given file.
-    /// Full reload: old entries are replaced, SearchConfig cache is cleared,
-    /// but toolchain cache survives. Returns the number of entries loaded.
+    /// Full reload: old entries are replaced, but string pool and canonical
+    /// commands survive. Returns the number of entries loaded.
     std::size_t load(llvm::StringRef path);
 
     /// Lookup the compile commands for a file. A file may have multiple
     /// compilation commands (e.g. different build configurations); all are returned.
     llvm::SmallVector<CompileCommand> lookup(llvm::StringRef file,
                                              const CommandOptions& options = {});
-
-    /// Combined lookup + extract_search_config with internal caching.
-    SearchConfig lookup_search_config(llvm::StringRef file, const CommandOptions& options = {});
-
-    /// Check if SearchConfig cache is populated (non-empty).
-    bool has_cached_configs() const;
 
     /// Resolve a path_id back to the file path string.
     llvm::StringRef resolve_path(std::uint32_t path_id);
@@ -226,23 +193,25 @@ public:
     /// All compilation entries (sorted by path_id).
     llvm::ArrayRef<CompilationEntry> get_entries() const;
 
-    /// Entry for batch pre-warming: file + directory + raw compilation arguments.
-    struct PendingEntry {
-        llvm::StringRef file;
-        llvm::StringRef directory;
-        llvm::SmallVector<const char*, 32> arguments;
+    /// A group of files that share the same compilation configuration.
+    /// CDB internally deduplicates by (directory, canonical flags, user-content flags),
+    /// so each group corresponds to one unique CompilationInfo — files within a group
+    /// have identical -I, -D, -std=, --target, etc.
+    ///
+    /// This is the right granularity for SearchConfig extraction: different -I paths
+    /// need different SearchConfigs. For toolchain queries (which only care about
+    /// driver + --target + -std=), callers should further deduplicate across groups
+    /// since many groups often share the same toolchain key.
+    struct ConfigGroup {
+        llvm::SmallVector<std::uint32_t> file_ids;
+        CompileCommand command;
     };
 
-    /// Get pending toolchain queries for a batch of compilation entries.
-    /// Returns queries only for cache-miss keys (deduplicated).
-    std::vector<ToolchainQuery> get_pending_queries(llvm::ArrayRef<PendingEntry> entries);
-
-    /// Inject pre-computed toolchain results into the cache. Strings are copied
-    /// into the internal string pool.
-    void inject_results(llvm::ArrayRef<ToolchainResult> results);
-
-    /// Check if toolchain cache has any entries.
-    bool has_cached_toolchain() const;
+    /// Return one ConfigGroup per unique CompilationInfo, each containing
+    /// a representative CompileCommand and all file path_ids that share it.
+    /// The returned CompileCommands use driver-level flags (not cc1); callers
+    /// that need cc1 args should pass them through Toolchain::resolve().
+    llvm::SmallVector<ConfigGroup> unique_configs(const CommandOptions& options = {});
 
 #ifdef CLICE_ENABLE_TEST
 
@@ -255,6 +224,10 @@ public:
 #endif
 
 private:
+    CompileCommand build_command(std::uint32_t path_id,
+                                 object_ptr<CompilationInfo> info,
+                                 const CommandOptions& options);
+
     /// Find all CompilationEntry items for a file by path_id (binary search).
     /// Returns a sub-range of `entries`; may be empty.
     llvm::ArrayRef<CompilationEntry> find_entries(std::uint32_t path_id) const;
@@ -270,25 +243,6 @@ private:
     object_ptr<CompilationInfo> save_compilation_info(llvm::StringRef file,
                                                       llvm::StringRef directory,
                                                       llvm::StringRef command);
-
-    static std::uint8_t options_bits(const CommandOptions& options) {
-        return options.query_toolchain ? 1u : 0u;
-    }
-
-    struct ToolchainExtract {
-        std::string key;
-        std::vector<const char*> query_args;
-    };
-
-    /// Extract toolchain-relevant flags and build a cache key.
-    ToolchainExtract extract_toolchain_flags(llvm::StringRef file,
-                                             llvm::ArrayRef<const char*> arguments);
-
-    /// Query toolchain with caching. Returns cached cc1 args, running the
-    /// expensive compiler query only on cache miss.
-    llvm::ArrayRef<const char*> query_toolchain_cached(llvm::StringRef file,
-                                                       llvm::StringRef directory,
-                                                       llvm::ArrayRef<const char*> arguments);
 
     /// The memory pool which holds all elements of compilation database.
     /// Heap-allocated so its address is stable across moves.
@@ -310,12 +264,6 @@ private:
     /// Multiple entries for the same file are adjacent.
     std::vector<CompilationEntry> entries;
 
-    /// Cache of SearchConfig keyed by (CompilationInfo*, options_bits).
-    using ConfigCacheKey = std::pair<const CompilationInfo*, std::uint8_t>;
-    llvm::DenseMap<ConfigCacheKey, SearchConfig> search_config_cache;
-
-    /// Cache of toolchain query results, keyed by canonical toolchain key.
-    llvm::StringMap<std::vector<const char*>> toolchain_cache;
 };
 
 }  // namespace clice

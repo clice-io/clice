@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "command/command.h"
+#include "command/toolchain.h"
 #include "support/path_pool.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
@@ -240,14 +241,9 @@ struct ScanCache {
     // Populated during the first scan and reused on all subsequent calls
     // when the compilation database has not changed.
 
-    /// Files grouped by unique CompilationInfo pointer.
-    /// path_ids are valid for the persistent PathPool.
-    llvm::DenseMap<const CompilationInfo*, llvm::SmallVector<std::uint32_t>> context_groups;
-
-    /// CompilationInfo pointer → dense config_id (index into configs).
-    llvm::DenseMap<const CompilationInfo*, std::uint32_t> context_to_config_id;
-
-    /// Per-config search configuration (reused across scans).
+    /// Per-config search configuration, keyed by dense config_id.
+    /// Each config_id corresponds to one unique CDB CompilationInfo group —
+    /// files with identical (directory, canonical flags, user-content flags).
     llvm::DenseMap<std::uint32_t, SearchConfig> configs;
 
     /// Pre-built initial wave (wave 0): all source files with their config IDs.
@@ -273,6 +269,7 @@ using RuleMatcher = std::function<
 ///               dependency graph (otherwise rule-affected files would have
 ///               stale resolution).
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
+                                 Toolchain& toolchain,
                                  PathPool& path_pool,
                                  DependencyGraph& graph,
                                  ScanCache* cache = nullptr,

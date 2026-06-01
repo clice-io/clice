@@ -2,6 +2,7 @@
 
 #include <kota/deco/option.h>
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {

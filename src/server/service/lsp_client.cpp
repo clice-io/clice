@@ -595,7 +595,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto hosts = ws.dep_graph.find_host_sources(path_id);
             for(auto host_id: hosts) {
                 auto host_path = ws.path_pool.resolve(host_id);
-                auto host_cdb = ws.cdb.lookup(host_path, {.suppress_logging = true});
+                auto host_cdb = ws.cdb.lookup(host_path);
                 if(host_cdb.empty())
                     continue;
                 auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
@@ -609,7 +609,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             }
 
             if(hosts.empty()) {
-                auto entries = ws.cdb.lookup(path, {.suppress_logging = true});
+                auto entries = ws.cdb.lookup(path);
                 for(std::size_t i = 0; i < entries.size(); ++i) {
                     auto& cmd = entries[i];
                     auto argv = cmd.to_argv();
@@ -683,7 +683,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             ext::SwitchContextResult result;
 
             auto& ws = srv.workspace;
-            auto context_cdb = ws.cdb.lookup(context_path, {.suppress_logging = true});
+            auto context_cdb = ws.cdb.lookup(context_path);
             if(context_cdb.empty()) {
                 result.success = false;
                 co_return to_raw(result);

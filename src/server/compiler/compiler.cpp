@@ -53,11 +53,11 @@ void Compiler::init_compile_graph() {
         auto file_path = workspace.path_pool.resolve(path_id);
         std::vector<std::string> rule_append, rule_remove;
         workspace.config.match_rules(file_path, rule_append, rule_remove);
-        auto results = workspace.cdb.lookup(file_path,
-                                            {.query_toolchain = true,
-                                             .suppress_logging = true,
-                                             .remove = rule_remove,
-                                             .append = rule_append});
+        auto results =
+            workspace.cdb.lookup(file_path, {.remove = rule_remove, .append = rule_append});
+        if(!results.empty()) {
+            workspace.toolchain.resolve(results[0]);
+        }
         if(results.empty())
             return {};
 
@@ -169,8 +169,10 @@ bool Compiler::fill_compile_args(llvm::StringRef path,
     //    Apply rules from config (append/remove flags based on file patterns).
     std::vector<std::string> rule_append, rule_remove;
     workspace.config.match_rules(path, rule_append, rule_remove);
-    CommandOptions opts{.query_toolchain = true, .remove = rule_remove, .append = rule_append};
-    auto results = workspace.cdb.lookup(path, opts);
+    auto results = workspace.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
+    if(!results.empty()) {
+        workspace.toolchain.resolve(results.front());
+    }
     if(!results.empty()) {
         auto& cmd = results.front();
         directory = cmd.resolved.directory.str();
@@ -223,9 +225,11 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     // the host's command — rules are expected to apply uniformly to every file.
     std::vector<std::string> rule_append, rule_remove;
     workspace.config.match_rules(path, rule_append, rule_remove);
-    auto host_results = workspace.cdb.lookup(
-        host_path,
-        {.query_toolchain = true, .remove = rule_remove, .append = rule_append});
+    auto host_results =
+        workspace.cdb.lookup(host_path, {.remove = rule_remove, .append = rule_append});
+    if(!host_results.empty()) {
+        workspace.toolchain.resolve(host_results.front());
+    }
     if(host_results.empty()) {
         LOG_WARN("fill_header_context_args: host {} has no CDB entry", host_path);
         return false;
@@ -268,7 +272,7 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
     if(session && session->active_context.has_value()) {
         auto preferred = *session->active_context;
         auto preferred_path = workspace.path_pool.resolve(preferred);
-        auto results = workspace.cdb.lookup(preferred_path, {.suppress_logging = true});
+        auto results = workspace.cdb.lookup(preferred_path);
         if(!results.empty()) {
             auto c = workspace.dep_graph.find_include_chain(preferred, header_path_id);
             if(!c.empty()) {
@@ -282,7 +286,7 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
     if(chain.empty()) {
         for(auto candidate: hosts) {
             auto candidate_path = workspace.path_pool.resolve(candidate);
-            auto results = workspace.cdb.lookup(candidate_path, {.suppress_logging = true});
+            auto results = workspace.cdb.lookup(candidate_path);
             if(results.empty())
                 continue;
             auto c = workspace.dep_graph.find_include_chain(candidate, header_path_id);

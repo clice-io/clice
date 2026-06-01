@@ -290,11 +290,9 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
     database.add_command("fake", src_path, command);
 
-    CommandOptions options;
-    options.query_toolchain = true;
-    options.suppress_logging = true;
-    auto commands = database.lookup(src_path, options);
+    auto commands = database.lookup(src_path);
     assert(!commands.empty() && "lookup failed after add_command");
+    toolchain.resolve(commands.front());
     params.arguments = commands.front().to_argv();
 
     params.kind = CompilationKind::Content;
@@ -367,6 +365,7 @@ bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
 void Tester::clear() {
     params = CompilationParams();
     database = CompilationDatabase();
+    toolchain = Toolchain();
     unit.reset();
     sources.all_files.clear();
     src_path.clear();

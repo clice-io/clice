@@ -1,26 +1,21 @@
 #include "test/test.h"
-#include "command/argument_parser.h"
-#include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "support/logging.h"
-
-#include "llvm/Support/Allocator.h"
-#include "llvm/Support/StringSaver.h"
 
 namespace clice::testing {
 namespace {
 
 using namespace std::string_view_literals;
 
-TEST_SUITE(Toolchain) {
+TEST_SUITE(ToolchainTests) {
 
-void EXPECT_FAMILY(llvm::StringRef name, toolchain::CompilerFamily family) {
-    ASSERT_EQ(toolchain::driver_family(name), family);
+void EXPECT_FAMILY(llvm::StringRef name, CompilerFamily family) {
+    ASSERT_EQ(Toolchain::driver_family(name), family);
 };
 
 TEST_CASE(Family) {
-    using enum toolchain::CompilerFamily;
+    using enum CompilerFamily;
 
     EXPECT_FAMILY("gcc", GCC);
     EXPECT_FAMILY("g++", GCC);
@@ -49,20 +44,16 @@ TEST_CASE(GCC, skip = !(CIEnvironment && (Windows || Linux))) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
 
-    llvm::BumpPtrAllocator a;
-    llvm::StringSaver s(a);
-    auto arguments = toolchain::query_toolchain({
-        .arguments =
-            {"g++", "-std=c++23", "-resource-dir", resource_dir().data(), "-xc++", file->c_str()},
-        .callback = [&](const char* str) { return s.save(str).data(); }
-    });
+    auto result = Toolchain::query(
+        {"g++", "-std=c++23", "-resource-dir", resource_dir().data(), "-xc++", file->c_str()});
 
-    ASSERT_TRUE(arguments.size() > 2);
-    ASSERT_EQ(arguments[1], "-cc1"sv);
+    ASSERT_TRUE(result.size() > 2);
+    ASSERT_EQ(result[1], "-cc1"sv);
 
     CompilationParams params;
-
-    params.arguments = arguments;
+    for(auto& arg: result) {
+        params.arguments.push_back(arg.c_str());
+    }
     params.add_remapped_file(file->c_str(), R"(
             #include <print>
             int main() {
@@ -86,22 +77,16 @@ TEST_CASE(Clang, skip = !CIEnvironment) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
 
-    llvm::BumpPtrAllocator a;
-    llvm::StringSaver s(a);
-    auto arguments = toolchain::query_toolchain({
-        .arguments = {"clang++",
-                      "-std=c++23", "-resource-dir",
-                      resource_dir().data(),
-                      "-xc++", file->c_str()},
-        .callback = [&](const char* str) { return s.save(str).data(); }
-    });
+    auto result = Toolchain::query(
+        {"clang++", "-std=c++23", "-resource-dir", resource_dir().data(), "-xc++", file->c_str()});
 
-    ASSERT_TRUE(arguments.size() > 2);
-    ASSERT_EQ(arguments[1], "-cc1"sv);
+    ASSERT_TRUE(result.size() > 2);
+    ASSERT_EQ(result[1], "-cc1"sv);
 
     CompilationParams params;
-
-    params.arguments = arguments;
+    for(auto& arg: result) {
+        params.arguments.push_back(arg.c_str());
+    }
     params.add_remapped_file(file->c_str(), R"(
             #include <print>
             int main() {
@@ -119,6 +104,11 @@ TEST_CASE(Zig, skip = !CIEnvironment) {
     // TODO: add Zig toolchain test when available in CI.
 }
 
-};  // TEST_SUITE(Toolchain)
+TEST_CASE(InitiallyEmpty) {
+    Toolchain tc;
+    EXPECT_FALSE(tc.has_cache());
+}
+
+};  // TEST_SUITE(ToolchainTests)
 }  // namespace
 }  // namespace clice::testing

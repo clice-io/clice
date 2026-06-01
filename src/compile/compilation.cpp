@@ -45,7 +45,7 @@ std::unique_ptr<clang::CompilerInvocation>
     std::unique_ptr<clang::CompilerInvocation> invocation;
 
     /// If the second argument is "-cc1", the arguments are already expanded
-    /// (e.g. from compilation database + query_toolchain). Skip driver and "-cc1"
+    /// (e.g. from compilation database + toolchain query). Skip driver and "-cc1"
     /// and create invocation directly from the cc1 args.
     bool is_cc1 = params.arguments.size() >= 2 && llvm::StringRef(params.arguments[1]) == "-cc1";
     if(is_cc1) {
