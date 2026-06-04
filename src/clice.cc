@@ -32,6 +32,16 @@ struct Options {
            required = false)
     <int> port = 0;
 
+    DecoFlag(names = {"--allow-remote"},
+             help = "Allow TCP server modes to bind non-loopback addresses",
+             required = false)
+    allow_remote;
+
+    DecoFlag(names = {"--allow-remote-shutdown"},
+             help = "Allow TCP agentic clients to shut down the server",
+             required = false)
+    allow_remote_shutdown;
+
     DecoKV(style = KVStyle::JoinedOrSeparate,
            names = {"--log-level", "--log-level="},
            help = "Log level: trace, debug, info, warn, error, off",
@@ -177,6 +187,8 @@ int main(int argc, const char** argv) {
         server_opts.port = opts.port.value_or(0);
         server_opts.self_path = argv[0];
         server_opts.record = opts.record.value_or("");
+        server_opts.allow_remote = opts.allow_remote.value_or(false);
+        server_opts.allow_remote_shutdown = opts.allow_remote_shutdown.value_or(false);
         return clice::run_server_mode(server_opts);
     }
 

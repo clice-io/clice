@@ -23,6 +23,19 @@ using RequestContext = kota::ipc::JsonPeer::RequestContext;
 namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
+constexpr int kDefaultAgenticLimit = 100;
+constexpr int kMaxAgenticLimit = 1000;
+constexpr int kDefaultFileDepsDepth = 1;
+constexpr int kMaxFileDepsDepth = 20;
+
+static int clamp_agentic_limit(std::optional<int> requested) {
+    return std::clamp(requested.value_or(kDefaultAgenticLimit), 1, kMaxAgenticLimit);
+}
+
+static int clamp_file_deps_depth(std::optional<int> requested) {
+    return std::clamp(requested.value_or(kDefaultFileDepsDepth), 1, kMaxFileDepsDepth);
+}
+
 static std::string_view symbol_kind_name(SymbolKind kind) {
     constexpr auto names = kota::meta::reflection<SymbolKind::Kind>::member_names;
     auto idx = static_cast<std::size_t>(kind.value());
@@ -279,7 +292,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 co_return FileDepsResult{.file = params.path};
             auto path_id = pool_it->second;
             auto direction = params.direction.value_or("both");
-            auto max_depth = params.depth.value_or(1);
+            auto max_depth = clamp_file_deps_depth(params.depth);
 
             FileDepsResult result;
             result.file = params.path;
@@ -292,14 +305,14 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     result.includes.push_back(DepEntry{.path = inc_path.str(), .depth = 1});
                 }
 
-                if(max_depth == 0 || max_depth > 1) {
+                if(max_depth > 1) {
                     llvm::DenseSet<std::uint32_t> visited;
                     visited.insert(path_id);
                     for(auto& dep: result.includes)
                         visited.insert(ws.path_pool.intern(dep.path));
 
                     for(std::size_t i = 0; i < result.includes.size(); ++i) {
-                        if(max_depth > 0 && result.includes[i].depth >= max_depth)
+                        if(result.includes[i].depth >= max_depth)
                             continue;
                         auto dep_id = ws.path_pool.intern(result.includes[i].path);
                         auto sub = ws.dep_graph.get_all_includes(dep_id);
@@ -324,7 +337,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     result.includers.push_back(DepEntry{.path = inc_path.str(), .depth = 1});
                 }
 
-                if(max_depth == 0 || max_depth > 1) {
+                if(max_depth > 1) {
                     llvm::DenseSet<std::uint32_t> visited;
                     visited.insert(path_id);
                     for(auto& dep: result.includers) {
@@ -334,7 +347,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     }
 
                     for(std::size_t i = 0; i < result.includers.size(); ++i) {
-                        if(max_depth > 0 && result.includers[i].depth >= max_depth)
+                        if(result.includers[i].depth >= max_depth)
                             continue;
                         auto dep_it = ws.path_pool.cache.find(result.includers[i].path);
                         if(dep_it == ws.path_pool.cache.end())
@@ -396,7 +409,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request([&srv](RequestContext&,
                            const SymbolSearchParams& params) -> RequestResult<SymbolSearchParams> {
-        auto max = params.max_results.value_or(100);
+        auto max = clamp_agentic_limit(params.max_results);
         std::string query_lower = llvm::StringRef(params.query).lower();
 
         SymbolSearchResult result;
@@ -779,6 +792,10 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     });
 
     peer.on_notification([&srv](const ShutdownParams&) {
+        if(!srv.allow_agentic_shutdown) {
+            LOG_WARN("agentic/shutdown rejected: remote shutdown is disabled");
+            return;
+        }
         LOG_INFO("agentic/shutdown received, shutting down");
         srv.schedule_shutdown();
     });

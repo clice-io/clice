@@ -70,6 +70,7 @@ private:
     std::string workspace_root;
     std::string session_log_dir;
     std::string init_options_json;
+    bool allow_agentic_shutdown = true;
 };
 
 struct ServerOptions {
@@ -78,6 +79,8 @@ struct ServerOptions {
     int port = 0;
     std::string self_path;
     std::string record;
+    bool allow_remote = false;
+    bool allow_remote_shutdown = false;
 };
 
 int run_server_mode(const ServerOptions& opts);

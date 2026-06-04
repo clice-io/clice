@@ -36,6 +36,10 @@ namespace clice {
 namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
+static bool is_loopback_host(llvm::StringRef host) {
+    return host == "127.0.0.1" || host == "::1" || host.equals_insensitive("localhost");
+}
+
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), compiler(loop, workspace, pool, sessions),
     indexer(loop,
@@ -391,8 +395,15 @@ static kota::task<> accept_connections(MasterServer& server,
 int run_server_mode(const ServerOptions& opts) {
     logging::stderr_logger("master", logging::options);
 
+    if((opts.mode == "socket" || opts.port > 0) && !opts.allow_remote &&
+       !is_loopback_host(opts.host)) {
+        LOG_ERROR("refusing to bind non-loopback host '{}' without --allow-remote", opts.host);
+        return 1;
+    }
+
     kota::event_loop loop;
     MasterServer server(loop, opts.self_path);
+    server.allow_agentic_shutdown = opts.allow_remote_shutdown || is_loopback_host(opts.host);
     std::list<Connection> connections;
 
     if(opts.mode == "pipe") {

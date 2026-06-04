@@ -123,6 +123,17 @@ async def test_connection_refused(executable):
     assert result.returncode != 0
 
 
+async def test_remote_bind_requires_explicit_opt_in(executable):
+    result = subprocess.run(
+        [str(executable), "--mode", "socket", "--host", "0.0.0.0", "--port", "0"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode != 0
+    assert "--allow-remote" in result.stderr
+
+
 @pytest.mark.workspace("hello_world")
 async def test_concurrent_connections(agentic, workspace):
     executable, host, port = agentic
@@ -219,6 +230,14 @@ async def test_rpc_symbol_search(indexed_agentic, workspace):
     assert add_sym["line"] == 19
     assert add_sym["symbolId"] != 0
     assert "main.cpp" in add_sym["file"]
+
+
+@pytest.mark.workspace("index_features")
+async def test_rpc_symbol_search_clamps_result_limit(indexed_agentic, workspace):
+    rpc, _ = indexed_agentic
+    resp = rpc.request("agentic/symbolSearch", {"query": "", "maxResults": 0})
+    assert "result" in resp, f"unexpected response: {resp}"
+    assert len(resp["result"]["symbols"]) == 1
 
 
 @pytest.mark.workspace("index_features")
