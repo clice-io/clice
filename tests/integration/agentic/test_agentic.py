@@ -537,8 +537,7 @@ async def test_rpc_lint_clang_tidy_diagnostics(executable, tmp_path):
 
     clean = workspace / "clean.cpp"
     clean.write_text(
-        "int add(int a, int b) { return a + b; }\n"
-        "int main() { return add(1, 2); }\n"
+        "int add(int a, int b) { return a + b; }\nint main() { return add(1, 2); }\n"
     )
 
     problem = workspace / "problem.cpp"
