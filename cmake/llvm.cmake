@@ -1,5 +1,34 @@
 include_guard()
 
+set(CLICE_CLANG_TIDY_MODULE_COMPONENTS
+    # Keep this in sync with scripts/llvm-components.json and the old
+    # ALL_CLANG_TIDY_CHECKS list. MPIModule is intentionally excluded because
+    # clice disables static analyzer checks in ClangTidyForceLinker.h.
+    clangTidyAndroidModule
+    clangTidyAbseilModule
+    clangTidyAlteraModule
+    clangTidyBoostModule
+    clangTidyBugproneModule
+    clangTidyCERTModule
+    clangTidyConcurrencyModule
+    clangTidyCppCoreGuidelinesModule
+    clangTidyDarwinModule
+    clangTidyFuchsiaModule
+    clangTidyGoogleModule
+    clangTidyHICPPModule
+    clangTidyLinuxKernelModule
+    clangTidyLLVMModule
+    clangTidyLLVMLibcModule
+    clangTidyMiscModule
+    clangTidyModernizeModule
+    clangTidyObjCModule
+    clangTidyOpenMPModule
+    clangTidyPerformanceModule
+    clangTidyPortabilityModule
+    clangTidyReadabilityModule
+    clangTidyZirconModule
+)
+
 function(setup_llvm LLVM_VERSION)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
@@ -87,29 +116,7 @@ function(setup_llvm LLVM_VERSION)
             clangSerialization
             clangTidy
             clangTidyUtils
-            clangTidyAndroidModule
-            clangTidyAbseilModule
-            clangTidyAlteraModule
-            clangTidyBoostModule
-            clangTidyBugproneModule
-            clangTidyCERTModule
-            clangTidyConcurrencyModule
-            clangTidyCppCoreGuidelinesModule
-            clangTidyDarwinModule
-            clangTidyFuchsiaModule
-            clangTidyGoogleModule
-            clangTidyHICPPModule
-            clangTidyLinuxKernelModule
-            clangTidyLLVMModule
-            clangTidyLLVMLibcModule
-            clangTidyMiscModule
-            clangTidyModernizeModule
-            clangTidyObjCModule
-            clangTidyOpenMPModule
-            clangTidyPerformanceModule
-            clangTidyPortabilityModule
-            clangTidyReadabilityModule
-            clangTidyZirconModule
+            ${CLICE_CLANG_TIDY_MODULE_COMPONENTS}
             clangTooling
             clangToolingCore
             clangToolingInclusions

@@ -43,6 +43,7 @@ struct CompileParams {
     std::string text;
     std::string directory;
     std::vector<std::string> arguments;
+    bool clang_tidy = false;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
 };

@@ -124,8 +124,31 @@ if(CLICE_CI_ENVIRONMENT)
     target_compile_definitions(clice_options INTERFACE CLICE_CI_ENVIRONMENT=1)
 endif()
 
+set(CLICE_CLANG_TIDY_MODULE_LIBRARIES)
+set(CLICE_MISSING_CLANG_TIDY_MODULES)
+foreach(module IN LISTS CLICE_CLANG_TIDY_MODULE_COMPONENTS)
+    find_library(CLICE_${module}_LIBRARY
+        NAMES "${module}"
+        PATHS "${LLVM_INSTALL_PATH}/lib"
+        NO_DEFAULT_PATH
+    )
+    if(CLICE_${module}_LIBRARY)
+        list(APPEND CLICE_CLANG_TIDY_MODULE_LIBRARIES "${CLICE_${module}_LIBRARY}")
+    else()
+        list(APPEND CLICE_MISSING_CLANG_TIDY_MODULES "${module}")
+    endif()
+endforeach()
+
+if(CLICE_MISSING_CLANG_TIDY_MODULES)
+    message(STATUS "Clang-tidy module libraries not available: ${CLICE_MISSING_CLANG_TIDY_MODULES}")
+else()
+    target_compile_definitions(clice_options INTERFACE CLICE_HAS_CLANG_TIDY_MODULES=1)
+endif()
+
 set(FBS_SCHEMA_FILE "${PROJECT_SOURCE_DIR}/src/index/schema.fbs")
 set(GENERATED_HEADER "${PROJECT_BINARY_DIR}/generated/schema_generated.h")
+set(CLANG_TIDY_CONFIG_SOURCE_FILE "${PROJECT_SOURCE_DIR}/config/clang-tidy-config.h")
+set(CLANG_TIDY_CONFIG_GENERATED_FILE "${PROJECT_BINARY_DIR}/generated/clang-tidy-config.h")
 
 if(CMAKE_CROSSCOMPILING)
     find_program(FLATC_EXECUTABLE flatc REQUIRED)
@@ -143,10 +166,21 @@ add_custom_command(
 
 add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 
+add_custom_command(
+    OUTPUT "${CLANG_TIDY_CONFIG_GENERATED_FILE}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CLANG_TIDY_CONFIG_SOURCE_FILE}"
+        "${CLANG_TIDY_CONFIG_GENERATED_FILE}"
+    DEPENDS "${CLANG_TIDY_CONFIG_SOURCE_FILE}"
+    COMMENT "Generating C++ header from ${CLANG_TIDY_CONFIG_SOURCE_FILE}"
+)
+
+add_custom_target(generate_clang_tidy_config DEPENDS "${CLANG_TIDY_CONFIG_GENERATED_FILE}")
+
 file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
 add_library(clice-core STATIC ${CLICE_CORE_SOURCES})
 add_library(clice::core ALIAS clice-core)
-add_dependencies(clice-core generate_flatbuffers_schema)
+add_dependencies(clice-core generate_flatbuffers_schema generate_clang_tidy_config)
 
 target_include_directories(clice-core PUBLIC
     "${PROJECT_SOURCE_DIR}/src"
@@ -162,6 +196,9 @@ target_link_libraries(clice-core PUBLIC
     kota::codec::toml
     simdjson::simdjson
 )
+if(CLICE_CLANG_TIDY_MODULE_LIBRARIES)
+    target_link_libraries(clice-core PUBLIC ${CLICE_CLANG_TIDY_MODULE_LIBRARIES})
+endif()
 
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
 target_link_libraries(clice PRIVATE clice::core kota::deco)

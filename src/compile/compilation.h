@@ -65,7 +65,7 @@ struct PCMInfo : ModuleInfo {
 
 struct CompilationParams {
     /// The kind of this compilation.
-    CompilationKind kind;
+    CompilationKind kind = CompilationKind::Content;
 
     /// Whether to run clang-tidy.
     bool clang_tidy = false;

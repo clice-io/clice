@@ -11,6 +11,51 @@ import pytest
 from tests.integration.utils.wait import wait_for_index
 
 
+CLANG_TIDY_MODULE_COMPONENTS = [
+    "clangTidyAndroidModule",
+    "clangTidyAbseilModule",
+    "clangTidyAlteraModule",
+    "clangTidyBoostModule",
+    "clangTidyBugproneModule",
+    "clangTidyCERTModule",
+    "clangTidyConcurrencyModule",
+    "clangTidyCppCoreGuidelinesModule",
+    "clangTidyDarwinModule",
+    "clangTidyFuchsiaModule",
+    "clangTidyGoogleModule",
+    "clangTidyHICPPModule",
+    "clangTidyLinuxKernelModule",
+    "clangTidyLLVMModule",
+    "clangTidyLLVMLibcModule",
+    "clangTidyMiscModule",
+    "clangTidyModernizeModule",
+    "clangTidyObjCModule",
+    "clangTidyOpenMPModule",
+    "clangTidyPerformanceModule",
+    "clangTidyPortabilityModule",
+    "clangTidyReadabilityModule",
+    "clangTidyZirconModule",
+]
+
+
+def has_clang_tidy_modules(executable) -> bool:
+    """Whether this build can force-link clang-tidy check modules."""
+    lib_dir = executable.parent.parent / ".llvm" / "lib"
+    if not lib_dir.is_dir():
+        return False
+
+    def exists(module: str) -> bool:
+        return any(
+            (lib_dir / name).exists()
+            for name in (
+                f"lib{module}.a",
+                f"{module}.lib",
+            )
+        )
+
+    return all(exists(module) for module in CLANG_TIDY_MODULE_COMPONENTS)
+
+
 class AgenticRpcClient:
     """Minimal JSON-RPC client that speaks Content-Length framing over TCP."""
 
@@ -531,6 +576,9 @@ async def test_rpc_lint_clang_tidy_diagnostics(executable, tmp_path):
     """agentic/lint returns a Diagnostic[] for clang-tidy results."""
     from tests.integration.utils.client import CliceClient
     from tests.conftest import _shutdown_client, _find_free_port
+
+    if not has_clang_tidy_modules(executable):
+        pytest.skip("LLVM artifact does not include clang-tidy check module libraries")
 
     workspace = tmp_path / "clang_tidy"
     workspace.mkdir()
