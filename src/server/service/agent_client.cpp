@@ -769,6 +769,19 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             co_return result;
         });
 
+    peer.on_request([](RequestContext&, const LintParams& params) -> RequestResult<LintParams> {
+        auto requested_line = params.line.value_or(1);
+        auto line = requested_line > 0 ? static_cast<protocol::uinteger>(requested_line - 1) : 0;
+        auto position = protocol::Position{.line = line, .character = 0};
+
+        LintResult result;
+        result.push_back(protocol::Diagnostic{
+            .range = protocol::Range{.start = position, .end = position},
+            .message = "Hello World",
+        });
+        co_return result;
+    });
+
     peer.on_request([&srv](RequestContext&, const StatusParams&) -> RequestResult<StatusParams> {
         StatusResult result;
         result.idle = srv.indexer.is_idle();

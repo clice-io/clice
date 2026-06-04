@@ -85,6 +85,9 @@ static kota::task<> agentic_request(kota::ipc::JsonPeer& peer,
                                          .line = line,
                                          .direction = dir,
                                      });
+    } else if(opts.method == "lint") {
+        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
+        ok = co_await send_and_print(peer, agentic::LintParams{.path = opts.path, .line = line});
     } else if(opts.method == "fileDeps") {
         auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
         ok = co_await send_and_print(peer,
