@@ -527,6 +527,82 @@ async def test_rpc_impact_analysis_unknown(indexed_agentic, workspace):
     assert resp["result"]["directDependents"] == []
 
 
+async def test_rpc_lint_clang_tidy_diagnostics(executable, tmp_path):
+    """agentic/lint returns a Diagnostic[] for clang-tidy results."""
+    from tests.integration.utils.client import CliceClient
+    from tests.conftest import _shutdown_client, _find_free_port
+
+    workspace = tmp_path / "clang_tidy"
+    workspace.mkdir()
+
+    clean = workspace / "clean.cpp"
+    clean.write_text(
+        "int add(int a, int b) { return a + b; }\nint main() { return add(1, 2); }\n"
+    )
+
+    problem = workspace / "problem.cpp"
+    problem.write_text(
+        "int main() {\n"
+        "    double d;\n"
+        "    int i = 42;\n"
+        "    d = 32 * 8 / (2 + i);\n"
+        "    return static_cast<int>(d);\n"
+        "}\n"
+    )
+
+    entries = []
+    for source in (clean, problem):
+        entries.append(
+            {
+                "directory": workspace.as_posix(),
+                "file": source.as_posix(),
+                "arguments": [
+                    "clang++",
+                    "-std=c++17",
+                    "-fsyntax-only",
+                    source.as_posix(),
+                ],
+            }
+        )
+    (workspace / "compile_commands.json").write_text(json.dumps(entries))
+
+    host = "127.0.0.1"
+    port = _find_free_port()
+    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+
+    c = CliceClient()
+    await c.start_io(*cmd)
+    init_options = {"project": {"cache_dir": str(workspace / ".clice")}}
+    await c.initialize(workspace, initialization_options=init_options)
+
+    rpc = AgenticRpcClient(host, port)
+    try:
+        clean_resp = rpc.request("agentic/lint", {"path": clean.as_posix()})
+        assert "result" in clean_resp, f"unexpected response: {clean_resp}"
+        assert clean_resp["result"] == []
+
+        problem_resp = rpc.request("agentic/lint", {"path": problem.as_posix()})
+        assert "result" in problem_resp, f"unexpected response: {problem_resp}"
+        diagnostics = problem_resp["result"]
+        assert isinstance(diagnostics, list)
+        assert diagnostics, "expected at least one clang-tidy diagnostic"
+
+        diag = next(
+            (d for d in diagnostics if "integer division" in d.get("message", "")),
+            diagnostics[0],
+        )
+        assert isinstance(diag["message"], str)
+        assert "range" in diag
+        assert set(diag["range"].keys()) == {"start", "end"}
+        for key in ("start", "end"):
+            assert isinstance(diag["range"][key]["line"], int)
+            assert isinstance(diag["range"][key]["character"], int)
+        assert isinstance(diag.get("severity"), int)
+    finally:
+        rpc.close()
+        await _shutdown_client(c)
+
+
 async def test_shutdown_during_indexing(executable, tmp_path):
     """Shutdown during active background indexing must exit cleanly."""
     from tests.integration.utils.client import CliceClient
