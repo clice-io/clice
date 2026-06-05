@@ -16,7 +16,10 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Set
+
+
+LLVM_COMPONENTS_FILE = Path(__file__).with_name("llvm-components.json")
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,11 +105,32 @@ def run_build(build_dir: Path) -> bool:
         return False
 
 
+def protected_library_names() -> Set[str]:
+    data = json.loads(LLVM_COMPONENTS_FILE.read_text())
+    components = data.get("components", [])
+    if not isinstance(components, list):
+        raise ValueError(f"{LLVM_COMPONENTS_FILE} missing 'components' list")
+
+    names: Set[str] = set()
+    for component in components:
+        if not isinstance(component, str):
+            continue
+        if not (component.startswith("clangTidy") and component.endswith("Module")):
+            continue
+        names.add(f"lib{component}.a")
+        names.add(f"{component}.lib")
+    return names
+
+
 def candidate_files(install_dir: Path) -> Iterable[Path]:
     if not install_dir.is_dir():
         raise FileNotFoundError(f"lib dir not found: {install_dir}")
+    protected = protected_library_names()
     for path in sorted(install_dir.iterdir()):
         if not path.is_file():
+            continue
+        if path.name in protected:
+            print(f"Keeping protected clang-tidy module library: {path.name}")
             continue
         if path.suffix.lower() in {".a", ".lib"}:
             yield path
@@ -156,7 +180,11 @@ def apply_manifest(manifest: Path, install_dir: Path) -> None:
     removed = data.get("removed", [])
     if not isinstance(removed, list):
         raise ValueError("Manifest missing 'removed' list")
+    protected = protected_library_names()
     for name in removed:
+        if name in protected:
+            print(f"Keeping protected clang-tidy module library from manifest: {name}")
+            continue
         target = install_dir / name
         if target.exists():
             print(f"Deleting {target}")

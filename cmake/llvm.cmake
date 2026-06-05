@@ -116,7 +116,6 @@ function(setup_llvm LLVM_VERSION)
             clangSerialization
             clangTidy
             clangTidyUtils
-            ${CLICE_CLANG_TIDY_MODULE_COMPONENTS}
             clangTooling
             clangToolingCore
             clangToolingInclusions
