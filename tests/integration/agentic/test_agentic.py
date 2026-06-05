@@ -11,21 +11,6 @@ import pytest
 from tests.integration.utils.wait import wait_for_index
 
 
-def has_clang_tidy_modules(executable) -> bool:
-    compile_commands = executable.parent.parent / "compile_commands.json"
-    if not compile_commands.is_file():
-        return False
-
-    for entry in json.loads(compile_commands.read_text()):
-        file = entry.get("file", "").replace("\\", "/")
-        if not file.endswith("/src/compile/tidy.cpp"):
-            continue
-        command = entry.get("command", "")
-        arguments = " ".join(entry.get("arguments", []))
-        return "CLICE_HAS_CLANG_TIDY_MODULES" in f"{command} {arguments}"
-    return False
-
-
 class AgenticRpcClient:
     """Minimal JSON-RPC client that speaks Content-Length framing over TCP."""
 
@@ -546,9 +531,6 @@ async def test_rpc_lint_clang_tidy_diagnostics(executable, tmp_path):
     """agentic/lint returns a Diagnostic[] for clang-tidy results."""
     from tests.integration.utils.client import CliceClient
     from tests.conftest import _shutdown_client, _find_free_port
-
-    if not has_clang_tidy_modules(executable):
-        pytest.skip("clice was built without clang-tidy check modules")
 
     workspace = tmp_path / "clang_tidy"
     workspace.mkdir()
