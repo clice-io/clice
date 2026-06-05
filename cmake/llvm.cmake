@@ -98,6 +98,21 @@ function(setup_llvm LLVM_VERSION)
     # add to include directories
     target_include_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/include")
 
+    set(CLICE_MISSING_CLANG_TIDY_MODULES)
+    foreach(module IN LISTS CLICE_CLANG_TIDY_MODULE_COMPONENTS)
+        set(module_library "${LLVM_INSTALL_PATH}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}${module}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+        if(NOT EXISTS "${module_library}")
+            list(APPEND CLICE_MISSING_CLANG_TIDY_MODULES "${module}")
+        endif()
+    endforeach()
+
+    if(CLICE_MISSING_CLANG_TIDY_MODULES)
+        message(STATUS "Clang-tidy module libraries not available: ${CLICE_MISSING_CLANG_TIDY_MODULES}")
+    else()
+        target_compile_definitions(llvm-libs INTERFACE CLICE_HAS_CLANG_TIDY_MODULES=1)
+        set(CLICE_DEBUG_CLANG_TIDY_MODULE_LIBRARIES ${CLICE_CLANG_TIDY_MODULE_COMPONENTS})
+    endif()
+
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT WIN32)
         target_link_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/lib")
         target_link_libraries(llvm-libs INTERFACE
@@ -116,6 +131,7 @@ function(setup_llvm LLVM_VERSION)
             clangSerialization
             clangTidy
             clangTidyUtils
+            ${CLICE_DEBUG_CLANG_TIDY_MODULE_LIBRARIES}
             clangTooling
             clangToolingCore
             clangToolingInclusions

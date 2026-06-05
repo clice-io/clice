@@ -124,27 +124,6 @@ if(CLICE_CI_ENVIRONMENT)
     target_compile_definitions(clice_options INTERFACE CLICE_CI_ENVIRONMENT=1)
 endif()
 
-set(CLICE_CLANG_TIDY_MODULE_LIBRARIES)
-set(CLICE_MISSING_CLANG_TIDY_MODULES)
-foreach(module IN LISTS CLICE_CLANG_TIDY_MODULE_COMPONENTS)
-    find_library(CLICE_${module}_LIBRARY
-        NAMES "${module}"
-        PATHS "${LLVM_INSTALL_PATH}/lib"
-        NO_DEFAULT_PATH
-    )
-    if(CLICE_${module}_LIBRARY)
-        list(APPEND CLICE_CLANG_TIDY_MODULE_LIBRARIES "${CLICE_${module}_LIBRARY}")
-    else()
-        list(APPEND CLICE_MISSING_CLANG_TIDY_MODULES "${module}")
-    endif()
-endforeach()
-
-if(CLICE_MISSING_CLANG_TIDY_MODULES)
-    message(STATUS "Clang-tidy module libraries not available: ${CLICE_MISSING_CLANG_TIDY_MODULES}")
-else()
-    target_compile_definitions(clice_options INTERFACE CLICE_HAS_CLANG_TIDY_MODULES=1)
-endif()
-
 set(FBS_SCHEMA_FILE "${PROJECT_SOURCE_DIR}/src/index/schema.fbs")
 set(GENERATED_HEADER "${PROJECT_BINARY_DIR}/generated/schema_generated.h")
 set(CLANG_TIDY_CONFIG_SOURCE_FILE "${PROJECT_SOURCE_DIR}/config/clang-tidy-config.h")
@@ -196,9 +175,6 @@ target_link_libraries(clice-core PUBLIC
     kota::codec::toml
     simdjson::simdjson
 )
-if(CLICE_CLANG_TIDY_MODULE_LIBRARIES)
-    target_link_libraries(clice-core PUBLIC ${CLICE_CLANG_TIDY_MODULE_LIBRARIES})
-endif()
 
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
 target_link_libraries(clice PRIVATE clice::core kota::deco)
