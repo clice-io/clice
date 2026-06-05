@@ -156,7 +156,6 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
     peer.on_notification([this]([[maybe_unused]] const protocol::ExitParams& params) {
         LOG_INFO("Exit notification received");
         this->server.schedule_shutdown();
-        this->peer.close();
     });
 
     peer.on_notification([this](const protocol::DidOpenTextDocumentParams& params) {

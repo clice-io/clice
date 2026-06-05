@@ -39,7 +39,8 @@ public:
     void initialize();
     void initialize(llvm::StringRef root);
 
-    void start_file_watcher();
+    kota::task<> file_watcher_task();
+    kota::task<> shutdown_and_cleanup();
 
     Session* find_session(std::uint32_t path_id);
     Session& open_session(std::uint32_t path_id);
