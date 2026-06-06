@@ -101,22 +101,52 @@ jobs:
           name: prune-manifest-${{ matrix.os }}
           path: pruned-libs.json
 
-  release:
+  create-release:
     needs: discover
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.UPLOAD_LLVM }}
+        run: |
+          TAG="${{ env.LLVM_VERSION }}"
+          REPO="clice-io/clice-llvm"
+          gh release delete "$TAG" --repo "$REPO" -y 2>/dev/null || true
+          gh release create "$TAG" \
+            --repo "$REPO" \
+            --title "$TAG" \
+            --notes "LLVM ${TAG} — build run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  repackage:
+    needs: [discover, create-release]
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact:
+          - aarch64-linux-gnu-releasedbg-lto.tar.xz
+          - aarch64-linux-gnu-releasedbg.tar.xz
+          - aarch64-windows-msvc-releasedbg-lto.tar.xz
+          - aarch64-windows-msvc-releasedbg.tar.xz
+          - arm64-macos-clang-debug-asan.tar.xz
+          - arm64-macos-clang-releasedbg-lto.tar.xz
+          - arm64-macos-clang-releasedbg.tar.xz
+          - x64-linux-gnu-debug-asan.tar.xz
+          - x64-linux-gnu-releasedbg-lto.tar.xz
+          - x64-linux-gnu-releasedbg.tar.xz
+          - x64-macos-clang-releasedbg-lto.tar.xz
+          - x64-macos-clang-releasedbg.tar.xz
+          - x64-windows-msvc-releasedbg-lto.tar.xz
+          - x64-windows-msvc-releasedbg.tar.xz
     steps:
       - uses: actions/checkout@v4
 
       - name: Free disk space
         run: |
-          sudo rm -rf ~/Library/Android /usr/local/share/dotnet \
-            /usr/local/share/powershell ~/.ghcup
-          if [ -d "/Library/Developer/CoreSimulator" ]; then
-            sudo rm -rf /Library/Developer/CoreSimulator
-          fi
-          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup
 
       - name: Download prune manifests
         uses: actions/download-artifact@v4
@@ -124,7 +154,7 @@ jobs:
           pattern: prune-manifest-*
           path: manifests
 
-      - name: Repackage artifacts
+      - name: Repackage
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -133,81 +163,60 @@ jobs:
             --source-run-id "${{ env.SOURCE_RUN_ID }}" \
             --manifests-dir manifests \
             --output-dir artifacts \
-            --max-parallel 3
+            --max-parallel 1 \
+            --version "${{ env.LLVM_VERSION }}" \
+            --artifacts "${{ matrix.artifact }}"
 
-      - name: Upload to clice-llvm
+      - name: Upload to release
         env:
           GH_TOKEN: ${{ secrets.UPLOAD_LLVM }}
         run: |
-          python3 scripts/upload-llvm.py \
-            "${{ env.LLVM_VERSION }}" \
-            "clice-io/clice-llvm" \
-            "${{ github.run_id }}"
+          gh release upload "${{ env.LLVM_VERSION }}" \
+            "artifacts/${{ matrix.artifact }}" \
+            --repo clice-io/clice-llvm
 
-      - name: Save manifest
+      - name: Upload metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: metadata-${{ matrix.artifact }}
+          path: artifacts/${{ matrix.artifact }}.meta.json
+          compression-level: 0
+          retention-days: 1
+
+  finalize:
+    needs: repackage
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all metadata
+        uses: actions/download-artifact@v4
+        with:
+          pattern: metadata-*
+          path: metadata
+          merge-multiple: true
+
+      - name: Build manifest
+        run: |
+          python3 -c "
+          import json, pathlib
+          entries = [json.loads(p.read_text()) for p in sorted(pathlib.Path('metadata').glob('*.meta.json'))]
+          with open('llvm-manifest.json', 'w') as f:
+              json.dump(entries, f, indent=2)
+              f.write('\n')
+          print(f'Manifest: {len(entries)} entries')
+          "
+
+      - name: Upload manifest to release
+        env:
+          GH_TOKEN: ${{ secrets.UPLOAD_LLVM }}
+        run: |
+          gh release upload "${{ env.LLVM_VERSION }}" \
+            llvm-manifest.json \
+            --repo clice-io/clice-llvm
+
+      - name: Save manifest artifact
         uses: actions/upload-artifact@v4
         with:
           name: llvm-manifest-final
-          path: artifacts/llvm-manifest.json
+          path: llvm-manifest.json
           if-no-files-found: error
           compression-level: 0
-
-  update-clice:
-    needs: release
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download manifest
-        uses: actions/download-artifact@v4
-        with:
-          name: llvm-manifest-final
-          path: .
-
-      - name: Update manifest and version
-        run: |
-          python3 scripts/update-llvm-version.py \
-            --version "${{ env.LLVM_VERSION }}" \
-            --manifest-src llvm-manifest.json \
-            --manifest-dest config/llvm-manifest.json \
-            --package-cmake cmake/package.cmake
-
-      - name: Commit and push
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION="${{ env.LLVM_VERSION }}"
-          BRANCH="chore/update-llvm-${VERSION}"
-          RELEASE_URL="https://github.com/clice-io/clice-llvm/releases/tag/${VERSION}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "${BRANCH}"
-          git add config/llvm-manifest.json cmake/package.cmake
-          git commit -m "chore: update LLVM to ${VERSION}"
-          git push --force-with-lease origin "${BRANCH}"
-
-          EXISTING_PR=$(gh pr list --head "${BRANCH}" --json number --jq '.[0].number // empty')
-
-          BODY="$(cat <<EOF
-          ## Summary
-          - Update LLVM prebuilt binaries to version ${VERSION}
-          - Updated \`config/llvm-manifest.json\` with new SHA256 hashes
-          - Updated \`cmake/package.cmake\` version string
-
-          **Artifacts:** [clice-llvm release](${RELEASE_URL})
-          EOF
-          )"
-
-          if [[ -n "$EXISTING_PR" ]]; then
-            gh pr edit "$EXISTING_PR" --body "$BODY"
-            echo "Updated PR #${EXISTING_PR}"
-          else
-            gh pr create \
-              --title "chore: update LLVM to ${VERSION}" \
-              --body "$BODY" \
-              --base main
-          fi

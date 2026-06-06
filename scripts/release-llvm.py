@@ -13,6 +13,7 @@ Actions:
 import argparse
 import concurrent.futures
 import fnmatch
+import hashlib
 import json
 import shutil
 import subprocess
@@ -192,6 +193,47 @@ def apply_manifest(manifest: Path, install_dir: Path) -> None:
             print(f"Already absent: {target}")
 
 
+# ── metadata ─────────────────────────────────────────────────────────
+
+
+def _sha256sum(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _build_metadata_entry(path: Path, version: str) -> dict:
+    name = path.name.lower()
+    if "windows" in name:
+        platform = "windows"
+    elif "linux" in name:
+        platform = "linux"
+    elif "macos" in name:
+        platform = "macosx"
+    else:
+        platform = "unknown"
+
+    if name.startswith("aarch64-") or name.startswith("arm64-"):
+        arch = "arm64"
+    elif name.startswith("x64-") or name.startswith("x86_64-"):
+        arch = "x64"
+    else:
+        arch = "unknown"
+
+    return {
+        "version": version,
+        "filename": path.name,
+        "sha256": _sha256sum(path),
+        "lto": "-lto" in name,
+        "asan": "-asan" in name,
+        "platform": platform,
+        "arch": arch,
+        "build_type": "Debug" if "debug" in name else "RelWithDebInfo",
+    }
+
+
 # ── repackage ────────────────────────────────────────────────────────
 
 
@@ -200,6 +242,7 @@ def _process_artifact(
     source_run_id: str,
     manifests_dir: Path,
     output_dir: Path,
+    version: Optional[str] = None,
 ) -> None:
     workdir = Path(tempfile.mkdtemp(prefix="repackage-"))
     try:
@@ -240,7 +283,7 @@ def _process_artifact(
                 stdout=subprocess.PIPE,
             )
             xz = subprocess.Popen(
-                ["xz", "-T0", "-6", "-c"],
+                ["xz", "-T0", "-3", "-c"],
                 stdin=tar.stdout,
                 stdout=out,
             )
@@ -254,6 +297,11 @@ def _process_artifact(
 
         size_mb = output_path.stat().st_size / 1048576
         print(f"[{artifact}] Done ({size_mb:.1f} MB)", flush=True)
+
+        if version:
+            meta = _build_metadata_entry(output_path, version)
+            meta_path = output_dir / f"{artifact}.meta.json"
+            meta_path.write_text(json.dumps(meta, indent=2))
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
@@ -263,16 +311,19 @@ def repackage(
     manifests_dir: Path,
     output_dir: Path,
     max_parallel: int = 3,
+    artifacts: Optional[List[str]] = None,
+    version: Optional[str] = None,
 ) -> None:
+    targets = artifacts if artifacts else ARTIFACTS
     output_dir.mkdir(parents=True, exist_ok=True)
 
     failed: List[str] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel) as pool:
         futures = {
             pool.submit(
-                _process_artifact, a, source_run_id, manifests_dir, output_dir
+                _process_artifact, a, source_run_id, manifests_dir, output_dir, version
             ): a
-            for a in ARTIFACTS
+            for a in targets
         }
         for future in concurrent.futures.as_completed(futures):
             artifact = futures[future]
@@ -288,7 +339,7 @@ def repackage(
             print(f"  {name}")
         sys.exit(1)
 
-    print(f"\nAll {len(ARTIFACTS)} artifacts repackaged:")
+    print(f"\nAll {len(targets)} artifacts repackaged:")
     for path in sorted(output_dir.iterdir()):
         if path.is_file() and path.suffix != ".json":
             print(f"  {path.stat().st_size / 1048576:>8.1f} MB  {path.name}")
@@ -382,6 +433,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifests-dir", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--max-parallel", type=int, default=3)
+    parser.add_argument("--artifacts", nargs="*")
+    parser.add_argument("--version", type=str)
     return parser.parse_args()
 
 
@@ -407,7 +460,11 @@ def main() -> None:
             manifests_dir=args.manifests_dir,
             output_dir=args.output_dir,
             max_parallel=args.max_parallel,
+            artifacts=args.artifacts,
+            version=args.version,
         )
+    elif args.action == "merge-metadata":
+        merge_metadata(args.metadata_dir, args.output_dir / "llvm-manifest.json")
 
 
 if __name__ == "__main__":
