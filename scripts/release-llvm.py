@@ -275,27 +275,38 @@ def _process_artifact(
             else:
                 print(f"[{artifact}] WARNING: no manifest, skipping prune", flush=True)
 
-        print(f"[{artifact}] Repackaging...", flush=True)
         output_path = output_dir / artifact
-        with output_path.open("wb") as out:
-            tar = subprocess.Popen(
-                ["tar", "-C", str(content_dir), "-cf", "-", "."],
-                stdout=subprocess.PIPE,
-            )
-            xz = subprocess.Popen(
-                ["xz", "-T0", "-6", "-c"],
-                stdin=tar.stdout,
-                stdout=out,
-            )
-            tar.stdout.close()
-            xz.communicate()
-            tar.wait()
-            if tar.returncode != 0 or xz.returncode != 0:
-                raise RuntimeError(
-                    f"tar/xz failed (tar={tar.returncode}, xz={xz.returncode})"
-                )
+        max_release_size = 2147483648
 
-        size_mb = output_path.stat().st_size / 1048576
+        for xz_level in ("-6", "-9"):
+            print(f"[{artifact}] Repackaging (xz {xz_level})...", flush=True)
+            with output_path.open("wb") as out:
+                tar = subprocess.Popen(
+                    ["tar", "-C", str(content_dir), "-cf", "-", "."],
+                    stdout=subprocess.PIPE,
+                )
+                xz = subprocess.Popen(
+                    ["xz", "-T0", xz_level, "-c"],
+                    stdin=tar.stdout,
+                    stdout=out,
+                )
+                tar.stdout.close()
+                xz.communicate()
+                tar.wait()
+                if tar.returncode != 0 or xz.returncode != 0:
+                    raise RuntimeError(
+                        f"tar/xz failed (tar={tar.returncode}, xz={xz.returncode})"
+                    )
+
+            file_size = output_path.stat().st_size
+            size_mb = file_size / 1048576
+            if file_size <= max_release_size:
+                break
+            print(
+                f"[{artifact}] {size_mb:.1f} MB exceeds 2GB limit, retrying...",
+                flush=True,
+            )
+
         print(f"[{artifact}] Done ({size_mb:.1f} MB)", flush=True)
 
         if version:
