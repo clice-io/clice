@@ -283,7 +283,7 @@ def _process_artifact(
                 stdout=subprocess.PIPE,
             )
             xz = subprocess.Popen(
-                ["xz", "-T0", "-3", "-c"],
+                ["xz", "-T0", "-6", "-c"],
                 stdin=tar.stdout,
                 stdout=out,
             )
