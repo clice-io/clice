@@ -316,8 +316,6 @@ private:
 
     /// Cache of toolchain query results, keyed by canonical toolchain key.
     llvm::StringMap<std::vector<const char*>> toolchain_cache;
-
-    std::unique_ptr<ArgumentParser> parser = std::make_unique<ArgumentParser>(allocator.get());
 };
 
 }  // namespace clice

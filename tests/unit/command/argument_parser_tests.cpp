@@ -1,84 +1,133 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 
-#include "clang/Driver/Options.h"
-
 namespace clice::testing {
 
 namespace {
 
+using namespace option;
+
 TEST_SUITE(ArgumentParser) {
 
-using option = clang::driver::options::ID;
-
-void EXPECT_ID(llvm::StringRef command, option opt) {
-    auto id = get_option_id(command);
-    ASSERT_TRUE(id.has_value());
-    ASSERT_EQ(*id, int(opt));
+unsigned parse_first(std::vector<std::string> args) {
+    for(auto& result: option::table().parse(args)) {
+        if(result.has_value()) {
+            return result->id;
+        }
+    }
+    return OPT_INVALID;
 }
 
-TEST_CASE(GetOptionID) {
-    /// GroupClass
-    EXPECT_ID("-g", option::OPT_g_Flag);
+TEST_CASE(ParseOptionID) {
+    ASSERT_EQ(parse_first({"-g"}), OPT_g_Flag);
+    ASSERT_EQ(parse_first({"-v"}), OPT_v);
+    ASSERT_EQ(parse_first({"-c"}), OPT_c);
+    ASSERT_EQ(parse_first({"-pedantic"}), OPT_pedantic);
+    ASSERT_EQ(parse_first({"--pedantic"}), OPT_pedantic);
+    ASSERT_EQ(parse_first({"-Wno-unused-variable"}), OPT_W_Joined);
+    ASSERT_EQ(parse_first({"-Xclang", "-ast-dump"}), OPT_Xclang);
+    ASSERT_EQ(parse_first({"-Wl,foo"}), OPT_Wl_COMMA);
+    ASSERT_EQ(parse_first({"-o", "out.o"}), OPT_o);
+    ASSERT_EQ(parse_first({"-omain.o"}), OPT_o);
+    ASSERT_EQ(parse_first({"-I", "/usr/include"}), OPT_I);
+    ASSERT_EQ(parse_first({"-x", "c++"}), OPT_x);
+};
 
-    /// InputClass
-    EXPECT_ID("main.cpp", option::OPT_INPUT);
+TEST_CASE(InputAndUnknown) {
+    ASSERT_EQ(parse_first({"main.cpp"}), OPT_INPUT);
+    ASSERT_EQ(parse_first({"--clice-unknown-flag"}), OPT_UNKNOWN);
+};
 
-    /// UnknownClass
-    EXPECT_ID("--clice", option::OPT_UNKNOWN);
+TEST_CASE(AliasAndDashDash) {
+    ASSERT_EQ(parse_first({"--include-directory=/usr/include"}), OPT_I);
+    ASSERT_EQ(parse_first({"--language=c++"}), OPT_x);
+    ASSERT_EQ(parse_first({"--std=c++20"}), OPT_std_EQ);
 
-    /// FlagClass
-    EXPECT_ID("-v", option::OPT_v);
-    EXPECT_ID("-c", option::OPT_c);
-    EXPECT_ID("-pedantic", option::OPT_pedantic);
-    EXPECT_ID("--pedantic", option::OPT_pedantic);
+    std::vector<std::string> args = {"-I", "/usr/include", "--", "main.cpp"};
+    auto options = kota::option::ParseOptions{.dash_dash_parsing = true};
+    unsigned count = 0;
+    for(auto& result: option::table().parse(args, options)) {
+        if(result.has_value()) {
+            ++count;
+        }
+    }
+    ASSERT_EQ(count, 2u);
+};
 
-    /// JoinedClass
-    EXPECT_ID("-Wno-unused-variable", option::OPT_W_Joined);
-    EXPECT_ID("-W*", option::OPT_W_Joined);
-    EXPECT_ID("-W", option::OPT_W_Joined);
+TEST_CASE(ParseError) {
+    std::vector<std::string> args = {"-o"};
+    bool got_error = false;
+    for(auto& result: option::table().parse(args)) {
+        if(!result.has_value()) {
+            got_error = true;
+        }
+    }
+    EXPECT_TRUE(got_error);
+};
 
-    /// ValuesClass
+TEST_CASE(CLVisibility) {
+    auto cl_vis = default_visibility("clang-cl");
+    auto gcc_vis = default_visibility("clang++");
 
-    /// SeparateClass
-    EXPECT_ID("-Xclang", option::OPT_Xclang);
-    /// EXPECT_ID(GET_ID("-Xclang -ast-dump") , option::OPT_Xclang);
+    auto parse_with_vis = [](std::vector<std::string> args, unsigned vis) -> unsigned {
+        auto options = kota::option::ParseOptions{.dash_dash_parsing = true, .visibility = vis};
+        for(auto& result: option::table().parse(args, options)) {
+            if(result.has_value()) {
+                return result->id;
+            }
+        }
+        return OPT_INVALID;
+    };
 
-    /// RemainingArgsClass
+    ASSERT_EQ(parse_with_vis({"/DFOO"}, cl_vis), OPT_D);
+    ASSERT_EQ(parse_with_vis({"-DFOO"}, gcc_vis), OPT_D);
+    ASSERT_EQ(parse_with_vis({"-DFOO"}, cl_vis), OPT_D);
+};
 
-    /// RemainingArgsJoinedClass
+TEST_CASE(RenderRoundTrip) {
+    auto roundtrip = [](std::vector<std::string> input) -> std::vector<std::string> {
+        std::vector<std::string> rendered;
+        for(auto& result: option::table().parse(input)) {
+            if(!result.has_value())
+                continue;
+            auto cb = [&](std::string_view s) {
+                rendered.emplace_back(s);
+            };
+            option::table().render(*result, cb);
+        }
+        return rendered;
+    };
 
-    /// CommaJoinedClass
-    EXPECT_ID("-Wl,", option::OPT_Wl_COMMA);
+    auto r1 = roundtrip({"-I", "/usr/include"});
+    ASSERT_EQ(r1.size(), 2u);
+    ASSERT_EQ(r1[0], "-I");
+    ASSERT_EQ(r1[1], "/usr/include");
 
-    /// MultiArgClass
+    auto r2 = roundtrip({"-DFOO=bar"});
+    ASSERT_EQ(r2.size(), 2u);
+    ASSERT_EQ(r2[0], "-D");
+    ASSERT_EQ(r2[1], "FOO=bar");
 
-    /// JoinedOrSeparateClass
-    EXPECT_ID("-o", option::OPT_o);
-    EXPECT_ID("-omain.o", option::OPT_o);
-    EXPECT_ID("-I", option::OPT_I);
-    EXPECT_ID("--include-directory=", option::OPT_I);
-    EXPECT_ID("-x", option::OPT_x);
-    EXPECT_ID("--language=", option::OPT_x);
+    auto r3 = roundtrip({"-Wno-unused"});
+    ASSERT_EQ(r3.size(), 1u);
+    ASSERT_EQ(r3[0], "-Wno-unused");
 
-    /// JoinedAndSeparateClass
+    auto r4 = roundtrip({"-std=c++20"});
+    ASSERT_EQ(r4.size(), 1u);
+    ASSERT_EQ(r4[0], "-std=c++20");
 };
 
 TEST_CASE(PrintArgv) {
-    /// Normal args.
     std::vector<const char*> args = {"clang++", "-std=c++20", "main.cpp"};
     ASSERT_EQ(print_argv(args), "clang++ -std=c++20 main.cpp");
 
-    /// Empty args.
     std::vector<const char*> empty = {};
     ASSERT_EQ(print_argv(empty), "");
 
-    /// Args with spaces get quoted.
     std::vector<const char*> spaced = {"clang++", "-DFOO=hello world"};
     auto result = print_argv(spaced);
     EXPECT_TRUE(llvm::StringRef(result).contains("\""));
 
-    /// Args with backslash get quoted/escaped.
     std::vector<const char*> escaped = {"clang++", "-DPATH=C:\\foo"};
     auto result2 = print_argv(escaped);
     EXPECT_TRUE(llvm::StringRef(result2).contains("\""));

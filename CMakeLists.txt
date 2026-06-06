@@ -160,6 +160,7 @@ target_link_libraries(clice-core PUBLIC
     flatbuffers
     kota::ipc::lsp
     kota::codec::toml
+    kota::option
     simdjson::simdjson
 )
 
