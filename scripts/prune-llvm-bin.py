@@ -153,14 +153,31 @@ def try_delete(path: Path, build_dir: Path) -> Optional[int]:
     return None
 
 
-def _nullify_shared_libs(install_dir: Path) -> None:
+ARCHIVE_MAGIC = b"!<arch>\n"
+
+
+def _is_shared_lib(path: Path) -> bool:
+    return ".so" in path.suffixes or ".dylib" in path.suffixes
+
+
+def _nullify_shared_libs(install_dir: Path) -> List[dict]:
+    nullified: List[dict] = []
     for path in sorted(install_dir.iterdir()):
-        if not path.is_file():
+        if not path.is_file() or not _is_shared_lib(path):
             continue
-        if ".so" in path.suffixes or ".dylib" in path.suffixes:
-            if path.stat().st_size > 0:
-                print(f"Nullifying shared lib: {path.name}")
-                path.write_bytes(b"")
+        size = path.stat().st_size
+        if size > 0:
+            print(f"Nullifying shared lib: {path.name} ({size} bytes)")
+            path.write_bytes(b"")
+            nullified.append({"name": path.name, "size": size})
+    return nullified
+
+
+def _replace_with_empty_archive(path: Path) -> None:
+    if _is_shared_lib(path):
+        path.write_bytes(b"")
+    else:
+        path.write_bytes(ARCHIVE_MAGIC)
 
 
 def discover(
@@ -168,13 +185,13 @@ def discover(
     build_dir: Path,
     skip_patterns: Optional[List[str]] = None,
 ) -> List[dict]:
-    _nullify_shared_libs(install_dir)
+    nullified = _nullify_shared_libs(install_dir)
     deletable: List[dict] = []
     for path in candidate_files(install_dir, skip_patterns):
         size = try_delete(path, build_dir)
         if size is not None:
             deletable.append({"name": path.name, "size": size})
-    return deletable
+    return nullified + deletable
 
 
 def write_manifest(
@@ -204,8 +221,8 @@ def apply_manifest(manifest: Path, install_dir: Path) -> None:
         name = entry["name"] if isinstance(entry, dict) else entry
         target = install_dir / name
         if target.exists():
-            print(f"Deleting {target}")
-            target.unlink()
+            print(f"Replacing with empty archive: {target}")
+            _replace_with_empty_archive(target)
         else:
             print(f"Already absent: {target}")
 
