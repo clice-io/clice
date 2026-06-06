@@ -1,0 +1,273 @@
+name: release llvm
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Run ID from build-llvm containing LLVM artifacts"
+        required: true
+        type: string
+      llvm_version:
+        description: "LLVM version (e.g. 22.1.4)"
+        required: true
+        type: string
+
+jobs:
+  discover:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            artifact: x64-linux-gnu-releasedbg.tar.xz
+          - os: macos-15
+            artifact: arm64-macos-clang-releasedbg.tar.xz
+          - os: windows-2025
+            artifact: x64-windows-msvc-releasedbg.tar.xz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: package
+
+      - name: Free Disk Space (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if [ -d "/Library/Developer/CoreSimulator" ]; then
+            sudo rm -rf /Library/Developer/CoreSimulator
+          fi
+          XCODE_PATH="$(xcode-select -p)"
+          PLATFORMS_DIR="${XCODE_PATH}/Platforms"
+          for p in iPhoneOS.platform iPhoneSimulator.platform AppleTVOS.platform AppleTVSimulator.platform WatchOS.platform WatchSimulator.platform XROS.platform XRSimulator.platform; do
+            [ -d "${PLATFORMS_DIR}/${p}" ] && sudo rm -rf "${PLATFORMS_DIR}/${p}"
+          done
+          sudo rm -rf ~/Library/Android /usr/local/share/dotnet /usr/local/share/powershell ~/.ghcup
+
+      - name: Download LLVM artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ inputs.source_run_id }}" \
+            -n "${{ matrix.artifact }}" -D .llvm-download
+          mkdir -p .llvm
+          tar -xf ".llvm-download/${{ matrix.artifact }}" -C .llvm
+          rm -rf .llvm-download
+
+      - name: Build clice
+        shell: bash
+        run: |
+          pixi run cmake-config RelWithDebInfo ON -- \
+            "-DLLVM_INSTALL_PATH=.llvm/build-install"
+          pixi run cmake-build RelWithDebInfo
+
+      - name: Discover unused libraries
+        shell: bash
+        run: |
+          python3 scripts/prune-llvm-bin.py \
+            --action discover \
+            --install-dir .llvm/build-install/lib \
+            --build-dir build/RelWithDebInfo \
+            --manifest pruned-libs.json \
+            --skip-pattern "*Tidy*Module*"
+
+      - name: Print prune results
+        shell: bash
+        run: |
+          python3 -c "
+          import json
+          data = json.load(open('pruned-libs.json'))
+          removed = data['removed']
+          total = data.get('total_saved_bytes', 0)
+          print(f'Libraries prunable: {len(removed)}')
+          print(f'Space saved: {total / 1048576:.1f} MB')
+          for entry in sorted(removed, key=lambda e: e['size'], reverse=True)[:20]:
+              print(f'  {entry[\"size\"] / 1048576:>7.1f} MB  {entry[\"name\"]}')
+          "
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: prune-manifest-${{ matrix.os }}
+          path: pruned-libs.json
+
+  release:
+    needs: discover
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup
+          df -h /
+
+      - name: Download prune manifests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: prune-manifest-*
+          path: manifests
+
+      - name: Apply prune and repackage all artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+
+          manifest_for() {
+            local name="$1"
+            if [[ "$name" == *linux* ]]; then
+              echo "manifests/prune-manifest-ubuntu-24.04/pruned-libs.json"
+            elif [[ "$name" == *macos* ]]; then
+              echo "manifests/prune-manifest-macos-15/pruned-libs.json"
+            elif [[ "$name" == *windows* ]]; then
+              echo "manifests/prune-manifest-windows-2025/pruned-libs.json"
+            fi
+          }
+
+          ARTIFACTS=(
+            "aarch64-linux-gnu-releasedbg-lto.tar.xz"
+            "aarch64-linux-gnu-releasedbg.tar.xz"
+            "aarch64-windows-msvc-releasedbg-lto.tar.xz"
+            "aarch64-windows-msvc-releasedbg.tar.xz"
+            "arm64-macos-clang-debug-asan.tar.xz"
+            "arm64-macos-clang-releasedbg-lto.tar.xz"
+            "arm64-macos-clang-releasedbg.tar.xz"
+            "x64-linux-gnu-debug-asan.tar.xz"
+            "x64-linux-gnu-releasedbg-lto.tar.xz"
+            "x64-linux-gnu-releasedbg.tar.xz"
+            "x64-macos-clang-releasedbg-lto.tar.xz"
+            "x64-macos-clang-releasedbg.tar.xz"
+            "x64-windows-msvc-releasedbg-lto.tar.xz"
+            "x64-windows-msvc-releasedbg.tar.xz"
+          )
+
+          for ARTIFACT in "${ARTIFACTS[@]}"; do
+            echo "::group::Processing $ARTIFACT"
+
+            gh run download "${SOURCE_RUN_ID}" -n "$ARTIFACT" -D tmp-download || {
+              echo "Warning: failed to download $ARTIFACT, skipping"
+              rm -rf tmp-download
+              echo "::endgroup::"
+              continue
+            }
+
+            TARBALL="tmp-download/$ARTIFACT"
+            if [[ ! -f "$TARBALL" ]]; then
+              echo "Warning: $TARBALL not found, skipping"
+              rm -rf tmp-download
+              echo "::endgroup::"
+              continue
+            fi
+
+            if [[ "$ARTIFACT" == *debug* ]] || [[ "$ARTIFACT" == *asan* ]]; then
+              echo "Debug/ASAN artifact — skipping prune"
+              mv "$TARBALL" "artifacts/$ARTIFACT"
+            else
+              MANIFEST=$(manifest_for "$ARTIFACT")
+              echo "Extracting..."
+              mkdir -p tmp-work
+              tar -xf "$TARBALL" -C tmp-work
+
+              echo "Applying prune manifest: $MANIFEST"
+              python3 scripts/prune-llvm-bin.py \
+                --action apply \
+                --manifest "$MANIFEST" \
+                --install-dir tmp-work/build-install/lib
+
+              echo "Repackaging..."
+              tar -C tmp-work -cf - build-install | xz -T0 -6 -c > "artifacts/$ARTIFACT"
+              rm -rf tmp-work
+            fi
+
+            rm -rf tmp-download
+            echo "::endgroup::"
+          done
+
+          echo "=== All artifacts ==="
+          ls -lh artifacts/
+
+      - name: Upload to clice-llvm
+        env:
+          GH_TOKEN: ${{ secrets.UPLOAD_LLVM }}
+        run: |
+          python3 scripts/upload-llvm.py \
+            "${{ inputs.llvm_version }}" \
+            "clice-io/clice-llvm" \
+            "${{ github.run_id }}"
+
+      - name: Save manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: llvm-manifest-final
+          path: artifacts/llvm-manifest.json
+          if-no-files-found: error
+          compression-level: 0
+
+  update-clice:
+    needs: release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: llvm-manifest-final
+          path: .
+
+      - name: Update manifest and version
+        run: |
+          python3 scripts/update-llvm-version.py \
+            --version "${{ inputs.llvm_version }}" \
+            --manifest-src llvm-manifest.json \
+            --manifest-dest config/llvm-manifest.json \
+            --package-cmake cmake/package.cmake
+
+      - name: Commit and push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ inputs.llvm_version }}"
+          BRANCH="chore/update-llvm-${VERSION}"
+          RELEASE_URL="https://github.com/clice-io/clice-llvm/releases/tag/${VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${BRANCH}"
+          git add config/llvm-manifest.json cmake/package.cmake
+          git commit -m "chore: update LLVM to ${VERSION}"
+          git push --force-with-lease origin "${BRANCH}"
+
+          EXISTING_PR=$(gh pr list --head "${BRANCH}" --json number --jq '.[0].number // empty')
+
+          BODY="$(cat <<EOF
+          ## Summary
+          - Update LLVM prebuilt binaries to version ${VERSION}
+          - Updated \`config/llvm-manifest.json\` with new SHA256 hashes
+          - Updated \`cmake/package.cmake\` version string
+
+          **Artifacts:** [clice-llvm release](${RELEASE_URL})
+          EOF
+          )"
+
+          if [[ -n "$EXISTING_PR" ]]; then
+            gh pr edit "$EXISTING_PR" --body "$BODY"
+            echo "Updated PR #${EXISTING_PR}"
+          else
+            gh pr create \
+              --title "chore: update LLVM to ${VERSION}" \
+              --body "$BODY" \
+              --base main
+          fi
