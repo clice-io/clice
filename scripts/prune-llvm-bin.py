@@ -128,11 +128,21 @@ def candidate_files(
         yield path
 
 
+def _remove_binaries(build_dir: Path) -> None:
+    bin_dir = build_dir / "bin"
+    if not bin_dir.is_dir():
+        return
+    for f in bin_dir.iterdir():
+        if f.is_file() and f.suffix in {"", ".exe"}:
+            f.unlink()
+
+
 def try_delete(path: Path, build_dir: Path) -> Optional[int]:
     size = path.stat().st_size
     backup = path.with_suffix(path.suffix + ".bak")
     print(f"Testing deletion: {path}")
     shutil.move(path, backup)
+    _remove_binaries(build_dir)
     success = run_build(build_dir)
     if success:
         backup.unlink(missing_ok=True)
@@ -143,11 +153,22 @@ def try_delete(path: Path, build_dir: Path) -> Optional[int]:
     return None
 
 
+def _nullify_shared_libs(install_dir: Path) -> None:
+    for path in sorted(install_dir.iterdir()):
+        if not path.is_file():
+            continue
+        if ".so" in path.suffixes or ".dylib" in path.suffixes:
+            if path.stat().st_size > 0:
+                print(f"Nullifying shared lib: {path.name}")
+                path.write_bytes(b"")
+
+
 def discover(
     install_dir: Path,
     build_dir: Path,
     skip_patterns: Optional[List[str]] = None,
 ) -> List[dict]:
+    _nullify_shared_libs(install_dir)
     deletable: List[dict] = []
     for path in candidate_files(install_dir, skip_patterns):
         size = try_delete(path, build_dir)
