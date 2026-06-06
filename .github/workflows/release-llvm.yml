@@ -1,6 +1,10 @@
 name: release llvm
 
 on:
+  push:
+    branches: [chore/upgrade-llvm-22]
+    paths:
+      - ".github/workflows/release-llvm.yml"
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -11,6 +15,10 @@ on:
         description: "LLVM version (e.g. 22.1.4)"
         required: true
         type: string
+
+env:
+  SOURCE_RUN_ID: ${{ inputs.source_run_id || '27052100922' }}
+  LLVM_VERSION: ${{ inputs.llvm_version || '22.1.4' }}
 
 jobs:
   discover:
@@ -50,7 +58,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download "${{ inputs.source_run_id }}" \
+          gh run download "${{ env.SOURCE_RUN_ID }}" \
             -n "${{ matrix.artifact }}" -D .llvm-download
           mkdir -p .llvm
           tar -xf ".llvm-download/${{ matrix.artifact }}" -C .llvm
@@ -116,7 +124,6 @@ jobs:
       - name: Apply prune and repackage all artifacts
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -200,7 +207,7 @@ jobs:
           GH_TOKEN: ${{ secrets.UPLOAD_LLVM }}
         run: |
           python3 scripts/upload-llvm.py \
-            "${{ inputs.llvm_version }}" \
+            "${{ env.LLVM_VERSION }}" \
             "clice-io/clice-llvm" \
             "${{ github.run_id }}"
 
@@ -230,7 +237,7 @@ jobs:
       - name: Update manifest and version
         run: |
           python3 scripts/update-llvm-version.py \
-            --version "${{ inputs.llvm_version }}" \
+            --version "${{ env.LLVM_VERSION }}" \
             --manifest-src llvm-manifest.json \
             --manifest-dest config/llvm-manifest.json \
             --package-cmake cmake/package.cmake
@@ -239,7 +246,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ inputs.llvm_version }}"
+          VERSION="${{ env.LLVM_VERSION }}"
           BRANCH="chore/update-llvm-${VERSION}"
           RELEASE_URL="https://github.com/clice-io/clice-llvm/releases/tag/${VERSION}"
 
