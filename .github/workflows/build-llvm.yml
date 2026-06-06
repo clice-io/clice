@@ -239,7 +239,7 @@ jobs:
         run: |
           MANIFEST="pruned-libs-${{ matrix.os }}.json"
           echo "LLVM_PRUNED_MANIFEST=${MANIFEST}" >> "${GITHUB_ENV}"
-          python3 scripts/prune-llvm-bin.py \
+          python3 scripts/release-llvm.py \
             --action discover \
             --install-dir ".llvm/build-install/lib" \
             --build-dir "build/${{ matrix.llvm_mode }}" \
@@ -263,7 +263,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           MANIFEST="pruned-libs-${{ matrix.os }}.json"
-          python3 scripts/prune-llvm-bin.py \
+          python3 scripts/release-llvm.py \
             --action apply \
             --manifest "${MANIFEST}" \
             --install-dir ".llvm/build-install/lib" \
@@ -283,7 +283,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           MANIFEST="pruned-libs-${{ matrix.os }}.json"
-          python3 scripts/prune-llvm-bin.py \
+          python3 scripts/release-llvm.py \
             --action apply \
             --manifest "${MANIFEST}" \
             --install-dir ".llvm/build-install/lib" \

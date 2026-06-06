@@ -1,0 +1,414 @@
+#!/usr/bin/env python3
+"""
+LLVM release pipeline utilities.
+
+Actions:
+  discover:  Iteratively probe which static libs can be removed by deleting
+             and rebuilding, then write the result to a manifest JSON.
+  apply:     Read a manifest and replace listed libs with empty archives.
+  repackage: Download all LLVM build artifacts, apply pruning, and repackage
+             them in parallel.
+"""
+
+import argparse
+import concurrent.futures
+import fnmatch
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterable, List, Optional
+
+ARTIFACTS = [
+    "aarch64-linux-gnu-releasedbg-lto.tar.xz",
+    "aarch64-linux-gnu-releasedbg.tar.xz",
+    "aarch64-windows-msvc-releasedbg-lto.tar.xz",
+    "aarch64-windows-msvc-releasedbg.tar.xz",
+    "arm64-macos-clang-debug-asan.tar.xz",
+    "arm64-macos-clang-releasedbg-lto.tar.xz",
+    "arm64-macos-clang-releasedbg.tar.xz",
+    "x64-linux-gnu-debug-asan.tar.xz",
+    "x64-linux-gnu-releasedbg-lto.tar.xz",
+    "x64-linux-gnu-releasedbg.tar.xz",
+    "x64-macos-clang-releasedbg-lto.tar.xz",
+    "x64-macos-clang-releasedbg.tar.xz",
+    "x64-windows-msvc-releasedbg-lto.tar.xz",
+    "x64-windows-msvc-releasedbg.tar.xz",
+]
+
+MANIFEST_DIRS = {
+    "linux": "prune-manifest-ubuntu-24.04",
+    "macos": "prune-manifest-macos-15",
+    "windows": "prune-manifest-windows-2025",
+}
+
+ARCHIVE_MAGIC = b"!<arch>\n"
+
+
+def _is_shared_lib(path: Path) -> bool:
+    return ".so" in path.suffixes or ".dylib" in path.suffixes
+
+
+def _replace_with_empty_archive(path: Path) -> None:
+    if _is_shared_lib(path):
+        path.write_bytes(b"")
+    else:
+        path.write_bytes(ARCHIVE_MAGIC)
+
+
+def _remove_binaries(build_dir: Path) -> None:
+    bin_dir = build_dir / "bin"
+    if not bin_dir.is_dir():
+        return
+    for f in bin_dir.iterdir():
+        if f.is_file() and f.suffix in {"", ".exe"}:
+            f.unlink()
+
+
+def _run_build(build_dir: Path) -> bool:
+    try:
+        subprocess.run(
+            ["cmake", "--build", str(build_dir)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return True
+    except subprocess.CalledProcessError as exc:
+        combined = (exc.stdout or "") + (exc.stderr or "")
+        if combined:
+            print("Build output (last lines):")
+            for line in combined.splitlines()[-50:]:
+                print(line)
+        return False
+
+
+def _manifest_for(artifact: str, manifests_dir: Path) -> Optional[Path]:
+    for platform, dirname in MANIFEST_DIRS.items():
+        if platform in artifact:
+            return manifests_dir / dirname / "pruned-libs.json"
+    return None
+
+
+# ── discover ─────────────────────────────────────────────────────────
+
+
+def _candidate_files(
+    install_dir: Path, skip_patterns: Optional[List[str]] = None
+) -> Iterable[Path]:
+    if not install_dir.is_dir():
+        raise FileNotFoundError(f"lib dir not found: {install_dir}")
+    for path in sorted(install_dir.iterdir()):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in {".a", ".lib"}:
+            print(f"Skipping non-static file: {path.name}")
+            continue
+        if skip_patterns and any(
+            fnmatch.fnmatch(path.name, p) for p in skip_patterns
+        ):
+            print(f"Skipping (never-prune): {path.name}")
+            continue
+        yield path
+
+
+def _nullify_shared_libs(install_dir: Path) -> List[dict]:
+    nullified: List[dict] = []
+    for path in sorted(install_dir.iterdir()):
+        if not path.is_file() or not _is_shared_lib(path):
+            continue
+        size = path.stat().st_size
+        if size > 0:
+            print(f"Nullifying shared lib: {path.name} ({size} bytes)")
+            path.write_bytes(b"")
+            nullified.append({"name": path.name, "size": size})
+    return nullified
+
+
+def _try_delete(path: Path, build_dir: Path) -> Optional[int]:
+    size = path.stat().st_size
+    backup = path.with_suffix(path.suffix + ".bak")
+    print(f"Testing deletion: {path}")
+    shutil.move(path, backup)
+    _remove_binaries(build_dir)
+    if _run_build(build_dir):
+        backup.unlink(missing_ok=True)
+        print(f"Safe to delete: {path.name} ({size} bytes)")
+        return size
+    shutil.move(backup, path)
+    print(f"Required; restored: {path.name}")
+    return None
+
+
+def discover(
+    install_dir: Path,
+    build_dir: Path,
+    skip_patterns: Optional[List[str]] = None,
+) -> List[dict]:
+    nullified = _nullify_shared_libs(install_dir)
+    deletable: List[dict] = []
+    for path in _candidate_files(install_dir, skip_patterns):
+        size = _try_delete(path, build_dir)
+        if size is not None:
+            deletable.append({"name": path.name, "size": size})
+    return nullified + deletable
+
+
+def _write_manifest(
+    manifest: Path, removed: List[dict], install_dir: Path, build_dir: Path
+) -> None:
+    total_size = sum(e["size"] for e in removed)
+    data = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "install_dir": str(install_dir),
+        "build_dir": str(build_dir),
+        "total_saved_bytes": total_size,
+        "removed": removed,
+    }
+    manifest.write_text(json.dumps(data, indent=2))
+    print(f"Wrote manifest with {len(removed)} entries to {manifest}")
+    print(f"Total space saved: {total_size / 1048576:.1f} MB")
+
+
+# ── apply ────────────────────────────────────────────────────────────
+
+
+def apply_manifest(manifest: Path, install_dir: Path) -> None:
+    if not manifest.is_file():
+        raise FileNotFoundError(f"Manifest not found: {manifest}")
+    data = json.loads(manifest.read_text())
+    removed = data.get("removed", [])
+    if not isinstance(removed, list):
+        raise ValueError("Manifest missing 'removed' list")
+    for entry in removed:
+        name = entry["name"] if isinstance(entry, dict) else entry
+        target = install_dir / name
+        if target.exists():
+            _replace_with_empty_archive(target)
+        else:
+            print(f"Already absent: {target}")
+
+
+# ── repackage ────────────────────────────────────────────────────────
+
+
+def _process_artifact(
+    artifact: str,
+    source_run_id: str,
+    manifests_dir: Path,
+    output_dir: Path,
+) -> None:
+    workdir = Path(tempfile.mkdtemp(prefix="repackage-"))
+    try:
+        dl_dir = workdir / "dl"
+        content_dir = workdir / "content"
+
+        print(f"[{artifact}] Downloading...", flush=True)
+        subprocess.run(
+            ["gh", "run", "download", source_run_id,
+             "-n", artifact, "-D", str(dl_dir)],
+            check=True,
+        )
+
+        print(f"[{artifact}] Extracting...", flush=True)
+        content_dir.mkdir()
+        subprocess.run(
+            ["tar", "--strip-components=1", "-xf",
+             str(dl_dir / artifact), "-C", str(content_dir)],
+            check=True,
+        )
+        shutil.rmtree(dl_dir)
+
+        if "debug" in artifact or "asan" in artifact:
+            print(f"[{artifact}] Debug/ASAN — skipping prune", flush=True)
+        else:
+            manifest = _manifest_for(artifact, manifests_dir)
+            if manifest and manifest.is_file():
+                print(f"[{artifact}] Pruning...", flush=True)
+                apply_manifest(manifest, content_dir / "lib")
+            else:
+                print(f"[{artifact}] WARNING: no manifest, skipping prune", flush=True)
+
+        print(f"[{artifact}] Repackaging...", flush=True)
+        output_path = output_dir / artifact
+        with output_path.open("wb") as out:
+            tar = subprocess.Popen(
+                ["tar", "-C", str(content_dir), "-cf", "-", "."],
+                stdout=subprocess.PIPE,
+            )
+            xz = subprocess.Popen(
+                ["xz", "-T0", "-6", "-c"],
+                stdin=tar.stdout,
+                stdout=out,
+            )
+            tar.stdout.close()
+            xz.communicate()
+            tar.wait()
+            if tar.returncode != 0 or xz.returncode != 0:
+                raise RuntimeError(
+                    f"tar/xz failed (tar={tar.returncode}, xz={xz.returncode})"
+                )
+
+        size_mb = output_path.stat().st_size / 1048576
+        print(f"[{artifact}] Done ({size_mb:.1f} MB)", flush=True)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def repackage(
+    source_run_id: str,
+    manifests_dir: Path,
+    output_dir: Path,
+    max_parallel: int = 3,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    failed: List[str] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel) as pool:
+        futures = {
+            pool.submit(
+                _process_artifact, a, source_run_id, manifests_dir, output_dir
+            ): a
+            for a in ARTIFACTS
+        }
+        for future in concurrent.futures.as_completed(futures):
+            artifact = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                print(f"[{artifact}] FAILED: {exc}", flush=True)
+                failed.append(artifact)
+
+    if failed:
+        print(f"\nFailed artifacts ({len(failed)}):")
+        for name in failed:
+            print(f"  {name}")
+        sys.exit(1)
+
+    print(f"\nAll {len(ARTIFACTS)} artifacts repackaged:")
+    for path in sorted(output_dir.iterdir()):
+        if path.is_file() and path.suffix != ".json":
+            print(f"  {path.stat().st_size / 1048576:>8.1f} MB  {path.name}")
+
+
+def _find_manifest(download_dir: Path, manifest_name: str) -> Optional[Path]:
+    for path in download_dir.rglob(manifest_name):
+        if path.is_file():
+            return path
+    return None
+
+
+def _wait_and_download_manifest(
+    run_id: str,
+    artifact: str,
+    download_dir: Path,
+    manifest_name: str,
+    max_attempts: int,
+    sleep_seconds: int,
+) -> Path:
+    import time
+
+    download_dir.mkdir(parents=True, exist_ok=True)
+    for attempt in range(1, max_attempts + 1):
+        print(
+            f"[{attempt}/{max_attempts}] Downloading manifest "
+            f"(run={run_id}, artifact={artifact})"
+        )
+        result = subprocess.run(
+            ["gh", "run", "download", str(run_id),
+             "--pattern", artifact, "--dir", str(download_dir)],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            found = _find_manifest(download_dir, manifest_name)
+            if found:
+                print(f"Found manifest at {found}")
+                return found
+            print("Download succeeded but manifest not found; retrying...")
+        else:
+            print(f"gh run download failed: {result.stderr.strip()}")
+        if attempt < max_attempts:
+            time.sleep(sleep_seconds)
+    raise RuntimeError("Manifest could not be downloaded within the allotted attempts")
+
+
+def _ensure_manifest(
+    manifest: Path,
+    run_id: Optional[str],
+    artifact: str,
+    download_dir: Path,
+    max_attempts: int,
+    sleep_seconds: int,
+) -> Path:
+    if manifest.exists():
+        return manifest
+    if not run_id:
+        raise FileNotFoundError(
+            f"Manifest {manifest} missing and no gh run ID provided"
+        )
+    downloaded = _wait_and_download_manifest(
+        run_id, artifact, download_dir, manifest.name, max_attempts, sleep_seconds,
+    )
+    if downloaded != manifest:
+        shutil.copy(downloaded, manifest)
+    return manifest
+
+
+# ── CLI ──────────────────────────────────────────────────────────────
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="LLVM release pipeline utilities.")
+    parser.add_argument(
+        "--action",
+        choices=["discover", "apply", "repackage"],
+        required=True,
+    )
+    parser.add_argument("--install-dir", type=Path)
+    parser.add_argument("--build-dir", type=Path)
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--skip-pattern", action="append", default=[])
+    # apply: download manifest from another job if not present locally
+    parser.add_argument("--gh-run-id", type=str)
+    parser.add_argument("--gh-artifact", type=str, default="llvm-pruned-libs")
+    parser.add_argument("--gh-download-dir", type=Path, default=Path("artifacts"))
+    parser.add_argument("--max-attempts", type=int, default=30)
+    parser.add_argument("--sleep-seconds", type=int, default=60)
+    # repackage
+    parser.add_argument("--source-run-id", type=str)
+    parser.add_argument("--manifests-dir", type=Path)
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--max-parallel", type=int, default=3)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+
+    if args.action == "discover":
+        removed = discover(args.install_dir, args.build_dir, args.skip_pattern)
+        _write_manifest(args.manifest, removed, args.install_dir, args.build_dir)
+    elif args.action == "apply":
+        manifest = _ensure_manifest(
+            manifest=args.manifest,
+            run_id=args.gh_run_id,
+            artifact=args.gh_artifact,
+            download_dir=args.gh_download_dir,
+            max_attempts=args.max_attempts,
+            sleep_seconds=args.sleep_seconds,
+        )
+        apply_manifest(manifest, args.install_dir)
+    elif args.action == "repackage":
+        repackage(
+            source_run_id=args.source_run_id,
+            manifests_dir=args.manifests_dir,
+            output_dir=args.output_dir,
+            max_parallel=args.max_parallel,
+        )
+
+
+if __name__ == "__main__":
+    main()

@@ -74,7 +74,7 @@ jobs:
       - name: Discover unused libraries
         shell: bash
         run: |
-          python3 scripts/prune-llvm-bin.py \
+          python3 scripts/release-llvm.py \
             --action discover \
             --install-dir .llvm/build-install/lib \
             --build-dir build/RelWithDebInfo \
@@ -103,7 +103,7 @@ jobs:
 
   release:
     needs: discover
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     permissions:
       contents: read
     steps:
@@ -111,8 +111,11 @@ jobs:
 
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup
+          sudo rm -rf ~/Library/Android /usr/local/share/dotnet \
+            /usr/local/share/powershell ~/.ghcup
+          if [ -d "/Library/Developer/CoreSimulator" ]; then
+            sudo rm -rf /Library/Developer/CoreSimulator
+          fi
           df -h /
 
       - name: Download prune manifests
@@ -121,86 +124,16 @@ jobs:
           pattern: prune-manifest-*
           path: manifests
 
-      - name: Apply prune and repackage all artifacts
+      - name: Repackage artifacts
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
-          set -euo pipefail
-          mkdir -p artifacts
-
-          manifest_for() {
-            local name="$1"
-            if [[ "$name" == *linux* ]]; then
-              echo "manifests/prune-manifest-ubuntu-24.04/pruned-libs.json"
-            elif [[ "$name" == *macos* ]]; then
-              echo "manifests/prune-manifest-macos-15/pruned-libs.json"
-            elif [[ "$name" == *windows* ]]; then
-              echo "manifests/prune-manifest-windows-2025/pruned-libs.json"
-            fi
-          }
-
-          ARTIFACTS=(
-            "aarch64-linux-gnu-releasedbg-lto.tar.xz"
-            "aarch64-linux-gnu-releasedbg.tar.xz"
-            "aarch64-windows-msvc-releasedbg-lto.tar.xz"
-            "aarch64-windows-msvc-releasedbg.tar.xz"
-            "arm64-macos-clang-debug-asan.tar.xz"
-            "arm64-macos-clang-releasedbg-lto.tar.xz"
-            "arm64-macos-clang-releasedbg.tar.xz"
-            "x64-linux-gnu-debug-asan.tar.xz"
-            "x64-linux-gnu-releasedbg-lto.tar.xz"
-            "x64-linux-gnu-releasedbg.tar.xz"
-            "x64-macos-clang-releasedbg-lto.tar.xz"
-            "x64-macos-clang-releasedbg.tar.xz"
-            "x64-windows-msvc-releasedbg-lto.tar.xz"
-            "x64-windows-msvc-releasedbg.tar.xz"
-          )
-
-          for ARTIFACT in "${ARTIFACTS[@]}"; do
-            echo "::group::Processing $ARTIFACT"
-
-            gh run download "${SOURCE_RUN_ID}" -n "$ARTIFACT" -D tmp-download || {
-              echo "Warning: failed to download $ARTIFACT, skipping"
-              rm -rf tmp-download
-              echo "::endgroup::"
-              continue
-            }
-
-            TARBALL="tmp-download/$ARTIFACT"
-            if [[ ! -f "$TARBALL" ]]; then
-              echo "Warning: $TARBALL not found, skipping"
-              rm -rf tmp-download
-              echo "::endgroup::"
-              continue
-            fi
-
-            if [[ "$ARTIFACT" == *debug* ]] || [[ "$ARTIFACT" == *asan* ]]; then
-              echo "Debug/ASAN artifact — skipping prune"
-              mv "$TARBALL" "artifacts/$ARTIFACT"
-            else
-              MANIFEST=$(manifest_for "$ARTIFACT")
-              echo "Extracting..."
-              mkdir -p tmp-work
-              tar -xf "$TARBALL" -C tmp-work
-
-              echo "Applying prune manifest: $MANIFEST"
-              python3 scripts/prune-llvm-bin.py \
-                --action apply \
-                --manifest "$MANIFEST" \
-                --install-dir tmp-work/build-install/lib
-
-              echo "Repackaging..."
-              tar -C tmp-work -cf - build-install | xz -T0 -6 -c > "artifacts/$ARTIFACT"
-              rm -rf tmp-work
-            fi
-
-            rm -rf tmp-download
-            echo "::endgroup::"
-          done
-
-          echo "=== All artifacts ==="
-          ls -lh artifacts/
+          python3 scripts/release-llvm.py \
+            --action repackage \
+            --source-run-id "${{ env.SOURCE_RUN_ID }}" \
+            --manifests-dir manifests \
+            --output-dir artifacts \
+            --max-parallel 3
 
       - name: Upload to clice-llvm
         env:
