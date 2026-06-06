@@ -63,69 +63,38 @@ function(setup_llvm LLVM_VERSION)
         message(FATAL_ERROR "Error: The specified LLVM_INSTALL_PATH does not exist: ${LLVM_INSTALL_PATH}")
     endif()
 
-    # set llvm include and lib path
+    find_package(LLVM REQUIRED CONFIG
+        PATHS "${LLVM_INSTALL_PATH}/lib/cmake/llvm" NO_DEFAULT_PATH)
+    find_package(Clang REQUIRED CONFIG
+        PATHS "${LLVM_INSTALL_PATH}/lib/cmake/clang" NO_DEFAULT_PATH)
+
+    llvm_map_components_to_libnames(LLVM_RESOLVED
+        support frontendopenmp option targetparser)
+
     add_library(llvm-libs INTERFACE IMPORTED)
+    target_link_libraries(llvm-libs INTERFACE
+        ${LLVM_RESOLVED}
+        clangAST clangASTMatchers clangBasic clangDriver
+        clangFormat clangFrontend clangLex clangSema clangSerialization
+        clangTidy clangTidyUtils
+        clangTidyAbseilModule clangTidyAlteraModule clangTidyAndroidModule
+        clangTidyBoostModule clangTidyBugproneModule clangTidyCERTModule
+        clangTidyConcurrencyModule clangTidyCppCoreGuidelinesModule
+        clangTidyCustomModule clangTidyDarwinModule clangTidyFuchsiaModule
+        clangTidyGoogleModule clangTidyHICPPModule clangTidyLinuxKernelModule
+        clangTidyLLVMModule clangTidyLLVMLibcModule clangTidyMiscModule
+        clangTidyModernizeModule clangTidyMPIModule clangTidyObjCModule
+        clangTidyOpenMPModule clangTidyPerformanceModule
+        clangTidyPortabilityModule clangTidyReadabilityModule
+        clangTidyZirconModule
+        clangTooling clangToolingCore
+        clangToolingInclusions clangToolingInclusionsStdlib clangToolingSyntax
+    )
 
-    # add to include directories
-    target_include_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/include")
+    target_include_directories(llvm-libs INTERFACE
+        ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
 
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT WIN32)
-        target_link_directories(llvm-libs INTERFACE "${LLVM_INSTALL_PATH}/lib")
-        target_link_libraries(llvm-libs INTERFACE
-            LLVMSupport
-            LLVMFrontendOpenMP
-            LLVMOption
-            LLVMTargetParser
-            clangAST
-            clangASTMatchers
-            clangBasic
-            clangDriver
-            clangFormat
-            clangFrontend
-            clangLex
-            clangSema
-            clangSerialization
-            clangTidy
-            clangTidyUtils
-            clangTidyAndroidModule
-            clangTidyAbseilModule
-            clangTidyAlteraModule
-            clangTidyBoostModule
-            clangTidyBugproneModule
-            clangTidyCERTModule
-            clangTidyConcurrencyModule
-            clangTidyCppCoreGuidelinesModule
-            clangTidyDarwinModule
-            clangTidyFuchsiaModule
-            clangTidyGoogleModule
-            clangTidyHICPPModule
-            clangTidyLinuxKernelModule
-            clangTidyLLVMModule
-            clangTidyLLVMLibcModule
-            clangTidyMiscModule
-            clangTidyModernizeModule
-            clangTidyObjCModule
-            clangTidyOpenMPModule
-            clangTidyPerformanceModule
-            clangTidyPortabilityModule
-            clangTidyReadabilityModule
-            clangTidyZirconModule
-            clangTooling
-            clangToolingCore
-            clangToolingInclusions
-            clangToolingInclusionsStdlib
-            clangToolingSyntax
-        )
-    else()
-        file(GLOB LLVM_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}LLVM[a-zA-Z]*${CMAKE_STATIC_LIBRARY_SUFFIX}")
-        file(GLOB CLANG_LIBRARIES CONFIGURE_DEPENDS "${LLVM_INSTALL_PATH}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}clang[a-zA-Z]*${CMAKE_STATIC_LIBRARY_SUFFIX}")
-        # TODO: find a better way to find out whether zlib and zstd are needed
-        # Currently link if present in the LLVM lib directory
-        file(GLOB OTHER_REQUIRED_LIBS CONFIGURE_DEPENDS
-            "${LLVM_INSTALL_PATH}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}z${CMAKE_STATIC_LIBRARY_SUFFIX}"
-            "${LLVM_INSTALL_PATH}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}zstd${CMAKE_STATIC_LIBRARY_SUFFIX}"
-        )
-        target_link_libraries(llvm-libs INTERFACE ${LLVM_LIBRARIES} ${CLANG_LIBRARIES} ${OTHER_REQUIRED_LIBS})
+    if(NOT BUILD_SHARED_LIBS)
         target_compile_definitions(llvm-libs INTERFACE CLANG_BUILD_STATIC=1)
     endif()
 endfunction()
