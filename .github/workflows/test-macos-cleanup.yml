@@ -1,0 +1,52 @@
+name: test macOS cleanup
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-cleanup:
+    runs-on: macos-15
+    steps:
+      - name: Disk usage before cleanup
+        run: |
+          echo "=== Overall ==="
+          df -h /
+          echo ""
+          echo "=== Large directories ==="
+          du -sh /Library/Developer/CoreSimulator 2>/dev/null || echo "CoreSimulator: not found"
+          du -sh /Applications/Xcode*.app 2>/dev/null || echo "Xcode apps: not found"
+          XCODE_PATH="$(xcode-select -p)"
+          PLATFORMS_DIR="${XCODE_PATH}/Platforms"
+          for p in iPhoneOS.platform iPhoneSimulator.platform AppleTVOS.platform AppleTVSimulator.platform WatchOS.platform WatchSimulator.platform XROS.platform XRSimulator.platform; do
+            du -sh "${PLATFORMS_DIR}/${p}" 2>/dev/null || echo "${p}: not found"
+          done
+          du -sh ~/Library/Android 2>/dev/null || echo "Android SDK: not found"
+          du -sh /usr/local/share/dotnet 2>/dev/null || echo ".NET: not found"
+          du -sh /usr/local/share/powershell 2>/dev/null || echo "PowerShell: not found"
+          du -sh ~/.ghcup 2>/dev/null || echo "Haskell: not found"
+
+      - name: Run cleanup
+        run: |
+          if [ -d "/Library/Developer/CoreSimulator" ]; then
+            sudo rm -rf /Library/Developer/CoreSimulator
+            echo "Removed CoreSimulator"
+          fi
+
+          XCODE_PATH="$(xcode-select -p)"
+          PLATFORMS_DIR="${XCODE_PATH}/Platforms"
+          for platform in iPhoneOS.platform iPhoneSimulator.platform AppleTVOS.platform AppleTVSimulator.platform WatchOS.platform WatchSimulator.platform XROS.platform XRSimulator.platform; do
+            if [ -d "${PLATFORMS_DIR}/${platform}" ]; then
+              sudo rm -rf "${PLATFORMS_DIR}/${platform}"
+              echo "Removed ${platform}"
+            fi
+          done
+
+          sudo rm -rf ~/Library/Android
+          sudo rm -rf /usr/local/share/dotnet
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf ~/.ghcup
+
+      - name: Disk usage after cleanup
+        run: |
+          echo "=== Overall ==="
+          df -h /
