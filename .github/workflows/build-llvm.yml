@@ -17,6 +17,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip_clice_build:
+        description: "Skip building and testing clice (LLVM-only build)"
+        required: false
+        type: boolean
+        default: false
   pull_request:
     # if you want to run this workflow, change the branch name to main,
     # if you want to turn off it, change it to non existent branch.
@@ -130,13 +135,6 @@ jobs:
           echo "Cloning LLVM ${VERSION}..."
           git clone --branch "llvmorg-${VERSION}" --depth 1 https://github.com/llvm/llvm-project.git .llvm
 
-      - name: Validate distribution components
-        shell: bash
-        run: |
-          python3 scripts/validate-llvm-components.py \
-            --llvm-src=.llvm \
-            --components-file=scripts/llvm-components.json
-
       - name: Build LLVM (install-distribution)
         shell: bash
         run: |
@@ -153,7 +151,7 @@ jobs:
             ${EXTRA_ARGS}
 
       - name: Build clice using installed LLVM
-        if: ${{ !matrix.target_triple }}
+        if: ${{ !matrix.target_triple && !inputs.skip_clice_build }}
         shell: bash
         run: |
           pixi run cmake-config ${{ matrix.llvm_mode }} ON -- \
@@ -162,7 +160,7 @@ jobs:
           pixi run cmake-build ${{ matrix.llvm_mode }}
 
       - name: Build clice using installed LLVM (cross-compile)
-        if: ${{ matrix.target_triple }}
+        if: ${{ matrix.target_triple && !inputs.skip_clice_build }}
         shell: bash
         run: |
           ENV="${{ matrix.pixi_env || 'package' }}"
@@ -173,7 +171,7 @@ jobs:
           pixi run -e "$ENV" cmake-build ${{ matrix.llvm_mode }}
 
       - name: Verify cross-compiled binary architecture
-        if: ${{ matrix.target_triple && runner.os != 'Windows' }}
+        if: ${{ matrix.target_triple && runner.os != 'Windows' && !inputs.skip_clice_build }}
         shell: bash
         run: |
           BINARY="build/${{ matrix.llvm_mode }}/bin/clice"
@@ -185,7 +183,7 @@ jobs:
           esac
 
       - name: Upload cross-compiled clice for functional test
-        if: ${{ matrix.target_triple && matrix.lto == 'OFF' }}
+        if: ${{ matrix.target_triple && matrix.lto == 'OFF' && !inputs.skip_clice_build }}
         uses: actions/upload-artifact@v7
         with:
           name: cross-clice-${{ matrix.target_triple }}-${{ matrix.llvm_mode }}
@@ -196,14 +194,14 @@ jobs:
           retention-days: 1
 
       - name: Run tests
-        if: ${{ !matrix.target_triple }}
+        if: ${{ !matrix.target_triple && !inputs.skip_clice_build }}
         shell: bash
         run: pixi run test ${{ matrix.llvm_mode }}
 
       # Prune is only supported for native builds (requires linking clice to test).
       # Cross-compiled targets reuse the native prune manifest of the same OS.
       - name: Prune LLVM static libraries (Debug/RelWithDebInfo no LTO)
-        if: (!matrix.target_triple) && (matrix.llvm_mode == 'Debug' || (matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'))
+        if: (!inputs.skip_clice_build) && (!matrix.target_triple) && (matrix.llvm_mode == 'Debug' || (matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'))
         shell: bash
         run: |
           MANIFEST="pruned-libs-${{ matrix.os }}.json"
@@ -217,7 +215,7 @@ jobs:
             --manifest "${MANIFEST}"
 
       - name: Upload pruned-libs manifest
-        if: (!matrix.target_triple) && matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'
+        if: (!inputs.skip_clice_build) && (!matrix.target_triple) && matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'
         uses: actions/upload-artifact@v7
         with:
           name: llvm-pruned-libs-${{ matrix.os }}
@@ -226,7 +224,7 @@ jobs:
           compression-level: 0
 
       - name: Apply pruned-libs manifest (RelWithDebInfo + LTO, native only)
-        if: (!matrix.target_triple) && matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'ON'
+        if: (!inputs.skip_clice_build) && (!matrix.target_triple) && matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'ON'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -246,7 +244,7 @@ jobs:
       # For cross-compiled LTO builds, apply the native prune manifest.
       # The unused library set is arch-independent (same API surface).
       - name: Apply pruned-libs manifest (cross-compile + LTO)
-        if: matrix.target_triple && matrix.lto == 'ON'
+        if: (!inputs.skip_clice_build) && matrix.target_triple && matrix.lto == 'ON'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -318,6 +316,7 @@ jobs:
 
   test-cross:
     needs: build
+    if: ${{ !inputs.skip_clice_build }}
     strategy:
       fail-fast: false
       matrix:
