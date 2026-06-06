@@ -128,6 +128,41 @@ jobs:
         with:
           environments: ${{ matrix.pixi_env || 'package' }}
 
+      - name: Free Disk Space (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "=== Before cleanup ==="
+          df -h /
+
+          # Remove iOS/tvOS/watchOS/visionOS simulators
+          if [ -d "/Library/Developer/CoreSimulator" ]; then
+            sudo rm -rf /Library/Developer/CoreSimulator
+            echo "Removed CoreSimulator"
+          fi
+
+          # Remove unnecessary Xcode platforms (keep macOS only)
+          XCODE_PATH="$(xcode-select -p)"
+          PLATFORMS_DIR="${XCODE_PATH}/Platforms"
+          for platform in iPhoneOS.platform iPhoneSimulator.platform AppleTVOS.platform AppleTVSimulator.platform WatchOS.platform WatchSimulator.platform XROS.platform XRSimulator.platform; do
+            if [ -d "${PLATFORMS_DIR}/${platform}" ]; then
+              sudo rm -rf "${PLATFORMS_DIR}/${platform}"
+              echo "Removed ${platform}"
+            fi
+          done
+
+          # Remove Android SDK
+          sudo rm -rf ~/Library/Android
+
+          # Remove .NET/PowerShell
+          sudo rm -rf /usr/local/share/dotnet
+          sudo rm -rf /usr/local/share/powershell
+
+          # Remove Haskell
+          sudo rm -rf ~/.ghcup
+
+          echo "=== After cleanup ==="
+          df -h /
+
       - name: Clone llvm-project
         shell: bash
         run: |

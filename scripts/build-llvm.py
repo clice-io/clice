@@ -229,7 +229,7 @@ def main():
         "-DLLVM_PARALLEL_LINK_JOBS=1",
         "-DCMAKE_JOB_POOL_LINK=console",
         "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
-        "-DLLVM_TARGETS_TO_BUILD=X86;AArch64;ARM;RISCV",
+        "-DLLVM_TARGETS_TO_BUILD=all",
         "-DLLVM_DISABLE_ASSEMBLY_FILES=ON",
         # Distribution
         f"-DLLVM_DISTRIBUTION_COMPONENTS={components_joined}",
