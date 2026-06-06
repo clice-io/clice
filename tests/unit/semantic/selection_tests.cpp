@@ -442,9 +442,9 @@ TEST_CASE(Types) {
 TEST_CASE(CXXFeatures) {
     EXPECT_SELECT(R"(
           template <typename T>
-          int x = @[T::$U::]ccc();
+          int x = T::@[$U]::ccc();
           )",
-                  "NestedNameSpecifierLoc");
+                  "DependentNameTypeLoc");
     EXPECT_SELECT(R"(
           struct Foo {};
           struct Bar : @[v$ir$tual private Foo] {};
@@ -486,9 +486,9 @@ TEST_CASE(UsingEnum) {
                   "TypedefTypeLoc");
     EXPECT_SELECT(R"(
         namespace ns { enum class A {}; };
-        using enum @[$ns::]A;
+        @[using enum $ns::A];
         )",
-                  "NestedNameSpecifierLoc");
+                  "UsingEnumDecl");
     EXPECT_SELECT(R"(
         namespace ns { enum class A {}; };
         @[using $enum ns::A];

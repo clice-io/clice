@@ -161,13 +161,13 @@ struct InstantiationStack {
 };
 
 /// Helper to extract underlying type from a Decl.
-static clang::QualType get_decl_type(clang::Decl* decl) {
+static clang::QualType get_decl_type(clang::Decl* decl, clang::ASTContext& context) {
     if(!decl)
         return clang::QualType();
     if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(decl))
         return TND->getUnderlyingType();
     if(auto* RD = llvm::dyn_cast<clang::RecordDecl>(decl))
-        return clang::QualType(RD->getTypeForDecl(), 0);
+        return context.getCanonicalTagType(RD);
     return clang::QualType();
 }
 
@@ -205,14 +205,13 @@ public:
 
     /// Desugar dependent typedefs to expose template parameters for substitution.
     clang::QualType TransformTypedefType(clang::TypeLocBuilder& TLB, clang::TypedefTypeLoc TL) {
-        if(auto* TND = TL.getTypedefNameDecl()) {
+        if(auto* TND = TL.getDecl()) {
             auto underlying = TND->getUnderlyingType();
             if(underlying->isDependentType()) {
                 auto type = TransformType(underlying);
                 if(!type.isNull()) {
-                    if(auto ET = llvm::dyn_cast<clang::ElaboratedType>(type)) {
-                        type = ET->getNamedType();
-                    }
+                    // ElaboratedType was removed in LLVM 22; elaboration is now
+                    // part of each type's own representation.
                     TLB.pushTrivial(context, type, {});
                     return type;
                 }
@@ -221,25 +220,11 @@ public:
         return Base::TransformTypedefType(TLB, TL);
     }
 
-    clang::QualType TransformElaboratedType(clang::TypeLocBuilder& TLB,
-                                            clang::ElaboratedTypeLoc TL) {
-        clang::QualType type = TransformType(TL.getNamedTypeLoc().getType());
-        if(type.isNull()) {
-            return Base::TransformElaboratedType(TLB, TL);
-        }
-        TLB.pushTrivial(context, type, {});
-        return type;
-    }
-
     clang::QualType TransformInjectedClassNameType(clang::TypeLocBuilder& TLB,
                                                    clang::InjectedClassNameTypeLoc TL) {
-        auto ICT = TL.getTypePtr();
-        clang::QualType type = TransformType(ICT->getInjectedSpecializationType());
-        if(type.isNull()) {
-            return Base::TransformInjectedClassNameType(TLB, TL);
-        }
-        TLB.pushTrivial(context, type, {});
-        return type;
+        // In LLVM 22, InjectedClassNameType no longer has getInjectedSpecializationType.
+        // Just return the base transform.
+        return Base::TransformInjectedClassNameType(TLB, TL);
     }
 
     using Base::TransformTemplateSpecializationType;
@@ -496,24 +481,25 @@ public:
         }
 
         if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
-            TD = TST->getTemplateName().getAsTemplateDecl();
-            args = TST->template_arguments();
-        } else if(auto DTST = type->getAs<clang::DependentTemplateSpecializationType>()) {
-            // If this DTST was already resolved (possibly to itself when unresolvable),
-            // skip the redundant lookup.
-            if(resolved.count(DTST)) {
-                return lookup_result();
-            }
+            auto TN = TST->getTemplateName();
+            if(auto* DTN = TN.getAsDependentTemplateName()) {
+                // This was formerly DependentTemplateSpecializationType.
+                if(resolved.count(TST)) {
+                    return lookup_result();
+                }
 
-            auto& template_name = DTST->getDependentTemplateName();
-            auto name = template_name.getName().getIdentifier();
-            if(!name) {
-                return {};
-            }
+                auto identifier = DTN->getName().getIdentifier();
+                if(!identifier) {
+                    return {};
+                }
 
-            if(auto decl = preferred(lookup(template_name.getQualifier(), name))) {
-                TD = decl;
-                args = DTST->template_arguments();
+                if(auto decl = preferred(lookup(DTN->getQualifier(), identifier))) {
+                    TD = decl;
+                    args = TST->template_arguments();
+                }
+            } else {
+                TD = TN.getAsTemplateDecl();
+                args = TST->template_arguments();
             }
         }
 
@@ -536,45 +522,27 @@ public:
         return lookup_result();
     }
 
-    lookup_result lookup(const clang::NestedNameSpecifier* NNS, clang::DeclarationName name) {
+    lookup_result lookup(clang::NestedNameSpecifier NNS, clang::DeclarationName name) {
         if(!NNS) {
             return lookup_result();
         }
 
-        if(auto iter = resolved.find(NNS); iter != resolved.end()) {
+        if(auto iter = resolved.find(NNS.getAsVoidPointer()); iter != resolved.end()) {
             return lookup(iter->second, name);
         }
 
         // Handle each NestedNameSpecifier kind:
-        // - Identifier: dependent name in NNS chain (e.g. `base::type::inner`), resolve recursively
-        // - TypeSpec: concrete or dependent type used as qualifier (e.g. `vector<T>::`)
-        // - Global/Namespace/NamespaceAlias/Super: not dependent, cannot resolve further
-        switch(NNS->getKind()) {
-            case clang::NestedNameSpecifier::Identifier: {
-                auto stack_size = stack.data.size();
-                auto* decl = preferred(lookup(NNS->getPrefix(), NNS->getAsIdentifier()));
-                auto type = get_decl_type(decl);
-                if(!type.isNull()) {
-                    type = substitute(type);
-                }
-                while(stack.data.size() > stack_size) {
-                    stack.pop();
-                }
-                if(!type.isNull()) {
-                    resolved.try_emplace(NNS, type);
-                    return lookup(type, name);
-                }
-                return {};
+        // - Type: concrete or dependent type used as qualifier (e.g. `vector<T>::`)
+        // - Global/Namespace/MicrosoftSuper/Null: not dependent, cannot resolve further
+        switch(NNS.getKind()) {
+            case clang::NestedNameSpecifier::Kind::Type: {
+                return lookup(clang::QualType(NNS.getAsType(), 0), name);
             }
 
-            case clang::NestedNameSpecifier::TypeSpec: {
-                return lookup(clang::QualType(NNS->getAsType(), 0), name);
-            }
-
-            case clang::NestedNameSpecifier::Global:
-            case clang::NestedNameSpecifier::Namespace:
-            case clang::NestedNameSpecifier::NamespaceAlias:
-            case clang::NestedNameSpecifier::Super: {
+            case clang::NestedNameSpecifier::Kind::Null:
+            case clang::NestedNameSpecifier::Kind::Global:
+            case clang::NestedNameSpecifier::Kind::Namespace:
+            case clang::NestedNameSpecifier::Kind::MicrosoftSuper: {
                 return {};
             }
         }
@@ -708,14 +676,14 @@ public:
     ///
     /// TODO: Replace with a general mechanism for resolving well-known standard
     /// library patterns, or improve the resolver to handle these chains naturally.
-    clang::QualType hole(clang::NestedNameSpecifier* NNS,
+    clang::QualType hole(clang::NestedNameSpecifier NNS,
                          const clang::IdentifierInfo* member,
                          TemplateArguments arguments) {
-        if(NNS->getKind() != clang::NestedNameSpecifier::TypeSpec) {
+        if(NNS.getKind() != clang::NestedNameSpecifier::Kind::Type) {
             return clang::QualType();
         }
 
-        auto TST = NNS->getAsType()->getAs<clang::TemplateSpecializationType>();
+        auto TST = NNS.getAsType()->getAs<clang::TemplateSpecializationType>();
         if(!TST) {
             return clang::QualType();
         }
@@ -738,17 +706,18 @@ public:
                     return clang::QualType();
                 auto T = arguments[0].getAsType();
 
-                auto prefix =
-                    clang::NestedNameSpecifier::Create(context, nullptr, Alloc.getTypePtr());
+                clang::NestedNameSpecifier prefix(Alloc.getTypePtr());
 
                 auto rebind = sema.getPreprocessor().getIdentifierInfo("rebind");
 
-                auto DTST = context.getDependentTemplateSpecializationType(
-                    clang::ElaboratedTypeKeyword::None,
-                    clang::DependentTemplateStorage(prefix, rebind, false),
-                    arguments);
+                clang::TemplateName DTN = context.getDependentTemplateName({prefix, rebind, false});
+                auto DTST =
+                    context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
+                                                          DTN,
+                                                          arguments,
+                                                          {});
 
-                prefix = clang::NestedNameSpecifier::Create(context, prefix, DTST.getTypePtr());
+                prefix = clang::NestedNameSpecifier(DTST.getTypePtr());
 
                 auto other = sema.getPreprocessor().getIdentifierInfo("other");
                 auto DNT = context.getDependentNameType(clang::ElaboratedTypeKeyword::Typename,
@@ -770,9 +739,11 @@ public:
                     for(auto& arg: replaceArguments) {
                         canonicalArguments.emplace_back(context.getCanonicalTemplateArgument(arg));
                     }
-                    auto result = context.getTemplateSpecializationType(TST->getTemplateName(),
-                                                                        replaceArguments,
-                                                                        canonicalArguments);
+                    auto result =
+                        context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
+                                                              TST->getTemplateName(),
+                                                              replaceArguments,
+                                                              canonicalArguments);
                     LOG_DEBUG(
                         "{}" "hole: 'allocator_traits::rebind_alloc' → '{}'",
                         pad(),
@@ -859,7 +830,9 @@ public:
 
     clang::QualType TransformDependentNameType(clang::TypeLocBuilder& TLB,
                                                clang::DependentNameTypeLoc TL,
-                                               bool DeducedTSTContext = false) {
+                                               bool DeducedTSTContext = false,
+                                               clang::QualType ObjectType = clang::QualType(),
+                                               clang::NamedDecl* UnqualLookup = nullptr) {
         auto* DNT = TL.getTypePtr();
         LOG_DEBUG("{}" "resolve '{}'", pad(), clang::QualType(DNT, 0).getAsString());
         ++indent;
@@ -897,10 +870,10 @@ public:
             return original;
         }
 
-        auto* NNS = NNSLoc.getNestedNameSpecifier();
+        auto NNS = NNSLoc.getNestedNameSpecifier();
         auto stack_size = stack.data.size();
         auto* decl = preferred(lookup(NNS, DNT->getIdentifier()));
-        auto type = get_decl_type(decl);
+        auto type = get_decl_type(decl, context);
 
         clang::QualType result;
         if(!type.isNull()) {
@@ -963,61 +936,58 @@ public:
         return original;
     }
 
-    using Base::TransformDependentTemplateSpecializationType;
+    using Base::TransformTemplateSpecializationType;
 
-    clang::QualType rebuild_dtst(clang::TypeLocBuilder& TLB,
-                                 clang::DependentTemplateSpecializationTypeLoc TL) {
-        auto* DTST = TL.getTypePtr();
-        return TLB.push<clang::DependentTemplateSpecializationTypeLoc>(clang::QualType(DTST, 0))
-            .getType();
-    }
+    /// Handle dependent template specializations (formerly DependentTemplateSpecializationType,
+    /// now merged into TemplateSpecializationType with DependentTemplateName in LLVM 22).
+    clang::QualType TransformTemplateSpecializationType(clang::TypeLocBuilder& TLB,
+                                                        clang::TemplateSpecializationTypeLoc TL) {
+        auto* TST = TL.getTypePtr();
+        auto TN = TST->getTemplateName();
+        auto* DTN = TN.getAsDependentTemplateName();
 
-    clang::QualType TransformDependentTemplateSpecializationType(
-        clang::TypeLocBuilder& TLB,
-        clang::DependentTemplateSpecializationTypeLoc TL) {
-        auto* DTST = TL.getTypePtr();
-        LOG_DEBUG("{}" "resolve DTST '{}'", pad(), clang::QualType(DTST, 0).getAsString());
+        if(!DTN) {
+            // Non-dependent TST: handle alias templates.
+            if(TST->isTypeAlias()) {
+                clang::QualType type = substitute(TST->desugar());
+                if(!type.isNull()) {
+                    TLB.pushTrivial(context, type, {});
+                    return type;
+                }
+            }
+            return Base::TransformTemplateSpecializationType(TLB, TL);
+        }
+
+        // Dependent template specialization handling.
+        LOG_DEBUG("{}" "resolve dep-TST '{}'", pad(), clang::QualType(TST, 0).getAsString());
         ++indent;
 
-        if(auto iter = resolved.find(DTST); iter != resolved.end()) {
+        if(auto iter = resolved.find(TST); iter != resolved.end()) {
             --indent;
             TLB.pushTrivial(context, iter->second, {});
             return iter->second;
         }
 
-        auto NNSLoc = TransformNestedNameSpecifierLoc(TL.getQualifierLoc());
-        if(!NNSLoc) {
-            LOG_DEBUG("{}→ <unresolved DTST>", pad());
-            --indent;
-            return rebuild_dtst(TLB, TL);
-        }
-        auto* NNS = NNSLoc.getNestedNameSpecifier();
-
-        clang::TemplateArgumentListInfo info;
-        using iterator = clang::TemplateArgumentLocContainerIterator<
-            clang::DependentTemplateSpecializationTypeLoc>;
-        if(TransformTemplateArguments(iterator(TL, 0), iterator(TL, TL.getNumArgs()), info)) {
-            LOG_DEBUG("{}→ <unresolved DTST>", pad());
-            --indent;
-            return rebuild_dtst(TLB, TL);
-        }
+        auto NNS = DTN->getQualifier();
 
         llvm::SmallVector<clang::TemplateArgument, 4> arguments;
-        for(auto& arg: info.arguments()) {
-            arguments.push_back(arg.getArgument());
+        for(auto& arg: TST->template_arguments()) {
+            arguments.push_back(arg);
         }
 
-        auto* name = DTST->getDependentTemplateName().getName().getIdentifier();
+        auto* name = DTN->getName().getIdentifier();
         if(!name) {
-            LOG_DEBUG("{}→ <unresolved DTST>", pad());
+            LOG_DEBUG("{}→ <unresolved dep-TST>", pad());
             --indent;
-            return rebuild_dtst(TLB, TL);
+            auto original = clang::QualType(TST, 0);
+            TLB.pushTrivial(context, original, {});
+            return original;
         }
 
         if(auto result = hole(NNS, name, arguments); !result.isNull()) {
             LOG_DEBUG("{}" "hole: '{}' → '{}'", pad(), name->getName().str(), result.getAsString());
             --indent;
-            resolved.try_emplace(DTST, result);
+            resolved.try_emplace(TST, result);
             TLB.pushTrivial(context, result, {});
             return result;
         }
@@ -1027,7 +997,6 @@ public:
             if(auto* TATD = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(decl)) {
                 if(deduce_template_arguments(TATD, arguments)) {
                     auto type = substitute(TATD->getTemplatedDecl()->getUnderlyingType());
-                    // Pop lookup frames before further resolution.
                     while(stack.data.size() > stack_size) {
                         stack.pop();
                     }
@@ -1037,26 +1006,25 @@ public:
                     if(!type.isNull()) {
                         LOG_DEBUG("{}" "→ '{}' (alias)", pad(), type.getAsString());
                         --indent;
-                        resolved.try_emplace(DTST, type);
+                        resolved.try_emplace(TST, type);
                         TLB.pushTrivial(context, type, {});
                         return type;
                     }
                 }
             } else if(auto* CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(decl)) {
-                // Resolve DTST to a concrete TemplateSpecializationType.
-                // e.g. __alloc_traits<allocator<T>>::rebind<T> → rebind<T> (a TST)
-                // This allows subsequent lookup of members (like "other") to work.
-                // Keep lookup frames on stack — the caller (e.g. TransformNestedNameSpecifierLoc
-                // processing A<X>::B<Y>::C<Z>) needs them for parameter substitution.
-                clang::TemplateName TN(CTD);
+                clang::TemplateName CTN(CTD);
                 llvm::SmallVector<clang::TemplateArgument> canonArgs;
                 for(auto& arg: arguments) {
                     canonArgs.push_back(context.getCanonicalTemplateArgument(arg));
                 }
-                auto result = context.getTemplateSpecializationType(TN, arguments, canonArgs);
+                auto result =
+                    context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
+                                                          CTN,
+                                                          arguments,
+                                                          canonArgs);
                 LOG_DEBUG("{}" "→ TST '{}' (class)", pad(), result.getAsString());
                 --indent;
-                resolved.try_emplace(DTST, result);
+                resolved.try_emplace(TST, result);
                 TLB.pushTrivial(context, result, {});
                 return result;
             }
@@ -1065,11 +1033,12 @@ public:
             stack.pop();
         }
 
-        LOG_DEBUG("{}→ <unresolved DTST>", pad());
+        LOG_DEBUG("{}→ <unresolved dep-TST>", pad());
         --indent;
-        auto fallback = rebuild_dtst(TLB, TL);
-        resolved.try_emplace(DTST, fallback);
-        return fallback;
+        auto original = clang::QualType(TST, 0);
+        resolved.try_emplace(TST, original);
+        TLB.pushTrivial(context, original, {});
+        return original;
     }
 
     /// Desugar dependent typedefs by delegating to SubstituteOnly.
@@ -1077,14 +1046,13 @@ public:
     /// its own TransformTypedefType). Using substitute() here ensures that typedef
     /// expansion does NOT trigger heuristic lookup, preventing the typedef ↔ lookup cycle.
     clang::QualType TransformTypedefType(clang::TypeLocBuilder& TLB, clang::TypedefTypeLoc TL) {
-        if(auto* TND = TL.getTypedefNameDecl()) {
+        if(auto* TND = TL.getDecl()) {
             auto underlying = TND->getUnderlyingType();
             if(underlying->isDependentType()) {
                 auto type = substitute(underlying);
                 if(!type.isNull()) {
-                    if(auto ET = llvm::dyn_cast<clang::ElaboratedType>(type)) {
-                        type = ET->getNamedType();
-                    }
+                    // ElaboratedType was removed in LLVM 22; elaboration is now
+                    // part of each type's own representation.
                     TLB.pushTrivial(context, type, {});
                     return type;
                 }
@@ -1138,7 +1106,7 @@ clang::QualType TemplateResolver::resugar(clang::QualType type, clang::Decl* dec
     return resugar.TransformType(type);
 }
 
-TemplateResolver::lookup_result TemplateResolver::lookup(const clang::NestedNameSpecifier* NNS,
+TemplateResolver::lookup_result TemplateResolver::lookup(clang::NestedNameSpecifier NNS,
                                                          clang::DeclarationName name) {
     PseudoInstantiator instantiator(sema, resolved);
     return instantiator.lookup(NNS, name);

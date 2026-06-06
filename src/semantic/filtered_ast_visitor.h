@@ -107,7 +107,7 @@ public:
         return true;
     }
 
-    bool TraverseTypeLoc(clang::TypeLoc loc) {
+    bool TraverseTypeLoc(clang::TypeLoc loc, bool TraverseQualifier = true) {
         CHECK_DERIVED_IMPL(TraverseTypeLoc);
 
         if(!loc) {
@@ -116,10 +116,10 @@ public:
 
         /// FIXME: Workaround for `QualifiedTypeLoc`.
         if(auto QL = loc.getAs<clang::QualifiedTypeLoc>()) {
-            return Base::TraverseTypeLoc(QL.getUnqualifiedLoc());
+            return Base::TraverseTypeLoc(QL.getUnqualifiedLoc(), TraverseQualifier);
         }
 
-        return Base::TraverseTypeLoc(loc);
+        return Base::TraverseTypeLoc(loc, TraverseQualifier);
     }
 
     bool TraverseAttr(clang::Attr* attr) {
@@ -132,9 +132,8 @@ public:
         return Base::TraverseAttr(attr);
     }
 
-    /// We don't want to node withou location information.
-    constexpr bool TraverseNestedNameSpecifier
-        [[gnu::always_inline]] (clang::NestedNameSpecifier*) {
+    /// We don't want to node without location information.
+    constexpr bool TraverseNestedNameSpecifier [[gnu::always_inline]] (clang::NestedNameSpecifier) {
         CHECK_DERIVED_IMPL(TraverseNestedNameSpecifier);
         return true;
     }

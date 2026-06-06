@@ -504,14 +504,14 @@ bool USRGenerator::GenLoc(const Decl* D, bool IncludeOffset) {
 
 static void printQualifier(llvm::raw_ostream& Out,
                            const LangOptions& LangOpts,
-                           NestedNameSpecifier* NNS) {
+                           NestedNameSpecifier NNS) {
     // FIXME: Encode the qualifier, don't just print it.
     PrintingPolicy PO(LangOpts);
     PO.SuppressTagKeyword = true;
     PO.SuppressUnwrittenScope = true;
     PO.ConstantArraySizeAsWritten = false;
     PO.AnonymousTagLocations = false;
-    NNS->print(Out, PO);
+    NNS.print(Out, PO);
 }
 
 void USRGenerator::VisitType(QualType T) {
@@ -740,8 +740,9 @@ void USRGenerator::VisitType(QualType T) {
             return;
         }
         if(const InjectedClassNameType* InjT = T->getAs<InjectedClassNameType>()) {
-            T = InjT->getInjectedSpecializationType();
-            continue;
+            Out << '$';
+            VisitTagDecl(InjT->getDecl());
+            return;
         }
         if(const auto* VT = T->getAs<VectorType>()) {
             Out << (T->isExtVectorType() ? ']' : '[');
