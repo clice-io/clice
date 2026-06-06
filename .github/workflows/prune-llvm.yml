@@ -76,7 +76,7 @@ jobs:
             --install-dir .llvm/build-install/lib \
             --build-dir build/RelWithDebInfo \
             --manifest pruned-libs.json \
-            --skip-pattern "*TidyModule*"
+            --skip-pattern "*Tidy*Module*"
 
       - name: Print prune results
         shell: bash
@@ -86,19 +86,14 @@ jobs:
           echo ""
           echo "=== Summary ==="
           python3 -c "
-          import json, pathlib
+          import json
           data = json.load(open('pruned-libs.json'))
           removed = data['removed']
-          lib_dir = pathlib.Path('.llvm/build-install/lib')
-          total_saved = 0
-          for name in removed:
-              p = lib_dir / name
-              if p.exists():
-                  total_saved += p.stat().st_size
+          total = data.get('total_saved_bytes', 0)
           print(f'Libraries prunable: {len(removed)}')
-          print(f'Space saved: {total_saved / 1048576:.1f} MB')
-          for name in sorted(removed):
-              print(f'  {name}')
+          print(f'Space saved: {total / 1048576:.1f} MB')
+          for entry in sorted(removed, key=lambda e: e['size'], reverse=True):
+              print(f'  {entry[\"size\"] / 1048576:>7.1f} MB  {entry[\"name\"]}')
           "
 
       - name: Upload manifest

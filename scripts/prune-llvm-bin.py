@@ -128,43 +128,48 @@ def candidate_files(
         yield path
 
 
-def try_delete(path: Path, build_dir: Path) -> bool:
+def try_delete(path: Path, build_dir: Path) -> Optional[int]:
+    size = path.stat().st_size
     backup = path.with_suffix(path.suffix + ".bak")
     print(f"Testing deletion: {path}")
     shutil.move(path, backup)
     success = run_build(build_dir)
     if success:
         backup.unlink(missing_ok=True)
-        print(f"Safe to delete: {path.name}")
-        return True
+        print(f"Safe to delete: {path.name} ({size} bytes)")
+        return size
     shutil.move(backup, path)
     print(f"Required; restored: {path.name}")
-    return False
+    return None
 
 
 def discover(
     install_dir: Path,
     build_dir: Path,
     skip_patterns: Optional[List[str]] = None,
-) -> List[str]:
-    deletable: List[str] = []
+) -> List[dict]:
+    deletable: List[dict] = []
     for path in candidate_files(install_dir, skip_patterns):
-        if try_delete(path, build_dir):
-            deletable.append(path.name)
+        size = try_delete(path, build_dir)
+        if size is not None:
+            deletable.append({"name": path.name, "size": size})
     return deletable
 
 
 def write_manifest(
-    manifest: Path, removed: List[str], install_dir: Path, build_dir: Path
+    manifest: Path, removed: List[dict], install_dir: Path, build_dir: Path
 ) -> None:
+    total_size = sum(entry["size"] for entry in removed)
     data = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "install_dir": str(install_dir),
         "build_dir": str(build_dir),
+        "total_saved_bytes": total_size,
         "removed": removed,
     }
     manifest.write_text(json.dumps(data, indent=2))
     print(f"Wrote manifest with {len(removed)} entries to {manifest}")
+    print(f"Total space saved: {total_size / 1048576:.1f} MB")
 
 
 def apply_manifest(manifest: Path, install_dir: Path) -> None:
@@ -174,7 +179,8 @@ def apply_manifest(manifest: Path, install_dir: Path) -> None:
     removed = data.get("removed", [])
     if not isinstance(removed, list):
         raise ValueError("Manifest missing 'removed' list")
-    for name in removed:
+    for entry in removed:
+        name = entry["name"] if isinstance(entry, dict) else entry
         target = install_dir / name
         if target.exists():
             print(f"Deleting {target}")
