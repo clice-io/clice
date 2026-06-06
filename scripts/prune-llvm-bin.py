@@ -10,6 +10,7 @@ Two modes:
 """
 
 import argparse
+import fnmatch
 import json
 import shutil
 import subprocess
@@ -74,6 +75,12 @@ def parse_args() -> argparse.Namespace:
         default=60,
         help="Seconds to sleep between manifest download attempts",
     )
+    parser.add_argument(
+        "--skip-pattern",
+        action="append",
+        default=[],
+        help="Glob pattern for library names to never prune (can be repeated)",
+    )
     return parser.parse_args()
 
 
@@ -102,16 +109,23 @@ def run_build(build_dir: Path) -> bool:
         return False
 
 
-def candidate_files(install_dir: Path) -> Iterable[Path]:
+def candidate_files(
+    install_dir: Path, skip_patterns: Optional[List[str]] = None
+) -> Iterable[Path]:
     if not install_dir.is_dir():
         raise FileNotFoundError(f"lib dir not found: {install_dir}")
     for path in sorted(install_dir.iterdir()):
         if not path.is_file():
             continue
-        if path.suffix.lower() in {".a", ".lib"}:
-            yield path
-        else:
+        if path.suffix.lower() not in {".a", ".lib"}:
             print(f"Skipping non-static file: {path.name}")
+            continue
+        if skip_patterns and any(
+            fnmatch.fnmatch(path.name, p) for p in skip_patterns
+        ):
+            print(f"Skipping (never-prune): {path.name}")
+            continue
+        yield path
 
 
 def try_delete(path: Path, build_dir: Path) -> bool:
@@ -128,9 +142,13 @@ def try_delete(path: Path, build_dir: Path) -> bool:
     return False
 
 
-def discover(install_dir: Path, build_dir: Path) -> List[str]:
+def discover(
+    install_dir: Path,
+    build_dir: Path,
+    skip_patterns: Optional[List[str]] = None,
+) -> List[str]:
     deletable: List[str] = []
-    for path in candidate_files(install_dir):
+    for path in candidate_files(install_dir, skip_patterns):
         if try_delete(path, build_dir):
             deletable.append(path.name)
     return deletable
@@ -243,7 +261,7 @@ def main() -> None:
     install_dir = args.install_dir
     build_dir = args.build_dir
     if args.action == "discover":
-        deletable = discover(install_dir, build_dir)
+        deletable = discover(install_dir, build_dir, args.skip_pattern)
         write_manifest(args.manifest, deletable, install_dir, build_dir)
     else:
         manifest = ensure_manifest(
