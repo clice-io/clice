@@ -5,6 +5,7 @@ on:
     branches: [chore/upgrade-llvm-22]
     paths:
       - ".github/workflows/release-llvm.yml"
+      - "scripts/release-llvm.py"
   workflow_dispatch:
     inputs:
       source_run_id:
