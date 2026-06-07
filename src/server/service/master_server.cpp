@@ -426,42 +426,21 @@ int run_server_mode(const ServerOptions& opts) {
             }
         }
 
-        // FIXME(kotatsu#160): workaround for incomplete cancel propagation.
-        // shutdown_event.set() fires inline from within peer.run() (exit
-        // notification handler), so when_any's cancel hits the sentinel
-        // (child==self) and never reaches the pending transport read.
-        // The task's state IS set to Cancelled, but the io_op is unaware
-        // and blocks forever.  Explicitly closing the peer forces the read
-        // to fail, allowing on_child_complete's Cancelled check to finalize.
-        // Ideally when_any would cancel I/O children of a sentinel-guarded
-        // task once the sentinel is cleared (i.e. at the next co_await).
-        auto close_peer_on_shutdown = [](MasterServer& server,
-                                         kota::ipc::JsonPeer& peer) -> kota::task<> {
-            co_await server.get_shutdown_event().wait();
-            peer.close();
-        };
-
         loop.schedule([](MasterServer& server,
                          kota::ipc::JsonPeer& peer,
                          std::list<Connection>& connections,
                          kota::tcp::acceptor acceptor,
-                         bool has_acceptor,
-                         auto close_peer_on_shutdown) -> kota::task<> {
+                         bool has_acceptor) -> kota::task<> {
             if(has_acceptor) {
                 co_await kota::when_any(
                     peer.run(),
-                    close_peer_on_shutdown(server, peer),
-                    accept_connections(server, std::move(acceptor), false, connections));
+                    accept_connections(server, std::move(acceptor), false, connections),
+                    server.get_shutdown_event().wait());
             } else {
-                co_await kota::when_any(peer.run(), close_peer_on_shutdown(server, peer));
+                co_await kota::when_any(peer.run(), server.get_shutdown_event().wait());
             }
             co_await server.shutdown_and_cleanup();
-        }(server,
-                                                      lsp_peer,
-                                                      connections,
-                                                      std::move(agent_acceptor),
-                                                      has_agent_acceptor,
-                                                      close_peer_on_shutdown));
+        }(server, lsp_peer, connections, std::move(agent_acceptor), has_agent_acceptor));
         loop.run();
         return 0;
     }
