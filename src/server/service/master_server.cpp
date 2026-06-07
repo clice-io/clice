@@ -202,7 +202,7 @@ void MasterServer::schedule_shutdown() {
     if(lifecycle == ServerLifecycle::Exited)
         return;
     lifecycle = ServerLifecycle::Exited;
-    loop.post([this]() { shutdown_event.set(); });
+    shutdown_event.set();
 }
 
 kota::task<> MasterServer::shutdown_and_cleanup() {
@@ -335,12 +335,9 @@ struct Connection {
     std::unique_ptr<AgentClient> agent_client;
 };
 
-static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
-                                   std::list<Connection>& connections,
-                                   std::list<Connection>::iterator pos) {
+static kota::task<> run_connection(kota::ipc::JsonPeer* peer) {
     co_await peer->run();
     LOG_INFO("Client disconnected");
-    connections.erase(pos);
 }
 
 static kota::task<> accept_connections(MasterServer& server,
@@ -384,7 +381,7 @@ static kota::task<> accept_connections(MasterServer& server,
                                               .agent_client = std::move(agent),
                                           });
 
-            group.spawn(run_connection(peer_ptr, connections, it));
+            group.spawn(run_connection(peer_ptr));
         }
     }(server, acceptor, register_lsp, connections, group, lsp_registered));
 
@@ -429,21 +426,42 @@ int run_server_mode(const ServerOptions& opts) {
             }
         }
 
+        // FIXME(kotatsu#160): workaround for incomplete cancel propagation.
+        // shutdown_event.set() fires inline from within peer.run() (exit
+        // notification handler), so when_any's cancel hits the sentinel
+        // (child==self) and never reaches the pending transport read.
+        // The task's state IS set to Cancelled, but the io_op is unaware
+        // and blocks forever.  Explicitly closing the peer forces the read
+        // to fail, allowing on_child_complete's Cancelled check to finalize.
+        // Ideally when_any would cancel I/O children of a sentinel-guarded
+        // task once the sentinel is cleared (i.e. at the next co_await).
+        auto close_peer_on_shutdown = [](MasterServer& server,
+                                         kota::ipc::JsonPeer& peer) -> kota::task<> {
+            co_await server.get_shutdown_event().wait();
+            peer.close();
+        };
+
         loop.schedule([](MasterServer& server,
                          kota::ipc::JsonPeer& peer,
                          std::list<Connection>& connections,
                          kota::tcp::acceptor acceptor,
-                         bool has_acceptor) -> kota::task<> {
+                         bool has_acceptor,
+                         auto close_peer_on_shutdown) -> kota::task<> {
             if(has_acceptor) {
                 co_await kota::when_any(
                     peer.run(),
-                    accept_connections(server, std::move(acceptor), false, connections),
-                    server.get_shutdown_event().wait());
+                    close_peer_on_shutdown(server, peer),
+                    accept_connections(server, std::move(acceptor), false, connections));
             } else {
-                co_await kota::when_any(peer.run(), server.get_shutdown_event().wait());
+                co_await kota::when_any(peer.run(), close_peer_on_shutdown(server, peer));
             }
             co_await server.shutdown_and_cleanup();
-        }(server, lsp_peer, connections, std::move(agent_acceptor), has_agent_acceptor));
+        }(server,
+                                                      lsp_peer,
+                                                      connections,
+                                                      std::move(agent_acceptor),
+                                                      has_agent_acceptor,
+                                                      close_peer_on_shutdown));
         loop.run();
         return 0;
     }
@@ -477,19 +495,15 @@ struct DaemonConnection {
     std::unique_ptr<AgentClient> agent_client;
 };
 
-static kota::task<> run_daemon_connection(kota::ipc::JsonPeer* peer,
-                                          std::list<DaemonConnection>& connections,
-                                          std::list<DaemonConnection>::iterator pos) {
+static kota::task<> run_daemon_connection(kota::ipc::JsonPeer* peer) {
     co_await peer->run();
     LOG_INFO("Daemon client disconnected");
-    connections.erase(pos);
 }
 
 static kota::task<> daemon_accept(MasterServer& server, kota::pipe::acceptor acceptor) {
     auto& loop = kota::event_loop::current();
     std::list<DaemonConnection> connections;
     kota::task_group<> group(loop);
-
     group.spawn([](MasterServer& server,
                    kota::pipe::acceptor& acceptor,
                    std::list<DaemonConnection>& connections,
@@ -514,7 +528,7 @@ static kota::task<> daemon_accept(MasterServer& server, kota::pipe::acceptor acc
                                               .agent_client = std::move(agent),
                                           });
 
-            group.spawn(run_daemon_connection(peer_ptr, connections, it));
+            group.spawn(run_daemon_connection(peer_ptr));
         }
     }(server, acceptor, connections, group));
 
