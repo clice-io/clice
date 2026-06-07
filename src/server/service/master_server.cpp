@@ -201,7 +201,7 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
 void MasterServer::schedule_shutdown() {
     if(lifecycle == ServerLifecycle::Exited)
         return;
-    lifecycle = ServerLifecycle::Exited;
+    lifecycle = ServerLifecycle::ShuttingDown;
     shutdown_event.set();
 }
 
@@ -210,6 +210,7 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     workspace.save_cache();
     co_await kota::when_all(indexer.stop(), compiler.stop());
     co_await pool.stop();
+    lifecycle = ServerLifecycle::Exited;
 }
 
 void MasterServer::load_workspace() {
@@ -335,9 +336,12 @@ struct Connection {
     std::unique_ptr<AgentClient> agent_client;
 };
 
-static kota::task<> run_connection(kota::ipc::JsonPeer* peer) {
+static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
+                                   std::list<Connection>& connections,
+                                   std::list<Connection>::iterator pos) {
     co_await peer->run();
     LOG_INFO("Client disconnected");
+    connections.erase(pos);
 }
 
 static kota::task<> accept_connections(MasterServer& server,
@@ -381,7 +385,7 @@ static kota::task<> accept_connections(MasterServer& server,
                                               .agent_client = std::move(agent),
                                           });
 
-            group.spawn(run_connection(peer_ptr));
+            group.spawn(run_connection(peer_ptr, connections, it));
         }
     }(server, acceptor, register_lsp, connections, group, lsp_registered));
 
@@ -474,9 +478,12 @@ struct DaemonConnection {
     std::unique_ptr<AgentClient> agent_client;
 };
 
-static kota::task<> run_daemon_connection(kota::ipc::JsonPeer* peer) {
+static kota::task<> run_daemon_connection(kota::ipc::JsonPeer* peer,
+                                          std::list<DaemonConnection>& connections,
+                                          std::list<DaemonConnection>::iterator pos) {
     co_await peer->run();
     LOG_INFO("Daemon client disconnected");
+    connections.erase(pos);
 }
 
 static kota::task<> daemon_accept(MasterServer& server, kota::pipe::acceptor acceptor) {
@@ -507,11 +514,16 @@ static kota::task<> daemon_accept(MasterServer& server, kota::pipe::acceptor acc
                                               .agent_client = std::move(agent),
                                           });
 
-            group.spawn(run_daemon_connection(peer_ptr));
+            group.spawn(run_daemon_connection(peer_ptr, connections, it));
         }
     }(server, acceptor, connections, group));
 
     co_await group.join();
+}
+
+static kota::task<> resilient_file_watcher(MasterServer& server) {
+    co_await server.file_watcher_task();
+    co_await server.get_shutdown_event().wait();
 }
 
 static kota::task<> daemon_main(MasterServer& server,
@@ -519,7 +531,7 @@ static kota::task<> daemon_main(MasterServer& server,
                                 bool watch_files) {
     if(watch_files) {
         co_await kota::when_any(daemon_accept(server, std::move(acceptor)),
-                                server.file_watcher_task(),
+                                resilient_file_watcher(server),
                                 server.get_shutdown_event().wait());
     } else {
         co_await kota::when_any(daemon_accept(server, std::move(acceptor)),
