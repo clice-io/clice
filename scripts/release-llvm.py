@@ -299,7 +299,7 @@ def _process_artifact(
                 print(f"[{artifact}] WARNING: no manifest, skipping prune", flush=True)
 
         output_path = output_dir / artifact
-        file_size = _compress_tar_xz(content_dir, output_path, "-9", artifact)
+        file_size = _compress_tar_xz(content_dir, output_path, "-9e", artifact)
 
         print(f"[{artifact}] Done ({file_size / 1048576:.1f} MB)", flush=True)
 
