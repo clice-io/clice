@@ -87,7 +87,7 @@ All feature responses use `RawValue` passthrough — the worker serializes the L
 
 ## Worker Pool
 
-The worker pool (`src/server/worker_pool.cpp`) manages spawning and communicating with worker processes. Each worker is a child process of the same `clice` binary, launched with `--mode stateful-worker` or `--mode stateless-worker`.
+The worker pool (`src/server/worker_pool.cpp`) manages spawning and communicating with worker processes. Each worker is a child process of the same `clice` binary, launched with `clice worker` (stateless by default) or `clice worker --memory-limit <bytes>` (stateful).
 
 ### Communication
 

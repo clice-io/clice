@@ -28,76 +28,70 @@ static kota::task<bool> send_and_print(kota::ipc::JsonPeer& peer, Params params)
 
 static kota::task<> agentic_request(kota::ipc::JsonPeer& peer,
                                     int& exit_code,
-                                    const AgenticQueryOptions& opts) {
+                                    const QueryOptions& opts) {
+    auto method = opts.method.value_or("compileCommand");
+    auto path = opts.path.value_or("");
+    auto name = opts.name.value_or("");
+    auto query = opts.query.value_or("");
+    auto line = opts.line.value_or(0);
+    auto direction = opts.direction.value_or("");
+
+    auto opt_name = name.empty() ? std::nullopt : std::optional(name);
+    auto opt_path = path.empty() ? std::nullopt : std::optional(path);
+    auto opt_line = line > 0 ? std::optional(line) : std::nullopt;
+    auto opt_dir = direction.empty() ? std::nullopt : std::optional(direction);
+
     bool ok = false;
 
-    if(opts.method == "compileCommand") {
-        ok = co_await send_and_print(peer, agentic::CompileCommandParams{.path = opts.path});
-    } else if(opts.method == "projectFiles") {
-        auto filter = opts.query.empty() ? std::nullopt : std::optional(opts.query);
+    if(method == "compileCommand") {
+        ok = co_await send_and_print(peer, agentic::CompileCommandParams{.path = path});
+    } else if(method == "projectFiles") {
+        auto filter = query.empty() ? std::nullopt : std::optional(query);
         ok = co_await send_and_print(peer, agentic::ProjectFilesParams{.filter = filter});
-    } else if(opts.method == "symbolSearch") {
-        ok = co_await send_and_print(peer, agentic::SymbolSearchParams{.query = opts.query});
-    } else if(opts.method == "definition") {
-        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
-        auto path = opts.path.empty() ? std::nullopt : std::optional(opts.path);
-        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
+    } else if(method == "symbolSearch") {
+        ok = co_await send_and_print(peer, agentic::SymbolSearchParams{.query = query});
+    } else if(method == "definition") {
         ok = co_await send_and_print(
             peer,
-            agentic::DefinitionParams{.name = name, .path = path, .line = line});
-    } else if(opts.method == "references") {
-        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
-        auto path = opts.path.empty() ? std::nullopt : std::optional(opts.path);
-        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
+            agentic::DefinitionParams{.name = opt_name, .path = opt_path, .line = opt_line});
+    } else if(method == "references") {
         ok = co_await send_and_print(
             peer,
-            agentic::ReferencesParams{.name = name, .path = path, .line = line});
-    } else if(opts.method == "readSymbol") {
-        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
-        auto path = opts.path.empty() ? std::nullopt : std::optional(opts.path);
-        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
+            agentic::ReferencesParams{.name = opt_name, .path = opt_path, .line = opt_line});
+    } else if(method == "readSymbol") {
         ok = co_await send_and_print(
             peer,
-            agentic::ReadSymbolParams{.name = name, .path = path, .line = line});
-    } else if(opts.method == "documentSymbols") {
-        ok = co_await send_and_print(peer, agentic::DocumentSymbolsParams{.path = opts.path});
-    } else if(opts.method == "callGraph") {
-        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
-        auto path = opts.path.empty() ? std::nullopt : std::optional(opts.path);
-        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
-        auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
+            agentic::ReadSymbolParams{.name = opt_name, .path = opt_path, .line = opt_line});
+    } else if(method == "documentSymbols") {
+        ok = co_await send_and_print(peer, agentic::DocumentSymbolsParams{.path = path});
+    } else if(method == "callGraph") {
         ok = co_await send_and_print(peer,
                                      agentic::CallGraphParams{
-                                         .name = name,
-                                         .path = path,
-                                         .line = line,
-                                         .direction = dir,
+                                         .name = opt_name,
+                                         .path = opt_path,
+                                         .line = opt_line,
+                                         .direction = opt_dir,
                                      });
-    } else if(opts.method == "typeHierarchy") {
-        auto name = opts.name.empty() ? std::nullopt : std::optional(opts.name);
-        auto path = opts.path.empty() ? std::nullopt : std::optional(opts.path);
-        auto line = opts.line > 0 ? std::optional(opts.line) : std::nullopt;
-        auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
+    } else if(method == "typeHierarchy") {
         ok = co_await send_and_print(peer,
                                      agentic::TypeHierarchyParams{
-                                         .name = name,
-                                         .path = path,
-                                         .line = line,
-                                         .direction = dir,
+                                         .name = opt_name,
+                                         .path = opt_path,
+                                         .line = opt_line,
+                                         .direction = opt_dir,
                                      });
-    } else if(opts.method == "fileDeps") {
-        auto dir = opts.direction.empty() ? std::nullopt : std::optional(opts.direction);
+    } else if(method == "fileDeps") {
         ok = co_await send_and_print(peer,
-                                     agentic::FileDepsParams{.path = opts.path, .direction = dir});
-    } else if(opts.method == "impactAnalysis") {
-        ok = co_await send_and_print(peer, agentic::ImpactAnalysisParams{.path = opts.path});
-    } else if(opts.method == "status") {
+                                     agentic::FileDepsParams{.path = path, .direction = opt_dir});
+    } else if(method == "impactAnalysis") {
+        ok = co_await send_and_print(peer, agentic::ImpactAnalysisParams{.path = path});
+    } else if(method == "status") {
         ok = co_await send_and_print(peer, agentic::StatusParams{});
-    } else if(opts.method == "shutdown") {
+    } else if(method == "shutdown") {
         peer.send_notification(agentic::ShutdownParams{});
         ok = true;
     } else {
-        LOG_ERROR("unknown agentic method '{}'", opts.method);
+        LOG_ERROR("unknown agentic method '{}'", method);
     }
 
     if(ok)
@@ -107,11 +101,13 @@ static kota::task<> agentic_request(kota::ipc::JsonPeer& peer,
 
 static kota::task<> agentic_client(int& exit_code,
                                    std::unique_ptr<kota::ipc::JsonPeer>& peer_out,
-                                   const AgenticQueryOptions& opts) {
+                                   const QueryOptions& opts) {
     auto& loop = kota::event_loop::current();
-    auto transport = co_await kota::ipc::StreamTransport::connect_tcp(opts.host, opts.port, loop);
+    auto host = opts.host.value_or("127.0.0.1");
+    auto port = *opts.port;
+    auto transport = co_await kota::ipc::StreamTransport::connect_tcp(host, port, loop);
     if(!transport) {
-        LOG_ERROR("failed to connect to {}:{}", opts.host, opts.port);
+        LOG_ERROR("failed to connect to {}:{}", host, port);
         co_return;
     }
 
@@ -119,7 +115,7 @@ static kota::task<> agentic_client(int& exit_code,
     co_await kota::when_all(peer_out->run(), agentic_request(*peer_out, exit_code, opts));
 }
 
-int run_agentic_mode(const AgenticQueryOptions& opts) {
+int run_agentic_mode(const QueryOptions& opts) {
     logging::stderr_logger("agentic", logging::options);
 
     kota::event_loop loop;

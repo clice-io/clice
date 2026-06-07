@@ -45,7 +45,7 @@ export async function activate(context: ExtensionContext) {
             }
         }
 
-        let args = ["--mode=pipe"];
+        let args = ["server"];
         serverOptions = {
             run: { command: executable, args: args },
             debug: { command: executable, args: args },

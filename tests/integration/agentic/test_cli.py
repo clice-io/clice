@@ -1,4 +1,4 @@
-"""CLI-based tests for agentic mode — run clice --mode agentic as a subprocess."""
+"""CLI-based tests for agentic mode — run clice query as a subprocess."""
 
 import json
 import subprocess
@@ -11,8 +11,7 @@ from tests.integration.utils.wait import wait_for_index
 def run_cli(executable, host, port, method, **kwargs):
     cmd = [
         str(executable),
-        "--mode",
-        "agentic",
+        "query",
         "--host",
         host,
         "--port",
@@ -35,7 +34,7 @@ async def indexed_server(request, executable, workspace):
 
     host = "127.0.0.1"
     port = _find_free_port()
-    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+    cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
     await c.start_io(*cmd)

@@ -72,7 +72,7 @@ TEST_SUITE(StatelessWorker) {
 
 TEST_CASE(SpawnAndExit) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateless-worker"));
+    ASSERT_TRUE(w.spawn());
 
     // Close stdin pipe to signal worker to exit.
     w.peer->close_output();
@@ -86,7 +86,7 @@ TEST_CASE(BuildPCHRequest) {
     auto hdr = tmp.path("test_pch.h");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateless-worker"));
+    ASSERT_TRUE(w.spawn());
 
     bool test_done = false;
 
@@ -121,7 +121,7 @@ TEST_CASE(IndexRequest) {
     auto src = tmp.path("test_index.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateless-worker"));
+    ASSERT_TRUE(w.spawn());
 
     bool test_done = false;
 
@@ -156,7 +156,7 @@ TEST_CASE(BuildPCMRequest) {
     auto src = tmp.path("test_module.cppm");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateless-worker"));
+    ASSERT_TRUE(w.spawn());
 
     bool test_done = false;
 
@@ -190,7 +190,7 @@ TEST_CASE(CompletionRequest) {
     auto src = tmp.path("completion_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateless-worker"));
+    ASSERT_TRUE(w.spawn());
 
     bool test_done = false;
 
@@ -220,7 +220,7 @@ TEST_CASE(SignatureHelpRequest) {
     auto src = tmp.path("sighelp_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateless-worker"));
+    ASSERT_TRUE(w.spawn());
 
     bool test_done = false;
 
@@ -255,7 +255,7 @@ TEST_CASE(MultipleStatelessRequests) {
     }
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateless-worker"));
+    ASSERT_TRUE(w.spawn());
 
     bool test_done = false;
 
