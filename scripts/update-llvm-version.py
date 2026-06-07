@@ -16,8 +16,8 @@ def copy_manifest(src: Path, dest: Path) -> None:
         print(f"Error: {src} is not valid JSON: {err}", file=sys.stderr)
         sys.exit(1)
 
-    if not isinstance(data, list) or len(data) == 0:
-        print(f"Error: {src} must be a non-empty JSON array", file=sys.stderr)
+    if not isinstance(data, dict) or "artifacts" not in data:
+        print(f"Error: {src} must be a JSON object with 'artifacts' key", file=sys.stderr)
         sys.exit(1)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -25,7 +25,7 @@ def copy_manifest(src: Path, dest: Path) -> None:
         json.dump(data, handle, indent=2)
         handle.write("\n")
 
-    print(f"Copied manifest: {src} -> {dest} ({len(data)} entries)")
+    print(f"Copied manifest: {src} -> {dest} ({len(data['artifacts'])} artifacts)")
 
 
 def update_package_cmake(path: Path, version: str) -> None:
@@ -77,25 +77,24 @@ def check_package_cmake(path: Path) -> None:
 
 
 def check_manifest(path: Path) -> None:
-    """Verify the manifest is a well-formed non-empty array with required fields."""
+    """Verify the manifest is well-formed with required fields."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as err:
         print(f"Error: {path} is not valid JSON: {err}", file=sys.stderr)
         sys.exit(1)
-    if not isinstance(data, list) or len(data) == 0:
-        print(f"Error: {path} must be a non-empty JSON array", file=sys.stderr)
+    if not isinstance(data, dict) or "artifacts" not in data:
+        print(f"Error: {path} must be a JSON object with 'artifacts' key", file=sys.stderr)
         sys.exit(1)
-    required = ("version", "platform", "arch", "build_type", "filename", "sha256")
-    for idx, entry in enumerate(data):
-        missing = [k for k in required if k not in entry]
-        if missing:
-            print(
-                f"Error: {path} entry {idx} is missing fields: {missing}",
-                file=sys.stderr,
-            )
+    artifacts = data["artifacts"]
+    if not artifacts:
+        print(f"Error: {path} has no artifacts", file=sys.stderr)
+        sys.exit(1)
+    for name, entry in artifacts.items():
+        if "sha256" not in entry:
+            print(f"Error: {path} artifact {name} missing 'sha256'", file=sys.stderr)
             sys.exit(1)
-    print(f"OK: {path} has {len(data)} well-formed entries")
+    print(f"OK: {path} has {len(artifacts)} well-formed artifacts")
 
 
 def main() -> None:

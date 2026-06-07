@@ -59,55 +59,51 @@ function(_detect_llvm_artifact_name OUT_FILENAME)
     set(${OUT_FILENAME} "${_ARCH}-${_PLATFORM}-${_TOOLCHAIN}-${_MODE}${_SUFFIX}.tar.xz" PARENT_SCOPE)
 endfunction()
 
+function(_download_and_extract _URL _SHA256 _DEST _LABEL)
+    set(_DOWNLOAD_PATH "${CMAKE_CURRENT_BINARY_DIR}/${_LABEL}")
+    if(NOT EXISTS "${_DOWNLOAD_PATH}")
+        message(STATUS "Downloading ${_LABEL}")
+        file(DOWNLOAD "${_URL}" "${_DOWNLOAD_PATH}"
+            EXPECTED_HASH SHA256=${_SHA256}
+            SHOW_PROGRESS
+            STATUS _DL_STATUS)
+        list(GET _DL_STATUS 0 _DL_CODE)
+        if(NOT _DL_CODE EQUAL 0)
+            list(GET _DL_STATUS 1 _DL_MSG)
+            file(REMOVE "${_DOWNLOAD_PATH}")
+            message(FATAL_ERROR "Failed to download ${_LABEL}: ${_DL_MSG}")
+        endif()
+    endif()
+
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E tar xf "${_DOWNLOAD_PATH}"
+        WORKING_DIRECTORY "${_DEST}"
+        RESULT_VARIABLE _TAR_RESULT)
+    if(NOT _TAR_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to extract ${_LABEL}")
+    endif()
+endfunction()
+
 function(_download_llvm LLVM_VERSION)
     _detect_llvm_artifact_name(_FILENAME)
 
     set(_MANIFEST_PATH "${PROJECT_SOURCE_DIR}/config/llvm-manifest.json")
     file(READ "${_MANIFEST_PATH}" _MANIFEST_JSON)
-    string(JSON _MANIFEST_LEN LENGTH "${_MANIFEST_JSON}")
-    math(EXPR _LAST_IDX "${_MANIFEST_LEN} - 1")
 
-    set(_SHA256 "")
-    foreach(_IDX RANGE ${_LAST_IDX})
-        string(JSON _ENTRY_FILENAME GET "${_MANIFEST_JSON}" ${_IDX} filename)
-        if("${_ENTRY_FILENAME}" STREQUAL "${_FILENAME}")
-            string(JSON _SHA256 GET "${_MANIFEST_JSON}" ${_IDX} sha256)
-            break()
-        endif()
-    endforeach()
-
-    if("${_SHA256}" STREQUAL "")
+    string(JSON _SHA256 ERROR_VARIABLE _ERR
+        GET "${_MANIFEST_JSON}" artifacts "${_FILENAME}" sha256)
+    if(_ERR)
         message(FATAL_ERROR "No matching LLVM artifact in manifest for: ${_FILENAME}")
     endif()
 
-    set(_URL "https://github.com/clice-io/clice-llvm/releases/download/${LLVM_VERSION}/${_FILENAME}")
-    set(_DOWNLOAD_PATH "${CMAKE_CURRENT_BINARY_DIR}/${_FILENAME}")
+    set(_BASE_URL "https://github.com/clice-io/clice-llvm/releases/download/${LLVM_VERSION}")
     set(_INSTALL_ROOT "${CMAKE_CURRENT_BINARY_DIR}/.llvm")
 
     if(NOT EXISTS "${_INSTALL_ROOT}/lib/cmake/llvm/LLVMConfig.cmake")
-        if(NOT EXISTS "${_DOWNLOAD_PATH}")
-            message(STATUS "Downloading LLVM ${LLVM_VERSION}: ${_FILENAME}")
-            file(DOWNLOAD "${_URL}" "${_DOWNLOAD_PATH}"
-                EXPECTED_HASH SHA256=${_SHA256}
-                SHOW_PROGRESS
-                STATUS _DL_STATUS)
-            list(GET _DL_STATUS 0 _DL_CODE)
-            if(NOT _DL_CODE EQUAL 0)
-                list(GET _DL_STATUS 1 _DL_MSG)
-                file(REMOVE "${_DOWNLOAD_PATH}")
-                message(FATAL_ERROR "Failed to download LLVM: ${_DL_MSG}")
-            endif()
-        endif()
-
-        message(STATUS "Extracting LLVM to ${_INSTALL_ROOT}")
         file(MAKE_DIRECTORY "${_INSTALL_ROOT}")
-        execute_process(
-            COMMAND "${CMAKE_COMMAND}" -E tar xf "${_DOWNLOAD_PATH}"
-            WORKING_DIRECTORY "${_INSTALL_ROOT}"
-            RESULT_VARIABLE _TAR_RESULT)
-        if(NOT _TAR_RESULT EQUAL 0)
-            message(FATAL_ERROR "Failed to extract LLVM archive")
-        endif()
+
+        _download_and_extract(
+            "${_BASE_URL}/${_FILENAME}" "${_SHA256}" "${_INSTALL_ROOT}" "${_FILENAME}")
 
         if(EXISTS "${_INSTALL_ROOT}/build-install")
             file(GLOB _NESTED "${_INSTALL_ROOT}/build-install/*")

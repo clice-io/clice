@@ -48,7 +48,6 @@ MANIFEST_DIRS = {
 
 ARCHIVE_MAGIC = b"!<arch>\n"
 
-
 def _is_shared_lib(path: Path) -> bool:
     return ".so" in path.suffixes or ".dylib" in path.suffixes
 
@@ -237,6 +236,30 @@ def _build_metadata_entry(path: Path, version: str) -> dict:
 # ── repackage ────────────────────────────────────────────────────────
 
 
+def _compress_tar_xz(
+    source_dir: Path, output_path: Path, xz_level: str, label: str,
+) -> int:
+    print(f"[{label}] Compressing (xz {xz_level})...", flush=True)
+    with output_path.open("wb") as out:
+        tar = subprocess.Popen(
+            ["tar", "-C", str(source_dir), "-cf", "-", "."],
+            stdout=subprocess.PIPE,
+        )
+        xz = subprocess.Popen(
+            ["xz", "-T0", xz_level, "-c"],
+            stdin=tar.stdout,
+            stdout=out,
+        )
+        tar.stdout.close()
+        xz.communicate()
+        tar.wait()
+        if tar.returncode != 0 or xz.returncode != 0:
+            raise RuntimeError(
+                f"tar/xz failed (tar={tar.returncode}, xz={xz.returncode})"
+            )
+    return output_path.stat().st_size
+
+
 def _process_artifact(
     artifact: str,
     source_run_id: str,
@@ -276,38 +299,9 @@ def _process_artifact(
                 print(f"[{artifact}] WARNING: no manifest, skipping prune", flush=True)
 
         output_path = output_dir / artifact
-        max_release_size = 2147483648
+        file_size = _compress_tar_xz(content_dir, output_path, "-9", artifact)
 
-        for xz_level in ("-6", "-9"):
-            print(f"[{artifact}] Repackaging (xz {xz_level})...", flush=True)
-            with output_path.open("wb") as out:
-                tar = subprocess.Popen(
-                    ["tar", "-C", str(content_dir), "-cf", "-", "."],
-                    stdout=subprocess.PIPE,
-                )
-                xz = subprocess.Popen(
-                    ["xz", "-T0", xz_level, "-c"],
-                    stdin=tar.stdout,
-                    stdout=out,
-                )
-                tar.stdout.close()
-                xz.communicate()
-                tar.wait()
-                if tar.returncode != 0 or xz.returncode != 0:
-                    raise RuntimeError(
-                        f"tar/xz failed (tar={tar.returncode}, xz={xz.returncode})"
-                    )
-
-            file_size = output_path.stat().st_size
-            size_mb = file_size / 1048576
-            if file_size <= max_release_size:
-                break
-            print(
-                f"[{artifact}] {size_mb:.1f} MB exceeds 2GB limit, retrying...",
-                flush=True,
-            )
-
-        print(f"[{artifact}] Done ({size_mb:.1f} MB)", flush=True)
+        print(f"[{artifact}] Done ({file_size / 1048576:.1f} MB)", flush=True)
 
         if version:
             meta = _build_metadata_entry(output_path, version)
@@ -474,8 +468,6 @@ def main() -> None:
             artifacts=args.artifacts,
             version=args.version,
         )
-    elif args.action == "merge-metadata":
-        merge_metadata(args.metadata_dir, args.output_dir / "llvm-manifest.json")
 
 
 if __name__ == "__main__":

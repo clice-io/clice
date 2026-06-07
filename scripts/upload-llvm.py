@@ -82,13 +82,16 @@ def main() -> None:
         sys.exit(1)
 
     version_without_prefix = tag.lstrip("vV")
-    metadata = [
-        build_metadata_entry(path, version_without_prefix) for path in artifact_files
-    ]
+    manifest = {"version": version_without_prefix, "artifacts": {}}
+    for path in artifact_files:
+        entry = build_metadata_entry(path, version_without_prefix)
+        filename = entry.pop("filename")
+        entry.pop("version", None)
+        manifest["artifacts"][filename] = entry
 
     json_path = artifacts_dir / "llvm-manifest.json"
     with json_path.open("w", encoding="utf-8") as handle:
-        json.dump(metadata, handle, indent=2)
+        json.dump(manifest, handle, indent=2)
         handle.write("\n")
 
     assets = [str(path) for path in artifact_files]
