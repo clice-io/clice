@@ -41,7 +41,7 @@ set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     kotatsu
     GIT_REPOSITORY https://github.com/clice-io/kotatsu
-    GIT_TAG 5e059a2d346200212f465094babde0b40b71a6f6
+    GIT_TAG 2a8c147579d36d33ff50f31d0bce49b0ab67381b
 )
 
 set(KOTA_ENABLE_ZEST ON)
