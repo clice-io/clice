@@ -889,8 +889,7 @@ kota::task<> Indexer::run_background_indexing() {
     indexing_active = true;
 
     kota::cancellation_source monitor_cancel;
-    kota::task_group<> monitor_group(loop);
-    monitor_group.spawn(kota::with_token(monitor_resources(), monitor_cancel.token()));
+    bg_tasks.spawn(kota::with_token(monitor_resources(), monitor_cancel.token()));
 
     std::stable_partition(
         index_queue.begin() + index_queue_pos,
@@ -953,7 +952,6 @@ kota::task<> Indexer::run_background_indexing() {
     }
 
     monitor_cancel.cancel();
-    co_await monitor_group.join();
 
     indexing_active = false;
     LOG_INFO("Background indexing complete: {} files dispatched", dispatched);

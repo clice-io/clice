@@ -422,9 +422,9 @@ async def test_rpc_status(indexed_agentic, workspace):
 
 @pytest.mark.workspace("hello_world")
 async def test_rpc_shutdown(executable, workspace):
-    """Shutdown notification should cause the server to exit."""
+    """Shutdown notification should cause the server to exit cleanly."""
     from tests.integration.utils.client import CliceClient
-    from tests.conftest import _shutdown_client, _find_free_port
+    from tests.conftest import _find_free_port, assert_server_exited_cleanly
 
     host = "127.0.0.1"
     port = _find_free_port()
@@ -445,13 +445,10 @@ async def test_rpc_shutdown(executable, workspace):
         pass
     rpc.sock.close()
 
-    import asyncio
-
-    for _ in range(20):
-        if c._server.returncode is not None:
-            break
-        await asyncio.sleep(0.5)
-    assert c._server.returncode is not None, "Server did not exit after shutdown"
+    await assert_server_exited_cleanly(c._server)
+    c._stop_event.set()
+    for task in c._async_tasks:
+        task.cancel()
 
 
 @pytest.mark.workspace("index_features")
