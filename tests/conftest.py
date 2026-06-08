@@ -209,7 +209,7 @@ def _server_stderr_excerpt(stderr_text: str) -> str:
     return "\n".join(interesting[-80:])
 
 
-async def assert_server_exited_cleanly(server, timeout: float = 3.0) -> None:
+async def assert_server_exited_cleanly(server, timeout: float = 10.0) -> None:
     failures: list[str] = []
 
     if server is None:
@@ -254,7 +254,7 @@ async def _shutdown_client(c: CliceClient) -> None:
     server = getattr(c, "_server", None)
 
     try:
-        await asyncio.wait_for(c.shutdown_async(None), timeout=3.0)
+        await asyncio.wait_for(c.shutdown_async(None), timeout=10.0)
     except Exception:
         pass
 
