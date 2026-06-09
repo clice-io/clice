@@ -231,110 +231,30 @@ jobs:
         shell: bash
         run: pixi run test ${{ matrix.llvm_mode }}
 
-      # Prune is only supported for native builds (requires linking clice to test).
-      # Cross-compiled targets reuse the native prune manifest of the same OS.
-      - name: Prune LLVM static libraries (Debug/RelWithDebInfo no LTO)
-        if: (!inputs.skip_clice_build) && (!matrix.target_triple) && (matrix.llvm_mode == 'Debug' || (matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'))
-        shell: bash
-        run: |
-          MANIFEST="pruned-libs-${{ matrix.os }}.json"
-          echo "LLVM_PRUNED_MANIFEST=${MANIFEST}" >> "${GITHUB_ENV}"
-          python3 scripts/release-llvm.py \
-            --action discover \
-            --install-dir ".llvm/build-install/lib" \
-            --build-dir "build/${{ matrix.llvm_mode }}" \
-            --max-attempts 60 \
-            --sleep-seconds 60 \
-            --manifest "${MANIFEST}"
-
-      - name: Upload pruned-libs manifest
-        if: (!inputs.skip_clice_build) && (!matrix.target_triple) && matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'OFF'
-        uses: actions/upload-artifact@v4
-        with:
-          name: llvm-pruned-libs-${{ matrix.os }}
-          path: ${{ env.LLVM_PRUNED_MANIFEST }}
-          if-no-files-found: error
-          compression-level: 0
-
-      - name: Apply pruned-libs manifest (RelWithDebInfo + LTO, native only)
-        if: (!inputs.skip_clice_build) && (!matrix.target_triple) && matrix.llvm_mode == 'RelWithDebInfo' && matrix.lto == 'ON'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          MANIFEST="pruned-libs-${{ matrix.os }}.json"
-          python3 scripts/release-llvm.py \
-            --action apply \
-            --manifest "${MANIFEST}" \
-            --install-dir ".llvm/build-install/lib" \
-            --build-dir "build/${{ matrix.llvm_mode }}" \
-            --gh-run-id "${{ github.run_id }}" \
-            --gh-artifact "llvm-pruned-libs-${{ matrix.os }}" \
-            --gh-download-dir "artifacts" \
-            --max-attempts 60 \
-            --sleep-seconds 60
-
-      # For cross-compiled LTO builds, apply the native prune manifest.
-      # The unused library set is arch-independent (same API surface).
-      - name: Apply pruned-libs manifest (cross-compile + LTO)
-        if: (!inputs.skip_clice_build) && matrix.target_triple && matrix.lto == 'ON'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          MANIFEST="pruned-libs-${{ matrix.os }}.json"
-          python3 scripts/release-llvm.py \
-            --action apply \
-            --manifest "${MANIFEST}" \
-            --install-dir ".llvm/build-install/lib" \
-            --build-dir "build/${{ matrix.llvm_mode }}" \
-            --gh-run-id "${{ github.run_id }}" \
-            --gh-artifact "llvm-pruned-libs-${{ matrix.os }}" \
-            --gh-download-dir "artifacts" \
-            --max-attempts 60 \
-            --sleep-seconds 60
-
       - name: Package LLVM install directory
         shell: bash
         run: |
-          MODE_TAG="releasedbg"
-          if [[ "${{ matrix.llvm_mode }}" == "Debug" ]]; then
-            MODE_TAG="debug"
-          fi
-
-          # Determine arch/platform/toolchain from target triple or runner OS
+          # Determine platform/arch from target triple or runner OS
           if [[ -n "${{ matrix.target_triple }}" ]]; then
             case "${{ matrix.target_triple }}" in
-              x86_64-apple-darwin)
-                ARCH="x64"; PLATFORM="macos"; TOOLCHAIN="clang" ;;
-              aarch64-linux-gnu)
-                ARCH="aarch64"; PLATFORM="linux"; TOOLCHAIN="gnu" ;;
-              aarch64-pc-windows-msvc)
-                ARCH="aarch64"; PLATFORM="windows"; TOOLCHAIN="msvc" ;;
+              x86_64-apple-darwin)       PLATFORM="macos";   ARCH="x64" ;;
+              aarch64-linux-gnu)         PLATFORM="linux";   ARCH="aarch64" ;;
+              aarch64-pc-windows-msvc)   PLATFORM="windows"; ARCH="aarch64" ;;
             esac
           else
-            ARCH="x64"
-            PLATFORM="linux"
-            TOOLCHAIN="gnu"
+            PLATFORM="linux"; ARCH="x64"
             if [[ "${{ matrix.os }}" == windows-* ]]; then
               PLATFORM="windows"
-              TOOLCHAIN="msvc"
             elif [[ "${{ matrix.os }}" == macos-* ]]; then
-              ARCH="arm64"
-              PLATFORM="macos"
-              TOOLCHAIN="clang"
+              PLATFORM="macos"; ARCH="arm64"
             fi
           fi
 
-          SUFFIX=""
-          if [[ "${{ matrix.lto }}" == "ON" ]]; then
-            SUFFIX="-lto"
-          fi
-          if [[ "${{ matrix.llvm_mode }}" == "Debug" && "${{ matrix.os }}" != windows-* ]]; then
-            SUFFIX="${SUFFIX}-asan"
-          fi
+          NAME_ARGS="--platform $PLATFORM --arch $ARCH --mode ${{ matrix.llvm_mode }}"
+          if [[ "${{ matrix.lto }}" == "ON" ]]; then NAME_ARGS+=" --lto"; fi
+          if [[ "${{ matrix.llvm_mode }}" == "Debug" && "${{ matrix.os }}" != windows-* ]]; then NAME_ARGS+=" --asan"; fi
 
-          ARCHIVE="${ARCH}-${PLATFORM}-${TOOLCHAIN}-${MODE_TAG}${SUFFIX}.tar.xz"
+          ARCHIVE=$(python3 scripts/release-llvm.py artifact-name $NAME_ARGS)
 
           set -eo pipefail
           tar -C .llvm -cf - build-install | xz -T0 -9 -c > "${ARCHIVE}"

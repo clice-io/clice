@@ -75,8 +75,7 @@ jobs:
       - name: Discover unused libraries
         shell: bash
         run: |
-          python3 scripts/release-llvm.py \
-            --action discover \
+          python3 scripts/release-llvm.py discover \
             --install-dir .llvm/build-install/lib \
             --build-dir build/RelWithDebInfo \
             --manifest pruned-libs.json \
@@ -106,23 +105,27 @@ jobs:
     needs: discover
     runs-on: ubuntu-24.04
     steps:
-      - name: Create release
+      - name: Create or reuse release
         env:
           GH_TOKEN: ${{ secrets.UPLOAD_LLVM }}
         run: |
           TAG="${{ env.LLVM_VERSION }}"
           REPO="clice-io/clice-llvm"
-          gh release delete "$TAG" --repo "$REPO" -y 2>/dev/null || true
-          gh release create "$TAG" \
-            --repo "$REPO" \
-            --title "$TAG" \
-            --notes "LLVM ${TAG} — build run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if gh release view "$TAG" --repo "$REPO" &>/dev/null; then
+            echo "Release $TAG already exists, will overwrite assets"
+          else
+            gh release create "$TAG" \
+              --repo "$REPO" \
+              --title "$TAG" \
+              --notes "LLVM ${TAG} — build run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
 
   repackage:
     needs: [discover, create-release]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -159,8 +162,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 scripts/release-llvm.py \
-            --action repackage \
+          python3 scripts/release-llvm.py repackage \
             --source-run-id "${{ env.SOURCE_RUN_ID }}" \
             --manifests-dir manifests \
             --output-dir artifacts \
@@ -174,7 +176,8 @@ jobs:
         run: |
           gh release upload "${{ env.LLVM_VERSION }}" \
             "artifacts/${{ matrix.artifact }}" \
-            --repo clice-io/clice-llvm
+            --repo clice-io/clice-llvm \
+            --clobber
 
       - name: Upload metadata
         uses: actions/upload-artifact@v4
@@ -217,7 +220,8 @@ jobs:
         run: |
           gh release upload "${{ env.LLVM_VERSION }}" \
             llvm-manifest.json \
-            --repo clice-io/clice-llvm
+            --repo clice-io/clice-llvm \
+            --clobber
 
       - name: Save manifest artifact
         uses: actions/upload-artifact@v4

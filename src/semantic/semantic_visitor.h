@@ -559,11 +559,6 @@ public:
         return true;
     }
 
-    /// std::allocator<T>::rebind<U>
-    /// DependentTemplateSpecializationType was merged into TemplateSpecializationType
-    /// in LLVM 22, so dependent template specializations are now handled via
-    /// VisitTemplateSpecializationTypeLoc above.
-
     /// ============================================================================
     ///                                Specifier
     /// ============================================================================

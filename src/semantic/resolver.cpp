@@ -210,8 +210,6 @@ public:
             if(underlying->isDependentType()) {
                 auto type = TransformType(underlying);
                 if(!type.isNull()) {
-                    // ElaboratedType was removed in LLVM 22; elaboration is now
-                    // part of each type's own representation.
                     TLB.pushTrivial(context, type, {});
                     return type;
                 }
@@ -222,8 +220,6 @@ public:
 
     clang::QualType TransformInjectedClassNameType(clang::TypeLocBuilder& TLB,
                                                    clang::InjectedClassNameTypeLoc TL) {
-        // In LLVM 22, InjectedClassNameType no longer has getInjectedSpecializationType.
-        // Just return the base transform.
         return Base::TransformInjectedClassNameType(TLB, TL);
     }
 
@@ -938,8 +934,6 @@ public:
 
     using Base::TransformTemplateSpecializationType;
 
-    /// Handle dependent template specializations (formerly DependentTemplateSpecializationType,
-    /// now merged into TemplateSpecializationType with DependentTemplateName in LLVM 22).
     clang::QualType TransformTemplateSpecializationType(clang::TypeLocBuilder& TLB,
                                                         clang::TemplateSpecializationTypeLoc TL) {
         auto* TST = TL.getTypePtr();
@@ -968,11 +962,24 @@ public:
             return iter->second;
         }
 
-        auto NNS = DTN->getQualifier();
+        auto NNSLoc = TransformNestedNameSpecifierLoc(TL.getQualifierLoc());
+        clang::NestedNameSpecifier NNS = NNSLoc
+            ? NNSLoc.getNestedNameSpecifier()
+            : DTN->getQualifier();
+
+        clang::TemplateArgumentListInfo info;
+        using arg_iterator = clang::TemplateArgumentLocContainerIterator<
+            clang::TemplateSpecializationTypeLoc>;
+        if(TransformTemplateArguments(arg_iterator(TL, 0), arg_iterator(TL, TL.getNumArgs()), info)) {
+            auto original = clang::QualType(TST, 0);
+            TLB.pushTrivial(context, original, {});
+            --indent;
+            return original;
+        }
 
         llvm::SmallVector<clang::TemplateArgument, 4> arguments;
-        for(auto& arg: TST->template_arguments()) {
-            arguments.push_back(arg);
+        for(auto& arg: info.arguments()) {
+            arguments.push_back(arg.getArgument());
         }
 
         auto* name = DTN->getName().getIdentifier();
@@ -1051,8 +1058,6 @@ public:
             if(underlying->isDependentType()) {
                 auto type = substitute(underlying);
                 if(!type.isNull()) {
-                    // ElaboratedType was removed in LLVM 22; elaboration is now
-                    // part of each type's own representation.
                     TLB.pushTrivial(context, type, {});
                     return type;
                 }

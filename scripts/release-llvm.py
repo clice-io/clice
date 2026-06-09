@@ -23,21 +23,47 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional
 
+PLATFORM_INFO = {
+    "linux":   {"toolchain": "gnu",   "arm_arch": "aarch64"},
+    "macos":   {"toolchain": "clang", "arm_arch": "arm64"},
+    "windows": {"toolchain": "msvc",  "arm_arch": "aarch64"},
+}
+
+
+def build_artifact_name(
+    platform: str, arch: str, mode: str, *, lto: bool = False, asan: bool = False,
+) -> str:
+    info = PLATFORM_INFO.get(platform)
+    if not info:
+        raise ValueError(f"Unknown platform: {platform}")
+    toolchain = info["toolchain"]
+    mode_tag = "debug" if mode == "Debug" else "releasedbg"
+    suffix = ""
+    if lto:
+        suffix += "-lto"
+    if asan:
+        suffix += "-asan"
+    return f"{arch}-{platform}-{toolchain}-{mode_tag}{suffix}.tar.xz"
+
+
 ARTIFACTS = [
-    "aarch64-linux-gnu-releasedbg-lto.tar.xz",
-    "aarch64-linux-gnu-releasedbg.tar.xz",
-    "aarch64-windows-msvc-releasedbg-lto.tar.xz",
-    "aarch64-windows-msvc-releasedbg.tar.xz",
-    "arm64-macos-clang-debug-asan.tar.xz",
-    "arm64-macos-clang-releasedbg-lto.tar.xz",
-    "arm64-macos-clang-releasedbg.tar.xz",
-    "x64-linux-gnu-debug-asan.tar.xz",
-    "x64-linux-gnu-releasedbg-lto.tar.xz",
-    "x64-linux-gnu-releasedbg.tar.xz",
-    "x64-macos-clang-releasedbg-lto.tar.xz",
-    "x64-macos-clang-releasedbg.tar.xz",
-    "x64-windows-msvc-releasedbg-lto.tar.xz",
-    "x64-windows-msvc-releasedbg.tar.xz",
+    build_artifact_name(p, a, m, lto=l, asan=s)
+    for p, a, m, l, s in [
+        ("linux",   "aarch64", "RelWithDebInfo", True,  False),
+        ("linux",   "aarch64", "RelWithDebInfo", False, False),
+        ("windows", "aarch64", "RelWithDebInfo", True,  False),
+        ("windows", "aarch64", "RelWithDebInfo", False, False),
+        ("macos",   "arm64",   "Debug",          False, True),
+        ("macos",   "arm64",   "RelWithDebInfo", True,  False),
+        ("macos",   "arm64",   "RelWithDebInfo", False, False),
+        ("linux",   "x64",     "Debug",          False, True),
+        ("linux",   "x64",     "RelWithDebInfo", True,  False),
+        ("linux",   "x64",     "RelWithDebInfo", False, False),
+        ("macos",   "x64",     "RelWithDebInfo", True,  False),
+        ("macos",   "x64",     "RelWithDebInfo", False, False),
+        ("windows", "x64",     "RelWithDebInfo", True,  False),
+        ("windows", "x64",     "RelWithDebInfo", False, False),
+    ]
 ]
 
 MANIFEST_DIRS = {
@@ -195,7 +221,7 @@ def apply_manifest(manifest: Path, install_dir: Path) -> None:
 # ── metadata ─────────────────────────────────────────────────────────
 
 
-def _sha256sum(path: Path) -> str:
+def sha256sum(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
@@ -203,7 +229,7 @@ def _sha256sum(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _build_metadata_entry(path: Path, version: str) -> dict:
+def build_metadata_entry(path: Path, version: str) -> dict:
     name = path.name.lower()
     if "windows" in name:
         platform = "windows"
@@ -224,7 +250,7 @@ def _build_metadata_entry(path: Path, version: str) -> dict:
     return {
         "version": version,
         "filename": path.name,
-        "sha256": _sha256sum(path),
+        "sha256": sha256sum(path),
         "lto": "-lto" in name,
         "asan": "-asan" in name,
         "platform": platform,
@@ -304,7 +330,7 @@ def _process_artifact(
         print(f"[{artifact}] Done ({file_size / 1048576:.1f} MB)", flush=True)
 
         if version:
-            meta = _build_metadata_entry(output_path, version)
+            meta = build_metadata_entry(output_path, version)
             meta_path = output_dir / f"{artifact}.meta.json"
             meta_path.write_text(json.dumps(meta, indent=2))
     finally:
@@ -418,28 +444,38 @@ def _ensure_manifest(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="LLVM release pipeline utilities.")
-    parser.add_argument(
-        "--action",
-        choices=["discover", "apply", "repackage"],
-        required=True,
-    )
-    parser.add_argument("--install-dir", type=Path)
-    parser.add_argument("--build-dir", type=Path)
-    parser.add_argument("--manifest", type=Path)
-    parser.add_argument("--skip-pattern", action="append", default=[])
-    # apply: download manifest from another job if not present locally
-    parser.add_argument("--gh-run-id", type=str)
-    parser.add_argument("--gh-artifact", type=str, default="llvm-pruned-libs")
-    parser.add_argument("--gh-download-dir", type=Path, default=Path("artifacts"))
-    parser.add_argument("--max-attempts", type=int, default=30)
-    parser.add_argument("--sleep-seconds", type=int, default=60)
-    # repackage
-    parser.add_argument("--source-run-id", type=str)
-    parser.add_argument("--manifests-dir", type=Path)
-    parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--max-parallel", type=int, default=3)
-    parser.add_argument("--artifacts", nargs="*")
-    parser.add_argument("--version", type=str)
+    sub = parser.add_subparsers(dest="action", required=True)
+
+    dp = sub.add_parser("discover", help="Probe which static libs can be removed")
+    dp.add_argument("--install-dir", type=Path, required=True)
+    dp.add_argument("--build-dir", type=Path, required=True)
+    dp.add_argument("--manifest", type=Path, required=True)
+    dp.add_argument("--skip-pattern", action="append", default=[])
+
+    ap = sub.add_parser("apply", help="Replace listed libs with empty archives")
+    ap.add_argument("--manifest", type=Path, required=True)
+    ap.add_argument("--install-dir", type=Path, required=True)
+    ap.add_argument("--gh-run-id", type=str)
+    ap.add_argument("--gh-artifact", type=str, default="llvm-pruned-libs")
+    ap.add_argument("--gh-download-dir", type=Path, default=Path("artifacts"))
+    ap.add_argument("--max-attempts", type=int, default=30)
+    ap.add_argument("--sleep-seconds", type=int, default=60)
+
+    rp = sub.add_parser("repackage", help="Download, prune, and repackage artifacts")
+    rp.add_argument("--source-run-id", type=str, required=True)
+    rp.add_argument("--manifests-dir", type=Path, required=True)
+    rp.add_argument("--output-dir", type=Path, required=True)
+    rp.add_argument("--max-parallel", type=int, default=3)
+    rp.add_argument("--artifacts", nargs="*")
+    rp.add_argument("--version", type=str)
+
+    np = sub.add_parser("artifact-name", help="Print the artifact filename for given params")
+    np.add_argument("--platform", required=True, choices=["linux", "macos", "windows"])
+    np.add_argument("--arch", required=True, choices=["x64", "arm64", "aarch64"])
+    np.add_argument("--mode", required=True, choices=["Debug", "RelWithDebInfo"])
+    np.add_argument("--lto", action="store_true")
+    np.add_argument("--asan", action="store_true")
+
     return parser.parse_args()
 
 
@@ -468,6 +504,10 @@ def main() -> None:
             artifacts=args.artifacts,
             version=args.version,
         )
+    elif args.action == "artifact-name":
+        print(build_artifact_name(
+            args.platform, args.arch, args.mode, lto=args.lto, asan=args.asan,
+        ))
 
 
 if __name__ == "__main__":

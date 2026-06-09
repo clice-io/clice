@@ -1,60 +1,14 @@
 #!/usr/bin/env python3
 
-import hashlib
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-
-def sha256sum(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def parse_platform(name: str) -> str:
-    lowered = name.lower()
-    if "windows" in lowered:
-        return "windows"
-    if "linux" in lowered:
-        return "linux"
-    if "macos" in lowered:
-        return "macosx"
-    raise ValueError(f"Unable to determine platform from filename: {name}")
-
-
-def parse_arch(name: str) -> str:
-    lowered = name.lower()
-    if lowered.startswith("aarch64-") or lowered.startswith("arm64-"):
-        return "arm64"
-    if lowered.startswith("x64-") or lowered.startswith("x86_64-"):
-        return "x64"
-    raise ValueError(f"Unable to determine arch from filename: {name}")
-
-
-def parse_build_type(name: str) -> str:
-    lowered = name.lower()
-    if "debug" in lowered:
-        return "Debug"
-    return "RelWithDebInfo"
-
-
-def build_metadata_entry(path: Path, version: str) -> dict:
-    filename = path.name
-    return {
-        "version": version,
-        "filename": filename,
-        "sha256": sha256sum(path),
-        "lto": "-lto" in filename.lower(),
-        "asan": "-asan" in filename.lower(),
-        "platform": parse_platform(filename),
-        "arch": parse_arch(filename),
-        "build_type": parse_build_type(filename),
-    }
+sys.path.insert(0, str(Path(__file__).parent))
+from importlib import import_module
+release_llvm = import_module("release-llvm")
 
 
 def main() -> None:
@@ -84,7 +38,7 @@ def main() -> None:
     version_without_prefix = tag.lstrip("vV")
     manifest = {"version": version_without_prefix, "artifacts": {}}
     for path in artifact_files:
-        entry = build_metadata_entry(path, version_without_prefix)
+        entry = release_llvm.build_metadata_entry(path, version_without_prefix)
         filename = entry.pop("filename")
         entry.pop("version", None)
         manifest["artifacts"][filename] = entry
