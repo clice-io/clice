@@ -435,9 +435,10 @@ std::vector<std::string> Toolchain::query(llvm::ArrayRef<const char*> arguments,
                                           llvm::StringRef file) {
     std::expected<std::vector<std::string>, std::string> result;
     kota::event_loop loop;
-    loop.schedule([&]() -> kota::task<> {
+    auto task = [&]() -> kota::task<> {
         result = co_await query_one(arguments, file);
-    }());
+    };
+    loop.schedule(task());
     loop.run();
 
     if(!result) {
@@ -594,9 +595,10 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
 
     std::vector<QueryOutcome> results;
     kota::event_loop loop;
-    loop.schedule([&]() -> kota::task<> {
+    auto task = [&]() -> kota::task<> {
         results = co_await run_queries(std::move(pending));
-    }());
+    };
+    loop.schedule(task());
     loop.run();
 
     for(auto& r: results) {
