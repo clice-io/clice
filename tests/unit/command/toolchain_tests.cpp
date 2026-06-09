@@ -48,12 +48,13 @@ TEST_CASE(GCC, skip = !(CIEnvironment && (Windows || Linux))) {
 
     auto result = Toolchain::query(
         {"g++", "-std=c++23", "-resource-dir", resource_dir().data(), "-xc++", file->c_str()});
+    ASSERT_TRUE(result.has_value());
 
-    ASSERT_TRUE(result.size() > 2);
-    ASSERT_EQ(result[1], "-cc1"sv);
+    ASSERT_TRUE(result->size() > 2);
+    ASSERT_EQ((*result)[1], "-cc1"sv);
 
     CompilationParams params;
-    for(auto& arg: result) {
+    for(auto& arg: *result) {
         params.arguments.push_back(arg.c_str());
     }
     params.add_remapped_file(file->c_str(), R"(
@@ -81,12 +82,13 @@ TEST_CASE(Clang, skip = !CIEnvironment) {
 
     auto result = Toolchain::query(
         {"clang++", "-std=c++23", "-resource-dir", resource_dir().data(), "-xc++", file->c_str()});
+    ASSERT_TRUE(result.has_value());
 
-    ASSERT_TRUE(result.size() > 2);
-    ASSERT_EQ(result[1], "-cc1"sv);
+    ASSERT_TRUE(result->size() > 2);
+    ASSERT_EQ((*result)[1], "-cc1"sv);
 
     CompilationParams params;
-    for(auto& arg: result) {
+    for(auto& arg: *result) {
         params.arguments.push_back(arg.c_str());
     }
     params.add_remapped_file(file->c_str(), R"(
@@ -123,8 +125,8 @@ TEST_CASE(Resolve, skip = !CIEnvironment) {
     cmd.source_file = file->c_str();
 
     Toolchain tc;
-    bool ok = tc.resolve(cmd);
-    ASSERT_TRUE(ok);
+    auto ok = tc.resolve(cmd);
+    ASSERT_TRUE(ok.has_value());
     EXPECT_TRUE(tc.has_cache());
     EXPECT_TRUE(cmd.resolved.is_cc1);
 
@@ -174,8 +176,8 @@ TEST_CASE(Warm, skip = !CIEnvironment) {
     EXPECT_TRUE(tc.has_cache());
 
     // After warm, resolve should hit cache (no subprocess).
-    bool ok = tc.resolve(cmd1);
-    ASSERT_TRUE(ok);
+    auto ok = tc.resolve(cmd1);
+    ASSERT_TRUE(ok.has_value());
     EXPECT_TRUE(cmd1.resolved.is_cc1);
 }
 

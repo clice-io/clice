@@ -201,7 +201,7 @@ export int a_value() { return b_value() + 1; }
                     std::format("clang++ -std=c++20 {}", tmp.path("mod_b.cppm")));
 
     auto cmds_b = cdb.lookup(tmp.path("mod_b.cppm"));
-    tc.resolve(cmds_b.front());
+    ASSERT_TRUE(tc.resolve(cmds_b.front()).has_value());
     CompilationParams params_b;
     params_b.kind = CompilationKind::ModuleInterface;
     params_b.arguments = cmds_b.front().to_argv();
@@ -221,7 +221,7 @@ export int a_value() { return b_value() + 1; }
                     std::format("clang++ -std=c++20 {}", tmp.path("mod_a.cppm")));
 
     auto cmds_a = cdb.lookup(tmp.path("mod_a.cppm"));
-    tc.resolve(cmds_a.front());
+    ASSERT_TRUE(tc.resolve(cmds_a.front()).has_value());
     CompilationParams params_a;
     params_a.kind = CompilationKind::ModuleInterface;
     params_a.arguments = cmds_a.front().to_argv();

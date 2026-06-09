@@ -431,8 +431,8 @@ CompilerFamily Toolchain::driver_family(llvm::StringRef driver) {
     return try_get(name);
 }
 
-std::vector<std::string> Toolchain::query(llvm::ArrayRef<const char*> arguments,
-                                          llvm::StringRef file) {
+std::expected<std::vector<std::string>, std::string>
+    Toolchain::query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file) {
     std::expected<std::vector<std::string>, std::string> result;
     kota::event_loop loop;
     auto task = [&]() -> kota::task<> {
@@ -440,12 +440,7 @@ std::vector<std::string> Toolchain::query(llvm::ArrayRef<const char*> arguments,
     };
     loop.schedule(task());
     loop.run();
-
-    if(!result) {
-        LOG_ERROR("Toolchain query failed: {}", result.error());
-        return {};
-    }
-    return std::move(*result);
+    return result;
 }
 
 Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
@@ -486,9 +481,9 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
     return result;
 }
 
-bool Toolchain::resolve(CompileCommand& cmd) {
+std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
     if(cmd.resolved.flags.empty())
-        return false;
+        return std::unexpected("empty flags");
 
     auto [key, query_args] = extract_flags(cmd.source_file, cmd.resolved.flags);
 
@@ -497,19 +492,19 @@ bool Toolchain::resolve(CompileCommand& cmd) {
         LOG_WARN("Toolchain cache miss: file={}", cmd.source_file);
 
         auto result = query(query_args, cmd.source_file);
-        if(result.empty())
-            return false;
+        if(!result)
+            return std::unexpected(std::move(result.error()));
 
         std::vector<const char*> saved;
-        saved.reserve(result.size());
-        for(auto& s: result)
+        saved.reserve(result->size());
+        for(auto& s: *result)
             saved.push_back(strings.save(s).data());
         it = cache.try_emplace(std::move(key), std::move(saved)).first;
     }
 
     auto cached = llvm::ArrayRef(it->second);
     if(cached.empty())
-        return false;
+        return std::unexpected("cached result is empty");
 
     std::vector<const char*> new_flags(cached.begin(), cached.end());
     new_flags.pop_back();  // remove temp source file
@@ -565,7 +560,7 @@ bool Toolchain::resolve(CompileCommand& cmd) {
 
     cmd.resolved.flags = std::move(cleaned);
     cmd.resolved.is_cc1 = ranges::contains(cmd.resolved.flags, llvm::StringRef("-cc1"));
-    return true;
+    return {};
 }
 
 bool Toolchain::has_cache() const {

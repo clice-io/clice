@@ -1,5 +1,6 @@
 #pragma once
 
+#include <expected>
 #include <memory>
 #include <string>
 #include <vector>
@@ -41,13 +42,13 @@ public:
     void warm(llvm::ArrayRef<CompileCommand> commands);
 
     /// Resolve a driver-level command to cc1 level by querying the toolchain.
-    /// Modifies the command in-place. Returns true on success.
-    bool resolve(CompileCommand& cmd);
+    /// Modifies the command in-place.
+    std::expected<void, std::string> resolve(CompileCommand& cmd);
 
     /// Single synchronous toolchain query. Returns cc1 arguments as owned strings.
     /// `file` is used for temp file extension detection (optional if -x is set).
-    static std::vector<std::string> query(llvm::ArrayRef<const char*> arguments,
-                                          llvm::StringRef file = {});
+    static std::expected<std::vector<std::string>, std::string>
+        query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file = {});
 
     bool has_cache() const;
 

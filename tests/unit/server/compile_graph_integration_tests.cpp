@@ -23,12 +23,10 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
     return [&](std::uint32_t path_id) -> kota::task<bool> {
         auto file_path = pool.resolve(path_id);
         auto results = cdb.lookup(file_path);
-        if(!results.empty()) {
-            toolchain.resolve(results[0]);
-        }
         if(results.empty()) {
             co_return false;
         }
+        toolchain.resolve(results[0]);
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
@@ -70,12 +68,10 @@ CompileGraph::resolve_fn make_resolver(CompilationDatabase& cdb,
     return [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         auto file_path = pool.resolve(path_id);
         auto results = cdb.lookup(file_path);
-        if(!results.empty()) {
-            toolchain.resolve(results[0]);
-        }
         if(results.empty()) {
             return {};
         }
+        toolchain.resolve(results[0]);
 
         auto scan_result = scan_precise(results[0].to_argv(), results[0].resolved.directory);
 
@@ -1151,10 +1147,8 @@ TEST_CASE(ModuleImplementationUnit) {
         // Now compile the implementation unit as Content (like a stateful worker would).
         auto impl_path = env.tmp.path("impl.cpp");
         auto results = env.cdb.lookup(impl_path);
-        if(!results.empty()) {
-            env.toolchain.resolve(results[0]);
-        }
         CO_ASSERT_FALSE(results.empty());
+        env.toolchain.resolve(results[0]);
 
         CompilationParams cp;
         cp.kind = CompilationKind::Content;

@@ -325,7 +325,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             auto cmds =
                 cdb.lookup(representative_path, {.remove = rule_remove, .append = rule_append});
             if(!cmds.empty()) {
-                toolchain.resolve(cmds.front());
+                if(auto e = toolchain.resolve(cmds.front()); !e) {
+                    LOG_WARN("Toolchain resolve failed: {}", e.error());
+                }
                 configs[config_id] =
                     extract_search_config(cmds.front().to_argv(), cmds.front().resolved.directory);
             }
@@ -591,7 +593,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 auto file_path = llvm::StringRef(scan_result.path);
                 auto contexts = cdb.lookup(file_path);
                 if(!contexts.empty()) {
-                    toolchain.resolve(contexts[0]);
+                    if(auto e = toolchain.resolve(contexts[0]); !e) {
+                        LOG_WARN("Toolchain resolve failed: {}", e.error());
+                    }
                     auto& cmd = contexts[0];
                     auto fallback =
                         scan_module_decl(cmd.to_argv(), cmd.resolved.directory, /*content=*/{});
