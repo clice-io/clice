@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from importlib import import_module
+
 release_llvm = import_module("release-llvm")
 
 

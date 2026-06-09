@@ -17,7 +17,9 @@ def copy_manifest(src: Path, dest: Path) -> None:
         sys.exit(1)
 
     if not isinstance(data, dict) or "artifacts" not in data:
-        print(f"Error: {src} must be a JSON object with 'artifacts' key", file=sys.stderr)
+        print(
+            f"Error: {src} must be a JSON object with 'artifacts' key", file=sys.stderr
+        )
         sys.exit(1)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -84,7 +86,9 @@ def check_manifest(path: Path) -> None:
         print(f"Error: {path} is not valid JSON: {err}", file=sys.stderr)
         sys.exit(1)
     if not isinstance(data, dict) or "artifacts" not in data:
-        print(f"Error: {path} must be a JSON object with 'artifacts' key", file=sys.stderr)
+        print(
+            f"Error: {path} must be a JSON object with 'artifacts' key", file=sys.stderr
+        )
         sys.exit(1)
     artifacts = data["artifacts"]
     if not artifacts:

@@ -24,14 +24,19 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 PLATFORM_INFO = {
-    "linux":   {"toolchain": "gnu",   "arm_arch": "aarch64"},
-    "macos":   {"toolchain": "clang", "arm_arch": "arm64"},
-    "windows": {"toolchain": "msvc",  "arm_arch": "aarch64"},
+    "linux": {"toolchain": "gnu", "arm_arch": "aarch64"},
+    "macos": {"toolchain": "clang", "arm_arch": "arm64"},
+    "windows": {"toolchain": "msvc", "arm_arch": "aarch64"},
 }
 
 
 def build_artifact_name(
-    platform: str, arch: str, mode: str, *, lto: bool = False, asan: bool = False,
+    platform: str,
+    arch: str,
+    mode: str,
+    *,
+    lto: bool = False,
+    asan: bool = False,
 ) -> str:
     info = PLATFORM_INFO.get(platform)
     if not info:
@@ -49,20 +54,20 @@ def build_artifact_name(
 ARTIFACTS = [
     build_artifact_name(p, a, m, lto=l, asan=s)
     for p, a, m, l, s in [
-        ("linux",   "aarch64", "RelWithDebInfo", True,  False),
-        ("linux",   "aarch64", "RelWithDebInfo", False, False),
-        ("windows", "aarch64", "RelWithDebInfo", True,  False),
+        ("linux", "aarch64", "RelWithDebInfo", True, False),
+        ("linux", "aarch64", "RelWithDebInfo", False, False),
+        ("windows", "aarch64", "RelWithDebInfo", True, False),
         ("windows", "aarch64", "RelWithDebInfo", False, False),
-        ("macos",   "arm64",   "Debug",          False, True),
-        ("macos",   "arm64",   "RelWithDebInfo", True,  False),
-        ("macos",   "arm64",   "RelWithDebInfo", False, False),
-        ("linux",   "x64",     "Debug",          False, True),
-        ("linux",   "x64",     "RelWithDebInfo", True,  False),
-        ("linux",   "x64",     "RelWithDebInfo", False, False),
-        ("macos",   "x64",     "RelWithDebInfo", True,  False),
-        ("macos",   "x64",     "RelWithDebInfo", False, False),
-        ("windows", "x64",     "RelWithDebInfo", True,  False),
-        ("windows", "x64",     "RelWithDebInfo", False, False),
+        ("macos", "arm64", "Debug", False, True),
+        ("macos", "arm64", "RelWithDebInfo", True, False),
+        ("macos", "arm64", "RelWithDebInfo", False, False),
+        ("linux", "x64", "Debug", False, True),
+        ("linux", "x64", "RelWithDebInfo", True, False),
+        ("linux", "x64", "RelWithDebInfo", False, False),
+        ("macos", "x64", "RelWithDebInfo", True, False),
+        ("macos", "x64", "RelWithDebInfo", False, False),
+        ("windows", "x64", "RelWithDebInfo", True, False),
+        ("windows", "x64", "RelWithDebInfo", False, False),
     ]
 ]
 
@@ -73,6 +78,7 @@ MANIFEST_DIRS = {
 }
 
 ARCHIVE_MAGIC = b"!<arch>\n"
+
 
 def _is_shared_lib(path: Path) -> bool:
     return ".so" in path.suffixes or ".dylib" in path.suffixes
@@ -133,9 +139,7 @@ def _candidate_files(
         if path.suffix.lower() not in {".a", ".lib"}:
             print(f"Skipping non-static file: {path.name}")
             continue
-        if skip_patterns and any(
-            fnmatch.fnmatch(path.name, p) for p in skip_patterns
-        ):
+        if skip_patterns and any(fnmatch.fnmatch(path.name, p) for p in skip_patterns):
             print(f"Skipping (never-prune): {path.name}")
             continue
         yield path
@@ -263,7 +267,10 @@ def build_metadata_entry(path: Path, version: str) -> dict:
 
 
 def _compress_tar_xz(
-    source_dir: Path, output_path: Path, xz_level: str, label: str,
+    source_dir: Path,
+    output_path: Path,
+    xz_level: str,
+    label: str,
 ) -> int:
     print(f"[{label}] Compressing (xz {xz_level})...", flush=True)
     with output_path.open("wb") as out:
@@ -300,16 +307,21 @@ def _process_artifact(
 
         print(f"[{artifact}] Downloading...", flush=True)
         subprocess.run(
-            ["gh", "run", "download", source_run_id,
-             "-n", artifact, "-D", str(dl_dir)],
+            ["gh", "run", "download", source_run_id, "-n", artifact, "-D", str(dl_dir)],
             check=True,
         )
 
         print(f"[{artifact}] Extracting...", flush=True)
         content_dir.mkdir()
         subprocess.run(
-            ["tar", "--strip-components=1", "-xf",
-             str(dl_dir / artifact), "-C", str(content_dir)],
+            [
+                "tar",
+                "--strip-components=1",
+                "-xf",
+                str(dl_dir / artifact),
+                "-C",
+                str(content_dir),
+            ],
             check=True,
         )
         shutil.rmtree(dl_dir)
@@ -401,9 +413,18 @@ def _wait_and_download_manifest(
             f"(run={run_id}, artifact={artifact})"
         )
         result = subprocess.run(
-            ["gh", "run", "download", str(run_id),
-             "--pattern", artifact, "--dir", str(download_dir)],
-            capture_output=True, text=True,
+            [
+                "gh",
+                "run",
+                "download",
+                str(run_id),
+                "--pattern",
+                artifact,
+                "--dir",
+                str(download_dir),
+            ],
+            capture_output=True,
+            text=True,
         )
         if result.returncode == 0:
             found = _find_manifest(download_dir, manifest_name)
@@ -433,7 +454,12 @@ def _ensure_manifest(
             f"Manifest {manifest} missing and no gh run ID provided"
         )
     downloaded = _wait_and_download_manifest(
-        run_id, artifact, download_dir, manifest.name, max_attempts, sleep_seconds,
+        run_id,
+        artifact,
+        download_dir,
+        manifest.name,
+        max_attempts,
+        sleep_seconds,
     )
     if downloaded != manifest:
         shutil.copy(downloaded, manifest)
@@ -470,7 +496,9 @@ def parse_args() -> argparse.Namespace:
     rp.add_argument("--artifacts", nargs="*")
     rp.add_argument("--version", type=str)
 
-    np = sub.add_parser("artifact-name", help="Print the artifact filename for given params")
+    np = sub.add_parser(
+        "artifact-name", help="Print the artifact filename for given params"
+    )
     np.add_argument("--platform", required=True, choices=["linux", "macos", "windows"])
     np.add_argument("--arch", required=True, choices=["x64", "arm64", "aarch64"])
     np.add_argument("--mode", required=True, choices=["Debug", "RelWithDebInfo"])
@@ -506,9 +534,15 @@ def main() -> None:
             version=args.version,
         )
     elif args.action == "artifact-name":
-        print(build_artifact_name(
-            args.platform, args.arch, args.mode, lto=args.lto, asan=args.asan,
-        ))
+        print(
+            build_artifact_name(
+                args.platform,
+                args.arch,
+                args.mode,
+                lto=args.lto,
+                asan=args.asan,
+            )
+        )
 
 
 if __name__ == "__main__":

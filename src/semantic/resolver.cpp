@@ -963,14 +963,15 @@ public:
         }
 
         auto NNSLoc = TransformNestedNameSpecifierLoc(TL.getQualifierLoc());
-        clang::NestedNameSpecifier NNS = NNSLoc
-            ? NNSLoc.getNestedNameSpecifier()
-            : DTN->getQualifier();
+        clang::NestedNameSpecifier NNS =
+            NNSLoc ? NNSLoc.getNestedNameSpecifier() : DTN->getQualifier();
 
         clang::TemplateArgumentListInfo info;
-        using arg_iterator = clang::TemplateArgumentLocContainerIterator<
-            clang::TemplateSpecializationTypeLoc>;
-        if(TransformTemplateArguments(arg_iterator(TL, 0), arg_iterator(TL, TL.getNumArgs()), info)) {
+        using arg_iterator =
+            clang::TemplateArgumentLocContainerIterator<clang::TemplateSpecializationTypeLoc>;
+        if(TransformTemplateArguments(arg_iterator(TL, 0),
+                                      arg_iterator(TL, TL.getNumArgs()),
+                                      info)) {
             auto original = clang::QualType(TST, 0);
             TLB.pushTrivial(context, original, {});
             --indent;
