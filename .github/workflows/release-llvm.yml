@@ -1,11 +1,6 @@
 name: release llvm
 
 on:
-  push:
-    branches: [chore/upgrade-llvm-22]
-    paths:
-      - ".github/workflows/release-llvm.yml"
-      - "scripts/release-llvm.py"
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -18,8 +13,8 @@ on:
         type: string
 
 env:
-  SOURCE_RUN_ID: ${{ inputs.source_run_id || '27052100922' }}
-  LLVM_VERSION: ${{ inputs.llvm_version || '22.1.4' }}
+  SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+  LLVM_VERSION: ${{ inputs.llvm_version }}
 
 jobs:
   discover:

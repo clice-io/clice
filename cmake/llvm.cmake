@@ -69,6 +69,14 @@ endfunction()
 
 function(_download_and_extract _URL _SHA256 _DEST _LABEL)
     set(_DOWNLOAD_PATH "${CMAKE_CURRENT_BINARY_DIR}/${_LABEL}")
+    if(EXISTS "${_DOWNLOAD_PATH}")
+        file(SHA256 "${_DOWNLOAD_PATH}" _EXISTING_HASH)
+        if(NOT _EXISTING_HASH STREQUAL "${_SHA256}")
+            message(STATUS "Hash mismatch for cached ${_LABEL}, re-downloading")
+            file(REMOVE "${_DOWNLOAD_PATH}")
+        endif()
+    endif()
+
     if(NOT EXISTS "${_DOWNLOAD_PATH}")
         message(STATUS "Downloading ${_LABEL}")
         file(DOWNLOAD "${_URL}" "${_DOWNLOAD_PATH}"
@@ -106,8 +114,21 @@ function(_download_llvm LLVM_VERSION)
 
     set(_BASE_URL "https://github.com/clice-io/clice-llvm/releases/download/${LLVM_VERSION}")
     set(_INSTALL_ROOT "${CMAKE_CURRENT_BINARY_DIR}/.llvm")
+    set(_VERSION_STAMP "${_INSTALL_ROOT}/.llvm-version")
 
-    if(NOT EXISTS "${_INSTALL_ROOT}/lib/cmake/llvm/LLVMConfig.cmake")
+    set(_NEED_INSTALL TRUE)
+    if(EXISTS "${_INSTALL_ROOT}/lib/cmake/llvm/LLVMConfig.cmake" AND EXISTS "${_VERSION_STAMP}")
+        file(READ "${_VERSION_STAMP}" _CACHED_VERSION)
+        string(STRIP "${_CACHED_VERSION}" _CACHED_VERSION)
+        if(_CACHED_VERSION STREQUAL "${LLVM_VERSION}")
+            set(_NEED_INSTALL FALSE)
+        else()
+            message(STATUS "LLVM version changed (${_CACHED_VERSION} -> ${LLVM_VERSION}), reinstalling")
+            file(REMOVE_RECURSE "${_INSTALL_ROOT}")
+        endif()
+    endif()
+
+    if(_NEED_INSTALL)
         file(MAKE_DIRECTORY "${_INSTALL_ROOT}")
 
         _download_and_extract(
@@ -121,6 +142,8 @@ function(_download_llvm LLVM_VERSION)
             endforeach()
             file(REMOVE_RECURSE "${_INSTALL_ROOT}/build-install")
         endif()
+
+        file(WRITE "${_VERSION_STAMP}" "${LLVM_VERSION}\n")
     endif()
 
     set(LLVM_INSTALL_PATH "${_INSTALL_ROOT}" PARENT_SCOPE)

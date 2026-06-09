@@ -318,11 +318,12 @@ def _process_artifact(
             print(f"[{artifact}] Debug/ASAN — skipping prune", flush=True)
         else:
             manifest = _manifest_for(artifact, manifests_dir)
-            if manifest and manifest.is_file():
-                print(f"[{artifact}] Pruning...", flush=True)
-                apply_manifest(manifest, content_dir / "lib")
-            else:
-                print(f"[{artifact}] WARNING: no manifest, skipping prune", flush=True)
+            if not manifest:
+                raise RuntimeError(f"No manifest mapping for artifact: {artifact}")
+            if not manifest.is_file():
+                raise FileNotFoundError(f"Prune manifest missing: {manifest}")
+            print(f"[{artifact}] Pruning...", flush=True)
+            apply_manifest(manifest, content_dir / "lib")
 
         output_path = output_dir / artifact
         file_size = _compress_tar_xz(content_dir, output_path, "-9e", artifact)
