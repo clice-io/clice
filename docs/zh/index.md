@@ -8,13 +8,13 @@ hero:
   actions:
     - theme: brand
       text: 什么是 clice?
-      link: /zh/guide/what-is-clice
+      link: ./guide/what-is-clice
     - theme: alt
       text: 快速开始
-      link: /zh/guide/quick-start
+      link: ./guide/quick-start
     - theme: alt
       text: 参与贡献
-      link: /zh/dev/contribution
+      link: ./dev/contribution
   image:
     src: /image.png
     alt: clice
