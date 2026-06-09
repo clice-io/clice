@@ -286,15 +286,15 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         //
         // This is the right granularity for SearchConfig: different -I paths
         // produce different groups. For toolchain queries the granularity is
-        // coarser (only --target/-std= matter), so get_pending_queries further
-        // deduplicates internally.
+        // coarser (only --target/-std= matter), so warm() further deduplicates
+        // internally.
         config_groups = cdb.unique_configs();
 
-        // Pre-warm toolchain cache: batch-query all unique toolchain keys in
-        // parallel. get_pending_queries parses each command's flags to extract
-        // only toolchain-affecting options (driver, --target, -std=, --sysroot)
-        // as cache keys. Commands differing only in -D/-I collapse to the same
-        // key, so N config groups often yield just 1-2 actual subprocess calls.
+        // Pre-warm toolchain cache: warm() parses each command's flags to
+        // extract only toolchain-affecting options (driver, --target, -std=,
+        // --sysroot) as cache keys. Commands differing only in -D/-I collapse
+        // to the same key, so N config groups often yield just 1-2 subprocess
+        // calls.
         auto prewarm_start = std::chrono::steady_clock::now();
         llvm::SmallVector<CompileCommand> representative_cmds;
         representative_cmds.reserve(config_groups.size());

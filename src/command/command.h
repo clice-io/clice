@@ -263,7 +263,6 @@ private:
     /// All compilation entries, sorted by file path_id.
     /// Multiple entries for the same file are adjacent.
     std::vector<CompilationEntry> entries;
-
 };
 
 }  // namespace clice

@@ -313,8 +313,10 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
                                                   object_ptr<CompilationInfo> info,
                                                   const CommandOptions& options) {
     auto render_arg = [&](auto& out, const kota::option::ParsedArg& arg) {
-        auto cb = [&](std::string_view s) { out.push_back(strings.save(s).data()); };
-        clang_options::table().render(arg, cb);
+        auto cb = [&](std::string_view s) {
+            out.push_back(strings.save(s).data());
+        };
+        option::table().render(arg, cb);
     };
 
     llvm::StringRef directory = info->directory;
@@ -351,12 +353,14 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
             remove_strs.push_back(s);
         }
         std::vector<kota::option::ParsedArg> remove_args;
-        for(auto& result: clang_options::table().parse(remove_strs)) {
+        for(auto& result: option::table().parse(remove_strs)) {
             if(result.has_value()) {
                 remove_args.push_back(*result);
             }
         }
-        auto get_id = [](const kota::option::ParsedArg& arg) { return arg.id; };
+        auto get_id = [](const kota::option::ParsedArg& arg) {
+            return arg.id;
+        };
         std::ranges::sort(remove_args, {}, get_id);
 
         auto saved_flags = std::move(flags);
@@ -364,7 +368,7 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         flags.push_back(saved_flags.front());
 
         std::vector<std::string> saved_parse_args(saved_flags.begin() + 1, saved_flags.end());
-        for(auto& result: clang_options::table().parse(saved_parse_args)) {
+        for(auto& result: option::table().parse(saved_parse_args)) {
             if(!result.has_value()) {
                 continue;
             }

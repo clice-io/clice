@@ -217,6 +217,32 @@ TEST_CASE(UniqueConfigsPreservesSameFileConfigs) {
     EXPECT_TRUE(has_20);
 };
 
+TEST_CASE(UniqueConfigsMultiFile) {
+    CompilationDatabase database;
+    database.add_command("fake", "a.cpp", "clang++ -std=c++20 -Wall a.cpp"sv);
+    database.add_command("fake", "b.cpp", "clang++ -std=c++20 -Wall b.cpp"sv);
+    database.add_command("fake", "c.cpp", "clang++ -std=c++17 c.cpp"sv);
+    database.add_command("fake", "d.cpp", "clang++ -std=c++20 -Wall -DA d.cpp"sv);
+
+    auto groups = database.unique_configs(quiet_options());
+
+    // a.cpp and b.cpp share canonical (-std=c++20 -Wall, no user-content diff).
+    // c.cpp has different canonical (-std=c++17).
+    // d.cpp has same canonical as a/b but different patch (-DA).
+    ASSERT_EQ(groups.size(), 3U);
+
+    for(auto& group: groups) {
+        auto argv = print_argv(group.command.to_argv());
+        if(llvm::StringRef(argv).contains("-std=c++17")) {
+            ASSERT_EQ(group.file_ids.size(), 1U);
+        } else if(llvm::StringRef(argv).contains("-D")) {
+            ASSERT_EQ(group.file_ids.size(), 1U);
+        } else {
+            ASSERT_EQ(group.file_ids.size(), 2U);
+        }
+    }
+};
+
 TEST_CASE(CodegenFilter) {
     /// Codegen-only options should be stripped from the canonical command.
     CompilationDatabase database;

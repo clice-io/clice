@@ -462,7 +462,7 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
     std::vector<std::string> parse_args(arguments.begin() + 1, arguments.end());
     auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
                                               .visibility = default_visibility(arguments[0])};
-    for(auto& r: clang_options::table().parse(parse_args, options)) {
+    for(auto& r: option::table().parse(parse_args, options)) {
         if(!r.has_value())
             continue;
         auto& arg = *r;
@@ -479,7 +479,7 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
         auto cb = [&](std::string_view s) {
             result.query_args.push_back(strings.save(s).data());
         };
-        clang_options::table().render(arg, cb);
+        option::table().render(arg, cb);
     }
 
     return result;
@@ -539,13 +539,15 @@ bool Toolchain::resolve(CompileCommand& cmd) {
     auto resolve_options =
         kota::option::ParseOptions{.dash_dash_parsing = true,
                                    .visibility = default_visibility(cmd.resolved.flags[0])};
-    for(auto& r: clang_options::table().parse(resolve_parse_args, resolve_options)) {
+    for(auto& r: option::table().parse(resolve_parse_args, resolve_options)) {
         if(!r.has_value())
             continue;
         auto& arg = *r;
         if(is_user_content_option(arg.id)) {
-            auto cb = [&](std::string_view s) { new_flags.push_back(strings.save(s).data()); };
-            clang_options::table().render(arg, cb);
+            auto cb = [&](std::string_view s) {
+                new_flags.push_back(strings.save(s).data());
+            };
+            option::table().render(arg, cb);
         }
     }
 

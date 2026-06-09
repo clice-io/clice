@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 
-#include "command/argument_parser.h"
 #include "support/object_pool.h"
 
 #include "llvm/ADT/ArrayRef.h"
