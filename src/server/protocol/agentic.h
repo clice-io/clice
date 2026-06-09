@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/protocol.h"
 
 namespace clice::agentic {
@@ -202,6 +203,13 @@ struct TypeHierarchyResult {
     std::vector<TypeHierarchyEntry> subtypes;
 };
 
+struct LintParams {
+    std::string path;
+    std::optional<int> line;
+};
+
+using LintResult = std::vector<kota::ipc::protocol::Diagnostic>;
+
 struct StatusParams {};
 
 struct StatusResult {
@@ -281,6 +289,12 @@ template <>
 struct RequestTraits<clice::agentic::TypeHierarchyParams> {
     using Result = clice::agentic::TypeHierarchyResult;
     constexpr inline static std::string_view method = "agentic/typeHierarchy";
+};
+
+template <>
+struct RequestTraits<clice::agentic::LintParams> {
+    using Result = clice::agentic::LintResult;
+    constexpr inline static std::string_view method = "agentic/lint";
 };
 
 template <>

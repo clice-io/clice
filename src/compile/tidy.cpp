@@ -12,6 +12,10 @@
 #include "clang-tidy/ClangTidyDiagnosticConsumer.h"
 #include "clang-tidy/ClangTidyModuleRegistry.h"
 #include "clang-tidy/ClangTidyOptions.h"
+#ifdef CLICE_HAS_CLANG_TIDY_MODULES
+#define CLANG_TIDY_DISABLE_STATIC_ANALYZER_CHECKS
+#include "clang-tidy/ClangTidyForceLinker.h"
+#endif
 
 namespace clice::tidy {
 

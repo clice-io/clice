@@ -53,7 +53,7 @@ struct Options {
         help =
             "Agentic method (compileCommand, symbolSearch, definition, references, "
             "documentSymbols, readSymbol, callGraph, typeHierarchy, projectFiles, "
-            "fileDeps, impactAnalysis, status, shutdown)",
+            "lint, fileDeps, impactAnalysis, status, shutdown)",
         required = false)
     <std::string> method;
 

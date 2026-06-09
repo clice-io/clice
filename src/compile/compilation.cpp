@@ -418,6 +418,8 @@ CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
 }
 
 CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer* consumer) {
+    params.kind = CompilationKind::Completion;
+
     auto& [file, offset] = params.completion;
 
     /// The location of clang is 1-1 based.

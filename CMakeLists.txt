@@ -126,6 +126,8 @@ endif()
 
 set(FBS_SCHEMA_FILE "${PROJECT_SOURCE_DIR}/src/index/schema.fbs")
 set(GENERATED_HEADER "${PROJECT_BINARY_DIR}/generated/schema_generated.h")
+set(CLANG_TIDY_CONFIG_SOURCE_FILE "${PROJECT_SOURCE_DIR}/config/clang-tidy-config.h")
+set(CLANG_TIDY_CONFIG_GENERATED_FILE "${PROJECT_BINARY_DIR}/generated/clang-tidy-config.h")
 
 if(CMAKE_CROSSCOMPILING)
     find_program(FLATC_EXECUTABLE flatc REQUIRED)
@@ -143,10 +145,21 @@ add_custom_command(
 
 add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 
+add_custom_command(
+    OUTPUT "${CLANG_TIDY_CONFIG_GENERATED_FILE}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CLANG_TIDY_CONFIG_SOURCE_FILE}"
+        "${CLANG_TIDY_CONFIG_GENERATED_FILE}"
+    DEPENDS "${CLANG_TIDY_CONFIG_SOURCE_FILE}"
+    COMMENT "Generating C++ header from ${CLANG_TIDY_CONFIG_SOURCE_FILE}"
+)
+
+add_custom_target(generate_clang_tidy_config DEPENDS "${CLANG_TIDY_CONFIG_GENERATED_FILE}")
+
 file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
 add_library(clice-core STATIC ${CLICE_CORE_SOURCES})
 add_library(clice::core ALIAS clice-core)
-add_dependencies(clice-core generate_flatbuffers_schema)
+add_dependencies(clice-core generate_flatbuffers_schema generate_clang_tidy_config)
 
 target_include_directories(clice-core PUBLIC
     "${PROJECT_SOURCE_DIR}/src"

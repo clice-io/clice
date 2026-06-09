@@ -669,6 +669,7 @@ kota::task<> Compiler::run_compile(std::uint32_t pid, std::shared_ptr<Session::P
     params.path = file_path;
     params.version = sess->version;
     params.text = sess->text;
+    params.clang_tidy = workspace.config.project.clang_tidy.value;
     if(!fill_compile_args(file_path, params.directory, params.arguments, sess)) {
         finish_compile();
         co_return;

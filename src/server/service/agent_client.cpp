@@ -6,11 +6,14 @@
 #include <string>
 #include <vector>
 
+#include "compile/compilation.h"
+#include "feature/feature.h"
 #include "server/protocol/agentic.h"
 #include "server/service/master_server.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
+#include "kota/async/async.h"
 #include "kota/ipc/lsp/uri.h"
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
@@ -768,6 +771,36 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
             co_return result;
         });
+
+    peer.on_request([&srv](RequestContext&, const LintParams& params) -> RequestResult<LintParams> {
+        std::string directory;
+        std::vector<std::string> arguments;
+        if(!srv.compiler.fill_compile_args(params.path, directory, arguments)) {
+            co_return kota::outcome_error(
+                kota::ipc::Error{std::format("no compile command found for {}", params.path)});
+        }
+
+        auto result = co_await kota::queue([path = params.path,
+                                            directory = std::move(directory),
+                                            arguments = std::move(arguments)]() mutable {
+            CompilationParams cp;
+            cp.kind = CompilationKind::Content;
+            cp.clang_tidy = true;
+            cp.directory = std::move(directory);
+            for(auto& arg: arguments) {
+                cp.arguments.push_back(arg.c_str());
+            }
+
+            auto unit = compile(cp);
+            if(!unit.completed() && !unit.fatal_error()) {
+                LOG_WARN("Lint compilation failed: {}", path);
+                return LintResult{};
+            }
+
+            return feature::diagnostics(unit);
+        });
+        co_return result.value();
+    });
 
     peer.on_request([&srv](RequestContext&, const StatusParams&) -> RequestResult<StatusParams> {
         StatusResult result;
