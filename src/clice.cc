@@ -31,9 +31,14 @@ struct WorkerOptions {
     DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
     help;
 
+    DecoFlag(names = {"--stateful"},
+             help = "Run as stateful worker (default: stateless)",
+             required = false)
+    stateful;
+
     DecoKV(style = KVStyle::JoinedOrSeparate,
            names = {"--memory-limit", "--memory-limit="},
-           help = "Memory limit in bytes (presence implies stateful worker)",
+           help = "Memory limit in bytes (stateful worker only)",
            required = false)
     <std::uint64_t> memory_limit;
 
@@ -135,8 +140,9 @@ int main(int argc, const char** argv) {
             }
             auto name = opts.worker_name.value_or("worker");
             auto log_dir = opts.log_dir.value_or("");
-            if(opts.memory_limit.has_value()) {
-                exit_code = clice::run_stateful_worker_mode(*opts.memory_limit, name, log_dir);
+            if(opts.stateful) {
+                auto limit = opts.memory_limit.value_or(4ULL * 1024 * 1024 * 1024);
+                exit_code = clice::run_stateful_worker_mode(limit, name, log_dir);
             } else {
                 exit_code = clice::run_stateless_worker_mode(name, log_dir);
             }

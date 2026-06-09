@@ -58,6 +58,7 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     opts.file = self_path;
     opts.args = {self_path, "worker"};
     if(stateful) {
+        opts.args.push_back("--stateful");
         opts.args.push_back("--memory-limit");
         opts.args.push_back(std::to_string(memory_limit));
     }
@@ -287,6 +288,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     opts.file = options_.self_path;
     opts.args = {options_.self_path, "worker"};
     if(stateful) {
+        opts.args.push_back("--stateful");
         opts.args.push_back("--memory-limit");
         opts.args.push_back(std::to_string(options_.worker_memory_limit));
     }

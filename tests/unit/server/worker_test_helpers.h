@@ -78,6 +78,7 @@ struct WorkerHandle {
         opts.file = binary;
         opts.args = {binary, "worker"};
         if(memory_limit > 0) {
+            opts.args.push_back("--stateful");
             opts.args.push_back("--memory-limit");
             opts.args.push_back(std::to_string(memory_limit));
         }
