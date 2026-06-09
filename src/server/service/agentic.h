@@ -8,45 +8,50 @@
 namespace clice {
 
 namespace deco = kota::deco;
-using deco::decl::KVStyle;
 
 struct QueryOptions {
     DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
     help;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "Server host", required = false)
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate, help = "Server host", required = false)
     <std::string> host = "127.0.0.1";
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "Server port (required)", required = false)
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help = "Server port (required)",
+           required = false)
     <int> port;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Query method (compileCommand, symbolSearch, definition, references, "
                   "documentSymbols, readSymbol, callGraph, typeHierarchy, projectFiles, "
                   "fileDeps, impactAnalysis, status, shutdown)",
            required = false)
     <std::string> method = "compileCommand";
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "File path for queries", required = false)
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help = "File path for queries",
+           required = false)
     <std::string> path;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "Symbol name", required = false)
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate, help = "Symbol name", required = false)
     <std::string> name;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "Search query string", required = false)
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help = "Search query string",
+           required = false)
     <std::string> query;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Line number for position-based lookup",
            required = false)
     <int> line;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Direction: callers/callees or supertypes/subtypes",
            required = false)
     <std::string> direction;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            names = {"--log-level", "--log-level="},
            help = "Log level: trace, debug, info, warn, error, off",
            required = false)

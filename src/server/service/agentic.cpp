@@ -104,7 +104,7 @@ static kota::task<> agentic_client(int& exit_code,
                                    const QueryOptions& opts) {
     auto& loop = kota::event_loop::current();
     auto host = opts.host.value_or("127.0.0.1");
-    auto port = *opts.port;
+    auto port = opts.port.value_or(0);
     auto transport = co_await kota::ipc::StreamTransport::connect_tcp(host, port, loop);
     if(!transport) {
         LOG_ERROR("failed to connect to {}:{}", host, port);

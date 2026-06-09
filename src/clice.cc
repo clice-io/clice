@@ -84,7 +84,8 @@ int main(int argc, const char** argv) {
         .matchAll([&](clice::ServerOptions opts) {
             if(opts.help) {
                 clice::print_usage(server_cmd);
-                return exit_code = 0, void();
+                exit_code = 0;
+                return;
             }
             if(!clice::apply_log_level(opts.log_level.value_or("info")))
                 return;
@@ -110,7 +111,8 @@ int main(int argc, const char** argv) {
         .matchAll([&](clice::QueryOptions opts) {
             if(opts.help) {
                 clice::print_usage(query_cmd);
-                return exit_code = 0, void();
+                exit_code = 0;
+                return;
             }
             auto port = opts.port.value_or(0);
             if(port <= 0 || port > 65535) {
@@ -128,7 +130,8 @@ int main(int argc, const char** argv) {
         .matchAll([&](clice::WorkerOptions opts) {
             if(opts.help) {
                 clice::print_usage(worker_cmd);
-                return exit_code = 0, void();
+                exit_code = 0;
+                return;
             }
             auto name = opts.worker_name.value_or("worker");
             auto log_dir = opts.log_dir.value_or("");
@@ -145,7 +148,8 @@ int main(int argc, const char** argv) {
         .matchAll([&](clice::LintOptions opts) {
             if(opts.help) {
                 clice::print_usage(lint_cmd);
-                return exit_code = 0, void();
+                exit_code = 0;
+                return;
             }
             LOG_ERROR("lint is not yet implemented");
         })
@@ -156,7 +160,8 @@ int main(int argc, const char** argv) {
         .matchAll([&](clice::FormatOptions opts) {
             if(opts.help) {
                 clice::print_usage(format_cmd);
-                return exit_code = 0, void();
+                exit_code = 0;
+                return;
             }
             LOG_ERROR("format is not yet implemented");
         })

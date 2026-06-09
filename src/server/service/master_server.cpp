@@ -473,6 +473,7 @@ int run_server_mode(const ServerOptions& opts, const char* self_path) {
         return 0;
     }
 
+    LOG_ERROR("unexpected server mode");
     return 1;
 }
 

@@ -17,7 +17,6 @@
 namespace clice {
 
 namespace deco = kota::deco;
-using deco::decl::KVStyle;
 
 enum class ServerMode : std::uint8_t { Pipe, Socket, Relay, Daemon };
 
@@ -25,35 +24,37 @@ struct ServerOptions {
     DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
     help;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Server mode: pipe (default), socket, relay, or daemon",
            required = false)
     <ServerMode> mode = ServerMode::Pipe;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "Socket mode address", required = false)
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help = "Socket mode address",
+           required = false)
     <std::string> host = "127.0.0.1";
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Agentic TCP port (0 = disabled)",
            required = false)
     <int> port = 0;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Record LSP input to file for replay testing",
            required = false)
     <std::string> record;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Unix domain socket path (relay/daemon mode)",
            required = false)
     <std::string> socket;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (daemon mode)",
            required = false)
     <std::string> workspace;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            names = {"--log-level", "--log-level="},
            help = "Log level: trace, debug, info, warn, error, off",
            required = false)
