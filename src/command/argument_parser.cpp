@@ -192,24 +192,6 @@ bool is_xclang_option(unsigned id) {
     return id == OPT_Xclang;
 }
 
-bool is_toolchain_option(unsigned id) {
-    switch(id) {
-        case OPT_target:
-        case OPT_target_legacy_spelling:
-        case OPT_isysroot:
-        case OPT__sysroot_EQ:
-        case OPT__sysroot:
-        case OPT_stdlib_EQ:
-        case OPT_gcc_toolchain:
-        case OPT_gcc_install_dir_EQ:
-        case OPT_nostdinc:
-        case OPT_nostdincxx:
-        case OPT_std_EQ:
-        case OPT_x: return true;
-        default: return false;
-    }
-}
-
 llvm::StringRef resource_dir() {
     static std::string dir = [] {
         static int anchor;

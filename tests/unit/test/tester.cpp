@@ -292,9 +292,7 @@ void Tester::prepare_driver(llvm::StringRef standard) {
 
     auto commands = database.lookup(src_path);
     assert(!commands.empty() && "lookup failed after add_command");
-    if(auto e = toolchain.resolve(commands.front()); !e) {
-        LOG_WARN("Toolchain resolve failed: {}", e.error());
-    }
+    toolchain.resolve_or_warn(commands.front());
     params.arguments = commands.front().to_argv();
 
     params.kind = CompilationKind::Content;

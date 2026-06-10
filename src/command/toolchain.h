@@ -7,6 +7,7 @@
 
 #include "support/object_pool.h"
 
+#include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -28,7 +29,9 @@ enum class CompilerFamily {
 };
 
 /// Patches raw CDB commands into clang-acceptable cc1 arguments by querying
-/// the compiler driver. Results are cached by (driver, extension, toolchain flags).
+/// the compiler driver. Results are cached by (driver, file extension,
+/// non-user-content flags); user-content flags (-I, -D, ...) don't affect
+/// the query and are re-appended from the original command after resolution.
 class Toolchain {
 public:
     Toolchain();
@@ -38,12 +41,17 @@ public:
     Toolchain& operator=(Toolchain&&) = default;
 
     /// Batch pre-warm: deduplicate commands, query unique toolchains in parallel.
-    /// Synchronous — internally creates an event loop for concurrent queries.
+    kota::task<> warm_async(llvm::ArrayRef<CompileCommand> commands);
+
+    /// Synchronous wrapper around warm_async — creates a local event loop.
     void warm(llvm::ArrayRef<CompileCommand> commands);
 
     /// Resolve a driver-level command to cc1 level by querying the toolchain.
     /// Modifies the command in-place.
-    std::expected<void, std::string> resolve(CompileCommand& cmd);
+    [[nodiscard]] std::expected<void, std::string> resolve(CompileCommand& cmd);
+
+    /// Like resolve(), but logs a warning on failure instead of returning it.
+    void resolve_or_warn(CompileCommand& cmd);
 
     /// Single synchronous toolchain query. Returns cc1 arguments as owned strings.
     /// `file` is used for temp file extension detection (optional if -x is set).
@@ -53,6 +61,19 @@ public:
     bool has_cache() const;
 
     static CompilerFamily driver_family(llvm::StringRef driver);
+
+#ifdef CLICE_ENABLE_TEST
+
+    /// Compute the cache key for the given file and driver-level arguments.
+    std::string cache_key(llvm::StringRef file, llvm::ArrayRef<const char*> arguments) {
+        return extract_flags(file, arguments).key;
+    }
+
+    std::size_t cache_size() const {
+        return cache.size();
+    }
+
+#endif
 
 private:
     struct ToolchainExtract {

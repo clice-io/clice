@@ -26,7 +26,7 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
         if(results.empty()) {
             co_return false;
         }
-        toolchain.resolve(results[0]);
+        toolchain.resolve_or_warn(results[0]);
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
@@ -71,7 +71,7 @@ CompileGraph::resolve_fn make_resolver(CompilationDatabase& cdb,
         if(results.empty()) {
             return {};
         }
-        toolchain.resolve(results[0]);
+        toolchain.resolve_or_warn(results[0]);
 
         auto scan_result = scan_precise(results[0].to_argv(), results[0].resolved.directory);
 
@@ -1035,7 +1035,7 @@ TEST_CASE(ReResolveAfterUpdate) {
         if(results.empty()) {
             return {};
         }
-        env.toolchain.resolve(results[0]);
+        env.toolchain.resolve_or_warn(results[0]);
         auto scan_result = scan_precise(results[0].to_argv(), results[0].resolved.directory);
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
@@ -1148,7 +1148,7 @@ TEST_CASE(ModuleImplementationUnit) {
         auto impl_path = env.tmp.path("impl.cpp");
         auto results = env.cdb.lookup(impl_path);
         CO_ASSERT_FALSE(results.empty());
-        env.toolchain.resolve(results[0]);
+        env.toolchain.resolve_or_warn(results[0]);
 
         CompilationParams cp;
         cp.kind = CompilationKind::Content;

@@ -57,9 +57,7 @@ void Compiler::init_compile_graph() {
             workspace.cdb.lookup(file_path, {.remove = rule_remove, .append = rule_append});
         if(results.empty())
             return {};
-        if(auto e = workspace.toolchain.resolve(results[0]); !e) {
-            LOG_WARN("Toolchain resolve failed: {}", e.error());
-        }
+        workspace.toolchain.resolve_or_warn(results[0]);
 
         auto& cmd = results[0];
         auto scan_result = scan_precise(cmd.to_argv(), cmd.resolved.directory);
@@ -171,9 +169,7 @@ bool Compiler::fill_compile_args(llvm::StringRef path,
     workspace.config.match_rules(path, rule_append, rule_remove);
     auto results = workspace.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
     if(!results.empty()) {
-        if(auto e = workspace.toolchain.resolve(results.front()); !e) {
-            LOG_WARN("Toolchain resolve failed: {}", e.error());
-        }
+        workspace.toolchain.resolve_or_warn(results.front());
         auto& cmd = results.front();
         directory = cmd.resolved.directory.str();
         arguments = cmd.to_string_argv();
@@ -232,9 +228,7 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
         return false;
     }
 
-    if(auto e = workspace.toolchain.resolve(host_results.front()); !e) {
-        LOG_WARN("Toolchain resolve failed: {}", e.error());
-    }
+    workspace.toolchain.resolve_or_warn(host_results.front());
 
     auto& host_cmd = host_results.front();
     directory = host_cmd.resolved.directory.str();

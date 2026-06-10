@@ -286,13 +286,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         //
         // This is the right granularity for SearchConfig: different -I paths
         // produce different groups. For toolchain queries the granularity is
-        // coarser (only --target/-std= matter), so warm() further deduplicates
-        // internally.
+        // coarser (user-content flags don't affect the key), so warm_async()
+        // further deduplicates internally.
         config_groups = cdb.unique_configs();
 
-        // Pre-warm toolchain cache: warm() parses each command's flags to
-        // extract only toolchain-affecting options (driver, --target, -std=,
-        // --sysroot) as cache keys. Commands differing only in -D/-I collapse
+        // Pre-warm toolchain cache: warm_async() keys each command by its
+        // non-user-content flags. Commands differing only in -D/-I collapse
         // to the same key, so N config groups often yield just 1-2 subprocess
         // calls.
         auto prewarm_start = std::chrono::steady_clock::now();
@@ -302,7 +301,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             representative_cmds.push_back(group.command);
         }
 
-        toolchain.warm(representative_cmds);
+        co_await toolchain.warm_async(representative_cmds);
         auto prewarm_end = std::chrono::steady_clock::now();
         report.prewarm_ms =
             std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start)
@@ -322,15 +321,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 rule_matcher(representative_path, rule_append, rule_remove);
 
             auto t0 = std::chrono::steady_clock::now();
-            auto cmds =
-                cdb.lookup(representative_path, {.remove = rule_remove, .append = rule_append});
-            if(!cmds.empty()) {
-                if(auto e = toolchain.resolve(cmds.front()); !e) {
-                    LOG_WARN("Toolchain resolve failed: {}", e.error());
-                }
-                configs[config_id] =
-                    extract_search_config(cmds.front().to_argv(), cmds.front().resolved.directory);
-            }
+            auto cmd = cdb.group_command(group, {.remove = rule_remove, .append = rule_append});
+            toolchain.resolve_or_warn(cmd);
+            configs[config_id] = extract_search_config(cmd.to_argv(), cmd.resolved.directory);
             auto t1 = std::chrono::steady_clock::now();
             lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
         }
@@ -593,9 +586,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 auto file_path = llvm::StringRef(scan_result.path);
                 auto contexts = cdb.lookup(file_path);
                 if(!contexts.empty()) {
-                    if(auto e = toolchain.resolve(contexts[0]); !e) {
-                        LOG_WARN("Toolchain resolve failed: {}", e.error());
-                    }
+                    toolchain.resolve_or_warn(contexts[0]);
                     auto& cmd = contexts[0];
                     auto fallback =
                         scan_module_decl(cmd.to_argv(), cmd.resolved.directory, /*content=*/{});

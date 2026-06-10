@@ -113,6 +113,95 @@ TEST_CASE(InitiallyEmpty) {
     EXPECT_FALSE(tc.has_cache());
 }
 
+TEST_CASE(KeyIgnoresUserContent) {
+    Toolchain tc;
+    std::vector<const char*> base = {"clang++", "-std=c++23"};
+    std::vector<const char*> with_user = {"clang++",
+                                          "-std=c++23",
+                                          "-I/usr/include",
+                                          "-DFOO=1",
+                                          "-include",
+                                          "foo.h",
+                                          "-isystem",
+                                          "/opt/include"};
+    EXPECT_EQ(tc.cache_key("/tmp/a.cpp", base), tc.cache_key("/tmp/a.cpp", with_user));
+}
+
+TEST_CASE(KeyTracksSemantics) {
+    Toolchain tc;
+    std::vector<const char*> base = {"clang++", "-std=c++23"};
+    auto key = tc.cache_key("/tmp/a.cpp", base);
+
+    std::vector<const char*> driver = {"g++", "-std=c++23"};
+    EXPECT_NE(key, tc.cache_key("/tmp/a.cpp", driver));
+
+    std::vector<const char*> target = {"clang++", "-std=c++23", "--target=aarch64-linux-gnu"};
+    EXPECT_NE(key, tc.cache_key("/tmp/a.cpp", target));
+
+    std::vector<const char*> lang = {"clang++", "-std=c++23", "-x", "c"};
+    EXPECT_NE(key, tc.cache_key("/tmp/a.cpp", lang));
+
+    EXPECT_NE(key, tc.cache_key("/tmp/a.c", base));
+
+    // Any non-user-content flag affects the key, not just toolchain options.
+    std::vector<const char*> semantic = {"clang++", "-std=c++23", "-fno-exceptions"};
+    EXPECT_NE(key, tc.cache_key("/tmp/a.cpp", semantic));
+}
+
+TEST_CASE(ResolveEmptyFlags) {
+    Toolchain tc;
+    CompileCommand cmd;
+    cmd.source_file = "main.cpp";
+    EXPECT_FALSE(tc.resolve(cmd).has_value());
+    EXPECT_FALSE(tc.has_cache());
+}
+
+TEST_CASE(QueryEmptyArgs) {
+    EXPECT_FALSE(Toolchain::query({}).has_value());
+}
+
+TEST_CASE(QueryMissingDriver) {
+    EXPECT_FALSE(Toolchain::query({"clice-nonexistent-driver"}).has_value());
+}
+
+TEST_CASE(WarmSkipsEmptyFlags) {
+    Toolchain tc;
+    CompileCommand cmd;
+    cmd.source_file = "main.cpp";
+    llvm::SmallVector<CompileCommand> cmds = {cmd};
+    tc.warm(cmds);
+    EXPECT_FALSE(tc.has_cache());
+    EXPECT_EQ(tc.cache_size(), std::size_t(0));
+}
+
+TEST_CASE(ResolveKeepsSemanticFlags, skip = !CIEnvironment) {
+    auto file = fs::createTemporaryFile("clice", "cpp");
+    if(!file) {
+        LOG_ERROR_RET(void(), "{}", file.error());
+    }
+
+    CompileCommand cmd;
+    cmd.resolved.flags = {"clang++", "-std=c++23", "-fms-extensions", "-Wno-everything"};
+    cmd.source_file = file->c_str();
+
+    Toolchain tc;
+    ASSERT_TRUE(tc.resolve(cmd).has_value());
+    EXPECT_TRUE(cmd.resolved.is_cc1);
+
+    // Semantic flags must survive resolution to cc1 (they were dropped when
+    // the query only forwarded toolchain options).
+    bool has_ms_extensions = false;
+    bool has_wno_everything = false;
+    for(auto* arg: cmd.to_argv()) {
+        if(arg == "-fms-extensions"sv)
+            has_ms_extensions = true;
+        if(arg == "-Wno-everything"sv)
+            has_wno_everything = true;
+    }
+    EXPECT_TRUE(has_ms_extensions);
+    EXPECT_TRUE(has_wno_everything);
+}
+
 TEST_CASE(Resolve, skip = !CIEnvironment) {
     auto file = fs::createTemporaryFile("clice", "cpp");
     if(!file) {

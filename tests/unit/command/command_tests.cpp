@@ -189,7 +189,7 @@ TEST_CASE(MultiCommand) {
     ASSERT_EQ(other.size(), 1U);
 };
 
-TEST_CASE(UniqueConfigsPreservesSameFileConfigs) {
+TEST_CASE(UniqueConfigsSameFile) {
     CompilationDatabase database;
     database.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
     database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
@@ -241,6 +241,34 @@ TEST_CASE(UniqueConfigsMultiFile) {
             ASSERT_EQ(group.file_ids.size(), 2U);
         }
     }
+};
+
+TEST_CASE(GroupCommandRebuild) {
+    CompilationDatabase database;
+    database.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
+    database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+
+    auto groups = database.unique_configs(quiet_options());
+    ASSERT_EQ(groups.size(), 2U);
+
+    llvm::SmallVector<std::string> append = {"-fms-extensions"};
+    auto options = quiet_options();
+    options.append = append;
+
+    // Both groups share the same source file; group_command must rebuild from
+    // each group's own info, not from a path lookup that always returns the
+    // first entry for the file.
+    bool has_17 = false, has_20 = false;
+    for(auto& group: groups) {
+        auto argv = print_argv(database.group_command(group, options).to_argv());
+        EXPECT_CONTAINS(argv, "-fms-extensions");
+        if(llvm::StringRef(argv).contains("-std=c++17"))
+            has_17 = true;
+        if(llvm::StringRef(argv).contains("-std=c++20"))
+            has_20 = true;
+    }
+    EXPECT_TRUE(has_17);
+    EXPECT_TRUE(has_20);
 };
 
 TEST_CASE(CodegenFilter) {

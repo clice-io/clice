@@ -70,10 +70,6 @@ bool is_include_path_option(unsigned id);
 /// Check if this is the -Xclang pass-through option.
 bool is_xclang_option(unsigned id);
 
-/// Options that affect system path discovery and should be included in the
-/// toolchain cache key. Only these flags are passed to the toolchain query.
-bool is_toolchain_option(unsigned id);
-
 /// Get the resource directory for clang builtin headers. Computed once
 /// from the current executable path using Driver::GetResourcesPath.
 llvm::StringRef resource_dir();

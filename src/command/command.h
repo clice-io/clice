@@ -199,12 +199,13 @@ public:
     /// have identical -I, -D, -std=, --target, etc.
     ///
     /// This is the right granularity for SearchConfig extraction: different -I paths
-    /// need different SearchConfigs. For toolchain queries (which only care about
-    /// driver + --target + -std=), callers should further deduplicate across groups
+    /// need different SearchConfigs. For toolchain queries (keyed by driver +
+    /// non-user-content flags), callers should further deduplicate across groups
     /// since many groups often share the same toolchain key.
     struct ConfigGroup {
         llvm::SmallVector<std::uint32_t> file_ids;
         CompileCommand command;
+        object_ptr<CompilationInfo> info = {nullptr};
     };
 
     /// Return one ConfigGroup per unique CompilationInfo, each containing
@@ -212,6 +213,11 @@ public:
     /// The returned CompileCommands use driver-level flags (not cc1); callers
     /// that need cc1 args should pass them through Toolchain::resolve().
     llvm::SmallVector<ConfigGroup> unique_configs(const CommandOptions& options = {});
+
+    /// Build a fresh CompileCommand for a ConfigGroup, applying the given
+    /// options (e.g. per-config rule remove/append) to the group's own
+    /// CompilationInfo rather than reusing the representative command.
+    CompileCommand group_command(const ConfigGroup& group, const CommandOptions& options = {});
 
 #ifdef CLICE_ENABLE_TEST
 

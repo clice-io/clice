@@ -69,7 +69,7 @@ llvm::ArrayRef<const char*> CompilationDatabase::persist_args(llvm::ArrayRef<con
     if(args.empty())
         return {};
     auto* buf = allocator->Allocate<const char*>(args.size());
-    std::ranges::copy(args, buf);
+    ranges::copy(args, buf);
     return {buf, args.size()};
 }
 
@@ -333,18 +333,10 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
     append_args(info->canonical->arguments);
     append_args(info->patch);
 
-    if(options.inject_resource_dir && !resource_dir().empty()) {
-        bool has_resource_dir = false;
-        for(auto& arg: flags) {
-            if(arg == llvm::StringRef("-resource-dir")) {
-                has_resource_dir = true;
-                break;
-            }
-        }
-        if(!has_resource_dir) {
-            append_arg("-resource-dir");
-            append_arg(resource_dir());
-        }
+    if(options.inject_resource_dir && !resource_dir().empty() &&
+       !ranges::contains(flags, llvm::StringRef("-resource-dir"))) {
+        append_arg("-resource-dir");
+        append_arg(resource_dir());
     }
 
     if(!options.remove.empty()) {
@@ -361,7 +353,7 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         auto get_id = [](const kota::option::ParsedArg& arg) {
             return arg.id;
         };
-        std::ranges::sort(remove_args, {}, get_id);
+        ranges::sort(remove_args, {}, get_id);
 
         auto saved_flags = std::move(flags);
         flags.clear();
@@ -374,14 +366,14 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
             }
             auto& arg = *result;
             auto id = arg.id;
-            auto range = std::ranges::equal_range(remove_args, id, {}, get_id);
+            auto range = ranges::equal_range(remove_args, id, {}, get_id);
             bool removed = false;
             for(auto& remove: range) {
                 if(remove.values.size() == 1 && remove.values[0] == "*") {
                     removed = true;
                     break;
                 }
-                if(std::ranges::equal(arg.values, remove.values)) {
+                if(ranges::equal(arg.values, remove.values)) {
                     removed = true;
                     break;
                 }
@@ -461,7 +453,7 @@ llvm::SmallVector<CompilationDatabase::ConfigGroup>
     for(auto& entry: entries) {
         auto [it, inserted] = group_indices.try_emplace(entry.info.ptr, result.size());
         if(inserted) {
-            result.push_back({{}, build_command(entry.file, entry.info, options)});
+            result.push_back({{}, build_command(entry.file, entry.info, options), entry.info});
         }
 
         auto& file_ids = result[it->second].file_ids;
@@ -471,6 +463,12 @@ llvm::SmallVector<CompilationDatabase::ConfigGroup>
     }
 
     return result;
+}
+
+CompileCommand CompilationDatabase::group_command(const ConfigGroup& group,
+                                                  const CommandOptions& options) {
+    assert(!group.file_ids.empty() && group.info && "group must come from unique_configs()");
+    return build_command(group.file_ids.front(), group.info, options);
 }
 
 #ifdef CLICE_ENABLE_TEST

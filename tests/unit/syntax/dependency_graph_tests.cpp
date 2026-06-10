@@ -556,9 +556,39 @@ export int value() { return util; }
     EXPECT_GE(graph.edge_count(), 1u);
 }
 
+TEST_CASE(ScanCacheWarmRun) {
+    TempDir tmp;
+    tmp.touch("inc/util.h", R"(int util = 1;)");
+    tmp.touch("src/main.cpp", R"(
+#include "util.h"
+int main() {}
+)");
+
+    CompilationDatabase cdb;
+    PathPool pool;
+    ScanCache cache;
+    Toolchain tc;
+
+    auto json = build_cdb_json({
+        {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
+    });
+    write_cdb(tmp, cdb, json);
+
+    DependencyGraph graph;
+    auto cold = scan_dependency_graph(cdb, tc, pool, graph, &cache);
+    EXPECT_GE(graph.edge_count(), 1u);
+
+    // Warm run with the same cache and pool reproduces the same graph
+    // and hits the scan result cache instead of re-reading files.
+    DependencyGraph graph2;
+    auto warm = scan_dependency_graph(cdb, tc, pool, graph2, &cache);
+    EXPECT_GT(warm.scan_cache_hits, std::size_t(0));
+    EXPECT_EQ(graph2.edge_count(), graph.edge_count());
+    EXPECT_EQ(graph2.file_count(), graph.file_count());
+}
+
 // TODO: add tests for:
 // - Circular includes (A→B→A) to verify BFS terminates correctly
-// - ScanCache warm runs (pass ScanCache* to scan_dependency_graph twice)
 // - get_all_includes flag merge: same header conditional in one config,
 //   unconditional in another — unconditional should win
 // - set_includes overwrite: calling twice with same (path_id, config_id)
