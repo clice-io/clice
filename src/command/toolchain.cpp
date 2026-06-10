@@ -178,10 +178,13 @@ std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
 
         // Parse with CC1 visibility: the external driver may be newer than the
         // linked clang, so flags it emits that our cc1 does not understand
-        // parse as unknown and are dropped. Raw tokens are copied through to
-        // preserve the exact spelling the driver emitted.
+        // parse as unknown and are dropped. greedy_unknown makes an unknown
+        // option consume its trailing values, so they are dropped along with
+        // it instead of being misparsed as input files. Raw tokens are copied
+        // through to preserve the exact spelling the driver emitted.
         std::vector<std::string> raw(args.begin() + 2, args.end());
-        auto options = kota::option::ParseOptions{.visibility = option::CC1Option};
+        auto options =
+            kota::option::ParseOptions{.greedy_unknown = true, .visibility = option::CC1Option};
         for(auto& r: option::table().parse(raw, options)) {
             if(!r.has_value() || r->id == option::OPT_UNKNOWN)
                 continue;
