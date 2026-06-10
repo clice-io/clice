@@ -286,11 +286,11 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         //
         // This is the right granularity for SearchConfig: different -I paths
         // produce different groups. For toolchain queries the granularity is
-        // coarser (user-content flags don't affect the key), so warm_async()
+        // coarser (user-content flags don't affect the key), so warm()
         // further deduplicates internally.
         config_groups = cdb.unique_configs();
 
-        // Pre-warm toolchain cache: warm_async() keys each command by its
+        // Pre-warm toolchain cache: warm() keys each command by its
         // non-user-content flags. Commands differing only in -D/-I collapse
         // to the same key, so N config groups often yield just 1-2 subprocess
         // calls.
@@ -301,7 +301,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             representative_cmds.push_back(group.command);
         }
 
-        co_await toolchain.warm_async(representative_cmds);
+        toolchain.warm(representative_cmds);
         auto prewarm_end = std::chrono::steady_clock::now();
         report.prewarm_ms =
             std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start)

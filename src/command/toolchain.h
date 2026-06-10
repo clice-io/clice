@@ -7,7 +7,6 @@
 
 #include "support/object_pool.h"
 
-#include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -40,10 +39,7 @@ public:
     Toolchain(Toolchain&&) = default;
     Toolchain& operator=(Toolchain&&) = default;
 
-    /// Batch pre-warm: deduplicate commands, query unique toolchains in parallel.
-    kota::task<> warm_async(llvm::ArrayRef<CompileCommand> commands);
-
-    /// Synchronous wrapper around warm_async — creates a local event loop.
+    /// Batch pre-warm: deduplicate commands and query each unique toolchain.
     void warm(llvm::ArrayRef<CompileCommand> commands);
 
     /// Resolve a driver-level command to cc1 level by querying the toolchain.

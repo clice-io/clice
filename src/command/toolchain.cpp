@@ -35,75 +35,78 @@ namespace ranges = std::ranges;
 
 #ifndef _WIN32
 /// Process environment with LANG pinned to C, so driver output is not localized.
-const std::vector<std::string>& process_env() {
-    const static auto env = [] {
-        std::vector<std::string> result;
+llvm::ArrayRef<llvm::StringRef> process_env() {
+    static std::vector<std::string> storage;
+    const static auto refs = [] {
         if(environ) {
             for(char** e = environ; *e; ++e) {
                 if(!llvm::StringRef(*e).starts_with("LANG="))
-                    result.emplace_back(*e);
+                    storage.emplace_back(*e);
             }
         }
-        result.emplace_back("LANG=C");
-        return result;
+        storage.emplace_back("LANG=C");
+        return std::vector<llvm::StringRef>(storage.begin(), storage.end());
     }();
-    return env;
+    return refs;
 }
 #endif
 
-kota::task<std::string> drain_pipe(kota::pipe p) {
-    std::string buf;
-    while(true) {
-        auto result = co_await p.read();
-        if(!result.has_value())
-            break;
-        auto& chunk = result.value();
-        if(chunk.empty())
-            break;
-        buf += chunk;
+#ifdef _WIN32
+constexpr llvm::StringRef null_dev = "NUL";
+#else
+constexpr llvm::StringRef null_dev = "/dev/null";
+#endif
+
+std::expected<std::string, std::string> execute(llvm::ArrayRef<std::string> arguments,
+                                                bool capture_stdout = false) {
+    LOG_INFO("Execute command: {}", arguments[0]);
+
+    llvm::SmallString<64> out_path;
+    if(auto e = fs::createTemporaryFile("query-toolchain", "out", out_path)) {
+        return std::unexpected(std::format("Failed to create temp file: {}", e.message()));
     }
-    co_return buf;
-}
+    auto cleanup = llvm::make_scope_exit([&] {
+        if(auto e = fs::remove(out_path))
+            LOG_ERROR("Fail to remove temporary file: {}", e);
+    });
 
-kota::task<std::expected<std::string, std::string>>
-    execute_async(std::vector<std::string> arguments, bool capture_stdout = false) {
-    kota::process::options opts;
-    opts.file = arguments[0];
-    opts.args = std::move(arguments);
-#ifndef _WIN32
-    opts.env = process_env();
+#ifdef _WIN32
+    /// Inherit env from the parent process: MSVC and clang on Windows rely on
+    /// environment variables to locate the standard library.
+    constexpr auto env = std::nullopt;
+#else
+    /// On POSIX, inherit env but pin LANG=C so driver output is not localized.
+    auto env = process_env();
 #endif
-    opts.streams = {
-        kota::process::stdio::ignore(),
-        kota::process::stdio::pipe(false, true),
-        kota::process::stdio::pipe(false, true),
+
+    std::optional<llvm::StringRef> redirects[3] = {
+        {null_dev},                                    // stdin
+        {capture_stdout ? out_path.str() : null_dev},  // stdout
+        {capture_stdout ? null_dev : out_path.str()},  // stderr
     };
 
-    LOG_INFO("Execute async: {}", opts.file);
+    llvm::SmallVector<llvm::StringRef> argv(arguments.begin(), arguments.end());
 
-    auto spawn = kota::process::spawn(opts);
-    if(!spawn.has_value()) {
-        co_return std::unexpected(
-            std::format("Failed to spawn {}: {}", opts.file, spawn.error().message()));
-    }
-    auto& s = *spawn;
-
-    auto [stdout_data, stderr_data] = co_await kota::when_all(drain_pipe(std::move(s.stdout_pipe)),
-                                                              drain_pipe(std::move(s.stderr_pipe)));
-
-    auto exit_result = co_await s.proc.wait();
-    if(!exit_result.has_value()) {
-        co_return std::unexpected(
-            std::format("Process wait failed: {}", exit_result.error().message()));
+    std::string message;
+    if(int rc = llvm::sys::ExecuteAndWait(argv[0],
+                                          argv,
+                                          env,
+                                          redirects,
+                                          /*SecondsToWait=*/0,
+                                          /*MemoryLimit=*/0,
+                                          &message)) {
+        return std::unexpected(
+            std::format("Process {} exited with code {}: {}", argv[0].str(), rc, message));
     }
 
-    auto& exit = *exit_result;
-    if(exit.status != 0) {
-        co_return std::unexpected(
-            std::format("Process {} exited with code {}", opts.file, exit.status));
+    auto file = llvm::MemoryBuffer::getFile(out_path);
+    if(!file) {
+        return std::unexpected(std::format("Failed to read output of {}: {}",
+                                           argv[0].str(),
+                                           file.getError().message()));
     }
 
-    co_return capture_stdout ? std::move(stdout_data) : std::move(stderr_data);
+    return std::string((*file)->getBuffer());
 }
 
 std::expected<void, std::string> query_driver(
@@ -196,10 +199,10 @@ std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
     return {};
 }
 
-kota::task<std::expected<std::vector<std::string>, std::string>>
+std::expected<std::vector<std::string>, std::string>
     query_one(llvm::ArrayRef<const char*> arguments, llvm::StringRef file) {
     if(arguments.empty())
-        co_return std::unexpected(std::string("Empty arguments"));
+        return std::unexpected(std::string("Empty arguments"));
 
     llvm::StringRef driver = arguments[0];
 
@@ -207,14 +210,13 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
     if(!path::is_absolute(driver)) {
         auto program = llvm::sys::findProgramByName(driver);
         if(!program)
-            co_return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
+            return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
         resolved_path = *program;
         driver = resolved_path.c_str();
     }
 
     if(!fs::exists(driver) || !fs::can_execute(driver))
-        co_return std::unexpected(
-            std::format("Driver {} not found or not executable", driver.str()));
+        return std::unexpected(std::format("Driver {} not found or not executable", driver.str()));
 
     llvm::SmallVector<const char*, 256> args;
     args.emplace_back(driver.data());
@@ -225,7 +227,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
 
     llvm::SmallString<64> src_path;
     if(auto e = fs::createTemporaryFile("query-toolchain", ext, src_path))
-        co_return std::unexpected(std::format("Failed to create temp file: {}", e.message()));
+        return std::unexpected(std::format("Failed to create temp file: {}", e.message()));
     auto cleanup = llvm::make_scope_exit([&] {
         if(auto e = fs::remove(src_path))
             LOG_ERROR("Fail to remove temporary file: {}", e);
@@ -239,13 +241,13 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
         case CompilerFamily::GCC: {
             std::string drv(driver.str());
 
-            auto target = co_await execute_async({drv, "-dumpmachine"}, true);
+            auto target = execute({drv, "-dumpmachine"}, true);
             if(!target)
-                co_return std::unexpected(std::move(target.error()));
+                return std::unexpected(std::move(target.error()));
 
-            auto search_dirs = co_await execute_async({drv, "-print-search-dirs"}, true);
+            auto search_dirs = execute({drv, "-print-search-dirs"}, true);
             if(!search_dirs)
-                co_return std::unexpected(std::move(search_dirs.error()));
+                return std::unexpected(std::move(search_dirs.error()));
 
             std::string install_path;
             llvm::SmallVector<llvm::StringRef, 5> lines;
@@ -275,7 +277,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
                         cc1_args.emplace_back(arg);
                 });
             if(!queried)
-                co_return std::unexpected(std::move(queried.error()));
+                return std::unexpected(std::move(queried.error()));
             break;
         }
 
@@ -297,9 +299,9 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
             for(auto arg: remaining)
                 exec_args.emplace_back(arg);
 
-            auto content = co_await execute_async(std::move(exec_args));
+            auto content = execute(std::move(exec_args));
             if(!content)
-                co_return std::unexpected(std::move(content.error()));
+                return std::unexpected(std::move(content.error()));
 
             cc1_args = parse_cc1_output(*content);
             break;
@@ -321,7 +323,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
                         cc1_args.emplace_back(arg);
                 });
             if(!queried)
-                co_return std::unexpected(std::move(queried.error()));
+                return std::unexpected(std::move(queried.error()));
             break;
         }
 
@@ -337,7 +339,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
                     cc1_args.emplace_back(arg);
             });
             if(!queried)
-                co_return std::unexpected(std::move(queried.error()));
+                return std::unexpected(std::move(queried.error()));
             break;
         }
     }
@@ -353,9 +355,9 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
     });
 
     if(cc1_args.empty())
-        co_return std::unexpected(std::format("No cc1 args produced for {}", file.str()));
+        return std::unexpected(std::format("No cc1 args produced for {}", file.str()));
 
-    co_return cc1_args;
+    return cc1_args;
 }
 
 struct PendingQuery {
@@ -363,38 +365,6 @@ struct PendingQuery {
     std::vector<const char*> query_args;
     std::string file;
 };
-
-struct QueryOutcome {
-    std::string key;
-    std::vector<std::string> cc1_args;
-};
-
-kota::task<std::vector<QueryOutcome>> run_queries(std::vector<PendingQuery> pending) {
-    auto make_task = [](PendingQuery q) -> kota::task<std::expected<QueryOutcome, std::string>> {
-        auto result = co_await query_one(q.query_args, q.file);
-        if(!result)
-            co_return std::unexpected(std::move(result.error()));
-        co_return QueryOutcome{std::move(q.key), std::move(*result)};
-    };
-
-    std::vector<kota::task<std::expected<QueryOutcome, std::string>>> tasks;
-    tasks.reserve(pending.size());
-    for(auto& q: pending)
-        tasks.push_back(make_task(std::move(q)));
-
-    auto outcomes = co_await kota::when_all(std::move(tasks));
-
-    std::vector<QueryOutcome> successful;
-    for(auto& r: outcomes) {
-        if(r.has_value()) {
-            successful.push_back(std::move(*r));
-        } else {
-            LOG_ERROR("Toolchain query failed: {}", r.error());
-        }
-    }
-
-    co_return successful;
-}
 
 }  // namespace
 
@@ -442,14 +412,7 @@ CompilerFamily Toolchain::driver_family(llvm::StringRef driver) {
 
 std::expected<std::vector<std::string>, std::string>
     Toolchain::query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file) {
-    std::expected<std::vector<std::string>, std::string> result;
-    kota::event_loop loop;
-    auto task = [&]() -> kota::task<> {
-        result = co_await query_one(arguments, file);
-    };
-    loop.schedule(task());
-    loop.run();
-    return result;
+    return query_one(arguments, file);
 }
 
 Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
@@ -582,7 +545,7 @@ bool Toolchain::has_cache() const {
     return !cache.empty();
 }
 
-kota::task<> Toolchain::warm_async(llvm::ArrayRef<CompileCommand> commands) {
+void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
     llvm::StringMap<bool> seen;
     std::vector<PendingQuery> pending;
 
@@ -598,32 +561,28 @@ kota::task<> Toolchain::warm_async(llvm::ArrayRef<CompileCommand> commands) {
     }
 
     if(pending.empty())
-        co_return;
+        return;
 
     auto total = pending.size();
     LOG_INFO("Warming toolchain cache: {} unique queries", total);
 
-    auto results = co_await run_queries(std::move(pending));
-
-    for(auto& r: results) {
-        if(cache.count(r.key))
+    std::size_t succeeded = 0;
+    for(auto& q: pending) {
+        auto result = query_one(q.query_args, q.file);
+        if(!result) {
+            LOG_ERROR("Toolchain query failed: {}", result.error());
             continue;
+        }
+
         std::vector<const char*> saved;
-        saved.reserve(r.cc1_args.size());
-        for(auto& arg: r.cc1_args)
+        saved.reserve(result->size());
+        for(auto& arg: *result)
             saved.push_back(strings.save(arg).data());
-        cache.try_emplace(std::move(r.key), std::move(saved));
+        cache.try_emplace(std::move(q.key), std::move(saved));
+        succeeded += 1;
     }
 
-    LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed",
-             results.size(),
-             total - results.size());
-}
-
-void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
-    kota::event_loop loop;
-    loop.schedule(warm_async(commands));
-    loop.run();
+    LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
 }
 
 }  // namespace clice
