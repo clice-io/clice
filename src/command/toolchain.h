@@ -52,6 +52,9 @@ public:
 
     /// Single synchronous toolchain query. Returns cc1 arguments as owned strings.
     /// `file` is used for temp file extension detection (optional if -x is set).
+    /// Unlike resolve(), this is uncached and forwards `arguments` as-is; prefer
+    /// resolve() for CDB commands so results are cached and per-file user-content
+    /// flags are re-appended.
     static std::expected<std::vector<std::string>, std::string>
         query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file = {});
 
@@ -66,9 +69,14 @@ public:
         return extract_flags(file, arguments).key;
     }
 
+    /// Number of cached toolchain query results.
     std::size_t cache_size() const {
         return cache.size();
     }
+
+    /// Parse the first `-cc1` line from driver `-###` output, dropping flags
+    /// our linked cc1 does not understand (along with their values).
+    static std::vector<std::string> parse_cc1(llvm::StringRef content);
 
 #endif
 

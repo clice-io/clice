@@ -1,3 +1,5 @@
+#include <optional>
+
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
@@ -21,6 +23,10 @@ TEST_CASE(Family) {
 
     EXPECT_FAMILY("gcc", GCC);
     EXPECT_FAMILY("g++", GCC);
+    EXPECT_FAMILY("cc", GCC);
+    EXPECT_FAMILY("c++", GCC);
+    EXPECT_FAMILY("gcc-13", GCC);
+    EXPECT_FAMILY("g++-13.2", GCC);
     EXPECT_FAMILY("x86_64-linux-gnu-g++-14", GCC);
     EXPECT_FAMILY("arm-none-eabi-gcc", GCC);
 
@@ -30,11 +36,14 @@ TEST_CASE(Family) {
     EXPECT_FAMILY("clang++.exe", Clang);
     EXPECT_FAMILY("clang-20", Clang);
     EXPECT_FAMILY("clang-20.exe", Clang);
+    EXPECT_FAMILY("clang++-21", Clang);
     EXPECT_FAMILY("clang-cl", ClangCL);
     EXPECT_FAMILY("clang-cl-20", ClangCL);
     EXPECT_FAMILY("clang-cl-20.exe", ClangCL);
 
     EXPECT_FAMILY("cl.exe", MSVC);
+    EXPECT_FAMILY("nvcc", NVCC);
+    EXPECT_FAMILY("icx", Intel);
 
     EXPECT_FAMILY("zig", Zig);
     EXPECT_FAMILY("zig.exe", Zig);
@@ -172,6 +181,94 @@ TEST_CASE(WarmSkipsEmptyFlags) {
     tc.warm(cmds);
     EXPECT_FALSE(tc.has_cache());
     EXPECT_EQ(tc.cache_size(), std::size_t(0));
+}
+
+TEST_CASE(ParseCC1FirstLine) {
+    auto args = Toolchain::parse_cc1(R"(clang version 22.0.0
+Target: x86_64-unknown-linux-gnu
+ "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-std=c++23" "a.cpp"
+ "/usr/bin/clang-22" "-cc1" "-std=c++17" "b.cpp"
+ "/usr/bin/ld" "-o" "a.out")");
+
+    std::vector<std::string> expected =
+        {"/usr/bin/clang-22", "-cc1", "-triple", "x86_64-unknown-linux-gnu", "-std=c++23", "a.cpp"};
+    EXPECT_EQ(args, expected);
+
+    EXPECT_TRUE(Toolchain::parse_cc1("clang version 22.0.0\nno cc1 line here").empty());
+}
+
+TEST_CASE(ParseCC1DropsUnknown) {
+    // A newer external driver may emit cc1 flags our linked clang does not
+    // know; they must be dropped together with their values (greedy_unknown)
+    // instead of the values being misparsed as input files.
+    auto args = Toolchain::parse_cc1(
+        R"( "/usr/bin/clang-22" "-cc1" "-clice-future-flag" "val1" "val2" "-std=c++23")");
+
+    std::vector<std::string> expected = {"/usr/bin/clang-22", "-cc1", "-std=c++23"};
+    EXPECT_EQ(args, expected);
+}
+
+/// Canned `-###` output covering version-skew hardening: an unknown future
+/// flag with a value, plus BMI emission flags that query() must strip.
+constexpr static llvm::StringRef fake_cc1_line =
+    R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fmodules-reduced-bmi" "-fmodule-output=/tmp/probe.pcm" "-clice-future-flag" "val" "-std=c++23")";
+
+/// Create an executable shell script named `*.clang` (detected as the Clang
+/// family) that prints a canned `-###` line to stderr, standing in for a
+/// real external driver.
+std::optional<std::string> create_fake_clang(llvm::StringRef cc1_line) {
+    auto file = fs::createTemporaryFile("clice-fake", "clang");
+    if(!file)
+        return std::nullopt;
+
+    auto script = "#!/bin/sh\necho '" + cc1_line.str() + "' >&2\n";
+    if(!fs::write(*file, script))
+        return std::nullopt;
+
+    if(fs::setPermissions(*file, fs::all_read | fs::all_exe))
+        return std::nullopt;
+
+    return *file;
+}
+
+TEST_CASE(QueryFakeDriver, skip = Windows) {
+    auto driver = create_fake_clang(fake_cc1_line);
+    ASSERT_TRUE(driver.has_value());
+
+    auto result = Toolchain::query({driver->c_str()}, "/tmp/a.cpp");
+    ASSERT_TRUE(result.has_value());
+
+    // Unknown flag + value dropped, BMI emission flags stripped, known kept.
+    std::vector<std::string> expected = {"/usr/bin/clang-22",
+                                         "-cc1",
+                                         "-triple",
+                                         "x86_64-unknown-linux-gnu",
+                                         "-std=c++23"};
+    EXPECT_EQ(*result, expected);
+}
+
+TEST_CASE(WarmPartialFailure, skip = Windows) {
+    auto driver = create_fake_clang(fake_cc1_line);
+    ASSERT_TRUE(driver.has_value());
+
+    CompileCommand good;
+    good.resolved.flags = {driver->c_str(), "-std=c++23"};
+    good.source_file = "/tmp/a.cpp";
+
+    CompileCommand bad;
+    bad.resolved.flags = {"clice-nonexistent-driver", "-std=c++23"};
+    bad.source_file = "/tmp/b.cpp";
+
+    Toolchain tc;
+    llvm::SmallVector<CompileCommand> cmds = {good, bad};
+    tc.warm(cmds);
+
+    // The failed query is only logged; the successful one is cached.
+    EXPECT_EQ(tc.cache_size(), std::size_t(1));
+
+    ASSERT_TRUE(tc.resolve(good).has_value());
+    EXPECT_TRUE(good.resolved.is_cc1);
+    EXPECT_FALSE(tc.resolve(bad).has_value());
 }
 
 TEST_CASE(ResolveKeepsSemanticFlags, skip = !CIEnvironment) {

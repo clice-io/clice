@@ -352,6 +352,8 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
     // output flags the driver derives from the probe input (clang >= 22 emits
     // -fmodules-reduced-bmi -fmodule-output=<probe>.pcm for module units);
     // they reference the deleted temp file and clice manages outputs itself.
+    // The probe path uses an exact match: all supported drivers echo input
+    // paths verbatim, without canonicalizing them.
     std::erase_if(cc1_args, [&](const std::string& arg) {
         llvm::StringRef s(arg);
         return s == src_path || s == "-fmodules-reduced-bmi" || s.starts_with("-fmodule-output");
@@ -366,7 +368,9 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
 struct PendingQuery {
     std::string key;
     std::vector<const char*> query_args;
-    std::string file;
+    /// Points to interned, pointer-stable storage in CompileCommand::source_file;
+    /// valid for the whole warm() call.
+    llvm::StringRef file;
 };
 
 }  // namespace
@@ -567,7 +571,7 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
         if(cache.count(key) || !seen.try_emplace(key, true).second)
             continue;
 
-        pending.push_back({std::move(key), std::move(query_args), std::string(cmd.source_file)});
+        pending.push_back({std::move(key), std::move(query_args), cmd.source_file});
     }
 
     if(pending.empty())
@@ -621,5 +625,13 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
 
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
 }
+
+#ifdef CLICE_ENABLE_TEST
+
+std::vector<std::string> Toolchain::parse_cc1(llvm::StringRef content) {
+    return parse_cc1_output(content);
+}
+
+#endif
 
 }  // namespace clice
