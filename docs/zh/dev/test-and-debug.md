@@ -23,7 +23,7 @@ $ pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clic
 如果想在 clice 上附加调试器并进行调试，推荐先单独以 socket 模式启动 clice，然后再将客户端连接到 clice 上
 
 ```shell
-$ ./build/bin/clice --mode=socket --port=50051
+$ ./build/bin/clice server --mode socket --port 50051
 ```
 
 在服务器启动之后，可以通过以下两种方式启动客户端连接到服务器

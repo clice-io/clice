@@ -6,7 +6,7 @@
       "request": "launch",
       "name": "Debug clice",
       "program": "${workspaceFolder}/build/Debug/bin/clice",
-      "args": ["--mode=socket", "--port=50051"],
+      "args": ["server", "--mode", "socket", "--port", "50051"],
       "cwd": "${workspaceFolder}"
     },
     {
@@ -14,7 +14,7 @@
       "request": "launch",
       "name": "Debug clice (socket, RelWithDebInfo)",
       "program": "${workspaceFolder}/build/RelWithDebInfo/bin/clice",
-      "args": ["--mode=socket", "--port=50051"],
+      "args": ["server", "--mode", "socket", "--port", "50051"],
       "cwd": "${workspaceFolder}"
     },
     {

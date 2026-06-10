@@ -34,7 +34,6 @@ jobs:
               - '**/*.{h,c,cpp,hpp,ts,js,lua,md,yml,yaml}'
             docs:
               - 'docs/**'
-              - '.github/workflows/deploy-docs.yml'
             clice:
               - 'src/**'
               - 'include/**'

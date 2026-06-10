@@ -31,7 +31,7 @@ TEST_CASE(BuildPCHThenCompile) {
     auto dir = std::string(tmp.root);
 
     WorkerHandle sl;
-    ASSERT_TRUE(sl.spawn("stateless-worker"));
+    ASSERT_TRUE(sl.spawn());
 
     std::string pch_path;
     bool phase1_done = false;
@@ -69,7 +69,7 @@ TEST_CASE(BuildPCHThenCompile) {
     ASSERT_TRUE(llvm::sys::fs::exists(pch_path));
 
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn("stateful-worker"));
+    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool phase2_done = false;
 
@@ -115,7 +115,7 @@ TEST_CASE(CompileWithoutPCHStillWorks) {
     auto dir = std::string(tmp.root);
 
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn("stateful-worker"));
+    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool compile_done = false;
 

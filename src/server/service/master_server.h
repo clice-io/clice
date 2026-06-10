@@ -10,10 +10,56 @@
 #include "server/workspace/workspace.h"
 
 #include "kota/async/async.h"
+#include "kota/deco/deco.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
+
+namespace deco = kota::deco;
+
+enum class ServerMode : std::uint8_t { Pipe, Socket, Relay, Daemon };
+
+struct ServerOptions {
+    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
+    help;
+
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help = "Server mode: pipe (default), socket, relay, or daemon",
+           required = false)
+    <ServerMode> mode = ServerMode::Pipe;
+
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help = "Socket mode address",
+           required = false)
+    <std::string> host = "127.0.0.1";
+
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help = "Agentic TCP port (0 = disabled)",
+           required = false)
+    <int> port = 0;
+
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help = "Record LSP input to file for replay testing",
+           required = false)
+    <std::string> record;
+
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help = "Unix domain socket path (relay/daemon mode)",
+           required = false)
+    <std::string> socket;
+
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           help = "Workspace root directory (daemon mode)",
+           required = false)
+    <std::string> workspace;
+
+    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+           names = {"--log-level", "--log-level="},
+           help = "Log level: trace, debug, info, warn, error, off",
+           required = false)
+    <std::string> log_level = "info";
+};
 
 enum class ServerLifecycle : std::uint8_t {
     Uninitialized,
@@ -73,22 +119,8 @@ private:
     std::string init_options_json;
 };
 
-struct ServerOptions {
-    std::string mode;
-    std::string host = "127.0.0.1";
-    int port = 0;
-    std::string self_path;
-    std::string record;
-};
+int run_server_mode(const ServerOptions& opts, const char* self_path);
 
-int run_server_mode(const ServerOptions& opts);
-
-struct DaemonOptions {
-    std::string socket_path;
-    std::string workspace;
-    std::string self_path;
-};
-
-int run_daemon_mode(const DaemonOptions& opts);
+int run_daemon_mode(const ServerOptions& opts, const char* self_path);
 
 }  // namespace clice

@@ -1,5 +1,6 @@
-"""CLI-based tests for agentic mode — run clice --mode agentic as a subprocess."""
+"""CLI-based tests for agentic mode and CLI entry points."""
 
+import asyncio
 import json
 import subprocess
 
@@ -11,8 +12,7 @@ from tests.integration.utils.wait import wait_for_index
 def run_cli(executable, host, port, method, **kwargs):
     cmd = [
         str(executable),
-        "--mode",
-        "agentic",
+        "query",
         "--host",
         host,
         "--port",
@@ -35,7 +35,7 @@ async def indexed_server(request, executable, workspace):
 
     host = "127.0.0.1"
     port = _find_free_port()
-    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+    cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -187,3 +187,43 @@ async def test_cli_status(indexed_server, workspace):
     assert data["total"] > 0
     assert isinstance(data["pending"], int)
     assert isinstance(data["indexed"], int)
+
+
+# --- Server mode and CLI entry point tests ---
+
+
+def test_daemon_requires_workspace(executable):
+    r = subprocess.run(
+        [str(executable), "server", "--mode", "daemon"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert r.returncode != 0
+
+
+@pytest.mark.workspace("hello_world")
+async def test_socket_mode_connects(executable, workspace):
+    from tests.conftest import _find_free_port, _shutdown_client
+    from tests.integration.utils.client import CliceClient
+
+    port = _find_free_port()
+    cmd = [str(executable), "server", "--mode", "socket", "--port", str(port)]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await asyncio.sleep(1)
+
+    c = CliceClient()
+    await c.start_tcp("127.0.0.1", port)
+    await c.initialize(workspace)
+    await _shutdown_client(c)
+
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=5)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()

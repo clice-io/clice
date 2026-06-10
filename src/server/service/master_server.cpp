@@ -393,14 +393,19 @@ static kota::task<> accept_connections(MasterServer& server,
     co_await group.join();
 }
 
-int run_server_mode(const ServerOptions& opts) {
+int run_server_mode(const ServerOptions& opts, const char* self_path) {
     logging::stderr_logger("master", logging::options);
 
+    auto mode = opts.mode.value_or(ServerMode::Pipe);
+    auto host = opts.host.value_or("127.0.0.1");
+    auto port = opts.port.value_or(0);
+    auto record = opts.record.value_or("");
+
     kota::event_loop loop;
-    MasterServer server(loop, opts.self_path);
+    MasterServer server(loop, self_path);
     std::list<Connection> connections;
 
-    if(opts.mode == "pipe") {
+    if(mode == ServerMode::Pipe) {
         auto transport = kota::ipc::StreamTransport::open_stdio(loop);
         if(!transport) {
             LOG_ERROR("failed to open stdio transport");
@@ -408,10 +413,9 @@ int run_server_mode(const ServerOptions& opts) {
         }
 
         std::unique_ptr<kota::ipc::Transport> final_transport = std::move(*transport);
-        if(!opts.record.empty()) {
+        if(!record.empty()) {
             final_transport =
-                std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport),
-                                                                opts.record);
+                std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport), record);
         }
 
         kota::ipc::JsonPeer lsp_peer(loop, std::move(final_transport));
@@ -420,14 +424,14 @@ int run_server_mode(const ServerOptions& opts) {
         kota::tcp::acceptor agent_acceptor;
         bool has_agent_acceptor = false;
 
-        if(opts.port > 0) {
-            auto acceptor = kota::tcp::listen(opts.host, opts.port, {}, loop);
+        if(port > 0) {
+            auto acceptor = kota::tcp::listen(host, port, {}, loop);
             if(acceptor) {
-                LOG_INFO("Agentic protocol listening on {}:{}", opts.host, opts.port);
+                LOG_INFO("Agentic protocol listening on {}:{}", host, port);
                 agent_acceptor = std::move(*acceptor);
                 has_agent_acceptor = true;
             } else {
-                LOG_WARN("Failed to start agentic listener on {}:{}", opts.host, opts.port);
+                LOG_WARN("Failed to start agentic listener on {}:{}", host, port);
             }
         }
 
@@ -450,14 +454,14 @@ int run_server_mode(const ServerOptions& opts) {
         return 0;
     }
 
-    if(opts.mode == "socket") {
-        auto acceptor = kota::tcp::listen(opts.host, opts.port, {}, loop);
+    if(mode == ServerMode::Socket) {
+        auto acceptor = kota::tcp::listen(host, port, {}, loop);
         if(!acceptor) {
-            LOG_ERROR("failed to listen on {}:{}", opts.host, opts.port);
+            LOG_ERROR("failed to listen on {}:{}", host, port);
             return 1;
         }
 
-        LOG_INFO("Listening on {}:{} ...", opts.host, opts.port);
+        LOG_INFO("Listening on {}:{} ...", host, port);
         loop.schedule([](MasterServer& server,
                          kota::tcp::acceptor acceptor,
                          std::list<Connection>& connections) -> kota::task<> {
@@ -470,7 +474,7 @@ int run_server_mode(const ServerOptions& opts) {
         return 0;
     }
 
-    LOG_ERROR("unknown server mode '{}'", opts.mode);
+    LOG_ERROR("unexpected server mode");
     return 1;
 }
 
@@ -541,10 +545,12 @@ static kota::task<> daemon_main(MasterServer& server,
     co_await server.shutdown_and_cleanup();
 }
 
-int run_daemon_mode(const DaemonOptions& opts) {
+int run_daemon_mode(const ServerOptions& opts, const char* self_path) {
     logging::stderr_logger("daemon", logging::options);
 
-    auto socket_path = opts.socket_path.empty() ? path::default_socket_path() : opts.socket_path;
+    auto sock = opts.socket.value_or("");
+    auto socket_path = sock.empty() ? path::default_socket_path() : sock;
+    auto ws = opts.workspace.value_or("");
 
     auto socket_dir = llvm::sys::path::parent_path(socket_path);
     if(auto ec = llvm::sys::fs::create_directories(socket_dir)) {
@@ -572,11 +578,11 @@ int run_daemon_mode(const DaemonOptions& opts) {
     }
 
     kota::event_loop loop;
-    MasterServer server(loop, opts.self_path);
+    MasterServer server(loop, self_path);
 
     bool watch_files = false;
-    if(!opts.workspace.empty()) {
-        server.initialize(opts.workspace);
+    if(!ws.empty()) {
+        server.initialize(ws);
         watch_files = true;
     }
 

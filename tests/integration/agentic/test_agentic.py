@@ -67,8 +67,7 @@ def run_agentic(executable, host, port, path, timeout=10):
     result = subprocess.run(
         [
             str(executable),
-            "--mode",
-            "agentic",
+            "query",
             "--host",
             host,
             "--port",
@@ -148,7 +147,7 @@ async def indexed_agentic(request, executable, workspace):
 
     host = "127.0.0.1"
     port = _find_free_port()
-    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+    cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -428,7 +427,7 @@ async def test_rpc_shutdown(executable, workspace):
 
     host = "127.0.0.1"
     port = _find_free_port()
-    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+    cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -552,7 +551,7 @@ async def test_shutdown_during_indexing(executable, tmp_path):
 
     host = "127.0.0.1"
     port = _find_free_port()
-    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+    cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
     await c.start_io(*cmd)

@@ -33,8 +33,7 @@ impl zed::Extension for CliceExtension {
         Ok(zed::Command {
             command: binary.path,
             args: vec![
-                "--mode".to_string(),
-                "pipe".to_string(),
+                "server".to_string(),
             ],
             env: Default::default(),
         })

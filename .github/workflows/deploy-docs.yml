@@ -1,30 +1,15 @@
-name: deploy
+name: publish docs
 
 on:
   workflow_call:
 
 jobs:
-  deploy-docs:
+  publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-pixi
+      - uses: actions/checkout@v4
+      - uses: clice-io/docs@main
         with:
-          environments: node
-
-      - name: Build docs
-        run: pixi run build-docs
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        if: github.ref == 'refs/heads/main'
-        with:
-          personal_token: ${{ secrets.PUBLISH_DOCS }}
-          external_repository: clice-io/docs
-          publish_dir: ./docs/.vitepress/dist
-          destination_dir: clice
-          keep_files: true
+          project: clice
+          token: ${{ secrets.PUBLISH_DOCS }}

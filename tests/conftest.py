@@ -103,7 +103,7 @@ async def client(
     mode = config.getoption("--mode")
     host = config.getoption("--host")
 
-    cmd = [str(executable), "--mode", mode, "--host", host]
+    cmd = [str(executable), "server", "--mode", mode, "--host", host]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -137,7 +137,7 @@ async def agentic(
     """Start a server with agentic TCP port, yield (executable, host, port)."""
     host = "127.0.0.1"
     port = _find_free_port()
-    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+    cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -180,7 +180,7 @@ def generate_cdb(workspace: Path) -> None:
 async def make_client(executable: Path, workspace: Path) -> CliceClient:
     """Spawn a fresh clice server and initialize it. For multi-session tests."""
     c = CliceClient()
-    await c.start_io(str(executable), "--mode", "pipe")
+    await c.start_io(str(executable), "server")
     await c.initialize(workspace)
     return c
 
