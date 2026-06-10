@@ -11,6 +11,7 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 
+#include "kota/async/async.h"
 #include "kota/meta/enum.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
@@ -566,19 +567,50 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
     auto total = pending.size();
     LOG_INFO("Warming toolchain cache: {} unique queries", total);
 
+    // Run the blocking queries in parallel on the worker pool of a local
+    // event loop. The interface stays synchronous: we block until all
+    // queries complete, then fill the cache on this thread.
+    struct QueryOutcome {
+        std::string key;
+        std::expected<std::vector<std::string>, std::string> result;
+    };
+
+    kota::small_vector<QueryOutcome> outcomes;
+
+    kota::event_loop loop;
+    auto run = [&]() -> kota::task<> {
+        std::vector<kota::task<QueryOutcome, kota::error>> tasks;
+        tasks.reserve(pending.size());
+        for(auto& q: pending) {
+            tasks.push_back(kota::queue(
+                [&q]() -> QueryOutcome {
+                    return {std::move(q.key), query_one(q.query_args, q.file)};
+                },
+                loop));
+        }
+
+        auto results = co_await kota::when_all(std::move(tasks));
+        if(results.has_value()) {
+            outcomes = std::move(*results);
+        } else {
+            LOG_ERROR("Parallel toolchain query failed: {}", results.error().message());
+        }
+    };
+    loop.schedule(run());
+    loop.run();
+
     std::size_t succeeded = 0;
-    for(auto& q: pending) {
-        auto result = query_one(q.query_args, q.file);
-        if(!result) {
-            LOG_ERROR("Toolchain query failed: {}", result.error());
+    for(auto& o: outcomes) {
+        if(!o.result) {
+            LOG_ERROR("Toolchain query failed: {}", o.result.error());
             continue;
         }
 
         std::vector<const char*> saved;
-        saved.reserve(result->size());
-        for(auto& arg: *result)
+        saved.reserve(o.result->size());
+        for(auto& arg: *o.result)
             saved.push_back(strings.save(arg).data());
-        cache.try_emplace(std::move(q.key), std::move(saved));
+        cache.try_emplace(std::move(o.key), std::move(saved));
         succeeded += 1;
     }
 

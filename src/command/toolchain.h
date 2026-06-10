@@ -39,7 +39,8 @@ public:
     Toolchain(Toolchain&&) = default;
     Toolchain& operator=(Toolchain&&) = default;
 
-    /// Batch pre-warm: deduplicate commands and query each unique toolchain.
+    /// Batch pre-warm: deduplicate commands and query unique toolchains in
+    /// parallel internally. Blocks until all queries complete.
     void warm(llvm::ArrayRef<CompileCommand> commands);
 
     /// Resolve a driver-level command to cc1 level by querying the toolchain.
