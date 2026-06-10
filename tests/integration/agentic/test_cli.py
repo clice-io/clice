@@ -215,15 +215,25 @@ async def test_socket_mode_connects(executable, workspace):
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    await asyncio.sleep(1)
-
-    c = CliceClient()
-    await c.start_tcp("127.0.0.1", port)
-    await c.initialize(workspace)
-    await _shutdown_client(c)
 
     try:
+        c = CliceClient()
+        # Retry until the server starts listening (slow on Debug builds).
+        for _ in range(150):
+            assert proc.returncode is None, "server exited before accepting connections"
+            try:
+                await c.start_tcp("127.0.0.1", port)
+                break
+            except ConnectionRefusedError:
+                await asyncio.sleep(0.2)
+        else:
+            pytest.fail(f"server did not listen on port {port} within 30s")
+
+        await c.initialize(workspace)
+        await _shutdown_client(c)
+
         await asyncio.wait_for(proc.wait(), timeout=5)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+    finally:
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
