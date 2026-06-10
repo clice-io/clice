@@ -86,4 +86,29 @@ clang::QualType maybe_desugar(clang::ASTContext& context, clang::QualType type);
 // FIXME: This function is mostly duplicated in SemaCodeComplete.cpp; unify.
 clang::FunctionProtoTypeLoc proto_type_loc(clang::Expr* expr);
 
+/// Print the decl's qualified name, skipping unwritten scopes like inline
+/// and anonymous namespaces.
+std::string print_qualified_name(const clang::NamedDecl& decl);
+
+/// Print the template arguments of a template specialization as written
+/// in the source code. Empty if the decl is not a specialization.
+std::string print_template_specialization_args(const clang::NamedDecl& decl);
+
+/// Print a human-readable name for the decl. Handles anonymous entities
+/// (e.g. "(anonymous struct)"), using-directives, written nested name
+/// qualifiers and template specialization arguments.
+std::string print_name(const clang::NamedDecl& decl);
+
+/// Return the type a TypeDecl declares, preferring the sugared form with
+/// template arguments as written for class template specializations.
+clang::QualType declared_type(const clang::TypeDecl* decl);
+
+/// Compute the type deduced for the `auto` or `decltype` written at the
+/// given location, if it has been deduced.
+std::optional<clang::QualType> deduced_type(clang::ASTContext& context, clang::SourceLocation loc);
+
+/// Get the formatted documentation comment attached to the decl, empty if
+/// none. Namespaces are skipped as their comments are rarely useful.
+std::string decl_comment(const clang::ASTContext& context, const clang::NamedDecl& decl);
+
 }  // namespace clice::ast
