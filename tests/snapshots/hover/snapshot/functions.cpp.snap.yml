@@ -1,0 +1,107 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: functions.cpp
+---
+01_fn_via_pointer:
+  name: "foo"
+  kind: Function
+  namespace_scope: "fn_via_pointer::"
+  documentation: "Function definition via pointer"
+  definition: "void foo(int)"
+  type: "void (int)"
+  return_type: "void"
+  parameters:
+    - "int"
+  symbol_range: "[260, 263)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `void`  
+    Parameters:  
+    - `int`
+
+    Function definition via pointer  
+
+    ---
+    ```cpp
+    // In namespace fn_via_pointer
+    void foo(int)
+    ```
+
+02_fn_via_call:
+  name: "foo"
+  kind: Function
+  namespace_scope: "fn_via_call::"
+  documentation: "Function declaration via call"
+  definition: "int foo(int)"
+  type: "int (int)"
+  return_type: "int"
+  parameters:
+    - "int"
+  symbol_range: "[363, 366)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `int`  
+    Parameters:  
+    - `int`
+
+    Function declaration via call  
+
+    ---
+    ```cpp
+    // In namespace fn_via_call
+    int foo(int)
+    ```
+
+03_fn_decl:
+  name: "foo"
+  kind: Function
+  namespace_scope: "fn_decl::"
+  documentation: "Function declaration"
+  definition: "void foo()"
+  type: "void ()"
+  return_type: "void"
+  parameters: []
+  symbol_range: "[444, 447)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `void`  
+    Function declaration  
+
+    ---
+    ```cpp
+    // In namespace fn_decl
+    void foo()
+    ```
+
+04_fn_default_tmpl_arg:
+  name: "foo"
+  kind: Function
+  namespace_scope: "fn_default_tmpl_arg::"
+  definition: "template <> void foo<int>(const int &)"
+  type: "void (const int &)"
+  return_type: "void"
+  parameters:
+    - "const int & = T()"
+  symbol_range: "[617, 620)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `void`  
+    Parameters:  
+    - `const int & = T()`
+
+    ---
+    ```cpp
+    // In namespace fn_default_tmpl_arg
+    template <> void foo<int>(const int &)
+    ```
+
+

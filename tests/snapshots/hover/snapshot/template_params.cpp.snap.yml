@@ -1,0 +1,69 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: template_params.cpp
+---
+01_type_param:
+  name: "T"
+  kind: Type
+  namespace_scope: "type_param::"
+  local_scope: "foo::"
+  definition: "typename T = int"
+  access_specifier: "public"
+  type: "typename"
+  symbol_range: "[225, 226)"
+  markdown: |
+    ### type `T`  
+
+    ---
+    Type: `typename`  
+
+    ---
+    ```cpp
+    // In foo
+    public: typename T = int
+    ```
+
+02_template_template_param:
+  name: "T"
+  kind: Type
+  namespace_scope: "template_template_param::"
+  local_scope: "foo::"
+  definition: "template <typename> class T"
+  access_specifier: "public"
+  type: "template <typename> class"
+  symbol_range: "[352, 353)"
+  markdown: |
+    ### type `T`  
+
+    ---
+    Type: `template <typename> class`  
+
+    ---
+    ```cpp
+    // In foo
+    public: template <typename> class T
+    ```
+
+03_non_type_param:
+  name: "T"
+  kind: Variable
+  namespace_scope: "non_type_param::"
+  local_scope: "foo::"
+  definition: "int T = 5"
+  access_specifier: "public"
+  type: "int"
+  symbol_range: "[443, 444)"
+  markdown: |
+    ### variable `T`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In foo
+    public: int T = 5
+    ```
+
+

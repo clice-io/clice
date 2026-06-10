@@ -1,0 +1,4 @@
+# These fixtures contain `$(name)` hover-point annotations that clang-format
+# would split apart, so formatting is disabled for this directory.
+DisableFormat: true
+SortIncludes: false

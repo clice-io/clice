@@ -1,0 +1,227 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: values.cpp
+---
+01_constexpr_call_value:
+  name: "bar"
+  kind: Variable
+  namespace_scope: "constexpr_call::"
+  definition: "int bar = add(1, 2)"
+  type: "int"
+  value: "3"
+  symbol_range: "[270, 273)"
+  markdown: |
+    ### variable `bar`  
+
+    ---
+    Type: `int`  
+    Value = `3`  
+
+    ---
+    ```cpp
+    // In namespace constexpr_call
+    int bar = add(1, 2)
+    ```
+
+02_sizeof_value:
+  name: "bar"
+  kind: Variable
+  namespace_scope: "sizeof_value::"
+  definition: "int bar = sizeof(char)"
+  type: "int"
+  value: "1"
+  symbol_range: "[336, 339)"
+  markdown: |
+    ### variable `bar`  
+
+    ---
+    Type: `int`  
+    Value = `1`  
+
+    ---
+    ```cpp
+    // In namespace sizeof_value
+    int bar = sizeof(char)
+    ```
+
+03_template_member_value:
+  name: "bar"
+  kind: Variable
+  namespace_scope: "template_member::"
+  definition: "int bar = Add<1, 2>::result"
+  type: "int"
+  value: "3"
+  symbol_range: "[495, 498)"
+  markdown: |
+    ### variable `bar`  
+
+    ---
+    Type: `int`  
+    Value = `3`  
+
+    ---
+    ```cpp
+    // In namespace template_member
+    int bar = Add<1, 2>::result
+    ```
+
+04_enumerator_value:
+  name: "GREEN"
+  kind: EnumMember
+  namespace_scope: "enumerator_value::"
+  local_scope: "Color::"
+  definition: "GREEN = 5"
+  type: "enum enumerator_value::Color"
+  value: "5"
+  symbol_range: "[622, 627)"
+  markdown: |
+    ### enumerator `GREEN`  
+
+    ---
+    Type: `enum enumerator_value::Color`  
+    Value = `5`  
+
+    ---
+    ```cpp
+    // In Color
+    GREEN = 5
+    ```
+
+05_enum_var_value:
+  name: "x"
+  kind: Variable
+  namespace_scope: "enum_var_value::"
+  definition: "Color x = RED"
+  type: "Color"
+  value: "RED (0xffffff85)"
+  symbol_range: "[783, 784)"
+  markdown: |
+    ### variable `x`  
+
+    ---
+    Type: `Color`  
+    Value = `RED (0xffffff85)`  
+
+    ---
+    ```cpp
+    // In namespace enum_var_value
+    Color x = RED
+    ```
+
+06_static_member_value:
+  name: "result"
+  kind: Variable
+  namespace_scope: "static_member::"
+  local_scope: "Add<1, 2>::"
+  definition: "static constexpr int result = a + b"
+  access_specifier: "public"
+  type: "const int"
+  value: "3"
+  symbol_range: "[947, 953)"
+  markdown: |
+    ### variable `result`  
+
+    ---
+    Type: `const int`  
+    Value = `3`  
+
+    ---
+    ```cpp
+    // In Add<1, 2>
+    public: static constexpr int result = a + b
+    ```
+
+07_constexpr_fn_value:
+  name: "answer"
+  kind: Function
+  namespace_scope: "aliased_return::"
+  definition: "constexpr my_int answer()"
+  type: "my_int () (aka int ())"
+  return_type: "my_int (aka int)"
+  parameters: []
+  value: "42 (0x2a)"
+  symbol_range: "[1106, 1112)"
+  markdown: |
+    ### function `answer`  
+
+    ---
+    → `my_int (aka int)`  
+    Value = `42 (0x2a)`  
+
+    ---
+    ```cpp
+    // In namespace aliased_return
+    constexpr my_int answer()
+    ```
+
+08_string_pointer_value:
+  name: "bar"
+  kind: Variable
+  namespace_scope: "string_pointer::"
+  definition: "const char *bar = \"1234\""
+  type: "const char *"
+  value: "&\"1234\"[0]"
+  symbol_range: "[1183, 1186)"
+  markdown: |
+    ### variable `bar`  
+
+    ---
+    Type: `const char *`  
+    Value = `&"1234"[0]`  
+
+    ---
+    ```cpp
+    // In namespace string_pointer
+    const char *bar = "1234"
+    ```
+
+09_dependent_ctor_arg:
+  name: "name"
+  kind: Parameter
+  namespace_scope: "dependent_ctor_arg::"
+  local_scope: "boom::"
+  definition: "int name"
+  type: "int"
+  symbol_range: "[1402, 1406)"
+  markdown: |
+    ### parameter `name`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In boom
+    int name
+    ```
+
+10_skip_inline_anon_ns:
+  name: "Foo"
+  kind: Class
+  namespace_scope: "ns::a::b::"
+  definition: "class Foo {}"
+  symbol_range: "[1733, 1736)"
+  markdown: |
+    ### class `Foo`  
+
+    ---
+    ```cpp
+    // In namespace ns::a::b
+    class Foo {}
+    ```
+
+11_auto_incomplete_arg:
+  name: "auto"
+  kind: Type
+  definition: "Foo<X>"
+  symbol_range: "[1919, 1923)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    Foo<X>
+    ```
+
+

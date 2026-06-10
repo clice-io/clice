@@ -1,0 +1,12 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+---
+plaintext: |
+  method method
+
+  → size_t (aka unsigned long)
+
+  // In cls<int>
+  protected: size_t method()
+

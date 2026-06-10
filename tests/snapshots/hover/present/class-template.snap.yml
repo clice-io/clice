@@ -1,0 +1,12 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+---
+plaintext: |
+  class foo
+
+  Size: 10 bytes
+  documentation
+
+  template <typename T, typename C = bool> class Foo {}
+

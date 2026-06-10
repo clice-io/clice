@@ -1,0 +1,42 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: using_decls.cpp
+---
+01_using_function:
+  name: "foo"
+  kind: Function
+  namespace_scope: "using_func::ns::"
+  definition: "void foo()"
+  type: "void ()"
+  return_type: "void"
+  parameters: []
+  symbol_range: "[287, 290)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `void`  
+
+    ---
+    ```cpp
+    // In namespace using_func::ns
+    void foo()
+    ```
+
+02_using_overloads:
+  name: "foo"
+  kind: Invalid
+  namespace_scope: "using_overloads::"
+  definition: "using ns::foo"
+  symbol_range: "[487, 490)"
+  markdown: |
+    ### `foo`  
+
+    ---
+    ```cpp
+    // In namespace using_overloads
+    using ns::foo
+    ```
+
+

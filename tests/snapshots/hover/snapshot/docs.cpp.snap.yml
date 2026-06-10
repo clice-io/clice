@@ -1,0 +1,243 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: docs.cpp
+---
+01_auto_class_doc:
+  name: "auto"
+  kind: Type
+  documentation: "doc"
+  definition: "X<int>"
+  symbol_range: "[355, 359)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    doc  
+
+    ---
+    ```cpp
+    X<int>
+    ```
+
+02_class_ref_doc:
+  name: "X<int>"
+  kind: Class
+  namespace_scope: "docs_ast::"
+  documentation: "doc"
+  definition: "template <> class X<int> {}"
+  symbol_range: "[376, 377)"
+  markdown: |
+    ### class `X<int>`  
+
+    ---
+    doc  
+
+    ---
+    ```cpp
+    // In namespace docs_ast
+    template <> class X<int> {}
+    ```
+
+03_function_doc:
+  name: "bar"
+  kind: Function
+  namespace_scope: "docs_ast::"
+  documentation: "doc"
+  definition: "template <> void bar<int>()"
+  type: "void ()"
+  return_type: "void"
+  parameters: []
+  symbol_range: "[388, 391)"
+  markdown: |
+    ### function `bar`  
+
+    ---
+    → `void`  
+    doc  
+
+    ---
+    ```cpp
+    // In namespace docs_ast
+    template <> void bar<int>()
+    ```
+
+04_auto_var_tmpl_doc:
+  name: "auto"
+  kind: Type
+  documentation: "doc"
+  definition: "docs_ast::X<int>"
+  symbol_range: "[402, 406)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    doc  
+
+    ---
+    ```cpp
+    docs_ast::X<int>
+    ```
+
+05_var_tmpl_ref_doc:
+  name: "baz<X<int>>"
+  kind: Variable
+  namespace_scope: "docs_ast::"
+  documentation: "doc"
+  definition: "docs_ast::X<int> baz"
+  type: "docs_ast::X<int>"
+  symbol_range: "[411, 414)"
+  markdown: |
+    ### variable `baz<X<int>>`  
+
+    ---
+    Type: `docs_ast::X<int>`  
+    doc  
+
+    ---
+    ```cpp
+    // In namespace docs_ast
+    docs_ast::X<int> baz
+    ```
+
+06_var_tmpl_assign_doc:
+  name: "baz<int>"
+  kind: Variable
+  namespace_scope: "docs_ast::"
+  documentation: "doc"
+  definition: "int baz"
+  type: "int"
+  symbol_range: "[426, 429)"
+  markdown: |
+    ### variable `baz<int>`  
+
+    ---
+    Type: `int`  
+    doc  
+
+    ---
+    ```cpp
+    // In namespace docs_ast
+    int baz
+    ```
+
+07_primary_doc:
+  name: "X"
+  kind: Class
+  namespace_scope: "docs_special::"
+  documentation: "doc1"
+  definition: "template <typename T> class X {}"
+  template_parameters:
+    - "typename T"
+  symbol_range: "[562, 563)"
+  markdown: |
+    ### class `X`  
+
+    ---
+    doc1  
+
+    ---
+    ```cpp
+    // In namespace docs_special
+    template <typename T> class X {}
+    ```
+
+08_full_spec_doc:
+  name: "X<int>"
+  kind: Class
+  namespace_scope: "docs_special::"
+  documentation: "doc2"
+  definition: "template <> class X<int> {}"
+  size: 8
+  align: 8
+  symbol_range: "[594, 595)"
+  markdown: |
+    ### class `X<int>`  
+
+    ---
+    Size: 1 byte, alignment 1 byte  
+    doc2  
+
+    ---
+    ```cpp
+    // In namespace docs_special
+    template <> class X<int> {}
+    ```
+
+09_partial_spec_doc:
+  name: "X<T *>"
+  kind: Class
+  namespace_scope: "docs_special::"
+  documentation: "doc3"
+  definition: "template <typename T> class X<T *> {}"
+  symbol_range: "[641, 642)"
+  markdown: |
+    ### class `X<T *>`  
+
+    ---
+    doc3  
+
+    ---
+    ```cpp
+    // In namespace docs_special
+    template <typename T> class X<T *> {}
+    ```
+
+10_primary_ref_doc:
+  name: "X<char>"
+  kind: Class
+  namespace_scope: "docs_special::"
+  documentation: "doc1"
+  definition: "template <> class X<char> {}"
+  symbol_range: "[666, 667)"
+  markdown: |
+    ### class `X<char>`  
+
+    ---
+    doc1  
+
+    ---
+    ```cpp
+    // In namespace docs_special
+    template <> class X<char> {}
+    ```
+
+11_full_spec_ref_doc:
+  name: "X<int>"
+  kind: Class
+  namespace_scope: "docs_special::"
+  documentation: "doc2"
+  definition: "template <> class X<int> {}"
+  symbol_range: "[679, 680)"
+  markdown: |
+    ### class `X<int>`  
+
+    ---
+    doc2  
+
+    ---
+    ```cpp
+    // In namespace docs_special
+    template <> class X<int> {}
+    ```
+
+12_partial_spec_ref_doc:
+  name: "X<int *>"
+  kind: Class
+  namespace_scope: "docs_special::"
+  documentation: "doc3"
+  definition: "template <> class X<int *> {}"
+  symbol_range: "[691, 692)"
+  markdown: |
+    ### class `X<int *>`  
+
+    ---
+    doc3  
+
+    ---
+    ```cpp
+    // In namespace docs_special
+    template <> class X<int *> {}
+    ```
+
+

@@ -1,0 +1,400 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: templates.cpp
+---
+01_var_of_template_type:
+  name: "foo"
+  kind: Variable
+  namespace_scope: "var_tmpl_type::"
+  definition: "Foo<int, char, bool> foo = Foo<int, char, bool>(5)"
+  type: "Foo<int, char, bool>"
+  symbol_range: "[302, 305)"
+  markdown: |
+    ### variable `foo`  
+
+    ---
+    Type: `Foo<int, char, bool>`  
+
+    ---
+    ```cpp
+    // In namespace var_tmpl_type
+    Foo<int, char, bool> foo = Foo<int, char, bool>(5)
+    ```
+
+02_implicit_instantiation:
+  name: "vector<int>"
+  kind: Class
+  namespace_scope: "implicit_instantiation::"
+  definition: "template <> class vector<int> {}"
+  symbol_range: "[445, 451)"
+  markdown: |
+    ### class `vector<int>`  
+
+    ---
+    ```cpp
+    // In namespace implicit_instantiation
+    template <> class vector<int> {}
+    ```
+
+03_class_template:
+  name: "Foo"
+  kind: Class
+  namespace_scope: "class_template::"
+  definition: "template <template <typename, bool...> class C, typename = char, int = 0,\n          bool Q = false, class... Ts>\nclass Foo final {}"
+  template_parameters:
+    - "template <typename, bool...> class C"
+    - "typename = char"
+    - "int = 0"
+    - "bool Q = false"
+    - "class... Ts"
+  symbol_range: "[720, 723)"
+  markdown: |
+    ### class `Foo`  
+
+    ---
+    ```cpp
+    // In namespace class_template
+    template <template <typename, bool...> class C, typename = char, int = 0,
+              bool Q = false, class... Ts>
+    class Foo final {}
+    ```
+
+04_function_template:
+  name: "foo"
+  kind: Function
+  namespace_scope: "function_template::"
+  definition: "template <> void foo<function_template::Foo, char, 0, false, <>>()"
+  type: "void ()"
+  return_type: "void"
+  parameters: []
+  symbol_range: "[996, 999)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `void`  
+
+    ---
+    ```cpp
+    // In namespace function_template
+    template <> void foo<function_template::Foo, char, 0, false, <>>()
+    ```
+
+05_function_decl:
+  name: "foo"
+  kind: Function
+  namespace_scope: "function_decl::"
+  definition: "Foo<bool, true, false> foo(int, bool T = false)"
+  type: "Foo<bool, true, false> (int, bool)"
+  return_type: "Foo<bool, true, false>"
+  parameters:
+    - "int"
+    - "bool T = false"
+  symbol_range: "[1164, 1167)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `Foo<bool, true, false>`  
+    Parameters:  
+    - `int`
+    - `bool T = false`
+
+    ---
+    ```cpp
+    // In namespace function_decl
+    Foo<bool, true, false> foo(int, bool T = false)
+    ```
+
+06_partial_specialization:
+  name: "X<T *>"
+  kind: Class
+  namespace_scope: "partial_spec::"
+  definition: "template <typename T> class X<T *> {}"
+  symbol_range: "[1302, 1303)"
+  markdown: |
+    ### class `X<T *>`  
+
+    ---
+    ```cpp
+    // In namespace partial_spec
+    template <typename T> class X<T *> {}
+    ```
+
+07_partial_spec_constructor:
+  name: "X"
+  kind: Method
+  namespace_scope: "partial_spec_ctor::"
+  local_scope: "X<T *>::"
+  definition: "X()"
+  access_specifier: "public"
+  parameters: []
+  symbol_range: "[1480, 1481)"
+  markdown: |
+    ### method `X`  
+
+    ---
+    ```cpp
+    // In X<T *>
+    public: X()
+    ```
+
+08_destructor:
+  name: "~X"
+  kind: Method
+  namespace_scope: "destructor::"
+  local_scope: "X::"
+  definition: "~X()"
+  access_specifier: "private"
+  parameters: []
+  symbol_range: "[1524, 1525)"
+  markdown: |
+    ### method `~X`  
+
+    ---
+    ```cpp
+    // In X
+    private: ~X()
+    ```
+
+09_conversion_operator:
+  name: "operator int"
+  kind: Method
+  namespace_scope: "conversion_operator::"
+  local_scope: "X::"
+  definition: "operator int()"
+  access_specifier: "private"
+  parameters: []
+  symbol_range: "[1578, 1586)"
+  markdown: |
+    ### method `operator int`  
+
+    ---
+    ```cpp
+    // In X
+    private: operator int()
+    ```
+
+10_conversion_target:
+  name: "X"
+  kind: Class
+  namespace_scope: "conversion_target::"
+  definition: "class X {}"
+  symbol_range: "[1649, 1650)"
+  markdown: |
+    ### class `X`  
+
+    ---
+    ```cpp
+    // In namespace conversion_target
+    class X {}
+    ```
+
+11_primary_template_doc:
+  name: "Foo<int *>"
+  kind: Class
+  namespace_scope: "primary_fallback::"
+  documentation: "comment from primary"
+  definition: "template <> class Foo<int *>"
+  symbol_range: "[1905, 1908)"
+  markdown: |
+    ### class `Foo<int *>`  
+
+    ---
+    comment from primary  
+
+    ---
+    ```cpp
+    // In namespace primary_fallback
+    template <> class Foo<int *>
+    ```
+
+12_variable_template:
+  name: "arr"
+  kind: Variable
+  namespace_scope: "var_template::"
+  definition: "template <int Size> m_int arr[Size]"
+  type: "m_int[Size] (aka int[Size])"
+  template_parameters:
+    - "int Size"
+  symbol_range: "[2027, 2030)"
+  markdown: |
+    ### variable `arr`  
+
+    ---
+    Type: `m_int[Size] (aka int[Size])`  
+
+    ---
+    ```cpp
+    // In namespace var_template
+    template <int Size> m_int arr[Size]
+    ```
+
+13_variable_template_spec:
+  name: "arr<4>"
+  kind: Variable
+  namespace_scope: "var_template_spec::"
+  definition: "m_int arr[4]"
+  type: "m_int[4] (aka int[4])"
+  symbol_range: "[2184, 2187)"
+  markdown: |
+    ### variable `arr<4>`  
+
+    ---
+    Type: `m_int[4] (aka int[4])`  
+
+    ---
+    ```cpp
+    // In namespace var_template_spec
+    m_int arr[4]
+    ```
+
+14_canonical_type:
+  name: "a"
+  kind: Variable
+  namespace_scope: "canonical_type::"
+  local_scope: "code::"
+  definition: "TestHover<int>::Type a"
+  type: "TestHover<int>::Type (aka int)"
+  symbol_range: "[2343, 2344)"
+  markdown: |
+    ### variable `a`  
+
+    ---
+    Type: `TestHover<int>::Type (aka int)`  
+
+    ---
+    ```cpp
+    // In code
+    TestHover<int>::Type a
+    ```
+
+15_function_template_type:
+  name: "foo"
+  kind: Function
+  namespace_scope: "canonical_tmpl_type::"
+  definition: "template <typename T> void foo(T arg)"
+  type: "void (T)"
+  return_type: "void"
+  parameters:
+    - "T arg"
+  template_parameters:
+    - "typename T"
+  symbol_range: "[2437, 2440)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `void`  
+    Parameters:  
+    - `T arg`
+
+    ---
+    ```cpp
+    // In namespace canonical_tmpl_type
+    template <typename T> void foo(T arg)
+    ```
+
+16_alias_template:
+  name: "alias"
+  kind: Type
+  namespace_scope: "alias_template::"
+  definition: "template <typename T> using alias = T"
+  type: "T"
+  template_parameters:
+    - "typename T"
+  symbol_range: "[2531, 2536)"
+  markdown: |
+    ### type `alias`  
+
+    ---
+    Type: `T`  
+
+    ---
+    ```cpp
+    // In namespace alias_template
+    template <typename T> using alias = T
+    ```
+
+17_alias_template_chain:
+  name: "AA"
+  kind: Type
+  namespace_scope: "alias_chain::"
+  definition: "template <typename T> using AA = A<T>"
+  type: "A<T> (aka T)"
+  template_parameters:
+    - "typename T"
+  symbol_range: "[2681, 2683)"
+  markdown: |
+    ### type `AA`  
+
+    ---
+    Type: `A<T> (aka T)`  
+
+    ---
+    ```cpp
+    // In namespace alias_chain
+    template <typename T> using AA = A<T>
+    ```
+
+18_constant_array:
+  name: "arr"
+  kind: Variable
+  namespace_scope: "constant_array::"
+  definition: "m_int arr[10]"
+  type: "m_int[10] (aka int[10])"
+  symbol_range: "[2767, 2770)"
+  markdown: |
+    ### variable `arr`  
+
+    ---
+    Type: `m_int[10] (aka int[10])`  
+
+    ---
+    ```cpp
+    // In namespace constant_array
+    m_int arr[10]
+    ```
+
+19_incomplete_array:
+  name: "arr"
+  kind: Variable
+  namespace_scope: "incomplete_array::"
+  definition: "extern m_int arr[]"
+  type: "m_int[] (aka int[])"
+  symbol_range: "[2862, 2865)"
+  markdown: |
+    ### variable `arr`  
+
+    ---
+    Type: `m_int[] (aka int[])`  
+
+    ---
+    ```cpp
+    // In namespace incomplete_array
+    extern m_int arr[]
+    ```
+
+20_dependent_size_array:
+  name: "arr"
+  kind: Field
+  namespace_scope: "dependent_array::"
+  local_scope: "Test<Size>::"
+  definition: "m_int arr[Size]"
+  access_specifier: "public"
+  type: "m_int[Size] (aka int[Size])"
+  symbol_range: "[2986, 2989)"
+  markdown: |
+    ### field `arr`  
+
+    ---
+    Type: `m_int[Size] (aka int[Size])`  
+
+    ---
+    ```cpp
+    // In Test<Size>
+    public: m_int arr[Size]
+    ```
+
+

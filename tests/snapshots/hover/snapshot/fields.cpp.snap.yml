@@ -1,0 +1,178 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: fields.cpp
+---
+01_field:
+  name: "x"
+  kind: Field
+  namespace_scope: "field_access::"
+  local_scope: "Foo::"
+  definition: "int x"
+  access_specifier: "public"
+  type: "int"
+  symbol_range: "[256, 257)"
+  markdown: |
+    ### field `x`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In Foo
+    public: int x
+    ```
+
+02_field_init:
+  name: "x"
+  kind: Field
+  namespace_scope: "field_init::"
+  local_scope: "Foo::"
+  definition: "int x = 5"
+  access_specifier: "public"
+  type: "int"
+  symbol_range: "[380, 381)"
+  markdown: |
+    ### field `x`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In Foo
+    public: int x = 5
+    ```
+
+03_static_field:
+  name: "x"
+  kind: Variable
+  namespace_scope: "static_field::"
+  local_scope: "Foo::"
+  definition: "static int x"
+  access_specifier: "public"
+  type: "int"
+  symbol_range: "[486, 487)"
+  markdown: |
+    ### variable `x`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In Foo
+    public: static int x
+    ```
+
+04_member_initializer:
+  name: "x"
+  kind: Field
+  namespace_scope: "member_initializer::"
+  local_scope: "Foo::"
+  definition: "int x"
+  access_specifier: "public"
+  type: "int"
+  symbol_range: "[589, 590)"
+  markdown: |
+    ### field `x`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In Foo
+    public: int x
+    ```
+
+05_gnu_designator:
+  name: "x"
+  kind: Field
+  namespace_scope: "gnu_designator::"
+  local_scope: "Foo::"
+  definition: "int x"
+  access_specifier: "public"
+  type: "int"
+  symbol_range: "[722, 723)"
+  markdown: |
+    ### field `x`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In Foo
+    public: int x
+    ```
+
+06_field_designator:
+  name: "x"
+  kind: Field
+  namespace_scope: "field_designator::"
+  local_scope: "Foo::"
+  definition: "int x"
+  access_specifier: "public"
+  type: "int"
+  symbol_range: "[851, 852)"
+  markdown: |
+    ### field `x`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In Foo
+    public: int x
+    ```
+
+07_method_call:
+  name: "x"
+  kind: Method
+  namespace_scope: "method_call::"
+  local_scope: "Foo::"
+  definition: "int x()"
+  access_specifier: "public"
+  type: "int ()"
+  return_type: "int"
+  parameters: []
+  symbol_range: "[968, 969)"
+  markdown: |
+    ### method `x`  
+
+    ---
+    → `int`  
+
+    ---
+    ```cpp
+    // In Foo
+    public: int x()
+    ```
+
+08_static_method_call:
+  name: "x"
+  kind: Method
+  namespace_scope: "static_method_call::"
+  local_scope: "Foo::"
+  definition: "static int x()"
+  access_specifier: "public"
+  type: "int ()"
+  return_type: "int"
+  parameters: []
+  symbol_range: "[1084, 1085)"
+  markdown: |
+    ### method `x`  
+
+    ---
+    → `int`  
+
+    ---
+    ```cpp
+    // In Foo
+    public: static int x()
+    ```
+
+

@@ -1,0 +1,606 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: pass_types.cpp
+---
+01_int_value_var:
+  name: "int_x"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "int int_x"
+  type: "int"
+  callee_arg_info: "int x"
+  passed: by value
+  symbol_range: "[841, 846)"
+  markdown: |
+    ### variable `int_x`  
+
+    ---
+    Type: `int`  
+    Passed as x  
+
+    ---
+    ```cpp
+    // In fun
+    int int_x
+    ```
+
+02_int_value_literal:
+  name: "literal"
+  kind: Invalid
+  callee_arg_info: "int x"
+  passed: by value
+  symbol_range: "[864, 867)"
+  markdown: |
+    ### `literal`  
+
+    ---
+    Passed as x
+
+03_int_ref_var:
+  name: "int_x"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "int int_x"
+  type: "int"
+  callee_arg_info: "int & x"
+  passed: by reference
+  symbol_range: "[883, 888)"
+  markdown: |
+    ### variable `int_x`  
+
+    ---
+    Type: `int`  
+    Passed by reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    int int_x
+    ```
+
+04_int_const_ref_var:
+  name: "int_x"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "int int_x"
+  type: "int"
+  callee_arg_info: "const int & x"
+  passed: by const reference
+  symbol_range: "[910, 915)"
+  markdown: |
+    ### variable `int_x`  
+
+    ---
+    Type: `int`  
+    Passed by const reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    int int_x
+    ```
+
+05_int_const_ref_literal:
+  name: "literal"
+  kind: Invalid
+  callee_arg_info: "const int & x"
+  passed: by const reference
+  symbol_range: "[937, 940)"
+  markdown: |
+    ### `literal`  
+
+    ---
+    Passed by const reference as x
+
+06_int_value_from_ref:
+  name: "int_ref"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "int &int_ref = int_x"
+  type: "int &"
+  callee_arg_info: "int x"
+  passed: by value
+  symbol_range: "[958, 965)"
+  markdown: |
+    ### variable `int_ref`  
+
+    ---
+    Type: `int &`  
+    Passed as x  
+
+    ---
+    ```cpp
+    // In fun
+    int &int_ref = int_x
+    ```
+
+07_int_const_ref_from_ref:
+  name: "int_ref"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "int &int_ref = int_x"
+  type: "int &"
+  callee_arg_info: "const int & x"
+  passed: by const reference
+  symbol_range: "[987, 994)"
+  markdown: |
+    ### variable `int_ref`  
+
+    ---
+    Type: `int &`  
+    Passed by const reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    int &int_ref = int_x
+    ```
+
+08_int_const_ref_from_const_ref:
+  name: "int_const_ref"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "const int &int_const_ref = int_x"
+  type: "const int &"
+  callee_arg_info: "const int & x"
+  passed: by const reference
+  symbol_range: "[1016, 1029)"
+  markdown: |
+    ### variable `int_const_ref`  
+
+    ---
+    Type: `const int &`  
+    Passed by const reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    const int &int_const_ref = int_x
+    ```
+
+09_base_ref:
+  name: "base"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "Base base"
+  type: "Base"
+  callee_arg_info: "Base & x"
+  passed: by reference
+  symbol_range: "[1070, 1074)"
+  markdown: |
+    ### variable `base`  
+
+    ---
+    Type: `Base`  
+    Passed by reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    Base base
+    ```
+
+10_base_const_ref:
+  name: "base"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "Base base"
+  type: "Base"
+  callee_arg_info: "const Base & x"
+  passed: by const reference
+  symbol_range: "[1097, 1101)"
+  markdown: |
+    ### variable `base`  
+
+    ---
+    Type: `Base`  
+    Passed by const reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    Base base
+    ```
+
+11_base_const_ref_from_const_ref:
+  name: "base_const_ref"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "const Base &base_const_ref = base"
+  type: "const Base &"
+  callee_arg_info: "const Base & x"
+  passed: by const reference
+  symbol_range: "[1124, 1138)"
+  markdown: |
+    ### variable `base_const_ref`  
+
+    ---
+    Type: `const Base &`  
+    Passed by const reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    const Base &base_const_ref = base
+    ```
+
+12_base_value:
+  name: "base"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "Base base"
+  type: "Base"
+  callee_arg_info: "Base x"
+  passed: by value
+  symbol_range: "[1157, 1161)"
+  markdown: |
+    ### variable `base`  
+
+    ---
+    Type: `Base`  
+    Passed as x  
+
+    ---
+    ```cpp
+    // In fun
+    Base base
+    ```
+
+13_base_value_from_const_ref:
+  name: "base_const_ref"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "const Base &base_const_ref = base"
+  type: "const Base &"
+  callee_arg_info: "Base x"
+  passed: by value
+  symbol_range: "[1180, 1194)"
+  markdown: |
+    ### variable `base_const_ref`  
+
+    ---
+    Type: `const Base &`  
+    Passed as x  
+
+    ---
+    ```cpp
+    // In fun
+    const Base &base_const_ref = base
+    ```
+
+14_derived_to_base_ref:
+  name: "derived"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "Derived derived"
+  type: "Derived"
+  callee_arg_info: "Base & x"
+  passed: by reference
+  symbol_range: "[1211, 1218)"
+  markdown: |
+    ### variable `derived`  
+
+    ---
+    Type: `Derived`  
+    Passed by reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    Derived derived
+    ```
+
+15_derived_to_base_const_ref:
+  name: "derived"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "Derived derived"
+  type: "Derived"
+  callee_arg_info: "const Base & x"
+  passed: by const reference
+  symbol_range: "[1241, 1248)"
+  markdown: |
+    ### variable `derived`  
+
+    ---
+    Type: `Derived`  
+    Passed by const reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    Derived derived
+    ```
+
+16_derived_to_base_value:
+  name: "derived"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "Derived derived"
+  type: "Derived"
+  callee_arg_info: "Base x"
+  passed: by value
+  symbol_range: "[1267, 1274)"
+  markdown: |
+    ### variable `derived`  
+
+    ---
+    Type: `Derived`  
+    Passed as x  
+
+    ---
+    ```cpp
+    // In fun
+    Derived derived
+    ```
+
+17_ctor_base_const_ref:
+  name: "base"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "Base base"
+  type: "Base"
+  callee_arg_info: "const Base & x"
+  passed: by const reference
+  symbol_range: "[1330, 1334)"
+  markdown: |
+    ### variable `base`  
+
+    ---
+    Type: `Base`  
+    Passed by const reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    Base base
+    ```
+
+18_new_ctor_base_const_ref:
+  name: "base"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "Base base"
+  type: "Base"
+  callee_arg_info: "const Base & x"
+  passed: by const reference
+  symbol_range: "[1365, 1369)"
+  markdown: |
+    ### variable `base`  
+
+    ---
+    Type: `Base`  
+    Passed by const reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    Base base
+    ```
+
+19_ctor_int_ref:
+  name: "int_x"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "int int_x"
+  type: "int"
+  callee_arg_info: "int & x"
+  passed: by reference
+  symbol_range: "[1389, 1394)"
+  markdown: |
+    ### variable `int_x`  
+
+    ---
+    Type: `int`  
+    Passed by reference as x  
+
+    ---
+    ```cpp
+    // In fun
+    int int_x
+    ```
+
+20_ctor_int_value:
+  name: "int_x"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "int int_x"
+  type: "int"
+  callee_arg_info: "int y"
+  passed: by value
+  symbol_range: "[1421, 1426)"
+  markdown: |
+    ### variable `int_x`  
+
+    ---
+    Type: `int`  
+    Passed as y  
+
+    ---
+    ```cpp
+    // In fun
+    int int_x
+    ```
+
+21_converted_int_var:
+  name: "int_x"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "int int_x"
+  type: "int"
+  callee_arg_info: "float x"
+  passed: by value (converted)
+  symbol_range: "[1467, 1472)"
+  markdown: |
+    ### variable `int_x`  
+
+    ---
+    Type: `int`  
+    Passed as x (converted to float)  
+
+    ---
+    ```cpp
+    // In fun
+    int int_x
+    ```
+
+22_converted_int_ref:
+  name: "int_ref"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "int &int_ref = int_x"
+  type: "int &"
+  callee_arg_info: "float x"
+  passed: by value (converted)
+  symbol_range: "[1492, 1499)"
+  markdown: |
+    ### variable `int_ref`  
+
+    ---
+    Type: `int &`  
+    Passed as x (converted to float)  
+
+    ---
+    ```cpp
+    // In fun
+    int &int_ref = int_x
+    ```
+
+23_converted_int_const_ref:
+  name: "int_const_ref"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "const int &int_const_ref = int_x"
+  type: "const int &"
+  callee_arg_info: "float x"
+  passed: by value (converted)
+  symbol_range: "[1519, 1532)"
+  markdown: |
+    ### variable `int_const_ref`  
+
+    ---
+    Type: `const int &`  
+    Passed as x (converted to float)  
+
+    ---
+    ```cpp
+    // In fun
+    const int &int_const_ref = int_x
+    ```
+
+24_float_literal:
+  name: "literal"
+  kind: Invalid
+  callee_arg_info: "float x"
+  passed: by value
+  symbol_range: "[1552, 1558)"
+  markdown: |
+    ### `literal`  
+
+    ---
+    Passed as x
+
+25_converted_int_literal:
+  name: "literal"
+  kind: Invalid
+  callee_arg_info: "float x"
+  passed: by value (converted)
+  symbol_range: "[1578, 1581)"
+  markdown: |
+    ### `literal`  
+
+    ---
+    Passed as x (converted to float)
+
+26_converted_custom_from_int:
+  name: "int_x"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "int int_x"
+  type: "int"
+  callee_arg_info: "CustomClass x"
+  passed: by reference (converted)
+  symbol_range: "[1602, 1607)"
+  markdown: |
+    ### variable `int_x`  
+
+    ---
+    Type: `int`  
+    Passed by reference as x (converted to CustomClass)  
+
+    ---
+    ```cpp
+    // In fun
+    int int_x
+    ```
+
+27_converted_custom_from_float:
+  name: "float_x"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "float float_x"
+  type: "float"
+  callee_arg_info: "CustomClass x"
+  passed: by value (converted)
+  symbol_range: "[1628, 1635)"
+  markdown: |
+    ### variable `float_x`  
+
+    ---
+    Type: `float`  
+    Passed as x (converted to CustomClass)  
+
+    ---
+    ```cpp
+    // In fun
+    float float_x
+    ```
+
+28_converted_custom_from_base:
+  name: "base"
+  kind: Variable
+  namespace_scope: ""
+  local_scope: "fun::"
+  definition: "Base base"
+  type: "Base"
+  callee_arg_info: "CustomClass x"
+  passed: by const reference (converted)
+  symbol_range: "[1656, 1660)"
+  markdown: |
+    ### variable `base`  
+
+    ---
+    Type: `Base`  
+    Passed by const reference as x (converted to CustomClass)  
+
+    ---
+    ```cpp
+    // In fun
+    Base base
+    ```
+
+

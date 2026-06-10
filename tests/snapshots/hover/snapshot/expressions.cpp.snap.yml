@@ -1,0 +1,58 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: expressions.cpp
+---
+01_char_literal:
+  name: "expression"
+  kind: Invalid
+  type: "char"
+  value: "65 (0x41)"
+  symbol_range: "[185, 188)"
+  markdown: |
+    ### `expression`  
+
+    ---
+    Type: `char`  
+    Value = `65 (0x41)`
+
+02_string_literal:
+  name: "string-literal"
+  kind: Invalid
+  type: "const char[14]"
+  size: 112
+  symbol_range: "[218, 233)"
+  markdown: |
+    ### `string-literal`  
+
+    ---
+    Type: `const char[14]`  
+    Size: 14 bytes
+
+03_sizeof_expr:
+  name: "expression"
+  kind: Invalid
+  type: "unsigned long"
+  value: "1"
+  symbol_range: "[280, 286)"
+  markdown: |
+    ### `expression`  
+
+    ---
+    Type: `unsigned long`  
+    Value = `1`
+
+04_alignof_expr:
+  name: "expression"
+  kind: Invalid
+  type: "unsigned long"
+  value: "1"
+  symbol_range: "[343, 350)"
+  markdown: |
+    ### `expression`  
+
+    ---
+    Type: `unsigned long`  
+    Value = `1`
+
+

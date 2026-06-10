@@ -1,0 +1,212 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: callee_args.cpp
+---
+01_arg_by_ref:
+  name: "b"
+  kind: Variable
+  namespace_scope: "fn_call::"
+  local_scope: "code::"
+  definition: "int b = 2"
+  type: "int"
+  value: "2"
+  callee_arg_info: "int & arg_b"
+  passed: by reference
+  symbol_range: "[287, 288)"
+  markdown: |
+    ### variable `b`  
+
+    ---
+    Type: `int`  
+    Value = `2`  
+    Passed by reference as arg_b  
+
+    ---
+    ```cpp
+    // In code
+    int b = 2
+    ```
+
+02_forwarded_arg:
+  name: "a"
+  kind: Variable
+  namespace_scope: "forwarded_arg::"
+  local_scope: "code::"
+  definition: "int a = 1"
+  type: "int"
+  value: "1"
+  callee_arg_info: "int arg_a"
+  passed: by value
+  symbol_range: "[536, 537)"
+  markdown: |
+    ### variable `a`  
+
+    ---
+    Type: `int`  
+    Value = `1`  
+    Passed as arg_a  
+
+    ---
+    ```cpp
+    // In code
+    int a = 1
+    ```
+
+03_converted_arg:
+  name: "a"
+  kind: Variable
+  namespace_scope: "converted_arg::"
+  local_scope: "main::"
+  definition: "int a = 0"
+  type: "int"
+  value: "0"
+  callee_arg_info: "const float & arg"
+  passed: by value (converted)
+  symbol_range: "[689, 690)"
+  markdown: |
+    ### variable `a`  
+
+    ---
+    Type: `int`  
+    Value = `0`  
+    Passed as arg (converted to const float &)  
+
+    ---
+    ```cpp
+    // In main
+    int a = 0
+    ```
+
+04_converted_ctor_arg:
+  name: "a"
+  kind: Variable
+  namespace_scope: "converted_ctor_arg::"
+  local_scope: "main::"
+  definition: "int a = 0"
+  type: "int"
+  value: "0"
+  callee_arg_info: "const float & arg"
+  passed: by value (converted)
+  symbol_range: "[864, 865)"
+  markdown: |
+    ### variable `a`  
+
+    ---
+    Type: `int`  
+    Value = `0`  
+    Passed as arg (converted to const float &)  
+
+    ---
+    ```cpp
+    // In main
+    int a = 0
+    ```
+
+05_literal_arg:
+  name: "literal"
+  kind: Invalid
+  callee_arg_info: "const int & arg_b"
+  passed: by const reference
+  symbol_range: "[1011, 1012)"
+  markdown: |
+    ### `literal`  
+
+    ---
+    Passed by const reference as arg_b
+
+06_expression_arg:
+  name: "expression"
+  kind: Invalid
+  type: "int"
+  value: "3"
+  callee_arg_info: "const int & arg_b"
+  passed: by const reference
+  symbol_range: "[1166, 1167)"
+  markdown: |
+    ### `expression`  
+
+    ---
+    Type: `int`  
+    Value = `3`  
+    Passed by const reference as arg_b
+
+07_expression_by_value:
+  name: "expression"
+  kind: Invalid
+  type: "int"
+  value: "3"
+  callee_arg_info: "int lhs"
+  passed: by value
+  symbol_range: "[1288, 1289)"
+  markdown: |
+    ### `expression`  
+
+    ---
+    Type: `int`  
+    Value = `3`  
+    Passed as lhs
+
+08_converted_literal:
+  name: "literal"
+  kind: Invalid
+  callee_arg_info: "const float & arg"
+  passed: by value (converted)
+  symbol_range: "[1436, 1437)"
+  markdown: |
+    ### `literal`  
+
+    ---
+    Passed as arg (converted to const float &)
+
+09_method_arg_default:
+  name: "a"
+  kind: Variable
+  namespace_scope: "method_call::"
+  local_scope: "code::"
+  definition: "int a = 1"
+  type: "int"
+  value: "1"
+  callee_arg_info: "int arg_a = 3"
+  passed: by value
+  symbol_range: "[1615, 1616)"
+  markdown: |
+    ### variable `a`  
+
+    ---
+    Type: `int`  
+    Value = `1`  
+    Passed as arg_a  
+
+    ---
+    ```cpp
+    // In code
+    int a = 1
+    ```
+
+10_converting_ctor_arg:
+  name: "x"
+  kind: Variable
+  namespace_scope: "converting_ctor::"
+  local_scope: "bar::"
+  definition: "const int x = 0"
+  type: "const int"
+  value: "0"
+  callee_arg_info: "Foo"
+  passed: by const reference (converted)
+  symbol_range: "[1800, 1801)"
+  markdown: |
+    ### variable `x`  
+
+    ---
+    Type: `const int`  
+    Value = `0`  
+    Passed by const reference (converted to Foo)  
+
+    ---
+    ```cpp
+    // In bar
+    const int x = 0
+    ```
+
+
