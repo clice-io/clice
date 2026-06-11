@@ -129,16 +129,19 @@ kota::task<> Indexer::save() {
     // Phase 1, synchronous: serialize the ProjectIndex and every dirty
     // shard to tmp files.  No suspension point in between, so the batch is
     // a consistent snapshot even if a merge runs before the commits below
-    // are done.
-    llvm::SmallVector<CacheStore::PendingEntry> batch;
-    if(auto pending = serialize_blob(store, "project", [&](llvm::raw_ostream& os) {
-           workspace.project_index.serialize(os);
-       })) {
-        batch.push_back(std::move(*pending));
-        LOG_INFO("Saved ProjectIndex ({} symbols)", workspace.project_index.symbols.size());
+    // are done.  Shards are only published together with the ProjectIndex
+    // they were built against: pairing new shards with an old project blob
+    // (or vice versa) would serve a mixed snapshot after restart.
+    auto project_pending = serialize_blob(store, "project", [&](llvm::raw_ostream& os) {
+        workspace.project_index.serialize(os);
+    });
+    if(!project_pending) {
+        LOG_WARN("Skipping index save: ProjectIndex serialization failed");
+        co_return;
     }
+    LOG_INFO("Saved ProjectIndex ({} symbols)", workspace.project_index.symbols.size());
 
-    std::size_t saved = 0;
+    llvm::SmallVector<CacheStore::PendingEntry> shards;
     std::size_t total = workspace.merged_indices.size();
     for(auto& [path_id, shard]: workspace.merged_indices) {
         if(!shard.need_rewrite())
@@ -147,18 +150,28 @@ kota::task<> Indexer::save() {
                serialize_blob(store, std::to_string(path_id), [&](llvm::raw_ostream& os) {
                    shard.serialize(os);
                })) {
-            batch.push_back(std::move(*pending));
-            ++saved;
+            shards.push_back(std::move(*pending));
         }
     }
-    LOG_INFO("Saved {} MergedIndex shards (of {} total)", saved, total);
+    LOG_INFO("Saved {} MergedIndex shards (of {} total)", shards.size(), total);
 
     // Phase 2: commit each blob (fsync + atomic rename) on the kota thread
-    // pool, keeping the heavy IO off the event loop.
-    for(auto& pending: batch) {
+    // pool, keeping the heavy IO off the event loop.  The project blob goes
+    // first; if it cannot be published, drop the shards of this snapshot.
+    auto committed =
+        co_await kota::queue([&] { return store.commit(std::move(*project_pending)); });
+    if(!committed.has_value() || !committed.value().has_value()) {
+        LOG_WARN("Failed to commit ProjectIndex blob, dropping {} shard blobs", shards.size());
+        for(auto& pending: shards) {
+            store.abort(pending);
+        }
+        co_return;
+    }
+
+    for(auto& pending: shards) {
         auto key = pending.key;
-        auto committed = co_await kota::queue([&] { return store.commit(std::move(pending)); });
-        if(!committed.has_value() || !committed.value().has_value()) {
+        auto result = co_await kota::queue([&] { return store.commit(std::move(pending)); });
+        if(!result.has_value() || !result.value().has_value()) {
             LOG_WARN("Failed to commit index blob {}", key);
         }
     }
