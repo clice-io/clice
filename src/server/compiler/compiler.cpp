@@ -615,6 +615,12 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
         }
     }
 
+    // The buffer-scan waits above tolerate failed PCM builds, but a cancelled
+    // scope means this round was superseded — abandon it before the PCH step.
+    if(scope && scope->cancelled()) {
+        co_return false;
+    }
+
     // Build or reuse PCH.
     auto pch_ok = co_await ensure_pch(session, directory, arguments);
     if(pch_ok) {
@@ -705,6 +711,18 @@ kota::task<> Compiler::run_compile(std::uint32_t pid, std::shared_ptr<Session::P
     sess = find_session();
     if(!sess) {
         pc->done.set();
+        co_return;
+    }
+
+    // Superseded while preparing dependencies — don't send the stale text:
+    // the replacement compile may already have sent newer text, and the
+    // worker applies compiles in arrival order without a version check.
+    if(sess->generation != gen) {
+        LOG_INFO("ensure_compiled: superseded before send ({} vs {}) for {}",
+                 sess->generation,
+                 gen,
+                 uri_str);
+        finish_compile();
         co_return;
     }
 

@@ -182,6 +182,9 @@ private:
     llvm::DenseMap<std::uint32_t, CompileUnit> units;
 
     /// Owns every unit task; structured shutdown via shutdown().
+    /// Note: kota::task_group only reclaims completed child frames on
+    /// destruction, so frames accumulate over the graph's lifetime — one per
+    /// compilation round, same trade-off as Compiler::compile_tasks.
     kota::task_group<> tasks;
 };
 

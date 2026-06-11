@@ -1246,7 +1246,7 @@ TEST_CASE(SharedDepImportSwitch) {
 // Shared dependency failure propagates to every consumer of the same round
 // ============================================================================
 
-TEST_CASE(SharedDepFailureFailsBoth) {
+TEST_CASE(SharedDepFailsBoth) {
     ModuleTestEnv env;
     env.tmp.touch(
         "shared.cppm",

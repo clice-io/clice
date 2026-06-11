@@ -136,6 +136,14 @@ kota::task<> run_request(std::uint32_t path_id, Request& req) {
     }
 }
 
+kota::task<> run_deps_request(std::uint32_t path_id, Request& req) {
+    auto result = co_await kota::with_token(graph->compile_deps(path_id), req.source.token());
+    req.done = true;
+    if(result.has_value()) {
+        req.result = *result;
+    }
+}
+
 TEST_CASE(CompileNoDeps) {
     make_graph(tracking_dispatch(compiled), no_deps());
 
@@ -807,9 +815,7 @@ TEST_CASE(CompileDepsResolveOnce) {
     });
 }
 
-// ============================================================================
 // Shared dependency matrix: A(1) -> B(2) -> E(5), C(3) -> D(4) -> E(5).
-// ============================================================================
 
 TEST_CASE(SharedDepSurvivesCancel) {
     ManualDispatch md;
@@ -856,15 +862,15 @@ TEST_CASE(SharedDepSurvivesCancel) {
 }
 
 TEST_CASE(SharedDepBothCancelled) {
+    // E is shared at different depths: depth 2 from A, depth 1 from C.
     ManualDispatch md;
     make_graph(md.fn(),
                static_resolver({
                    {1, {2}},
                    {2, {5}},
-                   {3, {4}},
-                   {4, {5}}
+                   {3, {5}}
     }));
-    md.open({1, 2, 3, 4});
+    md.open({1, 2, 3});
 
     Request ra, rc;
     execute([&]() -> kota::task<> {
@@ -935,6 +941,46 @@ TEST_CASE(SharedDepQueuedCancel) {
     });
 }
 
+TEST_CASE(CompileDepsCancelReleases) {
+    // A plain .cpp (10) holds root references on its direct deps; cancelling
+    // the compile_deps request releases them without killing a dependency
+    // that another consumer still needs.
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {10, {5}},
+                   {3,  {4}},
+                   {4,  {5}}
+    }));
+    md.open({3, 4});
+
+    Request ra, rc;
+    execute([&]() -> kota::task<> {
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(5).started.wait();
+            // Root reference from the compile_deps request + edge from 4.
+            EXPECT_EQ(graph->refcount(5), 2u);
+
+            ra.source.cancel();
+            co_await kota::sleep(1);
+
+            EXPECT_TRUE(ra.done);
+            EXPECT_TRUE(graph->is_compiling(5));
+            EXPECT_EQ(graph->refcount(5), 1u);
+            EXPECT_EQ(md.gate(5).calls, 1);
+
+            md.gate(5).proceed.set();
+            co_return;
+        };
+
+        co_await kota::when_all(run_deps_request(10, ra), run_request(3, rc), driver());
+
+        EXPECT_FALSE(ra.result.has_value());
+        EXPECT_TRUE(rc.result == true);
+        EXPECT_FALSE(graph->is_dirty(5));
+    });
+}
+
 TEST_CASE(SharedDepAlreadyCompiled) {
     // E was already built by the A-chain; cancelling/finishing A afterwards
     // must not invalidate it for the C-chain.
@@ -960,9 +1006,7 @@ TEST_CASE(SharedDepAlreadyCompiled) {
     });
 }
 
-// ============================================================================
 // Update semantics: staleness-driven cancellation, waiters retry.
-// ============================================================================
 
 TEST_CASE(UpdateWhileWaitingDeps) {
     // Update hits unit 1 while it waits for its dependency 2.
@@ -1042,11 +1086,15 @@ TEST_CASE(UpdateDepCascadesCancel) {
             graph->update(3);
             EXPECT_TRUE(graph->is_dirty(1));
             EXPECT_TRUE(graph->is_dirty(2));
-            md.gate(3).proceed.set();
 
-            // The retry drives a fresh round through the chain.
+            // The cascade cancelled the in-flight rounds of 3 and its
+            // dependents; the surviving waiter drives a fresh chain, which
+            // restarts 3's dispatch.
             co_await md.gate(3).started.wait();
             EXPECT_EQ(md.gate(3).calls, 2);
+            EXPECT_TRUE(graph->is_compiling(1));
+            EXPECT_TRUE(graph->is_compiling(2));
+            md.gate(3).proceed.set();
             co_return;
         };
 
@@ -1062,9 +1110,7 @@ TEST_CASE(UpdateDepCascadesCancel) {
     });
 }
 
-// ============================================================================
 // Failure semantics: no retry, edge references released.
-// ============================================================================
 
 TEST_CASE(FailedDepNoRetry) {
     ManualDispatch md;
@@ -1114,9 +1160,43 @@ TEST_CASE(RecompileAfterFailure) {
     });
 }
 
-// ============================================================================
+TEST_CASE(CancelAllRespawns) {
+    ManualDispatch md;
+    make_graph(md.fn(), no_deps());
+
+    execute([&]() -> kota::task<> {
+        bool done = false;
+        std::optional<bool> result;
+
+        auto compiler = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1).catch_cancel();
+            done = true;
+            if(r.has_value()) {
+                result = *r;
+            }
+        };
+
+        // cancel_all kills the in-flight round; the waiter still holds its
+        // interest, so it respawns the unit and succeeds.
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(1).started.wait();
+            md.gate(1).started.reset();
+            graph->cancel_all();
+            co_await md.gate(1).started.wait();
+            EXPECT_EQ(md.gate(1).calls, 2);
+            md.gate(1).proceed.set();
+            co_return;
+        };
+
+        co_await kota::when_all(compiler(), driver());
+
+        EXPECT_TRUE(done);
+        EXPECT_TRUE(result == true);
+        EXPECT_FALSE(graph->is_dirty(1));
+    });
+}
+
 // Cycles: all terminate with failure, never deadlock.
-// ============================================================================
 
 TEST_CASE(UpdateIntroducedCycle) {
     // The cycle only appears after update() forces a re-resolve of unit 2.
@@ -1162,9 +1242,7 @@ TEST_CASE(PartitionedCycle) {
     });
 }
 
-// ============================================================================
 // Lifecycle: shutdown with tasks in flight.
-// ============================================================================
 
 TEST_CASE(ShutdownWithInflight) {
     ManualDispatch md;
@@ -1196,15 +1274,11 @@ TEST_CASE(ShutdownWithInflight) {
     EXPECT_TRUE(graph->idle());
 }
 
-// ============================================================================
 // Randomized stress: seeded, single-threaded, deterministic.
-// ============================================================================
 
 TEST_CASE(RandomizedStress) {
-    int dispatch_calls = 0;
     kota::semaphore permits{0};
     auto dispatch = [&](std::uint32_t) -> kota::task<bool> {
-        dispatch_calls += 1;
         co_await permits.acquire();
         co_return true;
     };
