@@ -27,10 +27,16 @@ std::vector<const char*> CompileCommand::to_argv() const {
     argv.reserve(resolved.flags.size() + 4);
 
     if(resolved.is_cc1 && source_file) {
+        // cc1 mode requires TWO file-related arguments (both are needed):
+        //   1. -main-file-name <basename>  — used by clang for diagnostics/debug info
+        //   2. <source_file> at the end    — the actual input file path
+        // These are NOT duplicates: (1) is just the basename, (2) is the full path.
         for(std::size_t i = 0; i < resolved.flags.size(); ++i) {
             argv.push_back(resolved.flags[i]);
             if(resolved.flags[i] == llvm::StringRef("-cc1")) {
                 argv.push_back("-main-file-name");
+                // path::filename returns a suffix of source_file (a pointer into
+                // the same buffer), so .data() is null-terminated because source_file is.
                 argv.push_back(path::filename(source_file).data());
             }
         }
@@ -89,6 +95,7 @@ object_ptr<CompilationInfo>
     llvm::SmallVector<const char*, 32> canonical_args;
     llvm::SmallVector<const char*, 16> patch_args;
 
+    /// Driver goes into canonical.
     canonical_args.push_back(strings.save(arguments[0]).data());
 
     bool remove_pch = false;
@@ -151,12 +158,14 @@ object_ptr<CompilationInfo>
         render_arg(canonical_args, arg);
     }
 
+    /// Dedup canonical command.
     auto canonical_id = canonicals.get(CanonicalCommand{canonical_args});
     auto canonical = canonicals.get(canonical_id);
     if(canonical->arguments.data() == canonical_args.data()) {
         canonical->arguments = persist_args(canonical_args);
     }
 
+    /// Build and dedup CompilationInfo.
     auto dir = strings.save(directory).data();
     auto info_id = infos.get(CompilationInfo{dir, canonical, patch_args});
     auto info = infos.get(info_id);
@@ -249,11 +258,15 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
         llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
         llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
+        // Skip non-C-family files (e.g. .rc, .asm, .def) that some build
+        // systems emit into compile_commands.json.
         if(!is_c_family_file(file_ref)) {
             ++index;
             continue;
         }
 
+        // Resolve relative file paths against the directory so that entries
+        // from different directories don't collide in the PathPool.
         std::string file_abs;
         if(!path::is_absolute(file_ref)) {
             file_abs = path::join(dir_ref, file_ref);
@@ -304,6 +317,7 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
         ++index;
     }
 
+    // Sort by file path_id for binary search.
     ranges::sort(entries, {}, &CompilationEntry::file);
 
     return entries.size();
@@ -333,12 +347,14 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
     append_args(info->canonical->arguments);
     append_args(info->patch);
 
+    // Inject our resource dir if not already present.
     if(options.inject_resource_dir && !resource_dir().empty() &&
        !ranges::contains(flags, llvm::StringRef("-resource-dir"))) {
         append_arg("-resource-dir");
         append_arg(resource_dir());
     }
 
+    // Apply remove filter.
     if(!options.remove.empty()) {
         std::vector<std::string> remove_strs;
         for(auto& s: options.remove) {
@@ -406,6 +422,7 @@ llvm::SmallVector<CompileCommand> CompilationDatabase::lookup(llvm::StringRef fi
             results.push_back(build_command(path_id, entry.info, options));
         }
     } else {
+        // No matching entry — synthesize a default command.
         std::vector<const char*> flags;
         if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
             flags = {"clang++", "-std=c++20"};
@@ -478,6 +495,7 @@ void CompilationDatabase::add_command(llvm::StringRef directory,
                                       llvm::ArrayRef<const char*> arguments) {
     auto path_id = paths.intern(file);
     auto info = save_compilation_info(file, directory, arguments);
+    // Insert in sorted position to maintain sort invariant.
     auto it = ranges::lower_bound(entries, path_id, {}, &CompilationEntry::file);
     entries.insert(it, {path_id, info});
 }

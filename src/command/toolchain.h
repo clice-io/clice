@@ -18,13 +18,13 @@ struct CompileCommand;
 
 enum class CompilerFamily {
     Unknown,
-    GCC,
-    Clang,
-    MSVC,
-    ClangCL,
-    NVCC,
-    Intel,
-    Zig,
+    GCC,      // Covers gcc, g++, cc, c++, and versioned/arch variants
+    Clang,    // Covers clang, clang++, and versioned variants (excluding clang-cl)
+    MSVC,     // Covers cl
+    ClangCL,  // Covers clang-cl explicitly
+    NVCC,     // Covers nvcc
+    Intel,    // Covers icc, icpc, icx, dpcpp
+    Zig,      // Covers zig cc / zig c++ (assumed GCC/Clang compatible for query)
 };
 
 /// Patches raw CDB commands into clang-acceptable cc1 arguments by querying

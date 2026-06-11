@@ -114,6 +114,7 @@ kota::task<std::expected<std::string, std::string>>
 std::expected<void, std::string> query_driver(
     llvm::ArrayRef<const char*> arguments,
     llvm::function_ref<void(const char* driver, llvm::ArrayRef<const char*> cc1_args)> callback) {
+    /// FIXME: collect diagnostic here ...
     clang::DiagnosticOptions options;
     clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
                                     options,
@@ -125,6 +126,11 @@ std::expected<void, std::string> query_driver(
     list.append(arguments.begin(), arguments.end());
     arguments = list;
 
+    /// Note that clang use the `ClangExecutable` to determine the driver mode when
+    /// --driver-mode is not found in the arguments, and `TargetTriple` is used when
+    /// non --target argument is found in the arguments list. See
+    /// `clang::driver::BuildCompilation`. We use default arguments because we will
+    /// inject related commands before querying.
     clang::driver::Driver driver(/*ClangExecutable=*/arguments[0],
                                  /*TargetTriple=*/llvm::sys::getDefaultTargetTriple(),
                                  /*Diags=*/engine);
@@ -136,9 +142,15 @@ std::expected<void, std::string> query_driver(
         return std::unexpected(std::format("Failed to build compilation for {}", arguments[0]));
     }
 
+    // We expect to get back exactly one command job, if we didn't something
+    // failed. Offload compilation is an exception as it creates multiple jobs. If
+    // that's the case, we proceed with the first job. If caller needs a
+    // particular job, it should be controlled via options (e.g.
+    // --cuda-{host|device}-only for CUDA) passed to the driver.
     const clang::driver::JobList& jobs = compilation->getJobs();
     if(jobs.size() > 1) {
         for(auto& action: compilation->getActions()) {
+            // On MacOSX real actions may end up being wrapped in BindArchAction
             if(llvm::isa<clang::driver::BindArchAction>(action)) {
                 action = *action->input_begin();
             }
@@ -187,6 +199,8 @@ std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
         // option consume its trailing values, so they are dropped along with
         // it instead of being misparsed as input files. Raw tokens are copied
         // through to preserve the exact spelling the driver emitted.
+        // FIXME: Long-term we should unify the command pipeline so the driver
+        // version always matches the embedded LLVM.
         std::vector<std::string> raw(args.begin() + 2, args.end());
         auto options =
             kota::option::ParseOptions{.greedy_unknown = true, .visibility = option::CC1Option};
@@ -208,8 +222,15 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
 
     llvm::StringRef driver = arguments[0];
 
+    /// Note: The name used to invoke the compiler driver affects its behavior.
+    /// For example, `/usr/bin/clang++` is often a symbolic link to
+    /// `/usr/lib/llvm-20/bin/clang`. Invoking it as `clang++` enables C++ mode
+    /// and links C++ libraries by default, while invoking as `clang` defaults to C mode.
+    /// Therefore, never use `realpath` on the initial `driver` name, as that
+    /// would lose the context needed for the driver to behave correctly (and break caching).
     llvm::SmallString<128> resolved_path;
     if(!path::is_absolute(driver)) {
+        /// If the path is not absolute path like g++, find it in the env vars.
         auto program = llvm::sys::findProgramByName(driver);
         if(!program)
             co_return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
@@ -228,6 +249,8 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
     auto ext = path::extension(file);
     ext.consume_front(".");
 
+    /// Create a file with same suffix of input file, because the input file may
+    /// not exist in the disk.
     llvm::SmallString<64> src_path;
     if(auto e = fs::createTemporaryFile("query-toolchain", ext, src_path))
         co_return std::unexpected(std::format("Failed to create temp file: {}", e.message()));
@@ -241,6 +264,8 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
     std::vector<std::string> cc1_args;
 
     switch(family) {
+        // Query g++ or mingw toolchain info. We detect the target and corresponding
+        // gcc toolchain install path as default behavior.
         case CompilerFamily::GCC: {
             std::string drv(driver.str());
 
@@ -284,12 +309,16 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
             break;
         }
 
+        // Query clang++ or any clang based toolchain, e.g. zig cc/c++. We query
+        // the full cc1 command of clang toolchain as default.
+        // TODO: Is armclang also compatible?
         case CompilerFamily::Clang:
         case CompilerFamily::Zig: {
             std::vector<std::string> exec_args;
             auto remaining = llvm::ArrayRef(args);
 
             if(family == CompilerFamily::Zig) {
+                /// zig cc or zig c++ consumes two arguments.
                 exec_args.emplace_back(remaining[0]);
                 exec_args.emplace_back(remaining[1]);
                 remaining = remaining.drop_front(2);
@@ -314,6 +343,8 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
         case CompilerFamily::ClangCL: {
             llvm::SmallVector<const char*, 256> msvc_args;
             msvc_args.emplace_back(args[0]);
+            /// When clang in cl mode, the target will be set to windows-msvc automatically.
+            /// We don't need to add extra flag.
             msvc_args.emplace_back("--driver-mode=cl");
             msvc_args.append(args.begin() + 1, args.end());
 
@@ -331,6 +362,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
         }
 
         default: {
+            /// TODO: nvcc and intel compilers need further exploration.
             LOG_ERROR("Unsupported compiler family: {}, driver is {}",
                       kota::meta::enum_name(family),
                       driver);
@@ -405,14 +437,17 @@ CompilerFamily Toolchain::driver_family(llvm::StringRef driver) {
     if(auto f = try_get(name); f != CompilerFamily::Unknown)
         return f;
 
+    // Stripping the executable suffix: clang++.exe -> clang++
     name.consume_back(".exe");
     if(auto f = try_get(name); f != CompilerFamily::Unknown)
         return f;
 
+    // Stripping any trailing version number: clang++3.5 -> clang++
     name = name.rtrim("0123456789.-");
     if(auto f = try_get(name); f != CompilerFamily::Unknown)
         return f;
 
+    // Stripping trailing -component: clang++-tot -> clang++
     name = name.slice(0, name.rfind('-'));
     return try_get(name);
 }
