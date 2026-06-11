@@ -178,6 +178,48 @@ TEST_CASE(PersistentNeverEvicted) {
     ASSERT_TRUE(store.lookup("index", "b").has_value());
 }
 
+TEST_CASE(PersistentRewriteWins) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    store.register_namespace(
+        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
+
+    // Persistent keys are mutable: a rewrite of the same key must serve
+    // the new content, never the old blob.
+    put(store, "index", "project", "first snapshot");
+    auto path = put(store, "index", "project", "second");
+    ASSERT_EQ(fs::read(path).value_or(""), "second");
+}
+
+TEST_CASE(PersistentRenameRetry) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    store.register_namespace(
+        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
+
+    // Squat the blob path with an empty directory: the first rename fails,
+    // and the store must remove the obstacle and publish the new blob.
+    tmp.mkdir("root/cache/v1/index/project.idx");
+    auto path = put(store, "index", "project", "fresh");
+    ASSERT_EQ(fs::read(path).value_or(""), "fresh");
+    ASSERT_TRUE(store.lookup("index", "project").has_value());
+}
+
+TEST_CASE(PersistentCommitFailureSurfaces) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    store.register_namespace(
+        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
+
+    // A non-empty directory can neither be renamed over nor removed: the
+    // commit must report the failure, not silently claim the data is stored.
+    tmp.touch("root/cache/v1/index/project.idx/squatter", "x");
+    auto pending = store.begin_store("index", "project");
+    ASSERT_TRUE(fs::write(pending.tmp_path, "dropped").has_value());
+    ASSERT_FALSE(store.commit(std::move(pending)).has_value());
+    ASSERT_FALSE(store.lookup("index", "project").has_value());
+}
+
 TEST_CASE(InvalidateRemovesBlob) {
     TempDir tmp;
     auto store = open_store(tmp);

@@ -107,6 +107,12 @@ public:
     /// Finish a two-phase write: fsync the tmp file and atomically rename
     /// it to its final path.  Triggers LRU eviction when the namespace
     /// exceeds its budget.  Returns the final blob path.
+    ///
+    /// A rename collision with an existing blob (Windows, destination open)
+    /// is benign for LRU namespaces — content-addressed keys imply the same
+    /// content.  Persistent and Scratch keys are mutable, so the stale
+    /// destination is removed and the rename retried; if the new blob still
+    /// cannot be published, an error is returned.
     std::expected<std::string, std::error_code> commit(PendingEntry pending);
 
     /// Cancel a two-phase write and delete the tmp file.

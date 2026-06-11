@@ -383,13 +383,35 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
 
         final_path = state->blob_path(*ns_state, pending.key);
         if(auto result = fs::rename(pending.tmp_path, final_path); !result) {
-            // Content-addressed keys make a rename collision benign: an
-            // existing blob with the same name has the same content (this
-            // happens on Windows when the destination is currently open).
-            // Account for the file that survived on disk, not the tmp.
-            llvm::sys::fs::remove(pending.tmp_path);
-            if(llvm::sys::fs::status(final_path, status)) {
-                return std::unexpected(result.error());
+            if(ns_state->config.policy == CachePolicy::LRU) {
+                // LRU namespaces hold content-addressed blobs, which makes
+                // a rename collision benign: an existing blob with the same
+                // name has the same content (this happens on Windows when
+                // the destination is currently open).  Account for the file
+                // that survived on disk, not the tmp.
+                llvm::sys::fs::remove(pending.tmp_path);
+                if(llvm::sys::fs::status(final_path, status) ||
+                   status.type() != llvm::sys::fs::file_type::regular_file) {
+                    return std::unexpected(result.error());
+                }
+            } else {
+                // Persistent and Scratch keys are mutable — the same key is
+                // rewritten with new content — so the blob on disk is stale.
+                // Remove it and retry; if the rename still fails, report the
+                // error instead of silently dropping the new data.
+                llvm::sys::fs::remove(final_path);
+                if(auto retry = fs::rename(pending.tmp_path, final_path); !retry) {
+                    llvm::sys::fs::remove(pending.tmp_path);
+                    if(auto it = ns_state->entries.find(pending.key);
+                       it != ns_state->entries.end() && llvm::sys::fs::status(final_path, status)) {
+                        // The old blob is gone as well: drop its entry so
+                        // lookups don't hand out a dangling path.
+                        ns_state->total_size -= it->second.size;
+                        ns_state->entries.erase(it);
+                        state->dirty = true;
+                    }
+                    return std::unexpected(retry.error());
+                }
             }
         }
 
