@@ -230,7 +230,7 @@ void MasterServer::schedule_shutdown() {
 kota::task<> MasterServer::shutdown_and_cleanup() {
     bg_tasks.cancel();
     co_await bg_tasks.join();
-    indexer.save();
+    co_await indexer.save();
     workspace.save_cache();
     co_await kota::when_all(indexer.stop(), compiler.stop());
     co_await pool.stop();

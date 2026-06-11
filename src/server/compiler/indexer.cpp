@@ -94,59 +94,74 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
              workspace.merged_indices.size());
 }
 
-/// Serialize via a two-phase store write: serialize to the tmp path, then
-/// commit (fsync + atomic rename).  Returns false if any step fails.
-static bool store_blob(CacheStore& store,
-                       llvm::StringRef key,
-                       llvm::function_ref<void(llvm::raw_ostream&)> serialize) {
+/// Begin a two-phase store write and serialize the blob to its tmp path.
+/// Returns the entry to commit, or nullopt if serialization failed.
+static std::optional<CacheStore::PendingEntry>
+    serialize_blob(CacheStore& store,
+                   llvm::StringRef key,
+                   llvm::function_ref<void(llvm::raw_ostream&)> serialize) {
     auto pending = store.begin_store("index", key);
-    {
-        std::error_code ec;
-        llvm::raw_fd_ostream os(pending.tmp_path, ec);
-        if(ec) {
-            LOG_WARN("Failed to write index blob {}: {}", key, ec.message());
-            store.abort(pending);
-            return false;
-        }
-        serialize(os);
-        os.flush();
-        // A truncated blob (disk full) must never be committed: the index
-        // namespace is Persistent, so it would be served forever.
-        if(os.has_error()) {
-            LOG_WARN("Failed to write index blob {}: {}", key, os.error().message());
-            os.clear_error();
-            store.abort(pending);
-            return false;
-        }
+    std::error_code ec;
+    llvm::raw_fd_ostream os(pending.tmp_path, ec);
+    if(ec) {
+        LOG_WARN("Failed to write index blob {}: {}", key, ec.message());
+        store.abort(pending);
+        return std::nullopt;
     }
-    if(auto result = store.commit(std::move(pending)); !result) {
-        LOG_WARN("Failed to commit index blob {}: {}", key, result.error().message());
-        return false;
+    serialize(os);
+    os.flush();
+    // A truncated blob (disk full) must never be committed: the index
+    // namespace is Persistent, so it would be served forever.
+    if(os.has_error()) {
+        LOG_WARN("Failed to write index blob {}: {}", key, os.error().message());
+        os.clear_error();
+        store.abort(pending);
+        return std::nullopt;
     }
-    return true;
+    return pending;
 }
 
-void Indexer::save() {
+kota::task<> Indexer::save() {
     if(!workspace.store)
-        return;
+        co_return;
+    auto& store = *workspace.store;
 
-    if(store_blob(*workspace.store, "project", [&](llvm::raw_ostream& os) {
+    // Phase 1, synchronous: serialize the ProjectIndex and every dirty
+    // shard to tmp files.  No suspension point in between, so the batch is
+    // a consistent snapshot even if a merge runs before the commits below
+    // are done.
+    llvm::SmallVector<CacheStore::PendingEntry> batch;
+    if(auto pending = serialize_blob(store, "project", [&](llvm::raw_ostream& os) {
            workspace.project_index.serialize(os);
        })) {
+        batch.push_back(std::move(*pending));
         LOG_INFO("Saved ProjectIndex ({} symbols)", workspace.project_index.symbols.size());
     }
 
     std::size_t saved = 0;
+    std::size_t total = workspace.merged_indices.size();
     for(auto& [path_id, shard]: workspace.merged_indices) {
         if(!shard.need_rewrite())
             continue;
-        if(store_blob(*workspace.store, std::to_string(path_id), [&](llvm::raw_ostream& os) {
-               shard.serialize(os);
-           })) {
+        if(auto pending =
+               serialize_blob(store, std::to_string(path_id), [&](llvm::raw_ostream& os) {
+                   shard.serialize(os);
+               })) {
+            batch.push_back(std::move(*pending));
             ++saved;
         }
     }
-    LOG_INFO("Saved {} MergedIndex shards (of {} total)", saved, workspace.merged_indices.size());
+    LOG_INFO("Saved {} MergedIndex shards (of {} total)", saved, total);
+
+    // Phase 2: commit each blob (fsync + atomic rename) on the kota thread
+    // pool, keeping the heavy IO off the event loop.
+    for(auto& pending: batch) {
+        auto key = pending.key;
+        auto committed = co_await kota::queue([&] { return store.commit(std::move(pending)); });
+        if(!committed.has_value() || !committed.value().has_value()) {
+            LOG_WARN("Failed to commit index blob {}", key);
+        }
+    }
 }
 
 void Indexer::load() {
@@ -976,7 +991,7 @@ kota::task<> Indexer::run_background_indexing() {
 
     indexing_active = false;
     LOG_INFO("Background indexing complete: {} files dispatched", dispatched);
-    save();
+    co_await save();
 }
 
 }  // namespace clice

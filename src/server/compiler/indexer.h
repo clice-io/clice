@@ -112,8 +112,10 @@ public:
     void merge(const void* tu_index_data, std::size_t size);
 
     /// Save Workspace's ProjectIndex and MergedIndex shards to the cache
-    /// store ("index" namespace, Persistent policy).
-    void save();
+    /// store ("index" namespace, Persistent policy).  Serialization runs
+    /// on the event loop; each blob's commit (fsync + rename) is offloaded
+    /// to the kota thread pool.
+    kota::task<> save();
 
     /// Load Workspace's ProjectIndex and MergedIndex shards from the cache
     /// store, sweeping orphaned shard blobs.
