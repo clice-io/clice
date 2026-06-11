@@ -20,7 +20,9 @@ from lsprotocol.types import (
     VersionedTextDocumentIdentifier,
 )
 
+from tests.conftest import make_client, shutdown_client
 from tests.integration.utils import write_cdb, doc
+from tests.integration.utils.cache import list_pch_files, pin_cache_to_workspace
 from tests.integration.utils.wait import wait_for_recompile
 from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
 
@@ -396,3 +398,32 @@ async def test_didsave_with_module_deps(client, test_data_dir, tmp_path):
     await wait_for_recompile(client, mid_uri)
 
     assert_clean_compile(client, mid_uri)
+
+
+async def test_flag_change_invalidates_pch(executable, tmp_path):
+    """Changing a -D flag in the CDB must produce a new PCH on the next
+    session even though the preamble text is unchanged (flags are part of
+    the cache key)."""
+    pin_cache_to_workspace(tmp_path)
+    (tmp_path / "header.h").write_text("#pragma once\nstruct F { int x; };\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { F f; return f.x; }\n'
+    )
+
+    # Session 1: build with -DFOO=1.
+    write_cdb(tmp_path, ["main.cpp"], extra_args=["-DFOO=1"])
+    c1 = await make_client(executable, tmp_path)
+    uri, _ = await c1.open_and_wait(tmp_path / "main.cpp")
+    assert_clean_compile(c1, uri)
+    assert len(list_pch_files(tmp_path)) == 1
+    await shutdown_client(c1)
+
+    # Session 2: same preamble text, different flag — must not reuse.
+    write_cdb(tmp_path, ["main.cpp"], extra_args=["-DFOO=2"])
+    c2 = await make_client(executable, tmp_path)
+    uri2, _ = await c2.open_and_wait(tmp_path / "main.cpp")
+    assert_clean_compile(c2, uri2)
+    assert len(list_pch_files(tmp_path)) == 2, (
+        "A flag change must produce a second, separately keyed PCH"
+    )
+    await shutdown_client(c2)

@@ -1,11 +1,12 @@
 """Integration tests for persistent PCH/PCM cache.
 
-Verifies that PCH/PCM artifacts are written to .clice/cache/pch/ and .clice/cache/pcm/
-with content-addressed filenames, survive server restarts via cache.json,
-and are properly reused across sessions.
+Verifies that PCH/PCM artifacts are written to the unified cache store
+(.clice/cache/v1/{pch,pcm}/) with content-addressed filenames, survive
+server restarts via cache.json, and are properly reused across sessions.
 """
 
 import asyncio
+import json
 
 import pytest
 from lsprotocol.types import (
@@ -17,18 +18,14 @@ from lsprotocol.types import (
 from tests.conftest import make_client, shutdown_client
 from tests.integration.utils import write_cdb, doc
 from tests.integration.utils.cache import (
+    cache_root,
     list_pch_files,
     list_pcm_files,
+    list_tmp_files,
+    pin_cache_to_workspace,
     read_cache_json,
 )
 from tests.integration.utils.assertions import assert_clean_compile
-
-
-def pin_cache_to_workspace(tmp_path):
-    """Write a clice.toml that pins cache_dir to <workspace>/.clice/."""
-    (tmp_path / "clice.toml").write_text(
-        '[project]\ncache_dir = "${workspace}/.clice"\n'
-    )
 
 
 async def test_pch_written_to_cache_dir(client, tmp_path):
@@ -47,10 +44,10 @@ async def test_pch_written_to_cache_dir(client, tmp_path):
 
     # Verify PCH file exists in the cache directory.
     pch_files = list_pch_files(tmp_path)
-    assert len(pch_files) >= 1, "Expected at least one .pch file in .clice/cache/pch/"
-    # Filename should be a 16-char hex hash + .pch
-    assert pch_files[0].stem and len(pch_files[0].stem) == 16, (
-        f"Expected 16-char hex filename, got: {pch_files[0].name}"
+    assert len(pch_files) >= 1, "Expected at least one .pch file in the store"
+    # Filename should be a 32-char hex hash (xxh3_128bits) + .pch
+    assert pch_files[0].stem and len(pch_files[0].stem) == 32, (
+        f"Expected 32-char hex filename, got: {pch_files[0].name}"
     )
 
 
@@ -74,7 +71,7 @@ async def test_cache_json_persisted(client, tmp_path):
 
     # Verify the entry has expected fields.
     entry = cache["pch"][0]
-    assert "hash" in entry
+    assert "key" in entry
     assert "build_at" in entry
     assert "deps" in entry
     assert "source_file" in entry
@@ -265,21 +262,18 @@ async def test_no_tmp_files_after_build(client, tmp_path):
     uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
     assert_clean_compile(client, uri)
 
-    # No .tmp files should linger.
-    pch_dir = tmp_path / ".clice" / "cache" / "pch"
-    if pch_dir.exists():
-        tmp_files = list(pch_dir.glob("*.tmp"))
-        assert len(tmp_files) == 0, f"Stale .tmp files found: {tmp_files}"
-
-    pcm_dir = tmp_path / ".clice" / "cache" / "pcm"
-    if pcm_dir.exists():
-        tmp_files = list(pcm_dir.glob("*.tmp"))
-        assert len(tmp_files) == 0, f"Stale .tmp files found: {tmp_files}"
+    # No in-flight tmp files should linger after the build settles.
+    assert list_tmp_files(tmp_path) == [], "Stale tmp files found"
+    for subdir in ("pch", "pcm"):
+        blob_dir = cache_root(tmp_path) / subdir
+        if blob_dir.exists():
+            stray = [p for p in blob_dir.iterdir() if not p.name.endswith(f".{subdir}")]
+            assert stray == [], f"Stray files in {subdir}/: {stray}"
 
 
 async def test_cache_dirs_created_on_startup(client, tmp_path):
-    """The .clice/cache/pch/ and .clice/cache/pcm/ directories should be created
-    when the server initializes a workspace."""
+    """The versioned store directories should be created when the server
+    initializes a workspace."""
     pin_cache_to_workspace(tmp_path)
     (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
     write_cdb(tmp_path, ["main.cpp"])
@@ -290,9 +284,106 @@ async def test_cache_dirs_created_on_startup(client, tmp_path):
     uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
     assert_clean_compile(client, uri)
 
-    assert (tmp_path / ".clice" / "cache" / "pch").is_dir(), (
-        ".clice/cache/pch/ should be created"
+    for subdir in ("pch", "pcm", "index"):
+        assert (cache_root(tmp_path) / subdir).is_dir(), f"{subdir}/ should be created"
+
+
+async def test_different_flags_different_pch(client, tmp_path):
+    """Two files with identical preamble text but different -D flags must
+    not share a PCH."""
+    pin_cache_to_workspace(tmp_path)
+    (tmp_path / "header.h").write_text(
+        "#pragma once\n"
+        "#ifdef MODE\nstruct Cfg { int mode; };\n#else\nstruct Cfg { int plain; };\n#endif\n"
     )
-    assert (tmp_path / ".clice" / "cache" / "pcm").is_dir(), (
-        ".clice/cache/pcm/ should be created"
+    body = '#include "header.h"\nint use() { Cfg c; return 0; }\n'
+    (tmp_path / "a.cpp").write_text(body)
+    (tmp_path / "b.cpp").write_text(body)
+
+    # Same preamble text, different macro definitions per file.
+    entries = []
+    for name, extra in (("a.cpp", []), ("b.cpp", ["-DMODE=1"])):
+        entries.append(
+            {
+                "directory": str(tmp_path),
+                "file": str(tmp_path / name),
+                "arguments": ["clang++", "-std=c++17", "-fsyntax-only"]
+                + extra
+                + [str(tmp_path / name)],
+            }
+        )
+    (tmp_path / "compile_commands.json").write_text(json.dumps(entries))
+    await client.initialize(tmp_path)
+
+    uri_a, _ = await client.open_and_wait(tmp_path / "a.cpp")
+    uri_b, _ = await client.open_and_wait(tmp_path / "b.cpp")
+    assert_clean_compile(client, uri_a)
+    assert_clean_compile(client, uri_b)
+
+    pch_files = list_pch_files(tmp_path)
+    assert len(pch_files) == 2, (
+        f"Same preamble with different -D flags must produce 2 PCHs, got "
+        f"{len(pch_files)}: {[f.name for f in pch_files]}"
     )
+
+
+async def _wait_residue_released(workspace, deadline: float = 20.0):
+    """Wait until orphaned workers of a killed server release their handles
+    on tmp residue (a rename probe fails on Windows while a file is open)."""
+    end = asyncio.get_event_loop().time() + deadline
+    while asyncio.get_event_loop().time() < end:
+        locked = False
+        for f in list_tmp_files(workspace):
+            probe = f.with_name(f.name + ".probe")
+            try:
+                f.rename(probe)
+                probe.rename(f)
+            except OSError:
+                locked = True
+                break
+        if not locked:
+            return
+        await asyncio.sleep(0.5)
+
+
+async def test_kill9_recovery(executable, tmp_path):
+    """kill -9 during compilation must not corrupt the store: a restarted
+    server sweeps crash residue and serves the file normally."""
+    pin_cache_to_workspace(tmp_path)
+    (tmp_path / "header.h").write_text("#pragma once\nstruct K { int x; };\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { K k; return k.x; }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+
+    # Session 1: open the file and kill the server; the short delay makes it
+    # likely (not guaranteed) the first build is still in flight.
+    c1 = await make_client(executable, tmp_path)
+    c1.open(tmp_path / "main.cpp")
+    await asyncio.sleep(0.3)
+    server = getattr(c1, "_server", None)
+    assert server is not None
+    server.kill()
+    try:
+        c1._stop_event.set()
+        for task in c1._async_tasks:
+            task.cancel()
+    except Exception:
+        pass
+    await _wait_residue_released(tmp_path)
+
+    # Session 2: its startup sweeps the dead instance's tmp directory, and
+    # the cache must be usable again.
+    c2 = await make_client(executable, tmp_path)
+    uri, _ = await c2.open_and_wait(tmp_path / "main.cpp")
+    assert_clean_compile(c2, uri)
+    pch_files = list_pch_files(tmp_path)
+    assert len(pch_files) >= 1, "PCH should be (re)built after crash"
+    # Blob directories contain only committed blobs, never partial writes.
+    stray = [p for p in (cache_root(tmp_path) / "pch").iterdir() if p.suffix != ".pch"]
+    assert stray == [], f"Crash residue in pch/: {stray}"
+    await shutdown_client(c2)
+
+    # Clean shutdown removed session 2's own tmp; session 1's residue was
+    # swept at session 2 startup, so nothing may remain.
+    assert list_tmp_files(tmp_path) == [], "tmp residue should be swept"

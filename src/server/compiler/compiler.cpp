@@ -4,6 +4,7 @@
 #include <ranges>
 #include <string>
 
+#include "command/argument_parser.h"
 #include "command/search_config.h"
 #include "index/tu_index.h"
 #include "server/protocol/worker.h"
@@ -12,18 +13,34 @@
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
+#include "kota/async/async.h"
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/uri.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/xxhash.h"
+#include "clang/Basic/Version.h"
 
 namespace clice {
 
 namespace lsp = kota::ipc::lsp;
 using serde_raw = kota::codec::RawValue;
+
+/// Render hash-input fragments into an unambiguous byte stream (length-
+/// prefixed, so embedded NULs cannot create colliding splits) and return
+/// the 32-hex xxh3_128bits cache key.
+static std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
+    std::string input;
+    for(auto part: parts) {
+        input += std::format("{}:", part.size());
+        input += part;
+    }
+    auto hash = llvm::xxh3_128bits(llvm::arrayRefFromStringRef(input));
+    return std::format("{:016x}{:016x}", hash.high64, hash.low64);
+}
 
 /// Detect whether the cursor is inside a preamble directive (include/import).
 
@@ -98,21 +115,25 @@ void Compiler::init_compile_graph() {
         if(!fill_compile_args(file_path, bp.directory, bp.arguments))
             co_return false;
 
-        // Compute deterministic content-addressed PCM path.
+        if(!workspace.store) {
+            LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", mod_it->second);
+            co_return false;
+        }
+
+        // Deterministic content-addressed PCM key over the source path and
+        // the frontend-relevant subset of the compile flags.
         auto safe_module_name = mod_it->second;
         std::ranges::replace(safe_module_name, ':', '-');
-        std::string hash_input = file_path;
-        for(auto& arg: bp.arguments) {
-            hash_input += arg;
-        }
-        auto args_hash = llvm::xxh3_64bits(llvm::StringRef(hash_input));
-        auto pcm_filename = std::format("{}-{:016x}.pcm", safe_module_name, args_hash);
-        auto pcm_path =
-            path::join(workspace.config.project.cache_dir, "cache", "pcm", pcm_filename);
+        auto pcm_key = std::format("{}-{}",
+                                   safe_module_name,
+                                   cache_key({clang::getClangFullVersion(),
+                                              bp.directory,
+                                              file_path,
+                                              canonicalize(bp.arguments, ArgsProfile::Frontend)}));
 
         // Check if cached PCM is still valid.
         if(auto pcm_it = workspace.pcm_cache.find(path_id); pcm_it != workspace.pcm_cache.end()) {
-            if(!pcm_it->second.path.empty() && llvm::sys::fs::exists(pcm_it->second.path) &&
+            if(pcm_it->second.key == pcm_key && workspace.store->lookup("pcm", pcm_key) &&
                !deps_changed(workspace.path_pool, pcm_it->second.deps)) {
                 workspace.pcm_paths[path_id] = pcm_it->second.path;
                 co_return true;
@@ -120,24 +141,36 @@ void Compiler::init_compile_graph() {
         }
 
         bp.module_name = mod_it->second;
-        bp.output_path = pcm_path;
+        auto pending = workspace.store->begin_store("pcm", pcm_key);
+        bp.output_path = pending.tmp_path;
 
         // Clang needs ALL transitive PCM deps, not just direct imports.
         workspace.fill_pcm_deps(bp.pcms);
 
         auto result = co_await pool.send_stateless(bp);
         if(!result.has_value() || !result.value().success) {
+            workspace.store->abort(pending);
             LOG_WARN("BuildPCM failed for module {}: {}",
                      mod_it->second,
                      result.has_value() ? result.value().error : result.error().message);
             co_return false;
         }
 
-        workspace.pcm_paths[path_id] = result.value().output_path;
+        // Commit on the thread pool: it fsyncs the freshly written PCM.
+        auto committed =
+            co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
+        if(!committed.has_value() || !committed.value().has_value()) {
+            LOG_WARN("Failed to commit PCM for module {}", mod_it->second);
+            co_return false;
+        }
+
+        auto pcm_path = std::move(committed.value().value());
+        workspace.pcm_paths[path_id] = pcm_path;
         workspace.pcm_cache[path_id] = {
-            result.value().output_path,
+            pcm_path,
+            pcm_key,
             capture_deps_snapshot(workspace.path_pool, result.value().deps)};
-        LOG_INFO("Built PCM for module {}: {}", mod_it->second, result.value().output_path);
+        LOG_INFO("Built PCM for module {}: {}", mod_it->second, pcm_path);
 
         // Persist cache metadata after successful build.
         workspace.save_cache();
@@ -450,27 +483,29 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return true;
     }
 
-    // FIXME: hash should also include compile flags that affect preprocessing
-    // (e.g. -D, -I, -isystem, -std) so that files with the same preamble text
-    // but different flags produce separate PCHs.  Currently only the preamble
-    // text is hashed — the source file path must be excluded from the hash
-    // to allow sharing across files with identical preambles.
+    // Key the PCH by preamble text plus the frontend-relevant compile flags,
+    // so files with the same preamble text but different flags (-D, -I, -std)
+    // produce separate PCHs.  The source file path stays out of the key so
+    // files with identical preambles share one PCH — but its DIRECTORY (and
+    // the working directory) must stay in: quote includes and relative paths
+    // resolve against them, so equal preamble text in different directories
+    // can mean different content.  The clang version guards against reusing
+    // blobs a newer bundled clang would reject.
     auto preamble_text = llvm::StringRef(text).substr(0, bound);
-    auto preamble_hash = llvm::xxh3_64bits(preamble_text);
+    auto pch_key = cache_key({clang::getClangFullVersion(),
+                              directory,
+                              path::parent_path(path),
+                              preamble_text,
+                              canonicalize(arguments, ArgsProfile::Frontend)});
 
-    // Deterministic content-addressed PCH path.
-    auto pch_path = path::join(workspace.config.project.cache_dir,
-                               "cache",
-                               "pch",
-                               std::format("{:016x}.pch", preamble_hash));
-
-    // Reuse existing PCH if preamble content and deps haven't changed.
+    // Reuse existing PCH if the key and deps haven't changed.  The store
+    // lookup refreshes the blob's LRU position and catches eviction.
     if(auto it = workspace.pch_cache.find(path_id); it != workspace.pch_cache.end()) {
         auto& st = it->second;
-        if(st.hash == preamble_hash && !st.path.empty() &&
-           !deps_changed(workspace.path_pool, st.deps)) {
+        if(st.key == pch_key && !st.path.empty() && workspace.store &&
+           workspace.store->lookup("pch", pch_key) && !deps_changed(workspace.path_pool, st.deps)) {
             st.bound = bound;
-            session.pch_ref = Session::PCHRef{path_id, preamble_hash, bound};
+            session.pch_ref = Session::PCHRef{path_id, pch_key, bound};
             co_return true;
         }
     }
@@ -486,7 +521,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
        it != workspace.pch_cache.end() && it->second.building) {
         co_await it->second.building->wait();
         if(auto it2 = workspace.pch_cache.find(path_id); it2 != workspace.pch_cache.end()) {
-            session.pch_ref = Session::PCHRef{path_id, it2->second.hash, it2->second.bound};
+            session.pch_ref = Session::PCHRef{path_id, it2->second.key, it2->second.bound};
         }
         co_return workspace.pch_cache.count(path_id) && !workspace.pch_cache[path_id].path.empty();
     }
@@ -495,23 +530,17 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto completion = std::make_shared<kota::event>();
     workspace.pch_cache[path_id].building = completion;
 
-    if(workspace.config.project.cache_dir.empty()) {
-        LOG_WARN("PCH build skipped: cache_dir is not configured");
+    if(!workspace.store) {
+        LOG_WARN("PCH build skipped: cache store is unavailable");
         workspace.pch_cache[path_id].building.reset();
         completion->set();
         co_return false;
     }
 
-    // Ensure the PCH cache directory exists.
-    auto pch_dir = path::join(workspace.config.project.cache_dir, "cache", "pch");
-    if(auto ec = llvm::sys::fs::create_directories(pch_dir)) {
-        LOG_WARN("Cannot create PCH cache dir {}: {}", pch_dir, ec.message());
-        workspace.pch_cache[path_id].building.reset();
-        completion->set();
-        co_return false;
-    }
+    // Build a new PCH via stateless worker: it writes the blob to the tmp
+    // path allocated here; the store commits (fsync + rename) on success.
+    auto pending = workspace.store->begin_store("pch", pch_key);
 
-    // Build a new PCH via stateless worker.
     worker::BuildParams bp;
     bp.priority = worker::Priority::High;
     bp.kind = worker::BuildKind::BuildPCH;
@@ -520,13 +549,14 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     bp.arguments = arguments;
     bp.text = text;
     bp.preamble_bound = bound;
-    bp.output_path = pch_path;
+    bp.output_path = pending.tmp_path;
 
-    LOG_DEBUG("Building PCH for {}, bound={}, output={}", path, bound, pch_path);
+    LOG_DEBUG("Building PCH for {}, bound={}, key={}", path, bound, pch_key);
 
     auto result = co_await pool.send_stateless(bp);
 
     if(!result.has_value() || !result.value().success) {
+        workspace.store->abort(pending);
         LOG_WARN("PCH build failed for {}: {}",
                  path,
                  result.has_value() ? result.value().error : result.error().message);
@@ -535,17 +565,27 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return false;
     }
 
+    // Commit on the thread pool: it fsyncs the freshly written PCH.
+    auto committed =
+        co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
+    if(!committed.has_value() || !committed.value().has_value()) {
+        LOG_WARN("Failed to commit PCH for {}", path);
+        workspace.pch_cache[path_id].building.reset();
+        completion->set();
+        co_return false;
+    }
+
     auto& st = workspace.pch_cache[path_id];
-    st.path = result.value().output_path;
+    st.path = committed.value().value();
     st.bound = bound;
-    st.hash = preamble_hash;
+    st.key = pch_key;
     st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
     st.document_links_json = std::move(result.value().pch_links_json);
     st.building.reset();
 
-    session.pch_ref = Session::PCHRef{path_id, preamble_hash, bound};
+    session.pch_ref = Session::PCHRef{path_id, pch_key, bound};
 
-    LOG_INFO("PCH built for {}: {}", path, result.value().output_path);
+    LOG_INFO("PCH built for {}: {}", path, st.path);
 
     // Persist cache metadata after successful build.
     workspace.save_cache();
@@ -564,6 +604,26 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
                                        std::unordered_map<std::string, std::string>& pcms,
                                        std::optional<kota::cancellation_token> scope) {
     auto path_id = session.path_id;
+
+    // Re-validate cached PCM blobs before compiling: LRU eviction can remove
+    // one while its compile unit is still marked clean, so dirty those units
+    // to trigger a rebuild instead of handing clang a dangling path.
+    if(workspace.compile_graph) {
+        llvm::SmallVector<std::uint32_t> evicted;
+        for(auto& [pid, pcm_path]: workspace.pcm_paths) {
+            if(!llvm::sys::fs::exists(pcm_path)) {
+                evicted.push_back(pid);
+            }
+        }
+        for(auto pid: evicted) {
+            for(auto id: workspace.compile_graph->update(pid)) {
+                workspace.pcm_paths.erase(id);
+                workspace.pcm_cache.erase(id);
+            }
+            workspace.pcm_paths.erase(pid);
+            workspace.pcm_cache.erase(pid);
+        }
+    }
 
     // Compile module dependencies within the request scope: cancelling the
     // scope unwinds the wait and releases this request's interest in the

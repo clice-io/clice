@@ -104,7 +104,19 @@ private:
     kota::event shutdown_event;
     void load_workspace();
 
+    /// Open the CacheStore under cache_dir and register the blob
+    /// namespaces.  No-op if already open or caching is disabled.
+    void open_cache_store();
+
+    /// Periodically checkpoint the cache store manifest so last-accessed
+    /// times survive crashes (the store itself is passive by design).
+    kota::task<> cache_checkpoint_task();
+
     kota::event_loop& loop;
+
+    /// Server-owned background tasks (cache checkpoint); cancelled and
+    /// joined in shutdown_and_cleanup().
+    kota::task_group<> bg_tasks;
 
     Workspace workspace;
     llvm::DenseMap<std::uint32_t, std::shared_ptr<Session>> sessions;

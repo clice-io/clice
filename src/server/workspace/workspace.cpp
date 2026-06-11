@@ -11,6 +11,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/xxhash.h"
 
 namespace clice {
@@ -100,16 +101,15 @@ struct CacheDepEntry {
 };
 
 struct CachePCHEntry {
-    std::string filename;
+    std::string key;            // CacheStore key in the "pch" namespace
     std::uint32_t source_file;  // index into CacheData::paths
-    std::uint64_t hash;
     std::uint32_t bound;
     std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
 };
 
 struct CachePCMEntry {
-    std::string filename;
+    std::string key;  // CacheStore key in the "pcm" namespace
     std::uint32_t source_file;
     std::string module_name;
     std::int64_t build_at;
@@ -125,10 +125,10 @@ struct CacheData {
 }  // namespace
 
 void Workspace::load_cache() {
-    if(config.project.cache_dir.empty())
+    if(!store)
         return;
 
-    auto cache_path = path::join(config.project.cache_dir, "cache", "cache.json");
+    auto cache_path = path::join(store->base_dir(), "cache.json");
     auto content = fs::read(cache_path);
     if(!content) {
         LOG_DEBUG("No cache.json found at {}", cache_path);
@@ -160,32 +160,32 @@ void Workspace::load_cache() {
     };
 
     for(auto& entry: data.pch) {
-        auto pch_path = path::join(config.project.cache_dir, "cache", "pch", entry.filename);
+        auto pch_path = store->lookup("pch", entry.key);
         auto source = resolve(entry.source_file);
-        if(!llvm::sys::fs::exists(pch_path) || source.empty())
+        if(!pch_path || source.empty())
             continue;
 
         auto path_id = path_pool.intern(source);
         auto& st = pch_cache[path_id];
-        st.path = pch_path;
-        st.hash = entry.hash;
+        st.path = *pch_path;
+        st.key = entry.key;
         st.bound = entry.bound;
         st.deps = load_deps(entry.build_at, entry.deps);
 
-        LOG_DEBUG("Loaded cached PCH: {} -> {}", source, pch_path);
+        LOG_DEBUG("Loaded cached PCH: {} -> {}", source, *pch_path);
     }
 
     for(auto& entry: data.pcm) {
-        auto pcm_path = path::join(config.project.cache_dir, "cache", "pcm", entry.filename);
+        auto pcm_path = store->lookup("pcm", entry.key);
         auto source = resolve(entry.source_file);
-        if(!llvm::sys::fs::exists(pcm_path) || source.empty())
+        if(!pcm_path || source.empty())
             continue;
 
         auto path_id = path_pool.intern(source);
-        pcm_cache[path_id] = {pcm_path, load_deps(entry.build_at, entry.deps)};
-        pcm_paths[path_id] = pcm_path;
+        pcm_cache[path_id] = {*pcm_path, entry.key, load_deps(entry.build_at, entry.deps)};
+        pcm_paths[path_id] = *pcm_path;
 
-        LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, pcm_path);
+        LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, *pcm_path);
     }
 
     LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries",
@@ -194,7 +194,7 @@ void Workspace::load_cache() {
 }
 
 void Workspace::save_cache() {
-    if(config.project.cache_dir.empty())
+    if(!store)
         return;
 
     CacheData data;
@@ -215,9 +215,8 @@ void Workspace::save_cache() {
             continue;
 
         CachePCHEntry entry;
-        entry.filename = std::string(path::filename(st.path));
+        entry.key = st.key;
         entry.source_file = intern(path_id);
-        entry.hash = st.hash;
         entry.bound = st.bound;
         entry.build_at = st.deps.build_at;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
@@ -231,7 +230,7 @@ void Workspace::save_cache() {
             continue;
 
         CachePCMEntry entry;
-        entry.filename = std::string(path::filename(st.path));
+        entry.key = st.key;
         entry.source_file = intern(path_id);
         auto mod_it = path_to_module.find(path_id);
         entry.module_name = mod_it != path_to_module.end() ? mod_it->second : "";
@@ -248,8 +247,11 @@ void Workspace::save_cache() {
         return;
     }
 
-    auto cache_path = path::join(config.project.cache_dir, "cache", "cache.json");
-    auto tmp_path = cache_path + ".tmp";
+    auto cache_path = path::join(store->base_dir(), "cache.json");
+    // Stage inside this instance's store tmp directory: other instances of
+    // the same workspace must not clobber each other's half-written file.
+    auto pid = llvm::sys::Process::getProcessId();
+    auto tmp_path = path::join(store->base_dir(), "tmp", std::to_string(pid), "cache.json");
     auto write_result = fs::write(tmp_path, *json_str);
     if(!write_result) {
         LOG_WARN("Failed to write cache.json.tmp: {}", write_result.error().message());
@@ -259,33 +261,6 @@ void Workspace::save_cache() {
     if(!rename_result) {
         LOG_WARN("Failed to rename cache.json.tmp to cache.json: {}",
                  rename_result.error().message());
-    }
-}
-
-void Workspace::cleanup_cache(int max_age_days) {
-    if(config.project.cache_dir.empty())
-        return;
-
-    auto now = std::chrono::system_clock::now();
-    auto max_age = std::chrono::hours(max_age_days * 24);
-
-    for(auto* subdir: {"cache/pch", "cache/pcm"}) {
-        auto dir = path::join(config.project.cache_dir, subdir);
-        std::error_code ec;
-        for(auto it = llvm::sys::fs::directory_iterator(dir, ec);
-            !ec && it != llvm::sys::fs::directory_iterator();
-            it.increment(ec)) {
-            llvm::sys::fs::file_status status;
-            if(auto stat_ec = llvm::sys::fs::status(it->path(), status))
-                continue;
-
-            auto mtime = status.getLastModificationTime();
-            auto age = now - mtime;
-            if(age > max_age) {
-                llvm::sys::fs::remove(it->path());
-                LOG_DEBUG("Cleaned up stale cache file: {}", it->path());
-            }
-        }
     }
 }
 

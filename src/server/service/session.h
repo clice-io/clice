@@ -79,7 +79,7 @@ struct Session {
     /// Session only stores enough to locate and validate it.
     struct PCHRef {
         std::uint32_t path_id = 0;  ///< Key into Workspace.pch_cache.
-        std::uint64_t hash = 0;     ///< Preamble hash at build time.
+        std::string key;            ///< CacheStore key at build time.
         std::uint32_t bound = 0;    ///< Preamble byte boundary.
     };
 

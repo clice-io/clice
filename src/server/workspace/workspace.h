@@ -15,6 +15,7 @@
 #include "semantic/relation_kind.h"
 #include "server/compiler/compile_graph.h"
 #include "server/workspace/config.h"
+#include "support/cache_store.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
@@ -24,6 +25,10 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
+
+/// On-disk cache layout version (CacheStore root `cache/v{N}`).
+/// Bump to discard all cached artifacts after incompatible format changes.
+constexpr inline std::uint32_t cache_format_version = 1;
 
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
 ///
@@ -46,12 +51,13 @@ struct HeaderFileContext {
     std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
 };
 
-/// Cached PCH state.  Content-addressed by preamble hash — shared across all
-/// files (open or on-disk) that have the same preamble content.
+/// Cached PCH state.  Content-addressed by preamble text + frontend compile
+/// flags — shared across all files (open or on-disk) with the same key.
 struct PCHState {
     std::string path;
     std::uint32_t bound = 0;
-    std::uint64_t hash = 0;
+    /// CacheStore key: hex of xxh3_128bits(preamble text + canonical flags).
+    std::string key;
     DepsSnapshot deps;
     std::string document_links_json;  ///< Pre-serialized DocumentLink[] from PCH build
     std::shared_ptr<kota::event> building;
@@ -61,6 +67,8 @@ struct PCHState {
 /// import the same module.
 struct PCMState {
     std::string path;
+    /// CacheStore key: "{module}-{hash}" over source path + canonical flags.
+    std::string key;
     DepsSnapshot deps;
 };
 
@@ -90,6 +98,12 @@ struct Workspace {
 
     PathPool path_pool;
 
+    /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
+    /// load_workspace() when cache_dir is configured; absent means caching
+    /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
+    /// recovery); validity metadata (deps snapshots) stays in cache.json.
+    std::optional<CacheStore> store;
+
     /// Include relationships between files on disk (#include edges).
     /// Built once at startup from CDB scan; updated incrementally on didSave.
     DependencyGraph dep_graph;
@@ -103,9 +117,9 @@ struct Workspace {
     /// declarations change.
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
-    /// PCH cache, keyed by file path_id.
-    /// TODO: re-key by preamble content hash to enable cross-file sharing and
-    /// add LRU eviction.  Compile flags should also be part of the key.
+    /// PCH cache, keyed by file path_id.  Hot-path mirror of CacheStore
+    /// state; blob paths come from the store.
+    /// TODO: re-key by content hash to enable cross-file sharing.
     llvm::DenseMap<std::uint32_t, PCHState> pch_cache;
 
     /// PCM cache, keyed by module source path_id.
@@ -132,12 +146,11 @@ struct Workspace {
     /// is a module unit so dependents can be re-evaluated on next compile.
     void on_file_closed(std::uint32_t path_id);
 
-    /// Load PCH/PCM cache from cache.json on disk.
+    /// Load PCH/PCM validity metadata from cache.json (under the store's
+    /// versioned root); entries whose blob is gone from the store are dropped.
     void load_cache();
-    /// Save PCH/PCM cache to cache.json on disk.
+    /// Save PCH/PCM validity metadata to cache.json.
     void save_cache();
-    /// Remove stale PCH/PCM files older than max_age_days.
-    void cleanup_cache(int max_age_days = 7);
     /// Build path_to_module reverse mapping from dep_graph.
     void build_module_map();
     /// Fill PCM paths for all built modules, excluding exclude_path_id.

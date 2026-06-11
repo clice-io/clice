@@ -61,28 +61,6 @@ static std::string serialize_tu_index(CompilationUnit& unit, bool interested_onl
     return serialized;
 }
 
-/// Write compilation output to disk, handling tmp+rename pattern.
-/// Returns the final path on success, or empty string on failure.
-static std::string finalize_output(const std::string& output_path,
-                                   const std::string& tmp_path,
-                                   const std::string& file,
-                                   const char* label) {
-    if(!output_path.empty()) {
-        auto ec = fs::rename(tmp_path, output_path);
-        if(ec) {
-            return output_path;
-        } else {
-            LOG_WARN("{}: rename {} -> {} failed: {}",
-                     label,
-                     tmp_path,
-                     output_path,
-                     ec.error().message());
-            return tmp_path;
-        }
-    }
-    return tmp_path;
-}
-
 static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     ScopedTimer timer;
 
@@ -91,10 +69,12 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     fill_args(cp, params.directory, params.arguments);
     cp.add_remapped_file(params.file, params.text, params.preamble_bound);
 
+    // When the master provides an output path it is already a tmp path
+    // allocated by its CacheStore: write directly, the master commits
+    // (fsync + atomic rename) after we report success.
     std::string tmp_path;
-    bool has_output = !params.output_path.empty();
-    if(has_output) {
-        tmp_path = params.output_path + ".tmp";
+    if(!params.output_path.empty()) {
+        tmp_path = params.output_path;
     } else {
         auto tmp = fs::createTemporaryFile("clice-pch", "pch");
         if(!tmp) {
@@ -126,11 +106,10 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     unit = CompilationUnit(nullptr);
 
     if(success) {
-        auto final_path = finalize_output(params.output_path, tmp_path, params.file, "BuildPCH");
-        LOG_INFO("BuildPCH done: file={}, output={}, {}ms", params.file, final_path, timer.ms());
+        LOG_INFO("BuildPCH done: file={}, output={}, {}ms", params.file, tmp_path, timer.ms());
         worker::BuildResult result;
         result.success = true;
-        result.output_path = std::move(final_path);
+        result.output_path = tmp_path;
         result.deps = pch_info.deps;
         result.tu_index_data = std::move(tu_index_data);
         result.pch_links_json = std::move(pch_links_json);
@@ -152,10 +131,10 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
         cp.pcms.try_emplace(name, path);
     }
 
+    // See handle_build_pch: a provided output path is the master's tmp path.
     std::string tmp_path;
-    bool has_output = !params.output_path.empty();
-    if(has_output) {
-        tmp_path = params.output_path + ".tmp";
+    if(!params.output_path.empty()) {
+        tmp_path = params.output_path;
     } else {
         auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
         if(!tmp) {
@@ -181,11 +160,10 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
     unit = CompilationUnit(nullptr);
 
     if(success) {
-        auto final_path = finalize_output(params.output_path, tmp_path, params.file, "BuildPCM");
         LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
         worker::BuildResult result;
         result.success = true;
-        result.output_path = std::move(final_path);
+        result.output_path = tmp_path;
         result.deps = pcm_info.deps;
         result.tu_index_data = std::move(tu_index_data);
         return result;

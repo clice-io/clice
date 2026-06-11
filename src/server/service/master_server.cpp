@@ -37,7 +37,7 @@ namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
-    loop(loop), pool(loop), compiler(loop, workspace, pool),
+    loop(loop), bg_tasks(loop), pool(loop), compiler(loop, workspace, pool),
     indexer(
         loop,
         workspace,
@@ -228,11 +228,69 @@ void MasterServer::schedule_shutdown() {
 }
 
 kota::task<> MasterServer::shutdown_and_cleanup() {
-    indexer.save(workspace.config.project.index_dir);
+    bg_tasks.cancel();
+    co_await bg_tasks.join();
+    indexer.save();
     workspace.save_cache();
     co_await kota::when_all(indexer.stop(), compiler.stop());
     co_await pool.stop();
+    if(workspace.store) {
+        workspace.store->shutdown();
+    }
     lifecycle = ServerLifecycle::Exited;
+}
+
+kota::task<> MasterServer::cache_checkpoint_task() {
+    constexpr auto interval = std::chrono::minutes(5);
+    while(true) {
+        co_await kota::sleep(interval);
+        if(workspace.store) {
+            // Offload to the thread pool: checkpoint writes the manifest.
+            co_await kota::queue([this] { workspace.store->checkpoint(); });
+        }
+    }
+}
+
+void MasterServer::open_cache_store() {
+    auto& cfg = workspace.config.project;
+    if(workspace.store || cfg.cache_dir.empty())
+        return;
+
+    auto store = CacheStore::open(cfg.cache_dir, cache_format_version);
+    if(!store) {
+        LOG_WARN("Failed to open cache store at {}: {}",
+                 std::string_view(cfg.cache_dir),
+                 store.error().message());
+        return;
+    }
+
+    // Size budgets are deliberately generous: eviction exists to bound
+    // disk usage, not to keep the working set tight.
+    constexpr std::uint64_t GiB = 1ull << 30;
+    store->register_namespace(
+        {.name = "pch", .extension = ".pch", .policy = CachePolicy::LRU, .max_bytes = 8 * GiB});
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 8 * GiB});
+    store->register_namespace(
+        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
+    store->register_namespace(
+        {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
+    workspace.store.emplace(std::move(*store));
+    LOG_INFO("Cache store: {}", workspace.store->base_dir());
+
+    // The index now lives inside the store; the old default index dir is
+    // discarded (no migration), and a configured index_dir is ignored.
+    // header_context/ is still written directly by the legacy preamble
+    // path; drop this exemption once it moves to the Scratch namespace.
+    auto default_index_dir = path::join(cfg.cache_dir, "index");
+    if(!cfg.index_dir.empty() && cfg.index_dir != default_index_dir) {
+        LOG_WARN("project.index_dir is no longer used; the index is stored in {}",
+                 workspace.store->base_dir());
+    }
+    llvm::sys::fs::remove_directories(default_index_dir);
+
+    workspace.load_cache();
+    bg_tasks.spawn(cache_checkpoint_task());
 }
 
 void MasterServer::load_workspace() {
@@ -241,25 +299,7 @@ void MasterServer::load_workspace() {
 
     auto& cfg = workspace.config.project;
 
-    if(!cfg.cache_dir.empty()) {
-        auto ec = llvm::sys::fs::create_directories(cfg.cache_dir);
-        if(ec) {
-            LOG_WARN("Failed to create cache directory {}: {}",
-                     std::string_view(cfg.cache_dir),
-                     ec.message());
-        } else {
-            LOG_INFO("Cache directory: {}", std::string_view(cfg.cache_dir));
-        }
-
-        for(auto* subdir: {"cache/pch", "cache/pcm"}) {
-            auto dir = path::join(cfg.cache_dir, subdir);
-            if(auto ec2 = llvm::sys::fs::create_directories(dir))
-                LOG_WARN("Failed to create {}: {}", dir, ec2.message());
-        }
-
-        workspace.cleanup_cache();
-        workspace.load_cache();
-    }
+    open_cache_store();
 
     std::string cdb_path;
     for(auto& configured: cfg.compile_commands_paths) {
@@ -339,7 +379,7 @@ void MasterServer::load_workspace() {
         LOG_WARN("{} unresolved includes", unresolved);
 
     workspace.build_module_map();
-    indexer.load(cfg.index_dir);
+    indexer.load();
 
     if(*cfg.enable_indexing) {
         for(auto& entry: workspace.cdb.get_entries()) {
