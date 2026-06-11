@@ -131,6 +131,8 @@ class CliceClient(BaseLanguageClient):
         self._stop_event.set()
         for task in self._async_tasks:
             task.cancel()
+        # Wait the cancellations out so no task outlives the test teardown.
+        await asyncio.gather(*self._async_tasks, return_exceptions=True)
 
     # ── Document operations ──────────────────────────────────────────
 

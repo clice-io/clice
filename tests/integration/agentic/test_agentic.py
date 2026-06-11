@@ -444,8 +444,10 @@ async def test_rpc_shutdown(executable, workspace):
         pass
     rpc.sock.close()
 
-    await assert_server_exited_cleanly(c.server)
-    await c.stop_io()
+    try:
+        await assert_server_exited_cleanly(c.server)
+    finally:
+        await c.stop_io()
 
 
 @pytest.mark.workspace("index_features")
