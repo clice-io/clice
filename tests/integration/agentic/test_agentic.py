@@ -444,10 +444,8 @@ async def test_rpc_shutdown(executable, workspace):
         pass
     rpc.sock.close()
 
-    await assert_server_exited_cleanly(c._server)
-    c._stop_event.set()
-    for task in c._async_tasks:
-        task.cancel()
+    await assert_server_exited_cleanly(c.server)
+    await c.stop_io()
 
 
 @pytest.mark.workspace("index_features")
@@ -566,8 +564,8 @@ async def test_shutdown_during_indexing(executable, tmp_path):
         try:
             await c.initialize(workspace, initialization_options=init_options)
         except Exception:
-            if c._server.returncode is not None:
-                await assert_server_exited_cleanly(c._server, timeout=15.0)
+            if c.server.returncode is not None:
+                await assert_server_exited_cleanly(c.server, timeout=15.0)
             raise
 
         # Give indexing a moment to start, then send shutdown
@@ -585,9 +583,7 @@ async def test_shutdown_during_indexing(executable, tmp_path):
             pass
         rpc.sock.close()
 
-        await assert_server_exited_cleanly(c._server, timeout=15.0)
+        await assert_server_exited_cleanly(c.server, timeout=15.0)
     finally:
-        c._stop_event.set()
-        for task in c._async_tasks:
-            task.cancel()
+        await c.stop_io()
         await asyncio.sleep(0.1)

@@ -361,15 +361,8 @@ async def test_kill9_recovery(executable, tmp_path):
     c1 = await make_client(executable, tmp_path)
     c1.open(tmp_path / "main.cpp")
     await asyncio.sleep(0.3)
-    server = getattr(c1, "_server", None)
-    assert server is not None
-    server.kill()
-    try:
-        c1._stop_event.set()
-        for task in c1._async_tasks:
-            task.cancel()
-    except Exception:
-        pass
+    c1.kill_server()
+    await c1.stop_io()
     await _wait_residue_released(tmp_path)
 
     # Session 2: its startup sweeps the dead instance's tmp directory, and

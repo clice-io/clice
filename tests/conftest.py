@@ -228,8 +228,6 @@ async def assert_server_exited_cleanly(server, timeout: float = 10.0) -> None:
 
 async def shutdown_client(c: CliceClient) -> None:
     """Gracefully shut down a client, force-kill if needed."""
-    server = getattr(c, "_server", None)
-
     try:
         await asyncio.wait_for(c.shutdown_async(None), timeout=10.0)
     except Exception:
@@ -241,12 +239,10 @@ async def shutdown_client(c: CliceClient) -> None:
         pass
 
     try:
-        await assert_server_exited_cleanly(server)
+        await assert_server_exited_cleanly(c.server)
     finally:
         try:
-            c._stop_event.set()
-            for task in c._async_tasks:
-                task.cancel()
+            await c.stop_io()
             await asyncio.sleep(0.1)
         except Exception:
             pass

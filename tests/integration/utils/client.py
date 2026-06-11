@@ -112,6 +112,26 @@ class CliceClient(BaseLanguageClient):
         self.init_result = result
         return result
 
+    # ── Server process control ───────────────────────────────────────
+    # Single home for the pygls internals these wrap; tests must not poke
+    # at _server/_stop_event/_async_tasks directly.
+
+    @property
+    def server(self) -> asyncio.subprocess.Process | None:
+        """The spawned server process, if started via start_io."""
+        return self._server
+
+    def kill_server(self) -> None:
+        """Force-kill the server process, simulating a crash."""
+        assert self._server is not None, "no server process to kill"
+        self._server.kill()
+
+    async def stop_io(self) -> None:
+        """Tear down client-side IO tasks without contacting the server."""
+        self._stop_event.set()
+        for task in self._async_tasks:
+            task.cancel()
+
     # ── Document operations ──────────────────────────────────────────
 
     def open(self, filepath: Path, version: int = 0) -> tuple[str, str]:
