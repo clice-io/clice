@@ -422,12 +422,13 @@ CompilerFamily Toolchain::driver_family(llvm::StringRef driver) {
             return CompilerFamily::ClangCL;
         if(name.ends_with("clang") || name.ends_with("clang++"))
             return CompilerFamily::Clang;
-        if(name.ends_with("cc") || name.ends_with("c++") || name.ends_with("gcc") ||
-           name.ends_with("g++"))
-            return CompilerFamily::GCC;
+        // Intel must precede GCC: `icc` would otherwise match ends_with("cc").
         if(name.contains("icpc") || name.contains("icc") || name.contains("dpcpp") ||
            name.contains("icx"))
             return CompilerFamily::Intel;
+        if(name.ends_with("cc") || name.ends_with("c++") || name.ends_with("gcc") ||
+           name.ends_with("g++"))
+            return CompilerFamily::GCC;
         if(name.ends_with("zig"))
             return CompilerFamily::Zig;
         return CompilerFamily::Unknown;
@@ -514,11 +515,16 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
 
     auto it = cache.find(key);
     if(it == cache.end()) {
+        if(auto failed_it = failed.find(key); failed_it != failed.end())
+            return std::unexpected(failed_it->second);
+
         LOG_WARN("Toolchain cache miss: file={}", cmd.source_file);
 
         auto result = query(query_args, cmd.source_file);
-        if(!result)
+        if(!result) {
+            failed.try_emplace(key, result.error());
             return std::unexpected(std::move(result.error()));
+        }
 
         std::vector<const char*> saved;
         saved.reserve(result->size());
@@ -603,7 +609,7 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
             continue;
 
         auto [key, query_args] = extract_flags(cmd.source_file, cmd.resolved.flags);
-        if(cache.count(key) || !seen.try_emplace(key, true).second)
+        if(cache.count(key) || failed.count(key) || !seen.try_emplace(key, true).second)
             continue;
 
         pending.push_back({std::move(key), std::move(query_args), cmd.source_file});
@@ -647,6 +653,7 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
     for(auto& o: outcomes) {
         if(!o.result) {
             LOG_ERROR("Toolchain query failed: {}", o.result.error());
+            failed.try_emplace(std::move(o.key), std::move(o.result.error()));
             continue;
         }
 

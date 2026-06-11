@@ -44,6 +44,9 @@ TEST_CASE(Family) {
     EXPECT_FAMILY("cl.exe", MSVC);
     EXPECT_FAMILY("nvcc", NVCC);
     EXPECT_FAMILY("icx", Intel);
+    EXPECT_FAMILY("icc", Intel);
+    EXPECT_FAMILY("icpc", Intel);
+    EXPECT_FAMILY("dpcpp", Intel);
 
     EXPECT_FAMILY("zig", Zig);
     EXPECT_FAMILY("zig.exe", Zig);
@@ -263,12 +266,15 @@ TEST_CASE(WarmPartialFailure, skip = Windows) {
     llvm::SmallVector<CompileCommand> cmds = {good, bad};
     tc.warm(cmds);
 
-    // The failed query is only logged; the successful one is cached.
+    // The successful query is cached; the failed one is negatively cached
+    // so later resolve() calls fail fast without re-probing the driver.
     EXPECT_EQ(tc.cache_size(), std::size_t(1));
+    EXPECT_EQ(tc.failed_size(), std::size_t(1));
 
     ASSERT_TRUE(tc.resolve(good).has_value());
     EXPECT_TRUE(good.resolved.is_cc1);
     EXPECT_FALSE(tc.resolve(bad).has_value());
+    EXPECT_EQ(tc.failed_size(), std::size_t(1));
 }
 
 TEST_CASE(ResolveKeepsSemanticFlags, skip = !CIEnvironment) {

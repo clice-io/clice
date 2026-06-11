@@ -74,6 +74,11 @@ public:
         return cache.size();
     }
 
+    /// Number of negatively cached (failed) toolchain queries.
+    std::size_t failed_size() const {
+        return failed.size();
+    }
+
     /// Parse the first `-cc1` line from driver `-###` output, dropping flags
     /// our linked cc1 does not understand (along with their values).
     static std::vector<std::string> parse_cc1(llvm::StringRef content);
@@ -91,6 +96,11 @@ private:
     std::unique_ptr<llvm::BumpPtrAllocator> allocator;
     StringSet strings;
     llvm::StringMap<std::vector<const char*>> cache;
+
+    /// Negative cache: keys whose query failed, mapped to the error message.
+    /// Avoids re-spawning the same failing driver probe for every file that
+    /// shares the key (see clangd's SystemIncludeExtractor for precedent).
+    llvm::StringMap<std::string> failed;
 };
 
 }  // namespace clice
