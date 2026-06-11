@@ -992,7 +992,7 @@ int $foo = 1;
     ASSERT_TRUE(result.has_value());
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
     ASSERT_TRUE(content != nullptr);
-    ASSERT_EQ(content->kind, protocol::MarkupKind::Plaintext);
+    ASSERT_EQ(content->kind, protocol::MarkupKind::plain_text);
     ASSERT_TRUE(content->value.find("variable foo") != std::string::npos);
 }
 

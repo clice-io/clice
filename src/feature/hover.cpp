@@ -1298,10 +1298,10 @@ auto to_protocol_hover(CompilationUnitRef unit,
 
     protocol::MarkupContent content;
     if(options.parse_comment_as_markdown) {
-        content.kind = protocol::MarkupKind::Markdown;
+        content.kind = protocol::MarkupKind::markdown;
         content.value = document.as_markdown();
     } else {
-        content.kind = protocol::MarkupKind::Plaintext;
+        content.kind = protocol::MarkupKind::plain_text;
         content.value = document.as_plain_text();
     }
 
