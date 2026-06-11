@@ -205,6 +205,21 @@ TEST_CASE(PersistentRenameRetry) {
     ASSERT_TRUE(store.lookup("index", "project").has_value());
 }
 
+TEST_CASE(LruStaleBlobReplaced) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_lru(store);
+
+    // Even LRU keys are not fully content-addressed (dependency edits
+    // change PCH content without changing the key input): on a rename
+    // collision with DIFFERENT content the stale blob must be replaced,
+    // never kept.  Squat the path to force the collision portably.
+    tmp.mkdir("root/cache/v1/pch/k1.pch");
+    auto path = put(store, "pch", "k1", "fresh");
+    ASSERT_EQ(fs::read(path).value_or(""), "fresh");
+    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
+}
+
 TEST_CASE(PersistentCommitFailureSurfaces) {
     TempDir tmp;
     auto store = open_store(tmp);

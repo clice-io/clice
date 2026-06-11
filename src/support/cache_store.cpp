@@ -27,6 +27,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
 
 namespace clice {
@@ -91,6 +92,26 @@ std::error_code sync_file(llvm::StringRef path) {
 #endif
     llvm::sys::fs::closeFile(*file);
     return ec;
+}
+
+/// On a rename collision, check whether the existing destination blob is
+/// byte-identical to the one we tried to publish.  Only called on the
+/// (Windows-only) collision path, so the extra reads stay off hot paths.
+bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
+    llvm::sys::fs::file_status tmp_status, final_status;
+    if(llvm::sys::fs::status(tmp_path, tmp_status) ||
+       llvm::sys::fs::status(final_path, final_status) ||
+       final_status.type() != llvm::sys::fs::file_type::regular_file ||
+       tmp_status.getSize() != final_status.getSize()) {
+        return false;
+    }
+
+    auto tmp_buf = llvm::MemoryBuffer::getFile(tmp_path);
+    auto final_buf = llvm::MemoryBuffer::getFile(final_path);
+    if(!tmp_buf || !final_buf) {
+        return false;
+    }
+    return (*tmp_buf)->getBuffer() == (*final_buf)->getBuffer();
 }
 
 /// Remove directory children whose name parses as a dead pid.
@@ -383,22 +404,23 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
 
         final_path = state->blob_path(*ns_state, pending.key);
         if(auto result = fs::rename(pending.tmp_path, final_path); !result) {
-            if(ns_state->config.policy == CachePolicy::LRU) {
-                // LRU namespaces hold content-addressed blobs, which makes
-                // a rename collision benign: an existing blob with the same
-                // name has the same content (this happens on Windows when
-                // the destination is currently open).  Account for the file
-                // that survived on disk, not the tmp.
+            if(same_content(pending.tmp_path, final_path)) {
+                // Benign collision: an identical blob is already published
+                // (Windows, destination currently open).  Keep the survivor
+                // and account for it.  This is verified by comparison, not
+                // assumed from the key: even LRU keys are not fully
+                // content-addressed (a dependency edit changes the PCH
+                // content without changing its key input).
                 llvm::sys::fs::remove(pending.tmp_path);
-                if(llvm::sys::fs::status(final_path, status) ||
-                   status.type() != llvm::sys::fs::file_type::regular_file) {
+                if(llvm::sys::fs::status(final_path, status)) {
                     return std::unexpected(result.error());
                 }
             } else {
-                // Persistent and Scratch keys are mutable — the same key is
-                // rewritten with new content — so the blob on disk is stale.
-                // Remove it and retry; if the rename still fails, report the
-                // error instead of silently dropping the new data.
+                // The destination is stale — a rewritten mutable key
+                // (Persistent/Scratch) or an LRU blob whose content drifted
+                // from its key.  Remove it and retry; if the rename still
+                // fails, report the error instead of silently dropping the
+                // new data.
                 llvm::sys::fs::remove(final_path);
                 if(auto retry = fs::rename(pending.tmp_path, final_path); !retry) {
                     llvm::sys::fs::remove(pending.tmp_path);
@@ -416,6 +438,9 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
         }
 
         auto& entry = ns_state->entries[pending.key];
+        // Unsigned wraparound is intentional and exact here: entry.size is
+        // already included in total_size, so total + new - old stays correct
+        // even when the replacement blob is smaller.
         ns_state->total_size += status.getSize() - entry.size;
         entry.size = status.getSize();
         entry.atime = state->next_stamp();
