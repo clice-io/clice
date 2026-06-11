@@ -21,6 +21,11 @@ struct Tester {
     std::optional<CompilationUnit> unit;
     std::string src_path;
 
+    /// Target triple for the VFS-only compile path. Empty means the host
+    /// triple. Pin it when the test output must be identical across
+    /// platforms, e.g. for snapshot tests.
+    std::string triple;
+
     AnnotatedSources sources;
 
     /// Owns argument strings so that params.arguments (const char*) remains valid.

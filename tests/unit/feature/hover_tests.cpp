@@ -657,8 +657,10 @@ TEST_CASE(big_ints_no_crash) {
 }
 
 TEST_CASE(global_casts_no_crash) {
+    /// Use `unsigned long long` so the cast does not truncate the pointer on
+    /// LLP64 targets (Windows), where `unsigned long` is only 32 bits.
     run_info(R"cpp(
-    using uintptr_t = unsigned long;
+    using uintptr_t = unsigned long long;
     enum Test : uintptr_t {};
     unsigned global_var;
     void foo() {
@@ -669,7 +671,7 @@ TEST_CASE(global_casts_no_crash) {
     EXPECT_EQ(dump(info->value), "&global_var");
 
     run_info(R"cpp(
-    using uintptr_t = unsigned long;
+    using uintptr_t = unsigned long long;
     unsigned global_var;
     void foo() {
       uintptr_t a$ddress = reinterpret_cast<uintptr_t>(&global_var);
@@ -690,6 +692,12 @@ TEST_CASE(setter_heuristic_no_crash) {
 }
 
 TEST_CASE(snapshot) {
+    /// Pin the target triple so type widths, sizes and layout are identical
+    /// on every host platform; otherwise e.g. `sizeof` has type
+    /// `unsigned long` on LP64 but `unsigned long long` on LLP64 (Windows)
+    /// and the snapshots would diverge.
+    triple = "x86_64-unknown-linux-gnu";
+
     auto transform = [&](std::string_view path) -> std::string {
         if(!compile_file(path)) {
             return "COMPILE_ERROR";

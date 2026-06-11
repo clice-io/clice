@@ -9,12 +9,12 @@ namespace clice::testing {
 
 namespace {
 
-std::vector<std::string> base_cc1_args(llvm::StringRef standard) {
+std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef triple) {
     return {
         "clang",
         "-cc1",
         "-triple",
-        LLVM_DEFAULT_TARGET_TRIPLE,
+        triple.empty() ? LLVM_DEFAULT_TARGET_TRIPLE : triple.str(),
         standard.str(),
         "-ffreestanding",
         "-undef",
@@ -54,7 +54,7 @@ void Tester::prepare(llvm::StringRef standard) {
         vfs->add(file, source.content);
     }
 
-    owned_args = base_cc1_args(standard);
+    owned_args = base_cc1_args(standard, triple);
     owned_args.push_back(TestVFS::path(src_path));
 
     params.arguments.clear();
@@ -145,7 +145,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         std::vector<std::string> deps;
     };
 
-    auto scan_args_base = base_cc1_args(standard);
+    auto scan_args_base = base_cc1_args(standard, triple);
 
     std::vector<ScannedModule> modules;
     for(auto& mod: all_modules) {
