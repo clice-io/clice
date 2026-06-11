@@ -79,14 +79,11 @@ void Config::apply_defaults(llvm::StringRef workspace_root) {
         if(p.cache_dir.empty())
             p.cache_dir = path::join(workspace_root, ".clice");
     }
-    if(p.index_dir.empty() && !p.cache_dir.empty())
-        p.index_dir = path::join(p.cache_dir, "index");
     if(p.logging_dir.empty() && !p.cache_dir.empty())
         p.logging_dir = path::join(p.cache_dir, "logs");
 
     // Variable substitution on string fields.
     substitute_workspace(p.cache_dir, workspace_root);
-    substitute_workspace(p.index_dir, workspace_root);
     substitute_workspace(p.logging_dir, workspace_root);
     for(auto& entry: p.compile_commands_paths)
         substitute_workspace(entry, workspace_root);

@@ -16,10 +16,8 @@ clang_tidy = false
 # exceeds this limit, the least recently used files will be removed.
 # The default value is 8.
 max_active_file = 8
-# Directory for storing PCH and PCM files.
+# Directory for storing on-disk caches (PCH, PCM and index files).
 cache_dir = "${workspace}/.clice/cache"
-# Directory for storing index files.
-index_dir = "${workspace}/.clice/index"
 logging_dir = "${workspace}/.clice/logs"
 # Compile commands files or directories to search for compile_commands.json files.
 compile_commands_paths = ["${workspace}/build"]

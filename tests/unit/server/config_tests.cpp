@@ -150,7 +150,6 @@ TEST_CASE(ApplyDefaults) {
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
     EXPECT_GE(config.project.stateless_worker_count.value, 2u);
     EXPECT_FALSE(config.project.cache_dir.empty());
-    EXPECT_FALSE(config.project.index_dir.empty());
     EXPECT_FALSE(config.project.logging_dir.empty());
 }
 
@@ -158,7 +157,6 @@ TEST_CASE(ApplyDefaultsEmptyWorkspace) {
     Config config;
     config.apply_defaults("");
     EXPECT_TRUE(config.project.cache_dir.empty());
-    EXPECT_TRUE(config.project.index_dir.empty());
     EXPECT_TRUE(config.project.logging_dir.empty());
 }
 
@@ -203,6 +201,20 @@ TEST_CASE(LoadMalformedToml) {
     EXPECT_FALSE(result.has_value());
 }
 
+TEST_CASE(LegacyIndexDirIgnored) {
+    // Configs written for older clice may still set the removed
+    // project.index_dir key; unknown keys must not fail the parse.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"(
+[project]
+cache_dir = "/opt/cache"
+index_dir = "/opt/index"
+)");
+    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str().str());
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(std::string_view(result->project.cache_dir), "/opt/cache");
+}
+
 TEST_CASE(LoadMissingFile) {
     auto result = Config::load("/nonexistent/clice.toml", "/workspace");
     EXPECT_FALSE(result.has_value());
@@ -211,12 +223,10 @@ TEST_CASE(LoadMissingFile) {
 TEST_CASE(WorkspaceVarSubst) {
     Config config;
     config.project.cache_dir = "${workspace}/cache";
-    config.project.index_dir = "${workspace}/idx";
     config.project.logging_dir = "${workspace}/logs";
     config.project.compile_commands_paths = {"${workspace}/build"};
     config.apply_defaults("/my/ws");
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/my/ws/cache");
-    EXPECT_EQ(std::string_view(config.project.index_dir), "/my/ws/idx");
     EXPECT_EQ(std::string_view(config.project.logging_dir), "/my/ws/logs");
     EXPECT_EQ(config.project.compile_commands_paths[0], "/my/ws/build");
 }
@@ -324,8 +334,6 @@ TEST_CASE(WorkspaceCacheFallback) {
 
     EXPECT_EQ(path::convert_to_slash(std::string_view(config.project.cache_dir)),
               "/ws/root/.clice");
-    EXPECT_EQ(path::convert_to_slash(std::string_view(config.project.index_dir)),
-              "/ws/root/.clice/index");
     EXPECT_EQ(path::convert_to_slash(std::string_view(config.project.logging_dir)),
               "/ws/root/.clice/logs");
 }

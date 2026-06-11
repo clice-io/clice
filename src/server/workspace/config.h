@@ -28,7 +28,6 @@ struct ProjectConfig {
     defaulted<int> max_active_file = {};
 
     defaulted<std::string> cache_dir;
-    defaulted<std::string> index_dir;
     defaulted<std::string> logging_dir;
 
     defaulted<std::vector<std::string>> compile_commands_paths;
