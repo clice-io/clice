@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <string>
+
 #include <kota/deco/option.h>
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallString.h"
@@ -69,6 +72,37 @@ bool is_include_path_option(unsigned id);
 
 /// Check if this is the -Xclang pass-through option.
 bool is_xclang_option(unsigned id);
+
+/// Diagnostics-presentation options (-W*, -R*, -pedantic*, -w): they affect
+/// which warnings are emitted but never the token stream produced by
+/// preprocessing.
+bool is_diagnostics_option(unsigned id);
+
+/// Which subset of a compile command matters when deriving a cache key.
+enum class ArgsProfile : std::uint8_t {
+    /// Options that can influence preprocessing: include paths, macros,
+    /// language dialect and target (predefined macros).  Computed
+    /// subtractively as Frontend minus diagnostics-presentation options,
+    /// because nearly every language option can define a feature macro —
+    /// over-inclusion only costs sharing, under-inclusion costs correctness.
+    Preprocessing,
+
+    /// All frontend-semantic options: preprocessing + language + warnings.
+    /// Excludes codegen-only options and options clice manages itself.
+    Frontend,
+
+    /// Every recognized option, including codegen and inputs.
+    Full,
+};
+
+/// Render the subset of `args` selected by `profile` into a stable string
+/// suitable for hashing (fragments are NUL-separated).  This is a pure
+/// filter: the relative order of kept options is preserved because it is
+/// semantically significant (-I/-D ordering).  args[0] must be the driver;
+/// it is always kept since it affects language defaults.  Arguments that
+/// fail to parse are kept verbatim — over-keying is safe, under-keying is
+/// not.
+std::string canonicalize(llvm::ArrayRef<std::string> args, ArgsProfile profile);
 
 /// Get the resource directory for clang builtin headers. Computed once
 /// from the current executable path using Driver::GetResourcesPath.

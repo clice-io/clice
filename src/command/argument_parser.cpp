@@ -121,9 +121,12 @@ using namespace option;
 bool is_discarded_option(unsigned id) {
     switch(id) {
         /// Input file, unknown args, and output — we manage these ourselves.
+        /// -main-file-name is per-file input identity injected by to_argv()
+        /// for cc1 commands; it only labels diagnostics/debug info.
         case OPT_INPUT:
         case OPT_UNKNOWN:
         case OPT__DASH_DASH:
+        case OPT_main_file_name:
         case OPT_c:
         case OPT_o:
         case OPT_dxc_Fc:
@@ -257,6 +260,74 @@ bool is_codegen_option(unsigned id) {
 
         default: return false;
     }
+}
+
+bool is_diagnostics_option(unsigned id) {
+    if(id == OPT_w) {
+        return true;
+    }
+    if(auto opt = option::table().option(id)) {
+        return opt->matches(OPT_Diag_Group) || opt->matches(OPT_pedantic_Group);
+    }
+    return false;
+}
+
+std::string canonicalize(llvm::ArrayRef<std::string> args, ArgsProfile profile) {
+    std::string buf;
+    if(args.empty()) {
+        return buf;
+    }
+
+    llvm::raw_string_ostream os(buf);
+    auto append = [&](std::string_view fragment) {
+        os << fragment << '\0';
+    };
+
+    /// The driver affects language defaults (clang vs clang++ vs clang-cl).
+    append(args[0]);
+
+    std::vector<std::string> parse_args(args.begin() + 1, args.end());
+    auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
+                                              .visibility = default_visibility(args[0])};
+    for(auto& result: option::table().parse(parse_args, options)) {
+        if(!result.has_value()) {
+            /// Unparseable arguments are kept verbatim: dropping an option
+            /// we don't understand could merge keys that must differ.
+            auto index = result.error().index;
+            if(index < parse_args.size()) {
+                append(parse_args[index]);
+            }
+            continue;
+        }
+
+        auto& arg = *result;
+
+        /// Unknown options are kept verbatim, same rationale as parse errors.
+        if(arg.id == OPT_UNKNOWN) {
+            if(arg.index < parse_args.size()) {
+                append(parse_args[arg.index]);
+            }
+            continue;
+        }
+
+        bool keep = false;
+        switch(profile) {
+            case ArgsProfile::Full: keep = true; break;
+            case ArgsProfile::Frontend:
+                keep = !is_discarded_option(arg.id) && !is_codegen_option(arg.id);
+                break;
+            case ArgsProfile::Preprocessing:
+                keep = !is_discarded_option(arg.id) && !is_codegen_option(arg.id) &&
+                       !is_diagnostics_option(arg.id);
+                break;
+        }
+
+        if(keep) {
+            option::table().render(arg, append);
+        }
+    }
+
+    return buf;
 }
 
 std::string print_argv(llvm::ArrayRef<const char*> args) {
