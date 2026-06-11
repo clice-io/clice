@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <optional>
 
 #include "test/test.h"
@@ -275,6 +276,81 @@ TEST_CASE(WarmPartialFailure, skip = Windows) {
     EXPECT_TRUE(good.resolved.is_cc1);
     EXPECT_FALSE(tc.resolve(bad).has_value());
     EXPECT_EQ(tc.failed_size(), std::size_t(1));
+}
+
+TEST_CASE(ResolveFailNegativeCache, skip = Windows) {
+    // A fake driver whose -### output contains no cc1 line, so the query fails.
+    auto driver = create_fake_clang("this is not a cc1 line");
+    ASSERT_TRUE(driver.has_value());
+
+    CompileCommand cmd;
+    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
+    cmd.source_file = "/tmp/a.cpp";
+
+    Toolchain tc;
+    auto first = tc.resolve(cmd);
+    ASSERT_FALSE(first.has_value());
+    EXPECT_EQ(tc.cache_size(), std::size_t(0));
+    EXPECT_EQ(tc.failed_size(), std::size_t(1));
+
+    // Remove the driver: a re-probe would now fail differently ("not found or
+    // not executable"), so getting the original error back proves the second
+    // resolve() hit the negative cache without spawning the driver again.
+    ASSERT_TRUE(!fs::remove(*driver));
+    auto second = tc.resolve(cmd);
+    ASSERT_FALSE(second.has_value());
+    EXPECT_EQ(second.error(), first.error());
+    EXPECT_EQ(tc.failed_size(), std::size_t(1));
+}
+
+TEST_CASE(ResolveReplacesResourceDir, skip = Windows) {
+    constexpr llvm::StringRef line =
+        R"( "/usr/bin/clang-22" "-cc1" "-resource-dir" "/clice-fake/lib/clang/22" "-internal-isystem" "/clice-fake/lib/clang/22/include" "-std=c++23")";
+    auto driver = create_fake_clang(line);
+    ASSERT_TRUE(driver.has_value());
+
+    CompileCommand cmd;
+    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
+    cmd.source_file = "/tmp/a.cpp";
+
+    Toolchain tc;
+    ASSERT_TRUE(tc.resolve(cmd).has_value());
+
+    // The external driver's resource dir is rewritten to ours, including
+    // derived paths sharing the prefix.
+    auto expected_include = resource_dir().str() + "/include";
+    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, resource_dir()));
+    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, llvm::StringRef(expected_include)));
+    for(llvm::StringRef arg: cmd.resolved.flags) {
+        EXPECT_FALSE(arg.starts_with("/clice-fake"));
+    }
+}
+
+TEST_CASE(ResolveMainFileName, skip = Windows) {
+    constexpr llvm::StringRef line =
+        R"( "/usr/bin/clang-22" "-cc1" "-main-file-name" "probe.cpp" "-std=c++23")";
+    auto driver = create_fake_clang(line);
+    ASSERT_TRUE(driver.has_value());
+
+    CompileCommand cmd;
+    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
+    cmd.source_file = "/tmp/dir/a.cpp";
+
+    Toolchain tc;
+    ASSERT_TRUE(tc.resolve(cmd).has_value());
+    EXPECT_TRUE(cmd.resolved.is_cc1);
+
+    // The probe file's -main-file-name is stripped from the cached result...
+    EXPECT_FALSE(std::ranges::contains(cmd.resolved.flags, llvm::StringRef("-main-file-name")));
+
+    // ...and to_argv() re-injects it with the real file's basename.
+    auto argv = cmd.to_argv();
+    bool reinjected = false;
+    for(std::size_t i = 0; i + 1 < argv.size(); ++i) {
+        if(argv[i] == "-main-file-name"sv && argv[i + 1] == "a.cpp"sv)
+            reinjected = true;
+    }
+    EXPECT_TRUE(reinjected);
 }
 
 TEST_CASE(ResolveKeepsSemanticFlags, skip = !CIEnvironment) {
