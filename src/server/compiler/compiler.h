@@ -109,11 +109,14 @@ public:
 private:
     kota::task<> run_compile(std::uint32_t path_id, std::shared_ptr<Session::PendingCompile> pc);
 
+    /// @param scope  When set, cancels the module-dependency wait if this
+    ///               compile round is superseded by a newer one.
     kota::task<bool> ensure_deps(Session& session,
                                  const std::string& directory,
                                  const std::vector<std::string>& arguments,
                                  std::pair<std::string, uint32_t>& pch,
-                                 std::unordered_map<std::string, std::string>& pcms);
+                                 std::unordered_map<std::string, std::string>& pcms,
+                                 std::optional<kota::cancellation_token> scope = {});
 
     kota::task<bool> ensure_pch(Session& session,
                                 const std::string& directory,

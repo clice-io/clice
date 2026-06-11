@@ -1,7 +1,10 @@
 #include <optional>
+#include <random>
 
 #include "test/test.h"
 #include "server/compiler/compile_graph.h"
+
+#include "llvm/ADT/DenseSet.h"
 
 namespace clice::testing {
 namespace {
@@ -53,21 +56,88 @@ CompileGraph::dispatch_fn selective_dispatch(llvm::DenseSet<std::uint32_t> fail_
     };
 }
 
+/// Dispatch driven manually by per-unit events: the test observes when a
+/// unit enters dispatch (started) and decides when and how it completes
+/// (proceed/result). Cancellation can thus be injected at every suspension
+/// point with deterministic timing.
+struct ManualDispatch {
+    struct Gate {
+        kota::event started;
+        kota::event proceed;
+        bool result = true;
+        int calls = 0;
+    };
+
+    llvm::DenseMap<std::uint32_t, std::unique_ptr<Gate>> gates;
+
+    Gate& gate(std::uint32_t path_id) {
+        auto& slot = gates[path_id];
+        if(!slot) {
+            slot = std::make_unique<Gate>();
+        }
+        return *slot;
+    }
+
+    void open(std::initializer_list<std::uint32_t> path_ids) {
+        for(auto id: path_ids) {
+            gate(id).proceed.set();
+        }
+    }
+
+    CompileGraph::dispatch_fn fn() {
+        return [this](std::uint32_t path_id) -> kota::task<bool> {
+            auto& g = gate(path_id);
+            g.calls += 1;
+            g.started.set();
+            co_await g.proceed.wait();
+            co_return g.result;
+        };
+    }
+};
+
+/// A cancellable compile request and its observed result.
+/// result is empty while running and after cancellation.
+struct Request {
+    kota::cancellation_source source;
+    std::optional<bool> result;
+    bool done = false;
+};
+
 TEST_SUITE(CompileGraph) {
 
 std::vector<std::uint32_t> compiled;
+std::optional<kota::event_loop> loop;
 std::optional<CompileGraph> graph;
 
+void make_graph(CompileGraph::dispatch_fn dispatch, CompileGraph::resolve_fn resolve) {
+    loop.emplace();
+    graph.emplace(*loop, std::move(dispatch), std::move(resolve));
+}
+
+/// Run the test body, then verify the shutdown protocol: cancel + join must
+/// exit cleanly and leave the graph fully quiesced.
 template <typename F>
 void execute(F&& fn) {
-    kota::event_loop loop;
-    auto t = fn();
-    loop.schedule(t);
-    loop.run();
+    auto wrapper = [&]() -> kota::task<> {
+        co_await fn();
+        co_await graph->shutdown();
+        EXPECT_TRUE(graph->idle());
+    };
+    auto t = wrapper();
+    loop->schedule(t);
+    loop->run();
+}
+
+kota::task<> run_request(std::uint32_t path_id, Request& req) {
+    auto result = co_await kota::with_token(graph->compile(path_id), req.source.token());
+    req.done = true;
+    if(result.has_value()) {
+        req.result = *result;
+    }
 }
 
 TEST_CASE(CompileNoDeps) {
-    graph.emplace(tracking_dispatch(compiled), no_deps());
+    make_graph(tracking_dispatch(compiled), no_deps());
 
     execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
@@ -81,9 +151,9 @@ TEST_CASE(CompileNoDeps) {
 
 TEST_CASE(CompileWithDependency) {
     // Unit 1 depends on unit 2.
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {1, {2}}
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {1, {2}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -102,10 +172,10 @@ TEST_CASE(CompileWithDependency) {
 
 TEST_CASE(CompileChain) {
     // Chain: 1 -> 2 -> 3.
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {1, {2}},
-                      {2, {3}}
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {1, {2}},
+                   {2, {3}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -124,11 +194,11 @@ TEST_CASE(CompileChain) {
 
 TEST_CASE(DiamondDependency) {
     // Diamond: 1 -> {2, 3}, 2 -> 4, 3 -> 4.
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {1, {2, 3}},
-                      {2, {4}   },
-                      {3, {4}   }
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {1, {2, 3}},
+                   {2, {4}   },
+                   {3, {4}   }
     }));
 
     execute([&]() -> kota::task<> {
@@ -146,9 +216,9 @@ TEST_CASE(DiamondDependency) {
 
 TEST_CASE(UpdateInvalidates) {
     // 1 -> 2.
-    graph.emplace(instant_dispatch(),
-                  static_resolver({
-                      {1, {2}}
+    make_graph(instant_dispatch(),
+               static_resolver({
+                   {1, {2}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -165,10 +235,10 @@ TEST_CASE(UpdateInvalidates) {
 
 TEST_CASE(UpdateCascade) {
     // Chain: 1 -> 2 -> 3.
-    graph.emplace(instant_dispatch(),
-                  static_resolver({
-                      {1, {2}},
-                      {2, {3}}
+    make_graph(instant_dispatch(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {3}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -186,9 +256,9 @@ TEST_CASE(UpdateCascade) {
 
 TEST_CASE(CompileAfterUpdate) {
     // 1 -> 2.
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {1, {2}}
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {1, {2}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -204,9 +274,9 @@ TEST_CASE(CompileAfterUpdate) {
 
 TEST_CASE(DispatchFailure) {
     // 1 -> 2. Dispatch always fails.
-    graph.emplace(failing_dispatch(),
-                  static_resolver({
-                      {1, {2}}
+    make_graph(failing_dispatch(),
+               static_resolver({
+                   {1, {2}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -219,13 +289,13 @@ TEST_CASE(DispatchFailure) {
 }
 
 TEST_CASE(CancelAll) {
-    graph.emplace(instant_dispatch(), no_deps());
+    make_graph(instant_dispatch(), no_deps());
     // Just verify it doesn't crash.
     graph->cancel_all();
 }
 
 TEST_CASE(SecondCompileSkips) {
-    graph.emplace(tracking_dispatch(compiled), no_deps());
+    make_graph(tracking_dispatch(compiled), no_deps());
 
     execute([&]() -> kota::task<> {
         co_await graph->compile(1).catch_cancel();
@@ -238,10 +308,10 @@ TEST_CASE(SecondCompileSkips) {
 
 TEST_CASE(CascadeThroughAlreadyDirty) {
     // Chain: 1 -> 2 -> 3.
-    graph.emplace(instant_dispatch(),
-                  static_resolver({
-                      {1, {2}},
-                      {2, {3}}
+    make_graph(instant_dispatch(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {3}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -263,10 +333,10 @@ TEST_CASE(CascadeThroughAlreadyDirty) {
 
 TEST_CASE(CircularDependencyDetection) {
     // Cycle: 1 -> 2 -> 1.
-    graph.emplace(instant_dispatch(),
-                  static_resolver({
-                      {1, {2}},
-                      {2, {1}}
+    make_graph(instant_dispatch(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {1}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -279,13 +349,13 @@ TEST_CASE(CircularDependencyDetection) {
 
 TEST_CASE(CrossBranchCycleDetection) {
     // Cross-branch cycle: 1 -> {2, 3}, 2 -> 3, 3 -> 2.
-    // With when_all, sibling branches could deadlock on each other's
-    // completion.wait() without proper deadlock detection.
-    graph.emplace(instant_dispatch(),
-                  static_resolver({
-                      {1, {2, 3}},
-                      {2, {3}   },
-                      {3, {2}   }
+    // Sibling unit tasks could deadlock on each other's completion
+    // without proper wait-cycle detection.
+    make_graph(instant_dispatch(),
+               static_resolver({
+                   {1, {2, 3}},
+                   {2, {3}   },
+                   {3, {2}   }
     }));
 
     execute([&]() -> kota::task<> {
@@ -309,7 +379,7 @@ TEST_CASE(UpdateResetsResolved) {
         return {};
     };
 
-    graph.emplace(tracking_dispatch(compiled), std::move(resolver));
+    make_graph(tracking_dispatch(compiled), std::move(resolver));
 
     execute([&]() -> kota::task<> {
         // First compile: resolves 1 -> {2}.
@@ -341,7 +411,7 @@ TEST_CASE(UpdateCleansBackEdges) {
         return {};
     };
 
-    graph.emplace(tracking_dispatch(compiled), std::move(resolver));
+    make_graph(tracking_dispatch(compiled), std::move(resolver));
 
     execute([&]() -> kota::task<> {
         // First compile: 1 -> {2}.
@@ -365,11 +435,11 @@ TEST_CASE(UpdateCleansBackEdges) {
 
 TEST_CASE(DiamondUpdateCascade) {
     // Diamond: 1 -> {2, 3}, 2 -> 4, 3 -> 4.
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {1, {2, 3}},
-                      {2, {4}   },
-                      {3, {4}   }
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {1, {2, 3}},
+                   {2, {4}   },
+                   {3, {4}   }
     }));
 
     execute([&]() -> kota::task<> {
@@ -395,10 +465,10 @@ TEST_CASE(DiamondUpdateCascade) {
 
 TEST_CASE(UpdateReturnsAllDirtied) {
     // Chain: 1 -> 2 -> 3.
-    graph.emplace(instant_dispatch(),
-                  static_resolver({
-                      {1, {2}},
-                      {2, {3}}
+    make_graph(instant_dispatch(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {3}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -414,7 +484,7 @@ TEST_CASE(UpdateReturnsAllDirtied) {
 }
 
 TEST_CASE(HasUnitAndIsCompiling) {
-    graph.emplace(instant_dispatch(), no_deps());
+    make_graph(instant_dispatch(), no_deps());
 
     execute([&]() -> kota::task<> {
         EXPECT_FALSE(graph->has_unit(1));
@@ -428,9 +498,9 @@ TEST_CASE(HasUnitAndIsCompiling) {
 
 TEST_CASE(FailureLeavesDepsDirty) {
     // 1 -> 2. Dispatch always fails.
-    graph.emplace(failing_dispatch(),
-                  static_resolver({
-                      {1, {2}}
+    make_graph(failing_dispatch(),
+               static_resolver({
+                   {1, {2}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -445,9 +515,9 @@ TEST_CASE(FailureLeavesDepsDirty) {
 
 TEST_CASE(SelfLoop) {
     // Unit 1 depends on itself.
-    graph.emplace(instant_dispatch(),
-                  static_resolver({
-                      {1, {1}}
+    make_graph(instant_dispatch(),
+               static_resolver({
+                   {1, {1}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -459,9 +529,9 @@ TEST_CASE(SelfLoop) {
 }
 
 TEST_CASE(CancelAllAndRecompile) {
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {1, {2}}
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {1, {2}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -487,51 +557,49 @@ TEST_CASE(CancelAllAndRecompile) {
 }
 
 TEST_CASE(UpdateDuringCompile) {
-    kota::event_loop loop;
-    kota::event gate;
+    ManualDispatch md;
+    make_graph(md.fn(), no_deps());
 
-    auto gated_dispatch = [&gate](std::uint32_t) -> kota::task<bool> {
-        co_await gate.wait();
-        co_return true;
-    };
+    execute([&]() -> kota::task<> {
+        bool done = false;
+        std::optional<bool> result;
 
-    graph.emplace(std::move(gated_dispatch), no_deps());
+        auto compiler = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1).catch_cancel();
+            done = true;
+            if(r.has_value()) {
+                result = *r;
+            }
+        };
 
-    bool compile_done = false;
-    bool was_cancelled = false;
+        // Update while dispatch is in flight: the round is cancelled, the
+        // waiter retries with the new content, and — with no further
+        // updates — exactly one retry happens.
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(1).started.wait();
+            md.gate(1).started.reset();
+            graph->update(1);
+            co_await md.gate(1).started.wait();
+            EXPECT_EQ(md.gate(1).calls, 2);
+            md.gate(1).proceed.set();
+            co_return;
+        };
 
-    // Coroutine 1: compile(1), will suspend inside dispatch waiting on gate.
-    auto compiler = [&]() -> kota::task<> {
-        auto result = co_await graph->compile(1).catch_cancel();
-        compile_done = true;
-        was_cancelled = !result.has_value();
-    };
+        co_await kota::when_all(compiler(), driver());
 
-    // Coroutine 2: update(1) while dispatch is in flight, then unblock gate.
-    auto updater = [&]() -> kota::task<> {
-        graph->update(1);
-        gate.set();
-        co_return;
-    };
-
-    auto t1 = compiler();
-    auto t2 = updater();
-    loop.schedule(t1);
-    loop.schedule(t2);
-    loop.run();
-
-    // update() cancelled the source, so compile should have been cancelled.
-    EXPECT_TRUE(compile_done);
-    EXPECT_TRUE(was_cancelled);
-    EXPECT_TRUE(graph->is_dirty(1));
+        EXPECT_TRUE(done);
+        EXPECT_TRUE(result == true);
+        EXPECT_FALSE(graph->is_dirty(1));
+        EXPECT_EQ(md.gate(1).calls, 2);
+    });
 }
 
 TEST_CASE(WhenAllPartialFailure) {
     // 1 -> {2, 3}. Only unit 3 fails.
-    graph.emplace(selective_dispatch({
-                      3
+    make_graph(selective_dispatch({
+                   3
     }),
-                  static_resolver({{1, {2, 3}}}));
+               static_resolver({{1, {2, 3}}}));
 
     execute([&]() -> kota::task<> {
         auto result = co_await graph->compile(1).catch_cancel();
@@ -547,7 +615,7 @@ TEST_CASE(WhenAllPartialFailure) {
 }
 
 TEST_CASE(UpdateUnknownPathId) {
-    graph.emplace(instant_dispatch(), no_deps());
+    make_graph(instant_dispatch(), no_deps());
 
     // update on a path_id that was never compiled should not crash.
     auto dirtied = graph->update(999);
@@ -557,13 +625,13 @@ TEST_CASE(UpdateUnknownPathId) {
 
 TEST_CASE(EmptyGraphNoCompile) {
     // Construct and destroy without any compile calls.
-    graph.emplace(instant_dispatch(), no_deps());
+    make_graph(instant_dispatch(), no_deps());
     EXPECT_FALSE(graph->has_unit(1));
     graph->cancel_all();  // Should not crash on empty graph.
 }
 
 TEST_CASE(CompileDepsNoDeps) {
-    graph.emplace(tracking_dispatch(compiled), no_deps());
+    make_graph(tracking_dispatch(compiled), no_deps());
 
     execute([&]() -> kota::task<> {
         auto result = co_await graph->compile_deps(1).catch_cancel();
@@ -576,9 +644,9 @@ TEST_CASE(CompileDepsNoDeps) {
 
 TEST_CASE(CompileDepsWithDependency) {
     // Unit 1 depends on unit 2.
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {1, {2}}
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {1, {2}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -595,10 +663,10 @@ TEST_CASE(CompileDepsWithDependency) {
 
 TEST_CASE(CompileDepsChain) {
     // Chain: 1 -> 2 -> 3.
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {1, {2}},
-                      {2, {3}}
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {1, {2}},
+                   {2, {3}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -615,11 +683,11 @@ TEST_CASE(CompileDepsChain) {
 
 TEST_CASE(CompileDepsDiamond) {
     // Diamond: 1 -> {2, 3}, 2 -> 4, 3 -> 4.
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {1, {2, 3}},
-                      {2, {4}   },
-                      {3, {4}   }
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {1, {2, 3}},
+                   {2, {4}   },
+                   {3, {4}   }
     }));
 
     execute([&]() -> kota::task<> {
@@ -644,9 +712,9 @@ TEST_CASE(CompileDepsFailure) {
         co_return false;
     };
 
-    graph.emplace(std::move(fail_and_track),
-                  static_resolver({
-                      {1, {2}}
+    make_graph(std::move(fail_and_track),
+               static_resolver({
+                   {1, {2}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -660,9 +728,9 @@ TEST_CASE(CompileDepsFailure) {
 
 TEST_CASE(CompileDepsPlainCpp) {
     // Simulates a plain .cpp file (unit 10) that imports a module (unit 20).
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {10, {20}}
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {10, {20}}
     }));
 
     execute([&]() -> kota::task<> {
@@ -681,10 +749,10 @@ TEST_CASE(CompileDepsConcurrentDedup) {
     // Each dep should be dispatched exactly once (no duplicate compilation).
     // Unit 1 depends on {3, 4}, unit 2 depends on {3, 5}.
     // Dep 3 is shared — must be compiled only once.
-    graph.emplace(tracking_dispatch(compiled),
-                  static_resolver({
-                      {1, {3, 4}},
-                      {2, {3, 5}},
+    make_graph(tracking_dispatch(compiled),
+               static_resolver({
+                   {1, {3, 4}},
+                   {2, {3, 5}},
     }));
 
     execute([&]() -> kota::task<> {
@@ -719,7 +787,7 @@ TEST_CASE(CompileDepsResolveOnce) {
         return {};
     };
 
-    graph.emplace(tracking_dispatch(compiled), std::move(resolve));
+    make_graph(tracking_dispatch(compiled), std::move(resolve));
 
     execute([&]() -> kota::task<> {
         auto t1 = graph->compile_deps(1);
@@ -736,6 +804,464 @@ TEST_CASE(CompileDepsResolveOnce) {
 
         // resolve_fn called for units 1, 2, 3 — each at most once (3 total).
         EXPECT_EQ(resolve_count, 3);
+    });
+}
+
+// ============================================================================
+// Shared dependency matrix: A(1) -> B(2) -> E(5), C(3) -> D(4) -> E(5).
+// ============================================================================
+
+TEST_CASE(SharedDepSurvivesCancel) {
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {5}},
+                   {3, {4}},
+                   {4, {5}}
+    }));
+    md.open({1, 2, 3, 4});
+
+    Request ra, rc;
+    execute([&]() -> kota::task<> {
+        auto driver = [&]() -> kota::task<> {
+            // E is dispatching, with interest from both chains.
+            co_await md.gate(5).started.wait();
+            EXPECT_EQ(graph->refcount(5), 2u);
+            EXPECT_EQ(md.gate(5).calls, 1);
+
+            // Cancel request A: B's task exits and drops its edge on E,
+            // but D's task still holds interest — E must keep compiling.
+            ra.source.cancel();
+            co_await kota::sleep(1);
+
+            EXPECT_TRUE(ra.done);
+            EXPECT_FALSE(graph->is_compiling(2));
+            EXPECT_TRUE(graph->is_compiling(5));
+            EXPECT_EQ(graph->refcount(5), 1u);
+            EXPECT_EQ(md.gate(5).calls, 1);
+
+            md.gate(5).proceed.set();
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(1, ra), run_request(3, rc), driver());
+
+        EXPECT_FALSE(ra.result.has_value());
+        EXPECT_TRUE(rc.result == true);
+        EXPECT_FALSE(graph->is_dirty(5));
+        EXPECT_FALSE(graph->is_dirty(3));
+        EXPECT_TRUE(graph->is_dirty(1));
+    });
+}
+
+TEST_CASE(SharedDepBothCancelled) {
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {5}},
+                   {3, {4}},
+                   {4, {5}}
+    }));
+    md.open({1, 2, 3, 4});
+
+    Request ra, rc;
+    execute([&]() -> kota::task<> {
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(5).started.wait();
+            EXPECT_EQ(graph->refcount(5), 2u);
+
+            // Cancel both requests: E's interest drops to zero and its
+            // compilation is cancelled too.
+            ra.source.cancel();
+            rc.source.cancel();
+            co_await kota::sleep(1);
+
+            EXPECT_FALSE(graph->is_compiling(5));
+            EXPECT_TRUE(graph->is_dirty(5));
+            EXPECT_EQ(graph->refcount(5), 0u);
+            EXPECT_EQ(md.gate(5).calls, 1);
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(1, ra), run_request(3, rc), driver());
+
+        EXPECT_FALSE(ra.result.has_value());
+        EXPECT_FALSE(rc.result.has_value());
+    });
+}
+
+TEST_CASE(SharedDepQueuedCancel) {
+    // E(5) itself depends on F(9); cancel A while E is still waiting for F,
+    // i.e. E is queued behind its own dependency rather than dispatching.
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {5}},
+                   {3, {4}},
+                   {4, {5}},
+                   {5, {9}}
+    }));
+    md.open({1, 2, 3, 4, 5});
+
+    Request ra, rc;
+    execute([&]() -> kota::task<> {
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(9).started.wait();
+            EXPECT_TRUE(graph->is_compiling(5));
+            EXPECT_EQ(graph->refcount(5), 2u);
+
+            ra.source.cancel();
+            co_await kota::sleep(1);
+
+            // E keeps waiting for F; only the A-chain died.
+            EXPECT_TRUE(graph->is_compiling(5));
+            EXPECT_TRUE(graph->is_compiling(9));
+            EXPECT_EQ(graph->refcount(5), 1u);
+            EXPECT_EQ(md.gate(9).calls, 1);
+
+            md.gate(9).proceed.set();
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(1, ra), run_request(3, rc), driver());
+
+        EXPECT_FALSE(ra.result.has_value());
+        EXPECT_TRUE(rc.result == true);
+        EXPECT_FALSE(graph->is_dirty(5));
+        EXPECT_FALSE(graph->is_dirty(9));
+    });
+}
+
+TEST_CASE(SharedDepAlreadyCompiled) {
+    // E was already built by the A-chain; cancelling/finishing A afterwards
+    // must not invalidate it for the C-chain.
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {5}},
+                   {3, {4}},
+                   {4, {5}}
+    }));
+    md.open({1, 2, 3, 4, 5});
+
+    execute([&]() -> kota::task<> {
+        auto r1 = co_await graph->compile(1).catch_cancel();
+        EXPECT_TRUE(r1.has_value() && *r1);
+        EXPECT_EQ(md.gate(5).calls, 1);
+
+        auto r2 = co_await graph->compile(3).catch_cancel();
+        EXPECT_TRUE(r2.has_value() && *r2);
+        // E was clean — not recompiled.
+        EXPECT_EQ(md.gate(5).calls, 1);
+    });
+}
+
+// ============================================================================
+// Update semantics: staleness-driven cancellation, waiters retry.
+// ============================================================================
+
+TEST_CASE(UpdateWhileWaitingDeps) {
+    // Update hits unit 1 while it waits for its dependency 2.
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {2}}
+    }));
+    md.open({1});
+
+    execute([&]() -> kota::task<> {
+        bool done = false;
+        std::optional<bool> result;
+
+        auto compiler = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1).catch_cancel();
+            done = true;
+            if(r.has_value()) {
+                result = *r;
+            }
+        };
+
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(2).started.wait();
+            EXPECT_TRUE(graph->is_compiling(1));
+
+            // Only unit 1 is updated; its round is cancelled while the
+            // waiter retries. Releasing its edge on 2 momentarily drops 2's
+            // interest to zero, so 2 restarts when the retry re-acquires it.
+            md.gate(2).started.reset();
+            graph->update(1);
+
+            co_await md.gate(2).started.wait();
+            EXPECT_EQ(md.gate(2).calls, 2);
+            md.gate(2).proceed.set();
+            co_return;
+        };
+
+        co_await kota::when_all(compiler(), driver());
+
+        EXPECT_TRUE(done);
+        EXPECT_TRUE(result == true);
+        EXPECT_FALSE(graph->is_dirty(1));
+        EXPECT_FALSE(graph->is_dirty(2));
+    });
+}
+
+TEST_CASE(UpdateDepCascadesCancel) {
+    // Updating a dependency cancels the in-flight rounds of its dependents;
+    // the request retries the whole chain and succeeds.
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {3}}
+    }));
+    md.open({1, 2});
+
+    execute([&]() -> kota::task<> {
+        bool done = false;
+        std::optional<bool> result;
+
+        auto compiler = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1).catch_cancel();
+            done = true;
+            if(r.has_value()) {
+                result = *r;
+            }
+        };
+
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(3).started.wait();
+            EXPECT_TRUE(graph->is_compiling(1));
+            EXPECT_TRUE(graph->is_compiling(2));
+
+            md.gate(3).started.reset();
+            graph->update(3);
+            EXPECT_TRUE(graph->is_dirty(1));
+            EXPECT_TRUE(graph->is_dirty(2));
+            md.gate(3).proceed.set();
+
+            // The retry drives a fresh round through the chain.
+            co_await md.gate(3).started.wait();
+            EXPECT_EQ(md.gate(3).calls, 2);
+            co_return;
+        };
+
+        co_await kota::when_all(compiler(), driver());
+
+        EXPECT_TRUE(done);
+        EXPECT_TRUE(result == true);
+        EXPECT_FALSE(graph->is_dirty(1));
+        EXPECT_FALSE(graph->is_dirty(2));
+        EXPECT_FALSE(graph->is_dirty(3));
+        // No further updates arrived — exactly one retry, no storm.
+        EXPECT_EQ(md.gate(3).calls, 2);
+    });
+}
+
+// ============================================================================
+// Failure semantics: no retry, edge references released.
+// ============================================================================
+
+TEST_CASE(FailedDepNoRetry) {
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {2}}
+    }));
+    md.gate(2).result = false;
+    md.open({1, 2});
+
+    execute([&]() -> kota::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
+        EXPECT_TRUE(result.has_value());
+        EXPECT_FALSE(*result);
+        // Failure propagates without retry, and 1 is never dispatched.
+        EXPECT_EQ(md.gate(2).calls, 1);
+        EXPECT_EQ(md.gate(1).calls, 0);
+        // The failed round released its edge references.
+        EXPECT_EQ(graph->refcount(2), 0u);
+        EXPECT_EQ(graph->refcount(1), 0u);
+    });
+}
+
+TEST_CASE(RecompileAfterFailure) {
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {2}}
+    }));
+    md.gate(2).result = false;
+    md.open({1, 2});
+
+    execute([&]() -> kota::task<> {
+        auto r1 = co_await graph->compile(1).catch_cancel();
+        EXPECT_TRUE(r1.has_value());
+        EXPECT_FALSE(*r1);
+
+        // Failure is not sticky: an explicit recompile tries again.
+        md.gate(2).result = true;
+        auto r2 = co_await graph->compile(1).catch_cancel();
+        EXPECT_TRUE(r2.has_value());
+        EXPECT_TRUE(*r2);
+        EXPECT_EQ(md.gate(2).calls, 2);
+        EXPECT_EQ(md.gate(1).calls, 1);
+        EXPECT_FALSE(graph->is_dirty(1));
+        EXPECT_FALSE(graph->is_dirty(2));
+    });
+}
+
+// ============================================================================
+// Cycles: all terminate with failure, never deadlock.
+// ============================================================================
+
+TEST_CASE(UpdateIntroducedCycle) {
+    // The cycle only appears after update() forces a re-resolve of unit 2.
+    bool flipped = false;
+    auto resolver = [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
+        if(path_id == 1) {
+            return {2};
+        }
+        if(path_id == 2 && flipped) {
+            return {1};
+        }
+        return {};
+    };
+
+    make_graph(instant_dispatch(), std::move(resolver));
+
+    execute([&]() -> kota::task<> {
+        auto r1 = co_await graph->compile(1).catch_cancel();
+        EXPECT_TRUE(r1.has_value() && *r1);
+
+        flipped = true;
+        graph->update(2);
+
+        auto r2 = co_await graph->compile(1).catch_cancel();
+        EXPECT_TRUE(r2.has_value());
+        EXPECT_FALSE(*r2);
+    });
+}
+
+TEST_CASE(PartitionedCycle) {
+    // The cycle (2 <-> 3) does not involve the requested root.
+    make_graph(instant_dispatch(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {3}},
+                   {3, {2}}
+    }));
+
+    execute([&]() -> kota::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
+        EXPECT_TRUE(result.has_value());
+        EXPECT_FALSE(*result);
+    });
+}
+
+// ============================================================================
+// Lifecycle: shutdown with tasks in flight.
+// ============================================================================
+
+TEST_CASE(ShutdownWithInflight) {
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {2, 3}},
+                   {2, {4}   },
+                   {3, {4}   }
+    }));
+
+    Request req;
+    auto driver = [&]() -> kota::task<> {
+        co_await md.gate(4).started.wait();
+        // Cancel + join with several unit tasks in flight.
+        co_await graph->shutdown();
+        co_return;
+    };
+
+    auto t1 = run_request(1, req);
+    auto t2 = driver();
+    loop->schedule(t1);
+    loop->schedule(t2);
+    loop->run();
+
+    // The pending request resolves with failure once the graph refuses to
+    // respawn, and all bookkeeping is quiesced.
+    EXPECT_TRUE(req.done);
+    EXPECT_TRUE(req.result == false);
+    EXPECT_TRUE(graph->idle());
+}
+
+// ============================================================================
+// Randomized stress: seeded, single-threaded, deterministic.
+// ============================================================================
+
+TEST_CASE(RandomizedStress) {
+    int dispatch_calls = 0;
+    kota::semaphore permits{0};
+    auto dispatch = [&](std::uint32_t) -> kota::task<bool> {
+        dispatch_calls += 1;
+        co_await permits.acquire();
+        co_return true;
+    };
+
+    make_graph(std::move(dispatch),
+               static_resolver({
+                   {1, {2, 3}},
+                   {2, {4}   },
+                   {3, {4}   },
+                   {4, {5}   },
+                   {6, {4, 7}},
+                   {7, {5}   },
+                   {8, {6}   }
+    }));
+
+    execute([&]() -> kota::task<> {
+        std::mt19937 rng(20260612u);
+        std::vector<std::unique_ptr<Request>> requests;
+        kota::task_group<> inflight(*loop);
+
+        constexpr std::uint32_t roots[] = {1, 6, 8};
+        constexpr std::uint32_t nodes[] = {1, 2, 3, 4, 5, 6, 7, 8};
+
+        for(int step = 0; step < 200; ++step) {
+            switch(rng() % 4) {
+                case 0: {
+                    auto& req = requests.emplace_back(std::make_unique<Request>());
+                    inflight.spawn(run_request(roots[rng() % 3], *req));
+                    break;
+                }
+                case 1: {
+                    if(!requests.empty()) {
+                        requests[rng() % requests.size()]->source.cancel();
+                    }
+                    break;
+                }
+                case 2: {
+                    graph->update(nodes[rng() % 8]);
+                    break;
+                }
+                case 3: {
+                    // Let one pending dispatch finish.
+                    permits.release();
+                    break;
+                }
+            }
+
+            // Let deferred unwinds land, then check structural sanity.
+            co_await kota::sleep(0);
+            EXPECT_TRUE(graph->consistent());
+        }
+
+        // Drain: cancel every outstanding request and wait for them all.
+        for(auto& req: requests) {
+            req->source.cancel();
+        }
+        co_await inflight.join();
     });
 }
 

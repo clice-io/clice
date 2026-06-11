@@ -40,6 +40,12 @@ Compiler::~Compiler() {
 kota::task<> Compiler::stop() {
     compile_tasks.cancel();
     co_await compile_tasks.join();
+
+    // Requests have unwound and released their interest; now tear down the
+    // module compile graph's own unit tasks.
+    if(workspace.compile_graph) {
+        co_await workspace.compile_graph->shutdown();
+    }
 }
 
 void Compiler::init_compile_graph() {
@@ -147,7 +153,7 @@ void Compiler::init_compile_graph() {
     };
 
     workspace.compile_graph =
-        std::make_unique<CompileGraph>(std::move(dispatch), std::move(resolve));
+        std::make_unique<CompileGraph>(loop, std::move(dispatch), std::move(resolve));
     LOG_INFO("CompileGraph initialized with {} module(s)", workspace.path_to_module.size());
 }
 
@@ -562,11 +568,23 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments,
                                        std::pair<std::string, uint32_t>& pch,
-                                       std::unordered_map<std::string, std::string>& pcms) {
+                                       std::unordered_map<std::string, std::string>& pcms,
+                                       std::optional<kota::cancellation_token> scope) {
     auto path_id = session.path_id;
 
+    // Compile module dependencies within the request scope: cancelling the
+    // scope unwinds the wait and releases this request's interest in the
+    // dependency graph, without touching the shared compilations themselves.
+    auto compile_deps = [&](std::uint32_t pid) -> kota::task<bool> {
+        if(!scope) {
+            co_return co_await workspace.compile_graph->compile_deps(pid);
+        }
+        auto result = co_await kota::with_token(workspace.compile_graph->compile_deps(pid), *scope);
+        co_return result.has_value() && *result;
+    };
+
     // Compile C++20 module dependencies (PCMs).
-    if(workspace.compile_graph && !co_await workspace.compile_graph->compile_deps(path_id)) {
+    if(workspace.compile_graph && !co_await compile_deps(path_id)) {
         co_return false;
     }
 
@@ -584,7 +602,7 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
                     // If PCM not already built, try to build it.
                     if(workspace.pcm_paths.find(pid) == workspace.pcm_paths.end()) {
                         if(workspace.compile_graph && workspace.compile_graph->has_unit(pid)) {
-                            co_await workspace.compile_graph->compile_deps(pid);
+                            co_await compile_deps(pid);
                         }
                     }
                     found = true;
@@ -673,7 +691,12 @@ kota::task<> Compiler::run_compile(std::uint32_t pid, std::shared_ptr<Session::P
         co_return;
     }
 
-    if(!co_await ensure_deps(*sess, params.directory, params.arguments, params.pch, params.pcms)) {
+    if(!co_await ensure_deps(*sess,
+                             params.directory,
+                             params.arguments,
+                             params.pch,
+                             params.pcms,
+                             pc->deps_scope.token())) {
         LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
         finish_compile();
         co_return;
@@ -770,23 +793,37 @@ kota::task<bool> Compiler::ensure_compiled(Session& session) {
         session.ast_dirty = true;
     }
 
-    // If another compile is already in flight, wait for it.
+    // If an up-to-date compile is already in flight, wait for it.
     // This co_await may be cancelled by LSP $/cancelRequest — that's fine,
     // it just means this particular feature request is abandoned.  The
     // detached compile task keeps running independently.
     while(session.compiling) {
         auto pending = session.compiling;
+        if(pending->generation != session.generation) {
+            // The in-flight compile is stale (user edited since it started);
+            // supersede it instead of waiting for it to finish.
+            break;
+        }
         co_await pending->done.wait();
         if(!session.ast_dirty)
             co_return true;
     }
 
+    auto superseded = session.compiling;
     auto pending_compile = std::make_shared<Session::PendingCompile>();
+    pending_compile->generation = session.generation;
     session.compiling = pending_compile;
 
     LOG_INFO("ensure_compiled: launching compile path_id={} gen={}", path_id, session.generation);
 
+    // Spawn the replacement before cancelling the superseded compile: the new
+    // round acquires its module-dependency interest synchronously, so shared
+    // dependencies never see their interest drop to zero across the swap.
     compile_tasks.spawn(run_compile(path_id, pending_compile));
+
+    if(superseded) {
+        superseded->deps_scope.cancel();
+    }
 
     // Wait for the detached compile to finish.  If this wait is cancelled
     // by LSP $/cancelRequest, the detached task continues unaffected.
