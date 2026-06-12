@@ -697,12 +697,14 @@ kota::task<> Compiler::run_compile(std::uint32_t pid, std::shared_ptr<Session::P
         co_return;
     }
 
-    if(!co_await ensure_deps(*sess,
-                             params.directory,
-                             params.arguments,
-                             params.pch,
-                             params.pcms,
-                             pc->deps_scope.token())) {
+    bool deps_ok = co_await ensure_deps(*sess,
+                                        params.directory,
+                                        params.arguments,
+                                        params.pch,
+                                        params.pcms,
+                                        pc->deps_scope.token());
+    pc->deps_done = true;
+    if(!deps_ok) {
         LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
         finish_compile();
         co_return;
@@ -817,9 +819,13 @@ kota::task<bool> Compiler::ensure_compiled(Session& session) {
     // detached compile task keeps running independently.
     while(session.compiling) {
         auto pending = session.compiling;
-        if(pending->generation != session.generation) {
-            // The in-flight compile is stale (user edited since it started);
-            // supersede it instead of waiting for it to finish.
+        if(pending->generation != session.generation && !pending->deps_done) {
+            // The in-flight compile is stale (user edited since it started)
+            // and still holds interest in the module graph — supersede it.
+            // A stale compile already past its dependency phase is left to
+            // finish instead: superseding it gains nothing (the worker send
+            // is not cancellable), and waiting coalesces rapid edits into a
+            // single follow-up compile at the latest generation.
             break;
         }
         co_await pending->done.wait();
