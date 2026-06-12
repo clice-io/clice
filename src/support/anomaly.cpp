@@ -72,7 +72,7 @@ bool anomaly_should_report(AnomalyId id) {
     return false;
 }
 
-void report_anomaly(AnomalyId id, std::string message, std::source_location location) {
+void report_anomaly(AnomalyId id, std::string_view message, std::source_location location) {
     auto text = std::format("[anomaly:{}] {}", anomaly_name(id), message);
     logging::log(spdlog::level::err, location, "{}", text);
     if(notify_hook)
@@ -84,7 +84,7 @@ bool guidance_should_report() {
     return options.level <= Level::warn;
 }
 
-void report_guidance(std::string message, std::source_location location) {
+void report_guidance(std::string_view message, std::source_location location) {
     auto text = std::format("[guidance] {}", message);
     logging::log(spdlog::level::warn, location, "{}", text);
     if(notify_hook)
@@ -95,8 +95,8 @@ void set_notify_hook(std::function<void(NotifyLevel, std::string_view)> hook) {
     notify_hook = std::move(hook);
 }
 
-void set_anomaly_trap_for_testing(std::function<void(AnomalyId)> trap) {
-    testing_trap = std::move(trap);
+void set_anomaly_trap_for_testing(std::function<void(AnomalyId)> hook) {
+    testing_trap = std::move(hook);
 }
 
 void reset_anomaly_for_testing() {

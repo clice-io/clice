@@ -720,22 +720,18 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         });
 }
 
-/// Publish clice.toml load problems as diagnostics on the config file's URI.
-/// The file is usually not open in the editor — publishing to a closed file
-/// is fine, the client shows it in the problems panel. A clean load publishes
-/// an empty list so diagnostics from a previous (broken) state clear.
+/// Publish clice.toml load problems as diagnostics, each on its own file's
+/// URI (multiple files can contribute issues when the first config candidate
+/// is malformed and the next one loads). The files are usually not open in
+/// the editor — publishing to a closed file is fine, the client shows it in
+/// the problems panel. The loaded file always gets a publish, so a clean
+/// load clears diagnostics from a previous (broken) state.
 void LSPClient::publish_config_diagnostics() {
     if(server.config_path.empty())
         return;
 
-    auto uri = lsp::URI::from_file_path(server.config_path);
-    if(!uri) {
-        LOG_WARN("Cannot build URI for config file {}", server.config_path);
-        return;
-    }
-
-    protocol::PublishDiagnosticsParams params;
-    params.uri = uri->str();
+    llvm::StringMap<std::vector<protocol::Diagnostic>> by_file;
+    by_file[server.config_path];
     for(auto& issue: server.config_issues) {
         // rich_error positions are 1-based; LSP wants 0-based. An unknown
         // position (0) maps to the file top. The range spans a single
@@ -753,11 +749,22 @@ void LSPClient::publish_config_diagnostics() {
                                   : protocol::DiagnosticSeverity::Warning;
         diagnostic.source = "clice";
         diagnostic.message = issue.message;
-        params.diagnostics.push_back(std::move(diagnostic));
+        by_file[issue.file].push_back(std::move(diagnostic));
 
         LOG_GUIDANCE("Configuration problem in {}: {}", issue.file, issue.message);
     }
-    peer.send_notification(params);
+
+    for(auto& [file, diagnostics]: by_file) {
+        auto uri = lsp::URI::from_file_path(file.str());
+        if(!uri) {
+            LOG_WARN("Cannot build URI for config file {}", file.str());
+            continue;
+        }
+        protocol::PublishDiagnosticsParams params;
+        params.uri = uri->str();
+        params.diagnostics = std::move(diagnostics);
+        peer.send_notification(params);
+    }
 }
 
 LSPClient::~LSPClient() {

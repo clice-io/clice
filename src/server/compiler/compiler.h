@@ -46,6 +46,7 @@ enum class CommandSource : std::uint8_t {
     Fallback,
 };
 
+/// Stable snake_case name of a CommandSource, used in the decision log.
 llvm::StringRef command_source_name(CommandSource source);
 
 /// Compilation service — drives worker processes to build ASTs, PCHs, and PCMs.

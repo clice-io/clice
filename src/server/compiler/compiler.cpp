@@ -237,14 +237,8 @@ static void log_command_decision(llvm::StringRef path,
                                  llvm::ArrayRef<llvm::StringRef> tried,
                                  CommandSource source,
                                  llvm::ArrayRef<std::string> arguments) {
-    if(clice::logging::options.level > clice::logging::Level::info)
+    if(logging::options.level > logging::Level::info)
         return;
-    std::string tried_text;
-    for(auto tier: tried) {
-        if(!tried_text.empty())
-            tried_text += ",";
-        tried_text += tier;
-    }
     std::string joined;
     for(auto& arg: arguments) {
         joined += arg;
@@ -252,7 +246,7 @@ static void log_command_decision(llvm::StringRef path,
     }
     LOG_INFO("compile_args: file={} tried=[{}] source={} args_hash={:016x}",
              path,
-             tried_text,
+             llvm::join(tried, ","),
              command_source_name(source),
              llvm::xxh3_64bits(llvm::StringRef(joined)));
 }
@@ -272,10 +266,13 @@ CommandSource Compiler::fill_compile_args(llvm::StringRef path,
             log_command_decision(path, tried, CommandSource::IncludeGraph, arguments);
             return CommandSource::IncludeGraph;
         }
-    } else if(workspace.cdb.has_entry(path)) {
-        // 2. Real CDB entry for the file itself.
-        //    Apply rules from config (append/remove flags based on file patterns).
-        tried.push_back("cdb");
+    }
+
+    // 2. Real CDB entry for the file itself (lookup() synthesizes a command
+    //    for unknown files, so a non-empty result alone proves nothing).
+    //    Apply rules from config (append/remove flags based on file patterns).
+    tried.push_back("cdb");
+    if(workspace.cdb.has_entry(path)) {
         std::vector<std::string> rule_append, rule_remove;
         workspace.config.match_rules(path, rule_append, rule_remove);
         auto results = workspace.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
@@ -285,9 +282,10 @@ CommandSource Compiler::fill_compile_args(llvm::StringRef path,
         arguments = cmd.to_string_argv();
         log_command_decision(path, tried, CommandSource::CdbExact, arguments);
         return CommandSource::CdbExact;
-    } else {
-        // 3. No CDB entry — try automatic header context resolution.
-        tried.push_back("cdb");
+    }
+
+    // 3. No CDB entry — try automatic header context resolution.
+    if(!(session && session->active_context.has_value())) {
         tried.push_back("include_graph");
         if(fill_header_context_args(path, path_id, directory, arguments, session)) {
             log_command_decision(path, tried, CommandSource::IncludeGraph, arguments);
@@ -347,16 +345,17 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     }
 
     auto host_path = workspace.path_pool.resolve(ctx_ptr->host_path_id);
+    if(!workspace.cdb.has_entry(host_path)) {
+        LOG_WARN("fill_header_context_args: host {} has no CDB entry", host_path);
+        return false;
+    }
+
     // Apply rules matching the HEADER path (what the user is editing) on top of
     // the host's command — rules are expected to apply uniformly to every file.
     std::vector<std::string> rule_append, rule_remove;
     workspace.config.match_rules(path, rule_append, rule_remove);
     auto host_results =
         workspace.cdb.lookup(host_path, {.remove = rule_remove, .append = rule_append});
-    if(host_results.empty()) {
-        LOG_WARN("fill_header_context_args: host {} has no CDB entry", host_path);
-        return false;
-    }
 
     workspace.toolchain.resolve_or_warn(host_results.front());
 
@@ -397,8 +396,7 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
     if(session && session->active_context.has_value()) {
         auto preferred = *session->active_context;
         auto preferred_path = workspace.path_pool.resolve(preferred);
-        auto results = workspace.cdb.lookup(preferred_path);
-        if(!results.empty()) {
+        if(workspace.cdb.has_entry(preferred_path)) {
             auto c = workspace.dep_graph.find_include_chain(preferred, header_path_id);
             if(!c.empty()) {
                 host_path_id = preferred;
@@ -407,12 +405,12 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
         }
     }
 
-    // Fall back to the first available host that has a CDB entry.
+    // Fall back to the first available host that has a real CDB entry —
+    // a host with a synthesized command would just be a fallback in disguise.
     if(chain.empty()) {
         for(auto candidate: hosts) {
             auto candidate_path = workspace.path_pool.resolve(candidate);
-            auto results = workspace.cdb.lookup(candidate_path);
-            if(results.empty())
+            if(!workspace.cdb.has_entry(candidate_path))
                 continue;
             auto c = workspace.dep_graph.find_include_chain(candidate, header_path_id);
             if(c.empty())

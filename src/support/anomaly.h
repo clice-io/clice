@@ -56,7 +56,7 @@ bool anomaly_should_report(AnomalyId id);
 /// trap is overridden for tests or CLICE_ANOMALY_NO_TRAP is set in the
 /// environment; Release builds continue.
 void report_anomaly(AnomalyId id,
-                    std::string message,
+                    std::string_view message,
                     std::source_location location = std::source_location::current());
 
 /// Gate evaluated BEFORE the format arguments of LOG_GUIDANCE.
@@ -65,7 +65,7 @@ bool guidance_should_report();
 /// Log "[guidance] <message>" at warn level and forward it to the notify hook.
 /// For user-actionable situations that are not clice bugs (missing CDB,
 /// invalid configuration, ...).
-void report_guidance(std::string message,
+void report_guidance(std::string_view message,
                      std::source_location location = std::source_location::current());
 
 /// Severity forwarded to the notify hook; values mirror LSP MessageType.
