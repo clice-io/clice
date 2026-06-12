@@ -101,11 +101,23 @@ gxx = "==14.2.0"
 clang = "==20.1.8"
 clangxx = "==20.1.8"
 lld = "==20.1.8"
+compiler-rt = "==20.1.8"
 
 [feature.test.target.osx-arm64.dependencies]
 clang = "==20.1.8"
 clangxx = "==20.1.8"
 lld = "==20.1.8"
+compiler-rt = "==20.1.8"
+
+# Debug builds are ASAN-instrumented; macOS links the ASAN runtime as a
+# dylib resolved against the build env, which artifact-based test jobs
+# don't have. The activation script points DYLD_LIBRARY_PATH at this
+# env's copy instead.
+[feature.test.target.osx-64.activation]
+scripts = ["scripts/activate_asan_macos.sh"]
+
+[feature.test.target.osx-arm64.activation]
+scripts = ["scripts/activate_asan_macos.sh"]
 
 [feature.test.pypi-dependencies]
 pytest = "*"
