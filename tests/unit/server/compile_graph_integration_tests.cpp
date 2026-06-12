@@ -152,7 +152,9 @@ void execute(F&& fn) {
     loop->run();
 }
 
-// Basic module interface units
+/// ============================================================================
+///                         Basic module interface units
+/// ============================================================================
 
 TEST_CASE(single_module) {
     env.tmp.touch("mod_a.cppm", "export module A;\n" "export int foo() { return 42; }\n");
@@ -239,7 +241,9 @@ TEST_CASE(diamond_modules) {
     });
 }
 
-// Dotted module names
+/// ============================================================================
+///                             Dotted module names
+/// ============================================================================
 
 TEST_CASE(dotted_module_name) {
     env.tmp.touch("io.cppm", "export module my.io;\n" "export void print() {}\n");
@@ -266,7 +270,9 @@ TEST_CASE(dotted_module_name) {
     });
 }
 
-// Re-export (export import)
+/// ============================================================================
+///                          Re-export (export import)
+/// ============================================================================
 
 TEST_CASE(re_export) {
     env.tmp.touch("core.cppm", "export module Core;\n" "export int core_fn() { return 1; }\n");
@@ -299,7 +305,9 @@ TEST_CASE(re_export) {
     });
 }
 
-// Export block syntax
+/// ============================================================================
+///                             Export block syntax
+/// ============================================================================
 
 TEST_CASE(export_block) {
     env.tmp.touch("block.cppm",
@@ -334,7 +342,9 @@ TEST_CASE(export_block) {
     });
 }
 
-// Global module fragment
+/// ============================================================================
+///                            Global module fragment
+/// ============================================================================
 
 TEST_CASE(global_module_fragment) {
     env.tmp.touch("legacy.h", "inline int legacy_fn() { return 99; }\n");
@@ -361,7 +371,9 @@ TEST_CASE(global_module_fragment) {
     });
 }
 
-// Private module fragment
+/// ============================================================================
+///                           Private module fragment
+/// ============================================================================
 
 TEST_CASE(private_module_fragment) {
     env.tmp.touch("priv.cppm",
@@ -388,7 +400,9 @@ TEST_CASE(private_module_fragment) {
     });
 }
 
-// Module partitions — interface partition
+/// ============================================================================
+///                   Module partitions — interface partition
+/// ============================================================================
 
 TEST_CASE(partition_interface) {
     // Partition interface unit.
@@ -420,7 +434,9 @@ TEST_CASE(partition_interface) {
     });
 }
 
-// Multiple partitions
+/// ============================================================================
+///                             Multiple partitions
+/// ============================================================================
 
 TEST_CASE(multiple_partitions) {
     env.tmp.touch("part_a.cppm", "export module Lib:A;\n" "export int a_fn() { return 1; }\n");
@@ -451,7 +467,9 @@ TEST_CASE(multiple_partitions) {
     });
 }
 
-// Partition importing another partition (within same module)
+/// ============================================================================
+///          Partition importing another partition (within same module)
+/// ============================================================================
 
 TEST_CASE(partition_chain) {
     env.tmp.touch("types.cppm",
@@ -485,7 +503,9 @@ TEST_CASE(partition_chain) {
     });
 }
 
-// Module with exported namespace
+/// ============================================================================
+///                        Module with exported namespace
+/// ============================================================================
 
 TEST_CASE(export_namespace) {
     env.tmp.touch("ns.cppm",
@@ -517,7 +537,9 @@ TEST_CASE(export_namespace) {
     });
 }
 
-// GMF with include + module import
+/// ============================================================================
+///                       GMF with include + module import
+/// ============================================================================
 
 TEST_CASE(gmf_with_import) {
     env.tmp.touch("util.h", "inline int util_helper() { return 7; }\n");
@@ -547,7 +569,9 @@ TEST_CASE(gmf_with_import) {
     });
 }
 
-// Deep chain (5 modules)
+/// ============================================================================
+///                            Deep chain (5 modules)
+/// ============================================================================
 
 TEST_CASE(deep_chain) {
     env.tmp.touch("m1.cppm", "export module M1;\n" "export int f1() { return 1; }\n");
@@ -589,7 +613,9 @@ TEST_CASE(deep_chain) {
     });
 }
 
-// Multiple independent modules (no shared deps)
+/// ============================================================================
+///                Multiple independent modules (no shared deps)
+/// ============================================================================
 
 TEST_CASE(independent_modules) {
     env.tmp.touch("x.cppm", "export module X;\n" "export int x() { return 1; }\n");
@@ -616,7 +642,9 @@ TEST_CASE(independent_modules) {
     });
 }
 
-// Module with template exports
+/// ============================================================================
+///                         Module with template exports
+/// ============================================================================
 
 TEST_CASE(template_export) {
     env.tmp.touch("tmpl.cppm",
@@ -648,7 +676,9 @@ TEST_CASE(template_export) {
     });
 }
 
-// Module with class export and inheritance across modules
+/// ============================================================================
+///           Module with class export and inheritance across modules
+/// ============================================================================
 
 TEST_CASE(class_export_inheritance) {
     env.tmp.touch("shape.cppm",
@@ -686,7 +716,9 @@ TEST_CASE(class_export_inheritance) {
     });
 }
 
-// Recompile after update (invalidation + recompile)
+/// ============================================================================
+///              Recompile after update (invalidation + recompile)
+/// ============================================================================
 
 TEST_CASE(recompile_after_update) {
     env.tmp.touch("leaf.cppm", "export module Leaf;\n" "export int leaf() { return 1; }\n");
@@ -728,7 +760,9 @@ TEST_CASE(recompile_after_update) {
     });
 }
 
-// Partition with GMF (#include inside global module fragment of partition)
+/// ============================================================================
+///   Partition with GMF (#include inside global module fragment of partition)
+/// ============================================================================
 
 TEST_CASE(partition_with_gmf) {
     env.tmp.touch("config.h", "#define MAX_SIZE 100\n");
@@ -757,7 +791,9 @@ TEST_CASE(partition_with_gmf) {
     });
 }
 
-// Cross-module partition + external import
+/// ============================================================================
+///                   Cross-module partition + external import
+/// ============================================================================
 
 TEST_CASE(partition_external_import) {
     // External module.
@@ -790,7 +826,9 @@ TEST_CASE(partition_external_import) {
     });
 }
 
-// Diamond update cascade + recompile
+/// ============================================================================
+///                      Diamond update cascade + recompile
+/// ============================================================================
 
 TEST_CASE(diamond_update_cascade) {
     env.tmp.touch("mod_base.cppm",
@@ -856,7 +894,9 @@ TEST_CASE(diamond_update_cascade) {
     });
 }
 
-// Verify resolve_fn is re-invoked after update (resolved=false)
+/// ============================================================================
+///        Verify resolve_fn is re-invoked after update (resolved=false)
+/// ============================================================================
 
 TEST_CASE(re_resolve_after_update) {
     // Start with Mid importing Leaf.
@@ -906,7 +946,9 @@ TEST_CASE(re_resolve_after_update) {
     });
 }
 
-// Compilation failure propagation (real clang error)
+/// ============================================================================
+///              Compilation failure propagation (real clang error)
+/// ============================================================================
 
 TEST_CASE(compile_failure_propagation) {
     // Good module.
@@ -940,7 +982,9 @@ TEST_CASE(compile_failure_propagation) {
     });
 }
 
-// Module implementation unit (consumes PCM, doesn't produce one)
+/// ============================================================================
+///        Module implementation unit (consumes PCM, doesn't produce one)
+/// ============================================================================
 
 TEST_CASE(module_implementation_unit) {
     // Module interface unit — produces PCM.
@@ -990,7 +1034,9 @@ TEST_CASE(module_implementation_unit) {
     });
 }
 
-// Shared dependency: switching import target must not kill or restart it
+/// ============================================================================
+///    Shared dependency: switching import target must not kill or restart it
+/// ============================================================================
 
 TEST_CASE(shared_dep_import_switch) {
     env.tmp.touch("shared.cppm",
@@ -1088,7 +1134,9 @@ TEST_CASE(shared_dep_import_switch) {
     });
 }
 
-// Shared dependency failure propagates to every consumer of the same round
+/// ============================================================================
+///   Shared dependency failure propagates to every consumer of the same round
+/// ============================================================================
 
 TEST_CASE(shared_dep_fails_both) {
     env.tmp.touch(

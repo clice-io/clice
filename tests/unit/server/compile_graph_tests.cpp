@@ -155,8 +155,12 @@ kota::task<> settle(Pred pred) {
     EXPECT_TRUE(pred());
 }
 
-// Basic compilation: a request compiles the unit and its transitive
-// dependencies, dependencies first, each dirty unit exactly once.
+/// ============================================================================
+///                              Basic compilation
+/// ============================================================================
+///
+/// A request compiles the unit and its transitive dependencies,
+/// dependencies first, each dirty unit exactly once.
 
 TEST_CASE(compile_no_deps) {
     // A unit without dependencies is dispatched once and becomes clean.
@@ -262,8 +266,39 @@ TEST_CASE(state_queries) {
     });
 }
 
-// compile_deps: compiles a unit's transitive dependencies but never the
-// unit itself — used for plain .cpp files that import modules.
+TEST_CASE(concurrent_requests_share_round) {
+    // Two concurrent requests for the same unit join one round: a single
+    // dispatch serves both.
+    ManualDispatch md;
+    make_graph(md.fn(), no_deps());
+
+    Request ra, rc;
+    execute([&]() -> kota::task<> {
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(1).started.wait();
+            EXPECT_EQ(graph->refcount(1), 2u);
+            md.gate(1).proceed.set();
+            // Suspend once before finishing: a when_all child that completes
+            // synchronously during the arm phase trips a when_any bookkeeping
+            // assert downstream (kotatsu bug, pending an upstream fix).
+            co_await kota::sleep(0);
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(1, ra), run_request(1, rc), driver());
+
+        EXPECT_TRUE(ra.result == true);
+        EXPECT_TRUE(rc.result == true);
+        EXPECT_EQ(md.gate(1).calls, 1);
+    });
+}
+
+/// ============================================================================
+///                                 compile_deps
+/// ============================================================================
+///
+/// Compiles a unit's transitive dependencies but never the unit itself —
+/// used for plain .cpp files that import modules.
 
 TEST_CASE(compile_deps_empty) {
     // No dependencies: nothing is dispatched, the request succeeds.
@@ -428,9 +463,13 @@ TEST_CASE(compile_deps_failure) {
     });
 }
 
-// update() marks a changed file and everything that (transitively) depends
-// on it dirty, following reverse edges. Marking alone never recompiles —
-// the next request does.
+/// ============================================================================
+///                              Staleness marking
+/// ============================================================================
+///
+/// update() marks a changed file and everything that (transitively)
+/// depends on it dirty, following reverse edges. Marking alone never
+/// recompiles — the next request does.
 
 TEST_CASE(update_invalidates) {
     // Updating a dependency dirties it and its dependent.
@@ -629,10 +668,14 @@ TEST_CASE(update_unknown_id) {
     EXPECT_FALSE(graph->has_unit(999));
 }
 
-// update() against in-flight rounds: the stale round is cancelled
-// unconditionally (its result is garbage), interest is untouched, and the
-// waiters drive a fresh round with the new content. Dependencies that are
-// NOT stale themselves must keep compiling across the retry.
+/// ============================================================================
+///                          Update vs in-flight rounds
+/// ============================================================================
+///
+/// The stale round is cancelled unconditionally (its result is garbage),
+/// interest is untouched, and the waiters drive a fresh round with the
+/// new content. Dependencies that are NOT stale themselves must keep
+/// compiling across the retry.
 
 TEST_CASE(update_during_dispatch) {
     // The unit is updated mid-dispatch: that round's result is discarded,
@@ -897,10 +940,49 @@ TEST_CASE(update_cascades_cancel) {
     });
 }
 
-// Failure semantics: a failed round (compile error, cycle) propagates to
-// every waiter without retry — retrying failures would turn a syntax error
-// into a storm. Failure is not sticky: the next explicit request tries
-// again.
+TEST_CASE(shared_dep_update_retries) {
+    // The shared dependency 5 of two waiting chains is updated mid-dispatch:
+    // both chains observe the stale round and retry, sharing a single fresh
+    // round — 5 is dispatched exactly twice overall, not three times.
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {5}},
+                   {3, {5}}
+    }));
+    md.open({1, 3});
+
+    Request ra, rc;
+    execute([&]() -> kota::task<> {
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(5).started.wait();
+            EXPECT_EQ(graph->refcount(5), 2u);
+
+            md.gate(5).started.reset();
+            graph->update(5);
+
+            co_await md.gate(5).started.wait();
+            EXPECT_EQ(md.gate(5).calls, 2);
+            md.gate(5).proceed.set();
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(1, ra), run_request(3, rc), driver());
+
+        EXPECT_TRUE(ra.result == true);
+        EXPECT_TRUE(rc.result == true);
+        EXPECT_EQ(md.gate(5).calls, 2);
+        EXPECT_FALSE(graph->is_dirty(5));
+    });
+}
+
+/// ============================================================================
+///                              Failure semantics
+/// ============================================================================
+///
+/// A failed round (compile error, cycle) propagates to every waiter
+/// without retry — retrying failures would turn a syntax error into a
+/// storm. Failure is not sticky: the next explicit request tries again.
 
 TEST_CASE(failure_leaves_dirty) {
     // A failing dependency fails the request; neither the failed dependency
@@ -986,8 +1068,47 @@ TEST_CASE(recompile_after_failure) {
     });
 }
 
-// Cycle handling: every shape of dependency cycle terminates with failure
-// — never a deadlock, never unbounded retry.
+TEST_CASE(shared_dep_failure_propagates) {
+    // One failing round of a shared dependency fails every consumer waiting
+    // on it; the failing dispatch runs only once.
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {5}},
+                   {3, {5}}
+    }));
+    md.gate(5).result = false;
+
+    Request ra, rc;
+    execute([&]() -> kota::task<> {
+        // Hold 5's gate until both chains wait on the same round.
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(5).started.wait();
+            EXPECT_EQ(graph->refcount(5), 2u);
+            md.gate(5).proceed.set();
+            // Suspend once before finishing (kotatsu when_all arm bug, see
+            // concurrent_requests_share_round).
+            co_await kota::sleep(0);
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(1, ra), run_request(3, rc), driver());
+
+        EXPECT_TRUE(ra.result == false);
+        EXPECT_TRUE(rc.result == false);
+        EXPECT_EQ(md.gate(5).calls, 1);
+        EXPECT_EQ(md.gate(1).calls, 0);
+        EXPECT_EQ(md.gate(3).calls, 0);
+        EXPECT_TRUE(graph->is_dirty(5));
+    });
+}
+
+/// ============================================================================
+///                                Cycle handling
+/// ============================================================================
+///
+/// Every shape of dependency cycle terminates with failure — never a
+/// deadlock, never unbounded retry.
 
 TEST_CASE(self_loop) {
     // A unit importing itself fails immediately after resolve.
@@ -1082,10 +1203,13 @@ TEST_CASE(update_introduced_cycle) {
     });
 }
 
-// Shared dependencies and request cancellation. Topology unless noted:
-// A(1) -> B(2) -> E(5) and C(3) -> D(4) -> E(5), E shared by both chains.
-// Cancelling a request must only kill the parts of its chain no other
-// consumer holds interest in.
+/// ============================================================================
+///                      Shared dependencies & cancellation
+/// ============================================================================
+///
+/// Topology unless noted: A(1) -> B(2) -> E(5) and C(3) -> D(4) -> E(5),
+/// E shared by both chains. Cancelling a request must only kill the parts
+/// of its chain no other consumer holds interest in.
 
 TEST_CASE(shared_dep_survives_cancel) {
     // Cancel request A while E dispatches: the A-chain dies, but D still
@@ -1314,8 +1438,88 @@ TEST_CASE(compile_deps_cancel_releases) {
     });
 }
 
-// Lifecycle: cancel_all restarts in-flight work without dropping waiters;
-// shutdown (cancel + join) quiesces the graph with tasks still in flight.
+TEST_CASE(duplicate_requests_cancel_one) {
+    // Two requests on the same unit; cancelling one must not disturb the
+    // round the other is waiting on.
+    ManualDispatch md;
+    make_graph(md.fn(), no_deps());
+
+    Request ra, rc;
+    execute([&]() -> kota::task<> {
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(1).started.wait();
+            EXPECT_EQ(graph->refcount(1), 2u);
+
+            ra.source.cancel();
+            co_await kota::sleep(1);
+
+            EXPECT_TRUE(ra.done);
+            EXPECT_TRUE(graph->is_compiling(1));
+            EXPECT_EQ(graph->refcount(1), 1u);
+            EXPECT_EQ(md.gate(1).calls, 1);
+
+            md.gate(1).proceed.set();
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(1, ra), run_request(1, rc), driver());
+
+        EXPECT_FALSE(ra.result.has_value());
+        EXPECT_TRUE(rc.result == true);
+        EXPECT_EQ(md.gate(1).calls, 1);
+    });
+}
+
+TEST_CASE(rerequest_within_grace) {
+    // The only request is cancelled and a new one arrives within the same
+    // drain cycle — release first, re-acquire second, strictly worse than
+    // the supersede handoff ordering. The deferred zero-interest check
+    // bridges the transient zero: the in-flight round survives instead of
+    // being killed and restarted.
+    ManualDispatch md;
+    make_graph(md.fn(), no_deps());
+
+    kota::event start_c;
+    Request ra, rc;
+    execute([&]() -> kota::task<> {
+        auto delayed_request = [&]() -> kota::task<> {
+            co_await start_c.wait();
+            co_await run_request(1, rc);
+        };
+
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(1).started.wait();
+            EXPECT_EQ(graph->refcount(1), 1u);
+
+            ra.source.cancel();
+            start_c.set();
+            // Two sleeps: the second is armed after the zero-interest check,
+            // so the assertions observe its (skipped) outcome.
+            co_await kota::sleep(1);
+            co_await kota::sleep(1);
+
+            EXPECT_TRUE(graph->is_compiling(1));
+            EXPECT_EQ(graph->refcount(1), 1u);
+            EXPECT_EQ(md.gate(1).calls, 1);
+
+            md.gate(1).proceed.set();
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(1, ra), delayed_request(), driver());
+
+        EXPECT_FALSE(ra.result.has_value());
+        EXPECT_TRUE(rc.result == true);
+        EXPECT_EQ(md.gate(1).calls, 1);
+    });
+}
+
+/// ============================================================================
+///                                  Lifecycle
+/// ============================================================================
+///
+/// cancel_all restarts in-flight work without dropping waiters; shutdown
+/// (cancel + join) quiesces the graph with tasks still in flight.
 
 TEST_CASE(empty_graph) {
     // A graph that never compiled anything: cancel_all is a no-op and
@@ -1419,9 +1623,13 @@ TEST_CASE(shutdown_with_inflight) {
     EXPECT_TRUE(graph->idle());
 }
 
-// Randomized stress: a fixed-seed, single-threaded interleaving of
-// requests, cancellations, updates and dispatch completions. Verifies the
-// structural invariants at every step and full quiescence at teardown.
+/// ============================================================================
+///                              Randomized stress
+/// ============================================================================
+///
+/// A fixed-seed, single-threaded interleaving of requests, cancellations,
+/// updates and dispatch completions. Verifies the structural invariants
+/// at every step and full quiescence at teardown.
 
 TEST_CASE(randomized_stress) {
     kota::semaphore permits{0};
