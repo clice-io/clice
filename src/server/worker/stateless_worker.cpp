@@ -117,7 +117,11 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     } else {
         LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]", params.file, timer.ms(), errors);
         fs::remove(tmp_path);
-        return {false, errors.empty() ? "PCH compilation failed" : errors};
+        worker::BuildResult result;
+        result.success = false;
+        result.error = errors.empty() ? "PCH compilation failed" : errors;
+        result.has_user_errors = !errors.empty();
+        return result;
     }
 }
 
@@ -173,7 +177,11 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
                  timer.ms(),
                  errors);
         fs::remove(tmp_path);
-        return {false, errors.empty() ? "PCM compilation failed" : errors};
+        worker::BuildResult result;
+        result.success = false;
+        result.error = errors.empty() ? "PCM compilation failed" : errors;
+        result.has_user_errors = !errors.empty();
+        return result;
     }
 }
 

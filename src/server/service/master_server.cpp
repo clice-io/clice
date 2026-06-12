@@ -8,6 +8,7 @@
 #include "server/protocol/worker.h"
 #include "server/service/agent_client.h"
 #include "server/service/lsp_client.h"
+#include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
@@ -50,16 +51,24 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
 MasterServer::~MasterServer() = default;
 
 void MasterServer::initialize() {
-    workspace.config = Config::load_from_workspace(workspace_root);
+    config_issues.clear();
+    config_path.clear();
+    // Load clice.toml raw and overlay initializationOptions BEFORE computing
+    // defaults: derived fields (logging_dir, index_dir, ...) must follow the
+    // final merged values (e.g. a cache_dir overridden by the client).
+    workspace.config = Config::load_from_workspace(workspace_root,
+                                                   &config_issues,
+                                                   &config_path,
+                                                   /*with_defaults=*/false);
     if(!init_options_json.empty()) {
         if(auto ov = kota::codec::json::parse(init_options_json, workspace.config); !ov) {
-            LOG_WARN("Failed to apply initializationOptions: {}", ov.error().to_string());
+            LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
         } else {
-            workspace.config.apply_defaults(workspace_root);
             LOG_INFO("Applied initializationOptions overlay");
         }
         init_options_json.clear();
     }
+    workspace.config.apply_defaults(workspace_root);
 
     auto& cfg = workspace.config.project;
 
@@ -85,7 +94,7 @@ void MasterServer::initialize() {
     pool_opts.worker_memory_limit = cfg.worker_memory_limit;
     pool_opts.log_dir = session_log_dir;
     if(!pool.start(pool_opts)) {
-        LOG_ERROR("Failed to start worker pool");
+        LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
         return;
     }
 
@@ -286,7 +295,9 @@ void MasterServer::load_workspace() {
     }
 
     if(cdb_path.empty()) {
-        LOG_WARN("No compile_commands.json found in workspace {}", workspace_root);
+        LOG_GUIDANCE(
+            "No compile_commands.json found in workspace {}. Compile commands will be " "guessed; see https://clice.io/en/guide/quick-start for setup.",
+            workspace_root);
         return;
     }
 

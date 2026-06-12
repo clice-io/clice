@@ -494,8 +494,8 @@ public:
 
         auto begin = token.range.begin;
         auto end = token.range.end;
-        auto begin_position = *map.to_position(begin);
-        auto end_position = *map.to_position(end);
+        auto begin_position = to_position(map, begin);
+        auto end_position = to_position(map, end);
         auto begin_line = static_cast<std::uint32_t>(begin_position.line);
         auto begin_char = static_cast<std::uint32_t>(begin_position.character);
         auto end_line = static_cast<std::uint32_t>(end_position.line);

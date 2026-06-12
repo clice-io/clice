@@ -8,6 +8,7 @@
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
 #include "semantic/symbol_kind.h"
+#include "support/anomaly.h"
 #include "support/markup.h"
 
 #include "kota/ipc/lsp/position.h"
@@ -21,8 +22,20 @@ namespace protocol = kota::ipc::protocol;
 using kota::ipc::lsp::LineMap;
 using kota::ipc::lsp::PositionEncoding;
 
-// FIXME: feature code uses *map.to_range() without checking the optional.
-// Need a strategy for handling out-of-range offsets gracefully.
+inline auto to_position(const LineMap& map, std::uint32_t offset) -> protocol::Position {
+    if(auto position = map.to_position(offset)) {
+        return *position;
+    }
+    LOG_ANOMALY(PositionMapFail, "offset {} cannot be mapped to a position", offset);
+    return protocol::Position{.line = 0, .character = 0};
+}
+
+inline auto to_range(const LineMap& map, LocalSourceRange range) -> protocol::Range {
+    return protocol::Range{
+        .start = to_position(map, range.begin),
+        .end = to_position(map, range.end),
+    };
+}
 
 struct CodeCompletionOptions {
     bool enable_keyword_snippet = false;

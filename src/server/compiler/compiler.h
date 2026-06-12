@@ -29,6 +29,25 @@ namespace protocol = kota::ipc::protocol;
 /// Convert a file:// URI to a local file path.
 std::string uri_to_path(const std::string& uri);
 
+/// Where the compile command for a file came from. Anything other than
+/// CdbExact means the command was guessed to some degree, which is why
+/// diagnostics produced with it may deserve a guidance note (see
+/// Compiler::publish_diagnostics).
+enum class CommandSource : std::uint8_t {
+    /// Direct compilation database entry for the file.
+    CdbExact,
+    /// Header compiled in the context of a host source found through the
+    /// include graph (automatic or via clice/switchContext).
+    IncludeGraph,
+    /// Reserved for command transfer heuristics (e.g. nearest CDB entry);
+    /// no producer yet.
+    Inferred,
+    /// Synthesized default command — no CDB entry and no usable host source.
+    Fallback,
+};
+
+llvm::StringRef command_source_name(CommandSource source);
+
 /// Compilation service — drives worker processes to build ASTs, PCHs, and PCMs.
 ///
 /// Compiler holds no persistent state of its own.  All project-wide data
@@ -58,12 +77,15 @@ public:
 
     void init_compile_graph();
 
-    /// Fill compile arguments for a file (CDB lookup + header context fallback).
+    /// Fill compile arguments for a file and report where they came from.
+    /// Tries, in order: CDB entry, header context through the include graph,
+    /// and finally a synthesized fallback command — so it always succeeds.
+    /// Emits a per-file decision log (tiers tried, tier hit, command hash).
     /// @param session  If non-null, used for header context resolution on open files.
-    bool fill_compile_args(llvm::StringRef path,
-                           std::string& directory,
-                           std::vector<std::string>& arguments,
-                           Session* session = nullptr);
+    CommandSource fill_compile_args(llvm::StringRef path,
+                                    std::string& directory,
+                                    std::vector<std::string>& arguments,
+                                    Session* session = nullptr);
 
     /// Compile an open file's AST if dirty.  On success, updates session's
     /// file_index, pch_ref, ast_deps, and publishes diagnostics.
@@ -123,9 +145,14 @@ private:
     bool is_stale(const Session& session);
     void record_deps(Session& session, llvm::ArrayRef<std::string> deps);
 
+    /// Deserialize worker-produced diagnostics and publish them. When the
+    /// compile command was not an exact CDB match and the diagnostics contain
+    /// file-not-found class errors, a file-top guidance diagnostic explaining
+    /// the inferred command is merged into the same publish.
     void publish_diagnostics(const std::string& uri,
                              int version,
-                             const kota::codec::RawValue& diags);
+                             const kota::codec::RawValue& diags,
+                             CommandSource source);
 
     std::optional<HeaderFileContext> resolve_header_context(std::uint32_t header_path_id,
                                                             Session* session);

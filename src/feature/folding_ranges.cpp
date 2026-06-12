@@ -355,7 +355,8 @@ auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
     result.reserve(collected.size());
 
     for(const auto& item: collected) {
-        auto [start, end] = *map.to_range(item.range.begin, item.range.end);
+        auto start = to_position(map, item.range.begin);
+        auto end = to_position(map, item.range.end);
 
         protocol::FoldingRange range{
             .start_line = start.line,

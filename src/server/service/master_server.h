@@ -2,11 +2,13 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "server/compiler/compiler.h"
 #include "server/compiler/indexer.h"
 #include "server/service/session.h"
 #include "server/worker/worker_pool.h"
+#include "server/workspace/config.h"
 #include "server/workspace/workspace.h"
 
 #include "kota/async/async.h"
@@ -124,6 +126,12 @@ private:
     std::string workspace_root;
     std::string session_log_dir;
     std::string init_options_json;
+
+    /// Problems found while loading clice.toml during initialize(), kept so
+    /// LSPClient can publish them as diagnostics on the config file's URI.
+    std::vector<ConfigIssue> config_issues;
+    /// Path of the config file that was found (empty when none).
+    std::string config_path;
 };
 
 int run_serve_mode(const ServerOptions& opts, const char* self_path);
