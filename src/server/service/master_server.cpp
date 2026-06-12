@@ -285,7 +285,7 @@ void MasterServer::open_cache_store() {
     // discarded, no migration.  header_context/ is still written directly
     // by the legacy preamble path; drop this exemption once it moves to
     // the Scratch namespace.
-    llvm::sys::fs::remove_directories(path::join(cfg.cache_dir, "index"));
+    fs::remove_all(path::join(cfg.cache_dir, "index"));
 
     workspace.load_cache();
     bg_tasks.spawn(cache_checkpoint_task());

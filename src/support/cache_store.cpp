@@ -95,8 +95,11 @@ std::error_code sync_file(llvm::StringRef path) {
 }
 
 /// On a rename collision, check whether the existing destination blob is
-/// byte-identical to the one we tried to publish.  Only called on the
-/// (Windows-only) collision path, so the extra reads stay off hot paths.
+/// byte-identical to the one we tried to publish.  This path is rare even
+/// on Windows: llvm::sys::fs::rename already moves an open destination
+/// aside when its holder granted delete sharing (LLVM-opened files always
+/// do), so a collision means a non-cooperating process (AV scanner,
+/// indexing service) holds the blob.  The extra reads stay off hot paths.
 bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
     llvm::sys::fs::file_status tmp_status, final_status;
     if(llvm::sys::fs::status(tmp_path, tmp_status) ||
@@ -129,7 +132,7 @@ void sweep_dead_pid_dirs(llvm::StringRef dir, std::uint32_t self_pid) {
         if(pid == self_pid || is_pid_alive(pid)) {
             continue;
         }
-        llvm::sys::fs::remove_directories(it->path());
+        fs::remove_all(it->path());
         LOG_DEBUG("CacheStore: removed dead instance directory {}", it->path());
     }
 }
@@ -233,7 +236,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
         }
         LOG_INFO("CacheStore: discarding stale cache layout {}", it->path());
         if(llvm::sys::fs::is_directory(it->path())) {
-            llvm::sys::fs::remove_directories(it->path());
+            fs::remove_all(it->path());
         } else {
             llvm::sys::fs::remove(it->path());
         }
@@ -263,7 +266,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     sweep_dead_pid_dirs(tmp_parent, state->self_pid);
 
     state->tmp_dir = path::join(tmp_parent, std::to_string(state->self_pid));
-    llvm::sys::fs::remove_directories(state->tmp_dir);
+    fs::remove_all(state->tmp_dir);
     if(auto ec2 = llvm::sys::fs::create_directories(state->tmp_dir)) {
         return std::unexpected(ec2);
     }
@@ -290,7 +293,7 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         // by crashed instances and start with a fresh one of our own.
         sweep_dead_pid_dirs(ns_dir, state->self_pid);
         ns_state.dir = path::join(ns_dir, std::to_string(state->self_pid));
-        llvm::sys::fs::remove_directories(ns_state.dir);
+        fs::remove_all(ns_state.dir);
         llvm::sys::fs::create_directories(ns_state.dir);
         return;
     }
@@ -610,10 +613,10 @@ void CacheStore::shutdown() {
     std::lock_guard guard(state->mutex);
     state->checkpoint_locked();
 
-    llvm::sys::fs::remove_directories(state->tmp_dir);
+    fs::remove_all(state->tmp_dir);
     for(auto& [name, ns_state]: state->namespaces) {
         if(ns_state.config.policy == CachePolicy::Scratch) {
-            llvm::sys::fs::remove_directories(ns_state.dir);
+            fs::remove_all(ns_state.dir);
         }
     }
 }

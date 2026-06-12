@@ -3,6 +3,8 @@
 #include <deque>
 #include <string>
 
+#include "support/filesystem.h"
+
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
@@ -28,7 +30,7 @@ struct TempDir {
     }
 
     ~TempDir() {
-        llvm::sys::fs::remove_directories(root);
+        fs::remove_all(root.str());
     }
 
     TempDir(const TempDir&) = delete;
