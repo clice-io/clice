@@ -280,13 +280,6 @@ void MasterServer::open_cache_store() {
     workspace.store.emplace(std::move(*store));
     LOG_INFO("Cache store: {}", workspace.store->base_dir());
 
-    // The index lives inside the store; the legacy index/ directory of
-    // pre-store layouts (the removed project.index_dir default) is
-    // discarded, no migration.  header_context/ is still written directly
-    // by the legacy preamble path; drop this exemption once it moves to
-    // the Scratch namespace.
-    fs::remove_all(path::join(cfg.cache_dir, "index"));
-
     workspace.load_cache();
     bg_tasks.spawn(cache_checkpoint_task());
 }

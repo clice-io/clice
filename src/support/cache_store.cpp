@@ -226,7 +226,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     }
 
     // Discard anything that isn't the current layout version: older version
-    // directories and the pre-versioning layout (pch/, pcm/, cache.json).
+    // directories and any stray files.
     std::error_code ec;
     for(auto it = llvm::sys::fs::directory_iterator(parent, ec);
         !ec && it != llvm::sys::fs::directory_iterator();
