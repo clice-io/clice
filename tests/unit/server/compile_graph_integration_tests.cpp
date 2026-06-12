@@ -152,11 +152,9 @@ void execute(F&& fn) {
     loop->run();
 }
 
-// ============================================================================
 // Basic module interface units
-// ============================================================================
 
-TEST_CASE(SingleModuleNoDeps) {
+TEST_CASE(single_module) {
     env.tmp.touch("mod_a.cppm", "export module A;\n" "export int foo() { return 42; }\n");
 
     auto json = build_cdb_json({
@@ -176,7 +174,7 @@ TEST_CASE(SingleModuleNoDeps) {
     });
 }
 
-TEST_CASE(ChainedModules) {
+TEST_CASE(chained_modules) {
     env.tmp.touch("mod_a.cppm", "export module A;\n" "export int foo() { return 42; }\n");
     env.tmp.touch("mod_b.cppm",
                   "export module B;\n"
@@ -204,7 +202,7 @@ TEST_CASE(ChainedModules) {
     });
 }
 
-TEST_CASE(DiamondModules) {
+TEST_CASE(diamond_modules) {
     env.tmp.touch("mod_base.cppm",
                   "export module Base;\n" "export int base_val() { return 10; }\n");
     env.tmp.touch("mod_left.cppm",
@@ -241,11 +239,9 @@ TEST_CASE(DiamondModules) {
     });
 }
 
-// ============================================================================
 // Dotted module names
-// ============================================================================
 
-TEST_CASE(DottedModuleName) {
+TEST_CASE(dotted_module_name) {
     env.tmp.touch("io.cppm", "export module my.io;\n" "export void print() {}\n");
     env.tmp.touch("app.cppm",
                   "export module my.app;\n"
@@ -270,11 +266,9 @@ TEST_CASE(DottedModuleName) {
     });
 }
 
-// ============================================================================
 // Re-export (export import)
-// ============================================================================
 
-TEST_CASE(ReExport) {
+TEST_CASE(re_export) {
     env.tmp.touch("core.cppm", "export module Core;\n" "export int core_fn() { return 1; }\n");
     env.tmp.touch("wrapper.cppm",
                   "export module Wrapper;\n"
@@ -305,11 +299,9 @@ TEST_CASE(ReExport) {
     });
 }
 
-// ============================================================================
 // Export block syntax
-// ============================================================================
 
-TEST_CASE(ExportBlock) {
+TEST_CASE(export_block) {
     env.tmp.touch("block.cppm",
                   "export module Block;\n"
                   "export {\n"
@@ -342,11 +334,9 @@ TEST_CASE(ExportBlock) {
     });
 }
 
-// ============================================================================
 // Global module fragment
-// ============================================================================
 
-TEST_CASE(GlobalModuleFragment) {
+TEST_CASE(global_module_fragment) {
     env.tmp.touch("legacy.h", "inline int legacy_fn() { return 99; }\n");
     env.tmp.touch("gmf.cppm",
                   "module;\n"
@@ -371,11 +361,9 @@ TEST_CASE(GlobalModuleFragment) {
     });
 }
 
-// ============================================================================
 // Private module fragment
-// ============================================================================
 
-TEST_CASE(PrivateModuleFragment) {
+TEST_CASE(private_module_fragment) {
     env.tmp.touch("priv.cppm",
                   "export module Priv;\n"
                   "export int public_fn();\n"
@@ -400,11 +388,9 @@ TEST_CASE(PrivateModuleFragment) {
     });
 }
 
-// ============================================================================
 // Module partitions — interface partition
-// ============================================================================
 
-TEST_CASE(PartitionInterface) {
+TEST_CASE(partition_interface) {
     // Partition interface unit.
     env.tmp.touch("part.cppm", "export module M:Part;\n" "export int part_fn() { return 5; }\n");
     // Primary module interface re-exports the partition.
@@ -434,11 +420,9 @@ TEST_CASE(PartitionInterface) {
     });
 }
 
-// ============================================================================
 // Multiple partitions
-// ============================================================================
 
-TEST_CASE(MultiplePartitions) {
+TEST_CASE(multiple_partitions) {
     env.tmp.touch("part_a.cppm", "export module Lib:A;\n" "export int a_fn() { return 1; }\n");
     env.tmp.touch("part_b.cppm", "export module Lib:B;\n" "export int b_fn() { return 2; }\n");
     env.tmp.touch("lib.cppm",
@@ -467,11 +451,9 @@ TEST_CASE(MultiplePartitions) {
     });
 }
 
-// ============================================================================
 // Partition importing another partition (within same module)
-// ============================================================================
 
-TEST_CASE(PartitionChain) {
+TEST_CASE(partition_chain) {
     env.tmp.touch("types.cppm",
                   "export module Sys:Types;\n" "export struct Config { int value = 0; };\n");
     env.tmp.touch("core.cppm",
@@ -503,11 +485,9 @@ TEST_CASE(PartitionChain) {
     });
 }
 
-// ============================================================================
 // Module with exported namespace
-// ============================================================================
 
-TEST_CASE(ExportNamespace) {
+TEST_CASE(export_namespace) {
     env.tmp.touch("ns.cppm",
                   "export module NS;\n"
                   "export namespace math {\n"
@@ -537,11 +517,9 @@ TEST_CASE(ExportNamespace) {
     });
 }
 
-// ============================================================================
 // GMF with include + module import
-// ============================================================================
 
-TEST_CASE(GMFWithImport) {
+TEST_CASE(gmf_with_import) {
     env.tmp.touch("util.h", "inline int util_helper() { return 7; }\n");
     env.tmp.touch("base.cppm", "export module Base;\n" "export int base() { return 100; }\n");
     env.tmp.touch("combined.cppm",
@@ -569,11 +547,9 @@ TEST_CASE(GMFWithImport) {
     });
 }
 
-// ============================================================================
 // Deep chain (5 modules)
-// ============================================================================
 
-TEST_CASE(DeepChain) {
+TEST_CASE(deep_chain) {
     env.tmp.touch("m1.cppm", "export module M1;\n" "export int f1() { return 1; }\n");
     env.tmp.touch("m2.cppm",
                   "export module M2;\n"
@@ -613,11 +589,9 @@ TEST_CASE(DeepChain) {
     });
 }
 
-// ============================================================================
 // Multiple independent modules (no shared deps)
-// ============================================================================
 
-TEST_CASE(IndependentModules) {
+TEST_CASE(independent_modules) {
     env.tmp.touch("x.cppm", "export module X;\n" "export int x() { return 1; }\n");
     env.tmp.touch("y.cppm", "export module Y;\n" "export int y() { return 2; }\n");
 
@@ -642,11 +616,9 @@ TEST_CASE(IndependentModules) {
     });
 }
 
-// ============================================================================
 // Module with template exports
-// ============================================================================
 
-TEST_CASE(TemplateExport) {
+TEST_CASE(template_export) {
     env.tmp.touch("tmpl.cppm",
                   "export module Tmpl;\n"
                   "export template<typename T>\n"
@@ -676,11 +648,9 @@ TEST_CASE(TemplateExport) {
     });
 }
 
-// ============================================================================
 // Module with class export and inheritance across modules
-// ============================================================================
 
-TEST_CASE(ClassExportAndInheritance) {
+TEST_CASE(class_export_inheritance) {
     env.tmp.touch("shape.cppm",
                   "export module Shape;\n"
                   "export class Shape {\n"
@@ -716,11 +686,9 @@ TEST_CASE(ClassExportAndInheritance) {
     });
 }
 
-// ============================================================================
 // Recompile after update (invalidation + recompile)
-// ============================================================================
 
-TEST_CASE(RecompileAfterUpdate) {
+TEST_CASE(recompile_after_update) {
     env.tmp.touch("leaf.cppm", "export module Leaf;\n" "export int leaf() { return 1; }\n");
     env.tmp.touch("mid.cppm",
                   "export module Mid;\n"
@@ -760,11 +728,9 @@ TEST_CASE(RecompileAfterUpdate) {
     });
 }
 
-// ============================================================================
 // Partition with GMF (#include inside global module fragment of partition)
-// ============================================================================
 
-TEST_CASE(PartitionWithGMF) {
+TEST_CASE(partition_with_gmf) {
     env.tmp.touch("config.h", "#define MAX_SIZE 100\n");
     env.tmp.touch("part_cfg.cppm",
                   "module;\n"
@@ -791,11 +757,9 @@ TEST_CASE(PartitionWithGMF) {
     });
 }
 
-// ============================================================================
 // Cross-module partition + external import
-// ============================================================================
 
-TEST_CASE(PartitionWithExternalImport) {
+TEST_CASE(partition_external_import) {
     // External module.
     env.tmp.touch("ext.cppm", "export module Ext;\n" "export int ext_val() { return 99; }\n");
     // Partition that imports the external module.
@@ -826,11 +790,9 @@ TEST_CASE(PartitionWithExternalImport) {
     });
 }
 
-// ============================================================================
 // Diamond update cascade + recompile
-// ============================================================================
 
-TEST_CASE(DiamondUpdateCascade) {
+TEST_CASE(diamond_update_cascade) {
     env.tmp.touch("mod_base.cppm",
                   "export module Base;\n" "export int base_val() { return 10; }\n");
     env.tmp.touch("mod_left.cppm",
@@ -894,11 +856,9 @@ TEST_CASE(DiamondUpdateCascade) {
     });
 }
 
-// ============================================================================
 // Verify resolve_fn is re-invoked after update (resolved=false)
-// ============================================================================
 
-TEST_CASE(ReResolveAfterUpdate) {
+TEST_CASE(re_resolve_after_update) {
     // Start with Mid importing Leaf.
     env.tmp.touch("leaf.cppm", "export module Leaf;\n" "export int leaf() { return 1; }\n");
     env.tmp.touch("extra.cppm", "export module Extra;\n" "export int extra() { return 99; }\n");
@@ -946,11 +906,9 @@ TEST_CASE(ReResolveAfterUpdate) {
     });
 }
 
-// ============================================================================
 // Compilation failure propagation (real clang error)
-// ============================================================================
 
-TEST_CASE(CompileFailurePropagation) {
+TEST_CASE(compile_failure_propagation) {
     // Good module.
     env.tmp.touch("good.cppm", "export module Good;\n" "export int good() { return 1; }\n");
     // Bad module with syntax error.
@@ -982,11 +940,9 @@ TEST_CASE(CompileFailurePropagation) {
     });
 }
 
-// ============================================================================
 // Module implementation unit (consumes PCM, doesn't produce one)
-// ============================================================================
 
-TEST_CASE(ModuleImplementationUnit) {
+TEST_CASE(module_implementation_unit) {
     // Module interface unit — produces PCM.
     env.tmp.touch("iface.cppm", "export module Greeter;\n" "export const char* greet();\n");
     // Module implementation unit — consumes PCM, no export.
@@ -1034,11 +990,9 @@ TEST_CASE(ModuleImplementationUnit) {
     });
 }
 
-// ============================================================================
 // Shared dependency: switching import target must not kill or restart it
-// ============================================================================
 
-TEST_CASE(SharedDepImportSwitch) {
+TEST_CASE(shared_dep_import_switch) {
     env.tmp.touch("shared.cppm",
                   "export module Shared;\n" "export int shared_val() { return 1; }\n");
     env.tmp.touch("a.cppm",
@@ -1134,11 +1088,9 @@ TEST_CASE(SharedDepImportSwitch) {
     });
 }
 
-// ============================================================================
 // Shared dependency failure propagates to every consumer of the same round
-// ============================================================================
 
-TEST_CASE(SharedDepFailsBoth) {
+TEST_CASE(shared_dep_fails_both) {
     env.tmp.touch(
         "shared.cppm",
         "export module Shared;\n" "export int shared_val() { return UNDEFINED_SYMBOL; }\n");
