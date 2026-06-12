@@ -87,6 +87,13 @@ scripts = ["scripts/activate_cross_windows.bat"]
 [feature.test.dependencies]
 python = ">=3.13"
 
+# ToolchainTests.GCC queries the g++ found in PATH and compiles C++23
+# (<print>), so the test env must provide the same pinned gcc the build
+# env uses — runner system gcc is too old.
+[feature.test.target.linux-64.dependencies]
+gcc = "==14.2.0"
+gxx = "==14.2.0"
+
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
 # LLVM cannot parse.  Providing upstream clang + lld in PATH prevents
 # fallback to /usr/bin/clang++ and satisfies toolchain.cmake's -fuse-ld=lld.

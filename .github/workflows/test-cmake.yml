@@ -58,6 +58,10 @@ jobs:
       - name: Build
         run: pixi run build ${{ matrix.build_type }} ON
 
+      # The .llvm globs cover prebuilt LLVM packages with shared libraries
+      # (e.g. Debug): test binaries reference them via build-tree RPATH, so
+      # they must exist at the same path on the test runner. Static packages
+      # simply match nothing here.
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
@@ -65,6 +69,9 @@ jobs:
           path: |
             build/${{ matrix.build_type }}/bin/
             build/${{ matrix.build_type }}/lib/
+            build/${{ matrix.build_type }}/.llvm/lib/*.so*
+            build/${{ matrix.build_type }}/.llvm/lib/*.dylib
+            build/${{ matrix.build_type }}/.llvm/bin/*.dll
           if-no-files-found: error
           retention-days: 1
 
