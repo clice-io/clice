@@ -95,10 +95,19 @@ inline std::expected<void, std::error_code> rename(llvm::StringRef from, llvm::S
 /// is implemented over shell COM (CoInitializeEx + IFileOperation), which
 /// initializes apartment COM on the calling thread and silently no-ops
 /// when that fails — unsuitable for server threads.  This mirrors the
-/// recursion LLVM's own Unix implementation uses.  Symlinks are removed
-/// without following them.  Returns the first error; a missing path is
-/// not an error.
+/// recursion LLVM's own Unix implementation uses.  Symlinks — including a
+/// symlinked root — are removed without following them, so the recursion
+/// can never escape into the link's target.  Returns the first error; a
+/// missing path is not an error.
 inline std::error_code remove_all(llvm::StringRef target) {
+    llvm::sys::fs::file_status target_status;
+    if(auto status_ec = llvm::sys::fs::status(target, target_status, /*follow=*/false)) {
+        return status_ec == std::errc::no_such_file_or_directory ? std::error_code() : status_ec;
+    }
+    if(target_status.type() != llvm::sys::fs::file_type::directory_file) {
+        return llvm::sys::fs::remove(target, /*IgnoreNonExisting=*/true);
+    }
+
     std::error_code ec;
     for(llvm::sys::fs::directory_iterator it(target, ec, /*follow_symlinks=*/false), end;
         !ec && it != end;

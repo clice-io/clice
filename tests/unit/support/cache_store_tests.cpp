@@ -2,6 +2,10 @@
 #include <format>
 #include <print>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "support/cache_store.h"
@@ -136,6 +140,22 @@ TEST_CASE(LegacyLayoutDiscarded) {
     ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/cache.json")));
     ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/pch")));
 }
+
+#ifndef _WIN32
+TEST_CASE(SymlinkNotFollowed) {
+    TempDir tmp;
+    tmp.touch("outside/keep.txt", "data");
+    tmp.mkdir("root/cache");
+    // A stale entry that is a symlink to data outside the cache root: the
+    // version sweep must unlink it without recursing into the target.
+    [[maybe_unused]] auto linked =
+        ::symlink(tmp.path("outside").c_str(), tmp.path("root/cache/v0").c_str());
+
+    auto store = open_store(tmp);
+    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v0")));
+    ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("outside/keep.txt")));
+}
+#endif
 
 TEST_CASE(LruEviction) {
     TempDir tmp;
