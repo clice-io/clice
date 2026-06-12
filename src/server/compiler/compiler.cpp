@@ -42,6 +42,26 @@ static std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
     return std::format("{:016x}{:016x}", hash.high64, hash.low64);
 }
 
+/// RAII completion of an in-flight PCH build registration: wakes waiters
+/// and clears the building marker on every exit path — crucially also when
+/// the coroutine is cancelled and its frame unwinds at a suspension point,
+/// which would otherwise leave waiters suspended on the event forever.
+struct BuildingGuard {
+    Workspace& workspace;
+    std::uint32_t path_id;
+    std::shared_ptr<kota::event> completion;
+
+    ~BuildingGuard() {
+        // Reset only our own registration: the entry may have been erased
+        // (didClose) and re-registered by a newer build in the meantime.
+        if(auto it = workspace.pch_cache.find(path_id);
+           it != workspace.pch_cache.end() && it->second.building == completion) {
+            it->second.building.reset();
+        }
+        completion->set();
+    }
+};
+
 /// Detect whether the cursor is inside a preamble directive (include/import).
 
 Compiler::Compiler(kota::event_loop& loop, Workspace& workspace, WorkerPool& pool) :
@@ -526,14 +546,14 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return workspace.pch_cache.count(path_id) && !workspace.pch_cache[path_id].path.empty();
     }
 
-    // Register in-flight build so concurrent requests wait on us.
+    // Register in-flight build so concurrent requests wait on us.  The
+    // guard wakes them on every exit, including cancellation mid-await.
     auto completion = std::make_shared<kota::event>();
     workspace.pch_cache[path_id].building = completion;
+    BuildingGuard guard{workspace, path_id, completion};
 
     if(!workspace.store) {
         LOG_WARN("PCH build skipped: cache store is unavailable");
-        workspace.pch_cache[path_id].building.reset();
-        completion->set();
         co_return false;
     }
 
@@ -560,8 +580,6 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         LOG_WARN("PCH build failed for {}: {}",
                  path,
                  result.has_value() ? result.value().error : result.error().message);
-        workspace.pch_cache[path_id].building.reset();
-        completion->set();
         co_return false;
     }
 
@@ -570,8 +588,6 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
     if(!committed.has_value() || !committed.value().has_value()) {
         LOG_WARN("Failed to commit PCH for {}", path);
-        workspace.pch_cache[path_id].building.reset();
-        completion->set();
         co_return false;
     }
 
@@ -581,7 +597,6 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     st.key = pch_key;
     st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
     st.document_links_json = std::move(result.value().pch_links_json);
-    st.building.reset();
 
     session.pch_ref = Session::PCHRef{path_id, pch_key, bound};
 
@@ -590,7 +605,6 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     // Persist cache metadata after successful build.
     workspace.save_cache();
 
-    completion->set();
     co_return true;
 }
 
