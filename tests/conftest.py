@@ -8,6 +8,15 @@ import pytest
 
 from tests.cdb import generate_cdb, generate_test_data_cdbs
 from tests.integration.utils.client import CliceClient
+from tests.integration.utils.assertions import assert_no_anomaly
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Store test outcome so fixtures can detect failures during teardown."""
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, f"rep_{rep.when}", rep)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -56,7 +65,8 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
     """
     marker = request.node.get_closest_marker("workspace")
     if marker is None:
-        return None
+        yield None
+        return
     if not marker.args or not isinstance(marker.args[0], str):
         raise pytest.UsageError(
             "@pytest.mark.workspace requires a string argument, e.g. "
@@ -69,7 +79,11 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | Non
     clice_dir = path / ".clice"
     if clice_dir.exists():
         shutil.rmtree(clice_dir)
-    return path
+    yield path
+    # Post-test cleanup: drop the cache generated during the test so static
+    # test-data directories don't accumulate state.
+    if clice_dir.exists():
+        shutil.rmtree(clice_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -95,7 +109,21 @@ async def client(
 
     yield c
 
-    await shutdown_client(c)
+    test_failed = (
+        getattr(request.node, "rep_call", None) is not None
+        and request.node.rep_call.failed
+    )
+    await shutdown_client(c, verbose=test_failed)
+    check_no_anomaly(request, c)
+
+
+def check_no_anomaly(request: pytest.FixtureRequest, c: CliceClient) -> None:
+    """Teardown gate: anomalies are internal clice bugs — every test session
+    must end without one. Tests that intentionally trigger anomalies opt out
+    with @pytest.mark.allow_anomaly and assert on them explicitly."""
+    if request.node.get_closest_marker("allow_anomaly") is not None:
+        return
+    assert_no_anomaly(c, c.workspace)
 
 
 def find_free_port() -> int:
@@ -129,6 +157,29 @@ async def agentic(
     yield executable, host, port
 
     await shutdown_client(c)
+    check_no_anomaly(request, c)
+
+
+def generate_cdb(workspace: Path) -> None:
+    """Generate compile_commands.json using CMake with Ninja backend."""
+    cmake = shutil.which("cmake")
+    if cmake is None:
+        raise RuntimeError("cmake executable not found in PATH")
+    toolchain = Path(__file__).resolve().parent.parent / "cmake" / "toolchain.cmake"
+    cmd = [
+        cmake,
+        "-G",
+        "Ninja",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
+        "-S",
+        str(workspace),
+        "-B",
+        str(workspace / "build"),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        raise RuntimeError(f"cmake failed:\n{result.stderr}")
 
 
 async def make_client(executable: Path, workspace: Path) -> CliceClient:
@@ -203,7 +254,7 @@ async def assert_server_exited_cleanly(server, timeout: float = 10.0) -> None:
         pytest.fail("\n".join(failures))
 
 
-async def shutdown_client(c: CliceClient) -> None:
+async def shutdown_client(c: CliceClient, *, verbose: bool = False) -> None:
     """Gracefully shut down a client, force-kill if needed."""
     try:
         await asyncio.wait_for(c.shutdown_async(None), timeout=10.0)
@@ -214,6 +265,11 @@ async def shutdown_client(c: CliceClient) -> None:
         c.exit(None)
     except Exception:
         pass
+
+    if verbose and c.log_messages:
+        for msg in c.log_messages:
+            level = {1: "ERROR", 2: "WARN", 3: "INFO", 4: "LOG"}.get(msg.type, "?")
+            print(f"[logMessage/{level}] {msg.message}", flush=True)
 
     try:
         await assert_server_exited_cleanly(c.server)

@@ -149,6 +149,8 @@ async def replay_one(
     init_ids: set[int | str] = set()
     init_errors: list[str] = []
 
+    anomalies: list[str] = []
+
     async def reader_loop():
         try:
             while True:
@@ -156,6 +158,11 @@ async def replay_one(
                 if msg is None:
                     break
                 msg_id, method = msg.get("id"), msg.get("method")
+                if method == "window/logMessage":
+                    text = msg.get("params", {}).get("message", "")
+                    if "[anomaly:" in text:
+                        anomalies.append(text)
+                        print(f"  ANOMALY: {text}")
                 if msg_id is not None and method is not None:
                     resp = SERVER_REQUEST_DEFAULTS.get(method)
                     await write_lsp_message(
@@ -322,6 +329,12 @@ async def replay_one(
             except (ValueError, AttributeError):
                 pass
         print(f"  result: CRASH (exit={returncode}{sig}, {elapsed:.1f}s)")
+        print_stderr()
+        return False
+
+    if anomalies:
+        # Anomalies are internal clice bugs; a replay session must be clean.
+        print(f"  result: FAIL ({len(anomalies)} anomaly report(s), {elapsed:.1f}s)")
         print_stderr()
         return False
 

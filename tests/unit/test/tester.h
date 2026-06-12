@@ -10,6 +10,7 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
+#include "feature/feature.h"
 #include "support/logging.h"
 
 namespace clice::testing {
@@ -92,6 +93,15 @@ struct Tester {
     llvm::ArrayRef<std::uint32_t> nameless_points(llvm::StringRef file = "");
 
     LocalSourceRange range(llvm::StringRef name = "", llvm::StringRef file = "");
+
+    /// Convert a protocol range back to byte offsets in the compiled unit's
+    /// interested file. Shared by feature tests that compare protocol results
+    /// against annotation ranges.
+    LocalSourceRange to_local_range(const kota::ipc::protocol::Range& range) {
+        feature::PositionMapper converter(unit->interested_content(),
+                                          feature::PositionEncoding::UTF8);
+        return LocalSourceRange(*converter.to_offset(range.start), *converter.to_offset(range.end));
+    }
 
     void clear();
 };
