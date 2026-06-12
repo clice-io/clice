@@ -26,7 +26,7 @@ from tests.integration.utils.cache import (
     pin_cache_to_workspace,
     read_cache_json,
 )
-from tests.integration.utils.assertions import assert_clean_compile
+from tests.integration.utils.assertions import assert_clean_compile, assert_no_anomaly
 
 
 async def test_pch_written_to_cache_dir(client, tmp_path):
@@ -135,6 +135,7 @@ async def test_pch_survives_server_restart(executable, tmp_path):
     cache_s1 = read_cache_json(tmp_path)
     assert cache_s1 is not None, "cache.json should exist after session 1"
 
+    assert_no_anomaly(c1, tmp_path)
     await shutdown_client(c1)
 
     # Session 2: restart server, reopen file.
@@ -153,6 +154,7 @@ async def test_pch_survives_server_restart(executable, tmp_path):
         "PCH file should not be rebuilt (mtime should be unchanged)"
     )
 
+    assert_no_anomaly(c2, tmp_path)
     await shutdown_client(c2)
 
 

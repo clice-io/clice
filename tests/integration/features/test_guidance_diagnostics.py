@@ -67,5 +67,6 @@ async def test_fallback_clean_no_guidance(executable, tmp_path):
     try:
         uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
         assert not guidance_diags(client, uri)
+        assert_no_anomaly(client, tmp_path)
     finally:
         await shutdown_client(client)

@@ -12,6 +12,7 @@ from tests.conftest import make_client, shutdown_client
 from tests.integration.utils.assertions import (
     assert_clean_compile,
     assert_has_errors,
+    assert_no_anomaly,
     get_errors,
 )
 
@@ -83,7 +84,9 @@ async def test_config_type_error_diagnostic(executable, tmp_path):
         assert len(diags) == 1, f"expected one config diagnostic: {diags}"
         assert diags[0].severity == DiagnosticSeverity.Error
         assert diags[0].range.start.line == 1  # clang_tidy is on line 2 (0-based 1)
+        assert diags[0].range.start.character > 0
         assert "clang_tidy" in diags[0].message
+        assert_no_anomaly(client, tmp_path)
     finally:
         await shutdown_client(client)
 
@@ -100,7 +103,9 @@ async def test_config_unknown_key_diagnostic(executable, tmp_path):
         assert len(diags) == 1, f"expected one config diagnostic: {diags}"
         assert diags[0].severity == DiagnosticSeverity.Warning
         assert diags[0].range.start.line == 1
+        assert diags[0].range.start.character > 0
         assert "clang_tdy" in diags[0].message
+        assert_no_anomaly(client, tmp_path)
     finally:
         await shutdown_client(client)
 
@@ -124,5 +129,6 @@ async def test_config_diagnostic_clears_after_fix(executable, tmp_path):
         toml_uri = client.path_to_uri(tmp_path / "clice.toml")
         await client.wait_diagnostics(toml_uri, timeout=10)
         assert client.diagnostics[toml_uri] == [], "fixed config must clear diagnostics"
+        assert_no_anomaly(client, tmp_path)
     finally:
         await shutdown_client(client)

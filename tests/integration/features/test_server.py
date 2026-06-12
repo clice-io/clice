@@ -214,6 +214,13 @@ async def test_hover_on_unknown_file(client, workspace):
 
 
 @pytest.mark.workspace("hello_world")
+async def test_hover_out_of_range_position(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    with pytest.raises(Exception, match="Invalid position"):
+        await client.hover_at(uri, 99999, 0)
+
+
+@pytest.mark.workspace("hello_world")
 async def test_all_features_after_compile_wait(client, workspace):
     """Exercise all feature requests after compilation completes."""
     uri, _ = await client.open_and_wait(workspace / "main.cpp")

@@ -69,7 +69,7 @@ TEST_CASE(RateLimitSuppresses) {
     EXPECT_EQ(capture.trapped.size(), logging::anomaly_report_limit);
 }
 
-TEST_CASE(RateLimitIsPerId) {
+TEST_CASE(RateLimitPerId) {
     AnomalyCapture capture;
 
     for(std::uint32_t i = 0; i < logging::anomaly_report_limit + 5; ++i) {
@@ -139,6 +139,34 @@ TEST_CASE(GuidanceLazyAtLevel) {
 
     EXPECT_EQ(evaluations, 0);
     EXPECT_EQ(capture.notified.size(), 0u);
+}
+
+TEST_CASE(MarkerNamesStable) {
+    /// Every id fires through the macro once and produces its wire marker.
+    /// Integration tests grep these exact strings — keep them stable.
+    AnomalyCapture capture;
+
+    LOG_ANOMALY(PchBuildFail, "x");
+    LOG_ANOMALY(PcmBuildFail, "x");
+    LOG_ANOMALY(CompileFail, "x");
+    LOG_ANOMALY(WorkerRequestFail, "x");
+    LOG_ANOMALY(WorkerCrash, "x");
+    LOG_ANOMALY(WorkerSpawnFail, "x");
+    LOG_ANOMALY(PositionMapFail, "x");
+
+    ASSERT_EQ(capture.notified.size(), logging::anomaly_id_count);
+    const char* expected[] = {
+        "pch_build_fail",
+        "pcm_build_fail",
+        "compile_fail",
+        "worker_request_fail",
+        "worker_crash",
+        "worker_spawn_fail",
+        "position_map_fail",
+    };
+    for(std::size_t i = 0; i < logging::anomaly_id_count; ++i) {
+        EXPECT_EQ(capture.notified[i].second, std::format("[anomaly:{}] x", expected[i]));
+    }
 }
 
 };  // TEST_SUITE(Anomaly)

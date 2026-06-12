@@ -57,7 +57,7 @@ def test_data_dir() -> Path:
 
 
 @pytest.fixture
-def workspace(request: pytest.FixtureRequest, test_data_dir: Path) -> Path | None:
+def workspace(request: pytest.FixtureRequest, test_data_dir: Path):
     """Resolve workspace path from @pytest.mark.workspace("subdir") marker.
 
     If the workspace contains a CMakeLists.txt, automatically runs cmake

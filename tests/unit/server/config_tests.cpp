@@ -398,6 +398,7 @@ TEST_CASE(TypeIssueHasLocation) {
     ASSERT_EQ(issues.size(), 1u);
     EXPECT_EQ(issues[0].severity, ConfigIssue::Severity::Error);
     EXPECT_EQ(issues[0].line, 2u);
+    EXPECT_EQ(issues[0].column, 14u);  // the "yes" value node
     EXPECT_NE(issues[0].message.find("clang_tidy"), std::string::npos);
 }
 
@@ -411,6 +412,7 @@ TEST_CASE(UnknownKeyIssueWarns) {
     ASSERT_EQ(issues.size(), 1u);
     EXPECT_EQ(issues[0].severity, ConfigIssue::Severity::Warning);
     EXPECT_EQ(issues[0].line, 2u);
+    EXPECT_EQ(issues[0].column, 13u);  // the value node of the unknown key
     EXPECT_NE(issues[0].message.find("clang_tdy"), std::string::npos);
 }
 
