@@ -22,6 +22,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       clice: ${{ steps.filter.outputs.clice }}
       vscode: ${{ steps.filter.outputs.vscode }}
+      zed: ${{ steps.filter.outputs.zed }}
       cmake: ${{ steps.filter.outputs.cmake }}
 
     steps:
@@ -42,12 +43,20 @@ jobs:
             vscode:
               - 'editors/vscode/**'
               - '.github/workflows/publish-vscode.yml'
+            zed:
+              - 'editors/zed/**'
+              - '.github/workflows/main.yml'
             cmake:
               - 'CMakeLists.txt'
               - 'src/**'
               - 'include/**'
               - 'tests/**'
               - 'config/**'
+              - 'cmake/**'
+              - 'editors/nvim/**'
+              - 'editors/vscode/**'
+              - 'pixi.toml'
+              - 'pixi.lock'
               - '.github/workflows/test-cmake.yml'
 
   conventional-commit:
@@ -98,6 +107,20 @@ jobs:
     if: ${{ needs.changes.outputs.vscode == 'true' }}
     uses: ./.github/workflows/publish-vscode.yml
 
+  zed:
+    needs: changes
+    if: ${{ needs.changes.outputs.zed == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: editors/zed
+      - name: Build Zed extension
+        run: |
+          rustup target add wasm32-wasip1
+          cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1 --release
+
   cmake:
     needs: changes
     if: ${{ needs.changes.outputs.cmake == 'true' }}
@@ -125,6 +148,7 @@ jobs:
       - deploy
       # - clice
       - vscode
+      - zed
       - cmake
 
     runs-on: ubuntu-latest
@@ -132,5 +156,5 @@ jobs:
       - name: Check results
         uses: re-actors/alls-green@release/v1
         with:
-          allowed-skips: conventional-commit,format,deploy,clice,vscode,cmake
+          allowed-skips: conventional-commit,format,deploy,clice,vscode,zed,cmake
           jobs: ${{ toJSON(needs) }}

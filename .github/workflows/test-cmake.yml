@@ -18,7 +18,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Native builds
           - os: windows-2025
             build_type: RelWithDebInfo
           - os: ubuntu-24.04
@@ -29,20 +28,72 @@ jobs:
             build_type: Debug
           - os: macos-15
             build_type: RelWithDebInfo
-          # Cross-compile (build only; tests run on native runners)
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: default
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
+          key: ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-
+
+      - name: Zero cache stats
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -- sccache --stop-server || true
+            pixi run -- sccache --zero-stats || true
+          else
+            pixi run -- ccache --zero-stats || true
+          fi
+        shell: bash
+
+      - name: Build
+        run: pixi run build ${{ matrix.build_type }} ON
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-build-${{ matrix.os }}-${{ matrix.build_type }}
+          path: |
+            build/${{ matrix.build_type }}/bin/
+            build/${{ matrix.build_type }}/lib/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Print cache stats and stop server
+        if: always()
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -- sccache --show-stats
+            pixi run -- sccache --stop-server || true
+          else
+            pixi run -- ccache --show-stats
+          fi
+        shell: bash
+
+  build-cross:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - os: macos-15
             build_type: RelWithDebInfo
             target_triple: x86_64-apple-darwin
-            build_only: true
           - os: ubuntu-24.04
             build_type: RelWithDebInfo
             target_triple: aarch64-linux-gnu
-            build_only: true
             pixi_env: cross-linux-aarch64
           - os: windows-2025
             build_type: RelWithDebInfo
             target_triple: aarch64-pc-windows-msvc
-            build_only: true
             pixi_env: cross-windows-arm64
     runs-on: ${{ matrix.os }}
     steps:
@@ -57,9 +108,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
-          key: ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.target_triple || 'native' }}-ccache-${{ github.sha }}
+          key: ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.target_triple }}-ccache-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.target_triple || 'native' }}-ccache-
+            ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.target_triple }}-ccache-
 
       - name: Zero cache stats
         run: |
@@ -72,12 +123,7 @@ jobs:
           fi
         shell: bash
 
-      - name: Build (native)
-        if: ${{ !matrix.target_triple }}
-        run: pixi run build ${{ matrix.build_type }} ON
-
-      - name: Build (cross-compile)
-        if: ${{ matrix.target_triple }}
+      - name: Build
         shell: bash
         run: |
           ENV="${{ matrix.pixi_env || 'default' }}"
@@ -85,8 +131,7 @@ jobs:
             "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
           pixi run -e "$ENV" cmake-build ${{ matrix.build_type }}
 
-      - name: Upload cross-compiled binaries
-        if: ${{ matrix.build_only }}
+      - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: cross-build-${{ matrix.target_triple }}
@@ -95,21 +140,6 @@ jobs:
             build/${{ matrix.build_type }}/lib/
           if-no-files-found: error
           retention-days: 1
-
-      - name: Unit tests
-        if: ${{ !matrix.build_only }}
-        timeout-minutes: 5
-        run: pixi run unit-test ${{ matrix.build_type }}
-
-      - name: Integration tests
-        if: ${{ !matrix.build_only }}
-        timeout-minutes: 20
-        run: pixi run integration-test ${{ matrix.build_type }}
-
-      - name: Smoke tests
-        if: ${{ !matrix.build_only }}
-        timeout-minutes: 15
-        run: pixi run smoke-test ${{ matrix.build_type }}
 
       - name: Print cache stats and stop server
         if: always()
@@ -123,8 +153,55 @@ jobs:
           fi
         shell: bash
 
-  test-cross:
+  test:
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            build_type: RelWithDebInfo
+          - os: ubuntu-24.04
+            build_type: Debug
+          - os: ubuntu-24.04
+            build_type: RelWithDebInfo
+          - os: macos-15
+            build_type: Debug
+          - os: macos-15
+            build_type: RelWithDebInfo
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: test-run
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: native-build-${{ matrix.os }}-${{ matrix.build_type }}
+          path: build/${{ matrix.build_type }}/
+
+      - name: Make binaries executable
+        if: runner.os != 'Windows'
+        run: chmod +x build/${{ matrix.build_type }}/bin/*
+
+      - name: Unit tests
+        timeout-minutes: 5
+        run: pixi run -e test-run unit-test ${{ matrix.build_type }}
+
+      - name: Integration tests
+        timeout-minutes: 20
+        run: pixi run -e test-run integration-test ${{ matrix.build_type }}
+
+      - name: Smoke tests
+        timeout-minutes: 15
+        run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
+
+  test-cross:
+    needs: build-cross
     strategy:
       fail-fast: false
       matrix:
@@ -147,7 +224,7 @@ jobs:
         with:
           environments: test-run
 
-      - name: Download cross-compiled binaries
+      - name: Download binaries
         uses: actions/download-artifact@v4
         with:
           name: cross-build-${{ matrix.target_triple }}
@@ -168,3 +245,48 @@ jobs:
       - name: Smoke tests
         timeout-minutes: 10
         run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
+
+  test-editor:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: editor
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: native-build-ubuntu-24.04-RelWithDebInfo
+          path: build/RelWithDebInfo/
+
+      - name: Make binaries executable
+        run: chmod +x build/RelWithDebInfo/bin/*
+
+      # Always the latest stable release on purpose: this job exists to
+      # catch breakage caused by new editor versions.
+      - name: Install neovim (stable)
+        run: |
+          curl -fsSL -o /tmp/nvim.tar.gz \
+            https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz
+          sudo tar -xzf /tmp/nvim.tar.gz -C /opt
+          echo "/opt/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Restore VSCode download cache
+        uses: actions/cache@v4
+        with:
+          path: editors/vscode/.vscode-test
+          key: vscode-test-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            vscode-test-${{ runner.os }}-
+
+      - name: Neovim E2E tests
+        timeout-minutes: 15
+        run: pixi run -e editor nvim-e2e RelWithDebInfo
+
+      - name: VSCode E2E tests
+        timeout-minutes: 20
+        run: xvfb-run -a pixi run -e editor vscode-e2e RelWithDebInfo
