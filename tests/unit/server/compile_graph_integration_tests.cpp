@@ -129,6 +129,16 @@ void make_graph() {
     make_graph(default_dispatch(), default_resolver());
 }
 
+/// Zero-interest cancellation is deferred by one event-loop tick per cascade
+/// level; wait (bounded) until `pred` holds before asserting settled state.
+template <typename Pred>
+kota::task<> settle(Pred pred) {
+    for(int i = 0; i < 100 && !pred(); i++) {
+        co_await kota::sleep(1);
+    }
+    EXPECT_TRUE(pred());
+}
+
 /// Run the test body, then verify the shutdown protocol leaves the graph idle.
 template <typename F>
 void execute(F&& fn) {
@@ -1102,7 +1112,7 @@ TEST_CASE(SharedDepImportSwitch) {
             // shared module's interest never drops to zero.
             start_c.set();
             req_a.cancel();
-            co_await kota::sleep(1);
+            co_await settle([&] { return !cg->is_compiling(pid_a); });
 
             EXPECT_TRUE(cg->is_compiling(pid_shared));
             EXPECT_EQ(cg->refcount(pid_shared), 1u);

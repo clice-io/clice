@@ -104,10 +104,31 @@ void CompileGraph::release(std::uint32_t path_id) {
     assert(unit.refcount > 0 && "released more interest than acquired");
     unit.refcount -= 1;
 
-    // No interest left in an in-flight round: cancel it. The task unwinds
-    // asynchronously and its guard finishes the bookkeeping, releasing its
-    // own edge references in turn (cascading the cancellation).
+    // No interest left in an in-flight round. The drop is often transient —
+    // a stale round's edges being re-acquired by the retry that re-resolves
+    // it — so don't cancel right away: defer the decision by one event-loop
+    // tick. Synchronous re-acquisition happens within the current drain
+    // cycle, strictly before the check fires, so retained dependencies are
+    // handed over to the new round instead of being killed and restarted;
+    // only a sustained zero cancels.
+    if(unit.refcount == 0 && unit.compiling && !unit.zero_check_pending) {
+        unit.zero_check_pending = true;
+        if(!tasks.spawn(zero_interest_check(path_id))) {
+            // Graph is shutting down; everything gets cancelled anyway.
+            units.find(path_id)->second.zero_check_pending = false;
+        }
+    }
+}
+
+kota::task<> CompileGraph::zero_interest_check(std::uint32_t path_id) {
+    co_await kota::sleep(0);
+
+    auto& unit = units.find(path_id)->second;
+    unit.zero_check_pending = false;
     if(unit.refcount == 0 && unit.compiling) {
+        // The task unwinds asynchronously and its guard finishes the
+        // bookkeeping, releasing its own edge references in turn (cascading
+        // the cancellation).
         cancel_round(unit);
     }
 }

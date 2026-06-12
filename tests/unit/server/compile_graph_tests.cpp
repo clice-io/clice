@@ -136,6 +136,16 @@ kota::task<> run_request(std::uint32_t path_id, Request& req) {
     }
 }
 
+/// Zero-interest cancellation is deferred by one event-loop tick per cascade
+/// level; wait (bounded) until `pred` holds before asserting settled state.
+template <typename Pred>
+kota::task<> settle(Pred pred) {
+    for(int i = 0; i < 100 && !pred(); i++) {
+        co_await kota::sleep(1);
+    }
+    EXPECT_TRUE(pred());
+}
+
 kota::task<> run_deps_request(std::uint32_t path_id, Request& req) {
     auto result = co_await kota::with_token(graph->compile_deps(path_id), req.source.token());
     req.done = true;
@@ -839,10 +849,9 @@ TEST_CASE(SharedDepSurvivesCancel) {
             // Cancel request A: B's task exits and drops its edge on E,
             // but D's task still holds interest — E must keep compiling.
             ra.source.cancel();
-            co_await kota::sleep(1);
+            co_await settle([&] { return !graph->is_compiling(2); });
 
             EXPECT_TRUE(ra.done);
-            EXPECT_FALSE(graph->is_compiling(2));
             EXPECT_TRUE(graph->is_compiling(5));
             EXPECT_EQ(graph->refcount(5), 1u);
             EXPECT_EQ(md.gate(5).calls, 1);
@@ -882,9 +891,8 @@ TEST_CASE(SharedDepBothCancelled) {
             // compilation is cancelled too.
             ra.source.cancel();
             rc.source.cancel();
-            co_await kota::sleep(1);
+            co_await settle([&] { return !graph->is_compiling(5); });
 
-            EXPECT_FALSE(graph->is_compiling(5));
             EXPECT_TRUE(graph->is_dirty(5));
             EXPECT_EQ(graph->refcount(5), 0u);
             EXPECT_EQ(md.gate(5).calls, 1);
@@ -918,19 +926,17 @@ TEST_CASE(SharedDepSequentialCancel) {
             EXPECT_EQ(graph->refcount(5), 2u);
 
             rc.source.cancel();
-            co_await kota::sleep(1);
+            co_await settle([&] { return !graph->is_compiling(4); });
 
             // D's edge dropped; B still holds interest — E keeps compiling.
-            EXPECT_FALSE(graph->is_compiling(4));
             EXPECT_TRUE(graph->is_compiling(5));
             EXPECT_EQ(graph->refcount(5), 1u);
             EXPECT_EQ(md.gate(5).calls, 1);
 
             ra.source.cancel();
-            co_await kota::sleep(1);
+            co_await settle([&] { return !graph->is_compiling(5); });
 
             // Last interest gone — now E is cancelled.
-            EXPECT_FALSE(graph->is_compiling(5));
             EXPECT_TRUE(graph->is_dirty(5));
             EXPECT_EQ(graph->refcount(5), 0u);
             EXPECT_EQ(md.gate(5).calls, 1);
@@ -966,7 +972,7 @@ TEST_CASE(SharedDepQueuedCancel) {
             EXPECT_EQ(graph->refcount(5), 2u);
 
             ra.source.cancel();
-            co_await kota::sleep(1);
+            co_await settle([&] { return !graph->is_compiling(2); });
 
             // E keeps waiting for F; only the A-chain died.
             EXPECT_TRUE(graph->is_compiling(5));
@@ -1055,7 +1061,9 @@ TEST_CASE(SharedDepAlreadyCompiled) {
 // Update semantics: staleness-driven cancellation, waiters retry.
 
 TEST_CASE(UpdateWhileWaitingDeps) {
-    // Update hits unit 1 while it waits for its dependency 2.
+    // Update hits unit 1 while it waits for its dependency 2. The retry
+    // re-acquires 2 within the same drain cycle, so 2's in-flight round is
+    // handed over — neither cancelled nor restarted.
     ManualDispatch md;
     make_graph(md.fn(),
                static_resolver({
@@ -1079,14 +1087,14 @@ TEST_CASE(UpdateWhileWaitingDeps) {
             co_await md.gate(2).started.wait();
             EXPECT_TRUE(graph->is_compiling(1));
 
-            // Only unit 1 is updated; its round is cancelled while the
-            // waiter retries. Releasing its edge on 2 momentarily drops 2's
-            // interest to zero, so 2 restarts when the retry re-acquires it.
-            md.gate(2).started.reset();
             graph->update(1);
+            co_await kota::sleep(1);
 
-            co_await md.gate(2).started.wait();
-            EXPECT_EQ(md.gate(2).calls, 2);
+            // Unit 1's round was respawned; 2 kept compiling throughout.
+            EXPECT_TRUE(graph->is_compiling(2));
+            EXPECT_EQ(md.gate(2).calls, 1);
+            EXPECT_EQ(graph->refcount(2), 1u);
+
             md.gate(2).proceed.set();
             co_return;
         };
@@ -1097,6 +1105,71 @@ TEST_CASE(UpdateWhileWaitingDeps) {
         EXPECT_TRUE(result == true);
         EXPECT_FALSE(graph->is_dirty(1));
         EXPECT_FALSE(graph->is_dirty(2));
+        EXPECT_EQ(md.gate(2).calls, 1);
+    });
+}
+
+TEST_CASE(UpdateKeepsRetainedDep) {
+    // Unit 1 depends on {2, 3}, both dispatching, 1 waiting on both. An
+    // update changes 1's imports to {2, 4}: the orphaned 3 is cancelled,
+    // while 2's in-flight round must be handed over to the retry — not
+    // cancelled and restarted, which would waste the work done so far.
+    bool flipped = false;
+    auto resolver = [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
+        if(path_id == 1) {
+            return flipped ? llvm::SmallVector<std::uint32_t>{2, 4}
+                           : llvm::SmallVector<std::uint32_t>{2, 3};
+        }
+        return {};
+    };
+
+    ManualDispatch md;
+    make_graph(md.fn(), std::move(resolver));
+    md.open({1, 4});
+
+    execute([&]() -> kota::task<> {
+        bool done = false;
+        std::optional<bool> result;
+
+        auto compiler = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1).catch_cancel();
+            done = true;
+            if(r.has_value()) {
+                result = *r;
+            }
+        };
+
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(2).started.wait();
+            co_await md.gate(3).started.wait();
+            EXPECT_EQ(graph->refcount(2), 1u);
+            EXPECT_EQ(graph->refcount(3), 1u);
+
+            flipped = true;
+            graph->update(1);
+            co_await settle([&] { return !graph->is_compiling(3); });
+
+            // 3 lost its last interest and was cancelled; 2 kept compiling.
+            EXPECT_TRUE(graph->is_dirty(3));
+            EXPECT_TRUE(graph->is_compiling(2));
+            EXPECT_EQ(md.gate(2).calls, 1);
+            EXPECT_EQ(md.gate(3).calls, 1);
+            EXPECT_EQ(graph->refcount(2), 1u);
+
+            md.gate(2).proceed.set();
+            co_return;
+        };
+
+        co_await kota::when_all(compiler(), driver());
+
+        EXPECT_TRUE(done);
+        EXPECT_TRUE(result == true);
+        EXPECT_FALSE(graph->is_dirty(1));
+        EXPECT_FALSE(graph->is_dirty(2));
+        EXPECT_FALSE(graph->is_dirty(4));
+        // The retained dependency was dispatched exactly once overall.
+        EXPECT_EQ(md.gate(2).calls, 1);
+        EXPECT_EQ(md.gate(3).calls, 1);
     });
 }
 

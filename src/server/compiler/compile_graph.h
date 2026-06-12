@@ -47,9 +47,12 @@ struct CompileUnit {
     bool compiling = false;
 
     /// In-flight interest count: one per requesting root plus one per edge
-    /// held by a dependent unit's running task. Dropping to zero while
+    /// held by a dependent unit's running task. Staying at zero while
     /// compiling cancels this unit's round. Not a lifetime count.
     std::uint32_t refcount = 0;
+
+    /// A zero-interest cancellation check is already queued for this unit.
+    bool zero_check_pending = false;
 
     /// Monotonic counter bumped by update(); detects results that became
     /// stale while the cancellation raced with a dispatch completion.
@@ -76,10 +79,12 @@ struct CompileUnit {
 ///   unit task spawned; the task acquires edge references on its direct
 ///   dependencies, waits for them, then dispatches its own compilation.
 /// - Request cancel: the requester's frame unwinds and drops its root
-///   reference. A unit whose interest reaches zero mid-compile has its round
-///   cancelled; the exiting task drops its edge references, cascading the
-///   cancellation through no-longer-needed dependencies. Shared dependencies
-///   keep compiling as long as any other consumer holds interest.
+///   reference. A unit whose interest stays at zero for an event-loop tick
+///   has its round cancelled; the exiting task drops its edge references,
+///   cascading the cancellation through no-longer-needed dependencies.
+///   Shared dependencies keep compiling as long as any other consumer holds
+///   interest, and a transient drop (a retry re-acquiring a retained
+///   dependency after re-resolve) does not disturb the running compilation.
 /// - File update: update() marks the unit and its transitive dependents
 ///   dirty and cancels their in-flight rounds — the results are stale.
 ///   Interest is NOT touched; waiters observe the stale round and drive a
@@ -145,8 +150,16 @@ private:
     /// Interest +1; creates the unit if needed.
     void acquire(std::uint32_t path_id);
 
-    /// Interest -1; cancels the unit's round when it drops to zero mid-compile.
+    /// Interest -1; schedules a zero-interest cancellation check when it
+    /// drops to zero mid-compile.
     void release(std::uint32_t path_id);
+
+    /// Cancels path_id's round if its interest is still zero one event-loop
+    /// tick after release() saw it drop. The delay lets transient drops
+    /// survive: a retry respawning the unit after update() re-acquires its
+    /// retained dependencies within the same drain cycle, so their in-flight
+    /// compilations are handed over instead of being killed and restarted.
+    kota::task<> zero_interest_check(std::uint32_t path_id);
 
     /// Cancel the current round and install a fresh cancellation scope.
     void cancel_round(CompileUnit& unit);
