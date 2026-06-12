@@ -62,6 +62,21 @@ pixi run test                # 单元 + 集成 + 冒烟
 pixi run test Debug          # debug 构建的全部测试
 ```
 
+## Editor E2E Tests
+
+冒烟测试，用真实编辑器（无头 Neovim 和 VSCode）对本地构建的 clice 二进制进行测试，在两个 fixture（包括一个 C++20 模块项目）上覆盖启动、首批诊断、hover、definition 和 completion。CI 在 Linux 的 `test-editor` job 中使用最新 stable 版编辑器运行，刻意不固定版本：这个 job 的目的就是发现新版编辑器导致的破坏。
+
+```bash
+$ pixi run build                  # build/RelWithDebInfo/bin/clice
+$ pixi run -e editor editor-test  # nvim + vscode，两个 fixture
+```
+
+pixi 环境之外的依赖：
+
+- `nvim`（stable）在 `PATH` 中，供 `nvim-e2e` 使用。
+- 系统的 `cmake`/`ninja`/`clang`，供 `editor-prepare` 配置基于 CMake 的模块 fixture（与集成测试相同的假设）。
+- 显示环境（或 `xvfb-run`）以及 Electron 所需的系统库，供 `vscode-e2e` 使用。
+
 ## 调试
 
 如果想在 clice 上附加调试器，推荐先以 socket 模式单独启动 clice，然后连接客户端。

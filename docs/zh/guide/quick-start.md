@@ -6,33 +6,7 @@ clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-
 
 除了标准协议之外，clice 还支持一些协议扩展。为了更好地处理这些扩展以及更好地与编辑器集成，使用专用的 clice 插件是推荐方案。
 
-### Visual Studio Code
-
-从插件市场安装 [clice](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode) 插件。它会自动下载 clice 二进制文件。
-
-如需使用自定义二进制文件，在工作区设置中配置 `clice.executable`：
-
-```jsonc
-{
-  "clice.executable": "/path/to/clice",
-}
-```
-
-### Vim/Neovim
-
-将 clice Neovim 插件添加到 runtime path：
-
-```lua
--- lazy.nvim
-{ dir = "/path/to/clice/editors/nvim" }
-
--- 或手动添加
-vim.opt.rtp:append("/path/to/clice/editors/nvim")
-```
-
-### 其它编辑器
-
-其它编辑器暂时还没有专用的 clice 插件（欢迎贡献！）。请自行安装 clice 二进制文件，并配置编辑器的 LSP 客户端运行 `clice server`。
+各编辑器的具体配置见 [Editor Setup](./editors.md)：Visual Studio Code、Neovim 和 Zed 有官方插件，Helix、Emacs、Sublime Text、Kate、Vim 等通用 LSP 客户端提供配置片段。
 
 ## 安装
 

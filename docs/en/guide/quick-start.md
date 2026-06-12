@@ -6,33 +6,7 @@ clice implements the [Language Server Protocol](https://microsoft.github.io/lang
 
 Beyond the standard protocol, clice also supports some protocol extensions. For better integration, using a dedicated clice plugin is recommended.
 
-### Visual Studio Code
-
-Install the [clice](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode) extension from the Marketplace. It handles downloading the clice binary automatically.
-
-To use a custom binary, set `clice.executable` in your workspace settings:
-
-```jsonc
-{
-  "clice.executable": "/path/to/clice",
-}
-```
-
-### Vim/Neovim
-
-Add the clice Neovim plugin to your runtime path:
-
-```lua
--- lazy.nvim
-{ dir = "/path/to/clice/editors/nvim" }
-
--- or manually
-vim.opt.rtp:append("/path/to/clice/editors/nvim")
-```
-
-### Others
-
-Other editors don't have dedicated clice plugins yet (contributions welcome!). To use clice in them, install the binary and configure your editor's LSP client to run `clice server`.
+See [Editor Setup](./editors.md) for per-editor instructions: official plugins for Visual Studio Code, Neovim and Zed, plus configuration snippets for editors with generic LSP clients (Helix, Emacs, Sublime Text, Kate, Vim).
 
 ## Installation
 

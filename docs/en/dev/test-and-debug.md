@@ -62,6 +62,21 @@ pixi run test                # runs unit + integration + smoke
 pixi run test Debug          # all tests with debug build
 ```
 
+## Editor E2E Tests
+
+Smoke tests that run real editors (headless Neovim and VSCode) against a locally built clice binary, covering startup, first diagnostics, hover, definition and completion on two fixtures (including a C++20 modules project). CI runs them in the `test-editor` job on Linux with the latest stable editor releases, on purpose unpinned: the job exists to catch breakage caused by new editor versions.
+
+```bash
+$ pixi run build                  # build/RelWithDebInfo/bin/clice
+$ pixi run -e editor editor-test  # nvim + vscode, both fixtures
+```
+
+Prerequisites outside the pixi env:
+
+- `nvim` (stable) on `PATH` for `nvim-e2e`.
+- A system `cmake`/`ninja`/`clang` for `editor-prepare` to configure the CMake-based module fixture (same assumption the integration tests make).
+- A display (or `xvfb-run`) plus the usual Electron system libraries for `vscode-e2e`.
+
 ## Debug
 
 If you want to attach a debugger to clice, start it in socket mode independently, then connect a client.
