@@ -619,26 +619,6 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
                                        std::optional<kota::cancellation_token> scope) {
     auto path_id = session.path_id;
 
-    // Re-validate cached PCM blobs before compiling: LRU eviction can remove
-    // one while its compile unit is still marked clean, so dirty those units
-    // to trigger a rebuild instead of handing clang a dangling path.
-    if(workspace.compile_graph) {
-        llvm::SmallVector<std::uint32_t> evicted;
-        for(auto& [pid, pcm_path]: workspace.pcm_paths) {
-            if(!llvm::sys::fs::exists(pcm_path)) {
-                evicted.push_back(pid);
-            }
-        }
-        for(auto pid: evicted) {
-            for(auto id: workspace.compile_graph->update(pid)) {
-                workspace.pcm_paths.erase(id);
-                workspace.pcm_cache.erase(id);
-            }
-            workspace.pcm_paths.erase(pid);
-            workspace.pcm_cache.erase(pid);
-        }
-    }
-
     // Compile module dependencies within the request scope: cancelling the
     // scope unwinds the wait and releases this request's interest in the
     // dependency graph, without touching the shared compilations themselves.
@@ -650,9 +630,37 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
         co_return result.has_value() && *result;
     };
 
-    // Compile C++20 module dependencies (PCMs).
-    if(workspace.compile_graph && !co_await compile_deps(path_id)) {
-        co_return false;
+    // Re-validate cached PCM blobs and compile module dependencies.  LRU
+    // eviction can remove a blob while its compile unit is still marked
+    // clean, so dirty those units instead of handing clang a dangling
+    // path.  Building dependencies can itself evict another clean
+    // module's PCM under budget pressure, which reopens the window the
+    // scan just closed — hence the bounded retry until the set is stable.
+    if(workspace.compile_graph) {
+        for(int attempt = 0; attempt < 3; ++attempt) {
+            llvm::SmallVector<std::uint32_t> evicted;
+            for(auto& [pid, pcm_path]: workspace.pcm_paths) {
+                if(!llvm::sys::fs::exists(pcm_path)) {
+                    evicted.push_back(pid);
+                }
+            }
+            if(attempt > 0 && evicted.empty()) {
+                break;
+            }
+
+            for(auto pid: evicted) {
+                for(auto id: workspace.compile_graph->update(pid)) {
+                    workspace.pcm_paths.erase(id);
+                    workspace.pcm_cache.erase(id);
+                }
+                workspace.pcm_paths.erase(pid);
+                workspace.pcm_cache.erase(pid);
+            }
+
+            if(!co_await compile_deps(path_id)) {
+                co_return false;
+            }
+        }
     }
 
     // Scan buffer text for module imports that might not be in compile_graph yet.

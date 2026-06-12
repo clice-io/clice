@@ -146,10 +146,9 @@ kota::task<> Indexer::save() {
     for(auto& [path_id, shard]: workspace.merged_indices) {
         if(!shard.need_rewrite())
             continue;
-        if(auto pending =
-               serialize_blob(store, std::to_string(path_id), [&](llvm::raw_ostream& os) {
-                   shard.serialize(os);
-               })) {
+        if(auto pending = serialize_blob(store,
+                                         std::to_string(path_id),
+                                         [&](llvm::raw_ostream& os) { shard.serialize(os); })) {
             shards.push_back(std::move(*pending));
         }
     }
