@@ -898,6 +898,52 @@ TEST_CASE(SharedDepBothCancelled) {
     });
 }
 
+TEST_CASE(SharedDepSequentialCancel) {
+    // Mirror of SharedDepSurvivesCancel: cancel C first (E survives via the
+    // A-chain), then cancel A too (last interest gone, E dies).
+    ManualDispatch md;
+    make_graph(md.fn(),
+               static_resolver({
+                   {1, {2}},
+                   {2, {5}},
+                   {3, {4}},
+                   {4, {5}}
+    }));
+    md.open({1, 2, 3, 4});
+
+    Request ra, rc;
+    execute([&]() -> kota::task<> {
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(5).started.wait();
+            EXPECT_EQ(graph->refcount(5), 2u);
+
+            rc.source.cancel();
+            co_await kota::sleep(1);
+
+            // D's edge dropped; B still holds interest — E keeps compiling.
+            EXPECT_FALSE(graph->is_compiling(4));
+            EXPECT_TRUE(graph->is_compiling(5));
+            EXPECT_EQ(graph->refcount(5), 1u);
+            EXPECT_EQ(md.gate(5).calls, 1);
+
+            ra.source.cancel();
+            co_await kota::sleep(1);
+
+            // Last interest gone — now E is cancelled.
+            EXPECT_FALSE(graph->is_compiling(5));
+            EXPECT_TRUE(graph->is_dirty(5));
+            EXPECT_EQ(graph->refcount(5), 0u);
+            EXPECT_EQ(md.gate(5).calls, 1);
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(1, ra), run_request(3, rc), driver());
+
+        EXPECT_FALSE(ra.result.has_value());
+        EXPECT_FALSE(rc.result.has_value());
+    });
+}
+
 TEST_CASE(SharedDepQueuedCancel) {
     // E(5) itself depends on F(9); cancel A while E is still waiting for F,
     // i.e. E is queued behind its own dependency rather than dispatching.
@@ -1107,6 +1153,64 @@ TEST_CASE(UpdateDepCascadesCancel) {
         EXPECT_FALSE(graph->is_dirty(3));
         // No further updates arrived — exactly one retry, no storm.
         EXPECT_EQ(md.gate(3).calls, 2);
+    });
+}
+
+TEST_CASE(UpdateSwapsDeps) {
+    // Unit 1's import set changes from {2} to {3} while its round is in
+    // flight waiting on 2. The retry re-resolves, releases the orphaned edge
+    // on 2 (cancelling 2's now-unwanted round) and acquires 3 instead.
+    bool flipped = false;
+    auto resolver = [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
+        if(path_id == 1) {
+            return flipped ? llvm::SmallVector<std::uint32_t>{3}
+                           : llvm::SmallVector<std::uint32_t>{2};
+        }
+        return {};
+    };
+
+    ManualDispatch md;
+    make_graph(md.fn(), std::move(resolver));
+    md.open({1, 3});
+
+    execute([&]() -> kota::task<> {
+        bool done = false;
+        std::optional<bool> result;
+
+        auto compiler = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1).catch_cancel();
+            done = true;
+            if(r.has_value()) {
+                result = *r;
+            }
+        };
+
+        auto driver = [&]() -> kota::task<> {
+            co_await md.gate(2).started.wait();
+            EXPECT_TRUE(graph->is_compiling(1));
+
+            flipped = true;
+            graph->update(1);
+
+            // The retry resolves the new dependency and never restarts 2.
+            co_await md.gate(3).started.wait();
+            EXPECT_EQ(md.gate(2).calls, 1);
+            EXPECT_EQ(md.gate(3).calls, 1);
+            co_return;
+        };
+
+        co_await kota::when_all(compiler(), driver());
+
+        EXPECT_TRUE(done);
+        EXPECT_TRUE(result == true);
+        EXPECT_FALSE(graph->is_dirty(1));
+        EXPECT_FALSE(graph->is_dirty(3));
+        // The orphaned dependency stays dirty and fully detached: updating
+        // it no longer cascades to 1.
+        EXPECT_TRUE(graph->is_dirty(2));
+        auto dirtied = graph->update(2);
+        EXPECT_EQ(dirtied.size(), 1u);
+        EXPECT_FALSE(graph->is_dirty(1));
     });
 }
 
