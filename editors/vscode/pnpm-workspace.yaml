@@ -1,0 +1,3 @@
+onlyBuiltDependencies:
+  - "@vscode/vsce-sign"
+  - keytar

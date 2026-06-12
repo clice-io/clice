@@ -4,7 +4,7 @@ import asyncio
 import shutil
 
 import pytest
-from tests.conftest import generate_cdb
+from tests.cdb import generate_cdb
 from lsprotocol.types import (
     DidOpenTextDocumentParams,
     HoverParams,

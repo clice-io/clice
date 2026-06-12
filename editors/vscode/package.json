@@ -148,7 +148,8 @@
     "vscode:prepublish": "webpack --mode production --devtool hidden-source-map",
     "package": "vsce package --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
     "publish": "vsce publish --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
-    "pretest": "pnpm run compile",
+    "compile-tests": "tsc -p . --outDir out",
+    "pretest": "pnpm run compile && pnpm run compile-tests",
     "test": "vscode-test",
     "release:patch": "pnpm version patch -m \"release: v%s\" && git push --follow-tags",
     "release:minor": "pnpm version minor -m \"release: v%s\" && git push --follow-tags"
@@ -172,11 +173,5 @@
   },
   "overrides": {
     "glob": "^11.1.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@vscode/vsce-sign",
-      "keytar"
-    ]
   }
 }

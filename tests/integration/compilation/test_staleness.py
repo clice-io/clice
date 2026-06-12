@@ -372,7 +372,7 @@ async def test_didsave_with_module_deps(client, test_data_dir, tmp_path):
         if f.is_file():
             shutil.copy2(f, tmp_path / f.name)
 
-    from tests.conftest import generate_cdb
+    from tests.cdb import generate_cdb
 
     generate_cdb(tmp_path)
     await client.initialize(tmp_path)

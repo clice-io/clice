@@ -9,7 +9,7 @@ interface Setting {
 
 export function getSetting(): Setting | undefined {
     const setting = vscode.workspace.getConfiguration("clice");
-    const executable = setting.get<string>("executable");
+    const executable = process.env.CLICE_EXECUTABLE || setting.get<string>("executable");
     const mode = process.env.CLICE_MODE || setting.get<string>("mode");
 
     if (mode !== "pipe" && mode !== "socket") {

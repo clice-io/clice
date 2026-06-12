@@ -25,6 +25,7 @@ cross-windows-arm64 = ["build", "package", "cross-windows-arm64"]
 node = ["node"]
 format = ["format"]
 test-run = ["test"]
+editor = ["editor", "node"]
 
 # ============================================================================== #
 #                                  DEPENDENCIES                                  #
@@ -186,6 +187,42 @@ depends-on = [
 ]
 
 # ============================================================================== #
+#                                EDITOR E2E TESTS                                #
+# ============================================================================== #
+# No win-64: the tasks below reference the binary as bin/clice (no .exe).
+[feature.editor]
+platforms = ["linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
+
+[feature.editor.dependencies]
+python = ">=3.13"
+
+# Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
+[feature.editor.tasks.editor-prepare]
+cmd = "python tests/prepare.py hello_world modules/hover_on_imported_symbol"
+
+# Requires nvim (stable) on PATH.
+[feature.editor.tasks.nvim-e2e]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cmd = """
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/hello_world && \
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/modules/hover_on_imported_symbol
+"""
+depends-on = ["editor-prepare"]
+
+[feature.editor.tasks.vscode-e2e]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cwd = "editors/vscode"
+cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice pnpm test"
+depends-on = ["install-vscode", "editor-prepare"]
+
+[feature.editor.tasks.editor-test]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+depends-on = [
+    { task = "nvim-e2e", args = ["{{ type }}"] },
+    { task = "vscode-e2e", args = ["{{ type }}"] },
+]
+
+# ============================================================================== #
 #                                  HELPER TASKS                                  #
 # ============================================================================== #
 [tasks.build-llvm]
@@ -214,7 +251,7 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 [feature.node.dependencies]
 nodejs = ">=20"
-pnpm = "*"
+pnpm = ">=10,<11"
 
 [feature.node.tasks]
 build-vscode = { cwd = "editors/vscode", cmd = "pnpm run package", depends-on = ["install-vscode"] }
@@ -244,7 +281,7 @@ clang-format = "==21.1.7"
 format-cpp = "fd -H -e cpp -e h -e cc -e hpp -e cppm -x clang-format -i"
 format-python = "ruff format ."
 format-lua = "stylua ."
-format-web = "fd -H -e js -e ts -e css -x prettier --write"
+format-web = "fd -H -e js -e mjs -e ts -e css -x prettier --write"
 format-markdown = "fd -H -e md -x prettier --write"
 format-json = "fd -H -e json -E package-lock.json -x prettier --write"
 format-toml = "fd -H -e toml -x tombi format"
