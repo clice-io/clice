@@ -56,14 +56,11 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
 
     kota::process::options opts;
     opts.file = self_path;
+    opts.args = {self_path, "worker"};
     if(stateful) {
-        opts.args = {self_path,
-                     "--mode",
-                     "stateful-worker",
-                     "--worker-memory-limit",
-                     std::to_string(memory_limit)};
-    } else {
-        opts.args = {self_path, "--mode", "stateless-worker"};
+        opts.args.push_back("--stateful");
+        opts.args.push_back("--memory-limit");
+        opts.args.push_back(std::to_string(memory_limit));
     }
 
     opts.args.push_back("--worker-name");
@@ -115,6 +112,9 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
 bool WorkerPool::start(const WorkerPoolOptions& options) {
     options_ = options;
     log_dir_ = options.log_dir;
+
+    stateless_workers.reserve(options.stateless_count);
+    stateful_workers.reserve(options.stateful_count);
 
     for(std::uint32_t i = 0; i < options.stateless_count; ++i) {
         if(!spawn_worker(options.self_path, false, 0)) {
@@ -229,10 +229,10 @@ void WorkerPool::clear_owner(std::size_t worker_index) {
 
 kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
-    auto& w = workers[index];
     auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
 
-    auto result = co_await w.proc.wait();
+    auto result = co_await workers[index].proc.wait();
+    auto& w = workers[index];
     w.alive = false;
 
     if(shutting_down_)
@@ -286,14 +286,11 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
 
     kota::process::options opts;
     opts.file = options_.self_path;
+    opts.args = {options_.self_path, "worker"};
     if(stateful) {
-        opts.args = {options_.self_path,
-                     "--mode",
-                     "stateful-worker",
-                     "--worker-memory-limit",
-                     std::to_string(options_.worker_memory_limit)};
-    } else {
-        opts.args = {options_.self_path, "--mode", "stateless-worker"};
+        opts.args.push_back("--stateful");
+        opts.args.push_back("--memory-limit");
+        opts.args.push_back(std::to_string(options_.worker_memory_limit));
     }
     opts.args.push_back("--worker-name");
     opts.args.push_back(worker_name);

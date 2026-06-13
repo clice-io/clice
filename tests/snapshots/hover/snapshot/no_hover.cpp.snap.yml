@@ -1,0 +1,30 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: no_hover.cpp
+---
+01_builtin_type: NO HOVER
+
+02_empty_braces: NO HOVER
+
+03_decltype_auto_inner: NO HOVER
+
+04_lambda_auto_param: NO HOVER
+
+05_static_assert: NO HOVER
+
+06_dependent_sizeof: NO HOVER
+
+07_bool_literal: NO HOVER
+
+08_compound_literal: NO HOVER
+
+09_float_literal: NO HOVER
+
+10_imaginary_literal: NO HOVER
+
+11_int_literal: NO HOVER
+
+12_nullptr_literal: NO HOVER
+
+

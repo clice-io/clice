@@ -1,0 +1,290 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: decltype.cpp
+---
+01_decltype_auto:
+  name: "decltype"
+  kind: Type
+  definition: "int"
+  symbol_range: "[240, 248)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+02_const_decltype_auto:
+  name: "decltype"
+  kind: Type
+  definition: "const int"
+  symbol_range: "[376, 384)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    const int
+    ```
+
+03_const_ref_decltype_auto:
+  name: "decltype"
+  kind: Type
+  definition: "const int &"
+  symbol_range: "[531, 539)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    const int &
+    ```
+
+04_ref_decltype_auto:
+  name: "decltype"
+  kind: Type
+  definition: "int &"
+  symbol_range: "[669, 677)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    int &
+    ```
+
+05_decltype_auto_fn_return:
+  name: "decltype"
+  kind: Type
+  documentation: "decltype(auto) in function return"
+  definition: "Bar"
+  symbol_range: "[770, 778)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    decltype(auto) in function return  
+
+    ---
+    ```cpp
+    Bar
+    ```
+
+06_decltype_auto_ref_return:
+  name: "decltype"
+  kind: Type
+  definition: "int &"
+  symbol_range: "[889, 897)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    int &
+    ```
+
+07_decltype_lvalue:
+  name: "decltype"
+  kind: Type
+  definition: "int"
+  symbol_range: "[1021, 1029)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+08_decltype_lvalue_ref:
+  name: "decltype"
+  kind: Type
+  definition: "int &"
+  symbol_range: "[1146, 1154)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    int &
+    ```
+
+09_decltype_paren_lvalue:
+  name: "decltype"
+  kind: Type
+  definition: "int &"
+  symbol_range: "[1263, 1271)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    int &
+    ```
+
+10_decltype_rvalue_ref:
+  name: "decltype"
+  kind: Type
+  definition: "int &&"
+  symbol_range: "[1376, 1384)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    int &&
+    ```
+
+11_decltype_rvalue_call:
+  name: "decltype"
+  kind: Type
+  definition: "int &&"
+  symbol_range: "[1556, 1564)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    int &&
+    ```
+
+12_decltype_trailing_return:
+  name: "decltype"
+  kind: Type
+  documentation: "decltype of function with trailing return type."
+  definition: "Bar"
+  symbol_range: "[1754, 1762)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    decltype of function with trailing return type.  
+
+    ---
+    ```cpp
+    Bar
+    ```
+
+13_decltype_of_decltype:
+  name: "decltype"
+  kind: Type
+  definition: "int"
+  symbol_range: "[1899, 1907)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+14_decltype_dependent:
+  name: "decltype"
+  kind: Type
+  definition: "<dependent type>"
+  symbol_range: "[2024, 2032)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    <dependent type>
+    ```
+
+15_undeduced_decltype_auto:
+  name: "decltype"
+  kind: Type
+  definition: "/* not deduced */"
+  symbol_range: "[2137, 2145)"
+  markdown: |
+    ### type `decltype`  
+
+    ---
+    ```cpp
+    /* not deduced */
+    ```
+
+16_var_decltype_type:
+  name: "b"
+  kind: Variable
+  namespace_scope: "var_with_decltype::"
+  definition: "decltype(a) b = a"
+  type: "int"
+  symbol_range: "[2277, 2278)"
+  markdown: |
+    ### variable `b`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In namespace var_with_decltype
+    decltype(a) b = a
+    ```
+
+17_var_decltype_chain:
+  name: "b"
+  kind: Variable
+  namespace_scope: "var_with_decltype_chain::"
+  definition: "decltype(c) b = a"
+  type: "int"
+  symbol_range: "[2405, 2406)"
+  markdown: |
+    ### variable `b`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In namespace var_with_decltype_chain
+    decltype(c) b = a
+    ```
+
+18_var_const_decltype:
+  name: "b"
+  kind: Variable
+  namespace_scope: "var_with_const_decltype::"
+  definition: "const decltype(a) b = a"
+  type: "int"
+  symbol_range: "[2514, 2515)"
+  markdown: |
+    ### variable `b`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In namespace var_with_const_decltype
+    const decltype(a) b = a
+    ```
+
+19_fn_decltype_signature:
+  name: "foo"
+  kind: Function
+  namespace_scope: "fn_with_decltype::"
+  definition: "auto foo(decltype(a) x) -> decltype(a)"
+  type: "auto (decltype(a)) -> decltype(a) (aka auto (int) -> int)"
+  return_type: "int"
+  parameters:
+    - "int x"
+  symbol_range: "[2609, 2612)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `int`  
+    Parameters:  
+    - `int x`
+
+    ---
+    ```cpp
+    // In namespace fn_with_decltype
+    auto foo(decltype(a) x) -> decltype(a)
+    ```
+
+

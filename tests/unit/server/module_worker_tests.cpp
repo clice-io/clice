@@ -30,7 +30,7 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
     auto consumer = tmp.path("consumer.cpp");
 
     WorkerHandle sl;
-    ASSERT_TRUE(sl.spawn("stateless-worker"));
+    ASSERT_TRUE(sl.spawn());
 
     std::string pcm_path;
     bool phase1_done = false;
@@ -63,7 +63,7 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
     ASSERT_FALSE(pcm_path.empty());
 
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn("stateful-worker"));
+    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool phase2_done = false;
 
@@ -114,7 +114,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
     auto consumer = tmp.path("chain_consumer.cpp");
 
     WorkerHandle sl;
-    ASSERT_TRUE(sl.spawn("stateless-worker"));
+    ASSERT_TRUE(sl.spawn());
 
     std::string pcm_a, pcm_b;
     bool pcm_done = false;
@@ -171,7 +171,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
 
     // Compile consumer with BOTH PCMs via stateful worker.
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn("stateful-worker"));
+    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool compile_done = false;
 
@@ -218,7 +218,7 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
 
     // Build PCM for interface.
     WorkerHandle sl;
-    ASSERT_TRUE(sl.spawn("stateless-worker"));
+    ASSERT_TRUE(sl.spawn());
 
     std::string pcm_path;
     bool pcm_done = false;
@@ -249,7 +249,7 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
 
     // Compile implementation unit with the PCM via stateful worker.
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn("stateful-worker"));
+    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool compile_done = false;
 

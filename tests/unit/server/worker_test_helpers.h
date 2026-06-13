@@ -65,20 +65,21 @@ struct WorkerHandle {
     std::unique_ptr<kota::ipc::BincodePeer> peer;
     int stderr_fd = -1;
 
-    bool spawn(const std::string& mode, std::uint64_t memory_limit = 0) {
+    bool spawn(std::uint64_t memory_limit = 0) {
         auto binary = clice_binary();
+        auto label = memory_limit > 0 ? "stateful" : "stateless";
 
 #ifndef _WIN32
-        // Redirect worker stderr to a temp file for debugging.
-        std::string stderr_path = "/tmp/clice_worker_stderr_" + mode + ".log";
+        std::string stderr_path = std::string("/tmp/clice_worker_stderr_") + label + ".log";
         stderr_fd = ::open(stderr_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
 #endif
 
         kota::process::options opts;
         opts.file = binary;
-        opts.args = {binary, "--mode", mode};
+        opts.args = {binary, "worker"};
         if(memory_limit > 0) {
-            opts.args.push_back("--worker-memory-limit");
+            opts.args.push_back("--stateful");
+            opts.args.push_back("--memory-limit");
             opts.args.push_back(std::to_string(memory_limit));
         }
         opts.streams = {

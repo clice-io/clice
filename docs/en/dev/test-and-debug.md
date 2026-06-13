@@ -23,7 +23,7 @@ $ pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clic
 If you want to attach a debugger to clice for debugging, it is recommended to first start clice in socket mode independently, and then connect the client to it.
 
 ```shell
-$ ./build/bin/clice --mode=socket --port=50051
+$ ./build/bin/clice server --mode socket --port 50051
 ```
 
 After the server starts, you can connect a client to the server in the following two ways:

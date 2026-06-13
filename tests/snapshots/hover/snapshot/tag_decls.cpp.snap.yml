@@ -1,0 +1,338 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: tag_decls.cpp
+---
+01_struct:
+  name: "MyClass"
+  kind: Struct
+  namespace_scope: "struct_decl::ns1::"
+  definition: "struct MyClass {}"
+  symbol_range: "[266, 273)"
+  markdown: |
+    ### struct `MyClass`  
+
+    ---
+    ```cpp
+    // In namespace struct_decl::ns1
+    struct MyClass {}
+    ```
+
+02_class:
+  name: "MyClass"
+  kind: Class
+  namespace_scope: "class_decl::ns1::"
+  definition: "class MyClass {}"
+  symbol_range: "[396, 403)"
+  markdown: |
+    ### class `MyClass`  
+
+    ---
+    ```cpp
+    // In namespace class_decl::ns1
+    class MyClass {}
+    ```
+
+03_union:
+  name: "MyUnion"
+  kind: Union
+  namespace_scope: "union_decl::ns1::"
+  definition: "union MyUnion {}"
+  symbol_range: "[541, 548)"
+  markdown: |
+    ### union `MyUnion`  
+
+    ---
+    ```cpp
+    // In namespace union_decl::ns1
+    union MyUnion {}
+    ```
+
+04_forward_class:
+  name: "Foo"
+  kind: Class
+  namespace_scope: "forward_decl::"
+  documentation: "Forward class declaration"
+  definition: "class Foo {}"
+  symbol_range: "[641, 644)"
+  markdown: |
+    ### class `Foo`  
+
+    ---
+    Forward class declaration  
+
+    ---
+    ```cpp
+    // In namespace forward_decl
+    class Foo {}
+    ```
+
+05_enum:
+  name: "Hello"
+  kind: Enum
+  namespace_scope: "enum_def::"
+  documentation: "Enum declaration"
+  definition: "enum Hello {}"
+  symbol_range: "[747, 752)"
+  markdown: |
+    ### enum `Hello`  
+
+    ---
+    Enum declaration  
+
+    ---
+    ```cpp
+    // In namespace enum_def
+    enum Hello {}
+    ```
+
+06_enumerator:
+  name: "ONE"
+  kind: EnumMember
+  namespace_scope: "enumerator::"
+  local_scope: "Hello::"
+  definition: "ONE"
+  type: "enum enumerator::Hello"
+  value: "0"
+  symbol_range: "[873, 876)"
+  markdown: |
+    ### enumerator `ONE`  
+
+    ---
+    Type: `enum enumerator::Hello`  
+    Value = `0`  
+
+    ---
+    ```cpp
+    // In Hello
+    ONE
+    ```
+
+07_using_enum:
+  name: "ONE"
+  kind: EnumMember
+  namespace_scope: "using_enum::"
+  local_scope: "Hello::"
+  definition: "ONE"
+  type: "enum using_enum::Hello"
+  value: "0"
+  symbol_range: "[1019, 1022)"
+  markdown: |
+    ### enumerator `ONE`  
+
+    ---
+    Type: `enum using_enum::Hello`  
+    Value = `0`  
+
+    ---
+    ```cpp
+    // In Hello
+    ONE
+    ```
+
+08_anon_enumerator:
+  name: "ONE"
+  kind: EnumMember
+  namespace_scope: "anon_enum::"
+  definition: "ONE"
+  type: "enum anon_enum::(unnamed)"
+  value: "0"
+  symbol_range: "[1140, 1143)"
+  markdown: |
+    ### enumerator `ONE`  
+
+    ---
+    Type: `enum anon_enum::(unnamed)`  
+    Value = `0`  
+
+    ---
+    ```cpp
+    // In namespace anon_enum
+    ONE
+    ```
+
+09_typedef:
+  name: "Foo"
+  kind: Type
+  namespace_scope: "typedef_decl::"
+  documentation: "Typedef"
+  definition: "typedef int Foo"
+  type: "int"
+  symbol_range: "[1218, 1221)"
+  markdown: |
+    ### type `Foo`  
+
+    ---
+    Type: `int`  
+    Typedef  
+
+    ---
+    ```cpp
+    // In namespace typedef_decl
+    typedef int Foo
+    ```
+
+10_typedef_embedded:
+  name: "Foo"
+  kind: Type
+  namespace_scope: "typedef_embedded::"
+  documentation: "Typedef with embedded definition"
+  definition: "typedef struct Bar Foo"
+  type: "struct typedef_embedded::Bar"
+  symbol_range: "[1339, 1342)"
+  markdown: |
+    ### type `Foo`  
+
+    ---
+    Type: `struct typedef_embedded::Bar`  
+    Typedef with embedded definition  
+
+    ---
+    ```cpp
+    // In namespace typedef_embedded
+    typedef struct Bar Foo
+    ```
+
+11_namespace:
+  name: "ns"
+  kind: Namespace
+  namespace_scope: "ns_decl::"
+  definition: "namespace ns {}"
+  symbol_range: "[1468, 1470)"
+  markdown: |
+    ### namespace `ns`  
+
+    ---
+    ```cpp
+    // In namespace ns_decl
+    namespace ns {}
+    ```
+
+12_anon_struct_field:
+  name: "hello"
+  kind: Field
+  namespace_scope: "anon_struct::"
+  local_scope: "(anonymous struct)::"
+  definition: "int hello"
+  access_specifier: "public"
+  type: "int"
+  symbol_range: "[1594, 1599)"
+  markdown: |
+    ### field `hello`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In (anonymous struct)
+    public: int hello
+    ```
+
+13_anon_union_field:
+  name: "def"
+  kind: Field
+  namespace_scope: "anon_union::"
+  local_scope: "outer::(anonymous union)::"
+  definition: "int def"
+  access_specifier: "public"
+  type: "int"
+  symbol_range: "[1735, 1738)"
+  markdown: |
+    ### field `def`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In outer::(anonymous union)
+    public: int def
+    ```
+
+14_templated_function:
+  name: "foo"
+  kind: Function
+  namespace_scope: "templated_fn::"
+  documentation: "Templated function"
+  definition: "template <> int foo<int>()"
+  type: "int ()"
+  return_type: "int"
+  parameters: []
+  symbol_range: "[1861, 1864)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `int`  
+    Templated function  
+
+    ---
+    ```cpp
+    // In namespace templated_fn
+    template <> int foo<int>()
+    ```
+
+15_template_method:
+  name: "method"
+  kind: Method
+  namespace_scope: "method_no_crash::"
+  local_scope: "cls<int>::"
+  definition: "int method()"
+  access_specifier: "public"
+  type: "int ()"
+  return_type: "int"
+  parameters: []
+  symbol_range: "[2027, 2033)"
+  markdown: |
+    ### method `method`  
+
+    ---
+    → `int`  
+
+    ---
+    ```cpp
+    // In cls<int>
+    public: int method()
+    ```
+
+16_nested_template_var:
+  name: "foo"
+  kind: Variable
+  namespace_scope: "nested_templates_var::"
+  definition: "cls<cls<cls<int>>> foo"
+  type: "cls<cls<cls<int>>>"
+  symbol_range: "[2169, 2172)"
+  markdown: |
+    ### variable `foo`  
+
+    ---
+    Type: `cls<cls<cls<int>>>`  
+
+    ---
+    ```cpp
+    // In namespace nested_templates_var
+    cls<cls<cls<int>>> foo
+    ```
+
+17_nested_template_class:
+  name: "cls<nested_templates_class::cls<nested_templates_class::cls<int>>>"
+  kind: Struct
+  namespace_scope: "nested_templates_class::"
+  documentation: "type of nested templates."
+  definition: "template <>\nstruct cls<nested_templates_class::cls<nested_templates_class::cls<int>>> {}"
+  symbol_range: "[2275, 2278)"
+  markdown: |
+    ### struct `cls<nested_templates_class::cls<nested_templates_class::cls<int>>>`  
+
+    ---
+    type of nested templates.  
+
+    ---
+    ```cpp
+    // In namespace nested_templates_class
+    template <>
+    struct cls<nested_templates_class::cls<nested_templates_class::cls<int>>> {}
+    ```
+
+

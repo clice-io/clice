@@ -1,0 +1,95 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: concepts.cpp
+---
+01_concept_on_var:
+  name: "F"
+  kind: Concept
+  namespace_scope: "constrained_var::"
+  definition: "template <class T>\nconcept F = true"
+  symbol_range: "[261, 262)"
+  markdown: |
+    ### concept `F`  
+
+    ---
+    ```cpp
+    // In namespace constrained_var
+    template <class T>
+    concept F = true
+    ```
+
+02_concept_on_tparam:
+  name: "Fooable"
+  kind: Concept
+  namespace_scope: "constrained_tparam::"
+  definition: "template <class T>\nconcept Fooable = true"
+  symbol_range: "[395, 402)"
+  markdown: |
+    ### concept `Fooable`  
+
+    ---
+    ```cpp
+    // In namespace constrained_tparam
+    template <class T>
+    concept Fooable = true
+    ```
+
+03_constrained_tparam:
+  name: "TT"
+  kind: Type
+  namespace_scope: "constrained_tparam_decl::"
+  local_scope: "bar::"
+  definition: "Fooable TT"
+  access_specifier: "public"
+  type: "class"
+  symbol_range: "[567, 569)"
+  markdown: |
+    ### type `TT`  
+
+    ---
+    Type: `class`  
+
+    ---
+    ```cpp
+    // In bar
+    public: Fooable TT
+    ```
+
+04_concept_on_auto_param:
+  name: "Fooable"
+  kind: Concept
+  namespace_scope: "constrained_auto_param::"
+  definition: "template <class T>\nconcept Fooable = true"
+  symbol_range: "[709, 716)"
+  markdown: |
+    ### concept `Fooable`  
+
+    ---
+    ```cpp
+    // In namespace constrained_auto_param
+    template <class T>
+    concept Fooable = true
+    ```
+
+05_concept_reference:
+  name: "Fooable"
+  kind: Concept
+  namespace_scope: "concept_reference::"
+  definition: "template <class T>\nconcept Fooable = true"
+  value: "true"
+  symbol_range: "[834, 841)"
+  markdown: |
+    ### concept `Fooable`  
+
+    ---
+    Value = `true`  
+
+    ---
+    ```cpp
+    // In namespace concept_reference
+    template <class T>
+    concept Fooable = true
+    ```
+
+

@@ -1,94 +1,165 @@
 #include "command/argument_parser.h"
 
-#include <array>
+#include <span>
+#include <string_view>
+#include <utility>
 
-#include "llvm/ADT/SmallString.h"
+#include <kota/deco/option.h>
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringTable.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include "clang/Driver/Driver.h"
-#include "clang/Driver/Options.h"
 #include "clang/Driver/Types.h"
 
 namespace clice {
 
-namespace {
+namespace option {
 
-namespace opt = llvm::opt;
-namespace driver = clang::driver;
+namespace eo = kota::option;
 
-/// Access private members of OptTable via the Thief pattern.
-bool enable_dash_dash_parsing(const opt::OptTable& table);
-bool enable_grouped_short_options(const opt::OptTable& table);
+namespace detail {
 
-template <auto MP1, auto MP2>
-struct Thief {
-    friend bool enable_dash_dash_parsing(const opt::OptTable& table) {
-        return table.*MP1;
+#define OPTTABLE_STR_TABLE_CODE
+#include "clang/Driver/Options.inc"
+#undef OPTTABLE_STR_TABLE_CODE
+
+#define OPTTABLE_PREFIXES_TABLE_CODE
+#include "clang/Driver/Options.inc"
+#undef OPTTABLE_PREFIXES_TABLE_CODE
+
+static_assert(OptionPrefixesTable[0].value() == 0, "pfx_none: 0 prefixes");
+static_assert(OptionPrefixesTable[1].value() == 1, "pfx_dash: 1 prefix");
+static_assert(OptionPrefixesTable[3].value() == 2, "pfx_dash_double: 2 prefixes");
+static_assert(OptionPrefixesTable[6].value() == 1, "pfx_double: 1 prefix");
+static_assert(OptionPrefixesTable[8].value() == 3, "pfx_all: 3 prefixes");
+static_assert(OptionPrefixesTable[12].value() == 2, "pfx_slash_dash: 2 prefixes");
+
+constexpr std::span<const std::string_view> prefixes(unsigned offset) {
+    switch(offset) {
+        case 0: return eo::pfx_none;
+        case 1: return eo::pfx_dash;
+        case 3: return eo::pfx_dash_double;
+        case 6: return eo::pfx_double;
+        case 8: return eo::pfx_all;
+        case 12: return eo::pfx_slash_dash;
+        default: std::unreachable();
     }
-
-    friend bool enable_grouped_short_options(const opt::OptTable& table) {
-        return table.*MP2;
-    }
-};
-
-template struct Thief<&opt::OptTable::DashDashParsing, &opt::OptTable::GroupedShortOptions>;
-
-auto& option_table = driver::getDriverOptTable();
-
-}  // namespace
-
-std::unique_ptr<llvm::opt::Arg> ArgumentParser::parse_one(unsigned& index) {
-    assert(!enable_dash_dash_parsing(option_table));
-    assert(!enable_grouped_short_options(option_table));
-    return option_table.ParseOneArg(*this, index, opt::Visibility(visibility_mask));
 }
 
-using ID = clang::driver::options::ID;
+constexpr std::string_view str_at(unsigned offset) {
+    auto ref = OptionStrTable[llvm::StringTable::Offset(offset)];
+    return {ref.data(), ref.size()};
+}
+
+}  // namespace detail
+
+const eo::OptTable& table() {
+    using enum eo::Kind;
+    using detail::prefixes;
+    using detail::str_at;
+
+    enum ClangDriverFlag : unsigned {
+        HelpHidden = eo::HelpHidden,
+        RenderAsInput = eo::RenderAsInput,
+        RenderJoined = eo::RenderJoined,
+        Ignored = 1u << 4,
+        LinkOption = 1u << 5,
+        LinkerInput = 1u << 6,
+        NoArgumentUnused = 1u << 7,
+        NoXarchOption = 1u << 8,
+        TargetSpecific = 1u << 9,
+        Unsupported = 1u << 10,
+    };
+
+    constexpr static eo::Option option_infos[] = {
+#define OPTION(PREFIXES_OFFSET,                                                                    \
+               NAME_OFFSET,                                                                        \
+               ID,                                                                                 \
+               KIND,                                                                               \
+               GROUP,                                                                              \
+               ALIAS,                                                                              \
+               ALIAS_ARGS,                                                                         \
+               FLAGS,                                                                              \
+               VISIBILITY,                                                                         \
+               PARAM,                                                                              \
+               HELP,                                                                               \
+               HELP_TEXTS,                                                                         \
+               META_VAR,                                                                           \
+               VALUES)                                                                             \
+    eo::Option{                                                                                    \
+        .prefixes = prefixes(PREFIXES_OFFSET),                                                     \
+        .prefixed_name = str_at(NAME_OFFSET),                                                      \
+        .id = OPT_##ID,                                                                            \
+        .kind = KIND,                                                                              \
+        .group_id = OPT_##GROUP,                                                                   \
+        .alias_id = OPT_##ALIAS,                                                                   \
+        .alias_args = ALIAS_ARGS,                                                                  \
+        .flags = FLAGS,                                                                            \
+        .visibility = VISIBILITY,                                                                  \
+        .num_args = PARAM,                                                                         \
+        .help_text = HELP,                                                                         \
+        .meta_var = META_VAR,                                                                      \
+    },
+#include "clang/Driver/Options.inc"
+#undef OPTION
+    };
+
+    const static auto opt_table = [] {
+        auto t = eo::OptTable(std::span(option_infos));
+        t.tablegen_mode = true;
+        return t;
+    }();
+    return opt_table;
+}
+
+}  // namespace option
+
+using namespace option;
 
 bool is_discarded_option(unsigned id) {
     switch(id) {
         /// Input file, unknown args, and output — we manage these ourselves.
-        case ID::OPT_INPUT:
-        case ID::OPT_UNKNOWN:
-        case ID::OPT__DASH_DASH:
-        case ID::OPT_c:
-        case ID::OPT_o:
-        case ID::OPT_dxc_Fc:
-        case ID::OPT_dxc_Fo:
-        case ID::OPT__SLASH_Fo:
-        case ID::OPT__SLASH_Fd:
+        case OPT_INPUT:
+        case OPT_UNKNOWN:
+        case OPT__DASH_DASH:
+        case OPT_c:
+        case OPT_o:
+        case OPT_dxc_Fc:
+        case OPT_dxc_Fo:
+        case OPT__SLASH_Fo:
+        case OPT__SLASH_Fd:
 
         /// PCH building.
-        case ID::OPT_emit_pch:
-        case ID::OPT_include_pch:
-        case ID::OPT__SLASH_Yu:
-        case ID::OPT__SLASH_Fp:
+        case OPT_emit_pch:
+        case OPT_include_pch:
+        case OPT__SLASH_Yu:
+        case OPT__SLASH_Fp:
 
         /// Dependency scan.
-        case ID::OPT_E:
-        case ID::OPT_M:
-        case ID::OPT_MM:
-        case ID::OPT_MD:
-        case ID::OPT_MMD:
-        case ID::OPT_MF:
-        case ID::OPT_MT:
-        case ID::OPT_MQ:
-        case ID::OPT_MG:
-        case ID::OPT_MP:
-        case ID::OPT_show_inst:
-        case ID::OPT_show_encoding:
-        case ID::OPT_show_includes:
-        case ID::OPT__SLASH_showFilenames:
-        case ID::OPT__SLASH_showFilenames_:
-        case ID::OPT__SLASH_showIncludes:
-        case ID::OPT__SLASH_showIncludes_user:
+        case OPT_E:
+        case OPT_M:
+        case OPT_MM:
+        case OPT_MD:
+        case OPT_MMD:
+        case OPT_MF:
+        case OPT_MT:
+        case OPT_MQ:
+        case OPT_MG:
+        case OPT_MP:
+        case OPT_show_inst:
+        case OPT_show_encoding:
+        case OPT_show_includes:
+        case OPT__SLASH_showFilenames:
+        case OPT__SLASH_showFilenames_:
+        case OPT__SLASH_showIncludes:
+        case OPT__SLASH_showIncludes_user:
 
         /// C++ modules — we handle these ourselves.
-        case ID::OPT_fmodule_file:
-        case ID::OPT_fmodule_output:
-        case ID::OPT_fprebuilt_module_path: return true;
+        case OPT_fmodule_file:
+        case OPT_fmodule_output:
+        case OPT_fprebuilt_module_path: return true;
 
         default: return false;
     }
@@ -96,70 +167,33 @@ bool is_discarded_option(unsigned id) {
 
 bool is_user_content_option(unsigned id) {
     switch(id) {
-        case ID::OPT_I:
-        case ID::OPT_isystem:
-        case ID::OPT_iquote:
-        case ID::OPT_idirafter:
-        case ID::OPT_D:
-        case ID::OPT_U:
-        case ID::OPT_include: return true;
+        case OPT_I:
+        case OPT_isystem:
+        case OPT_iquote:
+        case OPT_idirafter:
+        case OPT_D:
+        case OPT_U:
+        case OPT_include: return true;
         default: return false;
     }
 }
 
 bool is_include_path_option(unsigned id) {
     switch(id) {
-        case ID::OPT_I:
-        case ID::OPT_isystem:
-        case ID::OPT_iquote:
-        case ID::OPT_idirafter: return true;
+        case OPT_I:
+        case OPT_isystem:
+        case OPT_iquote:
+        case OPT_idirafter: return true;
         default: return false;
     }
 }
 
 bool is_xclang_option(unsigned id) {
-    return id == ID::OPT_Xclang;
-}
-
-bool is_toolchain_option(unsigned id) {
-    switch(id) {
-        case ID::OPT_target:
-        case ID::OPT_target_legacy_spelling:
-        case ID::OPT_isysroot:
-        case ID::OPT__sysroot_EQ:
-        case ID::OPT__sysroot:
-        case ID::OPT_stdlib_EQ:
-        case ID::OPT_gcc_toolchain:
-        case ID::OPT_gcc_install_dir_EQ:
-        case ID::OPT_nostdinc:
-        case ID::OPT_nostdincxx:
-        case ID::OPT_std_EQ:
-        case ID::OPT_x: return true;
-        default: return false;
-    }
-}
-
-std::optional<std::uint32_t> get_option_id(llvm::StringRef argument) {
-    llvm::SmallString<64> buffer = argument;
-
-    if(argument.ends_with("=")) {
-        buffer += "placeholder";
-    }
-
-    unsigned index = 1;
-    std::array arguments = {"clang++", buffer.c_str(), "placeholder"};
-    llvm::opt::InputArgList arg_list(arguments.data(), arguments.data() + arguments.size());
-
-    if(auto arg = option_table.ParseOneArg(arg_list, index)) {
-        return arg->getOption().getID();
-    } else {
-        return {};
-    }
+    return id == OPT_Xclang;
 }
 
 llvm::StringRef resource_dir() {
     static std::string dir = [] {
-        // Use address of this lambda to locate our binary via dladdr/proc.
         static int anchor;
         auto exe = llvm::sys::fs::getMainExecutable("", &anchor);
         if(exe.empty()) {
@@ -170,56 +204,56 @@ llvm::StringRef resource_dir() {
     return dir;
 }
 
-bool is_codegen_option(unsigned id, const llvm::opt::Option& opt) {
+bool is_codegen_option(unsigned id) {
     /// Debug info options form a group (-g, -gdwarf-*, -gsplit-dwarf, etc.).
-    if(opt.matches(ID::OPT_DebugInfo_Group)) {
+    if(auto opt = option::table().option(id); opt && opt->matches(OPT_DebugInfo_Group)) {
         return true;
     }
 
     switch(id) {
         /// Position-independent code — pure codegen, no macro or semantic effect.
-        case ID::OPT_fPIC:
-        case ID::OPT_fno_PIC:
-        case ID::OPT_fpic:
-        case ID::OPT_fno_pic:
-        case ID::OPT_fPIE:
-        case ID::OPT_fno_PIE:
-        case ID::OPT_fpie:
-        case ID::OPT_fno_pie:
+        case OPT_fPIC:
+        case OPT_fno_PIC:
+        case OPT_fpic:
+        case OPT_fno_pic:
+        case OPT_fPIE:
+        case OPT_fno_PIE:
+        case OPT_fpie:
+        case OPT_fno_pie:
 
         /// Frame pointer and unwind tables — pure codegen.
-        case ID::OPT_fomit_frame_pointer:
-        case ID::OPT_fno_omit_frame_pointer:
-        case ID::OPT_funwind_tables:
-        case ID::OPT_fno_unwind_tables:
-        case ID::OPT_fasynchronous_unwind_tables:
-        case ID::OPT_fno_asynchronous_unwind_tables:
+        case OPT_fomit_frame_pointer:
+        case OPT_fno_omit_frame_pointer:
+        case OPT_funwind_tables:
+        case OPT_fno_unwind_tables:
+        case OPT_fasynchronous_unwind_tables:
+        case OPT_fno_asynchronous_unwind_tables:
 
         /// Stack protection — pure codegen.
-        case ID::OPT_fstack_protector:
-        case ID::OPT_fstack_protector_strong:
-        case ID::OPT_fstack_protector_all:
-        case ID::OPT_fno_stack_protector:
+        case OPT_fstack_protector:
+        case OPT_fstack_protector_strong:
+        case OPT_fstack_protector_all:
+        case OPT_fno_stack_protector:
 
         /// Section splitting, LTO, semantic interposition — pure codegen/linker.
-        case ID::OPT_fdata_sections:
-        case ID::OPT_fno_data_sections:
-        case ID::OPT_ffunction_sections:
-        case ID::OPT_fno_function_sections:
-        case ID::OPT_flto:
-        case ID::OPT_flto_EQ:
-        case ID::OPT_fno_lto:
-        case ID::OPT_fsemantic_interposition:
-        case ID::OPT_fno_semantic_interposition:
-        case ID::OPT_fvisibility_inlines_hidden:
+        case OPT_fdata_sections:
+        case OPT_fno_data_sections:
+        case OPT_ffunction_sections:
+        case OPT_fno_function_sections:
+        case OPT_flto:
+        case OPT_flto_EQ:
+        case OPT_fno_lto:
+        case OPT_fsemantic_interposition:
+        case OPT_fno_semantic_interposition:
+        case OPT_fvisibility_inlines_hidden:
 
         /// Diagnostics output formatting — doesn't affect analysis.
-        case ID::OPT_fcolor_diagnostics:
-        case ID::OPT_fno_color_diagnostics:
+        case OPT_fcolor_diagnostics:
+        case OPT_fno_color_diagnostics:
 
         /// Floating-point codegen — doesn't define macros (unlike -ffast-math).
-        case ID::OPT_ftrapping_math:
-        case ID::OPT_fno_trapping_math: return true;
+        case OPT_ftrapping_math:
+        case OPT_fno_trapping_math: return true;
 
         default: return false;
     }
@@ -246,7 +280,6 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
 }
 
 unsigned default_visibility(llvm::StringRef driver) {
-    namespace options = clang::driver::options;
     auto name = llvm::sys::path::filename(driver);
     name.consume_back(".exe");
 
@@ -260,7 +293,7 @@ unsigned default_visibility(llvm::StringRef driver) {
         return ~0u;
     }
     /// Exclude CLOption to prevent /U, /D, /I from matching Unix paths.
-    return ~static_cast<unsigned>(options::CLOption);
+    return ~static_cast<unsigned>(CLOption);
 }
 
 bool is_c_family_file(llvm::StringRef filename) {
@@ -269,7 +302,7 @@ bool is_c_family_file(llvm::StringRef filename) {
     if(ext.empty()) {
         return false;
     }
-    /// Drop the leading dot: ".cpp" → "cpp".
+    /// Drop the leading dot: ".cpp" -> "cpp".
     auto type = types::lookupTypeForExtension(ext.drop_front());
     return type != types::TY_INVALID && types::isAcceptedByClang(type);
 }

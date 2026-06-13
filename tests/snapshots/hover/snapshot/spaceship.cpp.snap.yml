@@ -1,0 +1,35 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: spaceship.cpp
+---
+01_spaceship_neq:
+  name: "operator=="
+  kind: Operator
+  namespace_scope: ""
+  local_scope: "Foo::"
+  definition: "bool operator==(const Foo &) const noexcept = default"
+  access_specifier: "public"
+  type: "bool (const Foo &) const noexcept"
+  return_type: "bool"
+  parameters:
+    - "const Foo &"
+  value: "true"
+  symbol_range: "[590, 592)"
+  markdown: |
+    ### `operator==`  
+
+    ---
+    → `bool`  
+    Parameters:  
+    - `const Foo &`
+
+    Value = `true`  
+
+    ---
+    ```cpp
+    // In Foo
+    public: bool operator==(const Foo &) const noexcept = default
+    ```
+
+

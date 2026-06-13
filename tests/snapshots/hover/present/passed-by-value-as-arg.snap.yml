@@ -1,0 +1,14 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+---
+plaintext: |
+  variable foo
+
+  Type: int
+  Value = 3
+  Passed as arg_a
+
+  // In test::Bar
+  int foo = 3
+

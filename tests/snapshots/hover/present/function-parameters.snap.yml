@@ -1,0 +1,17 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+---
+plaintext: |
+  function foo
+
+  → ret_type (aka can_ret_type)
+  Parameters:
+  - 
+  - type (aka can_type)
+  - type foo (aka can_type)
+  - type foo = default (aka can_type)
+
+  // In namespace ns
+  ret_type foo(params) {}
+

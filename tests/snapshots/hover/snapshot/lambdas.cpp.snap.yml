@@ -1,0 +1,137 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: lambdas.cpp
+---
+01_lambda_ptr_ptr:
+  name: "c"
+  kind: Variable
+  namespace_scope: "ptr_to_lambda::"
+  local_scope: "foo::"
+  definition: "auto *c = &b"
+  type: "(lambda) **"
+  return_type: "bool"
+  parameters:
+    - "int T"
+    - "bool B"
+  symbol_range: "[305, 306)"
+  markdown: |
+    ### variable `c`  
+
+    ---
+    → `bool`  
+    Parameters:  
+    - `int T`
+    - `bool B`
+
+    ---
+    ```cpp
+    // In foo
+    auto *c = &b
+    ```
+
+02_lambda_decltype_ref_param:
+  name: "bar"
+  kind: Parameter
+  namespace_scope: "decltype_ref_param::"
+  local_scope: "foo::"
+  definition: "decltype(lamb) &bar"
+  type: "decltype(lamb) & (aka decltype_ref_param::(lambda) &)"
+  return_type: "bool"
+  parameters:
+    - "int T"
+    - "bool B"
+  symbol_range: "[486, 489)"
+  markdown: |
+    ### parameter `bar`  
+
+    ---
+    → `bool`  
+    Parameters:  
+    - `int T`
+    - `bool B`
+
+    ---
+    ```cpp
+    // In foo
+    decltype(lamb) &bar
+    ```
+
+03_lambda_decltype_param:
+  name: "bar"
+  kind: Parameter
+  namespace_scope: "decltype_param::"
+  local_scope: "foo::"
+  definition: "decltype(lamb) bar"
+  type: "class decltype_param::(lambda)"
+  return_type: "bool"
+  parameters:
+    - "int T"
+    - "bool B"
+  value: "false"
+  symbol_range: "[659, 662)"
+  markdown: |
+    ### parameter `bar`  
+
+    ---
+    → `bool`  
+    Parameters:  
+    - `int T`
+    - `bool B`
+
+    Value = `false`  
+
+    ---
+    ```cpp
+    // In foo
+    decltype(lamb) bar
+    ```
+
+04_lambda_variable:
+  name: "lamb"
+  kind: Variable
+  namespace_scope: "lambda_variable::"
+  local_scope: "foo::"
+  definition: "auto lamb = [&bar](int T, bool B) -> bool {}"
+  type: "class (lambda)"
+  return_type: "bool"
+  parameters:
+    - "int T"
+    - "bool B"
+  symbol_range: "[839, 843)"
+  markdown: |
+    ### variable `lamb`  
+
+    ---
+    → `bool`  
+    Parameters:  
+    - `int T`
+    - `bool B`
+
+    ---
+    ```cpp
+    // In foo
+    auto lamb = [&bar](int T, bool B) -> bool {}
+    ```
+
+05_local_in_lambda:
+  name: "test"
+  kind: Variable
+  namespace_scope: "local_in_lambda::"
+  local_scope: "foo::(anonymous class)::operator()::"
+  definition: "int test"
+  type: "int"
+  symbol_range: "[953, 957)"
+  markdown: |
+    ### variable `test`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In foo::(anonymous class)::operator()
+    int test
+    ```
+
+

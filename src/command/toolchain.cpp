@@ -1,15 +1,18 @@
 #include "command/toolchain.h"
 
-#include <optional>
+#include <expected>
+#include <format>
+#include <ranges>
 #include <string>
 #include <vector>
 
 #include "command/argument_parser.h"
+#include "command/command.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
+#include "kota/async/async.h"
 #include "kota/meta/enum.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -18,113 +21,97 @@
 #include "llvm/TargetParser/Host.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
-#include "clang/Driver/Options.h"
 #include "clang/Driver/Tool.h"
 
 #ifndef _WIN32
-
 #include <unistd.h>
 extern char** environ;
-
-static llvm::ArrayRef<llvm::StringRef> envs() {
-    static std::vector<std::string> storage;
-    static auto refs = [] {
-        std::vector<llvm::StringRef> refs;
-        if(environ) {
-            for(char** env = environ; *env != nullptr; ++env) {
-                llvm::StringRef s(*env);
-                if(!s.starts_with("LANG=")) {
-                    storage.emplace_back(*env);
-                }
-            }
-
-            storage.emplace_back("LANG=C");
-        }
-
-        /// Note that store the reference os strings in the vector
-        /// is not safe when vector grows capacity. But we store it
-        /// after all insertion are completed. It's safe here.
-        for(const auto& s: storage) {
-            refs.emplace_back(s);
-        }
-
-        return refs;
-    }();
-    return refs;
-}
-
 #endif
 
-#ifdef _WIN32
-llvm::StringRef null_dev = "NUL";
-#else
-llvm::StringRef null_dev = "/dev/null";
-#endif
-
-namespace clice::toolchain {
+namespace clice {
 
 namespace {
 
-std::optional<std::string> execute_command(llvm::ArrayRef<const char*> arguments,
-                                           bool capture_stdout = false) {
-    LOG_INFO("Execute command: {}", print_argv(arguments));
+namespace ranges = std::ranges;
 
-    llvm::SmallString<64> path;
-    if(auto e = fs::createTemporaryFile("query-toolchain", "clice", path)) {
-        LOG_ERROR_RET(std::nullopt, "Fail to create temporary file: {}", e);
-    }
-
-    auto _ = llvm::make_scope_exit([&path]() {
-        if(auto e = fs::remove(path)) {
-            LOG_ERROR("Fail to remove temporary file: {}", e);
+#ifndef _WIN32
+/// Process environment with LANG pinned to C, so driver output is not localized.
+/// On Windows the env is left empty so the child inherits the parent's
+/// environment, which MSVC and clang rely on to locate the standard library.
+const std::vector<std::string>& process_env() {
+    const static auto env = [] {
+        std::vector<std::string> result;
+        if(environ) {
+            for(char** e = environ; *e; ++e) {
+                if(!llvm::StringRef(*e).starts_with("LANG="))
+                    result.emplace_back(*e);
+            }
         }
-    });
-
-#ifdef _WIN32
-    /// If the env is `std::nullopt`, `ExecuteAndWait` will inherit env from parent process,
-    /// which is very important for msvc and clang on windows. Thay depend on the environment
-    /// variables to find correct standard library path.
-    constexpr auto env = std::nullopt;
-#else
-    /// For linux, we should append or modify the "LANG=C" to the env, this is important
-    /// for gcc with locality. Otherwise, it will output non-ASCII char. We also want
-    /// to inherit the environment variables like windows.
-    auto env = envs();
+        result.emplace_back("LANG=C");
+        return result;
+    }();
+    return env;
+}
 #endif
 
-    std::optional<llvm::StringRef> redirects[3] = {
-        {null_dev},                                // stdin
-        {capture_stdout ? path.str() : null_dev},  // stdout
-        {capture_stdout ? null_dev : path.str()},  // stderr
-    };
-
-    llvm::SmallVector<llvm::StringRef> argv(arguments.begin(), arguments.end());
-
-    std::string message;
-    if(int rc = llvm::sys::ExecuteAndWait(arguments[0],
-                                          argv,
-                                          env,
-                                          redirects,
-                                          /*SecondsToWait=*/0,
-                                          /*MemoryLimit=*/0,
-                                          &message)) {
-        /// FIXME: handle error when rc is positive.
-        LOG_ERROR_RET(std::nullopt,
-                      "Fail to execute {}, return code is {}, because: {}",
-                      arguments[0],
-                      rc,
-                      message);
+kota::task<std::string> drain_pipe(kota::pipe p) {
+    std::string buf;
+    while(true) {
+        auto result = co_await p.read();
+        if(!result.has_value())
+            break;
+        auto& chunk = result.value();
+        if(chunk.empty())
+            break;
+        buf += chunk;
     }
-
-    auto file = llvm::MemoryBuffer::getFile(path);
-    if(!file) {
-        LOG_ERROR_RET(std::nullopt, "Fail to read redirect file: {}", file.getError());
-    }
-
-    return file->get()->getBuffer().str();
+    co_return buf;
 }
 
-bool query_driver(
+kota::task<std::expected<std::string, std::string>>
+    execute_async(std::vector<std::string> arguments, bool capture_stdout = false) {
+    kota::process::options opts;
+    opts.file = arguments[0];
+    opts.args = std::move(arguments);
+#ifndef _WIN32
+    opts.env = process_env();
+#endif
+    opts.streams = {
+        kota::process::stdio::ignore(),
+        kota::process::stdio::pipe(false, true),
+        kota::process::stdio::pipe(false, true),
+    };
+
+    LOG_INFO("Execute command: {}", opts.file);
+
+    auto spawn = kota::process::spawn(opts);
+    if(!spawn.has_value()) {
+        co_return std::unexpected(
+            std::format("Failed to spawn {}: {}", opts.file, spawn.error().message()));
+    }
+    auto& s = *spawn;
+
+    // Drain both pipes concurrently with process exit: a child blocking on a
+    // full pipe would otherwise deadlock against our wait().
+    auto [stdout_data, stderr_data] = co_await kota::when_all(drain_pipe(std::move(s.stdout_pipe)),
+                                                              drain_pipe(std::move(s.stderr_pipe)));
+
+    auto exit_result = co_await s.proc.wait();
+    if(!exit_result.has_value()) {
+        co_return std::unexpected(
+            std::format("Process wait failed: {}", exit_result.error().message()));
+    }
+
+    auto& exit = *exit_result;
+    if(exit.status != 0) {
+        co_return std::unexpected(
+            std::format("Process {} exited with code {}", opts.file, exit.status));
+    }
+
+    co_return capture_stdout ? std::move(stdout_data) : std::move(stderr_data);
+}
+
+std::expected<void, std::string> query_driver(
     llvm::ArrayRef<const char*> arguments,
     llvm::function_ref<void(const char* driver, llvm::ArrayRef<const char*> cc1_args)> callback) {
     /// FIXME: collect diagnostic here ...
@@ -140,7 +127,7 @@ bool query_driver(
     arguments = list;
 
     /// Note that clang use the `ClangExecutable` to determine the driver mode when
-    /// --driver-mode is not found in the arguments.  and `TargetTriple` is used when
+    /// --driver-mode is not found in the arguments, and `TargetTriple` is used when
     /// non --target argument is found in the arguments list. See
     /// `clang::driver::BuildCompilation`. We use default arguments because we will
     /// inject related commands before querying.
@@ -152,7 +139,7 @@ bool query_driver(
 
     std::unique_ptr<clang::driver::Compilation> compilation(driver.BuildCompilation(arguments));
     if(!compilation) {
-        LOG_ERROR_RET(false, "Fail to query driver");
+        return std::unexpected(std::format("Failed to build compilation for {}", arguments[0]));
     }
 
     // We expect to get back exactly one command job, if we didn't something
@@ -161,17 +148,11 @@ bool query_driver(
     // particular job, it should be controlled via options (e.g.
     // --cuda-{host|device}-only for CUDA) passed to the driver.
     const clang::driver::JobList& jobs = compilation->getJobs();
-    bool offload_compilation = false;
     if(jobs.size() > 1) {
         for(auto& action: compilation->getActions()) {
             // On MacOSX real actions may end up being wrapped in BindArchAction
             if(llvm::isa<clang::driver::BindArchAction>(action)) {
                 action = *action->input_begin();
-            }
-
-            if(llvm::isa<clang::driver::OffloadAction>(action)) {
-                offload_compilation = true;
-                break;
             }
         }
     }
@@ -180,120 +161,65 @@ bool query_driver(
         return cmd.getCreator().getName() == llvm::StringRef("clang");
     });
     if(cmd == jobs.end()) {
-        LOG_ERROR_RET(false, "Fail to query driver, clang job was not found!");
+        return std::unexpected(std::format("No clang job found for {}", arguments[0]));
     }
 
     callback(arguments[0], cmd->getArguments());
-    return true;
+    return {};
 }
 
-struct QueryResult {
-    llvm::StringRef target;
-    std::vector<llvm::StringRef> includes;
-};
-
-/// TODO: use this to print the output of -v.
-void parse_version_result(llvm::StringRef content, QueryResult& info) {
-    const char* TS = "Target: ";
-    const char* SIS = "#include <...> search starts here:";
-    const char* SIE = "End of search list.";
-
+/// Parse the first `-cc1` line from clang `-###` output. Only the first line
+/// is used: with multiple inputs the driver emits one job per input, and the
+/// first corresponds to the first input file.
+std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
     llvm::SmallVector<llvm::StringRef> lines;
     content.split(lines, '\n', -1, false);
 
-    bool in_includes_block = false;
-    bool found_start_marker = false;
-
-    for(const auto& line_ref: lines) {
-        auto line = line_ref.trim();
-
-        if(line.starts_with(TS)) {
-            line.consume_front(TS);
-            info.target = line;
+    for(llvm::StringRef line: lines) {
+        line = line.trim();
+        if(line.empty() || line.front() != '"')
             continue;
-        }
 
-        if(line == SIS) {
-            found_start_marker = true;
-            in_includes_block = true;
+        llvm::SmallVector<const char*, 256> args;
+        llvm::BumpPtrAllocator alloc;
+        llvm::StringSaver saver(alloc);
+        llvm::cl::TokenizeGNUCommandLine(line, saver, args);
+
+        using namespace std::string_view_literals;
+        if(args.size() < 2 || args[1] != "-cc1"sv)
             continue;
+
+        std::vector<std::string> cc1_args;
+        cc1_args.emplace_back(args[0]);
+        cc1_args.emplace_back(args[1]);
+
+        // Parse with CC1 visibility: the external driver may be newer than the
+        // linked clang, so flags it emits that our cc1 does not understand
+        // parse as unknown and are dropped. greedy_unknown makes an unknown
+        // option consume its trailing values, so they are dropped along with
+        // it instead of being misparsed as input files. Raw tokens are copied
+        // through to preserve the exact spelling the driver emitted.
+        // FIXME: Long-term we should unify the command pipeline so the driver
+        // version always matches the embedded LLVM.
+        std::vector<std::string> raw(args.begin() + 2, args.end());
+        auto options =
+            kota::option::ParseOptions{.greedy_unknown = true, .visibility = option::CC1Option};
+        for(auto& r: option::table().parse(raw, options)) {
+            if(!r.has_value() || r->id == option::OPT_UNKNOWN)
+                continue;
+            for(std::uint32_t i = r->index; i < r->next_index; ++i)
+                cc1_args.emplace_back(raw[i]);
         }
-
-        if(line == SIE) {
-            if(in_includes_block) {
-                in_includes_block = false;
-            }
-            continue;
-        }
-
-        if(in_includes_block) {
-            info.includes.emplace_back(line);
-        }
+        return cc1_args;
     }
-
-    if(!found_start_marker) {
-        LOG_ERROR("Failed to parse version output: missing include search start marker");
-        return;
-    }
-
-    if(in_includes_block) {
-        LOG_ERROR("Failed to parse version output: unclosed include search block");
-        return;
-    }
+    return {};
 }
 
-}  // namespace
+kota::task<std::expected<std::vector<std::string>, std::string>>
+    query_one(llvm::ArrayRef<const char*> arguments, llvm::StringRef file) {
+    if(arguments.empty())
+        co_return std::unexpected(std::string("Empty arguments"));
 
-CompilerFamily driver_family(llvm::StringRef driver) {
-    auto try_get = [](llvm::StringRef name) {
-        if(name == "cl") {
-            return CompilerFamily::MSVC;
-        } else if(name == "nvcc") {
-            return CompilerFamily::NVCC;
-        } else if(name.ends_with("clang") || name.ends_with("clang++")) {
-            return CompilerFamily::Clang;
-        } else if(name.ends_with("clang-cl")) {
-            return CompilerFamily::ClangCL;
-        } else if(name.ends_with("cc") || name.ends_with("c++") || name.ends_with("gcc") ||
-                  name.ends_with("g++")) {
-            return CompilerFamily::GCC;
-        } else if(name.contains("icpc") || name.contains("icc") || name.contains("dpcpp") ||
-                  name.contains("icx")) {
-            return CompilerFamily::Intel;
-        } else if(name.ends_with("zig")) {
-            return CompilerFamily::Zig;
-        }
-        return CompilerFamily::Unknown;
-    };
-
-    auto driver_name = llvm::sys::path::filename(driver);
-    auto family = try_get(driver_name);
-    if(family != CompilerFamily::Unknown) {
-        return family;
-    }
-
-    // Stripping the executable suffix: clang++.exe -> clang++
-    driver_name.consume_back(".exe");
-    family = try_get(driver_name);
-    if(family != CompilerFamily::Unknown) {
-        return family;
-    }
-
-    // Stripping any trailing version number: clang++3.5 -> clang++
-    driver_name = driver_name.rtrim("0123456789.-");
-    family = try_get(driver_name);
-    if(family != CompilerFamily::Unknown) {
-        return family;
-    }
-
-    /// Stripping trailing -component. clang++-tot -> clang++
-    driver_name = driver_name.slice(0, driver_name.rfind('-'));
-    family = try_get(driver_name);
-    return family;
-}
-
-std::vector<const char*> query_toolchain(const QueryParams& params) {
-    auto arguments = params.arguments;
     llvm::StringRef driver = arguments[0];
 
     /// Note: The name used to invoke the compiler driver affects its behavior.
@@ -302,228 +228,452 @@ std::vector<const char*> query_toolchain(const QueryParams& params) {
     /// and links C++ libraries by default, while invoking as `clang` defaults to C mode.
     /// Therefore, never use `realpath` on the initial `driver` name, as that
     /// would lose the context needed for the driver to behave correctly (and break caching).
-    llvm::SmallString<128> path;
+    llvm::SmallString<128> resolved_path;
     if(!path::is_absolute(driver)) {
         /// If the path is not absolute path like g++, find it in the env vars.
         auto program = llvm::sys::findProgramByName(driver);
-        if(!program) {
-            LOG_ERROR_RET({}, "Fail to query driver, cannot find the driver: {}", driver);
-        }
-        path = *program;
-        driver = path.c_str();
+        if(!program)
+            co_return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
+        resolved_path = *program;
+        driver = resolved_path.c_str();
     }
 
-    if(!fs::exists(driver) || !fs::can_execute(driver)) {
-        LOG_ERROR_RET({}, "Fail to query driver, driver: {} is not existent or executable", driver);
-    }
+    if(!fs::exists(driver) || !fs::can_execute(driver))
+        co_return std::unexpected(
+            std::format("Driver {} not found or not executable", driver.str()));
 
-    auto params_copy = params;
-    llvm::SmallVector<const char*, 256> modified_arguments;
+    llvm::SmallVector<const char*, 256> args;
+    args.emplace_back(driver.data());
+    args.append(arguments.begin() + 1, arguments.end());
 
-    /// Remove driver
-    arguments.consume_front();
-    modified_arguments.emplace_back(driver.data());
-
-    /// Remove input file
-    auto ext = path::extension(params.file);
+    auto ext = path::extension(file);
     ext.consume_front(".");
-
-    modified_arguments.append(arguments.begin(), arguments.end());
 
     /// Create a file with same suffix of input file, because the input file may
     /// not exist in the disk.
     llvm::SmallString<64> src_path;
-    if(auto e = fs::createTemporaryFile("query-toolchain", ext, src_path)) {
-        LOG_ERROR_RET({}, "Fail to create temporary file: {}", e);
-    }
-    auto _ = llvm::make_scope_exit([&src_path]() {
-        if(auto e = fs::remove(src_path)) {
+    if(auto e = fs::createTemporaryFile("query-toolchain", ext, src_path))
+        co_return std::unexpected(std::format("Failed to create temp file: {}", e.message()));
+    auto cleanup = llvm::make_scope_exit([&] {
+        if(auto e = fs::remove(src_path))
             LOG_ERROR("Fail to remove temporary file: {}", e);
-        }
     });
-    modified_arguments.emplace_back(src_path.c_str());
-    arguments = modified_arguments;
-    params_copy.arguments = arguments;
+    args.emplace_back(src_path.c_str());
 
-    auto family = driver_family(driver);
+    auto family = Toolchain::driver_family(driver);
+    std::vector<std::string> cc1_args;
+
     switch(family) {
+        // Query g++ or mingw toolchain info. We detect the target and corresponding
+        // gcc toolchain install path as default behavior.
         case CompilerFamily::GCC: {
-            return query_gcc_toolchain(params_copy);
+            std::string drv(driver.str());
+
+            auto target = co_await execute_async({drv, "-dumpmachine"}, true);
+            if(!target)
+                co_return std::unexpected(std::move(target.error()));
+
+            auto search_dirs = co_await execute_async({drv, "-print-search-dirs"}, true);
+            if(!search_dirs)
+                co_return std::unexpected(std::move(search_dirs.error()));
+
+            std::string install_path;
+            llvm::SmallVector<llvm::StringRef, 5> lines;
+            llvm::StringRef(*search_dirs).split(lines, '\n', -1, false);
+            for(auto line: lines) {
+                line = line.trim();
+                if(line.consume_front_insensitive("install:")) {
+                    install_path = line.trim().str();
+                    break;
+                }
+            }
+
+            auto target_flag = "--target=" + llvm::StringRef(*target).trim().str();
+            auto install_flag = "--gcc-install-dir=" + install_path;
+
+            llvm::SmallVector<const char*, 256> gcc_args;
+            gcc_args.emplace_back(driver.data());
+            gcc_args.emplace_back(target_flag.c_str());
+            gcc_args.emplace_back(install_flag.c_str());
+            gcc_args.append(args.begin() + 1, args.end());
+
+            auto queried =
+                query_driver(gcc_args, [&](const char* d, llvm::ArrayRef<const char*> cc1) {
+                    cc1_args.emplace_back(d);
+                    cc1_args.emplace_back("-cc1");
+                    for(auto arg: cc1)
+                        cc1_args.emplace_back(arg);
+                });
+            if(!queried)
+                co_return std::unexpected(std::move(queried.error()));
+            break;
         }
 
+        // Query clang++ or any clang based toolchain, e.g. zig cc/c++. We query
+        // the full cc1 command of clang toolchain as default.
+        // TODO: Is armclang also compatible?
         case CompilerFamily::Clang:
         case CompilerFamily::Zig: {
-            return query_clang_toolchain(params_copy);
-        }
-        case CompilerFamily::MSVC:
-        case CompilerFamily::ClangCL: {
-            return query_msvc_toolchain(params_copy);
+            std::vector<std::string> exec_args;
+            auto remaining = llvm::ArrayRef(args);
+
+            if(family == CompilerFamily::Zig) {
+                /// zig cc or zig c++ consumes two arguments.
+                exec_args.emplace_back(remaining[0]);
+                exec_args.emplace_back(remaining[1]);
+                remaining = remaining.drop_front(2);
+            } else {
+                exec_args.emplace_back(remaining[0]);
+                remaining = remaining.drop_front();
+            }
+            exec_args.emplace_back("-###");
+            exec_args.emplace_back("-fsyntax-only");
+            for(auto arg: remaining)
+                exec_args.emplace_back(arg);
+
+            auto content = co_await execute_async(std::move(exec_args));
+            if(!content)
+                co_return std::unexpected(std::move(content.error()));
+
+            cc1_args = parse_cc1_output(*content);
+            break;
         }
 
-        case CompilerFamily::NVCC:
-        case CompilerFamily::Intel:
-        case CompilerFamily::Unknown: {
+        case CompilerFamily::MSVC:
+        case CompilerFamily::ClangCL: {
+            llvm::SmallVector<const char*, 256> msvc_args;
+            msvc_args.emplace_back(args[0]);
+            /// When clang in cl mode, the target will be set to windows-msvc automatically.
+            /// We don't need to add extra flag.
+            msvc_args.emplace_back("--driver-mode=cl");
+            msvc_args.append(args.begin() + 1, args.end());
+
+            // No "-cc1" is inserted here: --driver-mode=cl only selects the
+            // driver mode, the clang driver itself handles the rest.
+            auto queried =
+                query_driver(msvc_args, [&](const char* d, llvm::ArrayRef<const char*> cc1) {
+                    cc1_args.emplace_back(d);
+                    for(auto arg: cc1)
+                        cc1_args.emplace_back(arg);
+                });
+            if(!queried)
+                co_return std::unexpected(std::move(queried.error()));
+            break;
+        }
+
+        default: {
             /// TODO: nvcc and intel compilers need further exploration.
-            LOG_ERROR("Fail to query driver, unknown supported driver kind: {}, driver is {}",
+            LOG_ERROR("Unsupported compiler family: {}, driver is {}",
                       kota::meta::enum_name(family),
                       driver);
 
-            std::vector<const char*> result;
-            query_driver(params_copy.arguments,
-                         [&](const char* driver, llvm::ArrayRef<const char*> cc1_args) {
-                             result.emplace_back(params.callback(driver));
-                             result.emplace_back(params.callback("-cc1"));
-                             for(auto arg: cc1_args) {
-                                 result.emplace_back(params.callback(arg));
-                             }
-                         });
-            return result;
+            auto queried = query_driver(args, [&](const char* d, llvm::ArrayRef<const char*> cc1) {
+                cc1_args.emplace_back(d);
+                cc1_args.emplace_back("-cc1");
+                for(auto arg: cc1)
+                    cc1_args.emplace_back(arg);
+            });
+            if(!queried)
+                co_return std::unexpected(std::move(queried.error()));
+            break;
         }
     }
 
-    return {};
+    // Strip the temporary probe file so results contain no input path
+    // (to_argv() appends the real source file at the end). Also strip module
+    // output flags the driver derives from the probe input (clang >= 22 emits
+    // -fmodules-reduced-bmi -fmodule-output=<probe>.pcm for module units);
+    // they reference the deleted temp file and clice manages outputs itself.
+    // The probe path uses an exact match: all supported drivers echo input
+    // paths verbatim, without canonicalizing them.
+    std::erase_if(cc1_args, [&](const std::string& arg) {
+        llvm::StringRef s(arg);
+        return s == src_path || s == "-fmodules-reduced-bmi" || s.starts_with("-fmodule-output");
+    });
+
+    if(cc1_args.empty())
+        co_return std::unexpected(std::format("No cc1 args produced for {}", file.str()));
+
+    co_return cc1_args;
 }
 
-std::vector<const char*> query_gcc_toolchain(const QueryParams& params) {
-    auto arguments = params.arguments;
-    llvm::SmallVector<const char*, 256> query_arguments;
+struct PendingQuery {
+    std::string key;
+    std::vector<const char*> query_args;
+    /// Points to interned, pointer-stable storage in CompileCommand::source_file;
+    /// valid for the whole warm() call.
+    llvm::StringRef file;
+};
 
-    llvm::SmallString<64> target;
-    llvm::SmallString<64> install_path;
+}  // namespace
 
-    query_arguments = {arguments[0], "-dumpmachine"};
-    if(auto content = execute_command(query_arguments, true)) {
-        target = llvm::StringRef(*content).trim();
+Toolchain::Toolchain() :
+    allocator(std::make_unique<llvm::BumpPtrAllocator>()), strings(allocator.get()) {}
+
+Toolchain::~Toolchain() = default;
+
+CompilerFamily Toolchain::driver_family(llvm::StringRef driver) {
+    auto try_get = [](llvm::StringRef name) {
+        if(name == "cl")
+            return CompilerFamily::MSVC;
+        if(name == "nvcc")
+            return CompilerFamily::NVCC;
+        if(name.ends_with("clang-cl"))
+            return CompilerFamily::ClangCL;
+        if(name.ends_with("clang") || name.ends_with("clang++"))
+            return CompilerFamily::Clang;
+        // Intel must precede GCC: `icc` would otherwise match ends_with("cc").
+        if(name.contains("icpc") || name.contains("icc") || name.contains("dpcpp") ||
+           name.contains("icx"))
+            return CompilerFamily::Intel;
+        if(name.ends_with("cc") || name.ends_with("c++") || name.ends_with("gcc") ||
+           name.ends_with("g++"))
+            return CompilerFamily::GCC;
+        if(name.ends_with("zig"))
+            return CompilerFamily::Zig;
+        return CompilerFamily::Unknown;
+    };
+
+    auto name = llvm::sys::path::filename(driver);
+    if(auto f = try_get(name); f != CompilerFamily::Unknown)
+        return f;
+
+    // Stripping the executable suffix: clang++.exe -> clang++
+    name.consume_back(".exe");
+    if(auto f = try_get(name); f != CompilerFamily::Unknown)
+        return f;
+
+    // Stripping any trailing version number: clang++3.5 -> clang++
+    name = name.rtrim("0123456789.-");
+    if(auto f = try_get(name); f != CompilerFamily::Unknown)
+        return f;
+
+    // Stripping trailing -component: clang++-tot -> clang++
+    name = name.slice(0, name.rfind('-'));
+    return try_get(name);
+}
+
+std::expected<std::vector<std::string>, std::string>
+    Toolchain::query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file) {
+    std::expected<std::vector<std::string>, std::string> result;
+    kota::event_loop loop;
+    auto task = [&]() -> kota::task<> {
+        result = co_await query_one(arguments, file);
+    };
+    loop.schedule(task());
+    loop.run();
+    return result;
+}
+
+Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
+                                                     llvm::ArrayRef<const char*> arguments) {
+    ToolchainExtract result;
+
+    result.key += arguments[0];
+    result.key += '\0';
+
+    result.key += path::extension(file);
+    result.key += '\0';
+
+    result.query_args.push_back(arguments[0]);
+
+    std::vector<std::string> parse_args(arguments.begin() + 1, arguments.end());
+    auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
+                                              .visibility = default_visibility(arguments[0])};
+    for(auto& r: option::table().parse(parse_args, options)) {
+        if(!r.has_value())
+            continue;
+        auto& arg = *r;
+
+        // User-content options (-I, -D, ...) don't affect the toolchain query;
+        // resolve() re-appends them from the original command. Everything else
+        // may change driver behavior, so it goes into both key and query.
+        if(is_user_content_option(arg.id))
+            continue;
+
+        result.key += std::to_string(arg.id);
+        result.key += '\0';
+        for(auto value: arg.values) {
+            result.key += value;
+            result.key += '\0';
+        }
+
+        auto cb = [&](std::string_view s) {
+            result.query_args.push_back(strings.save(s).data());
+        };
+        option::table().render(arg, cb);
     }
 
-    query_arguments = {arguments[0], "-print-search-dirs"};
-    if(auto content = execute_command(query_arguments, true)) {
-        llvm::SmallVector<llvm::StringRef, 5> lines;
-        llvm::StringRef(*content).split(lines, '\n', -1, /*KeepEmpty=*/false);
-        for(auto line: lines) {
-            line = line.trim();
-            if(line.consume_front_insensitive("install:")) {
-                install_path = line.trim();
+    return result;
+}
+
+std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
+    if(cmd.resolved.flags.empty())
+        return std::unexpected("empty flags");
+
+    auto [key, query_args] = extract_flags(cmd.source_file, cmd.resolved.flags);
+
+    auto it = cache.find(key);
+    if(it == cache.end()) {
+        if(auto failed_it = failed.find(key); failed_it != failed.end())
+            return std::unexpected(failed_it->second);
+
+        LOG_WARN("Toolchain cache miss: file={}", cmd.source_file);
+
+        auto result = query(query_args, cmd.source_file);
+        if(!result) {
+            failed.try_emplace(key, result.error());
+            return std::unexpected(std::move(result.error()));
+        }
+
+        std::vector<const char*> saved;
+        saved.reserve(result->size());
+        for(auto& s: *result)
+            saved.push_back(strings.save(s).data());
+        it = cache.try_emplace(std::move(key), std::move(saved)).first;
+    }
+
+    auto cached = llvm::ArrayRef(it->second);
+    std::vector<const char*> new_flags(cached.begin(), cached.end());
+
+    // Replace resource dir in cc1 result with ours.
+    if(!resource_dir().empty()) {
+        llvm::StringRef old_resource_dir;
+        for(std::size_t i = 0; i + 1 < new_flags.size(); ++i) {
+            if(new_flags[i] == llvm::StringRef("-resource-dir")) {
+                old_resource_dir = new_flags[i + 1];
                 break;
             }
         }
-    }
-
-    llvm::SmallString<64> formatted_target("--target=");
-    formatted_target += target;
-    target = formatted_target;
-
-    llvm::SmallString<64> formatted_install_path("--gcc-install-dir=");
-    formatted_install_path += install_path;
-    install_path = formatted_install_path;
-
-    query_arguments.clear();
-    query_arguments.emplace_back(arguments.consume_front());
-    query_arguments.emplace_back(target.c_str());
-    query_arguments.emplace_back(install_path.c_str());
-    query_arguments.append(arguments.begin(), arguments.end());
-
-    std::vector<const char*> result;
-    query_driver(query_arguments, [&](const char* driver, llvm::ArrayRef<const char*> cc1_args) {
-        result.emplace_back(params.callback(driver));
-        result.emplace_back(params.callback("-cc1"));
-        for(auto arg: cc1_args) {
-            result.emplace_back(params.callback(arg));
-        }
-    });
-    return result;
-}
-
-std::vector<const char*> query_clang_toolchain(const QueryParams& params) {
-    auto arguments = params.arguments;
-    llvm::SmallVector<const char*, 256> query_arguments;
-
-    if(driver_family(arguments[0]) == CompilerFamily::Zig) {
-        /// zig cc or zig c++ consumes two arguments.
-        query_arguments.emplace_back(arguments.consume_front());
-        query_arguments.emplace_back(arguments.consume_front());
-    } else {
-        query_arguments.emplace_back(arguments.consume_front());
-    }
-
-    query_arguments.emplace_back("-###");
-    query_arguments.emplace_back("-fsyntax-only");
-    query_arguments.append(arguments.begin(), arguments.end());
-
-    std::vector<const char*> result;
-    if(auto content = execute_command(query_arguments, false)) {
-        llvm::SmallVector<llvm::StringRef> lines;
-        llvm::StringRef(*content).split(lines, '\n', -1, /*KeepEmpty=*/false);
-
-        for(llvm::StringRef line: lines) {
-            line = line.trim();
-
-            if(line.empty() || line.front() != '"') {
-                continue;
-            }
-
-            llvm::SmallVector<const char*, 256> args;
-            llvm::BumpPtrAllocator allocator;
-            llvm::StringSaver saver(allocator);
-            llvm::cl::TokenizeGNUCommandLine(line, saver, args);
-
-            using namespace std::string_view_literals;
-            if(args.size() < 2 || args[1] != "-cc1"sv) {
-                continue;
-            }
-
-            // FIXME: the system compiler may be newer than our embedded LLVM,
-            // producing cc1 flags we don't recognize. Filter them out here.
-            // Long-term we should unify the command pipeline so the driver
-            // version always matches the embedded LLVM.
-            auto& table = clang::driver::getDriverOptTable();
-            auto cc1_args = llvm::ArrayRef(args).drop_front(2);
-            unsigned missing_index = 0, missing_count = 0;
-            auto parsed = table.ParseArgs(cc1_args, missing_index, missing_count);
-
-            llvm::DenseSet<unsigned> unknown_indices;
-            for(auto* a: parsed) {
-                if(a->getOption().getKind() == llvm::opt::Option::UnknownClass) {
-                    unknown_indices.insert(a->getIndex());
+        if(!old_resource_dir.empty() && old_resource_dir != resource_dir()) {
+            for(auto& arg: new_flags) {
+                llvm::StringRef s(arg);
+                if(s.starts_with(old_resource_dir)) {
+                    auto replaced = resource_dir().str() + s.substr(old_resource_dir.size()).str();
+                    arg = strings.save(replaced).data();
                 }
-            }
-
-            result.emplace_back(params.callback(args[0]));
-            result.emplace_back(params.callback(args[1]));
-            for(unsigned i = 0; i < cc1_args.size(); ++i) {
-                if(unknown_indices.contains(i)) {
-                    continue;
-                }
-                if(cc1_args[i] == "-###"sv) {
-                    continue;
-                }
-                result.emplace_back(params.callback(cc1_args[i]));
             }
         }
     }
-    return result;
-}
 
-std::vector<const char*> query_msvc_toolchain(const QueryParams& params) {
-    auto arguments = params.arguments;
-    llvm::SmallVector<const char*, 256> query_arguments;
-
-    query_arguments.emplace_back(arguments.consume_front());
-    /// When clang in cl mode, the target will be set to windows-msvc automatically.
-    /// We don't need to add extra flag.
-    query_arguments.emplace_back("--driver-mode=cl");
-    query_arguments.append(arguments.begin(), arguments.end());
-
-    std::vector<const char*> result;
-    query_driver(query_arguments, [&](const char* driver, llvm::ArrayRef<const char*> cc) {
-        result.emplace_back(params.callback(driver));
-        for(auto c: cc) {
-            result.emplace_back(params.callback(c));
+    // Extract user-content flags from original command and append to cc1 result.
+    std::vector<std::string> resolve_parse_args(cmd.resolved.flags.begin() + 1,
+                                                cmd.resolved.flags.end());
+    auto resolve_options =
+        kota::option::ParseOptions{.dash_dash_parsing = true,
+                                   .visibility = default_visibility(cmd.resolved.flags[0])};
+    for(auto& r: option::table().parse(resolve_parse_args, resolve_options)) {
+        if(!r.has_value())
+            continue;
+        auto& arg = *r;
+        if(is_user_content_option(arg.id)) {
+            auto cb = [&](std::string_view s) {
+                new_flags.push_back(strings.save(s).data());
+            };
+            option::table().render(arg, cb);
         }
-    });
-    return result;
+    }
+
+    // Strip -main-file-name and its value (to_argv() will re-inject with correct basename).
+    std::vector<const char*> cleaned;
+    cleaned.reserve(new_flags.size());
+    for(std::size_t i = 0; i < new_flags.size(); ++i) {
+        if(new_flags[i] == llvm::StringRef("-main-file-name") && i + 1 < new_flags.size()) {
+            ++i;
+            continue;
+        }
+        cleaned.push_back(new_flags[i]);
+    }
+
+    cmd.resolved.flags = std::move(cleaned);
+    cmd.resolved.is_cc1 = ranges::contains(cmd.resolved.flags, llvm::StringRef("-cc1"));
+    return {};
 }
 
-std::vector<const char*> query_nvcc_toolchain(const QueryParams& params);
+void Toolchain::resolve_or_warn(CompileCommand& cmd) {
+    if(auto result = resolve(cmd); !result) {
+        LOG_WARN("Toolchain resolve failed for {}: {}", cmd.source_file, result.error());
+    }
+}
 
-}  // namespace clice::toolchain
+bool Toolchain::has_cache() const {
+    return !cache.empty();
+}
+
+void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
+    llvm::StringMap<bool> seen;
+    std::vector<PendingQuery> pending;
+
+    for(auto& cmd: commands) {
+        if(cmd.resolved.flags.empty())
+            continue;
+
+        auto [key, query_args] = extract_flags(cmd.source_file, cmd.resolved.flags);
+        if(cache.count(key) || failed.count(key) || !seen.try_emplace(key, true).second)
+            continue;
+
+        pending.push_back({std::move(key), std::move(query_args), cmd.source_file});
+    }
+
+    if(pending.empty())
+        return;
+
+    auto total = pending.size();
+    LOG_INFO("Warming toolchain cache: {} unique queries", total);
+
+    // Run the queries concurrently on a local event loop. The interface
+    // stays synchronous: block until all complete, then fill the cache here.
+    struct QueryOutcome {
+        std::string key;
+        std::expected<std::vector<std::string>, std::string> result;
+    };
+
+    // The query is moved into the coroutine frame as a parameter, so the
+    // argument references stay valid for the coroutine's whole lifetime.
+    auto make_task = [](PendingQuery q) -> kota::task<QueryOutcome> {
+        auto result = co_await query_one(q.query_args, q.file);
+        co_return QueryOutcome{std::move(q.key), std::move(result)};
+    };
+
+    kota::small_vector<QueryOutcome> outcomes;
+
+    kota::event_loop loop;
+    auto run = [&]() -> kota::task<> {
+        std::vector<kota::task<QueryOutcome>> tasks;
+        tasks.reserve(pending.size());
+        for(auto& q: pending)
+            tasks.push_back(make_task(std::move(q)));
+
+        outcomes = co_await kota::when_all(std::move(tasks));
+    };
+    loop.schedule(run());
+    loop.run();
+
+    std::size_t succeeded = 0;
+    for(auto& o: outcomes) {
+        if(!o.result) {
+            LOG_ERROR("Toolchain query failed: {}", o.result.error());
+            failed.try_emplace(std::move(o.key), std::move(o.result.error()));
+            continue;
+        }
+
+        std::vector<const char*> saved;
+        saved.reserve(o.result->size());
+        for(auto& arg: *o.result)
+            saved.push_back(strings.save(arg).data());
+        cache.try_emplace(std::move(o.key), std::move(saved));
+        succeeded += 1;
+    }
+
+    LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
+}
+
+#ifdef CLICE_ENABLE_TEST
+
+std::vector<std::string> Toolchain::parse_cc1(llvm::StringRef content) {
+    return parse_cc1_output(content);
+}
+
+#endif
+
+}  // namespace clice

@@ -1,9 +1,16 @@
+/// Some helpers in this file (e.g. print_name, deduced_type, decl_comment)
+/// are ported from clangd's AST.cpp and CodeCompletionStrings.cpp
+/// (llvmorg-21.1.8), part of the LLVM project, licensed under Apache
+/// License v2.0 with LLVM Exceptions. See https://llvm.org/LICENSE.txt
+/// for license information.
+
 #include "semantic/ast_utility.h"
 
 #include "support/format.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "clang/AST/ASTDiagnostic.h"
@@ -11,10 +18,12 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/RawCommentList.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Sema/CodeCompleteConsumer.h"
 
 namespace clice::ast {
 
@@ -1115,6 +1124,380 @@ clang::FunctionProtoTypeLoc proto_type_loc(clang::Expr* expr) {
     }
 
     return {};
+}
+
+std::string print_qualified_name(const clang::NamedDecl& decl) {
+    std::string name;
+    llvm::raw_string_ostream os(name);
+    clang::PrintingPolicy policy(decl.getASTContext().getLangOpts());
+    /// Note that inline namespaces are treated as transparent scopes. This
+    /// reflects the way they're most commonly used for lookup.
+    policy.SuppressUnwrittenScope = true;
+    /// (unnamed struct), not (unnamed struct at /path/to/foo.cc:42:1).
+    /// In the language server, context is usually available and paths are
+    /// mostly noise.
+    policy.AnonymousTagLocations = false;
+    decl.printQualifiedName(os, policy);
+    assert(!llvm::StringRef(name).starts_with("::"));
+    return name;
+}
+
+namespace {
+
+auto template_specialization_arg_locs(const clang::NamedDecl& decl)
+    -> std::optional<llvm::ArrayRef<clang::TemplateArgumentLoc>> {
+    if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(&decl)) {
+        if(const auto* args = function->getTemplateSpecializationArgsAsWritten()) {
+            return args->arguments();
+        }
+    } else if(auto* record = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(&decl)) {
+        if(const auto* args = record->getTemplateArgsAsWritten()) {
+            return args->arguments();
+        }
+    } else if(auto* var = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(&decl)) {
+        if(const auto* args = var->getTemplateArgsAsWritten()) {
+            return args->arguments();
+        }
+    }
+
+    /// We return std::nullopt for implicit specializations because they do
+    /// not contain TemplateArgumentLoc information.
+    return std::nullopt;
+}
+
+bool is_anonymous_name(const clang::DeclarationName& name) {
+    return name.isIdentifier() && !name.getAsIdentifierInfo();
+}
+
+auto qualifier_loc(const clang::NamedDecl& decl) -> clang::NestedNameSpecifierLoc {
+    if(auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(&decl)) {
+        return declarator->getQualifierLoc();
+    }
+
+    if(auto* tag = llvm::dyn_cast<clang::TagDecl>(&decl)) {
+        return tag->getQualifierLoc();
+    }
+
+    return clang::NestedNameSpecifierLoc();
+}
+
+}  // namespace
+
+std::string print_template_specialization_args(const clang::NamedDecl& decl) {
+    std::string args;
+    llvm::raw_string_ostream os(args);
+    clang::PrintingPolicy policy(decl.getASTContext().getLangOpts());
+    if(auto arg_locs = template_specialization_arg_locs(decl)) {
+        clang::printTemplateArgumentList(os, *arg_locs, policy);
+    } else if(auto* record = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(&decl)) {
+        /// FIXME: Fix cases when getTypeAsWritten returns null inside clang
+        /// AST, e.g. friend decls. Currently we fallback to template
+        /// arguments without location information.
+        clang::printTemplateArgumentList(os, record->getTemplateArgs().asArray(), policy);
+    }
+    return args;
+}
+
+std::string print_name(const clang::NamedDecl& decl) {
+    std::string name;
+    llvm::raw_string_ostream os(name);
+    clang::PrintingPolicy policy(decl.getASTContext().getLangOpts());
+    /// We don't consider a class template's args part of the constructor name.
+    policy.SuppressTemplateArgsInCXXConstructors = true;
+
+    /// Handle 'using namespace'. They all have the same name - <using-directive>.
+    if(auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(&decl)) {
+        os << "using namespace ";
+        if(auto* qualifier = directive->getQualifier()) {
+            qualifier->print(os, policy);
+        }
+        directive->getNominatedNamespaceAsWritten()->printName(os);
+        return name;
+    }
+
+    /// Come up with a presentation for an anonymous entity.
+    if(is_anonymous_name(decl.getDeclName())) {
+        if(llvm::isa<clang::NamespaceDecl>(decl)) {
+            return "(anonymous namespace)";
+        }
+
+        if(auto* record = llvm::dyn_cast<clang::RecordDecl>(&decl)) {
+            if(record->isLambda()) {
+                return "(lambda)";
+            }
+            return ("(anonymous " + record->getKindName() + ")").str();
+        }
+
+        if(llvm::isa<clang::EnumDecl>(decl)) {
+            return "(anonymous enum)";
+        }
+
+        return "(anonymous)";
+    }
+
+    /// Print nested name qualifier if it was written in the source code.
+    if(auto* qualifier = qualifier_loc(decl).getNestedNameSpecifier()) {
+        qualifier->print(os, policy);
+    }
+
+    /// Print the name itself.
+    decl.getDeclName().print(os, policy);
+
+    /// Print template arguments.
+    os << print_template_specialization_args(decl);
+
+    return name;
+}
+
+clang::QualType declared_type(const clang::TypeDecl* decl) {
+    clang::ASTContext& context = decl->getASTContext();
+    if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
+        if(const auto* args = spec->getTemplateArgsAsWritten()) {
+            return context.getTemplateSpecializationType(
+                clang::TemplateName(spec->getSpecializedTemplate()),
+                args->arguments(),
+                /*CanonicalArgs=*/{});
+        }
+    }
+    return context.getTypeDeclType(decl);
+}
+
+namespace {
+
+/// Returns the TemplateTypeParmTypeLoc of the implicit template type
+/// parameter introduced by an `auto` typed function parameter, if any.
+auto contained_auto_param_type(clang::TypeLoc type) -> clang::TemplateTypeParmTypeLoc {
+    if(auto qualified = type.getAs<clang::QualifiedTypeLoc>()) {
+        return contained_auto_param_type(qualified.getUnqualifiedLoc());
+    }
+
+    if(llvm::isa<clang::PointerType, clang::ReferenceType, clang::ParenType>(type.getTypePtr())) {
+        return contained_auto_param_type(type.getNextTypeLoc());
+    }
+
+    if(auto function = type.getAs<clang::FunctionTypeLoc>()) {
+        return contained_auto_param_type(function.getReturnLoc());
+    }
+
+    if(auto param = type.getAs<clang::TemplateTypeParmTypeLoc>()) {
+        if(param.getTypePtr()->getDecl()->isImplicit()) {
+            return param;
+        }
+    }
+
+    return {};
+}
+
+/// Computes the deduced type at a given location by visiting the relevant
+/// nodes. We use this to display the actual type when hovering over an "auto"
+/// keyword or "decltype()" expression.
+/// FIXME: This could have been a lot simpler by visiting AutoTypeLocs but it
+/// seems that the AutoTypeLocs that can be visited along with their AutoType do
+/// not have the deduced type set. Instead, we have to go to the appropriate
+/// DeclaratorDecl/FunctionDecl and work our back to the AutoType that does have
+/// a deduced type set. The AST should be improved to simplify this scenario.
+class DeducedTypeVisitor : public clang::RecursiveASTVisitor<DeducedTypeVisitor> {
+public:
+    DeducedTypeVisitor(clang::SourceLocation searched_location) :
+        searched_location(searched_location) {}
+
+    /// Handle auto initializers:
+    /// - auto i = 1;
+    /// - decltype(auto) i = 1;
+    /// - auto& i = 1;
+    /// - auto* i = &a;
+    bool VisitDeclaratorDecl(clang::DeclaratorDecl* decl) {
+        if(!decl->getTypeSourceInfo() ||
+           !decl->getTypeSourceInfo()->getTypeLoc().getContainedAutoTypeLoc() ||
+           decl->getTypeSourceInfo()->getTypeLoc().getContainedAutoTypeLoc().getNameLoc() !=
+               searched_location) {
+            return true;
+        }
+
+        if(auto* type = decl->getType()->getContainedAutoType()) {
+            deduced = type->desugar();
+        }
+        return true;
+    }
+
+    /// Handle auto return types:
+    /// - auto foo() {}
+    /// - auto& foo() {}
+    /// - auto foo() -> int {}
+    /// - auto foo() -> decltype(1+1) {}
+    /// - operator auto() const { return 10; }
+    bool VisitFunctionDecl(clang::FunctionDecl* decl) {
+        if(!decl->getTypeSourceInfo()) {
+            return true;
+        }
+
+        /// Loc of auto in return type (c++14).
+        auto location = decl->getReturnTypeSourceRange().getBegin();
+
+        /// Loc of "auto" in operator auto().
+        if(location.isInvalid() && llvm::isa<clang::CXXConversionDecl>(decl)) {
+            location = decl->getTypeSourceInfo()->getTypeLoc().getBeginLoc();
+        }
+
+        /// Loc of "auto" in function with trailing return type (c++11).
+        if(location.isInvalid()) {
+            location = decl->getSourceRange().getBegin();
+        }
+
+        if(location != searched_location) {
+            return true;
+        }
+
+        const clang::AutoType* type = decl->getReturnType()->getContainedAutoType();
+        if(type && !type->getDeducedType().isNull()) {
+            deduced = type->getDeducedType();
+        } else if(auto* decltype_type =
+                      llvm::dyn_cast<clang::DecltypeType>(decl->getReturnType())) {
+            /// auto in a trailing return type just points to a DecltypeType
+            /// and getContainedAutoType does not unwrap it.
+            if(!decltype_type->getUnderlyingType().isNull()) {
+                deduced = decltype_type->getUnderlyingType();
+            }
+        } else if(!decl->getReturnType().isNull()) {
+            deduced = decl->getReturnType();
+        }
+        return true;
+    }
+
+    /// Handle non-auto decltype, e.g.:
+    /// - auto foo() -> decltype(expr) {}
+    /// - decltype(expr);
+    bool VisitDecltypeTypeLoc(clang::DecltypeTypeLoc type_loc) {
+        if(type_loc.getBeginLoc() != searched_location) {
+            return true;
+        }
+
+        /// A DecltypeType's underlying type can be another DecltypeType! E.g.
+        ///   int I = 0;
+        ///   decltype(I) J = I;
+        ///   decltype(J) K = J;
+        const auto* type = llvm::dyn_cast<clang::DecltypeType>(type_loc.getTypePtr());
+        while(type && !type->getUnderlyingType().isNull()) {
+            deduced = type->getUnderlyingType();
+            type = llvm::dyn_cast<clang::DecltypeType>(deduced.getTypePtr());
+        }
+        return true;
+    }
+
+    /// Handle functions/lambdas with `auto` typed parameters.
+    /// We deduce the type if there's exactly one instantiation visible.
+    bool VisitParmVarDecl(clang::ParmVarDecl* param) {
+        if(!param->getType()->isDependentType()) {
+            return true;
+        }
+
+        /// 'auto' here does not name an AutoType, but an implicit template param.
+        clang::TemplateTypeParmTypeLoc auto_loc =
+            contained_auto_param_type(param->getTypeSourceInfo()->getTypeLoc());
+        if(auto_loc.isNull() || auto_loc.getNameLoc() != searched_location) {
+            return true;
+        }
+
+        /// We expect the TTP to be attached to this function template.
+        /// Find the template and the param index.
+        auto* templated = llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext());
+        if(!templated) {
+            return true;
+        }
+
+        auto* template_decl = templated->getDescribedFunctionTemplate();
+        if(!template_decl) {
+            return true;
+        }
+
+        int index = param_index(*template_decl, *auto_loc.getDecl());
+        if(index < 0) {
+            assert(false && "auto TTP is not from enclosing function?");
+            return true;
+        }
+
+        /// Now find the instantiation and the deduced template type arg.
+        auto* instantiation =
+            llvm::dyn_cast_or_null<clang::FunctionDecl>(get_only_instantiation(templated));
+        if(!instantiation) {
+            return true;
+        }
+
+        const auto* args = instantiation->getTemplateSpecializationArgs();
+        if(args->size() != template_decl->getTemplateParameters()->size()) {
+            /// No weird variadic stuff.
+            return true;
+        }
+
+        deduced = args->get(index).getAsType();
+        return true;
+    }
+
+    static int param_index(const clang::TemplateDecl& template_decl, clang::NamedDecl& param) {
+        int index = 0;
+        for(auto* decl: *template_decl.getTemplateParameters()) {
+            if(&param == decl) {
+                return index;
+            }
+            index += 1;
+        }
+        return -1;
+    }
+
+    clang::SourceLocation searched_location;
+
+    clang::QualType deduced;
+};
+
+bool looks_like_doc_comment(llvm::StringRef comment) {
+    /// We don't report comments that only contain "special" chars.
+    /// This avoids reporting various delimiters, like:
+    ///   =================
+    ///   -----------------
+    ///   *****************
+    return comment.find_first_not_of("/*-= \t\r\n") != llvm::StringRef::npos;
+}
+
+}  // namespace
+
+std::optional<clang::QualType> deduced_type(clang::ASTContext& context, clang::SourceLocation loc) {
+    if(!loc.isValid()) {
+        return std::nullopt;
+    }
+
+    DeducedTypeVisitor visitor(loc);
+    visitor.TraverseAST(context);
+    if(visitor.deduced.isNull()) {
+        return std::nullopt;
+    }
+    return visitor.deduced;
+}
+
+std::string decl_comment(const clang::ASTContext& context, const clang::NamedDecl& decl) {
+    if(llvm::isa<clang::NamespaceDecl>(decl)) {
+        /// Namespaces often have too many redecls for any particular redecl comment
+        /// to be useful. Moreover, we often confuse file headers or generated
+        /// comments with namespace comments. Therefore we choose to just ignore
+        /// the comments for namespaces.
+        return "";
+    }
+
+    const clang::RawComment* comment = clang::getCompletionComment(context, &decl);
+    if(!comment) {
+        return "";
+    }
+
+    std::string doc =
+        comment->getFormattedText(context.getSourceManager(), context.getDiagnostics());
+    if(!looks_like_doc_comment(doc)) {
+        return "";
+    }
+
+    /// Clang requires source to be UTF-8, but doesn't enforce this in comments.
+    if(!llvm::json::isUTF8(doc)) {
+        doc = llvm::json::fixUTF8(doc);
+    }
+    return doc;
 }
 
 }  // namespace clice::ast

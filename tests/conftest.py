@@ -103,7 +103,7 @@ async def client(
     mode = config.getoption("--mode")
     host = config.getoption("--host")
 
-    cmd = [str(executable), "--mode", mode, "--host", host]
+    cmd = [str(executable), "server", "--mode", mode, "--host", host]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -137,7 +137,7 @@ async def agentic(
     """Start a server with agentic TCP port, yield (executable, host, port)."""
     host = "127.0.0.1"
     port = _find_free_port()
-    cmd = [str(executable), "--mode", "pipe", "--host", host, "--port", str(port)]
+    cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -180,49 +180,99 @@ def generate_cdb(workspace: Path) -> None:
 async def make_client(executable: Path, workspace: Path) -> CliceClient:
     """Spawn a fresh clice server and initialize it. For multi-session tests."""
     c = CliceClient()
-    await c.start_io(str(executable), "--mode", "pipe")
+    await c.start_io(str(executable), "server")
     await c.initialize(workspace)
     return c
 
 
+SANITIZER_MARKERS = (
+    "AddressSanitizer",
+    "LeakSanitizer",
+    "MemorySanitizer",
+    "ThreadSanitizer",
+    "UndefinedBehaviorSanitizer",
+    "==ERROR:",
+    "runtime error:",
+)
+
+
+def _server_stderr_excerpt(stderr_text: str) -> str:
+    interesting = [
+        line
+        for line in stderr_text.splitlines()
+        if "[warn]" in line
+        or "[error]" in line
+        or "Sanitizer" in line
+        or "==ERROR:" in line
+        or "runtime error:" in line
+    ]
+    return "\n".join(interesting[-80:])
+
+
+async def assert_server_exited_cleanly(server, timeout: float = 10.0) -> None:
+    failures: list[str] = []
+
+    if server is None:
+        return
+
+    if server.returncode is None:
+        try:
+            await asyncio.wait_for(server.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            server.kill()
+            await server.wait()
+            failures.append(f"server did not exit within {timeout:g}s after shutdown")
+
+    print(f"[server] exit code: {server.returncode}", flush=True)
+
+    stderr_text = ""
+    if server.stderr:
+        try:
+            stderr_data = await asyncio.wait_for(server.stderr.read(), timeout=2.0)
+            stderr_text = stderr_data.decode("utf-8", errors="replace")
+        except Exception as exc:
+            failures.append(f"failed to collect server stderr: {exc!r}")
+
+    for line in _server_stderr_excerpt(stderr_text).splitlines():
+        print(f"[server] {line}", flush=True)
+
+    if server.returncode != 0:
+        failures.append(f"server exited with code {server.returncode}")
+
+    if any(marker in stderr_text for marker in SANITIZER_MARKERS):
+        failures.append("server stderr contains sanitizer/runtime error output")
+
+    if failures:
+        excerpt = _server_stderr_excerpt(stderr_text)
+        if excerpt:
+            failures.append("server stderr excerpt:\n" + excerpt)
+        pytest.fail("\n".join(failures))
+
+
 async def _shutdown_client(c: CliceClient) -> None:
     """Gracefully shut down a client, force-kill if needed."""
+    server = getattr(c, "_server", None)
+
     try:
-        await asyncio.wait_for(c.shutdown_async(None), timeout=3.0)
+        await asyncio.wait_for(c.shutdown_async(None), timeout=10.0)
     except Exception:
         pass
+
     try:
         c.exit(None)
     except Exception:
         pass
 
-    await asyncio.sleep(0.3)
-    if hasattr(c, "_server") and c._server is not None and c._server.returncode is None:
-        c._server.kill()
-
     try:
-        server = getattr(c, "_server", None)
-        if server:
-            if server.returncode is not None:
-                print(f"[server] exit code: {server.returncode}", flush=True)
-            if server.stderr:
-                stderr_data = await asyncio.wait_for(server.stderr.read(), timeout=2.0)
-                if stderr_data:
-                    for line in stderr_data.decode(
-                        "utf-8", errors="replace"
-                    ).splitlines():
-                        if "[warn]" in line or "[error]" in line or "Sanitizer" in line:
-                            print(f"[server] {line}", flush=True)
-    except Exception:
-        pass
-
-    try:
-        c._stop_event.set()
-        for task in c._async_tasks:
-            task.cancel()
-        await asyncio.sleep(0.1)
-    except Exception:
-        pass
+        await assert_server_exited_cleanly(server)
+    finally:
+        try:
+            c._stop_event.set()
+            for task in c._async_tasks:
+                task.cancel()
+            await asyncio.sleep(0.1)
+        except Exception:
+            pass
 
 
 shutdown_client = _shutdown_client  # Public alias for multi-session tests

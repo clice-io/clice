@@ -1,0 +1,9 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+---
+plaintext: |
+  variable foo
+
+  Passed by value
+

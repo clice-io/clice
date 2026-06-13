@@ -138,8 +138,7 @@ async def replay_one(
 
     proc = await asyncio.create_subprocess_exec(
         str(clice_bin),
-        "--mode",
-        "pipe",
+        "server",
         env=env,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
@@ -147,6 +146,8 @@ async def replay_one(
     )
 
     pending: dict[int | str, asyncio.Future] = {}
+    init_ids: set[int | str] = set()
+    init_errors: list[str] = []
 
     async def reader_loop():
         try:
@@ -171,6 +172,11 @@ async def replay_one(
                             f"  ERROR response id={msg_id}: "
                             f"code={err.get('code')}, message={err.get('message')}"
                         )
+                        if msg_id in init_ids:
+                            init_errors.append(
+                                f"initialize rejected: code={err.get('code')}, "
+                                f"message={err.get('message')}"
+                            )
         except (asyncio.IncompleteReadError, ConnectionError, BrokenPipeError):
             pass
         finally:
@@ -227,6 +233,8 @@ async def replay_one(
 
             if msg_id is not None and method is not None:
                 pending[msg_id] = asyncio.get_event_loop().create_future()
+                if method == "initialize":
+                    init_ids.add(msg_id)
 
             try:
                 await asyncio.wait_for(
@@ -267,6 +275,10 @@ async def replay_one(
             elapsed = time.monotonic() - wall_start
             print(f"  result: HANG ({len(pending)} pending after {elapsed:.1f}s)")
             success = False
+
+    if success and init_errors:
+        print(f"  result: FAIL ({init_errors[0]})")
+        success = False
 
     if success:
         try:

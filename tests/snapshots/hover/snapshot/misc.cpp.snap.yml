@@ -1,0 +1,64 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: misc.cpp
+---
+01_forward_struct_value:
+  name: "FwdFoo"
+  kind: Struct
+  namespace_scope: ""
+  definition: "struct FwdFoo"
+  value: "&fwd_bar"
+  symbol_range: "[582, 588)"
+  markdown: |
+    ### struct `FwdFoo`  
+
+    ---
+    Value = `&fwd_bar`  
+
+    ---
+    ```cpp
+    struct FwdFoo
+    ```
+
+02_typedef_chain:
+  name: "foo"
+  kind: Type
+  namespace_scope: "typedef_chain::"
+  local_scope: "foo::"
+  definition: "using foo = type<true, int, double>"
+  type: "int"
+  symbol_range: "[502, 505)"
+  markdown: |
+    ### type `foo`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In foo
+    using foo = type<true, int, double>
+    ```
+
+03_big_initializer:
+  name: "arr"
+  kind: Variable
+  namespace_scope: ""
+  definition: "int arr[]"
+  type: "int[256]"
+  value: "{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...}"
+  symbol_range: "[656, 659)"
+  markdown: |
+    ### variable `arr`  
+
+    ---
+    Type: `int[256]`  
+    Value = `{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...}`  
+
+    ---
+    ```cpp
+    int arr[]
+    ```
+
+

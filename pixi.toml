@@ -217,16 +217,8 @@ nodejs = ">=20"
 pnpm = "*"
 
 [feature.node.tasks]
-build-docs = { cwd = "docs", cmd = "pnpm run docs:build", depends-on = ["install-docs"] }
-preview-docs = { cwd = "docs", cmd = "pnpm run docs:preview", depends-on = ["install-docs"] }
 build-vscode = { cwd = "editors/vscode", cmd = "pnpm run package", depends-on = ["install-vscode"] }
 publish-vscode = { cwd = "editors/vscode", cmd = "pnpm run publish", depends-on = ["install-vscode"] }
-
-[feature.node.tasks.install-docs]
-cwd = "docs"
-cmd = "pnpm install"
-inputs = ["docs/package.json", "docs/pnpm-lock.yaml"]
-outputs = ["docs/node_modules/.modules.yaml"]
 
 [feature.node.tasks.install-vscode]
 cwd = "editors/vscode"

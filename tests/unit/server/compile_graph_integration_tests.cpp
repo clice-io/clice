@@ -2,6 +2,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
+#include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "server/compiler/compile_graph.h"
 #include "support/path_pool.h"
@@ -15,15 +16,17 @@ namespace {
 /// Clang requires ALL transitive PCM deps (not just direct imports)
 /// in PrebuiltModuleFiles, so we pass every available PCM.
 CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
+                                        Toolchain& toolchain,
                                         PathPool& pool,
                                         DependencyGraph& graph,
                                         llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
     return [&](std::uint32_t path_id) -> kota::task<bool> {
         auto file_path = pool.resolve(path_id);
-        auto results = cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
+        auto results = cdb.lookup(file_path);
         if(results.empty()) {
             co_return false;
         }
+        toolchain.resolve_or_warn(results[0]);
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
@@ -59,14 +62,16 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
 
 /// Build a resolve_fn that lazily scans module files for imports.
 CompileGraph::resolve_fn make_resolver(CompilationDatabase& cdb,
+                                       Toolchain& toolchain,
                                        PathPool& pool,
                                        DependencyGraph& graph) {
     return [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         auto file_path = pool.resolve(path_id);
-        auto results = cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
+        auto results = cdb.lookup(file_path);
         if(results.empty()) {
             return {};
         }
+        toolchain.resolve_or_warn(results[0]);
 
         auto scan_result = scan_precise(results[0].to_argv(), results[0].resolved.directory);
 
@@ -85,13 +90,14 @@ CompileGraph::resolve_fn make_resolver(CompilationDatabase& cdb,
 struct ModuleTestEnv {
     TempDir tmp;
     CompilationDatabase cdb;
+    Toolchain toolchain;
     PathPool pool;
     DependencyGraph graph;
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 
     void setup(llvm::ArrayRef<CDBEntry> entries, llvm::StringRef json) {
         write_cdb(tmp, cdb, json);
-        scan_dependency_graph(cdb, pool, graph);
+        scan_dependency_graph(cdb, toolchain, pool, graph);
     }
 
     std::uint32_t lookup(llvm::StringRef mod_name) {
@@ -118,8 +124,8 @@ TEST_CASE(SingleModuleNoDeps) {
     ASSERT_FALSE(env.graph.lookup_module("A").empty());
     auto pid_a = env.lookup("A");
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_a]() -> kota::task<> {
@@ -152,8 +158,8 @@ TEST_CASE(ChainedModules) {
     ASSERT_NE(pid_a, UINT32_MAX);
     ASSERT_NE(pid_b, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_a, pid_b]() -> kota::task<> {
@@ -197,8 +203,8 @@ TEST_CASE(DiamondModules) {
     auto pid_top = env.lookup("Top");
     ASSERT_NE(pid_top, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_top]() -> kota::task<> {
@@ -233,8 +239,8 @@ TEST_CASE(DottedModuleName) {
     auto pid_app = env.lookup("my.app");
     ASSERT_NE(pid_app, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_app]() -> kota::task<> {
@@ -275,8 +281,8 @@ TEST_CASE(ReExport) {
     auto pid_user = env.lookup("User");
     ASSERT_NE(pid_user, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_user]() -> kota::task<> {
@@ -319,8 +325,8 @@ TEST_CASE(ExportBlock) {
     auto pid = env.lookup("Consumer");
     ASSERT_NE(pid, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid]() -> kota::task<> {
@@ -355,8 +361,8 @@ TEST_CASE(GlobalModuleFragment) {
     auto pid = env.lookup("GMF");
     ASSERT_NE(pid, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid]() -> kota::task<> {
@@ -391,8 +397,8 @@ TEST_CASE(PrivateModuleFragment) {
     auto pid = env.lookup("Priv");
     ASSERT_NE(pid, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid]() -> kota::task<> {
@@ -431,8 +437,8 @@ TEST_CASE(PartitionInterface) {
     ASSERT_NE(pid_m, UINT32_MAX);
     ASSERT_NE(env.lookup("M:Part"), UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_m]() -> kota::task<> {
@@ -471,8 +477,8 @@ TEST_CASE(MultiplePartitions) {
     auto pid_lib = env.lookup("Lib");
     ASSERT_NE(pid_lib, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_lib]() -> kota::task<> {
@@ -514,8 +520,8 @@ TEST_CASE(PartitionChain) {
     auto pid_sys = env.lookup("Sys");
     ASSERT_NE(pid_sys, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_sys]() -> kota::task<> {
@@ -556,8 +562,8 @@ TEST_CASE(ExportNamespace) {
     auto pid = env.lookup("Calc");
     ASSERT_NE(pid, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid]() -> kota::task<> {
@@ -595,8 +601,8 @@ TEST_CASE(GMFWithImport) {
     auto pid = env.lookup("Combined");
     ASSERT_NE(pid, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid]() -> kota::task<> {
@@ -646,8 +652,8 @@ TEST_CASE(DeepChain) {
     auto pid = env.lookup("M5");
     ASSERT_NE(pid, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid]() -> kota::task<> {
@@ -681,8 +687,8 @@ TEST_CASE(IndependentModules) {
     ASSERT_NE(pid_x, UINT32_MAX);
     ASSERT_NE(pid_y, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_x, pid_y]() -> kota::task<> {
@@ -723,8 +729,8 @@ TEST_CASE(TemplateExport) {
     auto pid = env.lookup("UseTmpl");
     ASSERT_NE(pid, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid]() -> kota::task<> {
@@ -770,8 +776,8 @@ TEST_CASE(ClassExportAndInheritance) {
     auto pid = env.lookup("Circle");
     ASSERT_NE(pid, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid]() -> kota::task<> {
@@ -808,8 +814,8 @@ TEST_CASE(RecompileAfterUpdate) {
     ASSERT_NE(pid_leaf, UINT32_MAX);
     ASSERT_NE(pid_mid, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_leaf, pid_mid]() -> kota::task<> {
@@ -859,8 +865,8 @@ TEST_CASE(PartitionWithGMF) {
     auto pid = env.lookup("Cfg");
     ASSERT_NE(pid, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid]() -> kota::task<> {
@@ -900,8 +906,8 @@ TEST_CASE(PartitionWithExternalImport) {
     auto pid_app = env.lookup("App");
     ASSERT_NE(pid_app, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_app]() -> kota::task<> {
@@ -953,8 +959,8 @@ TEST_CASE(DiamondUpdateCascade) {
     ASSERT_NE(pid_base, UINT32_MAX);
     ASSERT_NE(pid_top, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_base, pid_left, pid_right, pid_top]() -> kota::task<> {
@@ -1025,11 +1031,11 @@ TEST_CASE(ReResolveAfterUpdate) {
         }
         // Delegate to the standard resolver.
         auto file_path = env.pool.resolve(path_id);
-        auto results =
-            env.cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
+        auto results = env.cdb.lookup(file_path);
         if(results.empty()) {
             return {};
         }
+        env.toolchain.resolve_or_warn(results[0]);
         auto scan_result = scan_precise(results[0].to_argv(), results[0].resolved.directory);
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
@@ -1041,7 +1047,7 @@ TEST_CASE(ReResolveAfterUpdate) {
         return deps;
     };
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
                     std::move(counting_resolver));
 
     kota::event_loop loop;
@@ -1087,8 +1093,8 @@ TEST_CASE(CompileFailurePropagation) {
     auto pid_bad = env.lookup("Bad");
     ASSERT_NE(pid_bad, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_bad]() -> kota::task<> {
@@ -1128,8 +1134,8 @@ TEST_CASE(ModuleImplementationUnit) {
     auto pid_iface = env.lookup("Greeter");
     ASSERT_NE(pid_iface, UINT32_MAX);
 
-    CompileGraph cg(make_dispatch(env.cdb, env.pool, env.graph, env.pcm_paths),
-                    make_resolver(env.cdb, env.pool, env.graph));
+    CompileGraph cg(make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths),
+                    make_resolver(env.cdb, env.toolchain, env.pool, env.graph));
 
     kota::event_loop loop;
     auto test = [this, &cg, &env, pid_iface]() -> kota::task<> {
@@ -1140,9 +1146,9 @@ TEST_CASE(ModuleImplementationUnit) {
 
         // Now compile the implementation unit as Content (like a stateful worker would).
         auto impl_path = env.tmp.path("impl.cpp");
-        auto results =
-            env.cdb.lookup(impl_path, {.query_toolchain = true, .suppress_logging = true});
+        auto results = env.cdb.lookup(impl_path);
         CO_ASSERT_FALSE(results.empty());
+        env.toolchain.resolve_or_warn(results[0]);
 
         CompilationParams cp;
         cp.kind = CompilationKind::Content;

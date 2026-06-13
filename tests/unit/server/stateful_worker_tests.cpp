@@ -15,7 +15,7 @@ TEST_SUITE(StatefulWorker) {
 
 TEST_CASE(SpawnAndExit) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     w.peer->close_output();
     w.loop.schedule(w.peer->run());
@@ -28,7 +28,7 @@ TEST_CASE(CompileRequest) {
     auto src = tmp.path("compile_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -54,7 +54,7 @@ TEST_CASE(CompileRequest) {
 
 TEST_CASE(HoverWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -83,7 +83,7 @@ TEST_CASE(CompileThenHover) {
     auto src = tmp.path("hover_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -124,7 +124,7 @@ TEST_CASE(DocumentUpdate) {
     auto src = tmp.path("update_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -165,7 +165,7 @@ TEST_CASE(DocumentUpdate) {
 
 TEST_CASE(CodeActionReturnsEmpty) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -187,7 +187,7 @@ TEST_CASE(CodeActionReturnsEmpty) {
 
 TEST_CASE(GoToDefinitionReturnsEmpty) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -210,7 +210,7 @@ TEST_CASE(GoToDefinitionReturnsEmpty) {
 
 TEST_CASE(SemanticTokensWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -231,7 +231,7 @@ TEST_CASE(SemanticTokensWithoutCompile) {
 
 TEST_CASE(FoldingRangeWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -252,7 +252,7 @@ TEST_CASE(FoldingRangeWithoutCompile) {
 
 TEST_CASE(DocumentSymbolWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -273,7 +273,7 @@ TEST_CASE(DocumentSymbolWithoutCompile) {
 
 TEST_CASE(DocumentLinkWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -294,7 +294,7 @@ TEST_CASE(DocumentLinkWithoutCompile) {
 
 TEST_CASE(InlayHintsWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -325,7 +325,7 @@ TEST_CASE(MultipleSequentialRequests) {
     auto src = tmp.path("seq_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -397,7 +397,7 @@ TEST_CASE(MultipleDocuments) {
     }
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -435,7 +435,7 @@ TEST_CASE(MultipleDocuments) {
 
 TEST_CASE(EvictNotification) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn("stateful-worker"));
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 
@@ -469,7 +469,7 @@ TEST_CASE(SpawnWithMemoryLimit) {
 
     WorkerHandle w;
     // Spawn with a specific memory limit to test the CLI flag is accepted.
-    ASSERT_TRUE(w.spawn("stateful-worker", 2ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(2ULL * 1024 * 1024 * 1024));
 
     bool test_done = false;
 

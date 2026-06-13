@@ -4,6 +4,7 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "command/command.h"
+#include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "support/filesystem.h"
 #include "syntax/scan.h"
@@ -192,18 +193,18 @@ export int a_value() { return b_value() + 1; }
 )");
 
     CompilationDatabase cdb;
-    CommandOptions cmd_opts;
-    cmd_opts.query_toolchain = true;
-    cmd_opts.suppress_logging = true;
+    Toolchain tc;
 
     // Build PCM for mod_b.
     cdb.add_command(tmp.root.str(),
                     tmp.path("mod_b.cppm"),
                     std::format("clang++ -std=c++20 {}", tmp.path("mod_b.cppm")));
 
+    auto cmds_b = cdb.lookup(tmp.path("mod_b.cppm"));
+    ASSERT_TRUE(tc.resolve(cmds_b.front()).has_value());
     CompilationParams params_b;
     params_b.kind = CompilationKind::ModuleInterface;
-    params_b.arguments = cdb.lookup(tmp.path("mod_b.cppm"), cmd_opts).front().to_argv();
+    params_b.arguments = cmds_b.front().to_argv();
 
     auto pcm_b_path = fs::createTemporaryFile("mod_b", "pcm");
     ASSERT_TRUE(pcm_b_path.operator bool());
@@ -219,9 +220,11 @@ export int a_value() { return b_value() + 1; }
                     tmp.path("mod_a.cppm"),
                     std::format("clang++ -std=c++20 {}", tmp.path("mod_a.cppm")));
 
+    auto cmds_a = cdb.lookup(tmp.path("mod_a.cppm"));
+    ASSERT_TRUE(tc.resolve(cmds_a.front()).has_value());
     CompilationParams params_a;
     params_a.kind = CompilationKind::ModuleInterface;
-    params_a.arguments = cdb.lookup(tmp.path("mod_a.cppm"), cmd_opts).front().to_argv();
+    params_a.arguments = cmds_a.front().to_argv();
     params_a.pcms.try_emplace("mod_b", info_b.path);
 
     auto pcm_a_path = fs::createTemporaryFile("mod_a", "pcm");

@@ -1,0 +1,12 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+---
+plaintext: |
+  macro PLUS_ONE
+
+  #define PLUS_ONE(X) (X+1)
+
+  // Expands to
+  (1 + 1)
+

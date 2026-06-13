@@ -21,6 +21,7 @@
 #include <thread>
 
 #include "command/command.h"
+#include "command/toolchain.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/path_pool.h"
@@ -269,6 +270,7 @@ int main(int argc, const char** argv) {
     auto t0 = std::chrono::steady_clock::now();
 
     CompilationDatabase cdb;
+    Toolchain toolchain;
     auto count = cdb.load(cdb_path);
 
     auto t1 = std::chrono::steady_clock::now();
@@ -357,11 +359,12 @@ int main(int argc, const char** argv) {
         // True cold start: rebuild CDB (clears toolchain & config caches),
         // reset PathPool and DependencyGraph.
         cdb = CompilationDatabase{};
+        toolchain = Toolchain{};
         cdb.load(cdb_path);
         path_pool = PathPool{};
         graph = DependencyGraph{};
 
-        auto report = scan_dependency_graph(cdb, path_pool, graph);
+        auto report = scan_dependency_graph(cdb, toolchain, path_pool, graph);
 
         elapsed_times.push_back(report.elapsed_ms);
         config_times.push_back(report.config_ms);

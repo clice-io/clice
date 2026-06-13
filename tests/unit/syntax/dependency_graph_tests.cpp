@@ -2,6 +2,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
+#include "command/toolchain.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
@@ -196,7 +197,8 @@ TEST_CASE(EmptyCDB) {
     PathPool pool;
     DependencyGraph graph;
 
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     EXPECT_EQ(graph.file_count(), 0u);
     EXPECT_EQ(graph.module_count(), 0u);
@@ -215,7 +217,8 @@ TEST_CASE(SingleFileNoIncludes) {
         {tmp.root, tmp.path("src/main.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     EXPECT_EQ(graph.file_count(), 1u);
     EXPECT_EQ(graph.edge_count(), 0u);
@@ -238,7 +241,8 @@ int main() { return x; }
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("include")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     EXPECT_GE(graph.file_count(), 1u);
     EXPECT_GE(graph.edge_count(), 1u);
@@ -262,7 +266,8 @@ int main() {}
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     // main->a, a->b, b->c across 4 waves.
     EXPECT_GE(graph.file_count(), 3u);
@@ -291,7 +296,8 @@ void b() {}
         {tmp.root, tmp.path("src/b.cpp"), inc},
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     EXPECT_GE(graph.file_count(), 2u);
     EXPECT_GE(graph.edge_count(), 2u);
@@ -316,7 +322,8 @@ TEST_CASE(ConditionalIncludes) {
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     // Both headers discovered (over-approximate).
     EXPECT_GE(graph.edge_count(), 2u);
@@ -351,7 +358,8 @@ export int foo() { return 42; }
         {tmp.root, tmp.path("src/mymod.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     auto result = graph.lookup_module("my.module");
     ASSERT_EQ(result.size(), 1u);
@@ -375,7 +383,8 @@ void impl() {}
         {tmp.root, tmp.path("src/mod.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     ASSERT_EQ(graph.lookup_module("my.mod:part").size(), 1u);
 }
@@ -405,7 +414,8 @@ int main() {}
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     // main->a, main->b, a->common, b->common.
     EXPECT_GE(graph.edge_count(), 4u);
@@ -432,7 +442,8 @@ int main() {}
          {"-iquote", tmp.path("quoted"), "-I", tmp.path("angled")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     EXPECT_GE(graph.edge_count(), 2u);
 }
@@ -452,7 +463,8 @@ int main() {}
         {tmp.root, tmp.path("src/main.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     EXPECT_EQ(graph.file_count(), 1u);
     EXPECT_EQ(graph.edge_count(), 0u);
@@ -483,7 +495,8 @@ void a_impl() {}
         {tmp.root, tmp.path("src/impl.cpp"),  {}},
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     EXPECT_EQ(graph.module_count(), 2u);
     ASSERT_FALSE(graph.lookup_module("mod.a").empty());
@@ -510,7 +523,8 @@ int main() {}
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     // main->h0->h1->h2->h3->h4 across 5 waves.
     EXPECT_GE(graph.edge_count(), 5u);
@@ -535,15 +549,46 @@ export int value() { return util; }
         {tmp.root, tmp.path("src/mymod.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, pool, graph);
+    Toolchain tc;
+    scan_dependency_graph(cdb, tc, pool, graph);
 
     ASSERT_FALSE(graph.lookup_module("my.lib").empty());
     EXPECT_GE(graph.edge_count(), 1u);
 }
 
+TEST_CASE(ScanCacheWarmRun) {
+    TempDir tmp;
+    tmp.touch("inc/util.h", R"(int util = 1;)");
+    tmp.touch("src/main.cpp", R"(
+#include "util.h"
+int main() {}
+)");
+
+    CompilationDatabase cdb;
+    PathPool pool;
+    ScanCache cache;
+    Toolchain tc;
+
+    auto json = build_cdb_json({
+        {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
+    });
+    write_cdb(tmp, cdb, json);
+
+    DependencyGraph graph;
+    auto cold = scan_dependency_graph(cdb, tc, pool, graph, &cache);
+    EXPECT_GE(graph.edge_count(), 1u);
+
+    // Warm run with the same cache and pool reproduces the same graph
+    // and hits the scan result cache instead of re-reading files.
+    DependencyGraph graph2;
+    auto warm = scan_dependency_graph(cdb, tc, pool, graph2, &cache);
+    EXPECT_GT(warm.scan_cache_hits, std::size_t(0));
+    EXPECT_EQ(graph2.edge_count(), graph.edge_count());
+    EXPECT_EQ(graph2.file_count(), graph.file_count());
+}
+
 // TODO: add tests for:
 // - Circular includes (A→B→A) to verify BFS terminates correctly
-// - ScanCache warm runs (pass ScanCache* to scan_dependency_graph twice)
 // - get_all_includes flag merge: same header conditional in one config,
 //   unconditional in another — unconditional should win
 // - set_includes overwrite: calling twice with same (path_id, config_id)

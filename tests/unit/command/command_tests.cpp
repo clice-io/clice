@@ -13,7 +13,6 @@ using namespace std::literals;
 
 CommandOptions quiet_options() {
     CommandOptions options;
-    options.suppress_logging = true;
     options.inject_resource_dir = false;
     return options;
 }
@@ -190,6 +189,88 @@ TEST_CASE(MultiCommand) {
     ASSERT_EQ(other.size(), 1U);
 };
 
+TEST_CASE(UniqueConfigsSameFile) {
+    CompilationDatabase database;
+    database.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
+    database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+    database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+
+    auto groups = database.unique_configs(quiet_options());
+    ASSERT_EQ(groups.size(), 2U);
+
+    bool has_17 = false;
+    bool has_20 = false;
+    for(auto& group: groups) {
+        ASSERT_EQ(group.file_ids.size(), 1U);
+        ASSERT_EQ(llvm::StringRef(group.command.source_file), "main.cpp"sv);
+
+        auto argv = print_argv(group.command.to_argv());
+        if(llvm::StringRef(argv).contains("-std=c++17")) {
+            has_17 = true;
+        }
+        if(llvm::StringRef(argv).contains("-std=c++20")) {
+            has_20 = true;
+        }
+    }
+
+    EXPECT_TRUE(has_17);
+    EXPECT_TRUE(has_20);
+};
+
+TEST_CASE(UniqueConfigsMultiFile) {
+    CompilationDatabase database;
+    database.add_command("fake", "a.cpp", "clang++ -std=c++20 -Wall a.cpp"sv);
+    database.add_command("fake", "b.cpp", "clang++ -std=c++20 -Wall b.cpp"sv);
+    database.add_command("fake", "c.cpp", "clang++ -std=c++17 c.cpp"sv);
+    database.add_command("fake", "d.cpp", "clang++ -std=c++20 -Wall -DA d.cpp"sv);
+
+    auto groups = database.unique_configs(quiet_options());
+
+    // a.cpp and b.cpp share canonical (-std=c++20 -Wall, no user-content diff).
+    // c.cpp has different canonical (-std=c++17).
+    // d.cpp has same canonical as a/b but different patch (-DA).
+    ASSERT_EQ(groups.size(), 3U);
+
+    for(auto& group: groups) {
+        auto argv = print_argv(group.command.to_argv());
+        if(llvm::StringRef(argv).contains("-std=c++17")) {
+            ASSERT_EQ(group.file_ids.size(), 1U);
+        } else if(llvm::StringRef(argv).contains("-D")) {
+            ASSERT_EQ(group.file_ids.size(), 1U);
+        } else {
+            ASSERT_EQ(group.file_ids.size(), 2U);
+        }
+    }
+};
+
+TEST_CASE(GroupCommandRebuild) {
+    CompilationDatabase database;
+    database.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
+    database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+
+    auto groups = database.unique_configs(quiet_options());
+    ASSERT_EQ(groups.size(), 2U);
+
+    llvm::SmallVector<std::string> append = {"-fms-extensions"};
+    auto options = quiet_options();
+    options.append = append;
+
+    // Both groups share the same source file; group_command must rebuild from
+    // each group's own info, not from a path lookup that always returns the
+    // first entry for the file.
+    bool has_17 = false, has_20 = false;
+    for(auto& group: groups) {
+        auto argv = print_argv(database.group_command(group, options).to_argv());
+        EXPECT_CONTAINS(argv, "-fms-extensions");
+        if(llvm::StringRef(argv).contains("-std=c++17"))
+            has_17 = true;
+        if(llvm::StringRef(argv).contains("-std=c++20"))
+            has_20 = true;
+    }
+    EXPECT_TRUE(has_17);
+    EXPECT_TRUE(has_20);
+};
+
 TEST_CASE(CodegenFilter) {
     /// Codegen-only options should be stripped from the canonical command.
     CompilationDatabase database;
@@ -311,27 +392,6 @@ TEST_CASE(SemanticOptionsPreserved) {
                  "clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp");
     EXPECT_STRIP("clang++ -std=c++20 -Wall -Werror main.cpp",
                  "clang++ -std=c++20 -Wall -Werror main.cpp");
-};
-
-TEST_CASE(LookupSearchConfig) {
-    CompilationDatabase database;
-    database.add_command(
-        "/project",
-        "main.cpp",
-        "clang++ -std=c++20 -I/usr/include -isystem /usr/local/include main.cpp"sv);
-
-    ASSERT_FALSE(database.has_cached_configs());
-
-    auto options = quiet_options();
-    auto config = database.lookup_search_config("main.cpp", options);
-
-    /// Should have search dirs from the command.
-    EXPECT_FALSE(config.dirs.empty());
-
-    /// Second call should hit cache.
-    EXPECT_TRUE(database.has_cached_configs());
-    auto config2 = database.lookup_search_config("main.cpp", options);
-    ASSERT_EQ(config.dirs.size(), config2.dirs.size());
 };
 
 TEST_CASE(ResolvePath) {
@@ -550,10 +610,7 @@ TEST_CASE(ResourceDir) {
     database.add_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
 
     // With inject_resource_dir disabled, no resource dir in result.
-    auto args_no_rd =
-        database.lookup("main.cpp", {.suppress_logging = true, .inject_resource_dir = false})
-            .front()
-            .to_argv();
+    auto args_no_rd = database.lookup("main.cpp", {.inject_resource_dir = false}).front().to_argv();
     ASSERT_EQ(args_no_rd.size(), 3U);
     ASSERT_EQ(args_no_rd[0], "clang++"sv);
     ASSERT_EQ(args_no_rd[1], "-std=c++23"sv);

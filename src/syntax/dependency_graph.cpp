@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 
+#include "command/search_config.h"
 #include "command/toolchain.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
@@ -252,6 +253,7 @@ FileScanResult scan_file_worker(const char* path, std::uint32_t path_id, std::ui
 
 /// The async scan implementation that runs on a local event loop.
 kota::task<> scan_impl(CompilationDatabase& cdb,
+                       Toolchain& toolchain,
                        PathPool& path_pool,
                        DependencyGraph& graph,
                        ScanReport& report,
@@ -260,115 +262,68 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                        const RuleMatcher& rule_matcher) {
     auto start_time = std::chrono::steady_clock::now();
 
-    // Reuse context groups and configs from cache when available (warm runs).
-    // On the first call (or when cache is null) we build everything from scratch.
+    // On warm runs (ext_cache populated from a previous scan), skip the expensive
+    // config extraction and wave-0 construction entirely.
     const bool have_config_cache =
-        ext_cache && !ext_cache->context_groups.empty() && !ext_cache->configs.empty();
+        ext_cache && !ext_cache->configs.empty() && !ext_cache->initial_wave.empty();
 
-    // Provide local storage when not using the persistent cache.
-    llvm::DenseMap<const CompilationInfo*, llvm::SmallVector<std::uint32_t>> local_context_groups;
-    llvm::DenseMap<const CompilationInfo*, std::uint32_t> local_context_to_config_id;
+    // Use persistent cache storage when available, otherwise local temporaries.
     llvm::DenseMap<std::uint32_t, SearchConfig> local_configs;
-
-    // When ext_cache is provided, write directly into it so that the data
-    // survives across calls (making have_config_cache true on run 2+).
-    llvm::DenseMap<const CompilationInfo*, llvm::SmallVector<std::uint32_t>>& context_groups =
-        ext_cache ? ext_cache->context_groups : local_context_groups;
-    llvm::DenseMap<const CompilationInfo*, std::uint32_t>& context_to_config_id =
-        ext_cache ? ext_cache->context_to_config_id : local_context_to_config_id;
     llvm::DenseMap<std::uint32_t, SearchConfig>& configs =
         ext_cache ? ext_cache->configs : local_configs;
 
     auto config_start = std::chrono::steady_clock::now();
 
+    // Intermediate: one ConfigGroup per unique CompilationInfo in the CDB.
+    // Used to build configs, initial_wave, and pre-warm the toolchain cache.
+    // Not cached — rebuilt on cold runs from CDB state which is cheap.
+    llvm::SmallVector<CompilationDatabase::ConfigGroup> config_groups;
+
     if(!have_config_cache) {
-        // Group files by CompilationInfo pointer to identify unique compilation commands.
-        // Convert CDB path IDs to PathPool IDs.
-        for(auto& entry: cdb.get_entries()) {
-            auto path = cdb.resolve_path(entry.file);
-            auto pool_id = path_pool.intern(path);
-            context_groups[entry.info.ptr].push_back(pool_id);
-        }
+        // Ask CDB for unique compilation configs. Each ConfigGroup bundles:
+        //   - file_ids:  all CDB path_ids sharing the same (dir, canonical, patch)
+        //   - command:   a representative CompileCommand (driver-level flags)
+        //
+        // This is the right granularity for SearchConfig: different -I paths
+        // produce different groups. For toolchain queries the granularity is
+        // coarser (user-content flags don't affect the key), so warm()
+        // further deduplicates internally.
+        config_groups = cdb.unique_configs();
 
-        // Pre-warm toolchain cache: extract unique queries, execute in parallel.
-        // Skip entirely when configs are already cached (warm runs), since the
-        // toolchain cache is necessarily also populated from the previous scan.
+        // Pre-warm toolchain cache: warm() keys each command by its
+        // non-user-content flags. Commands differing only in -D/-I collapse
+        // to the same key, so N config groups often yield just 1-2 subprocess
+        // calls.
         auto prewarm_start = std::chrono::steady_clock::now();
-        if(!cdb.has_cached_configs()) {
-            std::vector<CompilationDatabase::PendingEntry> pending_entries;
-            for(auto& [info_ptr, file_ids]: context_groups) {
-                auto representative_path = path_pool.resolve(file_ids[0]);
-                CompilationDatabase::PendingEntry pe;
-                pe.file = representative_path;
-                pe.directory = info_ptr->directory;
-                // Reconstruct arguments: canonical args + patch args.
-                for(auto arg: info_ptr->canonical->arguments) {
-                    pe.arguments.push_back(arg);
-                }
-                for(auto arg: info_ptr->patch) {
-                    pe.arguments.push_back(arg);
-                }
-                pending_entries.push_back(std::move(pe));
-            }
-
-            auto pending = cdb.get_pending_queries(pending_entries);
-            if(!pending.empty()) {
-                LOG_INFO("Warming toolchain cache: {} unique queries", pending.size());
-
-                std::vector<kota::task<ToolchainResult, kota::error>> tasks;
-                tasks.reserve(pending.size());
-                for(auto& query: pending) {
-                    tasks.push_back(kota::queue(
-                        [q = std::move(query)]() -> ToolchainResult {
-                            ToolchainResult result;
-                            result.key = q.key;
-                            llvm::BumpPtrAllocator alloc;
-                            llvm::StringSaver saver(alloc);
-                            toolchain::query_toolchain({q.file,
-                                                        q.directory,
-                                                        q.query_args,
-                                                        [&](const char* s) -> const char* {
-                                                            result.cc1_args.push_back(s);
-                                                            return saver.save(s).data();
-                                                        }});
-                            return result;
-                        },
-                        loop));
-                }
-
-                auto outcome = co_await kota::when_all(std::move(tasks));
-                if(outcome.has_value()) {
-                    cdb.inject_results(*outcome);
-                } else {
-                    LOG_ERROR("Parallel toolchain query failed: {}", outcome.error().message());
-                }
-            }
+        llvm::SmallVector<CompileCommand> representative_cmds;
+        representative_cmds.reserve(config_groups.size());
+        for(auto& group: config_groups) {
+            representative_cmds.push_back(group.command);
         }
+
+        toolchain.warm(representative_cmds);
         auto prewarm_end = std::chrono::steady_clock::now();
         report.prewarm_ms =
             std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start)
                 .count();
 
-        // Extract SearchConfig for each unique context.
-        std::uint32_t next_config_id = 0;
+        // Extract SearchConfig for each unique config group.
+        // Toolchain is now warm, so resolve() hits cache.
         std::int64_t lookup_us = 0;
-        for(auto& [context, file_ids]: context_groups) {
-            std::uint32_t config_id = next_config_id++;
-            context_to_config_id[context] = config_id;
-            auto representative_path = path_pool.resolve(file_ids[0]);
+        for(std::uint32_t config_id = 0; config_id < config_groups.size(); ++config_id) {
+            auto& group = config_groups[config_id];
+            auto representative_path = llvm::StringRef(group.command.source_file);
 
-            // Apply per-file rules so that `[[rules]]`-modified -I/-isystem/-std
+            // Apply per-file rules so that [[rules]]-modified -I/-isystem/-std
             // flags are reflected in the search config used by the scan.
-            // Rules are applied to the representative file and assumed to hold
-            // for the whole context group (same CompilationInfo).
             std::vector<std::string> rule_append, rule_remove;
             if(rule_matcher)
                 rule_matcher(representative_path, rule_append, rule_remove);
 
             auto t0 = std::chrono::steady_clock::now();
-            configs[config_id] = cdb.lookup_search_config(
-                representative_path,
-                {.query_toolchain = true, .remove = rule_remove, .append = rule_append});
+            auto cmd = cdb.group_command(group, {.remove = rule_remove, .append = rule_append});
+            toolchain.resolve_or_warn(cmd);
+            configs[config_id] = extract_search_config(cmd.to_argv(), cmd.resolved.directory);
             auto t1 = std::chrono::steady_clock::now();
             lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
         }
@@ -409,12 +364,11 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             }
         }
         // Also prefetch parent directories of source files (for quoted include resolution).
-        for(auto& [context, file_ids]: context_groups) {
-            for(auto path_id: file_ids) {
-                auto dir = llvm::sys::path::parent_path(path_pool.resolve(path_id));
-                if(!dir.empty()) {
-                    unique_dirs.insert(dir);
-                }
+        for(auto& entry: cdb.get_entries()) {
+            auto file_path = cdb.resolve_path(entry.file);
+            auto dir = llvm::sys::path::parent_path(file_path);
+            if(!dir.empty()) {
+                unique_dirs.insert(dir);
             }
         }
 
@@ -442,21 +396,22 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     llvm::DenseMap<std::uint32_t, unsigned> scanned_files;
 
     // Wave 0: all source files from CDB.
-    // Re-use the cached initial_wave when available to avoid re-iterating context_groups.
+    // Re-use the cached initial_wave when available; otherwise build from
+    // config_groups, converting CDB path_ids → PathPool path_ids.
     std::vector<WaveEntry> current_wave;
-    const bool have_initial_wave_cache = ext_cache && !ext_cache->initial_wave.empty();
-    if(have_initial_wave_cache) {
+    if(have_config_cache) {
         current_wave = ext_cache->initial_wave;
         for(auto& entry: current_wave) {
             scanned_files.try_emplace(entry.path_id, entry.found_dir_idx);
         }
     } else {
         current_wave.reserve(cdb.get_entries().size());
-        for(auto& [context, file_ids]: context_groups) {
-            auto config_id = context_to_config_id[context];
-            for(auto path_id: file_ids) {
-                scanned_files.try_emplace(path_id, 0u);
-                current_wave.push_back({path_id, config_id, /*found_dir_idx=*/0});
+        for(std::uint32_t config_id = 0; config_id < config_groups.size(); ++config_id) {
+            for(auto cdb_file_id: config_groups[config_id].file_ids) {
+                auto file_path = cdb.resolve_path(cdb_file_id);
+                auto pool_id = path_pool.intern(file_path);
+                scanned_files.try_emplace(pool_id, 0u);
+                current_wave.push_back({pool_id, config_id, /*found_dir_idx=*/0});
             }
         }
         if(ext_cache) {
@@ -629,9 +584,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             // headers cannot contain module declarations.
             if(scan_result.scan_result.need_preprocess && wave_num == 0) {
                 auto file_path = llvm::StringRef(scan_result.path);
-                auto contexts =
-                    cdb.lookup(file_path, {.query_toolchain = true, .suppress_logging = true});
+                auto contexts = cdb.lookup(file_path);
                 if(!contexts.empty()) {
+                    toolchain.resolve_or_warn(contexts[0]);
                     auto& cmd = contexts[0];
                     auto fallback =
                         scan_module_decl(cmd.to_argv(), cmd.resolved.directory, /*content=*/{});
@@ -828,6 +783,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 // Public sync entry point
 
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
+                                 Toolchain& toolchain,
                                  PathPool& path_pool,
                                  DependencyGraph& graph,
                                  ScanCache* cache,
@@ -838,7 +794,7 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
     }
 
     kota::event_loop loop;
-    loop.schedule(scan_impl(cdb, path_pool, graph, report, cache, loop, rule_matcher));
+    loop.schedule(scan_impl(cdb, toolchain, path_pool, graph, report, cache, loop, rule_matcher));
     loop.run();
     return report;
 }

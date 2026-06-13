@@ -8,6 +8,7 @@
 #include "test/annotation.h"
 #include "test/test.h"
 #include "command/command.h"
+#include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "support/logging.h"
 
@@ -16,8 +17,14 @@ namespace clice::testing {
 struct Tester {
     CompilationParams params;
     CompilationDatabase database;
+    Toolchain toolchain;
     std::optional<CompilationUnit> unit;
     std::string src_path;
+
+    /// Target triple for the VFS-only compile path. Empty means the host
+    /// triple. Pin it when the test output must be identical across
+    /// platforms, e.g. for snapshot tests.
+    std::string triple;
 
     AnnotatedSources sources;
 

@@ -110,45 +110,40 @@ void MasterServer::initialize(llvm::StringRef root) {
     initialize();
 }
 
-void MasterServer::start_file_watcher() {
-    if(workspace_root.empty())
-        return;
+kota::task<> MasterServer::file_watcher_task() {
+    auto watcher = kota::fs_event::create(workspace_root, {}, loop);
+    if(!watcher) {
+        LOG_WARN("Failed to start file watcher for {}", workspace_root);
+        co_return;
+    }
 
-    loop.schedule([this]() -> kota::task<> {
-        auto watcher = kota::fs_event::create(workspace_root, {}, loop);
-        if(!watcher) {
-            LOG_WARN("Failed to start file watcher for {}", workspace_root);
-            co_return;
-        }
+    LOG_INFO("File watcher started for {}", workspace_root);
 
-        LOG_INFO("File watcher started for {}", workspace_root);
+    while(true) {
+        auto changes = co_await watcher->next();
+        if(!changes)
+            break;
 
-        while(true) {
-            auto changes = co_await watcher->next();
-            if(!changes)
-                break;
+        for(auto& change: *changes) {
+            if(change.type != kota::fs_event::effect::modify &&
+               change.type != kota::fs_event::effect::create)
+                continue;
 
-            for(auto& change: *changes) {
-                if(change.type != kota::fs_event::effect::modify &&
-                   change.type != kota::fs_event::effect::create)
-                    continue;
+            llvm::StringRef file(change.path);
+            if(file.ends_with("compile_commands.json")) {
+                LOG_INFO("CDB changed, reloading workspace");
+                load_workspace();
+                continue;
+            }
 
-                llvm::StringRef file(change.path);
-                if(file.ends_with("compile_commands.json")) {
-                    LOG_INFO("CDB changed, reloading workspace");
-                    load_workspace();
-                    continue;
-                }
-
-                if(file.ends_with(".cpp") || file.ends_with(".cc") || file.ends_with(".cxx") ||
-                   file.ends_with(".c") || file.ends_with(".h") || file.ends_with(".hpp") ||
-                   file.ends_with(".hxx") || file.ends_with(".cppm") || file.ends_with(".ixx")) {
-                    auto path_id = workspace.path_pool.intern(file);
-                    on_file_saved(path_id);
-                }
+            if(file.ends_with(".cpp") || file.ends_with(".cc") || file.ends_with(".cxx") ||
+               file.ends_with(".c") || file.ends_with(".h") || file.ends_with(".hpp") ||
+               file.ends_with(".hxx") || file.ends_with(".cppm") || file.ends_with(".ixx")) {
+                auto path_id = workspace.path_pool.intern(file);
+                on_file_saved(path_id);
             }
         }
-    }());
+    }
 }
 
 Session* MasterServer::find_session(std::uint32_t path_id) {
@@ -210,16 +205,16 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
 void MasterServer::schedule_shutdown() {
     if(lifecycle == ServerLifecycle::Exited)
         return;
-    lifecycle = ServerLifecycle::Exited;
+    lifecycle = ServerLifecycle::ShuttingDown;
+    shutdown_event.set();
+}
 
+kota::task<> MasterServer::shutdown_and_cleanup() {
     indexer.save(workspace.config.project.index_dir);
     workspace.save_cache();
-    shutdown_event.set();
-
-    loop.schedule([this]() -> kota::task<> {
-        co_await kota::when_all(indexer.stop(), compiler.stop(), pool.stop());
-        loop.stop();
-    }());
+    co_await kota::when_all(indexer.stop(), compiler.stop());
+    co_await pool.stop();
+    lifecycle = ServerLifecycle::Exited;
 }
 
 void MasterServer::load_workspace() {
@@ -295,6 +290,7 @@ void MasterServer::load_workspace() {
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
 
     auto report = scan_dependency_graph(workspace.cdb,
+                                        workspace.toolchain,
                                         workspace.path_pool,
                                         workspace.dep_graph,
                                         /*cache=*/nullptr,
@@ -358,41 +354,50 @@ static kota::task<> accept_connections(MasterServer& server,
                                        bool register_lsp,
                                        std::list<Connection>& connections) {
     auto& loop = kota::event_loop::current();
-    kota::task_group<> connection_group(loop);
+    kota::task_group<> group(loop);
     bool lsp_registered = false;
 
-    while(true) {
-        auto conn = co_await acceptor.accept();
-        if(!conn.has_value())
-            break;
+    group.spawn([](MasterServer& server,
+                   kota::tcp::acceptor& acceptor,
+                   bool register_lsp,
+                   std::list<Connection>& connections,
+                   kota::task_group<>& group,
+                   bool& lsp_registered) -> kota::task<> {
+        auto& loop = kota::event_loop::current();
 
-        LOG_INFO("Client connected");
+        while(true) {
+            auto conn = co_await acceptor.accept();
+            if(!conn.has_value())
+                break;
 
-        auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-        auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+            LOG_INFO("Client connected");
 
-        std::unique_ptr<LSPClient> lsp;
-        if(register_lsp && !lsp_registered) {
-            lsp = std::make_unique<LSPClient>(server, *peer);
-            lsp_registered = true;
+            auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
+            auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+
+            std::unique_ptr<LSPClient> lsp;
+            if(register_lsp && !lsp_registered) {
+                lsp = std::make_unique<LSPClient>(server, *peer);
+                lsp_registered = true;
+            }
+            auto agent = std::make_unique<AgentClient>(server, *peer);
+
+            auto* peer_ptr = peer.get();
+            auto it = connections.emplace(connections.end(),
+                                          Connection{
+                                              .peer = std::move(peer),
+                                              .lsp_client = std::move(lsp),
+                                              .agent_client = std::move(agent),
+                                          });
+
+            group.spawn(run_connection(peer_ptr, connections, it));
         }
-        auto agent = std::make_unique<AgentClient>(server, *peer);
+    }(server, acceptor, register_lsp, connections, group, lsp_registered));
 
-        auto* peer_ptr = peer.get();
-        auto it = connections.emplace(connections.end(),
-                                      Connection{
-                                          .peer = std::move(peer),
-                                          .lsp_client = std::move(lsp),
-                                          .agent_client = std::move(agent),
-                                      });
-
-        connection_group.spawn(run_connection(peer_ptr, connections, it));
-    }
-
-    co_await connection_group.join();
+    co_await group.join();
 }
 
-int run_server_mode(const ServerOptions& opts) {
+int run_server_mode(const ServerOptions& opts, const char* self_path) {
     logging::stderr_logger("master", logging::options);
 
     if((opts.mode == "socket" || opts.port > 0) && !opts.allow_remote &&
@@ -404,9 +409,16 @@ int run_server_mode(const ServerOptions& opts) {
     kota::event_loop loop;
     MasterServer server(loop, opts.self_path);
     server.allow_agentic_shutdown = opts.allow_remote_shutdown || is_loopback_host(opts.host);
+    auto mode = opts.mode.value_or(ServerMode::Pipe);
+    auto host = opts.host.value_or("127.0.0.1");
+    auto port = opts.port.value_or(0);
+    auto record = opts.record.value_or("");
+
+    kota::event_loop loop;
+    MasterServer server(loop, self_path);
     std::list<Connection> connections;
 
-    if(opts.mode == "pipe") {
+    if(mode == ServerMode::Pipe) {
         auto transport = kota::ipc::StreamTransport::open_stdio(loop);
         if(!transport) {
             LOG_ERROR("failed to open stdio transport");
@@ -414,44 +426,68 @@ int run_server_mode(const ServerOptions& opts) {
         }
 
         std::unique_ptr<kota::ipc::Transport> final_transport = std::move(*transport);
-        if(!opts.record.empty()) {
+        if(!record.empty()) {
             final_transport =
-                std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport),
-                                                                opts.record);
+                std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport), record);
         }
 
         kota::ipc::JsonPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
 
-        if(opts.port > 0) {
-            auto acceptor = kota::tcp::listen(opts.host, opts.port, {}, loop);
+        kota::tcp::acceptor agent_acceptor;
+        bool has_agent_acceptor = false;
+
+        if(port > 0) {
+            auto acceptor = kota::tcp::listen(host, port, {}, loop);
             if(acceptor) {
-                LOG_INFO("Agentic protocol listening on {}:{}", opts.host, opts.port);
-                loop.schedule(accept_connections(server, std::move(*acceptor), false, connections));
+                LOG_INFO("Agentic protocol listening on {}:{}", host, port);
+                agent_acceptor = std::move(*acceptor);
+                has_agent_acceptor = true;
             } else {
-                LOG_WARN("Failed to start agentic listener on {}:{}", opts.host, opts.port);
+                LOG_WARN("Failed to start agentic listener on {}:{}", host, port);
             }
         }
 
-        loop.schedule(lsp_peer.run());
+        loop.schedule([](MasterServer& server,
+                         kota::ipc::JsonPeer& peer,
+                         std::list<Connection>& connections,
+                         kota::tcp::acceptor acceptor,
+                         bool has_acceptor) -> kota::task<> {
+            if(has_acceptor) {
+                co_await kota::when_any(
+                    peer.run(),
+                    accept_connections(server, std::move(acceptor), false, connections),
+                    server.get_shutdown_event().wait());
+            } else {
+                co_await kota::when_any(peer.run(), server.get_shutdown_event().wait());
+            }
+            co_await server.shutdown_and_cleanup();
+        }(server, lsp_peer, connections, std::move(agent_acceptor), has_agent_acceptor));
         loop.run();
         return 0;
     }
 
-    if(opts.mode == "socket") {
-        auto acceptor = kota::tcp::listen(opts.host, opts.port, {}, loop);
+    if(mode == ServerMode::Socket) {
+        auto acceptor = kota::tcp::listen(host, port, {}, loop);
         if(!acceptor) {
-            LOG_ERROR("failed to listen on {}:{}", opts.host, opts.port);
+            LOG_ERROR("failed to listen on {}:{}", host, port);
             return 1;
         }
 
-        LOG_INFO("Listening on {}:{} ...", opts.host, opts.port);
-        loop.schedule(accept_connections(server, std::move(*acceptor), true, connections));
+        LOG_INFO("Listening on {}:{} ...", host, port);
+        loop.schedule([](MasterServer& server,
+                         kota::tcp::acceptor acceptor,
+                         std::list<Connection>& connections) -> kota::task<> {
+            co_await kota::when_any(
+                accept_connections(server, std::move(acceptor), true, connections),
+                server.get_shutdown_event().wait());
+            co_await server.shutdown_and_cleanup();
+        }(server, std::move(*acceptor), connections));
         loop.run();
         return 0;
     }
 
-    LOG_ERROR("unknown server mode '{}'", opts.mode);
+    LOG_ERROR("unexpected server mode");
     return 1;
 }
 
@@ -468,49 +504,66 @@ static kota::task<> run_daemon_connection(kota::ipc::JsonPeer* peer,
     connections.erase(pos);
 }
 
-static kota::task<> daemon_main(MasterServer& server, kota::pipe::acceptor acceptor) {
+static kota::task<> daemon_accept(MasterServer& server, kota::pipe::acceptor acceptor) {
     auto& loop = kota::event_loop::current();
     std::list<DaemonConnection> connections;
-    kota::task_group<> connection_group(loop);
+    kota::task_group<> group(loop);
+    group.spawn([](MasterServer& server,
+                   kota::pipe::acceptor& acceptor,
+                   std::list<DaemonConnection>& connections,
+                   kota::task_group<>& group) -> kota::task<> {
+        auto& loop = kota::event_loop::current();
 
-    co_await kota::when_all(
-        [&]() -> kota::task<> {
-            while(true) {
-                auto conn = co_await acceptor.accept();
-                if(!conn.has_value())
-                    break;
+        while(true) {
+            auto conn = co_await acceptor.accept();
+            if(!conn.has_value())
+                break;
 
-                LOG_INFO("Daemon client connected");
+            LOG_INFO("Daemon client connected");
 
-                auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-                auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
-                auto agent = std::make_unique<AgentClient>(server, *peer);
+            auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
+            auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+            auto agent = std::make_unique<AgentClient>(server, *peer);
 
-                auto* peer_ptr = peer.get();
-                auto it = connections.emplace(connections.end(),
-                                              DaemonConnection{
-                                                  .peer = std::move(peer),
-                                                  .agent_client = std::move(agent),
-                                              });
+            auto* peer_ptr = peer.get();
+            auto it = connections.emplace(connections.end(),
+                                          DaemonConnection{
+                                              .peer = std::move(peer),
+                                              .agent_client = std::move(agent),
+                                          });
 
-                connection_group.spawn(run_daemon_connection(peer_ptr, connections, it));
-            }
-        }(),
-        [&]() -> kota::task<> {
-            co_await server.get_shutdown_event().wait();
-            acceptor.stop();
-            for(auto& conn: connections) {
-                conn.peer->close();
-            }
-        }());
+            group.spawn(run_daemon_connection(peer_ptr, connections, it));
+        }
+    }(server, acceptor, connections, group));
 
-    co_await connection_group.join();
+    co_await group.join();
 }
 
-int run_daemon_mode(const DaemonOptions& opts) {
+static kota::task<> resilient_file_watcher(MasterServer& server) {
+    co_await server.file_watcher_task();
+    co_await server.get_shutdown_event().wait();
+}
+
+static kota::task<> daemon_main(MasterServer& server,
+                                kota::pipe::acceptor acceptor,
+                                bool watch_files) {
+    if(watch_files) {
+        co_await kota::when_any(daemon_accept(server, std::move(acceptor)),
+                                resilient_file_watcher(server),
+                                server.get_shutdown_event().wait());
+    } else {
+        co_await kota::when_any(daemon_accept(server, std::move(acceptor)),
+                                server.get_shutdown_event().wait());
+    }
+    co_await server.shutdown_and_cleanup();
+}
+
+int run_daemon_mode(const ServerOptions& opts, const char* self_path) {
     logging::stderr_logger("daemon", logging::options);
 
-    auto socket_path = opts.socket_path.empty() ? path::default_socket_path() : opts.socket_path;
+    auto sock = opts.socket.value_or("");
+    auto socket_path = sock.empty() ? path::default_socket_path() : sock;
+    auto ws = opts.workspace.value_or("");
 
     auto socket_dir = llvm::sys::path::parent_path(socket_path);
     if(auto ec = llvm::sys::fs::create_directories(socket_dir)) {
@@ -538,11 +591,12 @@ int run_daemon_mode(const DaemonOptions& opts) {
     }
 
     kota::event_loop loop;
-    MasterServer server(loop, opts.self_path);
+    MasterServer server(loop, self_path);
 
-    if(!opts.workspace.empty()) {
-        server.initialize(opts.workspace);
-        server.start_file_watcher();
+    bool watch_files = false;
+    if(!ws.empty()) {
+        server.initialize(ws);
+        watch_files = true;
     }
 
     auto acceptor = kota::pipe::listen(socket_path, {}, loop);
@@ -552,7 +606,7 @@ int run_daemon_mode(const DaemonOptions& opts) {
     }
 
     LOG_INFO("Daemon listening on {}", socket_path);
-    loop.schedule(daemon_main(server, std::move(*acceptor)));
+    loop.schedule(daemon_main(server, std::move(*acceptor), watch_files));
     loop.run();
 
     llvm::sys::fs::remove(socket_path);

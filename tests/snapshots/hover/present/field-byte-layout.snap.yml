@@ -1,0 +1,15 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+---
+plaintext: |
+  field foo
+
+  Type: type (aka can_type)
+  Value = value
+  Offset: 12 bytes
+  Size: 4 bytes (+4 bytes padding), alignment 4 bytes
+
+  // In test::Bar
+  def
+

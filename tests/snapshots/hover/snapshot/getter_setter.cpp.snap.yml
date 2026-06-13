@@ -1,0 +1,118 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: getter_setter.cpp
+---
+01_getter:
+  name: "y"
+  kind: Method
+  namespace_scope: "getter::"
+  local_scope: "X::"
+  documentation: "Trivial accessor for `Y`."
+  definition: "float y()"
+  access_specifier: "public"
+  type: "float ()"
+  return_type: "float"
+  parameters: []
+  symbol_range: "[274, 275)"
+  markdown: |
+    ### method `y`  
+
+    ---
+    → `float`  
+    Trivial accessor for `Y`.  
+
+    ---
+    ```cpp
+    // In X
+    public: float y()
+    ```
+
+02_setter:
+  name: "setY"
+  kind: Method
+  namespace_scope: "setter::"
+  local_scope: "X::"
+  documentation: "Trivial setter for `Y`."
+  definition: "void setY(float v)"
+  access_specifier: "public"
+  type: "void (float)"
+  return_type: "void"
+  parameters:
+    - "float v"
+  symbol_range: "[359, 363)"
+  markdown: |
+    ### method `setY`  
+
+    ---
+    → `void`  
+    Parameters:  
+    - `float v`
+
+    Trivial setter for `Y`.  
+
+    ---
+    ```cpp
+    // In X
+    public: void setY(float v)
+    ```
+
+03_setter_builder:
+  name: "setY"
+  kind: Method
+  namespace_scope: "setter_builder::"
+  local_scope: "X::"
+  documentation: "Trivial setter for `Y`."
+  definition: "X &setY(float v)"
+  access_specifier: "public"
+  type: "X &(float)"
+  return_type: "X &"
+  parameters:
+    - "float v"
+  symbol_range: "[473, 477)"
+  markdown: |
+    ### method `setY`  
+
+    ---
+    → `X &`  
+    Parameters:  
+    - `float v`
+
+    Trivial setter for `Y`.  
+
+    ---
+    ```cpp
+    // In X
+    public: X &setY(float v)
+    ```
+
+04_setter_move:
+  name: "setY"
+  kind: Method
+  namespace_scope: "setter_move::"
+  local_scope: "X::"
+  documentation: "Trivial setter for `Y`."
+  definition: "void setY(float v)"
+  access_specifier: "public"
+  type: "void (float)"
+  return_type: "void"
+  parameters:
+    - "float v"
+  symbol_range: "[600, 604)"
+  markdown: |
+    ### method `setY`  
+
+    ---
+    → `void`  
+    Parameters:  
+    - `float v`
+
+    Trivial setter for `Y`.  
+
+    ---
+    ```cpp
+    // In X
+    public: void setY(float v)
+    ```
+
+

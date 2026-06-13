@@ -6,11 +6,10 @@
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
-#include "clang/Driver/Options.h"
 
 namespace clice {
 
-using ID = clang::driver::options::ID;
+using namespace option;
 
 SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
                                    llvm::StringRef directory) {
@@ -23,7 +22,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
     std::vector<SearchDir> system;
     std::vector<SearchDir> after;
 
-    auto make_absolute = [&](llvm::StringRef path) -> std::string {
+    auto make_absolute = [&](std::string_view path) -> std::string {
         llvm::SmallString<256> abs_path(path);
         if(!llvm::sys::path::is_absolute(abs_path)) {
             llvm::sys::fs::make_absolute(directory, abs_path);
@@ -35,48 +34,46 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
     // Track -iprefix state for -iwithprefix/-iwithprefixbefore.
     std::string prefix;
 
-    llvm::BumpPtrAllocator allocator;
-    ArgumentParser parser{&allocator};
-    parser.set_visibility(default_visibility(arguments[0]));
+    std::vector<std::string> parse_args(arguments.begin() + 1, arguments.end());
+    auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
+                                              .visibility = default_visibility(arguments[0])};
+    for(auto& result: option::table().parse(parse_args, options)) {
+        if(!result.has_value()) {
+            continue;
+        }
+        auto& arg = *result;
+        auto vals = arg.values;
+        switch(arg.id) {
+            // Quoted group (clang: frontend::Quoted)
+            case OPT_iquote: quoted.push_back({make_absolute(vals[0])}); break;
 
-    parser.parse(
-        llvm::ArrayRef(arguments).drop_front(),
-        [&](std::unique_ptr<llvm::opt::Arg> arg) {
-            auto id = arg->getOption().getID();
-            switch(id) {
-                // Quoted group (clang: frontend::Quoted)
-                case ID::OPT_iquote: quoted.push_back({make_absolute(arg->getValue())}); break;
+            // Angled group (clang: frontend::Angled)
+            case OPT_I: angled.push_back({make_absolute(vals[0])}); break;
 
-                // Angled group (clang: frontend::Angled)
-                case ID::OPT_I: angled.push_back({make_absolute(arg->getValue())}); break;
+            // System group (clang: frontend::System / ExternCSystem)
+            case OPT_isystem:
+            case OPT_internal_isystem:
+            case OPT_internal_externc_isystem: system.push_back({make_absolute(vals[0])}); break;
 
-                // System group (clang: frontend::System / ExternCSystem)
-                case ID::OPT_isystem:
-                case ID::OPT_internal_isystem:
-                case ID::OPT_internal_externc_isystem:
-                    system.push_back({make_absolute(arg->getValue())});
-                    break;
+            // Prefix options: must be processed in argument order.
+            case OPT_iprefix: prefix = vals[0]; break;
+            case OPT_iwithprefix:
+                // clang maps to After group.
+                after.push_back({make_absolute(prefix + std::string(vals[0]))});
+                break;
+            case OPT_iwithprefixbefore:
+                // clang maps to Angled group.
+                angled.push_back({make_absolute(prefix + std::string(vals[0]))});
+                break;
 
-                // Prefix options: must be processed in argument order.
-                case ID::OPT_iprefix: prefix = arg->getValue(); break;
-                case ID::OPT_iwithprefix:
-                    // clang maps to After group.
-                    after.push_back({make_absolute(prefix + arg->getValue())});
-                    break;
-                case ID::OPT_iwithprefixbefore:
-                    // clang maps to Angled group.
-                    angled.push_back({make_absolute(prefix + arg->getValue())});
-                    break;
+            case OPT_idirafter: after.push_back({make_absolute(vals[0])}); break;
 
-                case ID::OPT_idirafter: after.push_back({make_absolute(arg->getValue())}); break;
-
-                // TODO: -cxx-isystem (clang: frontend::CXXSystem, C++-only system dirs)
-                // TODO: -iwithsysroot (prepends sysroot to path, then adds to System)
-                // TODO: HeaderMap support (-I foo.hmap remaps include names)
-                default: break;
-            }
-        },
-        [](int, int) {});
+            // TODO: -cxx-isystem (clang: frontend::CXXSystem, C++-only system dirs)
+            // TODO: -iwithsysroot (prepends sysroot to path, then adds to System)
+            // TODO: HeaderMap support (-I foo.hmap remaps include names)
+            default: break;
+        }
+    }
 
     // Concatenate: Quoted → Angled → System → After
     SearchConfig config;

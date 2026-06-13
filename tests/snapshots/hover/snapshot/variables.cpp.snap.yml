@@ -1,0 +1,108 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: variables.cpp
+---
+01_local_var:
+  name: "bonjour"
+  kind: Variable
+  namespace_scope: "local_var::"
+  local_scope: "main::"
+  definition: "int bonjour"
+  type: "int"
+  symbol_range: "[226, 233)"
+  markdown: |
+    ### variable `bonjour`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In main
+    int bonjour
+    ```
+
+02_method_local_var:
+  name: "bonjour"
+  kind: Variable
+  namespace_scope: "method_var::"
+  local_scope: "s::method::"
+  definition: "int bonjour"
+  type: "int"
+  symbol_range: "[369, 376)"
+  markdown: |
+    ### variable `bonjour`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In s::method
+    int bonjour
+    ```
+
+03_global_var:
+  name: "hey"
+  kind: Variable
+  namespace_scope: ""
+  documentation: "Global variable"
+  definition: "static int hey = 10"
+  type: "int"
+  value: "10 (0xa)"
+  symbol_range: "[451, 454)"
+  markdown: |
+    ### variable `hey`  
+
+    ---
+    Type: `int`  
+    Value = `10 (0xa)`  
+    Global variable  
+
+    ---
+    ```cpp
+    static int hey = 10
+    ```
+
+04_ns_global_var:
+  name: "hey"
+  kind: Variable
+  namespace_scope: "ns1::"
+  definition: "static long long hey = -36637162602497"
+  type: "long long"
+  value: "-36637162602497 (0xffffdeadbeefffff)"
+  symbol_range: "[548, 551)"
+  markdown: |
+    ### variable `hey`  
+
+    ---
+    Type: `long long`  
+    Value = `-36637162602497 (0xffffdeadbeefffff)`  
+
+    ---
+    ```cpp
+    // In namespace ns1
+    static long long hey = -36637162602497
+    ```
+
+05_anon_ns_var:
+  name: "foo"
+  kind: Variable
+  namespace_scope: "ns::"
+  definition: "int foo"
+  type: "int"
+  symbol_range: "[662, 665)"
+  markdown: |
+    ### variable `foo`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In namespace ns
+    int foo
+    ```
+
+

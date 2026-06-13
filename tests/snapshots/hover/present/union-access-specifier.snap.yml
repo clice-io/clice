@@ -1,0 +1,10 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+---
+plaintext: |
+  union foo
+
+  // In namespace ns1
+  private: union foo {}
+

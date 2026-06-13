@@ -1,0 +1,251 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: basics.cpp
+---
+01_global_func:
+  name: "foo"
+  kind: Function
+  namespace_scope: ""
+  documentation: "Best foo ever."
+  definition: "void foo()"
+  type: "void ()"
+  return_type: "void"
+  parameters: []
+  symbol_range: "[178, 181)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `void`  
+    Best foo ever.  
+
+    ---
+    ```cpp
+    void foo()
+    ```
+
+02_ns_func:
+  name: "foo"
+  kind: Function
+  namespace_scope: "ns1::ns2::"
+  documentation: "Best foo ever."
+  definition: "void foo()"
+  type: "void ()"
+  return_type: "void"
+  parameters: []
+  symbol_range: "[248, 251)"
+  markdown: |
+    ### function `foo`  
+
+    ---
+    → `void`  
+    Best foo ever.  
+
+    ---
+    ```cpp
+    // In namespace ns1::ns2
+    void foo()
+    ```
+
+03_field:
+  name: "bar"
+  kind: Field
+  namespace_scope: "ns1::ns2::"
+  local_scope: "Foo::"
+  definition: "char bar"
+  access_specifier: "private"
+  type: "char"
+  size: 8
+  offset: 0
+  padding: 56
+  align: 8
+  symbol_range: "[316, 319)"
+  markdown: |
+    ### field `bar`  
+
+    ---
+    Type: `char`  
+    Offset: 0 bytes  
+    Size: 1 byte (+7 bytes padding), alignment 1 byte  
+
+    ---
+    ```cpp
+    // In Foo
+    private: char bar
+    ```
+
+04_union_field:
+  name: "bar"
+  kind: Field
+  namespace_scope: ""
+  local_scope: "FooUnion::"
+  definition: "char bar"
+  access_specifier: "public"
+  type: "char"
+  size: 8
+  padding: 120
+  align: 8
+  symbol_range: "[371, 374)"
+  markdown: |
+    ### field `bar`  
+
+    ---
+    Type: `char`  
+    Size: 1 byte (+15 bytes padding), alignment 1 byte  
+
+    ---
+    ```cpp
+    // In FooUnion
+    public: char bar
+    ```
+
+05_bitfield:
+  name: "x"
+  kind: Field
+  namespace_scope: ""
+  local_scope: "FooBits1::"
+  definition: "int x : 1"
+  access_specifier: "public"
+  type: "int"
+  size: 1
+  offset: 0
+  padding: 0
+  align: 32
+  symbol_range: "[419, 420)"
+  markdown: |
+    ### field `x`  
+
+    ---
+    Type: `int`  
+    Offset: 0 bytes  
+    Size: 1 bit, alignment 4 bytes  
+
+    ---
+    ```cpp
+    // In FooBits1
+    public: int x : 1
+    ```
+
+06_bitfield_padding:
+  name: "y"
+  kind: Field
+  namespace_scope: ""
+  local_scope: "FooBits2::"
+  definition: "char y : 1"
+  access_specifier: "public"
+  type: "char"
+  size: 1
+  offset: 8
+  padding: 23
+  align: 8
+  symbol_range: "[478, 479)"
+  markdown: |
+    ### field `y`  
+
+    ---
+    Type: `char`  
+    Offset: 1 byte  
+    Size: 1 bit (+23 bits padding), alignment 1 byte  
+
+    ---
+    ```cpp
+    // In FooBits2
+    public: char y : 1
+    ```
+
+07_method_local:
+  name: "bar"
+  kind: Variable
+  namespace_scope: "ns1::ns2::"
+  local_scope: "Bar::foo::"
+  definition: "int bar"
+  type: "int"
+  symbol_range: "[572, 575)"
+  markdown: |
+    ### variable `bar`  
+
+    ---
+    Type: `int`  
+
+    ---
+    ```cpp
+    // In Bar::foo
+    int bar
+    ```
+
+08_anon_struct_field:
+  name: "bar"
+  kind: Field
+  namespace_scope: "ns1::"
+  local_scope: "(anonymous struct)::"
+  definition: "char bar"
+  access_specifier: "public"
+  type: "char"
+  size: 8
+  offset: 0
+  padding: 0
+  align: 8
+  symbol_range: "[640, 643)"
+  markdown: |
+    ### field `bar`  
+
+    ---
+    Type: `char`  
+    Offset: 0 bytes  
+    Size: 1 byte, alignment 1 byte  
+
+    ---
+    ```cpp
+    // In (anonymous struct)
+    public: char bar
+    ```
+
+09_struct_size:
+  name: "X"
+  kind: Struct
+  namespace_scope: ""
+  definition: "struct X {}"
+  size: 8
+  align: 8
+  symbol_range: "[663, 664)"
+  markdown: |
+    ### struct `X`  
+
+    ---
+    Size: 1 byte, alignment 1 byte  
+
+    ---
+    ```cpp
+    struct X {}
+    ```
+
+10_predefined_var:
+  name: "__func__"
+  kind: Variable
+  documentation: "Name of the current function (predefined variable)"
+  type: "const char[4]"
+  value: "\"pf1\""
+  symbol_range: "[685, 693)"
+  markdown: |
+    ### variable `__func__`  
+
+    ---
+    Type: `const char[4]`  
+    Value = `"pf1"`  
+    Name of the current function (predefined variable)
+
+11_predefined_var_dependent:
+  name: "__func__"
+  kind: Variable
+  documentation: "Name of the current function (predefined variable)"
+  type: "const char[]"
+  symbol_range: "[727, 735)"
+  markdown: |
+    ### variable `__func__`  
+
+    ---
+    Type: `const char[]`  
+    Name of the current function (predefined variable)
+
+

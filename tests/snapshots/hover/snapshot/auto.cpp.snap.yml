@@ -1,0 +1,385 @@
+---
+source: hover_tests.cpp
+created_at: 2026-06-11
+input_file: auto.cpp
+---
+01_structured_bindings:
+  name: "auto"
+  kind: Type
+  definition: "S"
+  symbol_range: "[353, 357)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    S
+    ```
+
+02_undeduced_auto:
+  name: "auto"
+  kind: Type
+  definition: "/* not deduced */"
+  symbol_range: "[454, 458)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    /* not deduced */
+    ```
+
+03_constrained_auto:
+  name: "auto"
+  kind: Type
+  definition: "int"
+  symbol_range: "[557, 561)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+04_auto_lambda:
+  name: "auto"
+  kind: Type
+  definition: "class(lambda)"
+  symbol_range: "[628, 632)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    class(lambda)
+    ```
+
+05_auto_instantiation:
+  name: "auto"
+  kind: Type
+  definition: "Foo<int>"
+  symbol_range: "[764, 768)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    Foo<int>
+    ```
+
+06_auto_specialized:
+  name: "auto"
+  kind: Type
+  definition: "Foo<int>"
+  symbol_range: "[931, 935)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    Foo<int>
+    ```
+
+07_simple_auto:
+  name: "auto"
+  kind: Type
+  definition: "int"
+  symbol_range: "[1032, 1036)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+08_const_auto:
+  name: "auto"
+  kind: Type
+  definition: "int"
+  symbol_range: "[1135, 1139)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+09_const_auto_ref:
+  name: "auto"
+  kind: Type
+  definition: "int"
+  symbol_range: "[1243, 1247)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+10_auto_ref:
+  name: "auto"
+  kind: Type
+  definition: "int"
+  symbol_range: "[1343, 1347)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+11_auto_ptr:
+  name: "auto"
+  kind: Type
+  definition: "int"
+  symbol_range: "[1447, 1451)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+12_auto_from_pointer:
+  name: "auto"
+  kind: Type
+  definition: "int *"
+  symbol_range: "[1568, 1572)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int *
+    ```
+
+13_auto_init_list:
+  name: "auto"
+  kind: Type
+  definition: "std::initializer_list<int>"
+  symbol_range: "[1654, 1658)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    std::initializer_list<int>
+    ```
+
+14_auto_conversion:
+  name: "auto"
+  kind: Type
+  definition: "int"
+  symbol_range: "[1758, 1762)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+15_auto_trailing_return:
+  name: "auto"
+  kind: Type
+  definition: "int"
+  symbol_range: "[1852, 1856)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+16_auto_trailing_decltype:
+  name: "auto"
+  kind: Type
+  documentation: "auto function return with trailing type"
+  definition: "Bar"
+  symbol_range: "[1985, 1989)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    auto function return with trailing type  
+
+    ---
+    ```cpp
+    Bar
+    ```
+
+17_auto_fn_return:
+  name: "auto"
+  kind: Type
+  documentation: "auto in function return"
+  definition: "Bar"
+  symbol_range: "[2103, 2107)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    auto in function return  
+
+    ---
+    ```cpp
+    Bar
+    ```
+
+18_auto_ref_fn_return:
+  name: "auto"
+  kind: Type
+  documentation: "auto& in function return"
+  definition: "Bar"
+  symbol_range: "[2207, 2211)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    auto& in function return  
+
+    ---
+    ```cpp
+    Bar
+    ```
+
+19_auto_ptr_fn_return:
+  name: "auto"
+  kind: Type
+  documentation: "auto* in function return"
+  definition: "Bar"
+  symbol_range: "[2324, 2328)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    auto\* in function return  
+
+    ---
+    ```cpp
+    Bar
+    ```
+
+20_const_auto_ref_fn_return:
+  name: "auto"
+  kind: Type
+  documentation: "const auto& in function return"
+  definition: "Bar"
+  symbol_range: "[2457, 2461)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    const auto& in function return  
+
+    ---
+    ```cpp
+    Bar
+    ```
+
+21_auto_fn_pointer:
+  name: "auto"
+  kind: Type
+  definition: "int"
+  symbol_range: "[2577, 2581)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int
+    ```
+
+22_auto_alias_int:
+  name: "auto"
+  kind: Type
+  definition: "int_type // aka: int"
+  symbol_range: "[2663, 2667)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    int_type // aka: int
+    ```
+
+23_auto_alias_class:
+  name: "auto"
+  kind: Type
+  documentation: "auto on alias"
+  definition: "cls_type // aka: alias_class::cls"
+  symbol_range: "[2765, 2769)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    auto on alias  
+
+    ---
+    ```cpp
+    cls_type // aka: alias_class::cls
+    ```
+
+24_auto_alias_template:
+  name: "auto"
+  kind: Type
+  documentation: "auto on alias"
+  definition: "templ<int>"
+  symbol_range: "[2872, 2876)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    auto on alias  
+
+    ---
+    ```cpp
+    templ<int>
+    ```
+
+25_undeduced_auto_decl:
+  name: "auto"
+  kind: Type
+  definition: "/* not deduced */"
+  symbol_range: "[2992, 2996)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    /* not deduced */
+    ```
+
+26_undeduced_auto_return:
+  name: "auto"
+  kind: Type
+  definition: "/* not deduced */"
+  symbol_range: "[3092, 3096)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    /* not deduced */
+    ```
+
+27_template_auto_param:
+  name: "auto"
+  kind: Type
+  definition: "/* not deduced */"
+  symbol_range: "[3193, 3197)"
+  markdown: |
+    ### type `auto`  
+
+    ---
+    ```cpp
+    /* not deduced */
+    ```
+
+
