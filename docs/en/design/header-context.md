@@ -1,10 +1,10 @@
 # Header Context
 
-For clangd to work properly, users often need to provide a `compile_commands.json` file (hereinafter referred to as CDB file). The basic compilation unit of C++'s traditional compilation model is a source file (e.g., `.c` and `.cpp` files), where `#include` simply pastes and copies the content of header files to the corresponding position in the source file. The aforementioned CDB file stores the compilation commands corresponding to each source file. When you open a source file, clangd will use its corresponding compilation command in the CDB to compile this file.
+## The Problem
 
-Naturally, there's a question: if the CDB file only contains compilation commands for source files and not header files, how does clangd handle header files? clangd treats header files as source files, and then, according to some rules, such as using the compilation command of the source file in the corresponding directory as the compilation command for that header file. This model is simple and effective, but it ignores some situations.
+The compilation database (`compile_commands.json`) only contains entries for source files, not header files. Since headers are included into source files, their meaning can change depending on the including context.
 
-Since header files are part of source files, there will be cases where their content differs depending on the content that precedes them in the source file. For example:
+### Context-Dependent Headers
 
 ```cpp
 // a.h
@@ -22,9 +22,9 @@ struct Y { ... };
 #include "a.h"
 ```
 
-Obviously, `a.h` has different states in `b.cpp` and `c.cpp` - one defines `X` and the other defines `Y`. If we simply treat `a.h` as a source file, then only `Y` can be seen.
+`a.h` has different states in `b.cpp` (defines `X`) and `c.cpp` (defines `Y`). A language server that treats `a.h` as an independent source file can only show one state.
 
-A more extreme case is non-self-contained header files, for example:
+### Non-Self-Contained Headers
 
 ```cpp
 // a.h
@@ -37,6 +37,22 @@ struct X {};
 #include "a.h"
 ```
 
-`a.h` itself cannot be compiled, but when embedded in `b.cpp`, it compiles normally. In this case, clangd will report an error in `a.h`, unable to find the definition of `X`. Obviously, this is because it treats `a.h` as an independent source file. There are many such header files in libstdc++ code, and some popular C++ header-only libraries also have such code, which clangd currently cannot handle.
+`a.h` cannot be compiled standalone, but compiles correctly when included from `b.cpp`. clangd reports errors in such headers because it compiles them independently. This pattern appears frequently in libstdc++ and popular header-only libraries.
 
-clice will support **header context**, supporting automatic and user-initiated switching of header file states, and of course will also support non-self-contained header files. We want to achieve the following effect, using the first piece of code as an example. When you jump from `b.cpp` to `a.h`, use `b.cpp` as the context for `a.h`. Similarly, when you jump from `c.cpp` to `a.h`, use `c.cpp` as the context for `a.h`.
+## clice's Solution
+
+clice implements header context switching — when you navigate to a header file, it uses the source file you came from as the compilation context.
+
+### How It Works
+
+1. **Context resolution** (`Compiler::resolve_header_context`): When a header is opened, clice finds host source files that include it (via `DependencyGraph::find_host_sources`). It builds a chain of includes from the host source to the target header.
+
+2. **Preamble injection**: All source content preceding the `#include` that pulls in the target header is written to a temporary preamble file. The header is then compiled with `-include <preamble>` injected into its flags. This gives the header the exact preprocessor state it would have when included from that source file.
+
+3. **Automatic switching**: When you jump from a source file into a header (e.g., via go-to-definition or file open), clice automatically uses that source file's context. The context is stored per-session in `HeaderFileContext`.
+
+4. **Manual switching**: Users can explicitly switch context via the `clice/switchContext` command, which presents a list of available host sources for the current header.
+
+### Context Invalidation
+
+When the host source's preamble changes (include order modified, macros added), the header context is invalidated. A content hash of the preamble determines staleness — if the hash changes, the context is rebuilt on next query.

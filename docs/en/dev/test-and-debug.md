@@ -2,76 +2,116 @@
 
 ## Run Tests
 
-clice has two types of tests: unit tests and integration tests.
+clice has three types of tests: unit tests, integration tests, and smoke tests.
 
-- Run unit tests
+All test dependencies (pytest, pygls, etc.) are managed by pixi — no separate installation needed.
+
+### Unit Tests
 
 ```bash
-$ ./build/bin/unit_tests --test-dir="./tests/data"
+pixi run unit-test          # default RelWithDebInfo
+pixi run unit-test Debug    # debug build
 ```
 
-- Run integration tests
+Equivalent to:
+```bash
+./build/RelWithDebInfo/bin/unit_tests \
+    --test-dir="./tests/data" \
+    --snapshot-dir="./tests/snapshots" \
+    --corpus-dir="./tests/corpus" \
+    --verbose
+```
 
-We use pytest to run integration tests. Please refer to `pyproject.toml` to install the required Python libraries.
+### Integration Tests
+
+End-to-end tests that start a real clice server and communicate via LSP protocol.
 
 ```bash
-$ pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice
+pixi run integration-test          # default RelWithDebInfo
+pixi run integration-test Debug    # debug build
+```
+
+Equivalent to:
+```bash
+pytest -s --log-cli-level=INFO --timeout=300 --timeout-method=thread \
+    tests/integration --executable=./build/RelWithDebInfo/bin/clice
+```
+
+### Smoke Tests
+
+Replay recorded LSP sessions to catch regressions in protocol handling.
+
+```bash
+pixi run smoke-test          # default RelWithDebInfo
+pixi run smoke-test Debug    # debug build
+```
+
+Equivalent to:
+```bash
+python tests/replay.py tests/smoke/*.jsonl \
+    --clice=./build/RelWithDebInfo/bin/clice
+```
+
+### Run All Tests
+
+```bash
+pixi run test                # runs unit + integration + smoke
+pixi run test Debug          # all tests with debug build
 ```
 
 ## Debug
 
-If you want to attach a debugger to clice for debugging, it is recommended to first start clice in socket mode independently, and then connect the client to it.
+If you want to attach a debugger to clice, start it in socket mode independently, then connect a client.
 
 ```shell
-$ ./build/bin/clice server --mode socket --port 50051
+./build/Debug/bin/clice server --mode socket --port 50051
 ```
 
-After the server starts, you can connect a client to the server in the following two ways:
+After the server starts, you can connect a client in two ways:
 
-- Connect by running a specific test with pytest
+### Connect via pytest
 
-You can run a single integration test case to connect to a running clice instance. This is very useful for reproducing and debugging specific scenarios.
+Run a single integration test against the running instance:
 
 ```shell
-$ pytest -s --log-cli-level=INFO tests/integration/test_file_operation.py::test_did_open --mode=socket --port=50051
+pytest -s --log-cli-level=INFO \
+    tests/integration/lifecycle/test_file_operation.py::test_did_open \
+    --mode=socket --port=50051
 ```
 
-- Use VS Code for practical testing
+### Connect via VS Code
 
-You can also connect to a running clice service by configuring the clice-vscode extension, allowing you to debug in a real-world usage scenario.
+Configure the clice extension to connect to your running instance:
 
-1.  Download the [clice-vscode](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode) extension from the Marketplace.
+1. Install the [clice](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode) extension.
 
-2.  Configure `settings.json`: Create a `.vscode/settings.json` file in your project's root directory and add the following content:
+2. Configure `.vscode/settings.json`:
 
     ```jsonc
     {
-      // Point this to the clice binary you downloaded.
       "clice.executable": "/path/to/your/clice/executable",
-
-      // Enable socket mode.
       "clice.mode": "socket",
       "clice.port": 50051,
-
-      // Optional: Set this to an empty string to turn off the clangd.
-      "clangd.path": "",
+      // Optional: disable clangd if also installed
+      "clangd.path": ""
     }
     ```
 
-3.  Reload Window: After modifying the configuration, execute the `Developer: Reload Window` command in VS Code for the settings to take effect. The extension will automatically connect to the clice instance listening on port 50051.
+3. Reload Window (`Developer: Reload Window`) for settings to take effect.
 
-If you need to modify or debug the clice-vscode extension itself, follow these steps:
+### Debug the VS Code extension
 
-1.  Clone and install dependencies:
+The extension lives in-tree at `editors/vscode/`:
+
+1. Install dependencies:
 
     ```shell
-    $ git clone https://github.com/clice-io/clice-vscode
-    $ cd clice-vscode
-    $ npm install
+    cd editors/vscode
+    pnpm install
     ```
 
-2.  Open the extension project with VS Code: Open the `clice-vscode` folder in a new VS Code window.
+2. Open `editors/vscode` in VS Code.
 
-3.  Create debug configuration: In the `clice-vscode` project, also create a `.vscode/settings.json` file with the same content as above.
+3. Create `.vscode/settings.json` with the socket config above.
 
-4.  Press `F5`. This will launch an [Extension Development Host] window. This is a new VS Code window with your local clice-vscode extension code loaded. Open your C++ project in this new window, and it should automatically connect to clice.
+4. Press `F5` to launch an Extension Development Host window.

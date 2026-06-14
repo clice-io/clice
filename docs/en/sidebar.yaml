@@ -1,0 +1,42 @@
+guide:
+  label: Guide
+  items:
+    - what-is-clice
+    - quick-start
+    - configuration
+
+features:
+  label: Features
+  items:
+    - overview
+    - completion
+    - hover
+    - signature-help
+    - navigation
+    - diagnostics
+    - semantic-tokens
+    - inlay-hints
+    - document-links
+    - document-symbols
+    - folding-ranges
+    - formatting
+    - lint
+    - project-format
+
+design:
+  label: Design
+  items:
+    - architecture
+    - compilation
+    - header-context
+    - index
+    - template-resolver
+
+dev:
+  label: Development
+  collapsed: true
+  items:
+    - build
+    - contribution
+    - extension
+    - test-and-debug

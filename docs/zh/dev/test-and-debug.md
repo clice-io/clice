@@ -1,77 +1,117 @@
 # Test and Debug
 
-## Run Tests
+## 运行测试
 
-clice 有两种形式的测试，单元测试和集成测试。
+clice 有三种测试：单元测试、集成测试和冒烟测试。
 
-- 运行单元测试
+所有测试依赖（pytest、pygls 等）由 pixi 管理，无需单独安装。
 
-```bash
-$ ./build/bin/unit_tests --test-dir="./tests/data"
-```
-
-- 运行集成测试
-
-我们使用 pytest 来运行集成测试，请参考 `pyproject.toml` 安装依赖的 python 库
+### 单元测试
 
 ```bash
-$ pytest -s --log-cli-level=INFO tests/integration --executable=./build/bin/clice
+pixi run unit-test          # 默认 RelWithDebInfo
+pixi run unit-test Debug    # debug 构建
 ```
 
-## Debug
+等价于：
+```bash
+./build/RelWithDebInfo/bin/unit_tests \
+    --test-dir="./tests/data" \
+    --snapshot-dir="./tests/snapshots" \
+    --corpus-dir="./tests/corpus" \
+    --verbose
+```
 
-如果想在 clice 上附加调试器并进行调试，推荐先单独以 socket 模式启动 clice，然后再将客户端连接到 clice 上
+### 集成测试
+
+启动真实的 clice 服务器，通过 LSP 协议进行端到端测试。
+
+```bash
+pixi run integration-test          # 默认 RelWithDebInfo
+pixi run integration-test Debug    # debug 构建
+```
+
+等价于：
+```bash
+pytest -s --log-cli-level=INFO --timeout=300 --timeout-method=thread \
+    tests/integration --executable=./build/RelWithDebInfo/bin/clice
+```
+
+### 冒烟测试
+
+回放录制的 LSP 会话，检查协议处理是否有回归。
+
+```bash
+pixi run smoke-test          # 默认 RelWithDebInfo
+pixi run smoke-test Debug    # debug 构建
+```
+
+等价于：
+```bash
+python tests/replay.py tests/smoke/*.jsonl \
+    --clice=./build/RelWithDebInfo/bin/clice
+```
+
+### 运行全部测试
+
+```bash
+pixi run test                # 单元 + 集成 + 冒烟
+pixi run test Debug          # debug 构建的全部测试
+```
+
+## 调试
+
+如果想在 clice 上附加调试器，推荐先以 socket 模式单独启动 clice，然后连接客户端。
 
 ```shell
-$ ./build/bin/clice server --mode socket --port 50051
+./build/Debug/bin/clice server --mode socket --port 50051
 ```
 
-在服务器启动之后，可以通过以下两种方式启动客户端连接到服务器
+服务器启动后，可以通过以下两种方式连接客户端：
 
-- 使用 pytest 运行特定测试进行连接
+### 通过 pytest 连接
 
-你可以运行一个单独的集成测试用例来连接正在运行的 clice。这对于复现和调试特定场景非常有用。
+运行单个集成测试连接到正在运行的 clice 实例：
 
 ```shell
-$ pytest -s --log-cli-level=INFO tests/integration/test_file_operation.py::test_did_open --mode=socket --port=50051
+pytest -s --log-cli-level=INFO \
+    tests/integration/lifecycle/test_file_operation.py::test_did_open \
+    --mode=socket --port=50051
 ```
 
-- 使用 vscode 进行实际的测试
+### 通过 VS Code 连接
 
-你也可以通过配置 clice-vscode 插件来连接正在运行的 clice 服务，从而在实际使用场景中进行调试。
+配置 clice 插件连接到正在运行的实例：
 
-1. 在插件市场下载插件 [clice-vscode](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode)
+1. 安装 [clice](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode) 插件。
 
-2. 配置 `settings.json`: 在你的项目根目录下创建 `.vscode/settings.json` 文件，并填入以下内容：
+2. 配置 `.vscode/settings.json`：
 
-   ```jsonc
-   {
-     // Point this to the clice binary you downloaded.
-     "clice.executable": "/path/to/your/clice/executable",
+    ```jsonc
+    {
+      "clice.executable": "/path/to/your/clice/executable",
+      "clice.mode": "socket",
+      "clice.port": 50051,
+      // 可选：禁用 clangd
+      "clangd.path": ""
+    }
+    ```
 
-     // Enable socket mode.
-     "clice.mode": "socket",
-     "clice.port": 50051,
+3. 重新加载窗口（`Developer: Reload Window`）使设置生效。
 
-     // Optional: Set this to an empty string to turn off the clangd.
-     "clangd.path": "",
-   }
-   ```
+### 调试 VS Code 插件
 
-3. 重新加载窗口：修改配置后，在 vscode 中执行 Developer: Reload Window 命令使配置生效。插件会自动连接到正在 50051 端口监听的 clice。
+插件位于仓库内 `editors/vscode/`：
 
-如果你需要修改或调试 clice-vscode 插件本身，可以按以下步骤操作：
+1. 安装依赖：
 
-1. 克隆并安装依赖：
+    ```shell
+    cd editors/vscode
+    pnpm install
+    ```
 
-   ```shell
-   $ git clone https://github.com/clice-io/clice-vscode
-   $ cd clice-vscode
-   $ npm install
-   ```
+2. 用 VS Code 打开 `editors/vscode`。
 
-2. 使用 vscode 打开插件项目：用一个新的 vscode 窗口打开 clice-vscode 文件夹
+3. 创建上述 socket 配置的 `.vscode/settings.json`。
 
-3. 创建调试配置：在 clice-vscode 项目中，也创建一个 `.vscode/settings.json` 文件，内容与上方相同
-
-4. 按下 `F5` 键。这会启动一个【扩展开发宿主】窗口。这是一个加载了你本地 clice-vscode 插件代码的新的 vscode 窗口，在这个新窗口中打开你的 C++ 项目，它应该会自动连接到 clice
+4. 按 `F5` 启动扩展开发宿主窗口。

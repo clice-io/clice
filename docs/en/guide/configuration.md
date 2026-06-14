@@ -1,52 +1,153 @@
 # Configuration
 
-This is the documentation for `clice.toml`.
+clice reads configuration from `clice.toml` in the workspace root. Configuration can also be passed via LSP `initializationOptions` (JSON format).
+
+## Variable Substitution
+
+The following variable is supported in string values:
+
+| Variable | Description |
+|----------|-------------|
+| `${workspace}` | The workspace directory provided by the client |
 
 ## Project
 
-| Name                | Type     | Default                       |
-| ------------------- | -------- | ----------------------------- |
-| `project.cache_dir` | `string` | `"${workspace}/.clice/cache"` |
+### `project.clang_tidy`
 
-Folder for storing PCH and PCM caches.
-<br>
+| Type | Default |
+|------|---------|
+| `bool` | `false` |
 
-| Name                | Type     | Default                       |
-| ------------------- | -------- | ----------------------------- |
-| `project.index_dir` | `string` | `"${workspace}/.clice/index"` |
+Enable experimental clang-tidy diagnostics.
 
-Folder for storing index files.
-<br>
+### `project.max_active_file`
 
-## Rule
+| Type | Default |
+|------|---------|
+| `int` | `8` |
 
-`[[rules]]` represents an array of objects, where each object has the following properties:
-<br>
+Maximum number of active files to keep in memory. When the limit is exceeded, the least recently used files are evicted. Range: 1–512.
 
-| Name               | Type                |
-| ------------------ | ------------------- |
-| `[rules].patterns` | `array` of `string` |
+### `project.cache_dir`
 
-Glob patterns for matching file paths, following LSP's [standard](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#documentFilter).
+| Type | Default |
+|------|---------|
+| `string` | `$XDG_CACHE_HOME/clice/<hash>` or `${workspace}/.clice` |
 
-- `*`: Matches one or more characters in a path segment.
-- `?`: Matches a single character in a path segment.
-- `**`: Matches any number of path segments, including zero.
-- `{}`: Used for grouping conditions (e.g., `**/*.{ts,js}` matches all TypeScript and JavaScript files).
-- `[]`: Declares a character range to match in a path segment (e.g., `example.[0-9]` matches `example.0`, `example.1`, etc.).
-- `[!...]`: Excludes a character range to match in a path segment (e.g., `example.[!0-9]` matches `example.a`, `example.b`, but not `example.0`).
-  <br>
+Directory for storing PCH and PCM cache files. The default uses XDG_CACHE_HOME (or `~/.cache`) with a workspace-specific hash subdirectory. Falls back to `${workspace}/.clice` if the XDG directory cannot be created.
 
-| Name             | Type                | Default |
-| ---------------- | ------------------- | ------- |
-| `[rules].append` | `array` of `string` | `[]`    |
+### `project.index_dir`
 
-Commands to append to the original command list. For example, `append = ["-std=c++17"]`.
-<br>
+| Type | Default |
+|------|---------|
+| `string` | `${cache_dir}/index` |
 
-| Name             | Type                | Default |
-| ---------------- | ------------------- | ------- |
-| `[rules].remove` | `array` of `string` | `[]`    |
+Directory for storing index files.
 
-Commands to remove from the original command list. For example, `remove = ["-std=c++11"]`.
-<br>
+### `project.logging_dir`
+
+| Type | Default |
+|------|---------|
+| `string` | `${cache_dir}/logs` |
+
+Directory for log files.
+
+### `project.compile_commands_paths`
+
+| Type | Default |
+|------|---------|
+| `array of string` | `["${workspace}/build"]` |
+
+Paths to search for `compile_commands.json` files. Can be either direct file paths or directories (will look for `compile_commands.json` inside).
+
+### `project.enable_indexing`
+
+| Type | Default |
+|------|---------|
+| `bool` | `true` |
+
+Enable background indexing for cross-TU features (find references, workspace symbols, etc.).
+
+### `project.idle_timeout_ms`
+
+| Type | Default |
+|------|---------|
+| `int` | `3000` |
+
+Idle time (milliseconds) before starting background indexing after the last edit.
+
+### `project.stateful_worker_count`
+
+| Type | Default |
+|------|---------|
+| `uint32` | `2` |
+
+Number of stateful worker processes. These hold ASTs in memory and serve queries (hover, semantic tokens, etc.).
+
+### `project.stateless_worker_count`
+
+| Type | Default |
+|------|---------|
+| `uint32` | `max(cores/2, 2)` |
+
+Number of stateless worker processes. These handle ephemeral tasks (PCH/PCM builds, completion, signature help).
+
+### `project.worker_memory_limit`
+
+| Type | Default |
+|------|---------|
+| `uint64` | `4294967296` (4 GB) |
+
+Per-worker memory limit in bytes. Workers exceeding this limit are restarted.
+
+## Rules
+
+`[[rules]]` is an array of rule objects. Rules are matched in declaration order — later rules override earlier ones.
+
+### `[rules].patterns`
+
+| Type | Default |
+|------|---------|
+| `array of string` | `[]` |
+
+Glob patterns for matching file paths:
+
+- `*` — matches one or more characters in a path segment
+- `?` — matches a single character in a path segment
+- `**` — matches any number of path segments, including zero
+- `{}` — groups conditions (e.g., `**/*.{h,cpp}`)
+- `[]` — character range (e.g., `example.[0-9]`)
+- `[!...]` — negated character range
+
+### `[rules].append`
+
+| Type | Default |
+|------|---------|
+| `array of string` | `[]` |
+
+Flags to append to the compilation command. Example: `["-std=c++20", "-DNDEBUG"]`.
+
+### `[rules].remove`
+
+| Type | Default |
+|------|---------|
+| `array of string` | `[]` |
+
+Flags to remove from the compilation command. Example: `["-Wall", "-Werror"]`.
+
+## Example
+
+```toml
+[project]
+max_active_file = 16
+compile_commands_paths = ["${workspace}/build", "${workspace}/cmake-build-debug"]
+clang_tidy = true
+
+[[rules]]
+patterns = ["**/*"]
+append = ["-std=c++23"]
+
+[[rules]]
+patterns = ["**/test/**"]
+append = ["-DTEST_MODE"]
+```

@@ -16,7 +16,7 @@ We ship several tasks; the commands below configure, build, and run tests:
 # configure && build (default RelWithDebInfo)
 pixi run build
 
-# unit && integration
+# unit + integration + smoke tests
 pixi run test
 ```
 
@@ -27,6 +27,7 @@ pixi run cmake-config Debug
 pixi run cmake-build Debug
 pixi run unit-test Debug
 pixi run integration-test Debug
+pixi run smoke-test Debug
 ```
 
 > [!TIP]
@@ -41,22 +42,28 @@ If you plan to build manually, first ensure your toolchain matches the versions 
 ### CMake
 
 ```shell
-cmake -B build -G Ninja \
+cmake -B build/RelWithDebInfo -G Ninja \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
     -DCLICE_ENABLE_TEST=ON
+
+cmake --build build/RelWithDebInfo
 ```
 
 > Note: `CMAKE_TOOLCHAIN_FILE` is optional. If your toolchain exactly matches ours, you can use the predefined `cmake/toolchain.cmake`; otherwise remove that flag.
 
-Optional build options:
+### CMake Options
 
-| Option               | Default | Effect                                                                                                    |
-| -------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
-| LLVM_INSTALL_PATH    | ""      | Build clice with LLVM from a custom path                                                                  |
-| CLICE_ENABLE_TEST    | OFF     | Build clice unit tests                                                                                    |
-| CLICE_USE_LIBCXX     | OFF     | Build clice with libc++ (adds `-std=libc++`); if enabled, ensure the LLVM libs are also built with libc++ |
-| CLICE_CI_ENVIRONMENT | OFF     | Enable the `CLICE_CI_ENVIRONMENT` macro; some tests only run in CI                                        |
+| Option                 | Default | Effect                                                            |
+| ---------------------- | ------- | ----------------------------------------------------------------- |
+| LLVM_INSTALL_PATH      | ""      | Build clice with LLVM from a custom path                          |
+| CLICE_ENABLE_TEST      | OFF     | Build unit tests and benchmarks infrastructure                    |
+| CLICE_ENABLE_BENCHMARK | OFF     | Build benchmarks                                                  |
+| CLICE_ENABLE_LTO       | OFF     | Enable ThinLTO for all targets                                    |
+| CLICE_USE_LIBCXX       | OFF     | Use libc++ (adds `-stdlib=libc++`); LLVM libs must also use libc++|
+| CLICE_CI_ENVIRONMENT   | OFF     | Enable `CLICE_CI_ENVIRONMENT` macro; some tests only run in CI    |
+| CLICE_OFFLINE_BUILD    | OFF     | Disable network downloads during configuration                    |
+| CLICE_RELEASE          | OFF     | Enable release packaging (LTO + strip + pack)                     |
 
 ## About LLVM
 
