@@ -120,7 +120,7 @@ void LSPClient::register_lifecycle() {
 
         caps.hover_provider = true;
         caps.completion_provider = protocol::CompletionOptions{
-            .trigger_characters = StringVec{".", "<", ">", ":", "\"", "/", "*"},
+            .trigger_characters = StringVec{".", "<", ">", ":", "\"", "/", "*", " "},
         };
         caps.signature_help_provider = protocol::SignatureHelpOptions{
             .trigger_characters = StringVec{"(", ")", "{", "}", "<", ">", ","},
