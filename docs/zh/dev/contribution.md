@@ -10,26 +10,26 @@
 2. **测试**：三种测试套件必须全部通过（`pixi run test`）。
 3. **提交信息**：使用 [conventional commits](https://www.conventionalcommits.org/)：
 
-    ```
-    <type>(<scope>): <short description>
-    ```
+   ```
+   <type>(<scope>): <short description>
+   ```
 
-    类型：`feat`、`fix`、`refactor`、`chore`、`docs`、`ci`、`test`、`perf`
+   类型：`feat`、`fix`、`refactor`、`chore`、`docs`、`ci`、`test`、`perf`
 
-    作用域：与 `src/` 下的目录或功能名匹配（如 `completion`、`server`、`index`）。
+   作用域：与 `src/` 下的目录或功能名匹配（如 `completion`、`server`、`index`）。
 
-    标题行不超过 70 个字符。
+   标题行不超过 70 个字符。
 
 ## 代码风格
 
 ### 命名
 
-| 实体 | 规范 | 示例 |
-|------|------|------|
-| 变量、字段、函数 | `snake_case` | `file_path`、`apply_defaults` |
-| 类、枚举、概念 | `PascalCase` | `CompileGraph`、`SymbolKind` |
-| 枚举值 | `PascalCase` | `GoToDefinition`、`IncludeAngled` |
-| 模板参数 | `PascalCase` | `typename Result` |
+| 实体             | 规范         | 示例                              |
+| ---------------- | ------------ | --------------------------------- |
+| 变量、字段、函数 | `snake_case` | `file_path`、`apply_defaults`     |
+| 类、枚举、概念   | `PascalCase` | `CompileGraph`、`SymbolKind`      |
+| 枚举值           | `PascalCase` | `GoToDefinition`、`IncludeAngled` |
+| 模板参数         | `PascalCase` | `typename Result`                 |
 
 类成员变量不使用前缀或后缀（不用 `m_`，不用尾随 `_`）。
 

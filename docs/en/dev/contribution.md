@@ -10,26 +10,26 @@ Please refer to [build](./build.md) to build clice, and [test and debug](./test-
 2. **Tests**: All three test suites must pass (`pixi run test`).
 3. **Commit messages**: Use [conventional commits](https://www.conventionalcommits.org/):
 
-    ```
-    <type>(<scope>): <short description>
-    ```
+   ```
+   <type>(<scope>): <short description>
+   ```
 
-    Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `ci`, `test`, `perf`
+   Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `ci`, `test`, `perf`
 
-    Scopes: match `src/` subdirectories or feature names (e.g., `completion`, `server`, `index`).
+   Scopes: match `src/` subdirectories or feature names (e.g., `completion`, `server`, `index`).
 
-    Keep the subject line under 70 characters.
+   Keep the subject line under 70 characters.
 
 ## Code Style
 
 ### Naming
 
-| Entity | Convention | Example |
-|--------|-----------|---------|
-| Variables, fields, functions | `snake_case` | `file_path`, `apply_defaults` |
-| Classes, enums, concepts | `PascalCase` | `CompileGraph`, `SymbolKind` |
-| Enum values | `PascalCase` | `GoToDefinition`, `IncludeAngled` |
-| Template parameters | `PascalCase` | `typename Result` |
+| Entity                       | Convention   | Example                           |
+| ---------------------------- | ------------ | --------------------------------- |
+| Variables, fields, functions | `snake_case` | `file_path`, `apply_defaults`     |
+| Classes, enums, concepts     | `PascalCase` | `CompileGraph`, `SymbolKind`      |
+| Enum values                  | `PascalCase` | `GoToDefinition`, `IncludeAngled` |
+| Template parameters          | `PascalCase` | `typename Result`                 |
 
 Class member fields use no prefix or suffix (no `m_`, no trailing `_`).
 

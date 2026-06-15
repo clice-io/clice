@@ -1,6 +1,6 @@
 # vscode-clice
 
-This is the vscode extension for [clice](https://github.com/clice-project/clice).
+This is the vscode extension for [clice](https://github.com/clice-io/clice).
 
 ## develop
 

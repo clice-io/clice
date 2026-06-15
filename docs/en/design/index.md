@@ -6,7 +6,7 @@ clice maintains a persistent symbol index for cross-TU queries — find referenc
 
 ### Data Layers
 
-- **TUIndex** (`src/index/tu_index.h`) — per-translation-unit symbol data produced by `SemanticVisitor` during compilation. Contains symbol hashes, occurrence locations, and relations (definition, reference, base, override, caller/callee). This is an ephemeral output merged into the persistent stores below.
+- **TUIndex** (`src/index/tu_index.h`) — per-translation-unit symbol data produced by `SemanticVisitor` during compilation. Contains symbol hashes, occurrence locations, and relations (definition, reference, base, derived, caller/callee). This is an ephemeral output merged into the persistent stores below.
 
 - **ProjectIndex** (`src/index/project_index.h`) — global cross-TU symbol index. Maps symbol hashes to their definition locations, names, kinds, and aggregated relations across the entire project.
 
@@ -17,6 +17,7 @@ clice maintains a persistent symbol index for cross-TU queries — find referenc
 The `Indexer` class is the query + scheduling layer. It holds no index data itself — persistent data lives in `Workspace` (ProjectIndex + MergedIndex shards), and per-file unsaved-buffer data lives in `Session` (OpenFileIndex).
 
 Responsibilities:
+
 - Cross-file navigation queries (definition, references, hierarchy)
 - Symbol search (`workspace/symbol`)
 - Background indexing scheduling with idle timeout and deduplication
@@ -37,20 +38,21 @@ After a file is compiled, its TUIndex is merged into the project-wide index. Bac
 
 The indexer supports these cross-TU queries:
 
-| Query | Method |
-|-------|--------|
-| Go to definition | `query_relations(path, pos, Definition)` |
-| Find references | `query_relations(path, pos, Reference)` |
-| Call hierarchy (incoming) | `find_incoming_calls(hash)` |
-| Call hierarchy (outgoing) | `find_outgoing_calls(hash)` |
-| Type hierarchy | `resolve_hierarchy_item()` |
-| Workspace symbol | Search across ProjectIndex |
+| Query                     | Method                                   |
+| ------------------------- | ---------------------------------------- |
+| Go to definition          | `query_relations(path, pos, Definition)` |
+| Find references           | `query_relations(path, pos, Reference)`  |
+| Call hierarchy (incoming) | `find_incoming_calls(hash)`              |
+| Call hierarchy (outgoing) | `find_outgoing_calls(hash)`              |
+| Type hierarchy            | `resolve_hierarchy_item()`               |
+| Workspace symbol          | Search across ProjectIndex               |
 
 For open files with unsaved changes, queries check the Session's OpenFileIndex first, then fall back to the persisted MergedIndex.
 
 ## Serialization
 
 Index data is serialized with [FlatBuffers](https://flatbuffers.dev/) (`src/index/schema.fbs`) for:
+
 - Zero-copy deserialization — index shards can be memory-mapped from disk
 - Compact binary format — smaller than JSON/protobuf for symbol data
 - Efficient partial reads — only load the shards needed for a query

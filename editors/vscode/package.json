@@ -4,7 +4,7 @@
   "description": "VSCode extension for clice",
   "repository": {
     "type": "git",
-    "url": "https://github.com/clice-project/clice-vscode"
+    "url": "https://github.com/clice-io/clice"
   },
   "version": "0.1.4",
   "publisher": "ykiko",

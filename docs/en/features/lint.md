@@ -44,4 +44,4 @@ clang_tidy = true
 
 Respects standard `.clang-tidy` configuration files in the project tree.
 
-[^clice-90]: [clice#90](https://github.com/clice-project/clice/issues/90) — clang-tidy integration tracking issue `open`
+[^clice-90]: [clice#90](https://github.com/clice-io/clice/issues/90) — clang-tidy integration tracking issue `open`

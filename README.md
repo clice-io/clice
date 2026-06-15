@@ -29,12 +29,12 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 
 ### Editor Setup
 
-| Editor | Setup |
-|--------|-------|
+| Editor      | Setup                                                                                                                      |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------- |
 | **VS Code** | Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode) from the Marketplace |
-| **Neovim** | Add `editors/nvim` to your runtime path: `vim.opt.rtp:append("/path/to/clice/editors/nvim")` |
-| **Zed** | Load `editors/zed` as a local extension |
-| **Other** | Any LSP client works — point it at `clice server` |
+| **Neovim**  | Add `editors/nvim` to your runtime path: `vim.opt.rtp:append("/path/to/clice/editors/nvim")`                               |
+| **Zed**     | Load `editors/zed` as a local extension                                                                                    |
+| **Other**   | Any LSP client works — point it at `clice server`                                                                          |
 
 ### Project Setup
 
@@ -44,7 +44,7 @@ clice reads a [compilation database](https://clang.llvm.org/docs/JSONCompilation
 cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 ```
 
-clice looks in `build/` by default. See [configuration](https://docs.clice.io/clice/guide/configuration) for custom paths and other build systems.
+By default clice searches the workspace root and its immediate subdirectories (e.g. `build/`) for `compile_commands.json`. See [configuration](https://docs.clice.io/clice/guide/configuration) for custom paths and other build systems.
 
 > [!NOTE]
 > clice is approaching its first stable release. Most features work well, but some edge cases remain. Bug reports via [issues](https://github.com/clice-io/clice/issues) are welcome.

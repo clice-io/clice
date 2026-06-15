@@ -14,7 +14,7 @@ clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-
 
 ```jsonc
 {
-  "clice.executable": "/path/to/clice"
+  "clice.executable": "/path/to/clice",
 }
 ```
 
@@ -38,7 +38,7 @@ vim.opt.rtp:append("/path/to/clice/editors/nvim")
 
 ### 下载预编译二进制
 
-从 [Releases](https://github.com/clice-project/clice/releases) 页面下载最新版本。
+从 [Releases](https://github.com/clice-io/clice/releases) 页面下载最新版本。
 
 ### 从源码构建
 
@@ -48,7 +48,7 @@ vim.opt.rtp:append("/path/to/clice/editors/nvim")
 
 为了让 clice 能正确理解你的代码（例如找到头文件的位置），需要提供一份 `compile_commands.json` 文件，即 [编译数据库](https://clang.llvm.org/docs/JSONCompilationDatabase.html)。
 
-默认情况下，clice 在工作区的 `build/` 目录中查找 `compile_commands.json`。可以通过 [clice.toml](./configuration.md) 中的 `compile_commands_paths` 选项自定义。
+默认情况下，clice 会搜索工作区根目录及其各个直接子目录（例如 `build/`），使用找到的第一个 `compile_commands.json`。可以通过 [clice.toml](./configuration.md) 中的 `compile_commands_paths` 选项指定确切路径。
 
 ### CMake
 

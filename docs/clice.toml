@@ -10,11 +10,11 @@
 
 [project]
 # Enable experimental clang-tidy diagnostics.
-# This feature is tracked in https://github.com/clice-project/clice/issues/90.
+# This feature is tracked in https://github.com/clice-io/clice/issues/90.
 clang_tidy = false
 # Maximum number of active files to keep in memory. If the number of active files
 # exceeds this limit, the least recently used files will be removed.
-# The default value is 8. Whatever the number you set, the minimum is 1, the maximum is 512.
+# The default value is 8.
 max_active_file = 8
 # Directory for storing PCH and PCM files.
 cache_dir = "${workspace}/.clice/cache"

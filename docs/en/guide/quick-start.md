@@ -14,7 +14,7 @@ To use a custom binary, set `clice.executable` in your workspace settings:
 
 ```jsonc
 {
-  "clice.executable": "/path/to/clice"
+  "clice.executable": "/path/to/clice",
 }
 ```
 
@@ -38,7 +38,7 @@ Other editors don't have dedicated clice plugins yet (contributions welcome!). T
 
 ### Download Prebuilt Binary
 
-Download the latest binary from the [Releases](https://github.com/clice-project/clice/releases) page.
+Download the latest binary from the [Releases](https://github.com/clice-io/clice/releases) page.
 
 ### Build from Source
 
@@ -48,7 +48,7 @@ See [build from source](../dev/build.md) for detailed instructions.
 
 For clice to correctly understand your code (e.g., find header file locations), you need to provide a `compile_commands.json` file, also known as a [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html). The compilation database provides compilation options for each source file.
 
-By default, clice looks for `compile_commands.json` in the `build/` directory of your workspace. You can customize this with the `compile_commands_paths` option in [clice.toml](./configuration.md).
+By default, clice searches your workspace root and each of its immediate subdirectories (e.g. `build/`) for `compile_commands.json`, using the first one it finds. You can specify exact paths with the `compile_commands_paths` option in [clice.toml](./configuration.md).
 
 ### CMake
 

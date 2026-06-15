@@ -39,10 +39,10 @@ Implementation: `src/feature/hover.cpp` (ported from clangd's `Hover.cpp`, llvmo
 
 ## Changelog
 
-| Date | Change | PR |
-|------|--------|-----|
+| Date    | Change                           | PR     |
+| ------- | -------------------------------- | ------ |
 | 2025-06 | Port clangd hover implementation | [#452] |
 
 ## References
 
-[#452]: https://github.com/clice-project/clice/pull/452
+[#452]: https://github.com/clice-io/clice/pull/452

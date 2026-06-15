@@ -14,6 +14,7 @@ pixi run unit-test Debug    # debug build
 ```
 
 Equivalent to:
+
 ```bash
 ./build/RelWithDebInfo/bin/unit_tests \
     --test-dir="./tests/data" \
@@ -32,6 +33,7 @@ pixi run integration-test Debug    # debug build
 ```
 
 Equivalent to:
+
 ```bash
 pytest -s --log-cli-level=INFO --timeout=300 --timeout-method=thread \
     tests/integration --executable=./build/RelWithDebInfo/bin/clice
@@ -47,6 +49,7 @@ pixi run smoke-test Debug    # debug build
 ```
 
 Equivalent to:
+
 ```bash
 python tests/replay.py tests/smoke/*.jsonl \
     --clice=./build/RelWithDebInfo/bin/clice
@@ -87,15 +90,15 @@ Configure the clice extension to connect to your running instance:
 
 2. Configure `.vscode/settings.json`:
 
-    ```jsonc
-    {
-      "clice.executable": "/path/to/your/clice/executable",
-      "clice.mode": "socket",
-      "clice.port": 50051,
-      // Optional: disable clangd if also installed
-      "clangd.path": ""
-    }
-    ```
+   ```jsonc
+   {
+     "clice.executable": "/path/to/your/clice/executable",
+     "clice.mode": "socket",
+     "clice.port": 50051,
+     // Optional: disable clangd if also installed
+     "clangd.path": "",
+   }
+   ```
 
 3. Reload Window (`Developer: Reload Window`) for settings to take effect.
 
@@ -105,10 +108,10 @@ The extension lives in-tree at `editors/vscode/`:
 
 1. Install dependencies:
 
-    ```shell
-    cd editors/vscode
-    pnpm install
-    ```
+   ```shell
+   cd editors/vscode
+   pnpm install
+   ```
 
 2. Open `editors/vscode` in VS Code.
 

@@ -5,6 +5,7 @@ Implementation: `src/feature/inlay_hints.cpp`
 ## Hint Kinds
 
 ### Parameter Name Hints
+
 - [x] Named parameter hints at call sites
 - [x] Skip when argument name matches parameter name
 - [x] Skip for single-parameter calls with obvious semantics
@@ -12,12 +13,14 @@ Implementation: `src/feature/inlay_hints.cpp`
 - [x] Resolve parameter from definition (not just declaration)
 
 ### Type Hints
+
 - [x] `auto` deduced type hints
 - [x] Structured binding type hints
 - [x] Lambda return type hints
 - [x] Range-based for loop variable type hints (via `auto` deduction)
 
 ### Designator Hints
+
 - [ ] Aggregate initializer designators (`.field =`)
 
 ## Configuration

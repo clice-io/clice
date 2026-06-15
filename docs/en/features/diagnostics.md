@@ -27,4 +27,4 @@ Implementation: `src/feature/diagnostics.cpp`, `src/server/compiler/compiler.cpp
 - [ ] Code action quickfixes from `FixItHint`
 - [ ] Diagnostic suppression comments (`// NOLINT`)
 
-[^clice-90]: [clice#90](https://github.com/clice-project/clice/issues/90) — clang-tidy integration tracking issue `open`
+[^clice-90]: [clice#90](https://github.com/clice-io/clice/issues/90) — clang-tidy integration tracking issue `open`

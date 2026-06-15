@@ -14,6 +14,7 @@ pixi run unit-test Debug    # debug 构建
 ```
 
 等价于：
+
 ```bash
 ./build/RelWithDebInfo/bin/unit_tests \
     --test-dir="./tests/data" \
@@ -32,6 +33,7 @@ pixi run integration-test Debug    # debug 构建
 ```
 
 等价于：
+
 ```bash
 pytest -s --log-cli-level=INFO --timeout=300 --timeout-method=thread \
     tests/integration --executable=./build/RelWithDebInfo/bin/clice
@@ -47,6 +49,7 @@ pixi run smoke-test Debug    # debug 构建
 ```
 
 等价于：
+
 ```bash
 python tests/replay.py tests/smoke/*.jsonl \
     --clice=./build/RelWithDebInfo/bin/clice
@@ -87,15 +90,15 @@ pytest -s --log-cli-level=INFO \
 
 2. 配置 `.vscode/settings.json`：
 
-    ```jsonc
-    {
-      "clice.executable": "/path/to/your/clice/executable",
-      "clice.mode": "socket",
-      "clice.port": 50051,
-      // 可选：禁用 clangd
-      "clangd.path": ""
-    }
-    ```
+   ```jsonc
+   {
+     "clice.executable": "/path/to/your/clice/executable",
+     "clice.mode": "socket",
+     "clice.port": 50051,
+     // 可选：禁用 clangd
+     "clangd.path": "",
+   }
+   ```
 
 3. 重新加载窗口（`Developer: Reload Window`）使设置生效。
 
@@ -105,10 +108,10 @@ pytest -s --log-cli-level=INFO \
 
 1. 安装依赖：
 
-    ```shell
-    cd editors/vscode
-    pnpm install
-    ```
+   ```shell
+   cd editors/vscode
+   pnpm install
+   ```
 
 2. 用 VS Code 打开 `editors/vscode`。
 

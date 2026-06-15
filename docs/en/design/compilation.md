@@ -39,6 +39,7 @@ The master process never performs compilation directly. It dispatches tasks and 
 Module compilation follows a dependency graph (`CompileGraph`). The master resolves module dependencies from the syntax-level `DependencyGraph`, then builds PCM files in topological order via stateless workers.
 
 Each module unit has a `CompileUnit` in the compile graph with:
+
 - A refcount (interest count) tracking how many downstream dependents need it
 - A cancellation token that fires when the refcount drops to zero
 
@@ -55,6 +56,7 @@ In a module DAG like `A → B → C`, if the user opens file C, compilation star
 ### The Mechanism
 
 Each `CompileUnit` in the compile graph maintains a reference count:
+
 - When a file needs a module's PCM, it increments (`acquire`) that module's refcount.
 - When it no longer needs it (file closed, edit superseded), it decrements (`release`).
 - When refcount reaches zero, a one-tick grace period fires. If still zero after the grace period, the compilation's cancellation token is triggered.

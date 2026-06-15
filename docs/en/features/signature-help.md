@@ -15,15 +15,15 @@ Forwarded to Clang `CodeCompleteConsumer::ProcessOverloadCandidates` via statele
 
 Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
-| Character | Context | Behavior |
-|-----------|---------|----------|
-| `(` | Function call | Show overload signatures |
-| `)` | Close paren | Update context |
-| `{` | Brace init | Show overload signatures |
-| `}` | Close brace | Update context |
-| `<` | Template args | Show overload signatures |
-| `>` | Template close | Update context |
-| `,` | Argument separator | Update active parameter |
+| Character | Context            | Behavior                 |
+| --------- | ------------------ | ------------------------ |
+| `(`       | Function call      | Show overload signatures |
+| `)`       | Close paren        | Update context           |
+| `{`       | Brace init         | Show overload signatures |
+| `}`       | Close brace        | Update context           |
+| `<`       | Template args      | Show overload signatures |
+| `>`       | Template close     | Update context           |
+| `,`       | Argument separator | Update active parameter  |
 
 ## Display
 
