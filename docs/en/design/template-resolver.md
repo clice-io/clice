@@ -24,9 +24,9 @@ void foo(std::vector<std::vector<T>> vec2) {
 
 The type of `vec2[0]` is `std::vector<std::vector<T>>::reference`, which is a [dependent name](https://en.cppreference.com/w/cpp/language/dependent_name). In libstdc++, resolving this requires following dozens of nested template typedefs. clangd fails here because:
 
-1. It assumes primary templates but doesn't handle cases where partial specializations block lookup.
-2. It only performs name lookup without instantiation, so it can't map results back to original template parameters.
-3. It ignores default template parameters that introduce dependent names.
+- Assumes primary templates but doesn't handle cases where partial specializations block lookup.
+- Only performs name lookup without instantiation, so it can't map results back to original template parameters.
+- Ignores default template parameters that introduce dependent names.
 
 ## Pseudo-Instantiation
 

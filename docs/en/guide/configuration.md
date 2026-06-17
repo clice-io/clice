@@ -18,7 +18,7 @@ The following variable is supported in string values:
 | ------ | ------- |
 | `bool` | `false` |
 
-Enable experimental clang-tidy diagnostics.
+Enable experimental clang-tidy diagnostics. **Not yet wired** — the option is parsed but has no effect currently.
 
 ### `project.max_active_file`
 
@@ -26,7 +26,7 @@ Enable experimental clang-tidy diagnostics.
 | ----- | ------- |
 | `int` | `8`     |
 
-Maximum number of active files to keep in memory. When the limit is exceeded, the least recently used files are evicted.
+Maximum number of active files to keep in memory. **Not yet wired** — the option is parsed but the worker still uses a hardcoded limit.
 
 ### `project.cache_dir`
 
@@ -98,7 +98,7 @@ Number of stateless worker processes. These handle ephemeral tasks (PCH/PCM buil
 | -------- | ------------------- |
 | `uint64` | `4294967296` (4 GB) |
 
-Per-worker memory limit in bytes. Workers exceeding this limit are restarted.
+Per-worker memory limit in bytes. **Not yet enforced** — the option is parsed but memory-based eviction/restart is not implemented yet.
 
 ## Rules
 

@@ -113,8 +113,8 @@ The extension lives in-tree at `editors/vscode/`:
    pnpm install
    ```
 
-2. Open `editors/vscode` in VS Code.
+2. Open the **repository root** in VS Code (the launch configurations are in `.vscode/launch.json` at the root).
 
 3. Create `.vscode/settings.json` with the socket config above.
 
-4. Press `F5` to launch an Extension Development Host window.
+4. Press `F5` and select `VSCode Extension (pipe)` or `VSCode Extension (socket)` to launch an Extension Development Host window.

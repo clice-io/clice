@@ -281,7 +281,7 @@
 ### 函数与 Snippet
 
 - [x] 函数重载分组（`bundle_overloads`，默认：开）
-- [x] 参数占位符 snippet（`enable_function_arguments_snippet`，默认：关）
+- [ ] 参数占位符 snippet（`enable_function_arguments_snippet`，默认：关 — LSP 路径尚未接入）
 - [x] 签名在 `label_details.detail` 中，返回类型在 `label_details.description` 中
 - [ ] 模板参数占位符（`enable_template_arguments_snippet`）
 - [ ] 自动插入括号（`insert_paren_in_function_call`）

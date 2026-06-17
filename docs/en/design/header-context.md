@@ -49,7 +49,7 @@ clice implements header context switching — when you navigate to a header file
 
 2. **Preamble injection**: All source content preceding the `#include` that pulls in the target header is written to a temporary preamble file. The header is then compiled with `-include <preamble>` injected into its flags. This gives the header the exact preprocessor state it would have when included from that source file.
 
-3. **Automatic switching**: When you jump from a source file into a header (e.g., via go-to-definition or file open), clice automatically uses that source file's context. The context is stored per-session in `HeaderFileContext`.
+3. **Context selection**: When a header is opened, clice picks a host source from its include graph. If no explicit context has been set via `clice/switchContext`, it falls back to the first host source with a compilation database entry (not necessarily the one you navigated from).
 
 4. **Manual switching**: Users can explicitly switch context via the `clice/switchContext` command, which presents a list of available host sources for the current header.
 

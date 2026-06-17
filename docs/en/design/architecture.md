@@ -87,7 +87,7 @@ Utilities: logging, filesystem helpers, JSON serialization, string operations.
 
 ## Process Model
 
-```
+```plaintext
 ┌─────────────────────────────────────────────────┐
 │                  Master Process                   │
 │  event loop (kota) + LSP I/O + state management │

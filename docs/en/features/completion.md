@@ -281,7 +281,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 ### Functions & Snippets
 
 - [x] Function overload grouping (`bundle_overloads`, default: on)
-- [x] Parameter placeholder snippets (`enable_function_arguments_snippet`, default: off)
+- [ ] Parameter placeholder snippets (`enable_function_arguments_snippet`, default: off — not yet wired on the LSP path)
 - [x] Signature in `label_details.detail`, return type in `label_details.description`
 - [ ] Template argument placeholders (`enable_template_arguments_snippet`)
 - [ ] Auto-insert parentheses (`insert_paren_in_function_call`)
