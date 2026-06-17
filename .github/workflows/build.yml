@@ -1,4 +1,4 @@
-name: cmake
+name: build
 
 on:
   workflow_call:
@@ -13,7 +13,7 @@ env:
   SCCACHE_CACHE_SIZE: 2G
 
 jobs:
-  build:
+  native:
     strategy:
       fail-fast: false
       matrix:
@@ -87,7 +87,7 @@ jobs:
           fi
         shell: bash
 
-  build-cross:
+  cross:
     strategy:
       fail-fast: false
       matrix:
@@ -160,141 +160,3 @@ jobs:
             pixi run -e "$ENV" -- ccache --show-stats
           fi
         shell: bash
-
-  test:
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-2025
-            build_type: RelWithDebInfo
-          - os: ubuntu-24.04
-            build_type: Debug
-          - os: ubuntu-24.04
-            build_type: RelWithDebInfo
-          - os: macos-15
-            build_type: Debug
-          - os: macos-15
-            build_type: RelWithDebInfo
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: test-run
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: native-build-${{ matrix.os }}-${{ matrix.build_type }}
-          path: build/${{ matrix.build_type }}/
-
-      - name: Make binaries executable
-        if: runner.os != 'Windows'
-        run: chmod +x build/${{ matrix.build_type }}/bin/*
-
-      - name: Unit tests
-        timeout-minutes: 5
-        run: pixi run -e test-run unit-test ${{ matrix.build_type }}
-
-      - name: Integration tests
-        timeout-minutes: 20
-        run: pixi run -e test-run integration-test ${{ matrix.build_type }}
-
-      - name: Smoke tests
-        timeout-minutes: 15
-        run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
-
-  test-cross:
-    needs: build-cross
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15-intel
-            build_type: RelWithDebInfo
-            target_triple: x86_64-apple-darwin
-          - os: ubuntu-24.04-arm
-            build_type: RelWithDebInfo
-            target_triple: aarch64-linux-gnu
-          - os: windows-11-arm
-            build_type: RelWithDebInfo
-            target_triple: aarch64-pc-windows-msvc
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: test-run
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: cross-build-${{ matrix.target_triple }}
-          path: build/${{ matrix.build_type }}/
-
-      - name: Make binaries executable
-        if: runner.os != 'Windows'
-        run: chmod +x build/${{ matrix.build_type }}/bin/*
-
-      - name: Unit tests
-        timeout-minutes: 5
-        run: pixi run -e test-run unit-test ${{ matrix.build_type }}
-
-      - name: Integration tests
-        timeout-minutes: 20
-        run: pixi run -e test-run integration-test ${{ matrix.build_type }}
-
-      - name: Smoke tests
-        timeout-minutes: 10
-        run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
-
-  test-editor:
-    needs: build
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: editor
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: native-build-ubuntu-24.04-RelWithDebInfo
-          path: build/RelWithDebInfo/
-
-      - name: Make binaries executable
-        run: chmod +x build/RelWithDebInfo/bin/*
-
-      # Always the latest stable release on purpose: this job exists to
-      # catch breakage caused by new editor versions.
-      - name: Install neovim (stable)
-        run: |
-          curl -fsSL -o /tmp/nvim.tar.gz \
-            https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz
-          sudo tar -xzf /tmp/nvim.tar.gz -C /opt
-          echo "/opt/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
-
-      - name: Restore VSCode download cache
-        uses: actions/cache@v4
-        with:
-          path: editors/vscode/.vscode-test
-          key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package.json') }}
-          restore-keys: |
-            vscode-test-${{ runner.os }}-
-
-      - name: Neovim E2E tests
-        timeout-minutes: 15
-        run: pixi run -e editor nvim-e2e RelWithDebInfo
-
-      - name: VSCode E2E tests
-        timeout-minutes: 20
-        run: xvfb-run -a pixi run -e editor vscode-e2e RelWithDebInfo

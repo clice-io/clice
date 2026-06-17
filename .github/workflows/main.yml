@@ -57,7 +57,8 @@ jobs:
               - 'editors/vscode/**'
               - 'pixi.toml'
               - 'pixi.lock'
-              - '.github/workflows/test-cmake.yml'
+              - '.github/workflows/build.yml'
+              - '.github/workflows/test.yml'
 
   conventional-commit:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -121,10 +122,15 @@ jobs:
           rustup target add wasm32-wasip1
           cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1 --release
 
-  cmake:
+  build:
     needs: changes
     if: ${{ needs.changes.outputs.cmake == 'true' }}
-    uses: ./.github/workflows/test-cmake.yml
+    uses: ./.github/workflows/build.yml
+
+  test:
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    uses: ./.github/workflows/test.yml
 
   release-clice:
     permissions:
@@ -149,12 +155,13 @@ jobs:
       # - clice
       - vscode
       - zed
-      - cmake
+      - build
+      - test
 
     runs-on: ubuntu-latest
     steps:
       - name: Check results
         uses: re-actors/alls-green@release/v1
         with:
-          allowed-skips: conventional-commit,format,deploy,clice,vscode,zed,cmake
+          allowed-skips: conventional-commit,format,deploy,clice,vscode,zed,build,test
           jobs: ${{ toJSON(needs) }}
