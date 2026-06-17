@@ -28,11 +28,12 @@ clang-tidy 独立处理每个翻译单元。被 N 个源文件包含的头文件
 - [ ] 对声明内容哈希以跳过先前翻译单元中已检查的相同声明
 - [ ] 带依赖感知的 lint 作业调度（共享头文件只 lint 一次，传播结果）
 - [ ] 按内容哈希 + 检查配置键缓存头文件 lint 结果
-- [ ] 报告去重诊断（同一头文件中的相同警告只显示一次）
+- [ ] 单文件诊断去重（基本：移除单个翻译单元内的重复诊断）
+- [ ] 项目级诊断去重（高级：跨翻译单元中同一头文件的相同警告只显示一次）
 
 ### 预期加速
 
-对于具有 H 个共享头文件和 N 个翻译单元的项目，独立的 clang-tidy 的工作量为 O(N × H)。通过跨翻译单元去重，clice 将其降低到 O(N + H) — 每个头文件无论被多少翻译单元包含都只检查一次。
+对于具有 H 个共享头文件和 N 个翻译单元的项目，独立的 clang-tidy 的工作量为 O(N × H)。通过跨翻译单元去重，clice 的设计目标是增量检查 — 使每个头文件无论被多少翻译单元包含都只检查一次。
 
 ## clang-tidy 集成质量
 
@@ -45,6 +46,11 @@ clang-tidy 独立处理每个翻译单元。被 N 个源文件包含的头文件
 - [ ] Clang 静态分析器支持（[clangd#905](https://github.com/clangd/clangd/issues/905)）
 - [ ] 应用 clang-tidy 修复时清理替换内容（[clangd#429](https://github.com/clangd/clangd/issues/429)）
 - [ ] 按版本控制 diff 过滤诊断（[clangd#822](https://github.com/clangd/clangd/issues/822)）
+- [ ] NOLINT / NOLINTNEXTLINE / NOLINTBEGIN-END 注释抑制
+- [ ] `.clangd` 配置中的 `Diagnostics.ClangTidy` 配置
+- [ ] clang-tidy 性能的快速检查过滤
+- [ ] clang-tidy 的 fix-it 建议作为代码操作
+- [ ] 诊断元数据：检查名称、文档 URL、来源标签
 
 ## 配置
 

@@ -2,11 +2,18 @@
 
 ## 符号信息
 
-- [x] 带作用域的限定名（`namespace::class::name`）
+- [x] 显示符号所属的作用域上下文（命名空间、类）
 - [x] 符号种类分类
 - [x] 访问修饰符（public / protected / private）
 - [x] 文档注释（Doxygen）
 - [x] 源码定义渲染
+- [x] 截断大型初始化列表的定义显示（[clangd#710](https://github.com/clangd/clangd/issues/710)）
+
+  ```cpp
+  const int table[] = {0, 1, 2, /* ... 1000 个元素 ... */};
+  // 悬停 → 显示截断的定义，而非完整初始化列表
+  ```
+
 - [ ] 在悬停中显示 `virtual` / `override` / `final` 修饰符（[clangd#2474](https://github.com/clangd/clangd/issues/2474)）
 
   ```cpp
@@ -32,6 +39,7 @@
 - [x] 函数/lambda 返回类型
 - [x] 函数参数（类型、名称、默认值）
 - [x] 模板参数
+- [x] `auto` 和 `decltype` 关键字悬停显示推导类型
 - [ ] 为 CTAD 变量显示推导的模板参数（[clangd#435](https://github.com/clangd/clangd/issues/435)）
 
   ```cpp
@@ -80,6 +88,8 @@
   // 当前：  悬停 → "struct Point p"（误导——不存在 struct Point）
   // 期望：悬停 → "Point p"（匿名结构体的别名）
   ```
+
+- [ ] 概念和受约束 `auto` 的悬停显示约束信息
 
 ## 布局信息
 
@@ -212,6 +222,8 @@
 
 - [ ] 模板关键字来自宏展开时缺失文档字符串（[clangd#1226](https://github.com/clangd/clangd/issues/1226)）
 
+- [x] 为简单访问器（getter/setter）合成文档
+
 ## 宏悬停
 
 - [ ] 显示宏展开结果（在定义之前）（[clangd#2642](https://github.com/clangd/clangd/issues/2642)）
@@ -221,13 +233,6 @@
   int z = MAX(x, y);
   //      ^^^^^^^^^ 悬停 → 展开："((x) > (y) ? (x) : (y))"
   //                         定义："#define MAX(a, b) ((a) > (b) ? (a) : (b))"
-  ```
-
-- [ ] 截断大型初始化列表的定义显示（[clangd#710](https://github.com/clangd/clangd/issues/710)）
-
-  ```cpp
-  const int table[] = {0, 1, 2, /* ... 1000 个元素 ... */};
-  // 悬停 → 显示截断的定义，而非完整初始化列表
   ```
 
 ## 特殊悬停目标
@@ -247,12 +252,23 @@
   // 悬停 Point → 显示结构体定义（包含成员）
   ```
 
-- [ ] 关键字和属性的文档（[clangd#1862](https://github.com/clangd/clangd/issues/1862)）
+- [ ] 关键字悬停文档（[clangd#1862](https://github.com/clangd/clangd/issues/1862)）
+
+  ```cpp
+  const int x = 42;
+  // 悬停 "const" → 显示该关键字的说明
+  ```
+
+- [x] 属性悬停文档（[clangd#1862](https://github.com/clangd/clangd/issues/1862)）
 
   ```cpp
   [[nodiscard]] int compute();
   // 悬停 "nodiscard" → 显示该属性的说明
   ```
+
+- [ ] `#include` 指令悬停显示解析后的头文件路径
+- [x] `this` 表达式悬停显示指向的类型
+- [x] `__func__` 及相关预定义标识符悬停
 
 - [ ] GTK-Doc、kernel-doc 和 GObject Introspection 文档支持（[clangd#2662](https://github.com/clangd/clangd/issues/2662)）
 

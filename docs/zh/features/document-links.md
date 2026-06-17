@@ -9,14 +9,15 @@
 - [x] `__has_include(...)` — 链接到检查的文件
 - [x] `#embed "..."` — 链接到嵌入资源文件
 - [x] `__has_embed(...)` — 链接到检查的嵌入文件
-- [ ] `#include_next` — 链接到搜索路径中下一个解析的头文件
-- [ ] 宏展开的 include 路径 — 路径由宏产生时也应解析并链接（[clangd#2375](https://github.com/clangd/clangd/issues/2375)）
+- [x] `#include_next` — 链接到搜索路径中下一个解析的头文件
+- [x] 宏展开的 include 路径 — 路径由宏产生时也应解析并链接（[clangd#2375](https://github.com/clangd/clangd/issues/2375)）
 
   ```cpp
   #define HEADER "config.h"
   #include HEADER  // 应链接到 config.h
   ```
 
+- [x] `__has_include_next(...)` — 链接到检查的文件
 - [ ] 在 tooltip 中显示解析后的绝对路径
 
   ```

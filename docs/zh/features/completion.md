@@ -255,7 +255,7 @@
 - [x] 参数相关查找（ADL）候选
 - [x] 关键字补全（if、for、while 等）
 - [x] 宏补全
-- [x] Snippet 模式（函数体、控制流）
+- [ ] 带占位符的 Snippet 模式（函数体、控制流）
 - [ ] C++ attribute 补全
 
   ```cpp
@@ -277,6 +277,8 @@
   ```
 
 - [ ] 语言感知过滤（混合 C/C++ 项目中 C 文件不出现 C++ 符号）
+- [ ] 函数参数注释补全（`/*param=*/` 风格的参数提示）
+- [ ] 语义分析不可用时基于标识符的回退补全
 
 ### 函数与 Snippet
 
@@ -383,7 +385,7 @@
 
 ### 宏
 
-- [x] 从 AST 和索引中补全宏名
+- [x] 从 AST 补全宏名
 - [x] 宏使用与其他符号相同的模糊匹配器
 - [ ] 正确的 `CompletionItemKind`：function-like 宏为 `Function`，object-like 宏为 `Constant`（目前全部为 `Unit`）（[clangd#2002](https://github.com/clangd/clangd/issues/2002)）
 - [ ] 将宏定义/展开显示为文档（[clangd#1485](https://github.com/clangd/clangd/issues/1485)）
@@ -410,7 +412,7 @@
 ### 过滤与排序
 
 - [x] 具有词边界感知评分的模糊匹配（camelCase、snake_case）
-- [x] 前缀过滤
+- [x] 模糊过滤与前缀匹配
 - [x] 过滤恢复上下文结果（`CCC_Recovery`）
 - [x] 过滤 `_` 前缀的内部符号（除非用户输入了 `_`）
 - [x] 已弃用符号标记
@@ -445,6 +447,9 @@
   ```cpp
   auto foo = get^;  // 提升 getFoo() 高于 getBar()
   ```
+
+- [ ] 引用计数与文件距离排序信号
+- [ ] 机器学习排序模型
 
 ## 自动 Include 插入
 
@@ -507,7 +512,7 @@
 | 字符 | 上下文        | 行为                                                                                     |
 | ---- | ------------- | ---------------------------------------------------------------------------------------- |
 | `.`  | 成员访问      | 语义补全                                                                                 |
-| `->` | 指针成员      | 通过 `.` 触发 + Clang fixup                                                              |
+| `->` | 指针成员      | `[ ]` 尚未工作 — dot-to-arrow fix-it 未传播                                              |
 | `::` | 通过 `:` 触发 | 作用域补全                                                                               |
 | `<`  | `#include <`  | Include 路径补全                                                                         |
 | `>`  | 模板关闭      | 语义补全                                                                                 |
@@ -515,6 +520,13 @@
 | `/`  | 路径分隔符    | Include 路径续补                                                                         |
 | `*`  | 指针解引用    | 语义补全                                                                                 |
 | ` `  | `import` 之后 | Module 名补全（扩展门控）— **待合并 [#460](https://github.com/clice-io/clice/pull/460)** |
+
+## LSP 协议特性
+
+- [ ] `completionItem/resolve` 延迟加载文档和详情
+- [ ] `CompletionList.isIncomplete` 标志用于增量过滤
+- [ ] `commitCharacters` 在特定按键时自动接受补全
+- [ ] `filterText` / `sortText` 用于客户端侧重新过滤
 
 ## 变更记录
 

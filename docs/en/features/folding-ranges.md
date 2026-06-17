@@ -32,8 +32,8 @@
   };
   ```
 
-- [x] Preprocessor conditional folding (`#if` / `#ifdef` / `#ifndef` ... `#endif`) ([clangd#1661](https://github.com/clangd/clangd/issues/1661), [clangd#2059](https://github.com/clangd/clangd/issues/2059))
-- [x] Custom region folding (`#region` / `#endregion`, `#pragma region` / `#pragma endregion`) ([clangd#1623](https://github.com/clangd/clangd/issues/1623))
+- [x] Preprocessor conditional folding (`#if` / `#ifdef` / `#ifndef` ... `#endif`) ([clangd#1661](https://github.com/clangd/clangd/issues/1661); [clangd#2059](https://github.com/clangd/clangd/issues/2059) is a duplicate of #1661)
+- [x] Custom region folding (`#pragma region` / `#pragma endregion`) ([clangd#1623](https://github.com/clangd/clangd/issues/1623))
 - [ ] Comment folding — multi-line `/* */` and consecutive `//` line comments
 
   ```cpp
@@ -89,7 +89,7 @@
 
 ## Refinements
 
-- [ ] `collapsedText` placeholder (LSP 3.17) — show a summary when folded ([clangd#2667](https://github.com/clangd/clangd/issues/2667))
+- [x] `collapsedText` placeholder (LSP 3.17) — show a summary when folded ([clangd#2667](https://github.com/clangd/clangd/issues/2667))
 
   ```
   void processData(const Config& cfg) {...}   // shows signature + {...}

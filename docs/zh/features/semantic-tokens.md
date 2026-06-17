@@ -144,6 +144,11 @@
   [[assume(ptr != nullptr)]];  // ptr、nullptr 应获得 token
   ```
 
+### 额外 Token 类型
+
+- [ ] Primitive token 类型用于内置类型（`int`、`float`、`void` 等）
+- [ ] Bracket token 类型用于匹配的括号对（`[]`、`()`、`{}`、`<>`）
+
 ## Token 修饰符
 
 ### 已实现
@@ -156,9 +161,12 @@
 - [x] Virtual
 - [x] Default library（来自系统头文件的符号）
 - [x] 构造函数 / 析构函数标记
-- [x] Templated
+- [x] Templated（clice 扩展，不属于标准 LSP 语义 token 协议）
+- [x] DependentName 用于模板中的依赖名（clice 扩展）
 
 ### 计划中
+
+- [ ] Deduced 修饰符用于推导类型（如 `auto`、`decltype`）
 
 - [ ] 作用域修饰符 — 函数作用域、类作用域、文件作用域、全局作用域（[clangd#352](https://github.com/clangd/clangd/issues/352)）
 
@@ -188,11 +196,11 @@
   int x = 1 + 2;    // + 是内置运算符，无修饰符
   ```
 
-- [ ] Object-like vs function-like 宏区分（[clangd#2649](https://github.com/clangd/clangd/issues/2649)）
+- [ ] Object-like vs function-like 宏区分 — 目前所有宏均使用 Macro token 类型（[clangd#2649](https://github.com/clangd/clangd/issues/2649)）
 
   ```cpp
-  #define MAX_SIZE 1024          // object-like → Constant 类型
-  #define CHECK(x) assert(x)    // function-like → Function 类型
+  #define MAX_SIZE 1024          // object-like 宏（尚无独立类型）
+  #define CHECK(x) assert(x)    // function-like 宏（尚无独立类型）
   ```
 
 - [ ] 上下文相关的 readonly — 值的 const vs 指针级别的 const（[clangd#1585](https://github.com/clangd/clangd/issues/1585)）
@@ -205,7 +213,7 @@
 
 ## 冲突 / 歧义
 
-C++ 允许结构上不同的实体共享同一个名称。当一个名称引用了不同种类的多个实体时，语义 token 类型无法明确确定。这些情况将标记一个特殊的 **conflict** 修饰符，以中性颜色（如灰色）显示。
+C++ 允许结构上不同的实体共享同一个名称。当一个名称引用了不同种类的多个实体时，语义 token 类型无法明确确定。这些情况将使用一个特殊的 **Conflict** token 类型（而非修饰符），以中性颜色（如灰色）显示。
 
 - [ ] 通过 `using` 引入的重载名称 — 一个名称可能同时引入类型和函数
 

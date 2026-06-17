@@ -32,8 +32,8 @@
   };
   ```
 
-- [x] 预处理条件折叠（`#if` / `#ifdef` / `#ifndef` ... `#endif`）（[clangd#1661](https://github.com/clangd/clangd/issues/1661)、[clangd#2059](https://github.com/clangd/clangd/issues/2059)）
-- [x] 自定义区域折叠（`#region` / `#endregion`、`#pragma region` / `#pragma endregion`）（[clangd#1623](https://github.com/clangd/clangd/issues/1623)）
+- [x] 预处理条件折叠（`#if` / `#ifdef` / `#ifndef` ... `#endif`）（[clangd#1661](https://github.com/clangd/clangd/issues/1661)；[clangd#2059](https://github.com/clangd/clangd/issues/2059) 是 #1661 的重复）
+- [x] 自定义区域折叠（`#pragma region` / `#pragma endregion`）（[clangd#1623](https://github.com/clangd/clangd/issues/1623)）
 - [ ] 注释折叠 — 多行 `/* */` 和连续 `//` 行注释
 
   ```cpp
@@ -89,7 +89,7 @@
 
 ## 改进
 
-- [ ] `collapsedText` 折叠占位文本（LSP 3.17）— 折叠后显示摘要（[clangd#2667](https://github.com/clangd/clangd/issues/2667)）
+- [x] `collapsedText` 折叠占位文本（LSP 3.17）— 折叠后显示摘要（[clangd#2667](https://github.com/clangd/clangd/issues/2667)）
 
   ```
   void processData(const Config& cfg) {...}   // 显示签名 + {...}

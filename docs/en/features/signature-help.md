@@ -35,6 +35,7 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 - [x] Template instantiation pattern resolution (shows template pattern, not instantiation)
 - [x] Parameter labels with types
 - [x] Return type in signature label
+- [x] Parameter label byte offsets for precise highlighting
 - [ ] Filter const/non-const overload duplicates — don't show both when only one is viable ([clangd#50](https://github.com/clangd/clangd/issues/50))
 
   ```cpp
@@ -69,7 +70,7 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Special Call Contexts
 
-- [ ] Template argument signature help ([clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387))
+- [x] Template argument signature help ([clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387))
 
   ```cpp
   template<typename Key, typename Value, typename Compare = less<Key>>
@@ -78,7 +79,7 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
   SortedMap<int, ^  // show: Key = int, Value = ?, Compare = less<Key>
   ```
 
-- [ ] Aggregate initialization — show field names as "parameters" ([clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541))
+- [x] Aggregate initialization — show field names as "parameters" ([clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541))
 
   ```cpp
   struct Point { int x, y, z; };
@@ -113,6 +114,8 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
   void (*callback)(int status, const char* msg);
   callback(^  // show "(int status, const char* msg)"
   ```
+
+- [ ] Constructor signature help during object initialization
 
 - [ ] Macro function calls — show macro parameters, not the underlying expansion ([clangd#795](https://github.com/clangd/clangd/issues/795))
 

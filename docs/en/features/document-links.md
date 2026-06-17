@@ -9,14 +9,15 @@ Clickable links from source directives to their resolved target files.
 - [x] `__has_include(...)` — link to checked file
 - [x] `#embed "..."` — link to embedded resource file
 - [x] `__has_embed(...)` — link to checked embed file
-- [ ] `#include_next` — link to the resolved next-in-search-path header
-- [ ] Macro-expanded include paths — resolve and link when the path is produced by a macro ([clangd#2375](https://github.com/clangd/clangd/issues/2375))
+- [x] `#include_next` — link to the resolved next-in-search-path header
+- [x] Macro-expanded include paths — resolve and link when the path is produced by a macro ([clangd#2375](https://github.com/clangd/clangd/issues/2375))
 
   ```cpp
   #define HEADER "config.h"
   #include HEADER  // should link to config.h
   ```
 
+- [x] `__has_include_next(...)` — link to checked file
 - [ ] Show resolved absolute path as tooltip
 
   ```

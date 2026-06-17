@@ -255,7 +255,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Argument-dependent lookup (ADL) candidates
 - [x] Keyword completion (if, for, while, etc.)
 - [x] Macro completion
-- [x] Snippet patterns (function bodies, control flow)
+- [ ] Snippet patterns with placeholders (function bodies, control flow)
 - [ ] C++ attribute completion
 
   ```cpp
@@ -277,6 +277,8 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   ```
 
 - [ ] Language-aware filtering (no C++ symbols in C files in mixed projects)
+- [ ] Function-argument comment completion (`/*param=*/` style parameter hints)
+- [ ] Identifier-based fallback completion when semantic analysis is unavailable
 
 ### Functions & Snippets
 
@@ -383,7 +385,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
 ### Macros
 
-- [x] Macro name completion from AST and index
+- [x] Macro name completion from AST
 - [x] Fuzzy matching for macros (same matcher as other symbols)
 - [ ] Correct `CompletionItemKind`: `Function` for function-like, `Constant` for object-like (currently `Unit` for all) ([clangd#2002](https://github.com/clangd/clangd/issues/2002))
 - [ ] Show macro definition/expansion as documentation ([clangd#1485](https://github.com/clangd/clangd/issues/1485))
@@ -410,7 +412,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 ### Filtering & Ranking
 
 - [x] Fuzzy matching with word-boundary-aware scoring (camelCase, snake_case)
-- [x] Prefix-based filtering
+- [x] Fuzzy filtering and prefix matching
 - [x] Filter out recovery context results (`CCC_Recovery`)
 - [x] Filter `_`-prefixed internal symbols (unless user typed `_`)
 - [x] Deprecated symbol tagging
@@ -445,6 +447,9 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   ```cpp
   auto foo = get^;  // boost getFoo() over getBar()
   ```
+
+- [ ] Reference-count and file-proximity ranking signals
+- [ ] Machine-learned ranking model
 
 ## Auto-Include Insertion
 
@@ -507,7 +512,7 @@ Registered: `. < > : " / *`. Space (` `) is planned but not yet merged ([#460](h
 | Character | Context         | Behavior                                                                                                  |
 | --------- | --------------- | --------------------------------------------------------------------------------------------------------- |
 | `.`       | Member access   | Semantic completion                                                                                       |
-| `->`      | Pointer member  | Via `.` trigger + Clang fixup                                                                             |
+| `->`      | Pointer member  | `[ ]` Not yet working — dot-to-arrow fix-its not propagated                                               |
 | `::`      | Via `:` trigger | Scope completion                                                                                          |
 | `<`       | `#include <`    | Include path completion                                                                                   |
 | `>`       | Template close  | Semantic completion                                                                                       |
@@ -515,6 +520,13 @@ Registered: `. < > : " / *`. Space (` `) is planned but not yet merged ([#460](h
 | `/`       | Path separator  | Include path continuation                                                                                 |
 | `*`       | Pointer deref   | Semantic completion                                                                                       |
 | ` `       | After `import`  | Module name completion (extension-gated) — **pending [#460](https://github.com/clice-io/clice/pull/460)** |
+
+## LSP Protocol Features
+
+- [ ] `completionItem/resolve` for lazy-loading documentation and details
+- [ ] `CompletionList.isIncomplete` flag for incremental filtering
+- [ ] `commitCharacters` for auto-accepting completions on specific keystrokes
+- [ ] `filterText` / `sortText` for client-side re-filtering
 
 ## Changelog
 

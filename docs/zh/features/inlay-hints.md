@@ -7,7 +7,7 @@
 - [x] 语义明确的单参数调用跳过
 - [x] 展开参数包（`underlying_pack_type` 检测）
 - [x] 从定义（不仅是声明）解析参数名
-- [ ] 转发函数参数解析 — 对 `std::make_unique`、`emplace_back` 等显示底层构造函数参数（[clangd#2324](https://github.com/clangd/clangd/issues/2324)）
+- [x] 转发函数参数解析 — 对 `std::make_unique`、`emplace_back` 等显示底层构造函数参数（[clangd#2324](https://github.com/clangd/clangd/issues/2324)）
 
   ```cpp
   struct Widget { Widget(int width, int height); };
@@ -16,7 +16,7 @@
   //                          width: 800, height: 600（而非 __args: 800, __args: 600）
   ```
 
-- [ ] 函数指针和 `operator()` 参数提示（[clangd#1734](https://github.com/clangd/clangd/issues/1734)、[clangd#1742](https://github.com/clangd/clangd/issues/1742)）
+- [x] 函数指针和 `operator()` 参数提示（[clangd#1734](https://github.com/clangd/clangd/issues/1734)、[clangd#1742](https://github.com/clangd/clangd/issues/1742)）
 
   ```cpp
   void (*callback)(int status, const char* msg);
@@ -42,11 +42,13 @@
 
 - [ ] 大小写不敏感的参数名匹配 — `aParam` 应在实参为 `param` 时抑制提示（[clangd#2248](https://github.com/clangd/clangd/issues/2248)）
 
-- [ ] 当行内注释已标注参数名时抑制提示（[clangd#1877](https://github.com/clangd/clangd/issues/1877)）
+- [x] 当行内注释已标注参数名时抑制提示（[clangd#1877](https://github.com/clangd/clangd/issues/1877)）
 
   ```cpp
   draw(/*x=*/10, /*y=*/20);  // 无需提示 — 行内注释已起到相同作用
   ```
+
+- [x] 默认参数值提示
 
 ## 类型提示
 
@@ -63,7 +65,7 @@
 
 - [ ] 依赖 `auto` 类型提示 — 即使在模板体内也显示有意义的推导类型（[clangd#2275](https://github.com/clangd/clangd/issues/2275)）
 
-- [ ] 推导失败时不显示类型提示（[clangd#1475](https://github.com/clangd/clangd/issues/1475)）
+- [x] 推导失败时不显示类型提示（[clangd#1475](https://github.com/clangd/clangd/issues/1475)）
 
 - [ ] 类型已显式指定时不显示类型提示（[clangd#1749](https://github.com/clangd/clangd/issues/1749)）
 
@@ -81,7 +83,7 @@
   //   ^ : std::vector<int>（而非 IntVec）
   ```
 
-- [ ] 可配置的类型提示长度限制（[clangd#1357](https://github.com/clangd/clangd/issues/1357)）
+- [x] 可配置的类型提示长度限制（[clangd#1357](https://github.com/clangd/clangd/issues/1357)）
 
 - [ ] 缩写类型提示与可展开标签部件 — 使用 LSP `InlayHintLabelPart` 允许展开截断的类型（[clangd#2269](https://github.com/clangd/clangd/issues/2269)）
 
@@ -142,7 +144,7 @@
 
 ## 引用 / 指针提示
 
-- [ ] 显示 `&` / `&&` 以指示实参通过可变引用传递（[clangd#1123](https://github.com/clangd/clangd/issues/1123)）
+- [x] 显示 `&` / `&&` 以指示实参通过可变引用传递（[clangd#1123](https://github.com/clangd/clangd/issues/1123)）
 
   ```cpp
   void sort(std::vector<int>& v);
@@ -162,7 +164,7 @@
 
 ## 块结尾提示
 
-- [ ] 长代码块关闭花括号后显示声明名（[clangd#1634](https://github.com/clangd/clangd/issues/1634)）
+- [x] 长代码块关闭花括号后显示声明名（[clangd#1634](https://github.com/clangd/clangd/issues/1634)）
 
   ```cpp
   void Widget::processData(const Config& cfg) {
@@ -198,7 +200,7 @@
 - [ ] 显式函数模板实例化时不应产生重复提示（[clangd#1034](https://github.com/clangd/clangd/issues/1034)）
 - [ ] 从派生类调用继承构造函数时应显示参数提示（[clangd#1364](https://github.com/clangd/clangd/issues/1364)）
 - [ ] 协程返回模板类型时不应丢失参数提示（[clangd#2437](https://github.com/clangd/clangd/issues/2437)）
-- [ ] C++23 deducing `this` — 提示显示中去除显式对象参数（[clangd#1777](https://github.com/clangd/clangd/issues/1777)）
+- [x] C++23 deducing `this` — 提示显示中去除显式对象参数（[clangd#1777](https://github.com/clangd/clangd/issues/1777)）
 
 ## 变更记录
 

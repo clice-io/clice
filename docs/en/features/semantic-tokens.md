@@ -144,6 +144,11 @@ Emitted from a lexical pass over the source file, independent of the AST.
   [[assume(ptr != nullptr)]];  // ptr, nullptr should get tokens
   ```
 
+### Additional Token Types
+
+- [ ] Primitive token type for built-in types (`int`, `float`, `void`, etc.)
+- [ ] Bracket token type for matching bracket pairs (`[]`, `()`, `{}`, `<>`)
+
 ## Token Modifiers
 
 ### Implemented
@@ -156,9 +161,12 @@ Emitted from a lexical pass over the source file, independent of the AST.
 - [x] Virtual
 - [x] Default library (symbols from system headers)
 - [x] Constructor / destructor marker
-- [x] Templated
+- [x] Templated (clice extension, not part of the standard LSP semantic tokens protocol)
+- [x] DependentName for dependent names in templates (clice extension)
 
 ### Planned
+
+- [ ] Deduced modifier for deduced types (e.g., `auto`, `decltype`)
 
 - [ ] Scope modifiers — function scope, class scope, file scope, global scope ([clangd#352](https://github.com/clangd/clangd/issues/352))
 
@@ -188,11 +196,11 @@ Emitted from a lexical pass over the source file, independent of the AST.
   int x = 1 + 2;    // + is built-in, no modifier
   ```
 
-- [ ] Object-like vs function-like macro distinction ([clangd#2649](https://github.com/clangd/clangd/issues/2649))
+- [ ] Object-like vs function-like macro distinction — currently all macros receive the Macro token type ([clangd#2649](https://github.com/clangd/clangd/issues/2649))
 
   ```cpp
-  #define MAX_SIZE 1024          // object-like → Constant kind
-  #define CHECK(x) assert(x)    // function-like → Function kind
+  #define MAX_SIZE 1024          // object-like macro (no distinct kind yet)
+  #define CHECK(x) assert(x)    // function-like macro (no distinct kind yet)
   ```
 
 - [ ] Context-dependent readonly — `const` on the value vs on the pointer level ([clangd#1585](https://github.com/clangd/clangd/issues/1585))
@@ -205,7 +213,7 @@ Emitted from a lexical pass over the source file, independent of the AST.
 
 ## Conflict / Ambiguity
 
-C++ allows structurally different entities to share the same name. When a single name refers to multiple entities of different kinds, the semantic token type cannot be unambiguously determined. These cases are marked with a special **conflict** modifier and displayed in a neutral color (e.g., gray).
+C++ allows structurally different entities to share the same name. When a single name refers to multiple entities of different kinds, the semantic token type cannot be unambiguously determined. These cases receive a special **Conflict** token type (not a modifier) and are displayed in a neutral color (e.g., gray).
 
 - [ ] Overloaded names via `using` — a name may introduce both a type and a function
 

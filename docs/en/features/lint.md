@@ -28,11 +28,12 @@ As a persistent server with knowledge of the full compilation graph, clice can:
 - [ ] Hash declaration contents to skip re-checking identical declarations seen in prior TUs
 - [ ] Schedule lint jobs with dependency awareness (lint shared headers once, propagate results)
 - [ ] Cache per-header lint results keyed by content hash + check configuration
-- [ ] Report deduplicated diagnostics (same warning in same header → show once)
+- [ ] Per-file diagnostic deduplication (basic: remove duplicates within a single TU)
+- [ ] Project-wide diagnostic deduplication (advanced: same warning in same header across TUs → show once)
 
 ### Expected Speedup
 
-For a project with H shared headers and N TUs, standalone clang-tidy does O(N × H) work. With cross-TU dedup, clice reduces this to O(N + H) — each header is checked once regardless of how many TUs include it.
+For a project with H shared headers and N TUs, standalone clang-tidy does O(N × H) work. With cross-TU dedup, clice is designed for incremental checking — the goal is to check each header once regardless of how many TUs include it.
 
 ## clang-tidy Integration Quality
 
@@ -45,6 +46,11 @@ Issues that affect the quality of clang-tidy diagnostics within a language serve
 - [ ] Clang static analyzer support ([clangd#905](https://github.com/clangd/clangd/issues/905))
 - [ ] Clean up replacements when applying clang-tidy fixes ([clangd#429](https://github.com/clangd/clangd/issues/429))
 - [ ] Filter diagnostics by version control diff ([clangd#822](https://github.com/clangd/clangd/issues/822))
+- [ ] NOLINT / NOLINTNEXTLINE / NOLINTBEGIN-END comment suppression
+- [ ] `Diagnostics.ClangTidy` configuration in `.clangd` config
+- [ ] Fast-check filtering for clang-tidy performance
+- [ ] Fix-it suggestions from clang-tidy as code actions
+- [ ] Diagnostic metadata: check name, documentation URL, source tag
 
 ## Configuration
 

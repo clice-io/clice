@@ -42,20 +42,28 @@
 - [x] Push diagnostics on compilation completion
 - [x] Clear diagnostics on file close
 - [x] Per-file diagnostic grouping (interested file + headers)
+- [x] Diagnostic `code` field with Clang error codes
+- [ ] `codeDescription` with links to Clang documentation
+- [ ] Diagnostic `source` field distinguishing clang vs clang-tidy
 - [ ] Configurable debounce delay before computing diagnostics ([clangd#1471](https://github.com/clangd/clangd/issues/1471))
 - [ ] Recompute diagnostics in open files when background indexing completes ([clangd#2604](https://github.com/clangd/clangd/issues/2604))
 
 ## Diagnostic Suppression
 
-- [ ] `// NOLINT` comment suppression
-- [ ] `// NOLINTNEXTLINE` comment suppression
-- [ ] `// NOLINTBEGIN` / `// NOLINTEND` block suppression
+- [x] `// NOLINT` comment suppression
+- [x] `// NOLINTNEXTLINE` comment suppression
+- [x] `// NOLINTBEGIN` / `// NOLINTEND` block suppression
 - [ ] `NOLINT` for include-cleaner diagnostics ([clangd#1982](https://github.com/clangd/clangd/issues/1982))
 - [ ] Configurable severity per diagnostic category in config file ([clangd#1937](https://github.com/clangd/clangd/issues/1937))
 - [ ] Filter diagnostics by version control diff — only show warnings near changed lines ([clangd#822](https://github.com/clangd/clangd/issues/822))
 
+## Diagnostic Actions
+
+- [ ] Automatic fix-its attached to diagnostics as code actions
+
 ## Header Diagnostics
 
+- [ ] Include-cleaner diagnostics for unused and missing `#include` directives
 - [ ] Suppress false `-Wunused-function` for static inline functions in headers ([clangd#1211](https://github.com/clangd/clangd/issues/1211))
 
   ```cpp
@@ -71,7 +79,7 @@
 ## clang-tidy Integration
 
 - [ ] clang-tidy diagnostics (gated by config)
-- [ ] Suppress clang-tidy warnings originating in system-header macros ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))
+- [x] Suppress clang-tidy warnings originating in system-header macros ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))
 - [ ] Clang static analyzer support ([clangd#905](https://github.com/clangd/clangd/issues/905))
 - [ ] Version-specific clang-tidy documentation links ([clangd#2136](https://github.com/clangd/clangd/issues/2136))
 - [ ] Diagnostics for preprocessor directives that precede code ([clangd#2501](https://github.com/clangd/clangd/issues/2501))

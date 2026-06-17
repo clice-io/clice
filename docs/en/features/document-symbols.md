@@ -35,11 +35,11 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
 - [x] Variable / Field / Binding
 - [x] Template declarations (via inner templated entity)
 - [ ] Typedef / Type alias
-- [ ] Concept
+- [x] Concept
 
 ## Symbol Detail
 
-- [ ] Function signatures in the `detail` field — parameter types and names for overload disambiguation ([clangd#520](https://github.com/clangd/clangd/issues/520), [clangd#601](https://github.com/clangd/clangd/issues/601), [clangd#1232](https://github.com/clangd/clangd/issues/1232))
+- [x] Function signatures in the `detail` field — parameter types and names for overload disambiguation ([clangd#520](https://github.com/clangd/clangd/issues/520), [clangd#601](https://github.com/clangd/clangd/issues/601), [clangd#1232](https://github.com/clangd/clangd/issues/1232))
 
   ```
   // outline without detail:
@@ -51,7 +51,7 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
   process(std::string s) (function)
   ```
 
-- [ ] Variable type in the `detail` field
+- [x] Variable type in the `detail` field
 
   ```
   // outline: "timeout" detail: "int"
@@ -98,12 +98,15 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
 
 - [ ] Local variables inside function bodies ([clangd#616](https://github.com/clangd/clangd/issues/616))
 - [ ] Module declarations (`module`, `import`, `export module`)
+- [ ] `#pragma mark` symbols for editor navigation
+- [ ] Friend function definition symbols
 
 ## Symbol Tags
 
 - [ ] Deprecated tag for `[[deprecated]]` symbols
 - [ ] Access modifier indication (public / private / protected) ([clangd#2123](https://github.com/clangd/clangd/issues/2123))
 - [ ] Static / virtual / abstract indicators
+- [ ] Symbol tags: `deprecated`, `readonly`, `static`
 
 ## Location Correctness
 

@@ -55,16 +55,22 @@ Cursor/selection-driven refactorings.
 ### Transform
 
 - [ ] Add a `using` declaration ([clangd#73](https://github.com/clangd/clangd/issues/73))
-- [ ] Replace `using namespace` with explicit `using` declarations ([clangd#1067](https://github.com/clangd/clangd/issues/1067))
-- [ ] Drop qualifiers or replace with a type alias ([clangd#1619](https://github.com/clangd/clangd/issues/1619))
-- [ ] Swap / invert `if` branches ([clangd#466](https://github.com/clangd/clangd/issues/466))
+- [ ] Replace `using namespace` by qualifying names in place ([clangd#1067](https://github.com/clangd/clangd/issues/1067))
+- [ ] Remove unnecessary type qualifiers ([clangd#1619](https://github.com/clangd/clangd/issues/1619))
+- [ ] Swap `if`/`else` branches ([clangd#466](https://github.com/clangd/clangd/issues/466))
 - [ ] Populate `switch` cases ([clangd#807](https://github.com/clangd/clangd/issues/807))
-- [ ] Convert to / from a raw string literal
+- [ ] Convert to raw string literal
 - [ ] Create a declaration from a usage ([clangd#467](https://github.com/clangd/clangd/issues/467))
 - [ ] Remove function / method ([clangd#2580](https://github.com/clangd/clangd/issues/2580))
 - [ ] Modify function parameters and update call sites ([clangd#460](https://github.com/clangd/clangd/issues/460))
 - [ ] Fix mismatched declaration/definition signatures ([clangd#77](https://github.com/clangd/clangd/issues/77))
-- [ ] Implement pure virtual methods of base class ([clangd#1037](https://github.com/clangd/clangd/issues/1037))
+- [ ] Generate stubs for pure virtual methods of base class ([clangd#1037](https://github.com/clangd/clangd/issues/1037))
+- [ ] Swap binary operands
+- [ ] Convert unscoped enum to scoped enum
+- [ ] Generate memberwise constructor
+- [ ] Declare implicit copy/move special members
+- [ ] Rename symbol (as code action)
+- [ ] Include-cleaner: batch fix unused/missing includes
 
 ## Changelog
 

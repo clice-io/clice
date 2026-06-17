@@ -35,11 +35,11 @@
 - [x] 变量 / 字段 / 绑定
 - [x] 模板声明（通过内部模板化实体）
 - [ ] Typedef / 类型别名
-- [ ] Concept
+- [x] Concept
 
 ## 符号详情
 
-- [ ] `detail` 字段中的函数签名 — 参数类型和名称用于重载区分（[clangd#520](https://github.com/clangd/clangd/issues/520)、[clangd#601](https://github.com/clangd/clangd/issues/601)、[clangd#1232](https://github.com/clangd/clangd/issues/1232)）
+- [x] `detail` 字段中的函数签名 — 参数类型和名称用于重载区分（[clangd#520](https://github.com/clangd/clangd/issues/520)、[clangd#601](https://github.com/clangd/clangd/issues/601)、[clangd#1232](https://github.com/clangd/clangd/issues/1232)）
 
   ```
   // 无 detail 时的大纲：
@@ -51,7 +51,7 @@
   process(std::string s) (function)
   ```
 
-- [ ] `detail` 字段中的变量类型
+- [x] `detail` 字段中的变量类型
 
   ```
   // 大纲："timeout" detail: "int"
@@ -98,12 +98,15 @@
 
 - [ ] 函数体内的局部变量（[clangd#616](https://github.com/clangd/clangd/issues/616)）
 - [ ] Module 声明（`module`、`import`、`export module`）
+- [ ] `#pragma mark` 符号用于编辑器导航
+- [ ] 友元函数定义符号
 
 ## 符号标签
 
 - [ ] `[[deprecated]]` 符号的 deprecated 标签
 - [ ] 访问修饰符指示（public / private / protected）（[clangd#2123](https://github.com/clangd/clangd/issues/2123)）
 - [ ] Static / virtual / abstract 指示
+- [ ] 符号标签：`deprecated`、`readonly`、`static`
 
 ## 位置正确性
 

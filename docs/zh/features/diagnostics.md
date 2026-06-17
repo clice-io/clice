@@ -42,20 +42,28 @@
 - [x] 编译完成时推送诊断
 - [x] 文件关闭时清除诊断
 - [x] 按文件分组诊断（关注的文件 + 头文件）
+- [x] 诊断 `code` 字段包含 Clang 错误代码
+- [ ] `codeDescription` 链接到 Clang 文档
+- [ ] 诊断 `source` 字段区分 clang 与 clang-tidy
 - [ ] 可配置的诊断计算防抖延迟（[clangd#1471](https://github.com/clangd/clangd/issues/1471)）
 - [ ] 后台索引完成后重新计算已打开文件的诊断（[clangd#2604](https://github.com/clangd/clangd/issues/2604)）
 
 ## 诊断抑制
 
-- [ ] `// NOLINT` 注释抑制
-- [ ] `// NOLINTNEXTLINE` 注释抑制
-- [ ] `// NOLINTBEGIN` / `// NOLINTEND` 块抑制
+- [x] `// NOLINT` 注释抑制
+- [x] `// NOLINTNEXTLINE` 注释抑制
+- [x] `// NOLINTBEGIN` / `// NOLINTEND` 块抑制
 - [ ] include-cleaner 诊断的 `NOLINT` 支持（[clangd#1982](https://github.com/clangd/clangd/issues/1982)）
 - [ ] 在配置文件中按诊断类别配置严重性（[clangd#1937](https://github.com/clangd/clangd/issues/1937)）
 - [ ] 按版本控制 diff 过滤诊断 — 仅显示变更行附近的警告（[clangd#822](https://github.com/clangd/clangd/issues/822)）
 
+## 诊断操作
+
+- [ ] 将自动修复建议作为代码操作附加到诊断
+
 ## 头文件诊断
 
+- [ ] 针对未使用和缺失 `#include` 指令的 include-cleaner 诊断
 - [ ] 抑制头文件中 static inline 函数的误报 `-Wunused-function`（[clangd#1211](https://github.com/clangd/clangd/issues/1211)）
 
   ```cpp
@@ -71,7 +79,7 @@
 ## clang-tidy 集成
 
 - [ ] clang-tidy 诊断（由配置控制）
-- [ ] 抑制源自系统头文件宏的 clang-tidy 警告（[clangd#1587](https://github.com/clangd/clangd/issues/1587)、[clangd#2000](https://github.com/clangd/clangd/issues/2000)）
+- [x] 抑制源自系统头文件宏的 clang-tidy 警告（[clangd#1587](https://github.com/clangd/clangd/issues/1587)、[clangd#2000](https://github.com/clangd/clangd/issues/2000)）
 - [ ] Clang 静态分析器支持（[clangd#905](https://github.com/clangd/clangd/issues/905)）
 - [ ] 版本特定的 clang-tidy 文档链接（[clangd#2136](https://github.com/clangd/clangd/issues/2136)）
 - [ ] 代码前预处理指令的诊断（[clangd#2501](https://github.com/clangd/clangd/issues/2501)）

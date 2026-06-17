@@ -3,6 +3,7 @@
 ## Go to Definition
 
 - [x] 基于索引的跨翻译单元 go-to-definition
+- [ ] 在 `#include` 指令上 go-to-definition（导航到被包含的文件）
 - [ ] 基于 AST 的本地/未保存符号回退
 - [ ] 穿透宏包装导航到底层声明
 
@@ -55,16 +56,7 @@
   };
   ```
 
-- [ ] `break` / `continue` → 所在循环或 switch 的头部（[clangd#1921](https://github.com/clangd/clangd/issues/1921)）
-
-  ```cpp
-  for (int i = 0; i < n; i++) {
-      for (int j = 0; j < m; j++) {
-          if (done) break;     // 在 break 上 go-to-def → 内层 for
-          if (skip) continue;  // 在 continue 上 go-to-def → 内层 for
-      }
-  }
-  ```
+- [ ] `break` / `continue` → 所在循环或 switch 的头部（[clangd#1921](https://github.com/clangd/clangd/issues/1921)）。另见 [Document Highlight](#document-highlight) 中关于高亮上下文中相关控制流 token 的描述。
 
 **构造与析构**
 
@@ -315,6 +307,15 @@
   };
   ```
 
+- [ ] 列出基类的所有派生类（go-to-implementation）
+
+  ```cpp
+  struct Base {};
+  struct Circle : Base {};
+  struct Rect : Base {};
+  // 在 Base 上 go-to-impl → 列出 Circle、Rect
+  ```
+
 - [ ] 模板 duck-type 导航 — 当模板有已知实例化时，跳转到依赖成员调用的具体实现。同样适用于有已知调用点的 generic lambda。
 
   ```cpp
@@ -370,7 +371,7 @@
   // 在 w 上 go-to-type-def → Widget，而非 unique_ptr
   ```
 
-- [ ] 类型别名 — 解包 `typedef` / `using` 到底层类型定义
+- [ ] 类型别名 — 解包 `typedef` / `using` 到底层类型定义（具体行为可能取决于光标位置和上下文，例如光标在变量上还是在别名名称上）
 
   ```cpp
   using Connection = detail::ConnectionImpl;
@@ -550,6 +551,27 @@
   // 在 io 上 go-to-def → std.io 模块接口
   // 在 std 上 go-to-def → std 模块接口（如存在）
   ```
+
+## Document Highlight
+
+高亮当前文件中光标所在符号的所有引用（`textDocument/documentHighlight`）。
+
+- [ ] 高亮当前文件中光标所在符号的所有引用
+- [ ] 符号高亮的读/写分类
+- [ ] 控制流 token 高亮（`return`、`break`、`continue`、`throw`、`case`/`default` 用于 switch）（[clangd#1921](https://github.com/clangd/clangd/issues/1921)）
+
+  ```cpp
+  for (int i = 0; i < n; i++) {
+      for (int j = 0; j < m; j++) {
+          if (done) break;     // 高亮 break → 同时高亮内层 for
+          if (skip) continue;  // 高亮 continue → 同时高亮内层 for
+      }
+  }
+  ```
+
+## Switch Source/Header
+
+- [ ] 在源文件和头文件之间切换
 
 ## 变更记录
 

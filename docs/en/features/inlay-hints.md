@@ -7,7 +7,7 @@
 - [x] Skip for single-parameter calls with obvious semantics
 - [x] Expand parameter packs (`underlying_pack_type` detection)
 - [x] Resolve parameter names from definition (not just declaration)
-- [ ] Forwarding function parameter resolution — show the underlying constructor parameters for `std::make_unique`, `emplace_back`, etc. ([clangd#2324](https://github.com/clangd/clangd/issues/2324))
+- [x] Forwarding function parameter resolution — show the underlying constructor parameters for `std::make_unique`, `emplace_back`, etc. ([clangd#2324](https://github.com/clangd/clangd/issues/2324))
 
   ```cpp
   struct Widget { Widget(int width, int height); };
@@ -16,7 +16,7 @@
   //                          width: 800, height: 600 (not __args: 800, __args: 600)
   ```
 
-- [ ] Function pointer and `operator()` parameter hints ([clangd#1734](https://github.com/clangd/clangd/issues/1734), [clangd#1742](https://github.com/clangd/clangd/issues/1742))
+- [x] Function pointer and `operator()` parameter hints ([clangd#1734](https://github.com/clangd/clangd/issues/1734), [clangd#1742](https://github.com/clangd/clangd/issues/1742))
 
   ```cpp
   void (*callback)(int status, const char* msg);
@@ -42,11 +42,13 @@
 
 - [ ] Case-insensitive parameter name matching — `aParam` should suppress hint for argument `param` ([clangd#2248](https://github.com/clangd/clangd/issues/2248))
 
-- [ ] Suppress hints when an inline comment already names the parameter ([clangd#1877](https://github.com/clangd/clangd/issues/1877))
+- [x] Suppress hints when an inline comment already names the parameter ([clangd#1877](https://github.com/clangd/clangd/issues/1877))
 
   ```cpp
   draw(/*x=*/10, /*y=*/20);  // no hints needed — inline comments serve the same purpose
   ```
+
+- [x] Default argument value hints
 
 ## Type Hints
 
@@ -63,7 +65,7 @@
 
 - [ ] Dependent `auto` type hints — show deduced type when useful even in template bodies ([clangd#2275](https://github.com/clangd/clangd/issues/2275))
 
-- [ ] Don't show type hint when deduction fails ([clangd#1475](https://github.com/clangd/clangd/issues/1475))
+- [x] Don't show type hint when deduction fails ([clangd#1475](https://github.com/clangd/clangd/issues/1475))
 
 - [ ] Don't show type hint when the type is explicitly specified ([clangd#1749](https://github.com/clangd/clangd/issues/1749))
 
@@ -81,7 +83,7 @@
   //   ^ : std::vector<int>  (not IntVec)
   ```
 
-- [ ] Configurable type hint length limit ([clangd#1357](https://github.com/clangd/clangd/issues/1357))
+- [x] Configurable type hint length limit ([clangd#1357](https://github.com/clangd/clangd/issues/1357))
 
 - [ ] Abbreviated type hints with expandable label parts — use LSP `InlayHintLabelPart` to allow expanding truncated types ([clangd#2269](https://github.com/clangd/clangd/issues/2269))
 
@@ -142,7 +144,7 @@
 
 ## Reference / Pointer Hints
 
-- [ ] Show `&` / `&&` to indicate the argument is passed by mutable reference ([clangd#1123](https://github.com/clangd/clangd/issues/1123))
+- [x] Show `&` / `&&` to indicate the argument is passed by mutable reference ([clangd#1123](https://github.com/clangd/clangd/issues/1123))
 
   ```cpp
   void sort(std::vector<int>& v);
@@ -162,7 +164,7 @@
 
 ## Block End Hints
 
-- [ ] Show the declared name after a closing brace for long blocks ([clangd#1634](https://github.com/clangd/clangd/issues/1634))
+- [x] Show the declared name after a closing brace for long blocks ([clangd#1634](https://github.com/clangd/clangd/issues/1634))
 
   ```cpp
   void Widget::processData(const Config& cfg) {
@@ -198,7 +200,7 @@ Known issues that should be handled correctly:
 - [ ] No duplicate hints in the presence of explicit function template instantiation ([clangd#1034](https://github.com/clangd/clangd/issues/1034))
 - [ ] Parameter hints for inherited constructors called from derived classes ([clangd#1364](https://github.com/clangd/clangd/issues/1364))
 - [ ] Parameter hints must not be lost when a coroutine returns a template type ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
-- [ ] C++23 deducing `this` — strip explicit object parameter from hint display ([clangd#1777](https://github.com/clangd/clangd/issues/1777))
+- [x] C++23 deducing `this` — strip explicit object parameter from hint display ([clangd#1777](https://github.com/clangd/clangd/issues/1777))
 
 ## Changelog
 

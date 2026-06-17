@@ -10,8 +10,11 @@
 
 ## Style Resolution
 
-- [x] Auto-detect style from project `.clang-format`
-- [x] Fallback to LLVM default style
+- [x] Auto-detect style from `.clang-format` — clang-format searches parent directories from the source file up to the filesystem root
+- [x] Fallback to LLVM default style when no `.clang-format` is found in any parent directory
+
+## On-type and Save Hooks
+
 - [ ] On-type formatting (`textDocument/onTypeFormatting`)
 - [ ] Format-on-save integration
 

@@ -10,8 +10,11 @@
 
 ## 样式解析
 
-- [x] 从项目 `.clang-format` 自动检测样式
-- [x] 回退到 LLVM 默认样式
+- [x] 从 `.clang-format` 自动检测样式 — clang-format 从源文件所在目录向上逐级搜索至文件系统根目录
+- [x] 当所有父目录中均未找到 `.clang-format` 时回退到 LLVM 默认样式
+
+## 输入与保存钩子
+
 - [ ] 输入时格式化（`textDocument/onTypeFormatting`）
 - [ ] 保存时格式化集成
 

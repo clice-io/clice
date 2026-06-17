@@ -35,6 +35,7 @@
 - [x] 模板实例化模式解析（显示模板模式而非实例化）
 - [x] 带类型的参数标签
 - [x] 签名标签中的返回类型
+- [x] 参数标签字节偏移以精确高亮
 - [ ] 过滤 const/non-const 重载副本 — 仅显示可行的重载（[clangd#50](https://github.com/clangd/clangd/issues/50)）
 
   ```cpp
@@ -69,7 +70,7 @@
 
 ## 特殊调用上下文
 
-- [ ] 模板参数签名帮助（[clangd#299](https://github.com/clangd/clangd/issues/299)、[clangd#1387](https://github.com/clangd/clangd/issues/1387)）
+- [x] 模板参数签名帮助（[clangd#299](https://github.com/clangd/clangd/issues/299)、[clangd#1387](https://github.com/clangd/clangd/issues/1387)）
 
   ```cpp
   template<typename Key, typename Value, typename Compare = less<Key>>
@@ -78,7 +79,7 @@
   SortedMap<int, ^  // 显示：Key = int, Value = ?, Compare = less<Key>
   ```
 
-- [ ] 聚合初始化 — 将字段名显示为"参数"（[clangd#726](https://github.com/clangd/clangd/issues/726)、[clangd#2541](https://github.com/clangd/clangd/issues/2541)）
+- [x] 聚合初始化 — 将字段名显示为"参数"（[clangd#726](https://github.com/clangd/clangd/issues/726)、[clangd#2541](https://github.com/clangd/clangd/issues/2541)）
 
   ```cpp
   struct Point { int x, y, z; };
@@ -113,6 +114,8 @@
   void (*callback)(int status, const char* msg);
   callback(^  // 显示 "(int status, const char* msg)"
   ```
+
+- [ ] 对象初始化时的构造函数签名帮助
 
 - [ ] 宏函数调用 — 显示宏参数而非底层展开（[clangd#795](https://github.com/clangd/clangd/issues/795)）
 

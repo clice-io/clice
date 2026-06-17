@@ -2,11 +2,18 @@
 
 ## Symbol Information
 
-- [x] Qualified name with scopes (`namespace::class::name`)
+- [x] Qualified name showing enclosing scope context (namespace, class)
 - [x] Symbol kind classification
 - [x] Access specifier (public / protected / private)
 - [x] Documentation comments (Doxygen)
 - [x] Source definition rendering
+- [x] Truncate large initializers in definition display ([clangd#710](https://github.com/clangd/clangd/issues/710))
+
+  ```cpp
+  const int table[] = {0, 1, 2, /* ... 1000 elements ... */};
+  // hover → show truncated definition, not the entire initializer
+  ```
+
 - [ ] Show `virtual` / `override` / `final` modifiers in hover ([clangd#2474](https://github.com/clangd/clangd/issues/2474))
 
   ```cpp
@@ -32,6 +39,7 @@
 - [x] Return type for functions/lambdas
 - [x] Function parameters with types, names, defaults
 - [x] Template parameters
+- [x] Deduced type on `auto` and `decltype` keyword hover
 - [ ] Show deduced template arguments for CTAD variables ([clangd#435](https://github.com/clangd/clangd/issues/435))
 
   ```cpp
@@ -80,6 +88,8 @@
   // current:  hover → "struct Point p" (misleading — no struct Point exists)
   // expected: hover → "Point p" (alias to anonymous struct)
   ```
+
+- [ ] Concept and constrained `auto` hover showing constraint information
 
 ## Layout Information
 
@@ -212,6 +222,8 @@
 
 - [ ] Docstrings missing when template keyword comes from macro expansion ([clangd#1226](https://github.com/clangd/clangd/issues/1226))
 
+- [x] Synthesized documentation for trivial accessors (getters/setters)
+
 ## Macro Hover
 
 - [ ] Show macro expansion before definition ([clangd#2642](https://github.com/clangd/clangd/issues/2642))
@@ -221,13 +233,6 @@
   int z = MAX(x, y);
   //      ^^^^^^^^^ hover → expansion: "((x) > (y) ? (x) : (y))"
   //                         definition: "#define MAX(a, b) ((a) > (b) ? (a) : (b))"
-  ```
-
-- [ ] Truncate large initializers in definition display ([clangd#710](https://github.com/clangd/clangd/issues/710))
-
-  ```cpp
-  const int table[] = {0, 1, 2, /* ... 1000 elements ... */};
-  // hover → show truncated definition, not the entire initializer
   ```
 
 ## Special Hover Targets
@@ -247,12 +252,23 @@
   // hover on Point → show the struct definition including members
   ```
 
-- [ ] Keyword and attribute documentation ([clangd#1862](https://github.com/clangd/clangd/issues/1862))
+- [ ] Keyword documentation on hover ([clangd#1862](https://github.com/clangd/clangd/issues/1862))
+
+  ```cpp
+  const int x = 42;
+  // hover on "const" → description of the keyword
+  ```
+
+- [x] Attribute documentation on hover ([clangd#1862](https://github.com/clangd/clangd/issues/1862))
 
   ```cpp
   [[nodiscard]] int compute();
   // hover on "nodiscard" → description of the attribute
   ```
+
+- [ ] `#include` directive hover showing resolved header path
+- [x] `this` expression hover showing pointed-to type
+- [x] `__func__` and related predefined identifier hover
 
 - [ ] GTK-Doc, kernel-doc, and GObject Introspection documentation ([clangd#2662](https://github.com/clangd/clangd/issues/2662))
 

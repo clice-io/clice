@@ -3,6 +3,7 @@
 ## Go to Definition
 
 - [x] Index-based cross-TU go-to-definition
+- [ ] Go to definition on `#include` directives (navigate to the included file)
 - [ ] AST-based fallback for local/unsaved symbols
 - [ ] Navigate through macro wrappers to the underlying declaration
 
@@ -55,16 +56,7 @@ Implicit navigation requires an unambiguous source token — patterns where the 
   };
   ```
 
-- [ ] `break` / `continue` → enclosing loop or switch head ([clangd#1921](https://github.com/clangd/clangd/issues/1921))
-
-  ```cpp
-  for (int i = 0; i < n; i++) {
-      for (int j = 0; j < m; j++) {
-          if (done) break;     // go-to-def on break → inner for
-          if (skip) continue;  // go-to-def on continue → inner for
-      }
-  }
-  ```
+- [ ] `break` / `continue` → enclosing loop or switch head ([clangd#1921](https://github.com/clangd/clangd/issues/1921)). See also [Document Highlight](#document-highlight) for highlighting all related control flow tokens in context.
 
 **Construction & destruction**
 
@@ -315,6 +307,15 @@ Navigate from a symbol usage or definition to its declaration. In C++, many enti
   };
   ```
 
+- [ ] Go to implementation listing all derived classes for a base class
+
+  ```cpp
+  struct Base {};
+  struct Circle : Base {};
+  struct Rect : Base {};
+  // go-to-impl on Base → list Circle, Rect
+  ```
+
 - [ ] Template duck-type navigation — when a template has known instantiations, jump to the concrete implementations of dependent member calls. Also applies to generic lambdas with known call sites.
 
   ```cpp
@@ -370,7 +371,7 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
   // go-to-type-def on w → Widget, not unique_ptr
   ```
 
-- [ ] Type aliases — unwrap `typedef` / `using` to the underlying type definition
+- [ ] Type aliases — unwrap `typedef` / `using` to the underlying type definition (behavior may depend on cursor position and context, e.g. whether the cursor is on the variable or on the alias name itself)
 
   ```cpp
   using Connection = detail::ConnectionImpl;
@@ -550,6 +551,27 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
   // go-to-def on io → std.io module interface
   // go-to-def on std → std module interface (if exists)
   ```
+
+## Document Highlight
+
+Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`).
+
+- [ ] Highlight all references to the symbol under cursor in the current file
+- [ ] Read/Write classification for symbol highlights
+- [ ] Control flow token highlighting (`return`, `break`, `continue`, `throw`, `case`/`default` for switch) ([clangd#1921](https://github.com/clangd/clangd/issues/1921))
+
+  ```cpp
+  for (int i = 0; i < n; i++) {
+      for (int j = 0; j < m; j++) {
+          if (done) break;     // highlighting break → also highlights inner for
+          if (skip) continue;  // highlighting continue → also highlights inner for
+      }
+  }
+  ```
+
+## Switch Source/Header
+
+- [ ] Switch between source and header file
 
 ## Changelog
 
