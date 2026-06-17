@@ -106,7 +106,7 @@
   // not:    {... (signature hidden above fold)}
   ```
 
-  > **Client support**: this depends on the client interpreting `FoldingRange.startLine` correctly. VS Code uses the line *after* `startLine` as the first hidden line, so setting `startLine` to the declaration line achieves the desired effect. However, VS Code still leaves the closing `}` on a separate line rather than collapsing it onto the signature line ([vscode#3352](https://github.com/microsoft/vscode/issues/3352) — still open). Other clients may differ.
+  > **Client support**: this depends on the client interpreting `FoldingRange.startLine` correctly. VS Code uses the line _after_ `startLine` as the first hidden line, so setting `startLine` to the declaration line achieves the desired effect. However, VS Code still leaves the closing `}` on a separate line rather than collapsing it onto the signature line ([vscode#3352](https://github.com/microsoft/vscode/issues/3352) — still open). Other clients may differ.
 
 - [ ] Inactive preprocessor branch indication — visually distinguish or auto-fold inactive `#if`/`#else` branches
 
@@ -122,6 +122,6 @@
 
 ## Changelog
 
-| Date | Change | PR |
-| ---- | ------ | -- |
-| —    | Block folding, list folding, access specifiers, preprocessor regions | — |
+| Date | Change                                                               | PR  |
+| ---- | -------------------------------------------------------------------- | --- |
+| —    | Block folding, list folding, access specifiers, preprocessor regions | —   |

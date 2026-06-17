@@ -177,6 +177,6 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Changelog
 
-| Date | Change | PR |
-| ---- | ------ | -- |
-| —    | Function overload signatures, active parameter tracking, trigger characters | — |
+| Date | Change                                                                      | PR  |
+| ---- | --------------------------------------------------------------------------- | --- |
+| —    | Function overload signatures, active parameter tracking, trigger characters | —   |

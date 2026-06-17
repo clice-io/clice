@@ -52,6 +52,6 @@ Respects standard `.clang-tidy` configuration files in the project tree.
 
 ## Changelog
 
-| Date | Change | PR |
-| ---- | ------ | -- |
-| —    | Stub implementation, dependency graph tracking | — |
+| Date | Change                                         | PR  |
+| ---- | ---------------------------------------------- | --- |
+| —    | Stub implementation, dependency graph tracking | —   |

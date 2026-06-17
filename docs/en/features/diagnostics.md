@@ -105,6 +105,6 @@ Known issues that should be handled correctly:
 
 ## Changelog
 
-| Date | Change | PR |
-| ---- | ------ | -- |
-| —    | Clang diagnostics, severity mapping, tags, push publishing | — |
+| Date | Change                                                     | PR  |
+| ---- | ---------------------------------------------------------- | --- |
+| —    | Clang diagnostics, severity mapping, tags, push publishing | —   |

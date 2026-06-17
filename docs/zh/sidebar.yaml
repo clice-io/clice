@@ -1,0 +1,42 @@
+guide:
+  label: 指南
+  items:
+    - what-is-clice
+    - quick-start
+    - configuration
+
+features:
+  label: 功能
+  items:
+    - overview
+    - completion
+    - hover
+    - signature-help
+    - navigation
+    - diagnostics
+    - code-action
+    - semantic-tokens
+    - inlay-hints
+    - document-links
+    - document-symbols
+    - folding-ranges
+    - formatting
+    - lint
+
+design:
+  label: 设计
+  items:
+    - architecture
+    - compilation
+    - header-context
+    - index
+    - template-resolver
+
+dev:
+  label: 开发
+  collapsed: true
+  items:
+    - build
+    - contribution
+    - extension
+    - test-and-debug

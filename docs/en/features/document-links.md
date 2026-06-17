@@ -33,6 +33,6 @@ Clickable links from source directives to their resolved target files.
 
 ## Changelog
 
-| Date | Change | PR |
-| ---- | ------ | -- |
-| —    | Include directive links (#include, __has_include, #embed) | — |
+| Date | Change                                                      | PR  |
+| ---- | ----------------------------------------------------------- | --- |
+| —    | Include directive links (#include, \_\_has_include, #embed) | —   |

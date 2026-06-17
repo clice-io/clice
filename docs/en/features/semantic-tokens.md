@@ -391,6 +391,6 @@ Known issues from clangd that clice aims to get right from the start:
 
 ## Changelog
 
-| Date | Change | PR |
-| ---- | ------ | -- |
-| —    | Initial semantic token types and modifiers, full document tokens | — |
+| Date | Change                                                           | PR  |
+| ---- | ---------------------------------------------------------------- | --- |
+| —    | Initial semantic token types and modifiers, full document tokens | —   |

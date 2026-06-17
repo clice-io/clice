@@ -553,8 +553,8 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 
 ## Changelog
 
-| Date | Change | PR |
-| ---- | ------ | -- |
-| —    | Index-based go-to-definition and find references | — |
-| —    | Call hierarchy (incoming/outgoing) | — |
-| —    | Type hierarchy (supertypes/subtypes) | — |
+| Date | Change                                           | PR  |
+| ---- | ------------------------------------------------ | --- |
+| —    | Index-based go-to-definition and find references | —   |
+| —    | Call hierarchy (incoming/outgoing)               | —   |
+| —    | Type hierarchy (supertypes/subtypes)             | —   |

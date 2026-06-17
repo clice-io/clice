@@ -26,6 +26,6 @@ Beyond the LSP `textDocument/formatting` request (which formats a single open fi
 
 ## Changelog
 
-| Date | Change | PR |
-| ---- | ------ | -- |
-| —    | Document formatting, range formatting, include sorting | — |
+| Date | Change                                                 | PR  |
+| ---- | ------------------------------------------------------ | --- |
+| —    | Document formatting, range formatting, include sorting | —   |

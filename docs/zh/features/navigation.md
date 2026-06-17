@@ -553,8 +553,8 @@
 
 ## 变更记录
 
-| 日期 | 变更 | PR |
-| ---- | ---- | -- |
-| — | 基于索引的 go-to-definition 和 find references | — |
-| — | Call hierarchy（incoming/outgoing） | — |
-| — | Type hierarchy（supertypes/subtypes） | — |
+| 日期 | 变更                                           | PR  |
+| ---- | ---------------------------------------------- | --- |
+| —    | 基于索引的 go-to-definition 和 find references | —   |
+| —    | Call hierarchy（incoming/outgoing）            | —   |
+| —    | Type hierarchy（supertypes/subtypes）          | —   |

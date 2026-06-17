@@ -8,7 +8,7 @@ Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no co
 
 - [x] `#include <` — system/angled include paths
 - [x] `#include "` — quoted include paths (project-local first)
-- [ ] `#include_next` — must detect that the directive is `#include_next`, not `#include`, and adjust search to start from the directory *after* the one that provided the current file
+- [ ] `#include_next` — must detect that the directive is `#include_next`, not `#include`, and adjust search to start from the directory _after_ the one that provided the current file
 
   ```cpp
   // in <bits/stl_vector.h>, provided by /usr/include/c++/14/
@@ -73,11 +73,11 @@ Triggered when cursor is after `import` or `export import`.
 - [ ] Trigger on space character ([#460](https://github.com/clice-io/clice/pull/460))
 
   Requires two-layer gating to avoid firing on every space keystroke:
-
   1. **Server-side**: register ` ` (space) as a trigger character so the client sends completion requests on space.
   2. **Extension-side middleware**: intercept space-triggered requests and only forward them when the current line matches `import ` or `export import ` (cheap string check, zero IPC overhead for non-import spaces). All other spaces return empty immediately.
 
   This follows the same pattern used by TypeScript/Haxe language extensions ([vscode#67714](https://github.com/microsoft/vscode/issues/67714)).
+
 - [ ] Exclude self-module from results (self-import is invalid) — **FIXME**
 - [ ] Partition import within the same module
 
@@ -504,21 +504,21 @@ Not yet implemented. Completion items do not include documentation.
 
 Registered: `. < > : " / *`. Space (` `) is planned but not yet merged ([#460](https://github.com/clice-io/clice/pull/460)).
 
-| Character | Context         | Behavior                                 |
-| --------- | --------------- | ---------------------------------------- |
-| `.`       | Member access   | Semantic completion                      |
-| `->`      | Pointer member  | Via `.` trigger + Clang fixup            |
-| `::`      | Via `:` trigger | Scope completion                         |
-| `<`       | `#include <`    | Include path completion                  |
-| `>`       | Template close  | Semantic completion                      |
-| `"`       | `#include "`    | Include path completion                  |
-| `/`       | Path separator  | Include path continuation                |
-| `*`       | Pointer deref   | Semantic completion                      |
+| Character | Context         | Behavior                                                                                                  |
+| --------- | --------------- | --------------------------------------------------------------------------------------------------------- |
+| `.`       | Member access   | Semantic completion                                                                                       |
+| `->`      | Pointer member  | Via `.` trigger + Clang fixup                                                                             |
+| `::`      | Via `:` trigger | Scope completion                                                                                          |
+| `<`       | `#include <`    | Include path completion                                                                                   |
+| `>`       | Template close  | Semantic completion                                                                                       |
+| `"`       | `#include "`    | Include path completion                                                                                   |
+| `/`       | Path separator  | Include path continuation                                                                                 |
+| `*`       | Pointer deref   | Semantic completion                                                                                       |
 | ` `       | After `import`  | Module name completion (extension-gated) — **pending [#460](https://github.com/clice-io/clice/pull/460)** |
 
 ## Changelog
 
-| Date    | Change                                 | PR  |
-| ------- | -------------------------------------- | --- |
-| —       | Initial include/semantic completion    | —   |
-| —       | Module import completion (flat prefix) | —   |
+| Date | Change                                 | PR  |
+| ---- | -------------------------------------- | --- |
+| —    | Initial include/semantic completion    | —   |
+| —    | Module import completion (flat prefix) | —   |

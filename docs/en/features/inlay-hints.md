@@ -202,6 +202,6 @@ Known issues that should be handled correctly:
 
 ## Changelog
 
-| Date | Change | PR |
-| ---- | ------ | -- |
-| —    | Parameter name hints, type hints, range-scoped queries | — |
+| Date | Change                                                 | PR  |
+| ---- | ------------------------------------------------------ | --- |
+| —    | Parameter name hints, type hints, range-scoped queries | —   |

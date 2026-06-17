@@ -118,6 +118,6 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
 
 ## Changelog
 
-| Date | Change | PR |
-| ---- | ------ | -- |
-| —    | Nested symbol hierarchy, basic symbol kinds | — |
+| Date | Change                                      | PR  |
+| ---- | ------------------------------------------- | --- |
+| —    | Nested symbol hierarchy, basic symbol kinds | —   |
