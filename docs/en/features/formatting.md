@@ -1,15 +1,11 @@
 # Formatting
 
-Implementation: `src/feature/formatting.cpp`
-
 ## Core
-
-Uses `clang::format` library for all formatting operations.
 
 - [x] Document formatting (`textDocument/formatting`)
 - [x] Range formatting (`textDocument/rangeFormatting`)
 - [x] Respect `.clang-format` style files
-- [x] Include sorting (`clang::format::sortIncludes`)
+- [x] Include sorting
 - [x] Combined include sort + reformat in single pass
 
 ## Style Resolution
@@ -18,3 +14,18 @@ Uses `clang::format` library for all formatting operations.
 - [x] Fallback to LLVM default style
 - [ ] On-type formatting (`textDocument/onTypeFormatting`)
 - [ ] Format-on-save integration
+
+## Project-wide Format
+
+Beyond the LSP `textDocument/formatting` request (which formats a single open file), clice provides project-wide formatting via CLI.
+
+- [ ] CLI `clice format` for batch formatting
+- [ ] Parallel formatting across project files
+- [ ] Incremental format (only modified files since last run)
+- [ ] Dry-run / diff mode (show what would change)
+
+## Changelog
+
+| Date | Change | PR |
+| ---- | ------ | -- |
+| —    | Document formatting, range formatting, include sorting | — |

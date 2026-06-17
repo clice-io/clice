@@ -14,6 +14,7 @@ features:
     - signature-help
     - navigation
     - diagnostics
+    - code-action
     - semantic-tokens
     - inlay-hints
     - document-links
@@ -21,7 +22,6 @@ features:
     - folding-ranges
     - formatting
     - lint
-    - project-format
 
 design:
   label: Design

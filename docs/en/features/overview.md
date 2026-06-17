@@ -19,6 +19,7 @@ Language Server Protocol features available when using clice as an editor backen
 | Document Symbols | Implemented | [document-symbols](./document-symbols.md) |
 | Formatting       | Implemented | [formatting](./formatting.md)             |
 | Diagnostics      | Partial     | [diagnostics](./diagnostics.md)           |
+| Code Action      | Stub        | [code-action](./code-action.md)           |
 
 ## Lint
 
@@ -27,14 +28,6 @@ Project-wide static analysis powered by clang-tidy, with cross-TU optimizations 
 | Feature                | Status  | Page              |
 | ---------------------- | ------- | ----------------- |
 | clang-tidy integration | Planned | [lint](./lint.md) |
-
-## Format
-
-Code formatting capabilities beyond the LSP `textDocument/formatting` request.
-
-| Feature                              | Status  | Page                                  |
-| ------------------------------------ | ------- | ------------------------------------- |
-| Project-wide format (`clice format`) | Planned | [project-format](./project-format.md) |
 
 ## Legend
 

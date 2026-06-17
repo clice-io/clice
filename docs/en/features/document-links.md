@@ -1,6 +1,6 @@
 # Document Links
 
-Implementation: `src/feature/document_links.cpp`
+Clickable links from source directives to their resolved target files.
 
 ## Include Directives
 
@@ -9,15 +9,30 @@ Implementation: `src/feature/document_links.cpp`
 - [x] `__has_include(...)` — link to checked file
 - [x] `#embed "..."` — link to embedded resource file
 - [x] `__has_embed(...)` — link to checked embed file
+- [ ] `#include_next` — link to the resolved next-in-search-path header
+- [ ] Macro-expanded include paths — resolve and link when the path is produced by a macro ([clangd#2375](https://github.com/clangd/clangd/issues/2375))
+
+  ```cpp
+  #define HEADER "config.h"
+  #include HEADER  // should link to config.h
+  ```
+
+- [ ] Show resolved absolute path as tooltip
+
+  ```
+  #include <vector>
+  // tooltip: /usr/include/c++/14/vector
+  ```
 
 ## Module Declarations
 
-- [ ] `import module_name;` — link to module interface file [^clangd-2622]
-- [ ] `import :partition;` — link to partition file [^clangd-2622]
+- [ ] `import module_name;` — link to module interface file
+- [ ] `import :partition;` — link to partition file
 - [ ] `module module_name;` — link to module interface (from implementation unit)
+- [ ] `export import module_name;` — link to re-exported module interface
 
-## Implementation Notes
+## Changelog
 
-Links are computed by the stateful worker via `feature::document_links()` using `CompilationUnitRef::directives()`, which tracks includes, has_includes, embeds, and has_embeds per file. A PCH-cached fallback (`document_links_json`) is used when no worker is available.
-
-[^clangd-2622]: [clangd#2622](https://github.com/clangd/clangd/issues/2622) — Module partition support tracking `open`
+| Date | Change | PR |
+| ---- | ------ | -- |
+| —    | Include directive links (#include, __has_include, #embed) | — |
