@@ -870,32 +870,6 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id) {
     }
 }
 
-kota::task<> Indexer::monitor_resources() {
-    while(true) {
-        co_await kota::sleep(std::chrono::milliseconds(3000));
-
-        auto mem = kota::sys::memory();
-        if(mem.total == 0)
-            continue;
-
-        auto effective_total =
-            (mem.constrained > 0 && mem.constrained < mem.total) ? mem.constrained : mem.total;
-        auto ratio = static_cast<double>(mem.available) / static_cast<double>(effective_total);
-
-        if(ratio < 0.15 && max_concurrent > 1) {
-            --max_concurrent;
-            LOG_INFO("Index concurrency -> {} (memory pressure: {:.0f}% available)",
-                     max_concurrent,
-                     ratio * 100);
-        } else if(ratio > 0.30 && max_concurrent < baseline_concurrent) {
-            ++max_concurrent;
-            LOG_DEBUG("Index concurrency -> {} (memory OK: {:.0f}% available)",
-                      max_concurrent,
-                      ratio * 100);
-        }
-    }
-}
-
 kota::task<> Indexer::run_background_indexing() {
     if(index_idle_timer) {
         co_await index_idle_timer->wait();
@@ -908,9 +882,6 @@ kota::task<> Indexer::run_background_indexing() {
     }
 
     indexing_active = true;
-
-    kota::cancellation_source monitor_cancel;
-    bg_tasks.spawn(kota::with_token(monitor_resources(), monitor_cancel.token()));
 
     std::stable_partition(
         index_queue.begin() + index_queue_pos,
@@ -933,8 +904,6 @@ kota::task<> Indexer::run_background_indexing() {
     }
 
     kota::task_group<> workers(loop);
-    std::size_t in_flight = 0;
-    kota::event slot_available;
 
     while(index_queue_pos < index_queue.size()) {
         if(pause_depth > 0)
@@ -947,22 +916,14 @@ kota::task<> Indexer::run_background_indexing() {
             continue;
         }
 
-        while(in_flight >= max_concurrent) {
-            slot_available.reset();
-            co_await slot_available.wait();
-        }
-
-        ++in_flight;
         ++dispatched;
         workers.spawn([&, server_path_id]() -> kota::task<> {
             co_await index_one(server_path_id);
-            --in_flight;
             ++completed;
             if(progress) {
                 auto pct = total > 0 ? static_cast<std::uint32_t>(completed * 100 / total) : 100;
                 progress->report(std::format("{}/{} files", completed, total), pct);
             }
-            slot_available.set();
         }());
     }
 
@@ -971,8 +932,6 @@ kota::task<> Indexer::run_background_indexing() {
     if(progress) {
         progress->end(std::format("Indexed {} files", dispatched));
     }
-
-    monitor_cancel.cancel();
 
     indexing_active = false;
     LOG_INFO("Background indexing complete: {} files dispatched", dispatched);

@@ -57,6 +57,8 @@ struct CompileResult {
     std::string tu_index_data;
 };
 
+enum class Priority : uint8_t { High, Low };
+
 /// Kind of build task dispatched to a stateless worker.
 enum class BuildKind : uint8_t {
     BuildPCH,
@@ -77,6 +79,7 @@ enum class BuildKind : uint8_t {
 ///   - SignatureHelp: + text, version, offset, pch, pcms
 ///   - Format:        + text, format_range (optional)
 struct BuildParams {
+    Priority priority = Priority::Low;
     BuildKind kind;
     std::string file;
     std::string directory;

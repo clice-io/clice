@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <list>
 #include <memory>
@@ -42,7 +43,7 @@ public:
                                         const Params& params,
                                         kota::ipc::request_options opts = {});
 
-    /// Send a request to a stateless worker with round-robin dispatch.
+    /// Send a request to a stateless worker with priority-aware scheduling.
     template <typename Params>
     RequestResult<Params> send_stateless(const Params& params,
                                          kota::ipc::request_options opts = {});
@@ -65,13 +66,13 @@ private:
         std::unique_ptr<kota::ipc::BincodePeer> peer;
         std::size_t owned_documents = 0;
         bool alive = true;
+        bool busy = false;
         unsigned restart_count = 0;
     };
 
     kota::event_loop& loop;
     llvm::SmallVector<WorkerProcess> stateless_workers;
     llvm::SmallVector<WorkerProcess> stateful_workers;
-    std::size_t next_stateless = 0;
 
     // Stateful worker routing: path_id -> worker index with LRU tracking
     llvm::DenseMap<std::uint32_t, std::size_t> owner;
@@ -81,6 +82,45 @@ private:
     std::size_t assign_worker(std::uint32_t path_id);
     void clear_owner(std::size_t worker_index);
     std::size_t pick_least_loaded();
+
+    // Priority-aware stateless scheduling
+    struct PendingStateless {
+        worker::Priority priority;
+        kota::event ready{};
+        std::size_t assigned_worker = 0;
+
+        explicit PendingStateless(worker::Priority p) : priority(p) {}
+    };
+
+    struct StatelessSlot {
+        WorkerPool& pool;
+        std::size_t worker_index;
+        bool released = false;
+
+        StatelessSlot(WorkerPool& p, std::size_t idx) : pool(p), worker_index(idx) {}
+
+        StatelessSlot(const StatelessSlot&) = delete;
+        StatelessSlot& operator=(const StatelessSlot&) = delete;
+
+        ~StatelessSlot() {
+            if(!released)
+                pool.release_stateless_slot(worker_index);
+        }
+    };
+
+    std::deque<PendingStateless*> high_queue;
+    std::deque<PendingStateless*> low_queue;
+    std::size_t stateless_busy_count = 0;
+    std::size_t alive_stateless_count = 0;
+    std::size_t low_limit = 0;
+    std::size_t max_low_limit = 0;
+
+    kota::task<std::size_t> acquire_stateless_slot(worker::Priority priority);
+    void release_stateless_slot(std::size_t worker_index);
+    void try_dispatch_pending();
+    std::size_t pick_idle_stateless();
+    kota::task<> monitor_memory();
+    void on_worker_crash();
 
     bool shutting_down_ = false;
     kota::task_group<> monitor_group{loop};
@@ -117,16 +157,15 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     if(stateless_workers.empty()) {
         co_return kota::outcome_error(kota::ipc::Error{"No stateless workers available"});
     }
-    // Round-robin, skipping dead workers.
-    auto start = next_stateless;
-    for(std::size_t i = 0; i < stateless_workers.size(); ++i) {
-        auto idx = (start + i) % stateless_workers.size();
-        if(stateless_workers[idx].alive) {
-            next_stateless = (idx + 1) % stateless_workers.size();
-            co_return co_await stateless_workers[idx].peer->send_request(params, opts);
-        }
+
+    auto idx = co_await acquire_stateless_slot(params.priority);
+    StatelessSlot slot(*this, idx);
+
+    if(!stateless_workers[idx].alive) {
+        co_return kota::outcome_error(kota::ipc::Error{"Assigned stateless worker is down"});
     }
-    co_return kota::outcome_error(kota::ipc::Error{"All stateless workers are down"});
+
+    co_return co_await stateless_workers[idx].peer->send_request(params, opts);
 }
 
 template <typename Params>

@@ -102,8 +102,6 @@ void MasterServer::initialize() {
         indexer.schedule();
     };
 
-    indexer.set_max_concurrency(cfg.stateless_worker_count.value);
-
     load_workspace();
 }
 

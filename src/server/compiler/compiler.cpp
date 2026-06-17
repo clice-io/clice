@@ -513,6 +513,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
 
     // Build a new PCH via stateless worker.
     worker::BuildParams bp;
+    bp.priority = worker::Priority::High;
     bp.kind = worker::BuildKind::BuildPCH;
     bp.file = std::string(path);
     bp.directory = directory;
@@ -878,6 +879,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     auto gen = session->generation;
 
     worker::BuildParams wp;
+    wp.priority = worker::Priority::High;
     wp.kind = kind;
     wp.file = path;
     wp.version = session->version;
@@ -913,6 +915,7 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     auto path = std::string(workspace.path_pool.resolve(path_id));
 
     worker::BuildParams wp;
+    wp.priority = worker::Priority::High;
     wp.kind = worker::BuildKind::Format;
     wp.file = path;
     wp.text = session->text;

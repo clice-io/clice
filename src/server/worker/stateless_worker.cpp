@@ -1,5 +1,7 @@
 #include "server/worker/stateless_worker.h"
 
+#include <cstdlib>
+
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
@@ -291,6 +293,14 @@ static worker::BuildResult handle_format(const worker::BuildParams& params) {
 }
 
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
+    // Limit libuv thread pool to 1 thread so each stateless worker executes
+    // only one compilation at a time. Must be set before any kota::queue call.
+#ifdef _WIN32
+    _putenv_s("UV_THREADPOOL_SIZE", "1");
+#else
+    ::setenv("UV_THREADPOOL_SIZE", "1", 1);
+#endif
+
     logging::stderr_logger(worker_name, logging::options);
     if(!log_dir.empty()) {
         logging::file_logger(worker_name, log_dir, logging::options);

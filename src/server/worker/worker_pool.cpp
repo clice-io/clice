@@ -1,10 +1,12 @@
 #include "server/worker/worker_pool.h"
 
+#include <algorithm>
 #include <csignal>
 #include <string>
 
 #include "support/logging.h"
 
+#include "kota/async/io/system.h"
 #include "kota/ipc/transport.h"
 
 namespace clice {
@@ -104,6 +106,8 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
 
     auto& w = workers.back();
     w.alive = true;
+    if(!stateful)
+        ++alive_stateless_count;
     io_group.spawn(w.peer->run());
 
     return true;
@@ -138,6 +142,11 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
             }
         });
     }
+
+    max_low_limit = alive_stateless_count > 1 ? alive_stateless_count - 1 : alive_stateless_count;
+    low_limit = max_low_limit;
+
+    monitor_group.spawn(monitor_memory());
 
     LOG_INFO("WorkerPool started: {} stateless, {} stateful workers",
              stateless_workers.size(),
@@ -258,8 +267,17 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
                   w.restart_count);
     }
 
-    if(stateful)
+    if(stateful) {
         clear_owner(index);
+    } else {
+        --alive_stateless_count;
+        if(w.busy) {
+            w.busy = false;
+            --stateless_busy_count;
+        }
+        on_worker_crash();
+        try_dispatch_pending();
+    }
 
     constexpr unsigned max_restarts = 5;
     if(w.restart_count >= max_restarts) {
@@ -323,8 +341,12 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
         .peer = std::move(peer),
         .owned_documents = 0,
         .alive = true,
+        .busy = false,
         .restart_count = old_restart_count,
     };
+
+    if(!stateful)
+        ++alive_stateless_count;
 
     auto& w = workers[index];
     io_group.spawn(w.peer->run());
@@ -340,6 +362,121 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
 
     LOG_INFO("Worker {} restarted (attempt {})", worker_name, old_restart_count);
     return true;
+}
+
+kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority priority) {
+    using P = worker::Priority;
+    auto can_proceed = [&]() {
+        auto idle = alive_stateless_count - stateless_busy_count;
+        if(idle == 0)
+            return false;
+        if(priority == P::High)
+            return true;
+        return stateless_busy_count < low_limit;
+    };
+
+    if(!can_proceed()) {
+        PendingStateless pending(priority);
+        if(priority == P::High)
+            high_queue.push_back(&pending);
+        else
+            low_queue.push_back(&pending);
+        co_await pending.ready.wait();
+        co_return pending.assigned_worker;
+    }
+
+    auto idx = pick_idle_stateless();
+    stateless_workers[idx].busy = true;
+    ++stateless_busy_count;
+
+    auto pid = stateless_workers[idx].proc.pid();
+    if(pid > 0) {
+        kota::sys::set_priority(priority == P::Low ? 10 : 0, pid);
+    }
+
+    co_return idx;
+}
+
+void WorkerPool::release_stateless_slot(std::size_t worker_index) {
+    stateless_workers[worker_index].busy = false;
+    --stateless_busy_count;
+    try_dispatch_pending();
+}
+
+void WorkerPool::try_dispatch_pending() {
+    auto idle = alive_stateless_count - stateless_busy_count;
+
+    while(!high_queue.empty() && idle > 0) {
+        auto* next = high_queue.front();
+        high_queue.pop_front();
+        auto idx = pick_idle_stateless();
+        stateless_workers[idx].busy = true;
+        ++stateless_busy_count;
+        --idle;
+        auto pid = stateless_workers[idx].proc.pid();
+        if(pid > 0)
+            kota::sys::set_priority(0, pid);
+        next->assigned_worker = idx;
+        next->ready.set();
+    }
+
+    while(!low_queue.empty() && idle > 0 && stateless_busy_count < low_limit) {
+        auto* next = low_queue.front();
+        low_queue.pop_front();
+        auto idx = pick_idle_stateless();
+        stateless_workers[idx].busy = true;
+        ++stateless_busy_count;
+        --idle;
+        auto pid = stateless_workers[idx].proc.pid();
+        if(pid > 0)
+            kota::sys::set_priority(10, pid);
+        next->assigned_worker = idx;
+        next->ready.set();
+    }
+}
+
+std::size_t WorkerPool::pick_idle_stateless() {
+    for(std::size_t i = 0; i < stateless_workers.size(); ++i) {
+        if(stateless_workers[i].alive && !stateless_workers[i].busy)
+            return i;
+    }
+    return 0;
+}
+
+kota::task<> WorkerPool::monitor_memory() {
+    while(true) {
+        co_await kota::sleep(std::chrono::milliseconds(3000));
+        if(shutting_down_)
+            co_return;
+
+        auto mem = kota::sys::memory();
+        if(mem.total == 0)
+            continue;
+
+        auto effective_total =
+            (mem.constrained > 0 && mem.constrained < mem.total) ? mem.constrained : mem.total;
+        auto ratio = static_cast<double>(mem.available) / static_cast<double>(effective_total);
+
+        if(ratio < 0.20 && low_limit > 1) {
+            --low_limit;
+            LOG_INFO("Stateless low_limit -> {} (memory pressure: {:.0f}% available)",
+                     low_limit,
+                     ratio * 100);
+        } else if(ratio > 0.40 && low_limit < max_low_limit) {
+            ++low_limit;
+            LOG_DEBUG("Stateless low_limit -> {} (memory OK: {:.0f}% available)",
+                      low_limit,
+                      ratio * 100);
+        }
+    }
+}
+
+void WorkerPool::on_worker_crash() {
+    auto new_limit = std::max<std::size_t>(1, low_limit * 3 / 4);
+    if(new_limit < low_limit) {
+        low_limit = new_limit;
+        LOG_WARN("Stateless low_limit -> {} (worker crash AIMD backoff)", low_limit);
+    }
 }
 
 }  // namespace clice
