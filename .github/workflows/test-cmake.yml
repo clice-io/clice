@@ -66,6 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: native-build-${{ matrix.os }}-${{ matrix.build_type }}
+          include-hidden-files: true
           path: |
             build/${{ matrix.build_type }}/bin/
             build/${{ matrix.build_type }}/lib/
@@ -286,7 +287,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: editors/vscode/.vscode-test
-          key: vscode-test-${{ runner.os }}-${{ github.run_id }}
+          key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package.json') }}
           restore-keys: |
             vscode-test-${{ runner.os }}-
 

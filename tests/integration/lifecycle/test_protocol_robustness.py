@@ -12,7 +12,7 @@ from tests.replay import SERVER_REQUEST_DEFAULTS, read_lsp_message, write_lsp_me
 INJECTION_FLOOR = 5
 
 
-async def _request(proc, msg_id: int, method: str, params) -> dict:
+async def request(proc, msg_id: int, method: str, params) -> dict:
     payload = {"jsonrpc": "2.0", "id": msg_id, "method": method, "params": params}
     await write_lsp_message(proc.stdin, json.dumps(payload))
     while True:
@@ -30,7 +30,7 @@ async def _request(proc, msg_id: int, method: str, params) -> dict:
             await write_lsp_message(proc.stdin, json.dumps(reply))
 
 
-async def _notify(proc, method: str, params) -> None:
+async def notify(proc, method: str, params) -> None:
     payload = {"jsonrpc": "2.0", "method": method, "params": params}
     await write_lsp_message(proc.stdin, json.dumps(payload))
 
@@ -64,15 +64,15 @@ async def test_initialize_hostile_params(executable, workspace, mode):
         stderr=asyncio.subprocess.DEVNULL,
     )
     try:
-        response = await asyncio.wait_for(_request(proc, 0, "initialize", params), 30)
+        response = await asyncio.wait_for(request(proc, 0, "initialize", params), 30)
         assert "error" not in response, response.get("error")
         assert response["result"]["serverInfo"]["name"] == "clice"
         assert "capabilities" in response["result"]
 
-        await _notify(proc, "initialized", {})
-        shutdown = await asyncio.wait_for(_request(proc, 1, "shutdown", None), 30)
+        await notify(proc, "initialized", {})
+        shutdown = await asyncio.wait_for(request(proc, 1, "shutdown", None), 30)
         assert "error" not in shutdown
-        await _notify(proc, "exit", None)
+        await notify(proc, "exit", None)
         await asyncio.wait_for(proc.wait(), 30)
         assert proc.returncode == 0
     finally:

@@ -58,7 +58,7 @@ class CliceClient(BaseLanguageClient):
         @self.feature(TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
         def on_diagnostics(params: PublishDiagnosticsParams) -> None:
             raw_uri = params.uri
-            normalized = self._normalize_uri(raw_uri)
+            normalized = self.normalize_uri(raw_uri)
             diags = list(params.diagnostics)
             self.diagnostics[raw_uri] = diags
             if raw_uri != normalized:
@@ -81,11 +81,11 @@ class CliceClient(BaseLanguageClient):
     # ── URI helpers ──────────────────────────────────────────────────
 
     @staticmethod
-    def _normalize_uri(uri: str) -> str:
+    def normalize_uri(uri: str) -> str:
         return unquote(uri)
 
     def path_to_uri(self, filepath: Path) -> str:
-        return self._normalize_uri(filepath.as_uri())
+        return self.normalize_uri(filepath.as_uri())
 
     # ── Lifecycle ────────────────────────────────────────────────────
 
@@ -125,7 +125,7 @@ class CliceClient(BaseLanguageClient):
                 )
             )
         )
-        return self._normalize_uri(wire_uri), content
+        return self.normalize_uri(wire_uri), content
 
     def close(self, uri: str) -> None:
         """Close a text document."""
@@ -136,7 +136,7 @@ class CliceClient(BaseLanguageClient):
     # ── Diagnostics ──────────────────────────────────────────────────
 
     def wait_for_diagnostics(self, uri: str) -> asyncio.Event:
-        uri = self._normalize_uri(uri)
+        uri = self.normalize_uri(uri)
         if uri not in self.diagnostics_events:
             self.diagnostics_events[uri] = asyncio.Event()
         else:
@@ -144,7 +144,7 @@ class CliceClient(BaseLanguageClient):
         return self.diagnostics_events[uri]
 
     async def wait_diagnostics(self, uri: str, timeout: float = 30.0) -> None:
-        uri = self._normalize_uri(uri)
+        uri = self.normalize_uri(uri)
         if uri in self.diagnostics:
             return
         event = self.wait_for_diagnostics(uri)

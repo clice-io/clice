@@ -31,10 +31,10 @@ async def indexed_server(request, executable, workspace):
     """Start server with LSP+agentic, compile a file, wait for indexing."""
     import asyncio
     from tests.integration.utils.client import CliceClient
-    from tests.conftest import _shutdown_client, _find_free_port
+    from tests.conftest import shutdown_client, find_free_port
 
     host = "127.0.0.1"
-    port = _find_free_port()
+    port = find_free_port()
     cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
@@ -59,7 +59,7 @@ async def indexed_server(request, executable, workspace):
     yield executable, host, port, workspace
 
     c.close(uri)
-    await _shutdown_client(c)
+    await shutdown_client(c)
 
 
 @pytest.mark.workspace("index_features")
@@ -204,10 +204,10 @@ def test_daemon_requires_workspace(executable):
 
 @pytest.mark.workspace("hello_world")
 async def test_socket_mode_connects(executable, workspace):
-    from tests.conftest import _find_free_port, _shutdown_client
+    from tests.conftest import find_free_port, shutdown_client
     from tests.integration.utils.client import CliceClient
 
-    port = _find_free_port()
+    port = find_free_port()
     cmd = [str(executable), "server", "--mode", "socket", "--port", str(port)]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -230,7 +230,7 @@ async def test_socket_mode_connects(executable, workspace):
             pytest.fail(f"server did not listen on port {port} within 30s")
 
         await c.initialize(workspace)
-        await _shutdown_client(c)
+        await shutdown_client(c)
 
         await asyncio.wait_for(proc.wait(), timeout=5)
     finally:

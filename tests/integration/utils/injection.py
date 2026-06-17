@@ -25,17 +25,17 @@ class InjectionStats:
         self.unknown_fields = 0
 
 
-def _camel(name: str) -> str:
+def camel(name: str) -> str:
     name = name.rstrip("_")
     head, *rest = name.split("_")
     return head + "".join(part.capitalize() for part in rest)
 
 
-def _is_union(tp) -> bool:
+def is_union(tp) -> bool:
     return typing.get_origin(tp) in (typing.Union, types.UnionType)
 
 
-def _union_priority(tp) -> int:
+def union_priority(tp) -> int:
     if isinstance(tp, type) and attrs.has(tp):
         return 0
     if isinstance(tp, type) and issubclass(tp, enum.Enum):
@@ -45,7 +45,7 @@ def _union_priority(tp) -> int:
     return 3
 
 
-def _enum_is_string(tp) -> bool:
+def enum_is_string(tp) -> bool:
     return isinstance(next(iter(tp)).value, str)
 
 
@@ -68,16 +68,16 @@ class Builder:
         if tp is typing.Any:
             return {"cliceAny": True}
         if isinstance(tp, type) and issubclass(tp, enum.Enum):
-            return self._build_enum(tp)
+            return self.build_enum(tp)
         if isinstance(tp, type) and attrs.has(tp):
-            return self._build_object(tp, depth)
+            return self.build_object(tp, depth)
 
         origin = typing.get_origin(tp)
         args = typing.get_args(tp)
 
-        if _is_union(tp):
+        if is_union(tp):
             candidates = [a for a in args if a is not type(None)]
-            candidates.sort(key=_union_priority)
+            candidates.sort(key=union_priority)
             return self.build(candidates[0], depth) if candidates else None
         if origin is typing.Literal:
             return args[0]
@@ -85,7 +85,7 @@ class Builder:
             origin is not None and origin.__name__ in ("Sequence", "List")
         ):
             element = args[0] if args else typing.Any
-            return self._build_sequence(element, depth)
+            return self.build_sequence(element, depth)
         if origin in (dict,) or (
             origin is not None and origin.__name__ in ("Mapping", "Dict")
         ):
@@ -103,9 +103,9 @@ class Builder:
             return "text"
         return None
 
-    def _build_enum(self, tp):
+    def build_enum(self, tp):
         valid = next(iter(tp)).value
-        if _enum_is_string(tp):
+        if enum_is_string(tp):
             if self.mode == "unknown_string_enums":
                 self.stats.string_enums += 1
                 return UNKNOWN_STRING
@@ -115,7 +115,7 @@ class Builder:
             return OUT_OF_RANGE_INT
         return valid
 
-    def _build_sequence(self, element, depth: int):
+    def build_sequence(self, element, depth: int):
         items = [self.build(element, depth + 1)]
         # Enum arrays (valueSets) get a valid member plus the injected one,
         # so known and unknown values must coexist in one array.
@@ -123,13 +123,13 @@ class Builder:
             items.append(next(iter(element)).value)
         return [item for item in items if item is not None]
 
-    def _build_object(self, tp, depth: int):
+    def build_object(self, tp, depth: int):
         hints = typing.get_type_hints(tp)
         out = {}
         for field in attrs.fields(tp):
             value = self.build(hints[field.name], depth + 1)
             if value is not None:
-                out[_camel(field.name)] = value
+                out[camel(field.name)] = value
         if self.mode == "unknown_fields":
             self.stats.unknown_fields += 1
             out[UNKNOWN_FIELD] = {"cliceNested": [1, "two", None]}

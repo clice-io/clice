@@ -20,8 +20,7 @@ from lsprotocol.types import (
 from tests.integration.utils import doc
 
 
-def _get(obj, key, default=None):
-    """Access a field from either a dict or an object with attributes."""
+def get_field(obj, key, default=None):
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
@@ -37,11 +36,11 @@ async def test_query_context_returns_host_sources(client, workspace):
 
     result = await client.query_context(utils_uri)
     assert result is not None
-    total = _get(result, "total")
-    contexts = _get(result, "contexts", [])
+    total = get_field(result, "total")
+    contexts = get_field(result, "contexts", [])
     assert total >= 1, f"Should find at least main.cpp as context, got total={total}"
     # Check that main.cpp is among the contexts.
-    uris = [_get(c, "uri") for c in contexts]
+    uris = [get_field(c, "uri") for c in contexts]
     assert any("main.cpp" in u for u in uris), (
         f"main.cpp should be listed as a context option, got: {uris}"
     )
@@ -55,8 +54,8 @@ async def test_query_context_source_file_returns_cdb_entries(client, workspace):
     result = await client.query_context(main_uri)
     assert result is not None
     # header_context workspace has exactly 1 CDB entry for main.cpp.
-    assert _get(result, "total") == 1
-    contexts = _get(result, "contexts", [])
+    assert get_field(result, "total") == 1
+    contexts = get_field(result, "contexts", [])
     assert len(contexts) == 1
 
 
@@ -70,7 +69,7 @@ async def test_current_context_default_null(client, workspace):
 
     result = await client.current_context(utils_uri)
     assert result is not None
-    assert _get(result, "context") is None, (
+    assert get_field(result, "context") is None, (
         "Default context should be null (no explicit override)"
     )
 
@@ -86,16 +85,16 @@ async def test_switch_context_and_current_context(client, workspace):
     # Switch context to main.cpp.
     switch_result = await client.switch_context(utils_uri, main_uri)
     assert switch_result is not None
-    assert _get(switch_result, "success") is True
+    assert get_field(switch_result, "success") is True
 
     # Verify currentContext now returns main.cpp.
     current = await client.current_context(utils_uri)
     assert current is not None
-    ctx = _get(current, "context")
+    ctx = get_field(current, "context")
     assert ctx is not None, (
         "After switchContext, currentContext should return the active context"
     )
-    assert "main.cpp" in _get(ctx, "uri")
+    assert "main.cpp" in get_field(ctx, "uri")
 
 
 @pytest.mark.workspace("header_context")
@@ -110,24 +109,24 @@ async def test_full_context_flow(client, workspace):
 
     # 3. queryContext on utils.h -> should return main.cpp as a context option.
     query = await client.query_context(utils_uri)
-    assert _get(query, "total") >= 1
-    contexts = _get(query, "contexts", [])
-    context_uris = [_get(c, "uri") for c in contexts]
+    assert get_field(query, "total") >= 1
+    contexts = get_field(query, "contexts", [])
+    context_uris = [get_field(c, "uri") for c in contexts]
     assert any("main.cpp" in u for u in context_uris)
 
     # 4. currentContext on utils.h -> should be null (default).
     current = await client.current_context(utils_uri)
-    assert _get(current, "context") is None
+    assert get_field(current, "context") is None
 
     # 5. switchContext on utils.h to main.cpp.
     switch = await client.switch_context(utils_uri, main_uri)
-    assert _get(switch, "success") is True
+    assert get_field(switch, "success") is True
 
     # 6. currentContext on utils.h -> should now be main.cpp.
     current2 = await client.current_context(utils_uri)
-    ctx = _get(current2, "context")
+    ctx = get_field(current2, "context")
     assert ctx is not None
-    assert "main.cpp" in _get(ctx, "uri")
+    assert "main.cpp" in get_field(ctx, "uri")
 
     # 7. Hover on 'calc' function in utils.h -> should work (proves header compiled).
     diag_event = client.wait_for_diagnostics(utils_uri)
@@ -165,10 +164,10 @@ async def test_deep_nested_header_context(client, workspace):
     # queryContext on inner.h should find main.cpp through the chain.
     result = await client.query_context(inner_uri)
     assert result is not None
-    total = _get(result, "total")
+    total = get_field(result, "total")
     assert total >= 1, f"Deep nested header should find host sources, got total={total}"
-    contexts = _get(result, "contexts", [])
-    uris = [_get(c, "uri") for c in contexts]
+    contexts = get_field(result, "contexts", [])
+    uris = [get_field(c, "uri") for c in contexts]
     assert any("main.cpp" in u for u in uris), (
         f"main.cpp should be a context for inner.h, got: {uris}"
     )
@@ -184,7 +183,7 @@ async def test_deep_nested_switch_context_and_hover(client, workspace):
 
     # Switch inner.h context to main.cpp.
     switch = await client.switch_context(inner_uri, main_uri)
-    assert _get(switch, "success") is True
+    assert get_field(switch, "success") is True
 
     # Hover on 'inner_origin' in inner.h should work (Point available via preamble).
     hover = await asyncio.wait_for(
@@ -207,10 +206,10 @@ async def test_query_context_multiple_cdb_entries(client, workspace):
 
     result = await client.query_context(main_uri)
     assert result is not None
-    total = _get(result, "total")
+    total = get_field(result, "total")
     assert total >= 2, f"Should find at least 2 CDB entries, got total={total}"
-    contexts = _get(result, "contexts", [])
-    labels = [_get(c, "label") for c in contexts]
+    contexts = get_field(result, "contexts", [])
+    labels = [get_field(c, "label") for c in contexts]
     # Each entry should have distinguishing flags in the label.
     assert any("CONFIG_A" in l for l in labels), f"Should find CONFIG_A, got: {labels}"
     assert any("CONFIG_B" in l for l in labels), f"Should find CONFIG_B, got: {labels}"

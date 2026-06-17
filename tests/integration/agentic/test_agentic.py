@@ -31,9 +31,9 @@ class AgenticRpcClient:
         )
         payload = f"Content-Length: {len(body)}\r\n\r\n{body}".encode("utf-8")
         self.sock.sendall(payload)
-        return self._read_response()
+        return self.read_response()
 
-    def _read_response(self):
+    def read_response(self):
         while b"\r\n\r\n" not in self.buffer:
             data = self.sock.recv(4096)
             if not data:
@@ -143,10 +143,10 @@ async def test_concurrent_connections(agentic, workspace):
 async def indexed_agentic(request, executable, workspace):
     """Start server with LSP+agentic, compile a file, wait for indexing."""
     from tests.integration.utils.client import CliceClient
-    from tests.conftest import _shutdown_client, _find_free_port
+    from tests.conftest import shutdown_client, find_free_port
 
     host = "127.0.0.1"
-    port = _find_free_port()
+    port = find_free_port()
     cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
@@ -172,7 +172,7 @@ async def indexed_agentic(request, executable, workspace):
 
     rpc.close()
     c.close(uri)
-    await _shutdown_client(c)
+    await shutdown_client(c)
 
 
 @pytest.mark.workspace("index_features")
@@ -423,10 +423,10 @@ async def test_rpc_status(indexed_agentic, workspace):
 async def test_rpc_shutdown(executable, workspace):
     """Shutdown notification should cause the server to exit cleanly."""
     from tests.integration.utils.client import CliceClient
-    from tests.conftest import _find_free_port, assert_server_exited_cleanly
+    from tests.conftest import find_free_port, assert_server_exited_cleanly
 
     host = "127.0.0.1"
-    port = _find_free_port()
+    port = find_free_port()
     cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
@@ -526,7 +526,7 @@ async def test_rpc_impact_analysis_unknown(indexed_agentic, workspace):
 async def test_shutdown_during_indexing(executable, tmp_path):
     """Shutdown during active background indexing must exit cleanly."""
     from tests.integration.utils.client import CliceClient
-    from tests.conftest import _find_free_port, assert_server_exited_cleanly
+    from tests.conftest import find_free_port, assert_server_exited_cleanly
 
     workspace = tmp_path / "ws"
     workspace.mkdir()
@@ -550,7 +550,7 @@ async def test_shutdown_during_indexing(executable, tmp_path):
     (workspace / "compile_commands.json").write_text(json.dumps(entries))
 
     host = "127.0.0.1"
-    port = _find_free_port()
+    port = find_free_port()
     cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()

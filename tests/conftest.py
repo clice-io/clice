@@ -118,10 +118,10 @@ async def client(
 
     yield c
 
-    await _shutdown_client(c)
+    await shutdown_client(c)
 
 
-def _find_free_port() -> int:
+def find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
@@ -135,7 +135,7 @@ async def agentic(
 ):
     """Start a server with agentic TCP port, yield (executable, host, port)."""
     host = "127.0.0.1"
-    port = _find_free_port()
+    port = find_free_port()
     cmd = [str(executable), "server", "--host", host, "--port", str(port)]
 
     c = CliceClient()
@@ -151,7 +151,7 @@ async def agentic(
 
     yield executable, host, port
 
-    await _shutdown_client(c)
+    await shutdown_client(c)
 
 
 async def make_client(executable: Path, workspace: Path) -> CliceClient:
@@ -173,7 +173,7 @@ SANITIZER_MARKERS = (
 )
 
 
-def _server_stderr_excerpt(stderr_text: str) -> str:
+def server_stderr_excerpt(stderr_text: str) -> str:
     interesting = [
         line
         for line in stderr_text.splitlines()
@@ -210,7 +210,7 @@ async def assert_server_exited_cleanly(server, timeout: float = 10.0) -> None:
         except Exception as exc:
             failures.append(f"failed to collect server stderr: {exc!r}")
 
-    for line in _server_stderr_excerpt(stderr_text).splitlines():
+    for line in server_stderr_excerpt(stderr_text).splitlines():
         print(f"[server] {line}", flush=True)
 
     if server.returncode != 0:
@@ -220,13 +220,13 @@ async def assert_server_exited_cleanly(server, timeout: float = 10.0) -> None:
         failures.append("server stderr contains sanitizer/runtime error output")
 
     if failures:
-        excerpt = _server_stderr_excerpt(stderr_text)
+        excerpt = server_stderr_excerpt(stderr_text)
         if excerpt:
             failures.append("server stderr excerpt:\n" + excerpt)
         pytest.fail("\n".join(failures))
 
 
-async def _shutdown_client(c: CliceClient) -> None:
+async def shutdown_client(c: CliceClient) -> None:
     """Gracefully shut down a client, force-kill if needed."""
     server = getattr(c, "_server", None)
 
@@ -250,6 +250,3 @@ async def _shutdown_client(c: CliceClient) -> None:
             await asyncio.sleep(0.1)
         except Exception:
             pass
-
-
-shutdown_client = _shutdown_client  # Public alias for multi-session tests
