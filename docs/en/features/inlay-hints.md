@@ -182,7 +182,7 @@
 
 ## Interactive Hints
 
-- [x] Range-scoped queries (only compute hints for visible range)
+- [x] Range-filtered results (hints outside the requested range are discarded; AST traversal is not range-limited)
 - [x] Left-anchored hints (parameter names before argument)
 - [x] Right-anchored hints (types after variable name)
 - [ ] Clickable type names — go-to-definition on hinted type names via LSP `InlayHintLabelPart` ([clangd#1535](https://github.com/clangd/clangd/issues/1535))

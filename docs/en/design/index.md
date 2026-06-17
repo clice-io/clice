@@ -31,7 +31,7 @@ After a file is compiled, its TUIndex is merged into the project-wide index. Bac
 1. Files are enqueued when opened, saved, or when their dependencies change.
 2. An idle timer deduplicates rapid changes — indexing starts only after the timeout.
 3. Tasks are dispatched to stateless workers with configurable concurrency.
-4. Indexing is paused during user-initiated requests (hover, completion) via `ScopedPause`.
+4. Indexing is paused during latency-sensitive requests (completion, signature help, formatting) via `ScopedPause`.
 5. Progress is reported to the client via LSP `$/progress` notifications.
 
 ## Queries

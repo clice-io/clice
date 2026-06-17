@@ -14,7 +14,7 @@ int main () {
 }
 ```
 
-The `iostream` header expands to ~20,000 lines. clice builds `#include <iostream>` into a PCH file, reducing subsequent re-parses from 20,000 lines to just 5 lines. Only modifying the preamble section (adding/removing includes) requires rebuilding the PCH.
+The `iostream` header expands to ~20,000 lines. clice builds `#include <iostream>` into a PCH file, reducing subsequent re-parses from 20,000 lines to just 5 lines. Modifying the preamble section (adding/removing includes) or changing compile flags that affect preprocessing (`-D`, `-I`, `-std`) requires rebuilding the PCH.
 
 ### Staleness Detection
 

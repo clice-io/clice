@@ -7,7 +7,7 @@ Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no co
 **Trigger contexts**
 
 - [x] `#include <` — system/angled include paths
-- [x] `#include "` — quoted include paths (project-local first)
+- [x] `#include "` — quoted include paths from configured search directories (does not search the includer's own directory unless it is on the include path)
 - [ ] `#include_next` — must detect that the directive is `#include_next`, not `#include`, and adjust search to start from the directory _after_ the one that provided the current file
 
   ```cpp

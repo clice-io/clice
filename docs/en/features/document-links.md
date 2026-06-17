@@ -2,6 +2,8 @@
 
 Clickable links from source directives to their resolved target files.
 
+> **Known limitation**: link targets are currently emitted as raw filesystem paths instead of `file:///` URIs. Clients that strictly validate DocumentUri may not navigate these links.
+
 ## Include Directives
 
 - [x] `#include "..."` — link to resolved header file

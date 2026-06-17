@@ -17,7 +17,7 @@ Some problems in C++ tooling require architectural changes that cannot be easily
 
 **Compilation context** — A first-class concept in clice. For source files, switch between different compilation commands (e.g. different build configurations). For header files, switch which source file provides the including context (preprocessor state, preceding declarations). This handles non-self-contained headers and context-dependent macros naturally, with automatic context switching as you navigate.
 
-**C++20 named modules** — Parallel module compilation driven by a dependency-aware compile graph with interest-counted cancellation. Pre-compiled module interfaces (BMIs) are content-addressed and cached across editor sessions, so reopening a project skips redundant builds. The LSP layer provides module name completion on `import` statements and module-aware semantic highlighting.
+**C++20 named modules** — Parallel module compilation driven by a dependency-aware compile graph with interest-counted cancellation. Pre-compiled module interfaces (BMIs) are cached across editor sessions, so reopening a project skips redundant builds. The LSP layer provides module name completion on `import` statements and module-aware semantic highlighting.
 
 ## Getting Started
 

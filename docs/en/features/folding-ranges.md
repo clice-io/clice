@@ -2,7 +2,8 @@
 
 ## Fold Kinds
 
-- [x] Block folding — functions, classes, structs, unions, enums, namespaces, compound statements, lambdas
+- [x] Block folding — functions, classes, structs, unions, enums, namespaces, lambdas
+- [ ] Nested compound-statement folding — `if`/`for`/`while` bodies inside functions
 - [x] Multi-line list folding — function parameters, call arguments, initializer lists, lambda captures
 
   ```cpp
@@ -32,7 +33,7 @@
   };
   ```
 
-- [x] Preprocessor conditional folding (`#if` / `#ifdef` / `#ifndef` ... `#endif`) ([clangd#1661](https://github.com/clangd/clangd/issues/1661); [clangd#2059](https://github.com/clangd/clangd/issues/2059) is a duplicate of #1661)
+- [ ] Preprocessor conditional folding (`#if` / `#ifdef` / `#ifndef` ... `#endif`) ([clangd#1661](https://github.com/clangd/clangd/issues/1661); [clangd#2059](https://github.com/clangd/clangd/issues/2059) is a duplicate of #1661)
 - [x] Custom region folding (`#pragma region` / `#pragma endregion`) ([clangd#1623](https://github.com/clangd/clangd/issues/1623))
 - [ ] Comment folding — multi-line `/* */` and consecutive `//` line comments
 

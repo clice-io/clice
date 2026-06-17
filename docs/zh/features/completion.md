@@ -7,7 +7,7 @@
 **触发上下文**
 
 - [x] `#include <` — 系统/尖括号 include 路径
-- [x] `#include "` — 引号 include 路径（优先项目本地）
+- [x] `#include "` — 引号 include 路径，来自已配置的搜索目录（不会搜索包含者自身所在目录，除非该目录在 include 路径中）
 - [ ] `#include_next` — 需要检测指令是 `#include_next` 而非 `#include`，并将搜索起点调整为提供当前文件的目录之后
 
   ```cpp

@@ -182,7 +182,7 @@
 
 ## 交互功能
 
-- [x] 范围作用域查询（仅计算可见范围内的提示）
+- [x] 范围过滤结果（丢弃请求范围外的提示；AST 遍历不受范围限制）
 - [x] 左锚定提示（参数名在实参前）
 - [x] 右锚定提示（类型在变量名后）
 - [ ] 可点击的类型名 — 通过 LSP `InlayHintLabelPart` 在提示中的类型名上 go-to-definition（[clangd#1535](https://github.com/clangd/clangd/issues/1535)）

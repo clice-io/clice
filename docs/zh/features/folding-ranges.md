@@ -2,7 +2,8 @@
 
 ## 折叠类型
 
-- [x] 块折叠 — 函数、类、结构体、联合体、枚举、命名空间、复合语句、lambda
+- [x] 块折叠 — 函数、类、结构体、联合体、枚举、命名空间、lambda
+- [ ] 嵌套复合语句折叠 — 函数内 `if`/`for`/`while` 体
 - [x] 多行列表折叠 — 函数参数、调用参数、初始化列表、lambda 捕获列表
 
   ```cpp
@@ -32,7 +33,7 @@
   };
   ```
 
-- [x] 预处理条件折叠（`#if` / `#ifdef` / `#ifndef` ... `#endif`）（[clangd#1661](https://github.com/clangd/clangd/issues/1661)；[clangd#2059](https://github.com/clangd/clangd/issues/2059) 是 #1661 的重复）
+- [ ] 预处理条件折叠（`#if` / `#ifdef` / `#ifndef` ... `#endif`）（[clangd#1661](https://github.com/clangd/clangd/issues/1661)；[clangd#2059](https://github.com/clangd/clangd/issues/2059) 是 #1661 的重复）
 - [x] 自定义区域折叠（`#pragma region` / `#pragma endregion`）（[clangd#1623](https://github.com/clangd/clangd/issues/1623)）
 - [ ] 注释折叠 — 多行 `/* */` 和连续 `//` 行注释
 
