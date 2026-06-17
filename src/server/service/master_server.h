@@ -88,8 +88,8 @@ public:
     kota::task<> file_watcher_task();
     kota::task<> shutdown_and_cleanup();
 
-    Session* find_session(std::uint32_t path_id);
-    Session& open_session(std::uint32_t path_id);
+    std::shared_ptr<Session> find_session(std::uint32_t path_id);
+    std::shared_ptr<Session> open_session(std::uint32_t path_id);
     void close_session(std::uint32_t path_id, kota::ipc::JsonPeer& peer);
 
     void on_file_saved(std::uint32_t path_id);
@@ -107,7 +107,7 @@ private:
     kota::event_loop& loop;
 
     Workspace workspace;
-    llvm::DenseMap<std::uint32_t, Session> sessions;
+    llvm::DenseMap<std::uint32_t, std::shared_ptr<Session>> sessions;
     WorkerPool pool;
     Compiler compiler;
     Indexer indexer;

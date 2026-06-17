@@ -55,14 +55,18 @@ struct SymbolInfo {
 ///   - Document lifecycle — handled by MasterServer
 class Indexer {
 public:
+    /// Visitor for iterating open-file overlays.  Returns false to stop early.
+    using OverlayVisitor =
+        std::function<bool(std::uint32_t server_path_id, const OpenFileIndex& index)>;
+
     Indexer(kota::event_loop& loop,
             Workspace& workspace,
-            llvm::DenseMap<std::uint32_t, Session>& sessions,
             WorkerPool& pool,
             Compiler& compiler,
-            std::function<bool(std::uint32_t)> is_file_open = {}) :
-        loop(loop), bg_tasks(loop), workspace(workspace), sessions(sessions), pool(pool),
-        compiler(compiler), is_file_open(std::move(is_file_open)) {}
+            std::function<bool(std::uint32_t)> is_open = {},
+            std::function<void(OverlayVisitor)> each_overlay = {}) :
+        loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), compiler(compiler),
+        is_open(std::move(is_open)), each_overlay(std::move(each_overlay)) {}
 
     /// Set the LSP peer for progress reporting.  Must be called before
     /// schedule() if progress notifications are desired.
@@ -189,6 +193,25 @@ public:
     /// Cancel background indexing and wait for all tasks to settle.
     kota::task<> stop();
 
+    /// Iterate all open-file overlays via the callback set at construction.
+    void for_each_overlay(OverlayVisitor visitor) const {
+        if(each_overlay)
+            each_overlay(std::move(visitor));
+    }
+
+    /// Get the overlay for a specific server-level path_id (nullptr if not open).
+    const OpenFileIndex* get_overlay(std::uint32_t server_path_id) const {
+        const OpenFileIndex* result = nullptr;
+        for_each_overlay([&](std::uint32_t id, const OpenFileIndex& ofi) -> bool {
+            if(id == server_path_id) {
+                result = &ofi;
+                return false;
+            }
+            return true;
+        });
+        return result;
+    }
+
     /// Whether background indexing is currently idle (no active or queued work).
     bool is_idle() const {
         return !indexing_active && index_queue_pos >= index_queue.size();
@@ -240,21 +263,27 @@ private:
 
     /// Check whether a project-level path_id has an active Session.
     bool is_proj_path_open(std::uint32_t proj_path_id) const {
-        return is_file_open && is_file_open(proj_path_id);
+        if(!is_open)
+            return false;
+        auto path = workspace.project_index.path_pool.path(proj_path_id);
+        auto it = workspace.path_pool.cache.find(path);
+        if(it == workspace.path_pool.cache.end())
+            return false;
+        return is_open(it->second);
     }
 
 private:
     kota::event_loop& loop;
     kota::task_group<> bg_tasks;
     Workspace& workspace;
-    llvm::DenseMap<std::uint32_t, Session>& sessions;
     WorkerPool& pool;
     Compiler& compiler;
 
-    /// Callback that checks if a *project-level* path_id has an active
-    /// Session.  Set by the owner (e.g. MasterServer) to bridge the
-    /// server-path-id-keyed sessions map to project-level path_ids.
-    std::function<bool(std::uint32_t)> is_file_open;
+    /// Checks if a server-level path_id has an open Session.
+    std::function<bool(std::uint32_t)> is_open;
+
+    /// Iterates all open-file overlays (OpenFileIndex from live compilations).
+    std::function<void(OverlayVisitor)> each_overlay;
 
     /// LSP peer for progress reporting (optional, not owned).
     kota::ipc::JsonPeer* peer = nullptr;

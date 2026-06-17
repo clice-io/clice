@@ -27,11 +27,8 @@ using serde_raw = kota::codec::RawValue;
 
 /// Detect whether the cursor is inside a preamble directive (include/import).
 
-Compiler::Compiler(kota::event_loop& loop,
-                   Workspace& workspace,
-                   WorkerPool& pool,
-                   llvm::DenseMap<std::uint32_t, Session>& sessions) :
-    loop(loop), workspace(workspace), pool(pool), sessions(sessions) {}
+Compiler::Compiler(kota::event_loop& loop, Workspace& workspace, WorkerPool& pool) :
+    loop(loop), workspace(workspace), pool(pool) {}
 
 Compiler::~Compiler() {
     workspace.cancel_all();
@@ -318,12 +315,7 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
         auto next_filename = llvm::sys::path::filename(next_path);
 
         // Prefer in-memory document text over disk content.
-        // Use the session if this file matches the session's path, otherwise
-        // fall back to disk.
         std::string content;
-        // Note: we don't have the sessions map here, so we always read from disk
-        // for intermediate chain files.  The session parameter only covers the
-        // header file itself (the target), not intermediate files in the chain.
         auto buf = llvm::MemoryBuffer::getFile(cur_path);
         if(!buf) {
             LOG_WARN("resolve_header_context: cannot read {}", cur_path);
@@ -660,22 +652,17 @@ void Compiler::record_deps(Session& session, llvm::ArrayRef<std::string> deps) {
 /// Called lazily by forward_query() / forward_build() before every
 /// feature request (hover, semantic tokens, etc.). Guarantees that when it
 /// returns true the stateful worker assigned to `path_id` holds an up-to-date
-kota::task<> Compiler::run_compile(std::uint32_t pid, std::shared_ptr<Session::PendingCompile> pc) {
-    auto find_session = [&]() -> Session* {
-        auto it = sessions.find(pid);
-        return it != sessions.end() ? &it->second : nullptr;
-    };
-
-    auto* sess = find_session();
-    if(!sess) {
+kota::task<> Compiler::run_compile(std::shared_ptr<Session> sess,
+                                   std::shared_ptr<Session::PendingCompile> pc) {
+    if(!sess || sess->closed) {
         pc->done.set();
         co_return;
     }
 
+    auto pid = sess->path_id;
     auto finish_compile = [&]() {
-        auto* s = find_session();
-        if(s && s->compiling == pc) {
-            s->compiling.reset();
+        if(!sess->closed && sess->compiling == pc) {
+            sess->compiling.reset();
         }
         LOG_INFO("ensure_compiled: finish path_id={}", pid);
         pc->done.set();
@@ -692,7 +679,7 @@ kota::task<> Compiler::run_compile(std::uint32_t pid, std::shared_ptr<Session::P
     params.path = file_path;
     params.version = sess->version;
     params.text = sess->text;
-    if(!fill_compile_args(file_path, params.directory, params.arguments, sess)) {
+    if(!fill_compile_args(file_path, params.directory, params.arguments, sess.get())) {
         finish_compile();
         co_return;
     }
@@ -710,15 +697,11 @@ kota::task<> Compiler::run_compile(std::uint32_t pid, std::shared_ptr<Session::P
         co_return;
     }
 
-    sess = find_session();
-    if(!sess) {
+    if(sess->closed) {
         pc->done.set();
         co_return;
     }
 
-    // Superseded while preparing dependencies — don't send the stale text:
-    // the replacement compile may already have sent newer text, and the
-    // worker applies compiles in arrival order without a version check.
     if(sess->generation != gen) {
         LOG_INFO("ensure_compiled: superseded before send ({} vs {}) for {}",
                  sess->generation,
@@ -730,8 +713,7 @@ kota::task<> Compiler::run_compile(std::uint32_t pid, std::shared_ptr<Session::P
 
     auto result = co_await pool.send_stateful(pid, params);
 
-    sess = find_session();
-    if(!sess) {
+    if(sess->closed) {
         pc->done.set();
         co_return;
     }
@@ -843,7 +825,7 @@ kota::task<bool> Compiler::ensure_compiled(Session& session) {
     // Spawn the replacement before cancelling the superseded compile: the new
     // round acquires its module-dependency interest synchronously, so shared
     // dependencies never see their interest drop to zero across the swap.
-    compile_tasks.spawn(run_compile(path_id, pending_compile));
+    compile_tasks.spawn(run_compile(session.shared_from_this(), pending_compile));
 
     if(superseded) {
         superseded->deps_scope.cancel();
@@ -860,18 +842,16 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
                                             Session& session,
                                             std::optional<protocol::Position> position,
                                             std::optional<protocol::Range> range) {
+    auto guard = session.shared_from_this();
     auto path_id = session.path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
-    // Cache text before co_await — session reference may dangle if didClose
-    // erases the entry from the sessions map during suspension.
     auto text = session.text;
 
     if(!co_await ensure_compiled(session)) {
         co_return serde_raw{"null"};
     }
 
-    auto sit = sessions.find(path_id);
-    if(sit == sessions.end() || sit->second.ast_dirty) {
+    if(session.closed || session.ast_dirty) {
         co_return serde_raw{"null"};
     }
 
@@ -906,14 +886,13 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
 Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
                                             const protocol::Position& position,
                                             Session& session) {
+    auto guard = session.shared_from_this();
     auto path_id = session.path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
 
     worker::BuildParams wp;
     wp.kind = kind;
     wp.file = path;
-    // Cache session fields before co_await — session reference may dangle
-    // if didClose erases the entry from the sessions map during suspension.
     wp.version = session.version;
     wp.text = session.text;
     if(!fill_compile_args(path, wp.directory, wp.arguments, &session)) {
@@ -924,8 +903,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
         co_return serde_raw{};
     }
 
-    // After co_await, verify session still exists.
-    if(sessions.find(path_id) == sessions.end()) {
+    if(session.closed) {
         co_return serde_raw{};
     }
 

@@ -41,7 +41,6 @@ struct ResolvedSymbol {
 
 static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolParams& loc,
                                                    Workspace& workspace,
-                                                   llvm::DenseMap<std::uint32_t, Session>& sessions,
                                                    Indexer& indexer) {
     if(loc.symbol_id.has_value() && *loc.symbol_id != 0) {
         auto hash = static_cast<index::SymbolHash>(*loc.symbol_id);
@@ -102,12 +101,11 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
 
         for(auto& [hash, symbol]: workspace.project_index.symbols)
             try_symbol(hash, symbol);
-        for(auto& [_, sess]: sessions) {
-            if(!sess.file_index)
-                continue;
-            for(auto& [hash, symbol]: sess.file_index->symbols)
+        indexer.for_each_overlay([&](std::uint32_t, const OpenFileIndex& ofi) -> bool {
+            for(auto& [hash, symbol]: ofi.symbols)
                 try_symbol(hash, symbol);
-        }
+            return true;
+        });
 
         if(!exact_matches.empty())
             return exact_matches;
@@ -120,16 +118,14 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
 
         auto pool_it = workspace.path_pool.cache.find(path_str);
         auto server_id = pool_it != workspace.path_pool.cache.end() ? pool_it->second : ~0u;
-        auto* sess =
-            server_id != ~0u && sessions.contains(server_id) ? &sessions[server_id] : nullptr;
-        if(sess && sess->file_index) {
-            auto& fi = *sess->file_index;
-            if(fi.mapper) {
-                for(auto& [hash, rels]: fi.file_index.relations) {
+        if(server_id != ~0u) {
+            auto* ofi = indexer.get_overlay(server_id);
+            if(ofi && ofi->mapper) {
+                for(auto& [hash, rels]: ofi->file_index.relations) {
                     for(auto& rel: rels) {
                         if(rel.kind.value() != RelationKind::Definition)
                             continue;
-                        auto start = fi.mapper->to_position(rel.range.begin);
+                        auto start = ofi->mapper->to_position(rel.range.begin);
                         if(start && start->line == target_line) {
                             std::string name;
                             SymbolKind kind;
@@ -433,19 +429,18 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
         for(auto& [hash, symbol]: srv.workspace.project_index.symbols)
             try_symbol(hash, symbol);
-        for(auto& [_, sess]: srv.sessions) {
-            if(!sess.file_index)
-                continue;
-            for(auto& [hash, symbol]: sess.file_index->symbols)
+        srv.indexer.for_each_overlay([&](std::uint32_t, const OpenFileIndex& ofi) -> bool {
+            for(auto& [hash, symbol]: ofi.symbols)
                 try_symbol(hash, symbol);
-        }
+            return true;
+        });
 
         co_return result;
     });
 
     peer.on_request(
         [&srv](RequestContext&, const ReadSymbolParams& params) -> RequestResult<ReadSymbolParams> {
-            auto candidates = resolve_locator(params, srv.workspace, srv.sessions, srv.indexer);
+            auto candidates = resolve_locator(params, srv.workspace, srv.indexer);
             if(candidates.empty())
                 co_return kota::outcome_error(kota::ipc::Error{"symbol not found"});
             if(candidates.size() > 1) {
@@ -490,9 +485,9 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(pool_it == srv.workspace.path_pool.cache.end())
                 co_return result;
             auto server_id = pool_it->second;
-            auto sess_it = srv.sessions.find(server_id);
-            if(sess_it != srv.sessions.end() && sess_it->second.file_index) {
-                auto& fi = *sess_it->second.file_index;
+            auto* ofi = srv.indexer.get_overlay(server_id);
+            if(ofi) {
+                auto& fi = *ofi;
                 for(auto& [hash, rels]: fi.file_index.relations) {
                     for(auto& rel: rels) {
                         if(rel.kind.value() != RelationKind::Definition)
@@ -562,7 +557,6 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto candidates = resolve_locator(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.workspace,
-                srv.sessions,
                 srv.indexer);
             if(candidates.empty())
                 co_return kota::outcome_error(kota::ipc::Error{"symbol not found"});
@@ -596,7 +590,6 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto candidates = resolve_locator(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.workspace,
-                srv.sessions,
                 srv.indexer);
             if(candidates.empty())
                 co_return kota::outcome_error(kota::ipc::Error{"symbol not found"});
@@ -639,7 +632,6 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto candidates = resolve_locator(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.workspace,
-                srv.sessions,
                 srv.indexer);
             if(candidates.empty())
                 co_return kota::outcome_error(kota::ipc::Error{"symbol not found"});
@@ -708,7 +700,6 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto candidates = resolve_locator(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.workspace,
-                srv.sessions,
                 srv.indexer);
             if(candidates.empty())
                 co_return kota::outcome_error(kota::ipc::Error{"symbol not found"});

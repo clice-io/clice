@@ -166,10 +166,10 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = srv.workspace.path_pool.intern(path);
 
-        auto& session = srv.open_session(path_id);
-        session.version = params.text_document.version;
-        session.text = params.text_document.text;
-        session.generation++;
+        auto session = srv.open_session(path_id);
+        session->version = params.text_document.version;
+        session->text = params.text_document.text;
+        session->generation++;
 
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
     });
@@ -182,7 +182,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = srv.workspace.path_pool.intern(path);
 
-        auto* session = srv.find_session(path_id);
+        auto session = srv.find_session(path_id);
         if(!session)
             return;
 
@@ -247,7 +247,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto& srv = this->server;
         auto path = uri_to_path(params.text_document_position_params.text_document.uri);
         auto path_id = srv.workspace.path_pool.intern(path);
-        auto* session = srv.find_session(path_id);
+        auto session = srv.find_session(path_id);
         if(!session)
             co_return serde_raw{"null"};
         co_return co_await srv.compiler.forward_query(
@@ -261,7 +261,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto& srv = this->server;
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = srv.workspace.path_pool.intern(path);
-        auto* session = srv.find_session(path_id);
+        auto session = srv.find_session(path_id);
         if(!session)
             co_return serde_raw{"null"};
         co_return co_await srv.compiler.forward_query(worker::QueryKind::SemanticTokens, *session);
@@ -272,7 +272,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto& srv = this->server;
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = srv.workspace.path_pool.intern(path);
-            auto* session = srv.find_session(path_id);
+            auto session = srv.find_session(path_id);
             if(!session)
                 co_return serde_raw{"null"};
             co_return co_await srv.compiler.forward_query(worker::QueryKind::InlayHints,
@@ -286,7 +286,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto& srv = this->server;
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = srv.workspace.path_pool.intern(path);
-        auto* session = srv.find_session(path_id);
+        auto session = srv.find_session(path_id);
         if(!session)
             co_return serde_raw{"null"};
         co_return co_await srv.compiler.forward_query(worker::QueryKind::FoldingRange, *session);
@@ -297,7 +297,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto& srv = this->server;
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = srv.workspace.path_pool.intern(path);
-        auto* session = srv.find_session(path_id);
+        auto session = srv.find_session(path_id);
         if(!session)
             co_return serde_raw{"null"};
         co_return co_await srv.compiler.forward_query(worker::QueryKind::DocumentSymbol, *session);
@@ -308,7 +308,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto& srv = this->server;
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = srv.workspace.path_pool.intern(path);
-            auto* session = srv.find_session(path_id);
+            auto session = srv.find_session(path_id);
             if(!session)
                 co_return serde_raw{"null"};
             auto result =
@@ -316,10 +316,9 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             if(!result.has_value())
                 co_return serde_raw{"null"};
             auto& links = result.value();
-            auto* session2 = srv.find_session(path_id);
-            if(session2 && session2->pch_ref) {
+            if(!session->closed && session->pch_ref) {
                 auto& pch_cache = srv.workspace.pch_cache;
-                auto pch_it = pch_cache.find(session2->pch_ref->path_id);
+                auto pch_it = pch_cache.find(session->pch_ref->path_id);
                 if(pch_it != pch_cache.end() && !pch_it->second.document_links_json.empty()) {
                     auto& pch_json = pch_it->second.document_links_json;
                     if(!links.data.empty() && links.data != "null" && links.data.size() > 2) {
@@ -339,7 +338,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto& srv = this->server;
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = srv.workspace.path_pool.intern(path);
-            auto* session = srv.find_session(path_id);
+            auto session = srv.find_session(path_id);
             if(!session)
                 co_return serde_raw{"null"};
             co_return co_await srv.compiler.forward_query(worker::QueryKind::CodeAction, *session);
@@ -353,8 +352,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         };
         auto path = uri_to_path(uri);
         auto path_id = this->server.workspace.path_pool.intern(path);
-        auto* session = this->server.find_session(path_id);
-        return Result{std::move(path), path_id, session};
+        return Result{std::move(path), path_id, this->server.find_session(path_id).get()};
     };
 
     auto lookup_at = [this, resolve_uri](const std::string& uri, const protocol::Position& pos) {
@@ -391,7 +389,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto& srv = this->server;
         auto path = uri_to_path(uri);
         auto path_id = srv.workspace.path_pool.intern(path);
-        auto* session = srv.find_session(path_id);
+        auto session = srv.find_session(path_id);
         if(!session)
             co_return serde_raw{"null"};
         co_return co_await srv.compiler.forward_query(worker::QueryKind::GoToDefinition,
@@ -438,7 +436,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto& srv = this->server;
         auto path = uri_to_path(params.text_document_position_params.text_document.uri);
         auto path_id = srv.workspace.path_pool.intern(path);
-        auto* session = srv.find_session(path_id);
+        auto session = srv.find_session(path_id);
         if(!session)
             co_return serde_raw{"null"};
         auto pause = srv.indexer.scoped_pause();
@@ -453,7 +451,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto& srv = this->server;
             auto path = uri_to_path(params.text_document_position_params.text_document.uri);
             auto path_id = srv.workspace.path_pool.intern(path);
-            auto* session = srv.find_session(path_id);
+            auto session = srv.find_session(path_id);
             if(!session)
                 co_return serde_raw{"null"};
             auto pause = srv.indexer.scoped_pause();
@@ -469,7 +467,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto& srv = this->server;
             auto path = uri_to_path(params.text_document.uri);
             auto path_id = srv.workspace.path_pool.intern(path);
-            auto* session = srv.find_session(path_id);
+            auto session = srv.find_session(path_id);
             if(!session)
                 co_return serde_raw{"null"};
             auto pause = srv.indexer.scoped_pause();
@@ -481,7 +479,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto& srv = this->server;
         auto path = uri_to_path(params.text_document.uri);
         auto path_id = srv.workspace.path_pool.intern(path);
-        auto* session = srv.find_session(path_id);
+        auto session = srv.find_session(path_id);
         if(!session)
             co_return serde_raw{"null"};
         auto pause = srv.indexer.scoped_pause();
@@ -656,7 +654,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto path_id = srv.workspace.path_pool.intern(path);
 
             ext::CurrentContextResult result;
-            auto* session = srv.find_session(path_id);
+            auto session = srv.find_session(path_id);
             if(session && session->active_context) {
                 auto ctx_path = srv.workspace.path_pool.resolve(*session->active_context);
                 auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
@@ -689,7 +687,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 co_return to_raw(result);
             }
 
-            auto* session = srv.find_session(path_id);
+            auto session = srv.find_session(path_id);
             if(!session) {
                 result.success = false;
                 co_return to_raw(result);

@@ -187,16 +187,19 @@ bool Indexer::need_update(llvm::StringRef file_path) {
 }
 
 bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const {
-    for(auto& [_, session]: sessions) {
-        if(!session.file_index)
-            continue;
-        auto it = session.file_index->symbols.find(hash);
-        if(it != session.file_index->symbols.end()) {
+    bool found = false;
+    for_each_overlay([&](std::uint32_t, const OpenFileIndex& ofi) -> bool {
+        auto it = ofi.symbols.find(hash);
+        if(it != ofi.symbols.end()) {
             name = it->second.name;
             kind = it->second.kind;
-            return true;
+            found = true;
+            return false;
         }
-    }
+        return true;
+    });
+    if(found)
+        return true;
     auto it = workspace.project_index.symbols.find(hash);
     if(it != workspace.project_index.symbols.end()) {
         name = it->second.name;
@@ -273,17 +276,16 @@ std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
         }
     }
 
-    for(auto& [id, sess]: sessions) {
-        if(!sess.file_index)
-            continue;
+    for_each_overlay([&](std::uint32_t id, const OpenFileIndex& ofi) -> bool {
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
-            continue;
-        sess.file_index->find_relations(hit.hash, kind, [&](const auto&, protocol::Range range) {
+            return true;
+        ofi.find_relations(hit.hash, kind, [&](const auto&, protocol::Range range) {
             locations.push_back({uri->str(), range});
             return true;
         });
-    }
+        return true;
+    });
 
     return locations;
 }
@@ -305,23 +307,19 @@ std::optional<SymbolInfo> Indexer::lookup_symbol(const std::string& uri,
 }
 
 std::optional<protocol::Location> Indexer::find_definition_location(index::SymbolHash hash) {
-    // Open file indices first (fresher data for actively-edited files).
-    for(auto& [id, sess]: sessions) {
-        if(!sess.file_index)
-            continue;
+    std::optional<protocol::Location> overlay_result;
+    for_each_overlay([&](std::uint32_t id, const OpenFileIndex& ofi) -> bool {
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
-            continue;
-        std::optional<protocol::Location> result;
-        sess.file_index->find_relations(hash,
-                                        RelationKind::Definition,
-                                        [&](const auto&, protocol::Range range) {
-                                            result = protocol::Location{uri->str(), range};
-                                            return false;
-                                        });
-        if(result)
-            return result;
-    }
+            return true;
+        ofi.find_relations(hash, RelationKind::Definition, [&](const auto&, protocol::Range range) {
+            overlay_result = protocol::Location{uri->str(), range};
+            return false;
+        });
+        return !overlay_result.has_value();
+    });
+    if(overlay_result)
+        return overlay_result;
 
     // Fall back to ProjectIndex reference files.
     auto sym_it = workspace.project_index.symbols.find(hash);
@@ -388,14 +386,13 @@ void Indexer::collect_grouped_relations(
             });
         }
     }
-    for(auto& [_, sess]: sessions) {
-        if(!sess.file_index)
-            continue;
-        sess.file_index->find_relations(hash, kind, [&](const auto& r, protocol::Range range) {
+    for_each_overlay([&](std::uint32_t, const OpenFileIndex& ofi) -> bool {
+        ofi.find_relations(hash, kind, [&](const auto& r, protocol::Range range) {
             target_ranges[r.target_symbol].push_back(range);
             return true;
         });
-    }
+        return true;
+    });
 }
 
 void Indexer::collect_unique_targets(index::SymbolHash hash,
@@ -419,12 +416,10 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
             });
         }
     }
-    for(auto& [_, sess]: sessions) {
-        if(!sess.file_index)
-            continue;
-        auto rel_it = sess.file_index->file_index.relations.find(hash);
-        if(rel_it == sess.file_index->file_index.relations.end())
-            continue;
+    for_each_overlay([&](std::uint32_t, const OpenFileIndex& ofi) -> bool {
+        auto rel_it = ofi.file_index.relations.find(hash);
+        if(rel_it == ofi.file_index.relations.end())
+            return true;
         for(auto& r: rel_it->second) {
             if(r.kind & kind) {
                 if(seen.insert(r.target_symbol).second) {
@@ -432,7 +427,8 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
                 }
             }
         }
-    }
+        return true;
+    });
 }
 
 /// Resolve a symbol hash into a SymbolInfo with definition location.
@@ -464,34 +460,39 @@ static std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
 }
 
 std::optional<Indexer::DefinitionText> Indexer::get_definition_text(index::SymbolHash hash) {
-    for(auto& [id, sess]: sessions) {
-        if(!sess.file_index || !sess.file_index->mapper)
-            continue;
-        auto it = sess.file_index->file_index.relations.find(hash);
-        if(it == sess.file_index->file_index.relations.end())
-            continue;
+    std::optional<DefinitionText> overlay_result;
+    for_each_overlay([&](std::uint32_t id, const OpenFileIndex& ofi) -> bool {
+        if(!ofi.mapper)
+            return true;
+        auto it = ofi.file_index.relations.find(hash);
+        if(it == ofi.file_index.relations.end())
+            return true;
         for(auto& rel: it->second) {
             if(rel.kind.value() != RelationKind::Definition)
                 continue;
             auto def_range = std::bit_cast<LocalSourceRange>(rel.target_symbol);
             if(def_range.begin >= def_range.end)
                 continue;
-            llvm::StringRef content = sess.file_index->content;
+            llvm::StringRef content = ofi.content;
             if(def_range.end > content.size())
                 continue;
-            auto start = sess.file_index->mapper->to_position(def_range.begin);
-            auto end = sess.file_index->mapper->to_position(def_range.end);
+            auto start = ofi.mapper->to_position(def_range.begin);
+            auto end = ofi.mapper->to_position(def_range.end);
             if(!start || !end)
                 continue;
-            return DefinitionText{
+            overlay_result = DefinitionText{
                 .file = std::string(workspace.path_pool.resolve(id)),
                 .start_line = static_cast<int>(start->line) + 1,
                 .end_line = static_cast<int>(end->line) + 1,
                 .text =
                     std::string(content.substr(def_range.begin, def_range.end - def_range.begin)),
             };
+            return false;
         }
-    }
+        return true;
+    });
+    if(overlay_result)
+        return overlay_result;
 
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it == workspace.project_index.symbols.end())
@@ -568,19 +569,19 @@ std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::Sy
         }
     }
 
-    for(auto& [id, sess]: sessions) {
-        if(!sess.file_index || !sess.file_index->mapper)
-            continue;
-        auto it = sess.file_index->file_index.relations.find(hash);
-        if(it == sess.file_index->file_index.relations.end())
-            continue;
+    for_each_overlay([&](std::uint32_t id, const OpenFileIndex& ofi) -> bool {
+        if(!ofi.mapper)
+            return true;
+        auto it = ofi.file_index.relations.find(hash);
+        if(it == ofi.file_index.relations.end())
+            return true;
         auto file_path = workspace.path_pool.resolve(id);
-        llvm::StringRef content = sess.file_index->content;
+        llvm::StringRef content = ofi.content;
 
         for(auto& rel: it->second) {
             if(rel.kind != kind)
                 continue;
-            auto start = sess.file_index->mapper->to_position(rel.range.begin);
+            auto start = ofi.mapper->to_position(rel.range.begin);
             if(!start)
                 continue;
             results.push_back(ReferenceWithContext{
@@ -589,7 +590,8 @@ std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::Sy
                 .context = extract_line(content, rel.range.begin),
             });
         }
-    }
+        return true;
+    });
 
     return results;
 }
@@ -695,14 +697,12 @@ std::vector<protocol::SymbolInformation> Indexer::search_symbols(llvm::StringRef
         seen.insert(hash);
     }
 
-    for(auto& [_, sess]: sessions) {
+    for_each_overlay([&](std::uint32_t, const OpenFileIndex& ofi) -> bool {
         if(results.size() >= max_results)
-            break;
-        if(!sess.file_index)
-            continue;
-        for(auto& [hash, symbol]: sess.file_index->symbols) {
+            return false;
+        for(auto& [hash, symbol]: ofi.symbols) {
             if(results.size() >= max_results)
-                break;
+                return false;
             if(seen.contains(hash))
                 continue;
             if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
@@ -720,7 +720,8 @@ std::vector<protocol::SymbolInformation> Indexer::search_symbols(llvm::StringRef
             results.push_back(std::move(info));
             seen.insert(hash);
         }
-    }
+        return true;
+    });
     return results;
 }
 
@@ -813,7 +814,7 @@ void Indexer::schedule() {
 kota::task<> Indexer::index_one(std::uint32_t server_path_id) {
     auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
 
-    if(sessions.contains(server_path_id))
+    if(is_open && is_open(server_path_id))
         co_return;
 
     if(!need_update(file_path))
@@ -922,7 +923,7 @@ kota::task<> Indexer::run_background_indexing() {
 
         auto server_path_id = index_queue[index_queue_pos++];
         auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
-        if(sessions.contains(server_path_id) || !need_update(file_path)) {
+        if((is_open && is_open(server_path_id)) || !need_update(file_path)) {
             ++completed;
             continue;
         }

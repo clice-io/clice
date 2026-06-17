@@ -22,7 +22,7 @@ namespace clice {
 /// file's translation unit and NEVER leak to Workspace or other Sessions.
 /// Sessions may READ from Workspace (e.g. to obtain PCH/PCM paths, module
 /// mappings, include graph) but all compilation results stay here.
-struct Session {
+struct Session : std::enable_shared_from_this<Session> {
     /// Path ID of this file in PathPool.  Set on creation, never changes.
     std::uint32_t path_id = 0;
 
@@ -38,6 +38,11 @@ struct Session {
 
     /// Whether the AST needs to be rebuilt before serving queries.
     bool ast_dirty = true;
+
+    /// Set when close_session() is called.  The Session object may outlive its
+    /// map entry because coroutines hold a shared_ptr; checking this flag lets
+    /// them detect that the file was closed without needing a map re-lookup.
+    bool closed = false;
 
     /// Non-null while a compilation is in flight for this file.
     /// Other queries wait on the event; the compilation task itself

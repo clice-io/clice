@@ -37,17 +37,21 @@ namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
-    loop(loop), pool(loop), compiler(loop, workspace, pool, sessions),
-    indexer(loop,
-            workspace,
-            sessions,
-            pool,
-            compiler,
-            [this](uint32_t proj_path_id) {
-                auto path = workspace.project_index.path_pool.path(proj_path_id);
-                auto server_id = workspace.path_pool.intern(path);
-                return sessions.contains(server_id);
-            }),
+    loop(loop), pool(loop), compiler(loop, workspace, pool),
+    indexer(
+        loop,
+        workspace,
+        pool,
+        compiler,
+        [this](uint32_t server_path_id) { return sessions.contains(server_path_id); },
+        [this](Indexer::OverlayVisitor visitor) {
+            for(auto& [id, sess_ptr]: sessions) {
+                if(sess_ptr && sess_ptr->file_index) {
+                    if(!visitor(id, *sess_ptr->file_index))
+                        break;
+                }
+            }
+        }),
     self_path(std::move(self_path)) {}
 
 MasterServer::~MasterServer() = default;
@@ -142,17 +146,19 @@ kota::task<> MasterServer::file_watcher_task() {
     }
 }
 
-Session* MasterServer::find_session(std::uint32_t path_id) {
+std::shared_ptr<Session> MasterServer::find_session(std::uint32_t path_id) {
     auto it = sessions.find(path_id);
-    return it != sessions.end() ? &it->second : nullptr;
+    return it != sessions.end() ? it->second : nullptr;
 }
 
-Session& MasterServer::open_session(std::uint32_t path_id) {
-    auto [it, inserted] = sessions.try_emplace(path_id);
-    auto& session = it->second;
-    if(!inserted)
-        session = Session{};
-    session.path_id = path_id;
+std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
+    auto it = sessions.find(path_id);
+    if(it != sessions.end()) {
+        it->second->closed = true;
+    }
+    auto session = std::make_shared<Session>();
+    session->path_id = path_id;
+    sessions[path_id] = session;
     return session;
 }
 
@@ -170,7 +176,11 @@ void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& pee
     diag_params.diagnostics = {};
     peer.send_notification(diag_params);
 
-    sessions.erase(path_id);
+    auto it = sessions.find(path_id);
+    if(it != sessions.end()) {
+        it->second->closed = true;
+        sessions.erase(it);
+    }
 
     indexer.enqueue(path_id);
     indexer.schedule();
@@ -181,17 +191,18 @@ void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& pee
 void MasterServer::on_file_saved(std::uint32_t path_id) {
     auto dirtied = workspace.on_file_saved(path_id);
     for(auto dirty_id: dirtied) {
-        if(auto* session = find_session(dirty_id)) {
+        auto session = find_session(dirty_id);
+        if(session) {
             session->ast_dirty = true;
         } else {
             indexer.enqueue(dirty_id);
         }
     }
 
-    for(auto& [hdr_id, session]: sessions) {
-        if(session.header_context && session.header_context->host_path_id == path_id) {
-            session.header_context.reset();
-            session.ast_dirty = true;
+    for(auto& [hdr_id, sess_ptr]: sessions) {
+        if(sess_ptr->header_context && sess_ptr->header_context->host_path_id == path_id) {
+            sess_ptr->header_context.reset();
+            sess_ptr->ast_dirty = true;
         }
     }
 

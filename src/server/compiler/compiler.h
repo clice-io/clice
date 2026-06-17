@@ -19,7 +19,6 @@
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/peer.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -49,10 +48,7 @@ std::string uri_to_path(const std::string& uri);
 ///   - Background indexing scheduling — handled by Indexer
 class Compiler {
 public:
-    Compiler(kota::event_loop& loop,
-             Workspace& workspace,
-             WorkerPool& pool,
-             llvm::DenseMap<std::uint32_t, Session>& sessions);
+    Compiler(kota::event_loop& loop, Workspace& workspace, WorkerPool& pool);
 
     void set_peer(kota::ipc::JsonPeer* p) {
         peer = p;
@@ -107,7 +103,8 @@ public:
     kota::task<> stop();
 
 private:
-    kota::task<> run_compile(std::uint32_t path_id, std::shared_ptr<Session::PendingCompile> pc);
+    kota::task<> run_compile(std::shared_ptr<Session> session,
+                             std::shared_ptr<Session::PendingCompile> pc);
 
     /// @param scope  When set, cancels the module-dependency wait if this
     ///               compile round is superseded by a newer one.
@@ -143,7 +140,6 @@ private:
     kota::ipc::JsonPeer* peer = nullptr;
     Workspace& workspace;
     WorkerPool& pool;
-    llvm::DenseMap<std::uint32_t, Session>& sessions;
     kota::task_group<> compile_tasks{loop};
 };
 
