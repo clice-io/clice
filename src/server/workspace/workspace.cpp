@@ -5,6 +5,7 @@
 
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "syntax/lexer.h"
 #include "syntax/scan.h"
 
 #include "kota/codec/json/json.h"
@@ -36,6 +37,24 @@ const static index::Occurrence* lookup_occurrence(const std::vector<index::Occur
     return best;
 }
 
+std::optional<std::uint32_t>
+    lookup_include_definition(llvm::StringRef content,
+                              llvm::ArrayRef<index::IncludeLocation> includes,
+                              std::uint32_t offset) {
+    auto argument = find_directive_argument_at(content, offset);
+    if(!argument) {
+        return std::nullopt;
+    }
+
+    for(auto& include: includes) {
+        if(include.include == static_cast<std::uint32_t>(-1) &&
+           include.line == argument->line) {
+            return include.path_id;
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<std::pair<index::SymbolHash, protocol::Range>>
     OpenFileIndex::find_occurrence(std::uint32_t offset) const {
     if(!mapper)
@@ -51,6 +70,10 @@ std::optional<std::pair<index::SymbolHash, protocol::Range>>
         occ->target,
         protocol::Range{*start, *end}
     };
+}
+
+std::optional<std::uint32_t> OpenFileIndex::find_include_definition(std::uint32_t offset) const {
+    return lookup_include_definition(content, include_locations, offset);
 }
 
 std::optional<std::pair<index::SymbolHash, protocol::Range>>
@@ -71,6 +94,10 @@ std::optional<std::pair<index::SymbolHash, protocol::Range>>
         return false;
     });
     return result;
+}
+
+std::optional<std::uint32_t> MergedIndexShard::find_include_definition(std::uint32_t offset) const {
+    return index.find_include_definition(offset);
 }
 
 llvm::SmallVector<std::uint32_t> Workspace::on_file_saved(std::uint32_t path_id) {

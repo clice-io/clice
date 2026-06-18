@@ -224,6 +224,11 @@ private:
                              const protocol::Position& position,
                              Session* session);
 
+    /// Resolve an include directive argument at (position), if any.
+    std::optional<protocol::Location> find_include_definition(llvm::StringRef path,
+                                                              const protocol::Position& position,
+                                                              Session* session);
+
     /// Collect relations grouped by target symbol, across all index sources.
     void collect_grouped_relations(
         index::SymbolHash hash,

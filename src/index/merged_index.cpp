@@ -5,6 +5,7 @@
 
 #include "index/serialization.h"
 #include "support/filesystem.h"
+#include "syntax/lexer.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_os_ostream.h"
@@ -441,6 +442,44 @@ void MergedIndex::lookup(this const Self& self,
             break;
         }
     }
+}
+
+std::optional<std::uint32_t> MergedIndex::find_include_definition(this const Self& self,
+                                                                  std::uint32_t offset) {
+    if(self.impl) {
+        auto& index = *self.impl;
+        auto argument = find_directive_argument_at(index.content, offset);
+        if(!argument) {
+            return std::nullopt;
+        }
+        for(auto& [_, context]: index.compilation_contexts) {
+            for(auto& location: context.include_locations) {
+                if(location.include == static_cast<std::uint32_t>(-1) &&
+                   location.line == argument->line) {
+                    return location.path_id;
+                }
+            }
+        }
+    } else if(self.buffer) {
+        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
+        llvm::StringRef content;
+        if(auto* stored_content = index->content()) {
+            content = stored_content->string_view();
+        }
+        auto argument = find_directive_argument_at(content, offset);
+        if(!argument) {
+            return std::nullopt;
+        }
+        for(auto context: *index->compilation_contexts()) {
+            for(auto location: *context->include_locations()) {
+                if(location->include_id() == static_cast<std::uint32_t>(-1) &&
+                   location->line() == argument->line) {
+                    return location->path_id();
+                }
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 void MergedIndex::lookup(this const Self& self,

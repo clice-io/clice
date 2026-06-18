@@ -199,7 +199,6 @@ TEST_CASE(GoToDefinitionReturnsEmpty) {
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
-        // Should return empty array "[]" (TODO stub)
         EXPECT_EQ(result.value().data, std::string("[]"));
         test_done = true;
         w.peer->close_output();

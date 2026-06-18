@@ -162,4 +162,33 @@ std::optional<LocalSourceRange> find_directive_argument(llvm::StringRef content,
     return std::nullopt;
 }
 
+std::optional<DirectiveArgument> find_directive_argument_at(llvm::StringRef content,
+                                                            std::uint32_t offset,
+                                                            const clang::LangOptions* lang_opts) {
+    if(offset >= content.size()) {
+        return std::nullopt;
+    }
+
+    std::uint32_t line_start = 0;
+    if(offset > 0) {
+        auto pos = content.rfind('\n', offset - 1);
+        if(pos != llvm::StringRef::npos) {
+            line_start = static_cast<std::uint32_t>(pos + 1);
+        }
+    }
+
+    auto range = find_directive_argument(content, line_start, lang_opts);
+    if(!range || !range->contains(offset)) {
+        return std::nullopt;
+    }
+
+    std::uint32_t line = 1;
+    for(char c: content.take_front(line_start)) {
+        if(c == '\n') {
+            ++line;
+        }
+    }
+    return DirectiveArgument{*range, line};
+}
+
 }  // namespace clice
