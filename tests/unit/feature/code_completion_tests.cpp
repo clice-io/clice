@@ -362,6 +362,44 @@ int z = fo$(pos)
                 *it->insert_text_format == protocol::InsertTextFormat::PlainText);
 }
 
+TEST_CASE(SmartParensSkip) {
+    // When next token after cursor is '(', snippet should not insert parens.
+    feature::CodeCompletionOptions opts;
+    opts.bundle_overloads = false;
+    opts.enable_function_arguments_snippet = true;
+    code_complete(R"cpp(
+int foooo(int x, float y);
+int z = fo$(pos)(1, 2.0f);
+)cpp",
+                  opts);
+
+    auto it = find_item("foooo");
+    ASSERT_TRUE(it != items.end());
+    // With parens already present, snippet should degrade to plain text
+    // (no placeholders → build_snippet returns empty → label used).
+    auto& edit = std::get<protocol::TextEdit>(*it->text_edit);
+    ASSERT_TRUE(edit.new_text.find("(") == std::string::npos);
+}
+
+TEST_CASE(SmartParensInsert) {
+    // When next token is NOT '(', snippet should include parens normally.
+    feature::CodeCompletionOptions opts;
+    opts.bundle_overloads = false;
+    opts.enable_function_arguments_snippet = true;
+    code_complete(R"cpp(
+int foooo(int x, float y);
+int z = fo$(pos);
+)cpp",
+                  opts);
+
+    auto it = find_item("foooo");
+    ASSERT_TRUE(it != items.end());
+    auto& edit = std::get<protocol::TextEdit>(*it->text_edit);
+    // Should contain '(' since there's no existing paren.
+    ASSERT_TRUE(edit.new_text.find("(") != std::string::npos);
+    ASSERT_TRUE(edit.new_text.find("${1:") != std::string::npos);
+}
+
 TEST_CASE(SnippetBundleMode) {
     // In bundle mode, snippets should NOT be generated even if enabled.
     feature::CodeCompletionOptions opts;
