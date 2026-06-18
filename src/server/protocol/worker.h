@@ -18,6 +18,7 @@ namespace protocol = kota::ipc::protocol;
 /// Kind of AST query dispatched to a stateful worker.
 enum class QueryKind : uint8_t {
     Hover,
+    DocumentHighlight,
     GoToDefinition,
     SemanticTokens,
     InlayHints,
@@ -32,7 +33,7 @@ enum class QueryKind : uint8_t {
 struct QueryParams {
     QueryKind kind;
     std::string path;
-    uint32_t offset = 0;  ///< Byte offset for position-sensitive queries (Hover, GoToDefinition).
+    uint32_t offset = 0;     ///< Byte offset for position-sensitive queries.
     LocalSourceRange range;  ///< Byte range for range-sensitive queries (InlayHints).
 };
 

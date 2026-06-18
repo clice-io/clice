@@ -118,6 +118,71 @@ TEST_CASE(CompileThenHover) {
     ASSERT_TRUE(test_done);
 }
 
+TEST_CASE(DocumentHighlightWithoutCompile) {
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        worker::QueryParams params;
+        params.kind = worker::QueryKind::DocumentHighlight;
+        params.path = "/tmp/nonexistent.cpp";
+        params.offset = 0;
+
+        auto result = co_await w.peer->send_request(params);
+        CO_ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(result.value().data, std::string("null"));
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ASSERT_TRUE(test_done);
+}
+
+TEST_CASE(CompileThenDocumentHighlight) {
+    std::string text = R"cpp(int main() {
+    if(true) return 1;
+    return 0;
+}
+)cpp";
+    TempDir tmp;
+    tmp.touch("document_highlight_test.cpp", text);
+    auto src = tmp.path("document_highlight_test.cpp");
+
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = text;
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+
+        auto compile_result = co_await w.peer->send_request(cp);
+        CO_ASSERT_TRUE(compile_result.has_value());
+
+        worker::QueryParams hp;
+        hp.kind = worker::QueryKind::DocumentHighlight;
+        hp.path = src;
+        hp.offset = static_cast<std::uint32_t>(text.find("return"));
+
+        auto result = co_await w.peer->send_request(hp);
+        CO_ASSERT_TRUE(result.has_value());
+        EXPECT_NE(result.value().data, std::string("null"));
+        EXPECT_TRUE(result.value().data.find("\"range\"") != std::string::npos);
+
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ASSERT_TRUE(test_done);
+}
+
 TEST_CASE(DocumentUpdate) {
     TempDir tmp;
     tmp.touch("update_test.cpp", "int x = 1;\n");

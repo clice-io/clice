@@ -1,0 +1,13 @@
+---
+source: document_highlight_tests.cpp
+created_at: 2026-06-18
+input_file: statements/if/basic_if.cpp
+---
+- { cursor: "5:8 return", highlights: ["5:8 return", "6:4 return"] }
+- { cursor: "6:4 return", highlights: ["5:8 return", "6:4 return"] }
+- { cursor: "11:8 return", highlights: ["11:8 return", "13:8 return", "15:8 return"] }
+- { cursor: "13:8 return", highlights: ["11:8 return", "13:8 return", "15:8 return"] }
+- { cursor: "15:8 return", highlights: ["11:8 return", "13:8 return", "15:8 return"] }
+- { cursor: "23:12 return", highlights: ["23:12 return", "25:12 return", "26:4 return"] }
+- { cursor: "25:12 return", highlights: ["23:12 return", "25:12 return", "26:4 return"] }
+- { cursor: "26:4 return", highlights: ["23:12 return", "25:12 return", "26:4 return"] }

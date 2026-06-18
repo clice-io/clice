@@ -100,6 +100,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         caps.references_provider = protocol::ReferenceOptions{
             .work_done_progress = false,
         };
+        caps.document_highlight_provider = true;
         caps.document_symbol_provider = true;
         caps.document_link_provider = protocol::DocumentLinkOptions{};
         caps.code_action_provider = true;
@@ -255,6 +256,20 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             session,
             params.text_document_position_params.position);
     });
+
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentHighlightParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto path = uri_to_path(params.text_document_position_params.text_document.uri);
+            auto path_id = srv.workspace.path_pool.intern(path);
+            auto session = srv.find_session(path_id);
+            if(!session)
+                co_return serde_raw{"null"};
+            co_return co_await srv.compiler.forward_query(
+                worker::QueryKind::DocumentHighlight,
+                session,
+                params.text_document_position_params.position);
+        });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::SemanticTokensParams& params) -> RawResult {

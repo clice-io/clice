@@ -240,6 +240,13 @@ void StatefulWorker::register_handlers() {
                         auto result = feature::hover(doc.unit, params.offset);
                         return result ? to_raw(*result) : kota::codec::RawValue{"null"};
                     });
+                case K::DocumentHighlight:
+                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                        return to_raw(feature::document_highlights(
+                            doc.unit,
+                            params.offset,
+                            feature::PositionEncoding::UTF16));
+                    });
                 case K::GoToDefinition:
                     // TODO: Implement go-to-definition
                     co_return kota::codec::RawValue{"[]"};
