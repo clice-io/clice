@@ -46,7 +46,7 @@ struct Session {
         kota::event done;
         bool succeeded = false;
 
-        /// Revision snapshot at spawn; a later didChange supersedes this compile.
+        /// Generation snapshot at spawn; a later didChange supersedes this compile.
         std::uint64_t generation = 0;
 
         /// True once module dependencies are settled and the compile has moved

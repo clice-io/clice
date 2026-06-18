@@ -45,9 +45,9 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
         compiler,
         [this](uint32_t server_path_id) { return sessions.contains(server_path_id); },
         [this](Indexer::OverlayVisitor visitor) {
-            for(auto& [id, sess_ptr]: sessions) {
-                if(sess_ptr && sess_ptr->file_index) {
-                    if(!visitor(id, *sess_ptr->file_index))
+            for(auto& [path_id, session]: sessions) {
+                if(session && session->file_index) {
+                    if(!visitor(path_id, *session->file_index))
                         break;
                 }
             }
@@ -199,10 +199,10 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
         }
     }
 
-    for(auto& [hdr_id, sess_ptr]: sessions) {
-        if(sess_ptr->header_context && sess_ptr->header_context->host_path_id == path_id) {
-            sess_ptr->header_context.reset();
-            sess_ptr->ast_dirty = true;
+    for(auto& [path_id, session]: sessions) {
+        if(session->header_context && session->header_context->host_path_id == path_id) {
+            session->header_context.reset();
+            session->ast_dirty = true;
         }
     }
 
