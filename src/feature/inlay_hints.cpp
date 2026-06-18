@@ -656,14 +656,27 @@ public:
         }
 
         auto type = var->getType();
-        if(auto* auto_type = type->getContainedAutoType()) {
-            if(auto_type->isDeduced() && !type->isDependentType()) {
+        if(!type.isNull() && !type->isDependentType()) {
+            auto* auto_type = type->getContainedAutoType();
+            if(var->isInitCapture() || (auto_type && auto_type->isDeduced())) {
+                auto* init = var->getInit();
+                if(init) {
+                    init = init->IgnoreUnlessSpelledInSource();
+                    // The initializer already spells the type, so the hint would duplicate it.
+                    if(llvm::isa<clang::ExplicitCastExpr>(init) ||
+                       llvm::isa<clang::CXXTemporaryObjectExpr>(init)) {
+                        return true;
+                    }
+                }
+
                 // Our current approach is to place the hint on the variable
                 // and accordingly print the full type
                 // (e.g. for `const auto& x = 42`, print `const int&`).
+                // Lambda init-captures behave the same way, but their `auto`
+                // is implicit.
                 // Alternatively, we could place the hint on the `auto`
                 // (and then just print the type deduced for the `auto`).
-                builder.add_type_hint(var->getLocation(), var->getType(), /*Prefix=*/": ");
+                builder.add_type_hint(var->getLocation(), type, /*Prefix=*/": ");
             }
         }
 

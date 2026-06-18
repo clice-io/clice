@@ -754,14 +754,13 @@ TEST_CASE(Types) {
 
             auto h$(6) = decltype(0)$(7){};
         )c");
-    EXPECT_SIZE(8);
+    EXPECT_SIZE(7);
     EXPECT_HINT("0", ": int");
     EXPECT_HINT("1", ": int");
     EXPECT_HINT("2", ": int");
     EXPECT_HINT("3", ": int");
     EXPECT_HINT("4", ": int");
     EXPECT_HINT("5", ": int");
-    EXPECT_HINT("6", ": int");
     EXPECT_HINT("7", ": int");
 
     // Long type name
