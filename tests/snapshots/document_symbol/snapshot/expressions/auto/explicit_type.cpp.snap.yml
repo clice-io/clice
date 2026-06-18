@@ -1,0 +1,14 @@
+---
+source: document_symbol_tests.cpp
+created_at: 2026-06-18
+input_file: expressions/auto/explicit_type.cpp
+---
+- { name: "auto_explicit_type", kind: Namespace, range: "1:0-14:1", selection_range: "1:10-1:28" }
+-   { name: "Box", kind: Struct, range: "3:0-5:1", selection_range: "3:7-3:10", detail: "struct" }
+-     { name: "Box", kind: Method, range: "4:4-4:21", selection_range: "4:13-4:16", detail: "(int)" }
+-   { name: "test", kind: Function, range: "7:0-12:1", selection_range: "7:5-7:9", detail: "void (int)" }
+-     { name: "x", kind: Variable, range: "8:4-8:34", selection_range: "8:9-8:10", detail: "int" }
+-     { name: "y", kind: Variable, range: "9:4-9:20", selection_range: "9:9-9:10", detail: "int" }
+-     { name: "object", kind: Variable, range: "10:4-10:25", selection_range: "10:9-10:15", detail: "Box" }
+-     { name: "z", kind: Variable, range: "11:4-11:20", selection_range: "11:9-11:10", detail: "int" }
+

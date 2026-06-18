@@ -1,0 +1,37 @@
+---
+source: semantic_tokens_tests.cpp
+created_at: 2026-06-18
+input_file: expressions/auto/explicit_type.cpp
+---
+- { loc: "0:0", text: "// auto initialized from explicitly spelled types", kind: Comment }
+- { loc: "1:0", text: "namespace", kind: Keyword }
+- { loc: "1:10", text: "auto_explicit_type", kind: Namespace, modifiers: [Definition] }
+- { loc: "3:0", text: "struct", kind: Keyword }
+- { loc: "3:7", text: "Box", kind: Struct, modifiers: [Definition] }
+- { loc: "4:4", text: "explicit", kind: Keyword }
+- { loc: "4:13", text: "Box", kind: Method, modifiers: [Declaration, ConstructorOrDestructor] }
+- { loc: "4:17", text: "int", kind: Keyword }
+- { loc: "4:20", text: ")", kind: Parameter, modifiers: [Definition] }
+- { loc: "7:0", text: "void", kind: Keyword }
+- { loc: "7:5", text: "test", kind: Function, modifiers: [Definition] }
+- { loc: "7:10", text: "int", kind: Keyword }
+- { loc: "7:14", text: "val", kind: Parameter, modifiers: [Definition] }
+- { loc: "8:4", text: "auto", kind: Keyword }
+- { loc: "8:9", text: "x", kind: Variable, modifiers: [Definition] }
+- { loc: "8:13", text: "static_cast", kind: Keyword }
+- { loc: "8:25", text: "int", kind: Keyword }
+- { loc: "8:30", text: "val", kind: Parameter }
+- { loc: "9:4", text: "auto", kind: Keyword }
+- { loc: "9:9", text: "y", kind: Variable, modifiers: [Definition] }
+- { loc: "9:13", text: "int", kind: Keyword }
+- { loc: "9:17", text: "42", kind: Number }
+- { loc: "10:4", text: "auto", kind: Keyword }
+- { loc: "10:9", text: "object", kind: Variable, modifiers: [Definition] }
+- { loc: "10:18", text: "Box", kind: Struct }
+- { loc: "10:22", text: "42", kind: Number }
+- { loc: "11:4", text: "auto", kind: Keyword }
+- { loc: "11:9", text: "z", kind: Variable, modifiers: [Definition] }
+- { loc: "11:13", text: "val", kind: Parameter }
+- { loc: "11:19", text: "1", kind: Number }
+- { loc: "14:3", text: "// namespace auto_explicit_type", kind: Comment }
+

@@ -1,0 +1,10 @@
+---
+source: inlay_hint_tests.cpp
+created_at: 2026-06-18
+input_file: expressions/auto/explicit_type.cpp
+---
+- { pos: "8:10", kind: Type, label: ": int" }
+- { pos: "9:10", kind: Type, label: ": int" }
+- { pos: "10:15", kind: Type, label: ": Box" }
+- { pos: "11:10", kind: Type, label: ": int" }
+

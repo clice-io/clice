@@ -1,0 +1,9 @@
+---
+source: folding_range_tests.cpp
+created_at: 2026-06-18
+input_file: expressions/auto/explicit_type.cpp
+---
+- { range: "1:29-14:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "3:11-5:1", kind: struct, collapsed_text: "{...}" }
+- { range: "7:19-12:1", kind: functionBody, collapsed_text: "{...}" }
+
