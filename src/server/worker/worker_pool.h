@@ -17,7 +17,25 @@
 
 namespace clice {
 
+namespace testing {
+
+struct WorkerPoolFixture;
+
+}
+
 using kota::ipc::RequestResult;
+
+/// Information about a worker crash, delivered via WorkerPool::on_crash.
+struct WorkerCrashInfo {
+    std::size_t worker_index;
+    bool stateful;
+    int exit_code = 0;
+    int exit_signal = 0;
+    unsigned restart_count;
+    bool will_restart;
+    /// For stateful workers: path_ids of documents that were owned by this worker.
+    llvm::SmallVector<std::uint32_t> lost_documents;
+};
 
 struct WorkerPoolOptions {
     std::string self_path;
@@ -25,6 +43,7 @@ struct WorkerPoolOptions {
     std::uint32_t stateful_count = 2;
     std::uint64_t worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB default
     std::string log_dir;
+    unsigned max_restarts = 5;
 };
 
 class WorkerPool {
@@ -55,6 +74,9 @@ public:
     /// Remove path_id from ownership tracking (e.g. when the master learns a
     /// document was evicted).
     void remove_owner(std::uint32_t path_id);
+
+    /// Callback invoked when a worker process crashes.
+    std::function<void(const WorkerCrashInfo&)> on_crash;
 
     /// Callback invoked when a stateful worker sends an EvictedParams notification.
     /// The master should translate the path to a path_id and call remove_owner().
@@ -95,7 +117,6 @@ private:
     struct StatelessSlot {
         WorkerPool& pool;
         std::size_t worker_index;
-        bool released = false;
 
         StatelessSlot(WorkerPool& p, std::size_t idx) : pool(p), worker_index(idx) {}
 
@@ -103,8 +124,7 @@ private:
         StatelessSlot& operator=(const StatelessSlot&) = delete;
 
         ~StatelessSlot() {
-            if(!released)
-                pool.release_stateless_slot(worker_index);
+            pool.release_stateless_slot(worker_index);
         }
     };
 
@@ -120,7 +140,13 @@ private:
     void try_dispatch_pending();
     std::size_t pick_idle_stateless();
     kota::task<> monitor_memory();
-    void on_worker_crash();
+
+    /// Handle worker crash: update state, fire on_crash callback.
+    /// Returns true if the worker should be restarted.
+    bool process_crash(std::size_t index, bool stateful, int exit_code, int exit_signal);
+
+    /// AIMD multiplicative decrease on stateless concurrency limit.
+    void apply_crash_backoff();
 
     bool shutting_down_ = false;
     kota::task_group<> monitor_group{loop};
@@ -135,6 +161,8 @@ private:
     bool spawn_worker(const std::string& self_path, bool stateful, std::uint64_t memory_limit);
     bool respawn_worker(std::size_t index, bool stateful);
     kota::task<> monitor_worker(std::size_t index, bool stateful);
+
+    friend struct testing::WorkerPoolFixture;
 };
 
 template <typename Params>
@@ -158,14 +186,23 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         co_return kota::outcome_error(kota::ipc::Error{"No stateless workers available"});
     }
 
-    auto idx = co_await acquire_stateless_slot(params.priority);
-    StatelessSlot slot(*this, idx);
+    // Try up to 2 times: if the worker crashes mid-request, retry on another.
+    for(int attempt = 0; attempt < 2; ++attempt) {
+        auto idx = co_await acquire_stateless_slot(params.priority);
+        StatelessSlot slot(*this, idx);
 
-    if(!stateless_workers[idx].alive) {
-        co_return kota::outcome_error(kota::ipc::Error{"Assigned stateless worker is down"});
+        if(!stateless_workers[idx].alive)
+            continue;
+
+        auto result = co_await stateless_workers[idx].peer->send_request(params, opts);
+
+        // Success, or application-level error (worker still alive) — return as-is.
+        if(result.has_value() || stateless_workers[idx].alive)
+            co_return std::move(result);
+
+        // Worker crashed during this request — retry on next iteration.
     }
-
-    co_return co_await stateless_workers[idx].peer->send_request(params, opts);
+    co_return kota::outcome_error(kota::ipc::Error{"Stateless request failed after retries"});
 }
 
 template <typename Params>

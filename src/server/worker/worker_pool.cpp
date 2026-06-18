@@ -238,36 +238,57 @@ void WorkerPool::clear_owner(std::size_t worker_index) {
 
 kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
-    auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
 
     auto result = co_await workers[index].proc.wait();
-    auto& w = workers[index];
-    w.alive = false;
 
     if(shutting_down_)
         co_return;
 
+    int exit_code = 0, exit_signal = 0;
     if(result.has_value()) {
-        auto& exit = result.value();
-        if(exit.term_signal != 0) {
-            LOG_ERROR("Worker {} killed by signal {} (restarts: {})",
-                      name,
-                      exit.term_signal,
-                      w.restart_count);
-        } else {
-            LOG_ERROR("Worker {} exited with code {} (restarts: {})",
-                      name,
-                      exit.status,
-                      w.restart_count);
-        }
+        exit_code = result.value().status;
+        exit_signal = result.value().term_signal;
     } else {
-        LOG_ERROR("Worker {} lost: {} (restarts: {})",
-                  name,
-                  result.error().message(),
-                  w.restart_count);
+        auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
+        LOG_ERROR("Worker {} lost: {}", name, result.error().message());
+        exit_signal = SIGKILL;
     }
 
+    if(process_crash(index, stateful, exit_code, exit_signal)) {
+        if(!respawn_worker(index, stateful)) {
+            auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
+            LOG_ERROR("Worker {} respawn failed", name);
+        }
+    }
+}
+
+bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, int exit_signal) {
+    auto& workers = stateful ? stateful_workers : stateless_workers;
+    auto& w = workers[index];
+    w.alive = false;
+
+    auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
+    if(exit_signal != 0) {
+        LOG_ERROR("Worker {} killed by signal {} (restarts: {})",
+                  name,
+                  exit_signal,
+                  w.restart_count);
+    } else {
+        LOG_ERROR("Worker {} exited with code {} (restarts: {})", name, exit_code, w.restart_count);
+    }
+
+    WorkerCrashInfo info;
+    info.worker_index = index;
+    info.stateful = stateful;
+    info.exit_code = exit_code;
+    info.exit_signal = exit_signal;
+    info.restart_count = w.restart_count;
+
     if(stateful) {
+        for(auto& [path_id, widx]: owner) {
+            if(widx == index)
+                info.lost_documents.push_back(path_id);
+        }
         clear_owner(index);
     } else {
         --alive_stateless_count;
@@ -275,19 +296,19 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
             w.busy = false;
             --stateless_busy_count;
         }
-        on_worker_crash();
+        apply_crash_backoff();
         try_dispatch_pending();
     }
 
-    constexpr unsigned max_restarts = 5;
-    if(w.restart_count >= max_restarts) {
-        LOG_ERROR("Worker {} exceeded max restarts ({}), giving up", name, max_restarts);
-        co_return;
+    info.will_restart = w.restart_count < options_.max_restarts;
+    if(!info.will_restart) {
+        LOG_ERROR("Worker {} exceeded max restarts ({}), giving up", name, options_.max_restarts);
     }
 
-    if(!respawn_worker(index, stateful)) {
-        LOG_ERROR("Worker {} respawn failed", name);
-    }
+    if(on_crash)
+        on_crash(info);
+
+    return info.will_restart;
 }
 
 bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
@@ -351,6 +372,9 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     auto& w = workers[index];
     io_group.spawn(w.peer->run());
 
+    if(!stateful)
+        try_dispatch_pending();
+
     if(stateful) {
         w.peer->on_notification([this](const worker::EvictedParams& params) {
             if(on_evicted)
@@ -398,6 +422,8 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
 }
 
 void WorkerPool::release_stateless_slot(std::size_t worker_index) {
+    if(!stateless_workers[worker_index].busy)
+        return;
     stateless_workers[worker_index].busy = false;
     --stateless_busy_count;
     try_dispatch_pending();
@@ -440,7 +466,7 @@ std::size_t WorkerPool::pick_idle_stateless() {
         if(stateless_workers[i].alive && !stateless_workers[i].busy)
             return i;
     }
-    return 0;
+    llvm_unreachable("pick_idle_stateless called with no idle workers");
 }
 
 kota::task<> WorkerPool::monitor_memory() {
@@ -471,7 +497,7 @@ kota::task<> WorkerPool::monitor_memory() {
     }
 }
 
-void WorkerPool::on_worker_crash() {
+void WorkerPool::apply_crash_backoff() {
     auto new_limit = std::max<std::size_t>(1, low_limit * 3 / 4);
     if(new_limit < low_limit) {
         low_limit = new_limit;
