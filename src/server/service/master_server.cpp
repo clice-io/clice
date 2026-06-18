@@ -154,7 +154,7 @@ std::shared_ptr<Session> MasterServer::find_session(std::uint32_t path_id) {
 std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
     auto it = sessions.find(path_id);
     if(it != sessions.end()) {
-        it->second->closed = true;
+        it->second->generation++;
     }
     auto session = std::make_shared<Session>();
     session->path_id = path_id;
@@ -178,7 +178,7 @@ void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& pee
 
     auto it = sessions.find(path_id);
     if(it != sessions.end()) {
-        it->second->closed = true;
+        it->second->generation++;
         sessions.erase(it);
     }
 

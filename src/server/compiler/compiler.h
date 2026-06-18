@@ -67,7 +67,7 @@ public:
 
     /// Compile an open file's AST if dirty.  On success, updates session's
     /// file_index, pch_ref, ast_deps, and publishes diagnostics.
-    kota::task<bool> ensure_compiled(Session& session);
+    kota::task<bool> ensure_compiled(std::shared_ptr<Session> session);
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
@@ -76,7 +76,7 @@ public:
     /// goto-definition), pass a Position.  For range-sensitive queries
     /// (inlay hints), pass a Range.
     RawResult forward_query(worker::QueryKind kind,
-                            Session& session,
+                            std::shared_ptr<Session> session,
                             std::optional<protocol::Position> position = {},
                             std::optional<protocol::Range> range = {});
 
@@ -84,14 +84,16 @@ public:
     /// Sends the full buffer content and compile arguments.
     RawResult forward_build(worker::BuildKind kind,
                             const protocol::Position& position,
-                            Session& session);
+                            std::shared_ptr<Session> session);
 
     /// Forward a formatting request to a stateless worker.
-    RawResult forward_format(Session& session, std::optional<protocol::Range> range = {});
+    RawResult forward_format(std::shared_ptr<Session> session,
+                             std::optional<protocol::Range> range = {});
 
     /// Handle completion requests.  Detects preamble context (include/import)
     /// and serves those locally; delegates code completion to a stateless worker.
-    RawResult handle_completion(const protocol::Position& position, Session& session);
+    RawResult handle_completion(const protocol::Position& position,
+                                std::shared_ptr<Session> session);
 
     /// Send an empty diagnostics notification to clear stale markers in the editor.
     void clear_diagnostics(const std::string& uri);
@@ -103,8 +105,7 @@ public:
     kota::task<> stop();
 
 private:
-    kota::task<> run_compile(std::shared_ptr<Session> session,
-                             std::shared_ptr<Session::PendingCompile> pc);
+    kota::task<> run_compile(std::shared_ptr<Session> session);
 
     /// @param scope  When set, cancels the module-dependency wait if this
     ///               compile round is superseded by a newer one.
