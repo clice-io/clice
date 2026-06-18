@@ -767,11 +767,12 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
 /// the race where cancellation wakes all waiters and they all start compiles.
 kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
     auto path_id = session->path_id;
+    auto gen = session->generation;
 
     LOG_DEBUG("ensure_compiled: path_id={} version={} gen={} ast_dirty={}",
               path_id,
               session->version,
-              session->generation,
+              gen,
               session->ast_dirty);
 
     if(!session->ast_dirty) {
@@ -799,6 +800,12 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
         co_await pending->done.wait();
         if(!session->ast_dirty)
             co_return true;
+    }
+
+    // If we fell through (not superseding) and the generation changed while
+    // we were waiting, the session was closed or replaced — don't compile.
+    if(!session->compiling && session->generation != gen) {
+        co_return false;
     }
 
     auto superseded = session->compiling;
