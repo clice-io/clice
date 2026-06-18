@@ -141,18 +141,6 @@ public:
         }
     }
 
-    void moduleImport(clang::SourceLocation import_location,
-                      clang::ModuleIdPath names,
-                      const clang::Module*) override {
-        auto fid = unit.file_id(unit.expansion_location(import_location));
-        auto& import = unit->directives[fid].imports.emplace_back();
-        import.location = import_location;
-        for(auto name: names) {
-            import.name += name.getIdentifierInfo()->getName();
-            import.name_locations.emplace_back(name.getLoc());
-        }
-    }
-
     void HasInclude(clang::SourceLocation location,
                     llvm::StringRef,
                     bool,

@@ -218,10 +218,16 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         builder.params.vfs = overlay;
         builder.params.pcms = built_pcms;
 
-        if(!builder.try_compile())
+        PCMInfo info;
+        auto built = clice::compile(builder.params, info);
+        if(!built.completed()) {
+            for(auto& diag: built.diagnostics()) {
+                LOG_ERROR("{}", diag.message);
+            }
             return false;
+        }
 
-        built_pcms.try_emplace(mod.module_name, *pcm_path);
+        built_pcms.try_emplace(mod.module_name, info.path);
     }
 
     prepare(standard);
