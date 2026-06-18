@@ -43,7 +43,7 @@ struct WorkerPoolOptions {
     std::uint32_t stateful_count = 2;
     std::uint64_t worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB default
     std::string log_dir;
-    unsigned max_restarts = 5;
+    unsigned max_restarts = 2;
 };
 
 class WorkerPool {

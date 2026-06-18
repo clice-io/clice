@@ -251,7 +251,7 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     } else {
         auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
         LOG_ERROR("Worker {} lost: {}", name, result.error().message());
-        exit_signal = SIGKILL;
+        exit_signal = 9;
     }
 
     if(process_crash(index, stateful, exit_code, exit_signal)) {
