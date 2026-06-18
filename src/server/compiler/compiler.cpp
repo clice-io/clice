@@ -729,7 +729,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         OpenFileIndex ofi;
         ofi.file_index = std::move(tu_index.main_file_index);
         ofi.symbols = std::move(tu_index.symbols);
-        ofi.content = session->text;
+        ofi.content = params.text;
         ofi.mapper.emplace(ofi.content, lsp::PositionEncoding::UTF16);
         session->file_index = std::move(ofi);
     }
