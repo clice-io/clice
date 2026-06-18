@@ -1,0 +1,15 @@
+---
+source: document_highlight_tests.cpp
+created_at: 2026-06-18
+input_file: statements/control_flow/document_highlight.cpp
+---
+- { cursor: "5:8 case", highlights: ["4:8 switch", "5:8 case"] }
+- { cursor: "6:8 case", highlights: ["4:8 switch", "5:8 case", "6:8 case", "8:12 continue"] }
+- { cursor: "8:12 continue", highlights: ["3:4 while", "8:12 continue", "12:12 throw", "16:12 break", "17:8 return"] }
+- { cursor: "9:8 case", highlights: ["4:8 switch", "9:8 case", "10:12 break"] }
+- { cursor: "10:12 break", highlights: ["4:8 switch", "9:8 case", "10:12 break"] }
+- { cursor: "11:8 default", highlights: ["4:8 switch", "11:8 default", "12:12 throw"] }
+- { cursor: "12:12 throw", highlights: ["12:12 throw", "17:8 return", "19:4 return"] }
+- { cursor: "16:12 break", highlights: ["3:4 while", "8:12 continue", "12:12 throw", "16:12 break", "17:8 return"] }
+- { cursor: "17:8 return", highlights: ["12:12 throw", "17:8 return", "19:4 return"] }
+- { cursor: "19:4 return", highlights: ["12:12 throw", "17:8 return", "19:4 return"] }

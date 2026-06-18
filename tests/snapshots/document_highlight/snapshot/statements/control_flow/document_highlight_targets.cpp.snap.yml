@@ -1,0 +1,25 @@
+---
+source: document_highlight_tests.cpp
+created_at: 2026-06-19
+input_file: statements/control_flow/document_highlight_targets.cpp
+---
+- { cursor: "4:8 return", highlights: ["4:8 return", "6:8 throw", "10:4 return"] }
+- { cursor: "6:8 throw", highlights: ["4:8 return", "6:8 throw", "10:4 return"] }
+- { cursor: "8:8 return", highlights: ["8:8 return"] }
+- { cursor: "10:4 return", highlights: ["4:8 return", "6:8 throw", "10:4 return"] }
+- { cursor: "16:12 break", highlights: ["14:4 while", "16:12 break", "18:12 continue"] }
+- { cursor: "18:12 continue", highlights: ["14:4 while", "16:12 break", "18:12 continue"] }
+- { cursor: "20:12 case", highlights: ["19:8 switch", "20:12 case", "20:20 break"] }
+- { cursor: "20:20 break", highlights: ["19:8 switch", "20:12 case", "20:20 break"] }
+- { cursor: "23:12 break", highlights: ["22:8 for", "23:12 break", "24:12 continue"] }
+- { cursor: "24:12 continue", highlights: ["22:8 for", "23:12 break", "24:12 continue"] }
+- { cursor: "27:4 return", highlights: ["27:4 return"] }
+- { cursor: "32:8 case", highlights: ["31:4 switch", "32:8 case", "32:16 break"] }
+- { cursor: "32:16 break", highlights: ["31:4 switch", "32:8 case", "32:16 break"] }
+- { cursor: "33:8 default", highlights: ["31:4 switch", "33:8 default", "33:17 break"] }
+- { cursor: "33:17 break", highlights: ["31:4 switch", "33:8 default", "33:17 break"] }
+- { cursor: "39:8 case", highlights: ["38:4 switch", "39:8 case"] }
+- { cursor: "40:8 case", highlights: ["38:4 switch", "39:8 case", "40:8 case", "40:16 break"] }
+- { cursor: "40:16 break", highlights: ["38:4 switch", "39:8 case", "40:8 case", "40:16 break"] }
+- { cursor: "41:8 default", highlights: ["38:4 switch", "41:8 default", "41:17 throw"] }
+- { cursor: "41:17 throw", highlights: ["41:17 throw"] }

@@ -225,6 +225,11 @@ struct DocumentSymbol {
     std::vector<DocumentSymbol> children;
 };
 
+struct DocumentHighlight {
+    LocalSourceRange range;
+    protocol::DocumentHighlightKind kind = protocol::DocumentHighlightKind::Text;
+};
+
 enum class HintCategory : std::uint8_t {
     Parameter,
     DefaultArgument,
@@ -252,6 +257,11 @@ auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
 auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol>;
+
+auto document_highlights(CompilationUnitRef unit, std::uint32_t offset)
+    -> std::vector<DocumentHighlight>;
+auto document_highlights(CompilationUnitRef unit, std::uint32_t offset, PositionEncoding encoding)
+    -> std::vector<protocol::DocumentHighlight>;
 
 auto inlay_hints(CompilationUnitRef unit,
                  LocalSourceRange target,
