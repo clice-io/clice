@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "command/command.h"
 #include "command/toolchain.h"
@@ -56,6 +57,8 @@ struct HeaderFileContext {
 struct OpenFileIndex {
     index::FileIndex file_index;
     index::SymbolTable symbols;
+    std::vector<std::string> include_paths;
+    std::vector<index::IncludeLocation> include_locations;
     std::string content;  ///< Buffer text at index time (for position mapping).
 
     /// Cached PositionMapper built from `content`.  Avoids re-scanning line
@@ -66,6 +69,9 @@ struct OpenFileIndex {
     /// Returns (symbol_hash, LSP range) with positions already converted.
     std::optional<std::pair<index::SymbolHash, protocol::Range>>
         find_occurrence(std::uint32_t offset) const;
+
+    /// Find an include definition target path id at byte offset.
+    std::optional<std::uint32_t> find_include_definition(std::uint32_t offset) const;
 
     /// Iterate relations matching `kind`, calling back with pre-converted ranges.
     /// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).
@@ -114,6 +120,9 @@ struct MergedIndexShard {
     /// Returns (symbol_hash, LSP range) with positions already converted.
     std::optional<std::pair<index::SymbolHash, protocol::Range>>
         find_occurrence(std::uint32_t offset) const;
+
+    /// Find an include definition target path id at byte offset.
+    std::optional<std::uint32_t> find_include_definition(std::uint32_t offset) const;
 
     /// Iterate relations matching `kind`, calling back with pre-converted ranges.
     /// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).

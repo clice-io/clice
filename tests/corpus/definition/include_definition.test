@@ -1,0 +1,11 @@
+#[test.h]
+#pragma once
+int from_test;
+
+#[macro.h]
+int from_macro;
+
+#[main.cpp]
+#define HEADER "macro.h"
+#$(outside)include "$(quoted)test.h"
+#include $(macro)HEADER

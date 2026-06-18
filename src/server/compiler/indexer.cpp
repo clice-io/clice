@@ -26,6 +26,23 @@ namespace clice {
 
 namespace lsp = kota::ipc::lsp;
 
+namespace {
+
+auto zero_range() -> protocol::Range {
+    auto pos = protocol::Position{.line = 0, .character = 0};
+    return protocol::Range{.start = pos, .end = pos};
+}
+
+auto file_location(llvm::StringRef path) -> std::optional<protocol::Location> {
+    auto uri = lsp::URI::from_file_path(std::string(path));
+    if(!uri) {
+        return std::nullopt;
+    }
+    return protocol::Location{.uri = uri->str(), .range = zero_range()};
+}
+
+}  // namespace
+
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
     auto tu_index = index::TUIndex::from(tu_index_data);
     if(tu_index.graph.paths.empty()) {
@@ -243,10 +260,57 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
     return {};
 }
 
+std::optional<protocol::Location>
+    Indexer::find_include_definition(llvm::StringRef path,
+                                     const protocol::Position& position,
+                                     Session* session) {
+    if(session && session->file_index && session->file_index->mapper) {
+        auto offset = session->file_index->mapper->to_offset(position);
+        if(!offset) {
+            return std::nullopt;
+        }
+        auto target = session->file_index->find_include_definition(*offset);
+        if(target && *target < session->file_index->include_paths.size()) {
+            return file_location(session->file_index->include_paths[*target]);
+        }
+    }
+
+    const std::string* doc_text = session ? &session->text : nullptr;
+    if(!doc_text) {
+        return std::nullopt;
+    }
+    lsp::PositionMapper doc_mapper(*doc_text, lsp::PositionEncoding::UTF16);
+    auto offset = doc_mapper.to_offset(position);
+    if(!offset) {
+        return std::nullopt;
+    }
+
+    auto proj_it = workspace.project_index.path_pool.find(path);
+    if(proj_it == workspace.project_index.path_pool.cache.end()) {
+        return std::nullopt;
+    }
+    auto shard_it = workspace.merged_indices.find(proj_it->second);
+    if(shard_it == workspace.merged_indices.end()) {
+        return std::nullopt;
+    }
+
+    auto target = shard_it->second.find_include_definition(*offset);
+    if(!target || *target >= workspace.project_index.path_pool.paths.size()) {
+        return std::nullopt;
+    }
+    return file_location(workspace.project_index.path_pool.path(*target));
+}
+
 std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
                                                          const protocol::Position& position,
                                                          RelationKind kind,
                                                          Session* session) {
+    if(kind.value() == RelationKind::Definition) {
+        if(auto include = find_include_definition(path, position, session)) {
+            return {*include};
+        }
+    }
+
     auto hit = resolve_cursor(path, position, session);
     if(hit.hash == 0)
         return {};

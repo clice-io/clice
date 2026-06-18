@@ -1,0 +1,8 @@
+---
+source: include_definition_tests.cpp
+created_at: 2026-06-18
+input_file: definition/include_definition.test
+---
+- { point: "macro", target: "macro.h", range: "0:0-0:0" }
+- { point: "outside" }
+- { point: "quoted", target: "test.h", range: "0:0-0:0" }

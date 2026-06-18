@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "index/tu_index.h"
@@ -47,6 +48,10 @@ public:
     void lookup(this const Self& self,
                 std::uint32_t offset,
                 llvm::function_ref<bool(const Occurrence&)> callback);
+
+    /// Find the included path id for an include directive argument at `offset`.
+    std::optional<std::uint32_t> find_include_definition(this const Self& self,
+                                                         std::uint32_t offset);
 
     /// Lookup the relations of given symbol.
     void lookup(this const Self& self,

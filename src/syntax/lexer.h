@@ -82,4 +82,17 @@ std::optional<LocalSourceRange>
                             std::uint32_t offset,
                             const clang::LangOptions* lang_opts = nullptr);
 
+struct DirectiveArgument {
+    LocalSourceRange range;
+    std::uint32_t line = 0;
+};
+
+/// Find the directive argument containing `offset`.
+/// Returns its source range and 1-based line number, or nullopt if `offset`
+/// is not inside a directive argument.
+std::optional<DirectiveArgument>
+    find_directive_argument_at(llvm::StringRef content,
+                               std::uint32_t offset,
+                               const clang::LangOptions* lang_opts = nullptr);
+
 }  // namespace clice
