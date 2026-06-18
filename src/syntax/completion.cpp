@@ -9,6 +9,11 @@
 
 namespace clice {
 
+// TODO: cache newline offsets from incremental text updates to avoid the
+// linear rfind/find scans on every completion trigger.
+// FIXME: the import detection is purely textual and can false-positive on a
+// type named `import` (context-sensitive keyword). Use the module-name
+// scanner from the syntax module for precise disambiguation.
 PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset) {
     auto line_start = text.rfind('\n', offset > 0 ? offset - 1 : 0);
     line_start = (line_start == llvm::StringRef::npos) ? 0 : line_start + 1;
@@ -51,6 +56,11 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
     return {};
 }
 
+// FIXME: exclude the current file's own module name from results (self-import
+// is never valid). Needs the requesting path_id passed in.
+// TODO: path_to_module is only refreshed on file save; unsaved new module files
+// won't appear in completions until written to disk. Consider updating the map
+// on didChange when module declarations are detected incrementally.
 std::vector<std::string>
     complete_module_import(const llvm::DenseMap<std::uint32_t, std::string>& modules,
                            llvm::StringRef prefix) {
