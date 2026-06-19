@@ -479,11 +479,11 @@ public:
 
 class SemanticTokenEncoder {
 public:
-    SemanticTokenEncoder(llvm::StringRef content,
-                         std::span<const std::uint32_t> line_starts,
+    SemanticTokenEncoder(CompilationUnitRef unit,
                          PositionEncoding encoding,
                          protocol::SemanticTokens& output) :
-        content(content), line_starts(line_starts), encoding(encoding), output(output) {}
+        content(unit.interested_content()), line_starts(unit.line_starts()), encoding(encoding),
+        output(output) {}
 
     void append(const SemanticToken& token) {
         if(!token.range.valid() || token.range.end <= token.range.begin ||
@@ -582,7 +582,7 @@ auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     protocol::SemanticTokens result;
     result.data.reserve(tokens.size() * 5);
 
-    SemanticTokenEncoder encoder(unit.interested_content(), unit.line_starts(), encoding, result);
+    SemanticTokenEncoder encoder(unit, encoding, result);
     for(const auto& token: tokens) {
         encoder.append(token);
     }

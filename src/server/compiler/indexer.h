@@ -42,7 +42,7 @@ struct SymbolInfo {
 ///
 /// Indexer holds no index data of its own.  All persistent data lives in
 /// Workspace (disk-derived ProjectIndex + MergedIndex shards) and per-file
-/// data lives in Session (FileOverlay views from unsaved buffers).
+/// data lives in Session (file index from unsaved buffers).
 ///
 /// Responsibilities:
 ///   - Cross-file navigation queries (definition, references, hierarchy)
@@ -55,9 +55,9 @@ struct SymbolInfo {
 ///   - Document lifecycle — handled by MasterServer
 class Indexer {
 public:
-    /// Visitor for iterating open-file overlays.  Returns false to stop early.
+    /// Visitor for iterating open Sessions.  Returns false to stop early.
     using OverlayVisitor =
-        std::function<bool(std::uint32_t server_path_id, const FileOverlay& overlay)>;
+        std::function<bool(std::uint32_t server_path_id, const Session& session)>;
 
     Indexer(kota::event_loop& loop,
             Workspace& workspace,
@@ -193,19 +193,19 @@ public:
     /// Cancel background indexing and wait for all tasks to settle.
     kota::task<> stop();
 
-    /// Iterate all open-file overlays via the callback set at construction.
-    void for_each_overlay(OverlayVisitor visitor) const {
+    /// Iterate all open Sessions via the callback set at construction.
+    void for_each_session(OverlayVisitor visitor) const {
         if(each_overlay)
             each_overlay(std::move(visitor));
     }
 
-    /// Invoke a callback with the overlay for a specific server-level path_id.
-    /// The callback is not invoked if no overlay exists for that path_id.
+    /// Invoke a callback with the Session for a specific server-level path_id.
+    /// The callback is not invoked if no Session exists for that path_id.
     template <typename Fn>
-    void with_overlay(std::uint32_t server_path_id, Fn&& fn) const {
-        for_each_overlay([&](std::uint32_t id, const FileOverlay& overlay) -> bool {
+    void with_session(std::uint32_t server_path_id, Fn&& fn) const {
+        for_each_session([&](std::uint32_t id, const Session& session) -> bool {
             if(id == server_path_id) {
-                fn(overlay);
+                fn(session);
                 return false;
             }
             return true;
@@ -282,7 +282,7 @@ private:
     /// Checks if a server-level path_id has an open Session.
     std::function<bool(std::uint32_t)> is_open;
 
-    /// Iterates all open-file overlays (FileOverlay views from live compilations).
+    /// Iterates all open Sessions with valid file indices.
     std::function<void(OverlayVisitor)> each_overlay;
 
     /// LSP peer for progress reporting (optional, not owned).

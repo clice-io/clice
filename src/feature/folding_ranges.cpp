@@ -349,14 +349,12 @@ auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange> {
 auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::FoldingRange> {
     auto collected = folding_ranges(unit);
-    auto content = unit.interested_content();
-    auto line_starts = unit.line_starts();
 
     std::vector<protocol::FoldingRange> result;
     result.reserve(collected.size());
 
     for(const auto& item: collected) {
-        auto [start, end] = to_range(content, line_starts, encoding, item.range);
+        auto [start, end] = to_range(unit, encoding, item.range);
 
         protocol::FoldingRange range{
             .start_line = start.line,

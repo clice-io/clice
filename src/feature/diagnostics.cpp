@@ -78,9 +78,6 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         }
     };
 
-    auto main_content = unit.interested_content();
-    auto main_line_starts = unit.line_starts();
-
     for(const auto& raw: unit.diagnostics()) {
         auto level = raw.id.level;
 
@@ -135,7 +132,7 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         }
 
         if(raw.fid == unit.interested_file()) {
-            diagnostic.range = to_range(main_content, main_line_starts, encoding, raw.range);
+            diagnostic.range = to_range(unit, encoding, raw.range);
             current = std::move(diagnostic);
             continue;
         }
@@ -153,7 +150,7 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         auto offset = unit.file_offset(include_location);
         auto end_offset =
             static_cast<std::uint32_t>(offset + unit.token_spelling(include_location).size());
-        diagnostic.range = to_range(main_content, main_line_starts, encoding, {offset, end_offset});
+        diagnostic.range = to_range(unit, encoding, {offset, end_offset});
 
         current = std::move(diagnostic);
     }

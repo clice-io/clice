@@ -188,9 +188,9 @@ bool Indexer::need_update(llvm::StringRef file_path) {
 
 bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const {
     bool found = false;
-    for_each_overlay([&](std::uint32_t, const FileOverlay& overlay) -> bool {
-        auto it = overlay.symbols.find(hash);
-        if(it != overlay.symbols.end()) {
+    for_each_session([&](std::uint32_t, const Session& session) -> bool {
+        auto it = session.symbols->find(hash);
+        if(it != session.symbols->end()) {
             name = it->second.name;
             kind = it->second.kind;
             found = true;
@@ -276,13 +276,13 @@ std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
         }
     }
 
-    for_each_overlay([&](std::uint32_t id, const FileOverlay& overlay) -> bool {
+    for_each_session([&](std::uint32_t id, const Session& session) -> bool {
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
             return true;
-        find_relations(overlay.file_index,
-                       overlay.content,
-                       overlay.line_starts,
+        find_relations(*session.file_index,
+                       session.text,
+                       session.line_starts,
                        hit.hash,
                        kind,
                        [&](const auto&, protocol::Range range) {
@@ -312,24 +312,24 @@ std::optional<SymbolInfo> Indexer::lookup_symbol(const std::string& uri,
 }
 
 std::optional<protocol::Location> Indexer::find_definition_location(index::SymbolHash hash) {
-    std::optional<protocol::Location> overlay_result;
-    for_each_overlay([&](std::uint32_t id, const FileOverlay& overlay) -> bool {
+    std::optional<protocol::Location> session_result;
+    for_each_session([&](std::uint32_t id, const Session& session) -> bool {
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
             return true;
-        find_relations(overlay.file_index,
-                       overlay.content,
-                       overlay.line_starts,
+        find_relations(*session.file_index,
+                       session.text,
+                       session.line_starts,
                        hash,
                        RelationKind::Definition,
                        [&](const auto&, protocol::Range range) {
-                           overlay_result = protocol::Location{uri->str(), range};
+                           session_result = protocol::Location{uri->str(), range};
                            return false;
                        });
-        return !overlay_result.has_value();
+        return !session_result.has_value();
     });
-    if(overlay_result)
-        return overlay_result;
+    if(session_result)
+        return session_result;
 
     // Fall back to ProjectIndex reference files.
     auto sym_it = workspace.project_index.symbols.find(hash);
@@ -396,10 +396,10 @@ void Indexer::collect_grouped_relations(
             });
         }
     }
-    for_each_overlay([&](std::uint32_t, const FileOverlay& overlay) -> bool {
-        find_relations(overlay.file_index,
-                       overlay.content,
-                       overlay.line_starts,
+    for_each_session([&](std::uint32_t, const Session& session) -> bool {
+        find_relations(*session.file_index,
+                       session.text,
+                       session.line_starts,
                        hash,
                        kind,
                        [&](const auto& r, protocol::Range range) {
@@ -431,9 +431,9 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
             });
         }
     }
-    for_each_overlay([&](std::uint32_t, const FileOverlay& overlay) -> bool {
-        auto rel_it = overlay.file_index.relations.find(hash);
-        if(rel_it == overlay.file_index.relations.end())
+    for_each_session([&](std::uint32_t, const Session& session) -> bool {
+        auto rel_it = session.file_index->relations.find(hash);
+        if(rel_it == session.file_index->relations.end())
             return true;
         for(auto& r: rel_it->second) {
             if(r.kind & kind) {
@@ -475,10 +475,10 @@ static std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
 }
 
 std::optional<Indexer::DefinitionText> Indexer::get_definition_text(index::SymbolHash hash) {
-    std::optional<DefinitionText> overlay_result;
-    for_each_overlay([&](std::uint32_t id, const FileOverlay& overlay) -> bool {
-        auto it = overlay.file_index.relations.find(hash);
-        if(it == overlay.file_index.relations.end())
+    std::optional<DefinitionText> session_result;
+    for_each_session([&](std::uint32_t id, const Session& session) -> bool {
+        auto it = session.file_index->relations.find(hash);
+        if(it == session.file_index->relations.end())
             return true;
         for(auto& rel: it->second) {
             if(rel.kind.value() != RelationKind::Definition)
@@ -486,31 +486,31 @@ std::optional<Indexer::DefinitionText> Indexer::get_definition_text(index::Symbo
             auto def_range = std::bit_cast<LocalSourceRange>(rel.target_symbol);
             if(def_range.begin >= def_range.end)
                 continue;
-            if(def_range.end > overlay.content.size())
+            if(def_range.end > session.text.size())
                 continue;
-            auto start = lsp::to_position(overlay.content,
-                                          overlay.line_starts,
+            auto start = lsp::to_position(session.text,
+                                          session.line_starts,
                                           lsp::PositionEncoding::UTF16,
                                           def_range.begin);
-            auto end = lsp::to_position(overlay.content,
-                                        overlay.line_starts,
+            auto end = lsp::to_position(session.text,
+                                        session.line_starts,
                                         lsp::PositionEncoding::UTF16,
                                         def_range.end);
             if(!start || !end)
                 continue;
-            overlay_result = DefinitionText{
+            session_result = DefinitionText{
                 .file = std::string(workspace.path_pool.resolve(id)),
                 .start_line = static_cast<int>(start->line) + 1,
                 .end_line = static_cast<int>(end->line) + 1,
                 .text = std::string(
-                    overlay.content.substr(def_range.begin, def_range.end - def_range.begin)),
+                    session.text.substr(def_range.begin, def_range.end - def_range.begin)),
             };
             return false;
         }
         return true;
     });
-    if(overlay_result)
-        return overlay_result;
+    if(session_result)
+        return session_result;
 
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it == workspace.project_index.symbols.end())
@@ -590,17 +590,17 @@ std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::Sy
         }
     }
 
-    for_each_overlay([&](std::uint32_t id, const FileOverlay& overlay) -> bool {
-        auto it = overlay.file_index.relations.find(hash);
-        if(it == overlay.file_index.relations.end())
+    for_each_session([&](std::uint32_t id, const Session& session) -> bool {
+        auto it = session.file_index->relations.find(hash);
+        if(it == session.file_index->relations.end())
             return true;
         auto file_path = workspace.path_pool.resolve(id);
 
         for(auto& rel: it->second) {
             if(rel.kind != kind)
                 continue;
-            auto start = lsp::to_position(overlay.content,
-                                          overlay.line_starts,
+            auto start = lsp::to_position(session.text,
+                                          session.line_starts,
                                           lsp::PositionEncoding::UTF16,
                                           rel.range.begin);
             if(!start)
@@ -608,7 +608,7 @@ std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::Sy
             results.push_back(ReferenceWithContext{
                 .file = file_path.str(),
                 .line = static_cast<int>(start->line) + 1,
-                .context = extract_line(overlay.content, rel.range.begin),
+                .context = extract_line(session.text, rel.range.begin),
             });
         }
         return true;
@@ -718,10 +718,10 @@ std::vector<protocol::SymbolInformation> Indexer::search_symbols(llvm::StringRef
         seen.insert(hash);
     }
 
-    for_each_overlay([&](std::uint32_t, const FileOverlay& overlay) -> bool {
+    for_each_session([&](std::uint32_t, const Session& session) -> bool {
         if(results.size() >= max_results)
             return false;
-        for(auto& [hash, symbol]: overlay.symbols) {
+        for(auto& [hash, symbol]: *session.symbols) {
             if(results.size() >= max_results)
                 return false;
             if(seen.contains(hash))

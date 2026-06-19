@@ -1310,8 +1310,7 @@ auto to_protocol_hover(CompilationUnitRef unit,
     };
 
     if(info.symbol_range) {
-        result.range =
-            to_range(unit.interested_content(), unit.line_starts(), encoding, *info.symbol_range);
+        result.range = to_range(unit, encoding, *info.symbol_range);
     }
 
     return result;

@@ -53,15 +53,6 @@ struct HeaderFileContext {
     std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
 };
 
-/// Non-owning view of an open file's index data for overlay queries.
-/// Constructed by MasterServer from Session fields and passed to Indexer.
-struct FileOverlay {
-    const index::FileIndex& file_index;
-    const index::SymbolTable& symbols;
-    std::string_view content;
-    std::span<const std::uint32_t> line_starts;
-};
-
 /// Find the tightest occurrence at `offset` using `line_starts` for conversion.
 std::optional<std::pair<index::SymbolHash, protocol::Range>>
     find_occurrence(const index::FileIndex& file_index,

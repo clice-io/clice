@@ -33,6 +33,18 @@ inline auto to_range(std::string_view content,
     };
 }
 
+inline auto to_position(CompilationUnitRef unit,
+                        lsp::PositionEncoding encoding,
+                        std::uint32_t offset) -> std::optional<protocol::Position> {
+    return lsp::to_position(unit.interested_content(), unit.line_starts(), encoding, offset);
+}
+
+inline auto to_range(CompilationUnitRef unit,
+                     lsp::PositionEncoding encoding,
+                     LocalSourceRange range) -> protocol::Range {
+    return to_range(unit.interested_content(), unit.line_starts(), encoding, range);
+}
+
 struct CodeCompletionOptions {
     bool enable_keyword_snippet = false;
     bool enable_function_arguments_snippet = false;

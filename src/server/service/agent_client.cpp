@@ -101,8 +101,8 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
 
         for(auto& [hash, symbol]: workspace.project_index.symbols)
             try_symbol(hash, symbol);
-        indexer.for_each_overlay([&](std::uint32_t, const FileOverlay& overlay) -> bool {
-            for(auto& [hash, symbol]: overlay.symbols)
+        indexer.for_each_session([&](std::uint32_t, const Session& session) -> bool {
+            for(auto& [hash, symbol]: *session.symbols)
                 try_symbol(hash, symbol);
             return true;
         });
@@ -119,14 +119,14 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
         auto pool_it = workspace.path_pool.cache.find(path_str);
         auto server_id = pool_it != workspace.path_pool.cache.end() ? pool_it->second : ~0u;
         if(server_id != ~0u) {
-            std::vector<ResolvedSymbol> overlay_result;
-            indexer.with_overlay(server_id, [&](const FileOverlay& overlay) {
-                for(auto& [hash, rels]: overlay.file_index.relations) {
+            std::vector<ResolvedSymbol> session_result;
+            indexer.with_session(server_id, [&](const Session& session) {
+                for(auto& [hash, rels]: session.file_index->relations) {
                     for(auto& rel: rels) {
                         if(rel.kind.value() != RelationKind::Definition)
                             continue;
-                        auto start = lsp::to_position(overlay.content,
-                                                      overlay.line_starts,
+                        auto start = lsp::to_position(session.text,
+                                                      session.line_starts,
                                                       lsp::PositionEncoding::UTF16,
                                                       rel.range.begin);
                         if(start && start->line == target_line) {
@@ -136,14 +136,14 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
                                 continue;
                             if(kind == SymbolKind::Parameter || kind == SymbolKind::Label)
                                 continue;
-                            overlay_result.push_back(
+                            session_result.push_back(
                                 {hash, std::move(name), kind, path_str, *loc.line});
                         }
                     }
                 }
             });
-            if(!overlay_result.empty())
-                return overlay_result;
+            if(!session_result.empty())
+                return session_result;
         }
 
         auto it = workspace.project_index.path_pool.find(path_str);
@@ -436,8 +436,8 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
         for(auto& [hash, symbol]: srv.workspace.project_index.symbols)
             try_symbol(hash, symbol);
-        srv.indexer.for_each_overlay([&](std::uint32_t, const FileOverlay& overlay) -> bool {
-            for(auto& [hash, symbol]: overlay.symbols)
+        srv.indexer.for_each_session([&](std::uint32_t, const Session& session) -> bool {
+            for(auto& [hash, symbol]: *session.symbols)
                 try_symbol(hash, symbol);
             return true;
         });
@@ -492,10 +492,10 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(pool_it == srv.workspace.path_pool.cache.end())
                 co_return result;
             auto server_id = pool_it->second;
-            bool found_overlay = false;
-            srv.indexer.with_overlay(server_id, [&](const FileOverlay& overlay) {
-                found_overlay = true;
-                for(auto& [hash, rels]: overlay.file_index.relations) {
+            bool found_session = false;
+            srv.indexer.with_session(server_id, [&](const Session& session) {
+                found_session = true;
+                for(auto& [hash, rels]: session.file_index->relations) {
                     for(auto& rel: rels) {
                         if(rel.kind.value() != RelationKind::Definition)
                             continue;
@@ -505,12 +505,12 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                             continue;
                         if(!is_document_level(kind))
                             continue;
-                        auto start = lsp::to_position(overlay.content,
-                                                      overlay.line_starts,
+                        auto start = lsp::to_position(session.text,
+                                                      session.line_starts,
                                                       lsp::PositionEncoding::UTF16,
                                                       rel.range.begin);
-                        auto end = lsp::to_position(overlay.content,
-                                                    overlay.line_starts,
+                        auto end = lsp::to_position(session.text,
+                                                    session.line_starts,
                                                     lsp::PositionEncoding::UTF16,
                                                     rel.range.end);
                         if(start && end) {
@@ -526,7 +526,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     }
                 }
             });
-            if(found_overlay)
+            if(found_session)
                 co_return result;
 
             auto it = srv.workspace.project_index.path_pool.find(params.path);
