@@ -151,11 +151,9 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         }
 
         auto offset = unit.file_offset(include_location);
-        auto end_offset = offset + unit.token_spelling(include_location).size();
-        diagnostic.range = protocol::Range{
-            .start = *lsp::to_position(main_content, main_line_starts, encoding, offset),
-            .end = *lsp::to_position(main_content, main_line_starts, encoding, end_offset),
-        };
+        auto end_offset =
+            static_cast<std::uint32_t>(offset + unit.token_spelling(include_location).size());
+        diagnostic.range = to_range(main_content, main_line_starts, encoding, {offset, end_offset});
 
         current = std::move(diagnostic);
     }

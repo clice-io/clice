@@ -18,7 +18,6 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
     }
 
     auto content = unit.interested_content();
-    auto line_starts = unit.line_starts();
     auto& directives = directives_it->second;
     auto* lang_opts = &unit.lang_options();
 
@@ -29,7 +28,8 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
         auto range = find_directive_argument(content, offset, lang_opts);
         if(!range)
             return;
-        protocol::DocumentLink link{.range = to_range(content, line_starts, encoding, *range)};
+        protocol::DocumentLink link{.range =
+                                        to_range(content, unit.line_starts(), encoding, *range)};
         link.target = target.str();
         links.push_back(std::move(link));
     };

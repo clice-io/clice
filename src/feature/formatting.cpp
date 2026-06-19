@@ -56,14 +56,12 @@ auto document_format(llvm::StringRef file,
     auto line_starts = lsp::build_line_starts(content);
 
     for(const auto& replacement: *replacements) {
-        protocol::TextEdit edit;
-        edit.range.start =
-            *lsp::to_position(content, line_starts, encoding, replacement.getOffset());
-        edit.range.end = *lsp::to_position(content,
-                                           line_starts,
-                                           encoding,
-                                           replacement.getOffset() + replacement.getLength());
-        edit.new_text = replacement.getReplacementText().str();
+        auto begin = replacement.getOffset();
+        auto end = begin + replacement.getLength();
+        protocol::TextEdit edit{
+            .range = to_range(content, line_starts, encoding, {begin, end}),
+            .new_text = replacement.getReplacementText().str(),
+        };
         edits.push_back(std::move(edit));
     }
 

@@ -256,10 +256,7 @@ public:
         FuzzyMatcher matcher(prefix.spelling);
 
         auto line_starts = lsp::build_line_starts(content);
-        auto replace_range = protocol::Range{
-            .start = *lsp::to_position(content, line_starts, encoding, prefix.range.begin),
-            .end = *lsp::to_position(content, line_starts, encoding, prefix.range.end),
-        };
+        auto replace_range = to_range(content, line_starts, encoding, prefix.range);
 
         std::vector<protocol::CompletionItem> collected;
         collected.reserve(candidate_count);

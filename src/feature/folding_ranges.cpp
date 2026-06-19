@@ -356,8 +356,7 @@ auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
     result.reserve(collected.size());
 
     for(const auto& item: collected) {
-        auto start = *lsp::to_position(content, line_starts, encoding, item.range.begin);
-        auto end = *lsp::to_position(content, line_starts, encoding, item.range.end);
+        auto [start, end] = to_range(content, line_starts, encoding, item.range);
 
         protocol::FoldingRange range{
             .start_line = start.line,
