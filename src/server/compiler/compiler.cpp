@@ -726,12 +726,8 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
 
     if(!result.value().tu_index_data.empty()) {
         auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
-        OpenFileIndex ofi;
-        ofi.file_index = std::move(tu_index.main_file_index);
-        ofi.symbols = std::move(tu_index.symbols);
-        ofi.content = params.text;
-        ofi.mapper.emplace(ofi.content, lsp::PositionEncoding::UTF16);
-        session->file_index = std::move(ofi);
+        session->file_index = std::move(tu_index.main_file_index);
+        session->symbols = std::move(tu_index.symbols);
     }
 
     auto version = session->version;
@@ -839,6 +835,7 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     auto path = std::string(workspace.path_pool.resolve(path_id));
     auto gen = session->generation;
     auto text = session->text;
+    auto line_starts = session->line_starts;
 
     if(!co_await ensure_compiled(session)) {
         co_return serde_raw{"null"};
@@ -852,18 +849,16 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     wp.kind = kind;
     wp.path = path;
 
-    lsp::PositionMapper mapper(text, lsp::PositionEncoding::UTF16);
-
     if(position) {
-        auto offset = mapper.to_offset(*position);
+        auto offset = lsp::to_offset(text, line_starts, lsp::PositionEncoding::UTF16, *position);
         if(!offset)
             co_return serde_raw{"null"};
         wp.offset = *offset;
     }
 
     if(range) {
-        auto start = mapper.to_offset(range->start);
-        auto end = mapper.to_offset(range->end);
+        auto start = lsp::to_offset(text, line_starts, lsp::PositionEncoding::UTF16, range->start);
+        auto end = lsp::to_offset(text, line_starts, lsp::PositionEncoding::UTF16, range->end);
         if(start && end) {
             wp.range = {*start, *end};
         }
@@ -882,6 +877,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
     auto gen = session->generation;
+    auto line_starts = session->line_starts;
 
     worker::BuildParams wp;
     wp.kind = kind;
@@ -900,8 +896,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
         co_return serde_raw{};
     }
 
-    lsp::PositionMapper mapper(wp.text, lsp::PositionEncoding::UTF16);
-    auto offset = mapper.to_offset(position);
+    auto offset = lsp::to_offset(wp.text, line_starts, lsp::PositionEncoding::UTF16, position);
     if(!offset)
         co_return serde_raw{"null"};
     wp.offset = *offset;
@@ -924,9 +919,10 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     wp.text = session->text;
 
     if(range) {
-        lsp::PositionMapper mapper(wp.text, lsp::PositionEncoding::UTF16);
-        auto begin = mapper.to_offset(range->start);
-        auto end = mapper.to_offset(range->end);
+        auto line_starts = lsp::build_line_starts(wp.text);
+        auto begin =
+            lsp::to_offset(wp.text, line_starts, lsp::PositionEncoding::UTF16, range->start);
+        auto end = lsp::to_offset(wp.text, line_starts, lsp::PositionEncoding::UTF16, range->end);
         if(!begin || !end)
             co_return serde_raw{"null"};
         wp.format_range = {*begin, *end};
@@ -944,8 +940,8 @@ Compiler::RawResult Compiler::handle_completion(const protocol::Position& positi
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
 
-    lsp::PositionMapper mapper(session->text, lsp::PositionEncoding::UTF16);
-    auto offset = mapper.to_offset(position);
+    auto offset =
+        lsp::to_offset(session->text, session->line_starts, lsp::PositionEncoding::UTF16, position);
     if(offset) {
         auto pctx = detect_completion_context(session->text, *offset);
         if(pctx.kind == CompletionContext::IncludeQuoted ||

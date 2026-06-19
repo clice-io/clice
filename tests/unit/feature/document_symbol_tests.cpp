@@ -1,7 +1,10 @@
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <functional>
 #include <memory>
+#include <span>
+#include <string_view>
 #include <vector>
 
 #include "test/test.h"
@@ -184,18 +187,22 @@ VAR(test)
 }
 
 void format_document_symbols(std::string& out,
-                             const feature::PositionMapper& mapper,
+                             std::string_view content,
+                             std::span<const std::uint32_t> line_starts,
+                             feature::PositionEncoding encoding,
                              llvm::ArrayRef<feature::DocumentSymbol> nodes,
                              int depth) {
     auto pad = std::string(depth * 2, ' ');
     for(auto& node: nodes) {
         auto kind = kota::meta::enum_name(static_cast<SymbolKind::Kind>(node.kind), "Unknown");
-        auto start = mapper.to_position(node.range.begin);
-        auto end = mapper.to_position(node.range.end);
+        auto start = feature::lsp::to_position(content, line_starts, encoding, node.range.begin);
+        auto end = feature::lsp::to_position(content, line_starts, encoding, node.range.end);
         if(!start || !end)
             continue;
-        auto sel_start = mapper.to_position(node.selection_range.begin);
-        auto sel_end = mapper.to_position(node.selection_range.end);
+        auto sel_start =
+            feature::lsp::to_position(content, line_starts, encoding, node.selection_range.begin);
+        auto sel_end =
+            feature::lsp::to_position(content, line_starts, encoding, node.selection_range.end);
         out += std::format("- {}{{ name: {}, kind: {}, range: \"{}:{}-{}:{}\"",
                            pad,
                            yaml_str(node.name),
@@ -216,7 +223,7 @@ void format_document_symbols(std::string& out,
         }
         out += " }\n";
         if(!node.children.empty()) {
-            format_document_symbols(out, mapper, node.children, depth + 1);
+            format_document_symbols(out, content, line_starts, encoding, node.children, depth + 1);
         }
     }
 }
@@ -226,9 +233,14 @@ TEST_CASE(snapshot) {
         if(!compile_file(path))
             return "COMPILE_ERROR";
         auto content = unit->interested_content();
-        feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+        auto line_starts = feature::lsp::build_line_starts(content);
         std::string result;
-        format_document_symbols(result, mapper, feature::document_symbols(*unit), 0);
+        format_document_symbols(result,
+                                content,
+                                line_starts,
+                                feature::PositionEncoding::UTF8,
+                                feature::document_symbols(*unit),
+                                0);
         return result;
     });
 }

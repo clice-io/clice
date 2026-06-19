@@ -2,7 +2,9 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "compile/compilation.h"
@@ -15,16 +17,19 @@
 
 namespace clice::feature {
 
+namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 using kota::ipc::lsp::PositionEncoding;
-using kota::ipc::lsp::PositionMapper;
 using kota::ipc::lsp::parse_position_encoding;
 
-inline auto to_range(const PositionMapper& converter, LocalSourceRange range) -> protocol::Range {
+inline auto to_range(std::string_view content,
+                     std::span<const std::uint32_t> line_starts,
+                     lsp::PositionEncoding encoding,
+                     LocalSourceRange range) -> protocol::Range {
     return protocol::Range{
-        .start = *converter.to_position(range.begin),
-        .end = *converter.to_position(range.end),
+        .start = *lsp::to_position(content, line_starts, encoding, range.begin),
+        .end = *lsp::to_position(content, line_starts, encoding, range.end),
     };
 }
 

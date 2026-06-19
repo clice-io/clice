@@ -101,8 +101,8 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
 
         for(auto& [hash, symbol]: workspace.project_index.symbols)
             try_symbol(hash, symbol);
-        indexer.for_each_overlay([&](std::uint32_t, const OpenFileIndex& ofi) -> bool {
-            for(auto& [hash, symbol]: ofi.symbols)
+        indexer.for_each_overlay([&](std::uint32_t, const FileOverlay& overlay) -> bool {
+            for(auto& [hash, symbol]: overlay.symbols)
                 try_symbol(hash, symbol);
             return true;
         });
@@ -119,24 +119,31 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
         auto pool_it = workspace.path_pool.cache.find(path_str);
         auto server_id = pool_it != workspace.path_pool.cache.end() ? pool_it->second : ~0u;
         if(server_id != ~0u) {
-            auto* ofi = indexer.get_overlay(server_id);
-            if(ofi && ofi->mapper) {
-                for(auto& [hash, rels]: ofi->file_index.relations) {
+            std::vector<ResolvedSymbol> overlay_result;
+            indexer.with_overlay(server_id, [&](const FileOverlay& overlay) {
+                for(auto& [hash, rels]: overlay.file_index.relations) {
                     for(auto& rel: rels) {
                         if(rel.kind.value() != RelationKind::Definition)
                             continue;
-                        auto start = ofi->mapper->to_position(rel.range.begin);
+                        auto start = lsp::to_position(overlay.content,
+                                                      overlay.line_starts,
+                                                      lsp::PositionEncoding::UTF16,
+                                                      rel.range.begin);
                         if(start && start->line == target_line) {
                             std::string name;
                             SymbolKind kind;
-                            if(indexer.find_symbol_info(hash, name, kind))
-                                return {
-                                    {hash, std::move(name), kind, path_str, *loc.line}
-                                };
+                            if(!indexer.find_symbol_info(hash, name, kind))
+                                continue;
+                            if(kind == SymbolKind::Parameter || kind == SymbolKind::Label)
+                                continue;
+                            overlay_result.push_back(
+                                {hash, std::move(name), kind, path_str, *loc.line});
                         }
                     }
                 }
-            }
+            });
+            if(!overlay_result.empty())
+                return overlay_result;
         }
 
         auto it = workspace.project_index.path_pool.find(path_str);
@@ -429,8 +436,8 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
         for(auto& [hash, symbol]: srv.workspace.project_index.symbols)
             try_symbol(hash, symbol);
-        srv.indexer.for_each_overlay([&](std::uint32_t, const OpenFileIndex& ofi) -> bool {
-            for(auto& [hash, symbol]: ofi.symbols)
+        srv.indexer.for_each_overlay([&](std::uint32_t, const FileOverlay& overlay) -> bool {
+            for(auto& [hash, symbol]: overlay.symbols)
                 try_symbol(hash, symbol);
             return true;
         });
@@ -485,10 +492,10 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(pool_it == srv.workspace.path_pool.cache.end())
                 co_return result;
             auto server_id = pool_it->second;
-            auto* ofi = srv.indexer.get_overlay(server_id);
-            if(ofi) {
-                auto& fi = *ofi;
-                for(auto& [hash, rels]: fi.file_index.relations) {
+            bool found_overlay = false;
+            srv.indexer.with_overlay(server_id, [&](const FileOverlay& overlay) {
+                found_overlay = true;
+                for(auto& [hash, rels]: overlay.file_index.relations) {
                     for(auto& rel: rels) {
                         if(rel.kind.value() != RelationKind::Definition)
                             continue;
@@ -498,24 +505,29 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                             continue;
                         if(!is_document_level(kind))
                             continue;
-                        if(fi.mapper) {
-                            auto start = fi.mapper->to_position(rel.range.begin);
-                            auto end = fi.mapper->to_position(rel.range.end);
-                            if(start && end) {
-                                result.symbols.push_back(DocumentSymbolEntry{
-                                    .name = std::move(name),
-                                    .kind = std::string(symbol_kind_name(kind)),
-                                    .start_line = static_cast<int>(start->line) + 1,
-                                    .end_line = static_cast<int>(end->line) + 1,
-                                    .symbol_id = hash,
-                                });
-                                break;
-                            }
+                        auto start = lsp::to_position(overlay.content,
+                                                      overlay.line_starts,
+                                                      lsp::PositionEncoding::UTF16,
+                                                      rel.range.begin);
+                        auto end = lsp::to_position(overlay.content,
+                                                    overlay.line_starts,
+                                                    lsp::PositionEncoding::UTF16,
+                                                    rel.range.end);
+                        if(start && end) {
+                            result.symbols.push_back(DocumentSymbolEntry{
+                                .name = std::move(name),
+                                .kind = std::string(symbol_kind_name(kind)),
+                                .start_line = static_cast<int>(start->line) + 1,
+                                .end_line = static_cast<int>(end->line) + 1,
+                                .symbol_id = hash,
+                            });
+                            break;
                         }
                     }
                 }
+            });
+            if(found_overlay)
                 co_return result;
-            }
 
             auto it = srv.workspace.project_index.path_pool.find(params.path);
             if(it == srv.workspace.project_index.path_pool.cache.end())

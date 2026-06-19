@@ -46,8 +46,12 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
         [this](uint32_t server_path_id) { return sessions.contains(server_path_id); },
         [this](Indexer::OverlayVisitor visitor) {
             for(auto& [path_id, session]: sessions) {
-                if(session && session->file_index) {
-                    if(!visitor(path_id, *session->file_index))
+                if(session && session->file_index && session->symbols) {
+                    FileOverlay overlay{*session->file_index,
+                                        *session->symbols,
+                                        session->text,
+                                        session->line_starts};
+                    if(!visitor(path_id, overlay))
                         break;
                 }
             }

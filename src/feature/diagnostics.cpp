@@ -10,8 +10,6 @@ namespace clice::feature {
 
 namespace {
 
-namespace lsp = kota::ipc::lsp;
-
 auto to_uri(llvm::StringRef file) -> std::string {
     const auto file_view = std::string_view(file.data(), file.size());
 
@@ -49,13 +47,13 @@ void add_related(protocol::Diagnostic& diagnostic,
     }
 
     auto content = unit.file_content(raw.fid);
-    PositionMapper converter(content, encoding);
+    auto line_starts = lsp::build_line_starts(content);
 
     protocol::DiagnosticRelatedInformation related{
         .location =
             protocol::Location{
                                .uri = to_uri(unit.file_path(raw.fid)),
-                               .range = to_range(converter, raw.range),
+                               .range = to_range(content, line_starts, encoding, raw.range),
                                },
         .message = raw.message,
     };
@@ -80,7 +78,8 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         }
     };
 
-    PositionMapper main_converter(unit.interested_content(), encoding);
+    auto main_content = unit.interested_content();
+    auto main_line_starts = lsp::build_line_starts(main_content);
 
     for(const auto& raw: unit.diagnostics()) {
         auto level = raw.id.level;
@@ -136,7 +135,7 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         }
 
         if(raw.fid == unit.interested_file()) {
-            diagnostic.range = to_range(main_converter, raw.range);
+            diagnostic.range = to_range(main_content, main_line_starts, encoding, raw.range);
             current = std::move(diagnostic);
             continue;
         }
@@ -154,8 +153,8 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         auto offset = unit.file_offset(include_location);
         auto end_offset = offset + unit.token_spelling(include_location).size();
         diagnostic.range = protocol::Range{
-            .start = *main_converter.to_position(offset),
-            .end = *main_converter.to_position(end_offset),
+            .start = *lsp::to_position(main_content, main_line_starts, encoding, offset),
+            .end = *lsp::to_position(main_content, main_line_starts, encoding, end_offset),
         };
 
         current = std::move(diagnostic);

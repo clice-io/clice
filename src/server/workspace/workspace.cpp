@@ -37,14 +37,16 @@ const static index::Occurrence* lookup_occurrence(const std::vector<index::Occur
 }
 
 std::optional<std::pair<index::SymbolHash, protocol::Range>>
-    OpenFileIndex::find_occurrence(std::uint32_t offset) const {
-    if(!mapper)
-        return std::nullopt;
+    find_occurrence(const index::FileIndex& file_index,
+                    std::string_view content,
+                    std::span<const std::uint32_t> line_starts,
+                    std::uint32_t offset) {
     auto* occ = lookup_occurrence(file_index.occurrences, offset);
     if(!occ)
         return std::nullopt;
-    auto start = mapper->to_position(occ->range.begin);
-    auto end = mapper->to_position(occ->range.end);
+    auto start =
+        lsp::to_position(content, line_starts, lsp::PositionEncoding::UTF16, occ->range.begin);
+    auto end = lsp::to_position(content, line_starts, lsp::PositionEncoding::UTF16, occ->range.end);
     if(!start || !end)
         return std::nullopt;
     return std::pair{
@@ -55,13 +57,14 @@ std::optional<std::pair<index::SymbolHash, protocol::Range>>
 
 std::optional<std::pair<index::SymbolHash, protocol::Range>>
     MergedIndexShard::find_occurrence(std::uint32_t offset) const {
-    auto* m = mapper();
-    if(!m)
+    auto ls = line_starts();
+    auto c = index.content();
+    if(ls.empty())
         return std::nullopt;
     std::optional<std::pair<index::SymbolHash, protocol::Range>> result;
     index.lookup(offset, [&](const index::Occurrence& o) {
-        auto start = m->to_position(o.range.begin);
-        auto end = m->to_position(o.range.end);
+        auto start = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, o.range.begin);
+        auto end = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, o.range.end);
         if(start && end) {
             result = {
                 o.target,

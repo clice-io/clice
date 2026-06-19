@@ -42,7 +42,7 @@ struct SymbolInfo {
 ///
 /// Indexer holds no index data of its own.  All persistent data lives in
 /// Workspace (disk-derived ProjectIndex + MergedIndex shards) and per-file
-/// data lives in Session (OpenFileIndex from unsaved buffers).
+/// data lives in Session (FileOverlay views from unsaved buffers).
 ///
 /// Responsibilities:
 ///   - Cross-file navigation queries (definition, references, hierarchy)
@@ -57,7 +57,7 @@ class Indexer {
 public:
     /// Visitor for iterating open-file overlays.  Returns false to stop early.
     using OverlayVisitor =
-        std::function<bool(std::uint32_t server_path_id, const OpenFileIndex& index)>;
+        std::function<bool(std::uint32_t server_path_id, const FileOverlay& overlay)>;
 
     Indexer(kota::event_loop& loop,
             Workspace& workspace,
@@ -199,17 +199,17 @@ public:
             each_overlay(std::move(visitor));
     }
 
-    /// Get the overlay for a specific server-level path_id (nullptr if not open).
-    const OpenFileIndex* get_overlay(std::uint32_t server_path_id) const {
-        const OpenFileIndex* result = nullptr;
-        for_each_overlay([&](std::uint32_t id, const OpenFileIndex& ofi) -> bool {
+    /// Invoke a callback with the overlay for a specific server-level path_id.
+    /// The callback is not invoked if no overlay exists for that path_id.
+    template <typename Fn>
+    void with_overlay(std::uint32_t server_path_id, Fn&& fn) const {
+        for_each_overlay([&](std::uint32_t id, const FileOverlay& overlay) -> bool {
             if(id == server_path_id) {
-                result = &ofi;
+                fn(overlay);
                 return false;
             }
             return true;
         });
-        return result;
     }
 
     /// Whether background indexing is currently idle (no active or queued work).
@@ -282,7 +282,7 @@ private:
     /// Checks if a server-level path_id has an open Session.
     std::function<bool(std::uint32_t)> is_open;
 
-    /// Iterates all open-file overlays (OpenFileIndex from live compilations).
+    /// Iterates all open-file overlays (FileOverlay views from live compilations).
     std::function<void(OverlayVisitor)> each_overlay;
 
     /// LSP peer for progress reporting (optional, not owned).

@@ -482,7 +482,8 @@ public:
     SemanticTokenEncoder(llvm::StringRef content,
                          PositionEncoding encoding,
                          protocol::SemanticTokens& output) :
-        content(content), converter(content, encoding), output(output) {}
+        content(content), line_starts(lsp::build_line_starts(content)), encoding(encoding),
+        output(output) {}
 
     void append(const SemanticToken& token) {
         if(!token.range.valid() || token.range.end <= token.range.begin ||
@@ -492,8 +493,8 @@ public:
 
         auto begin = token.range.begin;
         auto end = token.range.end;
-        auto begin_position = *converter.to_position(begin);
-        auto end_position = *converter.to_position(end);
+        auto begin_position = *lsp::to_position(content, line_starts, encoding, begin);
+        auto end_position = *lsp::to_position(content, line_starts, encoding, end);
         auto begin_line = static_cast<std::uint32_t>(begin_position.line);
         auto begin_char = static_cast<std::uint32_t>(begin_position.character);
         auto end_line = static_cast<std::uint32_t>(end_position.line);
@@ -524,7 +525,7 @@ public:
                     first_piece = false;
                 }
 
-                auto length = converter.measure(chunk.substr(chunk_offset, piece_size));
+                auto length = lsp::encoded_length(chunk.substr(chunk_offset, piece_size), encoding);
                 emit_relative(delta_line, delta_start, length, token.kind, token.modifiers);
 
                 chunk_offset += piece_size;
@@ -532,7 +533,7 @@ public:
             }
 
             if(piece_size > 0) {
-                auto length = converter.measure(chunk.substr(chunk_offset));
+                auto length = lsp::encoded_length(chunk.substr(chunk_offset), encoding);
                 emit_relative(1, 0, length, token.kind, token.modifiers);
             }
         }
@@ -560,7 +561,8 @@ private:
 
 private:
     llvm::StringRef content;
-    PositionMapper converter;
+    std::vector<std::uint32_t> line_starts;
+    PositionEncoding encoding;
     protocol::SemanticTokens& output;
     std::uint32_t last_line = 0;
     std::uint32_t last_start_character = 0;

@@ -178,13 +178,15 @@ void sort_symbols(std::vector<DocumentSymbol>& symbols) {
     }
 }
 
-auto to_protocol_symbol(const DocumentSymbol& symbol, const PositionMapper& converter)
-    -> protocol::DocumentSymbol {
+auto to_protocol_symbol(const DocumentSymbol& symbol,
+                        std::string_view content,
+                        std::span<const std::uint32_t> line_starts,
+                        lsp::PositionEncoding encoding) -> protocol::DocumentSymbol {
     protocol::DocumentSymbol result{
         .name = symbol.name,
         .kind = to_protocol_symbol_kind(symbol.kind),
-        .range = to_range(converter, symbol.range),
-        .selection_range = to_range(converter, symbol.selection_range),
+        .range = to_range(content, line_starts, encoding, symbol.range),
+        .selection_range = to_range(content, line_starts, encoding, symbol.selection_range),
     };
 
     if(!symbol.detail.empty()) {
@@ -195,8 +197,8 @@ auto to_protocol_symbol(const DocumentSymbol& symbol, const PositionMapper& conv
         std::vector<std::shared_ptr<protocol::DocumentSymbol>> children;
         children.reserve(symbol.children.size());
         for(const auto& child: symbol.children) {
-            children.push_back(
-                std::make_shared<protocol::DocumentSymbol>(to_protocol_symbol(child, converter)));
+            children.push_back(std::make_shared<protocol::DocumentSymbol>(
+                to_protocol_symbol(child, content, line_starts, encoding)));
         }
         result.children = std::move(children);
     }
@@ -216,12 +218,13 @@ auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol> {
     auto internal = document_symbols(unit);
 
-    PositionMapper converter(unit.interested_content(), encoding);
+    auto content = unit.interested_content();
+    auto line_starts = lsp::build_line_starts(content);
     std::vector<protocol::DocumentSymbol> symbols;
     symbols.reserve(internal.size());
 
     for(const auto& symbol: internal) {
-        symbols.push_back(to_protocol_symbol(symbol, converter));
+        symbols.push_back(to_protocol_symbol(symbol, content, line_starts, encoding));
     }
 
     return symbols;

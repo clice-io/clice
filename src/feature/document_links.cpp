@@ -18,7 +18,7 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
     }
 
     auto content = unit.interested_content();
-    PositionMapper converter(content, encoding);
+    auto line_starts = lsp::build_line_starts(content);
     auto& directives = directives_it->second;
     auto* lang_opts = &unit.lang_options();
 
@@ -29,7 +29,7 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
         auto range = find_directive_argument(content, offset, lang_opts);
         if(!range)
             return;
-        protocol::DocumentLink link{.range = to_range(converter, *range)};
+        protocol::DocumentLink link{.range = to_range(content, line_starts, encoding, *range)};
         link.target = target.str();
         links.push_back(std::move(link));
     };

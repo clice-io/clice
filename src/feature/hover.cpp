@@ -1310,8 +1310,9 @@ auto to_protocol_hover(CompilationUnitRef unit,
     };
 
     if(info.symbol_range) {
-        PositionMapper converter(unit.interested_content(), encoding);
-        result.range = to_range(converter, *info.symbol_range);
+        auto content = unit.interested_content();
+        auto line_starts = lsp::build_line_starts(content);
+        result.range = to_range(content, line_starts, encoding, *info.symbol_range);
     }
 
     return result;

@@ -3,9 +3,12 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "command/command.h"
 #include "command/toolchain.h"
@@ -50,64 +53,67 @@ struct HeaderFileContext {
     std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
 };
 
-/// In-memory index for an open file.  Kept separate from MergedIndex because
-/// open files change frequently, are based on unsaved buffer content, and only
-/// need to track the main file (headers are covered by PCH/PCM indexing).
-struct OpenFileIndex {
-    index::FileIndex file_index;
-    index::SymbolTable symbols;
-    std::string content;  ///< Buffer text at index time (for position mapping).
-
-    /// Cached PositionMapper built from `content`.  Avoids re-scanning line
-    /// offsets on every query.  Initialized by Indexer::set_open_file().
-    std::optional<lsp::PositionMapper> mapper;
-
-    /// Find the tightest occurrence containing `offset`.
-    /// Returns (symbol_hash, LSP range) with positions already converted.
-    std::optional<std::pair<index::SymbolHash, protocol::Range>>
-        find_occurrence(std::uint32_t offset) const;
-
-    /// Iterate relations matching `kind`, calling back with pre-converted ranges.
-    /// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).
-    template <typename Fn>
-    void find_relations(index::SymbolHash hash, RelationKind kind, Fn&& fn) const {
-        if(!mapper)
-            return;
-        auto it = file_index.relations.find(hash);
-        if(it == file_index.relations.end())
-            return;
-        for(auto& r: it->second) {
-            if(r.kind & kind) {
-                auto start = mapper->to_position(r.range.begin);
-                auto end = mapper->to_position(r.range.end);
-                if(start && end) {
-                    if(!fn(r, protocol::Range{*start, *end}))
-                        return;
-                }
-            }
-        }
-    }
+/// Non-owning view of an open file's index data for overlay queries.
+/// Constructed by MasterServer from Session fields and passed to Indexer.
+struct FileOverlay {
+    const index::FileIndex& file_index;
+    const index::SymbolTable& symbols;
+    std::string_view content;
+    std::span<const std::uint32_t> line_starts;
 };
 
-/// Wraps index::MergedIndex with a lazily-cached PositionMapper.
-struct MergedIndexShard {
-    index::MergedIndex index;
-    mutable std::optional<lsp::PositionMapper> cached_mapper;
+/// Find the tightest occurrence at `offset` using `line_starts` for conversion.
+std::optional<std::pair<index::SymbolHash, protocol::Range>>
+    find_occurrence(const index::FileIndex& file_index,
+                    std::string_view content,
+                    std::span<const std::uint32_t> line_starts,
+                    std::uint32_t offset);
 
-    /// Get or lazily build a PositionMapper from the index's stored content.
-    const lsp::PositionMapper* mapper() const {
-        if(!cached_mapper) {
-            auto c = index.content();
-            if(!c.empty()) {
-                cached_mapper.emplace(c, lsp::PositionEncoding::UTF16);
+/// Iterate relations matching `kind`, calling back with pre-converted ranges.
+/// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).
+template <typename Fn>
+void find_relations(const index::FileIndex& file_index,
+                    std::string_view content,
+                    std::span<const std::uint32_t> line_starts,
+                    index::SymbolHash hash,
+                    RelationKind kind,
+                    Fn&& fn) {
+    auto it = file_index.relations.find(hash);
+    if(it == file_index.relations.end())
+        return;
+    for(auto& r: it->second) {
+        if(r.kind & kind) {
+            auto start =
+                lsp::to_position(content, line_starts, lsp::PositionEncoding::UTF16, r.range.begin);
+            auto end =
+                lsp::to_position(content, line_starts, lsp::PositionEncoding::UTF16, r.range.end);
+            if(start && end) {
+                if(!fn(r, protocol::Range{*start, *end}))
+                    return;
             }
         }
-        return cached_mapper ? &*cached_mapper : nullptr;
+    }
+}
+
+/// Wraps index::MergedIndex with lazily-cached line starts for position mapping.
+struct MergedIndexShard {
+    index::MergedIndex index;
+    mutable std::vector<std::uint32_t> cached_line_starts;
+
+    /// Get or lazily build line starts from the index's stored content.
+    std::span<const std::uint32_t> line_starts() const {
+        if(cached_line_starts.empty()) {
+            auto c = index.content();
+            if(!c.empty()) {
+                cached_line_starts = lsp::build_line_starts(c);
+            }
+        }
+        return cached_line_starts;
     }
 
-    /// Invalidate the cached mapper (call after merge changes content).
-    void invalidate_mapper() {
-        cached_mapper.reset();
+    /// Invalidate cached line starts (call after merge changes content).
+    void invalidate() {
+        cached_line_starts.clear();
     }
 
     /// Find occurrence at byte offset.
@@ -119,12 +125,13 @@ struct MergedIndexShard {
     /// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).
     template <typename Fn>
     void find_relations(index::SymbolHash hash, RelationKind kind, Fn&& fn) const {
-        auto* m = mapper();
-        if(!m)
+        auto ls = line_starts();
+        auto c = index.content();
+        if(ls.empty())
             return;
         index.lookup(hash, kind, [&](const index::Relation& r) {
-            auto start = m->to_position(r.range.begin);
-            auto end = m->to_position(r.range.end);
+            auto start = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.begin);
+            auto end = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.end);
             if(start && end) {
                 return fn(r, protocol::Range{*start, *end});
             }

@@ -511,7 +511,7 @@ TEST_CASE(snapshot) {
             return "COMPILE_ERROR";
         auto idx = index::TUIndex::build(*unit);
         auto content = unit->interested_content();
-        feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+        auto line_starts = feature::lsp::build_line_starts(content);
         std::string result;
 
         auto sorted = idx.main_file_index.occurrences;
@@ -522,7 +522,10 @@ TEST_CASE(snapshot) {
 
         for(auto& occ: sorted) {
             auto text = content.substr(occ.range.begin, occ.range.end - occ.range.begin);
-            auto pos = mapper.to_position(occ.range.begin);
+            auto pos = feature::lsp::to_position(content,
+                                                 line_starts,
+                                                 feature::PositionEncoding::UTF8,
+                                                 occ.range.begin);
             if(!pos)
                 continue;
 

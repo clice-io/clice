@@ -589,14 +589,17 @@ TEST_CASE(snapshot) {
             return "COMPILE_ERROR";
         auto content = unit->interested_content();
         auto tokens = feature::semantic_tokens(*unit);
-        feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+        auto line_starts = feature::lsp::build_line_starts(content);
         std::string result;
         for(auto& token: tokens) {
             if(!token.range.valid() || token.range.end <= token.range.begin ||
                token.range.end > content.size())
                 continue;
 
-            auto pos = mapper.to_position(token.range.begin);
+            auto pos = feature::lsp::to_position(content,
+                                                 line_starts,
+                                                 feature::PositionEncoding::UTF8,
+                                                 token.range.begin);
             if(!pos)
                 continue;
 

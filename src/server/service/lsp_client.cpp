@@ -169,6 +169,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto session = srv.open_session(path_id);
         session->version = params.text_document.version;
         session->text = params.text_document.text;
+        session->line_starts = lsp::build_line_starts(session->text);
         session->generation++;
 
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
@@ -197,13 +198,19 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                         session->text = c.text;
                     } else {
                         auto& range = c.range;
-                        lsp::PositionMapper mapper(session->text, lsp::PositionEncoding::UTF16);
-                        auto start = mapper.to_offset(range.start);
-                        auto end = mapper.to_offset(range.end);
+                        auto start = lsp::to_offset(session->text,
+                                                    session->line_starts,
+                                                    lsp::PositionEncoding::UTF16,
+                                                    range.start);
+                        auto end = lsp::to_offset(session->text,
+                                                  session->line_starts,
+                                                  lsp::PositionEncoding::UTF16,
+                                                  range.end);
                         if(start && end && *start <= *end) {
                             session->text.replace(*start, *end - *start, c.text);
                         }
                     }
+                    session->line_starts = lsp::build_line_starts(session->text);
                 },
                 change);
         }

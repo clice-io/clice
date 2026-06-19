@@ -26,9 +26,13 @@ void run(llvm::StringRef code, std::source_location location = std::source_locat
     hints = feature::inlay_hints(*unit, range, {}, feature::PositionEncoding::UTF8);
 
     hints_map.clear();
-    feature::PositionMapper converter(unit->interested_content(), feature::PositionEncoding::UTF8);
+    auto content = unit->interested_content();
+    auto line_starts = feature::lsp::build_line_starts(content);
     for(auto& hint: hints) {
-        hints_map[*converter.to_offset(hint.position)] = hint;
+        hints_map[*feature::lsp::to_offset(content,
+                                           line_starts,
+                                           feature::PositionEncoding::UTF8,
+                                           hint.position)] = hint;
     }
 
     if(!unit->diagnostics().empty()) {
@@ -1539,10 +1543,13 @@ TEST_CASE(snapshot) {
         auto content = unit->interested_content();
         LocalSourceRange range(0, content.size());
         auto hints = feature::inlay_hints(*unit, range);
-        feature::PositionMapper mapper(content, feature::PositionEncoding::UTF8);
+        auto line_starts = feature::lsp::build_line_starts(content);
         std::string result;
         for(auto& hint: hints) {
-            auto pos = mapper.to_position(hint.offset);
+            auto pos = feature::lsp::to_position(content,
+                                                 line_starts,
+                                                 feature::PositionEncoding::UTF8,
+                                                 hint.offset);
             if(!pos)
                 continue;
             auto kind = kota::meta::enum_name(hint.kind, "Unknown");

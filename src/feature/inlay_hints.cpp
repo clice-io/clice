@@ -929,13 +929,14 @@ auto inlay_hints(CompilationUnitRef unit,
                  PositionEncoding encoding) -> std::vector<protocol::InlayHint> {
     auto collected = inlay_hints(unit, target, options);
 
-    PositionMapper converter(unit.interested_content(), encoding);
+    auto content = unit.interested_content();
+    auto line_starts = lsp::build_line_starts(content);
     std::vector<protocol::InlayHint> hints;
     hints.reserve(collected.size());
 
     for(const auto& hint: collected) {
         protocol::InlayHint out{
-            .position = *converter.to_position(hint.offset),
+            .position = *lsp::to_position(content, line_starts, encoding, hint.offset),
             .label = hint.label,
         };
 

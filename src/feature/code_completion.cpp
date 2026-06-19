@@ -255,10 +255,10 @@ public:
         auto prefix = CompletionPrefix::from(content, offset);
         FuzzyMatcher matcher(prefix.spelling);
 
-        PositionMapper converter(content, encoding);
+        auto line_starts = lsp::build_line_starts(content);
         auto replace_range = protocol::Range{
-            .start = *converter.to_position(prefix.range.begin),
-            .end = *converter.to_position(prefix.range.end),
+            .start = *lsp::to_position(content, line_starts, encoding, prefix.range.begin),
+            .end = *lsp::to_position(content, line_starts, encoding, prefix.range.end),
         };
 
         std::vector<protocol::CompletionItem> collected;

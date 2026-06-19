@@ -4,7 +4,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
+#include "index/tu_index.h"
 #include "server/workspace/workspace.h"
 
 #include "kota/async/async.h"
@@ -31,6 +33,10 @@ struct Session {
 
     /// Current buffer content (may differ from disk until saved).
     std::string text;
+
+    /// Byte offsets of each line start in `text`, built by `build_line_starts`.
+    /// Updated on didOpen and after every didChange.
+    std::vector<std::uint32_t> line_starts;
 
     /// Monotonic generation counter, incremented on every didChange and on close.
     /// Used to detect stale compilation results (ABA prevention).
@@ -89,7 +95,11 @@ struct Session {
     /// Used for queries (hover, goto, references) on this file.
     /// NOT merged into Workspace.project_index — that only gets disk-derived
     /// data from background indexing.
-    std::optional<OpenFileIndex> file_index;
+    std::optional<index::FileIndex> file_index;
+
+    /// Symbol table from the latest compilation, mapping symbol hashes to
+    /// names and kinds.
+    std::optional<index::SymbolTable> symbols;
 };
 
 }  // namespace clice
