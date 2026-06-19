@@ -11,6 +11,7 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 
+#include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/uri.h"
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
@@ -22,6 +23,25 @@ using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::JsonPeer::RequestContext;
 namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
+
+template <typename Fn>
+static void find_relations(const index::MergedIndex& index,
+                           index::SymbolHash hash,
+                           RelationKind kind,
+                           Fn&& fn) {
+    auto ls = index.line_starts();
+    auto c = index.content();
+    if(ls.empty())
+        return;
+    index.lookup(hash, kind, [&](const index::Relation& r) {
+        auto start = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.begin);
+        auto end = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.end);
+        if(start && end) {
+            return fn(r, protocol::Range{*start, *end});
+        }
+        return true;
+    });
+}
 
 static std::string_view symbol_kind_name(SymbolKind kind) {
     constexpr auto names = kota::meta::reflection<SymbolKind::Kind>::member_names;
@@ -159,15 +179,16 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
             if(!symbol.reference_files.contains(proj_id))
                 continue;
             bool found = false;
-            shard_it->second.find_relations(hash,
-                                            RelationKind::Definition,
-                                            [&](const index::Relation&, protocol::Range range) {
-                                                if(range.start.line == target_line) {
-                                                    found = true;
-                                                    return false;
-                                                }
-                                                return true;
-                                            });
+            find_relations(shard_it->second,
+                           hash,
+                           RelationKind::Definition,
+                           [&](const index::Relation&, protocol::Range range) {
+                               if(range.start.line == target_line) {
+                                   found = true;
+                                   return false;
+                               }
+                               return true;
+                           });
             if(found)
                 return {
                     {hash, symbol.name, symbol.kind, path_str, *loc.line}
@@ -546,19 +567,19 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 if(!symbol.reference_files.contains(proj_id))
                     continue;
 
-                shard_it->second.find_relations(
-                    hash,
-                    RelationKind::Definition,
-                    [&](const index::Relation&, protocol::Range range) {
-                        result.symbols.push_back(DocumentSymbolEntry{
-                            .name = symbol.name,
-                            .kind = std::string(symbol_kind_name(symbol.kind)),
-                            .start_line = static_cast<int>(range.start.line) + 1,
-                            .end_line = static_cast<int>(range.end.line) + 1,
-                            .symbol_id = hash,
-                        });
-                        return true;
-                    });
+                find_relations(shard_it->second,
+                               hash,
+                               RelationKind::Definition,
+                               [&](const index::Relation&, protocol::Range range) {
+                                   result.symbols.push_back(DocumentSymbolEntry{
+                                       .name = symbol.name,
+                                       .kind = std::string(symbol_kind_name(symbol.kind)),
+                                       .start_line = static_cast<int>(range.start.line) + 1,
+                                       .end_line = static_cast<int>(range.end.line) + 1,
+                                       .symbol_id = hash,
+                                   });
+                                   return true;
+                               });
             }
 
             co_return result;

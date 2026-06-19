@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include "index/tu_index.h"
@@ -67,6 +68,9 @@ public:
     /// Get the stored source content for position mapping.
     llvm::StringRef content(this const Self& self);
 
+    /// Get or lazily compute line starts from content.
+    std::span<const std::uint32_t> line_starts(this const Self& self);
+
     /// Merge the index with given compilation context.
     void merge(this Self& self,
                std::uint32_t path_id,
@@ -92,6 +96,8 @@ private:
 
     /// The in memory data of the index.
     std::unique_ptr<Impl> impl;
+
+    mutable std::vector<std::uint32_t> cached_line_starts;
 };
 
 }  // namespace clice::index

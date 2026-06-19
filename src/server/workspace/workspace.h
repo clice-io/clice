@@ -3,9 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <span>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -20,17 +18,12 @@
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
-#include "kota/ipc/lsp/position.h"
-#include "kota/ipc/lsp/protocol.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
-
-namespace protocol = kota::ipc::protocol;
-namespace lsp = kota::ipc::lsp;
 
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
 ///
@@ -51,84 +44,6 @@ struct HeaderFileContext {
     std::uint32_t host_path_id;   ///< Source file acting as host.
     std::string preamble_path;    ///< Path to generated preamble file on disk.
     std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
-};
-
-/// Find the tightest occurrence at `offset` using `line_starts` for conversion.
-std::optional<std::pair<index::SymbolHash, protocol::Range>>
-    find_occurrence(const index::FileIndex& file_index,
-                    std::string_view content,
-                    std::span<const std::uint32_t> line_starts,
-                    std::uint32_t offset);
-
-/// Iterate relations matching `kind`, calling back with pre-converted ranges.
-/// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).
-template <typename Fn>
-void find_relations(const index::FileIndex& file_index,
-                    std::string_view content,
-                    std::span<const std::uint32_t> line_starts,
-                    index::SymbolHash hash,
-                    RelationKind kind,
-                    Fn&& fn) {
-    auto it = file_index.relations.find(hash);
-    if(it == file_index.relations.end())
-        return;
-    for(auto& r: it->second) {
-        if(r.kind & kind) {
-            auto start =
-                lsp::to_position(content, line_starts, lsp::PositionEncoding::UTF16, r.range.begin);
-            auto end =
-                lsp::to_position(content, line_starts, lsp::PositionEncoding::UTF16, r.range.end);
-            if(start && end) {
-                if(!fn(r, protocol::Range{*start, *end}))
-                    return;
-            }
-        }
-    }
-}
-
-/// Wraps index::MergedIndex with lazily-cached line starts for position mapping.
-struct MergedIndexShard {
-    index::MergedIndex index;
-    mutable std::vector<std::uint32_t> cached_line_starts;
-
-    /// Get or lazily build line starts from the index's stored content.
-    std::span<const std::uint32_t> line_starts() const {
-        if(cached_line_starts.empty()) {
-            auto c = index.content();
-            if(!c.empty()) {
-                cached_line_starts = lsp::build_line_starts(c);
-            }
-        }
-        return cached_line_starts;
-    }
-
-    /// Invalidate cached line starts (call after merge changes content).
-    void invalidate() {
-        cached_line_starts.clear();
-    }
-
-    /// Find occurrence at byte offset.
-    /// Returns (symbol_hash, LSP range) with positions already converted.
-    std::optional<std::pair<index::SymbolHash, protocol::Range>>
-        find_occurrence(std::uint32_t offset) const;
-
-    /// Iterate relations matching `kind`, calling back with pre-converted ranges.
-    /// Callback: (const index::Relation&, protocol::Range) -> bool (true = continue).
-    template <typename Fn>
-    void find_relations(index::SymbolHash hash, RelationKind kind, Fn&& fn) const {
-        auto ls = line_starts();
-        auto c = index.content();
-        if(ls.empty())
-            return;
-        index.lookup(hash, kind, [&](const index::Relation& r) {
-            auto start = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.begin);
-            auto end = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.end);
-            if(start && end) {
-                return fn(r, protocol::Range{*start, *end});
-            }
-            return true;
-        });
-    }
 };
 
 /// Cached PCH state.  Content-addressed by preamble hash — shared across all
@@ -206,7 +121,7 @@ struct Workspace {
     /// Per-file index shards from background indexing, keyed by project-level
     /// path_id.  Contains symbol occurrences, relations, and stored content
     /// for position mapping.
-    llvm::DenseMap<std::uint32_t, MergedIndexShard> merged_indices;
+    llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
 
     /// Called when a file is saved to disk.  Cascades invalidation through
     /// compile_graph and clears affected PCM caches.

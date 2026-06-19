@@ -1,6 +1,5 @@
 #include "server/workspace/workspace.h"
 
-#include <algorithm>
 #include <chrono>
 
 #include "support/filesystem.h"
@@ -8,8 +7,6 @@
 #include "syntax/scan.h"
 
 #include "kota/codec/json/json.h"
-#include "kota/ipc/lsp/position.h"
-#include "kota/ipc/lsp/protocol.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -17,64 +14,6 @@
 #include "llvm/Support/xxhash.h"
 
 namespace clice {
-
-namespace lsp = kota::ipc::lsp;
-
-/// Find the tightest (innermost) occurrence containing `offset` via binary search.
-const static index::Occurrence* lookup_occurrence(const std::vector<index::Occurrence>& occs,
-                                                  std::uint32_t offset) {
-    auto it = std::ranges::lower_bound(occs, offset, {}, [](const index::Occurrence& o) {
-        return o.range.end;
-    });
-    const index::Occurrence* best = nullptr;
-    while(it != occs.end() && it->range.contains(offset)) {
-        if(!best || (it->range.end - it->range.begin) < (best->range.end - best->range.begin)) {
-            best = &*it;
-        }
-        ++it;
-    }
-    return best;
-}
-
-std::optional<std::pair<index::SymbolHash, protocol::Range>>
-    find_occurrence(const index::FileIndex& file_index,
-                    std::string_view content,
-                    std::span<const std::uint32_t> line_starts,
-                    std::uint32_t offset) {
-    auto* occ = lookup_occurrence(file_index.occurrences, offset);
-    if(!occ)
-        return std::nullopt;
-    auto start =
-        lsp::to_position(content, line_starts, lsp::PositionEncoding::UTF16, occ->range.begin);
-    auto end = lsp::to_position(content, line_starts, lsp::PositionEncoding::UTF16, occ->range.end);
-    if(!start || !end)
-        return std::nullopt;
-    return std::pair{
-        occ->target,
-        protocol::Range{*start, *end}
-    };
-}
-
-std::optional<std::pair<index::SymbolHash, protocol::Range>>
-    MergedIndexShard::find_occurrence(std::uint32_t offset) const {
-    auto ls = line_starts();
-    auto c = index.content();
-    if(ls.empty())
-        return std::nullopt;
-    std::optional<std::pair<index::SymbolHash, protocol::Range>> result;
-    index.lookup(offset, [&](const index::Occurrence& o) {
-        auto start = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, o.range.begin);
-        auto end = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, o.range.end);
-        if(start && end) {
-            result = {
-                o.target,
-                protocol::Range{*start, *end}
-            };
-        }
-        return false;
-    });
-    return result;
-}
 
 llvm::SmallVector<std::uint32_t> Workspace::on_file_saved(std::uint32_t path_id) {
     llvm::SmallVector<std::uint32_t> dirtied;

@@ -6,6 +6,7 @@
 #include "index/serialization.h"
 #include "support/filesystem.h"
 
+#include "kota/ipc/lsp/position.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_os_ostream.h"
 
@@ -594,6 +595,7 @@ void MergedIndex::merge(this Self& self,
         context.include_locations = std::move(include_locations);
     });
     self.impl->occurrences_cache.clear();
+    self.cached_line_starts.clear();
 }
 
 void MergedIndex::merge(this Self& self,
@@ -610,6 +612,7 @@ void MergedIndex::merge(this Self& self,
         context.includes.emplace_back(include_id, canonical_id);
     });
     self.impl->occurrences_cache.clear();
+    self.cached_line_starts.clear();
 }
 
 llvm::StringRef MergedIndex::content(this const Self& self) {
@@ -622,6 +625,16 @@ llvm::StringRef MergedIndex::content(this const Self& self) {
         }
     }
     return {};
+}
+
+std::span<const std::uint32_t> MergedIndex::line_starts(this const Self& self) {
+    if(self.cached_line_starts.empty()) {
+        auto c = self.content();
+        if(!c.empty()) {
+            self.cached_line_starts = kota::ipc::lsp::build_line_starts(c);
+        }
+    }
+    return self.cached_line_starts;
 }
 
 bool operator==(MergedIndex& lhs, MergedIndex& rhs) {

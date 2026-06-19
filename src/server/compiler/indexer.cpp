@@ -26,6 +26,107 @@ namespace clice {
 
 namespace lsp = kota::ipc::lsp;
 
+static auto to_position(const Session& session, std::uint32_t offset) {
+    return lsp::to_position(session.text,
+                            session.line_starts,
+                            lsp::PositionEncoding::UTF16,
+                            offset);
+}
+
+static auto to_offset(const Session& session, const protocol::Position& position) {
+    return lsp::to_offset(session.text,
+                          session.line_starts,
+                          lsp::PositionEncoding::UTF16,
+                          position);
+}
+
+const static index::Occurrence* lookup_occurrence(const std::vector<index::Occurrence>& occs,
+                                                  std::uint32_t offset) {
+    auto it = std::ranges::lower_bound(occs, offset, {}, [](const index::Occurrence& o) {
+        return o.range.end;
+    });
+    const index::Occurrence* best = nullptr;
+    while(it != occs.end() && it->range.contains(offset)) {
+        if(!best || (it->range.end - it->range.begin) < (best->range.end - best->range.begin))
+            best = &*it;
+        ++it;
+    }
+    return best;
+}
+
+static std::optional<std::pair<index::SymbolHash, protocol::Range>>
+    find_occurrence(const Session& session, std::uint32_t offset) {
+    auto* occ = lookup_occurrence(session.file_index->occurrences, offset);
+    if(!occ)
+        return std::nullopt;
+    auto start = to_position(session, occ->range.begin);
+    auto end = to_position(session, occ->range.end);
+    if(!start || !end)
+        return std::nullopt;
+    return std::pair{
+        occ->target,
+        protocol::Range{*start, *end}
+    };
+}
+
+template <typename Fn>
+static void
+    find_relations(const Session& session, index::SymbolHash hash, RelationKind kind, Fn&& fn) {
+    auto it = session.file_index->relations.find(hash);
+    if(it == session.file_index->relations.end())
+        return;
+    for(auto& r: it->second) {
+        if(r.kind & kind) {
+            auto start = to_position(session, r.range.begin);
+            auto end = to_position(session, r.range.end);
+            if(start && end) {
+                if(!fn(r, protocol::Range{*start, *end}))
+                    return;
+            }
+        }
+    }
+}
+
+static std::optional<std::pair<index::SymbolHash, protocol::Range>>
+    find_occurrence(const index::MergedIndex& index, std::uint32_t offset) {
+    auto ls = index.line_starts();
+    auto c = index.content();
+    if(ls.empty())
+        return std::nullopt;
+    std::optional<std::pair<index::SymbolHash, protocol::Range>> result;
+    index.lookup(offset, [&](const index::Occurrence& o) {
+        auto start = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, o.range.begin);
+        auto end = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, o.range.end);
+        if(start && end) {
+            result = {
+                o.target,
+                protocol::Range{*start, *end}
+            };
+        }
+        return false;
+    });
+    return result;
+}
+
+template <typename Fn>
+static void find_relations(const index::MergedIndex& index,
+                           index::SymbolHash hash,
+                           RelationKind kind,
+                           Fn&& fn) {
+    auto ls = index.line_starts();
+    auto c = index.content();
+    if(ls.empty())
+        return;
+    index.lookup(hash, kind, [&](const index::Relation& r) {
+        auto start = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.begin);
+        auto end = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.end);
+        if(start && end) {
+            return fn(r, protocol::Range{*start, *end});
+        }
+        return true;
+    });
+}
+
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
     auto tu_index = index::TUIndex::from(tu_index_data);
     if(tu_index.graph.paths.empty()) {
@@ -54,11 +155,11 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
                 file_content_storage = (*buf)->getBuffer().str();
                 file_content = file_content_storage;
             }
-            shard.index.merge(global_path_id,
-                              tu_index.built_at,
-                              std::move(include_locs),
-                              file_idx,
-                              file_content);
+            shard.merge(global_path_id,
+                        tu_index.built_at,
+                        std::move(include_locs),
+                        file_idx,
+                        file_content);
         } else {
             std::optional<std::uint32_t> include_id;
             for(std::uint32_t i = 0; i < tu_index.graph.locations.size(); ++i) {
@@ -79,9 +180,8 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
                 header_content_storage = (*header_buf)->getBuffer().str();
                 header_content = header_content_storage;
             }
-            shard.index.merge(global_path_id, *include_id, file_idx, header_content);
+            shard.merge(global_path_id, *include_id, file_idx, header_content);
         }
-        shard.invalidate();
     };
 
     for(auto& [tu_path_id, file_idx]: tu_index.path_file_indices) {
@@ -126,13 +226,13 @@ void Indexer::save(llvm::StringRef index_dir) {
 
     std::size_t saved = 0;
     for(auto& [path_id, shard]: workspace.merged_indices) {
-        if(!shard.index.need_rewrite())
+        if(!shard.need_rewrite())
             continue;
         auto shard_path = path::join(shards_dir, std::to_string(path_id) + ".idx");
         std::error_code write_ec;
         llvm::raw_fd_ostream os(shard_path, write_ec);
         if(!write_ec) {
-            shard.index.serialize(os);
+            shard.serialize(os);
             ++saved;
         }
     }
@@ -162,7 +262,7 @@ void Indexer::load(llvm::StringRef index_dir) {
         std::uint32_t path_id = 0;
         if(stem.getAsInteger(10, path_id))
             continue;
-        workspace.merged_indices[path_id] = MergedIndexShard{index::MergedIndex::load(it->path())};
+        workspace.merged_indices[path_id] = index::MergedIndex::load(it->path());
     }
 
     if(!workspace.merged_indices.empty()) {
@@ -183,7 +283,7 @@ bool Indexer::need_update(llvm::StringRef file_path) {
     for(auto& p: workspace.project_index.path_pool.paths) {
         path_mapping.push_back(p);
     }
-    return merged_it->second.index.need_update(path_mapping);
+    return merged_it->second.need_update(path_mapping);
 }
 
 bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const {
@@ -214,14 +314,10 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
                                            Session* session) {
     // Try the session's open file index first.
     if(session && session->file_index) {
-        auto offset = lsp::to_offset(session->text,
-                                     session->line_starts,
-                                     lsp::PositionEncoding::UTF16,
-                                     position);
+        auto offset = to_offset(*session, position);
         if(!offset)
             return {};
-        if(auto found =
-               find_occurrence(*session->file_index, session->text, session->line_starts, *offset))
+        if(auto found = find_occurrence(*session, *offset))
             return {found->first, found->second};
         return {};
     }
@@ -229,8 +325,7 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
     // Fallback to MergedIndex, using session text for position -> offset.
     if(!session)
         return {};
-    auto offset =
-        lsp::to_offset(session->text, session->line_starts, lsp::PositionEncoding::UTF16, position);
+    auto offset = to_offset(*session, position);
     if(!offset)
         return {};
 
@@ -241,7 +336,7 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
     if(shard_it == workspace.merged_indices.end())
         return {};
 
-    if(auto found = shard_it->second.find_occurrence(*offset))
+    if(auto found = find_occurrence(shard_it->second, *offset))
         return {found->first, found->second};
     return {};
 }
@@ -267,12 +362,13 @@ std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
             auto uri = lsp::URI::from_file_path(workspace.project_index.path_pool.path(file_id));
             if(!uri)
                 continue;
-            shard_it->second.find_relations(hit.hash,
-                                            kind,
-                                            [&](const auto&, protocol::Range range) {
-                                                locations.push_back({uri->str(), range});
-                                                return true;
-                                            });
+            find_relations(shard_it->second,
+                           hit.hash,
+                           kind,
+                           [&](const auto&, protocol::Range range) {
+                               locations.push_back({uri->str(), range});
+                               return true;
+                           });
         }
     }
 
@@ -280,15 +376,10 @@ std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
             return true;
-        find_relations(*session.file_index,
-                       session.text,
-                       session.line_starts,
-                       hit.hash,
-                       kind,
-                       [&](const auto&, protocol::Range range) {
-                           locations.push_back({uri->str(), range});
-                           return true;
-                       });
+        find_relations(session, hit.hash, kind, [&](const auto&, protocol::Range range) {
+            locations.push_back({uri->str(), range});
+            return true;
+        });
         return true;
     });
 
@@ -317,9 +408,7 @@ std::optional<protocol::Location> Indexer::find_definition_location(index::Symbo
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
             return true;
-        find_relations(*session.file_index,
-                       session.text,
-                       session.line_starts,
+        find_relations(session,
                        hash,
                        RelationKind::Definition,
                        [&](const auto&, protocol::Range range) {
@@ -346,12 +435,13 @@ std::optional<protocol::Location> Indexer::find_definition_location(index::Symbo
         if(!uri)
             continue;
         std::optional<protocol::Location> result;
-        shard_it->second.find_relations(hash,
-                                        RelationKind::Definition,
-                                        [&](const auto&, protocol::Range range) {
-                                            result = protocol::Location{uri->str(), range};
-                                            return false;
-                                        });
+        find_relations(shard_it->second,
+                       hash,
+                       RelationKind::Definition,
+                       [&](const auto&, protocol::Range range) {
+                           result = protocol::Location{uri->str(), range};
+                           return false;
+                       });
         if(result)
             return result;
     }
@@ -390,22 +480,17 @@ void Indexer::collect_grouped_relations(
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
                 continue;
-            shard_it->second.find_relations(hash, kind, [&](const auto& r, protocol::Range range) {
+            find_relations(shard_it->second, hash, kind, [&](const auto& r, protocol::Range range) {
                 target_ranges[r.target_symbol].push_back(range);
                 return true;
             });
         }
     }
     for_each_session([&](std::uint32_t, const Session& session) -> bool {
-        find_relations(*session.file_index,
-                       session.text,
-                       session.line_starts,
-                       hash,
-                       kind,
-                       [&](const auto& r, protocol::Range range) {
-                           target_ranges[r.target_symbol].push_back(range);
-                           return true;
-                       });
+        find_relations(session, hash, kind, [&](const auto& r, protocol::Range range) {
+            target_ranges[r.target_symbol].push_back(range);
+            return true;
+        });
         return true;
     });
 }
@@ -422,8 +507,7 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
                 continue;
-            /// No position conversion needed -- just collect target symbol hashes.
-            shard_it->second.index.lookup(hash, kind, [&](const index::Relation& r) {
+            shard_it->second.lookup(hash, kind, [&](const index::Relation& r) {
                 if(seen.insert(r.target_symbol).second) {
                     targets.push_back(r.target_symbol);
                 }
@@ -488,14 +572,8 @@ std::optional<Indexer::DefinitionText> Indexer::get_definition_text(index::Symbo
                 continue;
             if(def_range.end > session.text.size())
                 continue;
-            auto start = lsp::to_position(session.text,
-                                          session.line_starts,
-                                          lsp::PositionEncoding::UTF16,
-                                          def_range.begin);
-            auto end = lsp::to_position(session.text,
-                                        session.line_starts,
-                                        lsp::PositionEncoding::UTF16,
-                                        def_range.end);
+            auto start = to_position(session, def_range.begin);
+            auto end = to_position(session, def_range.end);
             if(!start || !end)
                 continue;
             session_result = DefinitionText{
@@ -522,34 +600,31 @@ std::optional<Indexer::DefinitionText> Indexer::get_definition_text(index::Symbo
         auto shard_it = workspace.merged_indices.find(file_id);
         if(shard_it == workspace.merged_indices.end())
             continue;
-        auto ls = shard_it->second.line_starts();
+        auto& mi = shard_it->second;
+        auto ls = mi.line_starts();
         if(ls.empty())
             continue;
-        auto content = shard_it->second.index.content();
+        auto content = mi.content();
 
         std::optional<DefinitionText> result;
-        shard_it->second.index.lookup(
-            hash,
-            RelationKind::Definition,
-            [&](const index::Relation& r) {
-                auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
-                if(def_range.begin >= def_range.end || def_range.end > content.size())
-                    return true;
-                auto start =
-                    lsp::to_position(content, ls, lsp::PositionEncoding::UTF16, def_range.begin);
-                auto end =
-                    lsp::to_position(content, ls, lsp::PositionEncoding::UTF16, def_range.end);
-                if(!start || !end)
-                    return true;
-                result = DefinitionText{
-                    .file = workspace.project_index.path_pool.path(file_id).str(),
-                    .start_line = static_cast<int>(start->line) + 1,
-                    .end_line = static_cast<int>(end->line) + 1,
-                    .text = std::string(
-                        content.substr(def_range.begin, def_range.end - def_range.begin)),
-                };
-                return false;
-            });
+        mi.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+            auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
+            if(def_range.begin >= def_range.end || def_range.end > content.size())
+                return true;
+            auto start =
+                lsp::to_position(content, ls, lsp::PositionEncoding::UTF16, def_range.begin);
+            auto end = lsp::to_position(content, ls, lsp::PositionEncoding::UTF16, def_range.end);
+            if(!start || !end)
+                return true;
+            result = DefinitionText{
+                .file = workspace.project_index.path_pool.path(file_id).str(),
+                .start_line = static_cast<int>(start->line) + 1,
+                .end_line = static_cast<int>(end->line) + 1,
+                .text =
+                    std::string(content.substr(def_range.begin, def_range.end - def_range.begin)),
+            };
+            return false;
+        });
         if(result)
             return result;
     }
@@ -569,13 +644,14 @@ std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::Sy
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
                 continue;
-            auto ls = shard_it->second.line_starts();
+            auto& mi = shard_it->second;
+            auto ls = mi.line_starts();
             if(ls.empty())
                 continue;
-            auto content = shard_it->second.index.content();
+            auto content = mi.content();
             auto file_path = workspace.project_index.path_pool.path(file_id);
 
-            shard_it->second.index.lookup(hash, kind, [&](const index::Relation& r) {
+            mi.lookup(hash, kind, [&](const index::Relation& r) {
                 auto start =
                     lsp::to_position(content, ls, lsp::PositionEncoding::UTF16, r.range.begin);
                 if(!start)
@@ -599,10 +675,7 @@ std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::Sy
         for(auto& rel: it->second) {
             if(rel.kind != kind)
                 continue;
-            auto start = lsp::to_position(session.text,
-                                          session.line_starts,
-                                          lsp::PositionEncoding::UTF16,
-                                          rel.range.begin);
+            auto start = to_position(session, rel.range.begin);
             if(!start)
                 continue;
             results.push_back(ReferenceWithContext{
