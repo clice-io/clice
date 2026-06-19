@@ -350,7 +350,7 @@ auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::FoldingRange> {
     auto collected = folding_ranges(unit);
     auto content = unit.interested_content();
-    auto line_starts = lsp::build_line_starts(content);
+    auto line_starts = unit.line_starts();
 
     std::vector<protocol::FoldingRange> result;
     result.reserve(collected.size());

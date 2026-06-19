@@ -23,7 +23,7 @@ void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
 
 auto to_local_range(const protocol::Range& range) -> LocalSourceRange {
     auto content = unit->interested_content();
-    auto line_starts = feature::lsp::build_line_starts(content);
+    auto line_starts = unit->line_starts();
     return LocalSourceRange(
         *feature::lsp::to_offset(content,
                                  line_starts,

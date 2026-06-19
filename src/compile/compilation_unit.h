@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -137,6 +138,10 @@ public:
 
     /// Get the content of interested file.
     auto interested_content() -> llvm::StringRef;
+
+    /// Get the byte offsets of each line start in the interested file.
+    /// Lazily computed and cached.
+    auto line_starts() -> std::span<const std::uint32_t>;
 
     /// Check if a file is a builtin file.
     bool is_builtin_file(clang::FileID fid);

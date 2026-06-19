@@ -27,7 +27,7 @@ void run(llvm::StringRef code, std::source_location location = std::source_locat
 
     hints_map.clear();
     auto content = unit->interested_content();
-    auto line_starts = feature::lsp::build_line_starts(content);
+    auto line_starts = unit->line_starts();
     for(auto& hint: hints) {
         hints_map[*feature::lsp::to_offset(content,
                                            line_starts,
@@ -1543,7 +1543,7 @@ TEST_CASE(snapshot) {
         auto content = unit->interested_content();
         LocalSourceRange range(0, content.size());
         auto hints = feature::inlay_hints(*unit, range);
-        auto line_starts = feature::lsp::build_line_starts(content);
+        auto line_starts = unit->line_starts();
         std::string result;
         for(auto& hint: hints) {
             auto pos = feature::lsp::to_position(content,

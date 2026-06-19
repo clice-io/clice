@@ -1311,8 +1311,7 @@ auto to_protocol_hover(CompilationUnitRef unit,
 
     if(info.symbol_range) {
         auto content = unit.interested_content();
-        auto line_starts = lsp::build_line_starts(content);
-        result.range = to_range(content, line_starts, encoding, *info.symbol_range);
+        result.range = to_range(content, unit.line_starts(), encoding, *info.symbol_range);
     }
 
     return result;

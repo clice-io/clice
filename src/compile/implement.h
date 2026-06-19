@@ -85,6 +85,9 @@ struct CompilationUnitRef::Self {
     /// Cache for symbol id.
     llvm::DenseMap<const void*, std::uint64_t> symbol_hash_cache;
 
+    /// Cache for line starts of the interested file.
+    std::vector<std::uint32_t> line_starts_cache;
+
     llvm::BumpPtrAllocator path_storage;
 
     std::vector<Diagnostic> diagnostics;

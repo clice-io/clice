@@ -79,7 +79,7 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
     };
 
     auto main_content = unit.interested_content();
-    auto main_line_starts = lsp::build_line_starts(main_content);
+    auto main_line_starts = unit.line_starts();
 
     for(const auto& raw: unit.diagnostics()) {
         auto level = raw.id.level;

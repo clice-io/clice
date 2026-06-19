@@ -125,6 +125,19 @@ auto CompilationUnitRef::interested_content() -> llvm::StringRef {
     return file_content(interested_file());
 }
 
+auto CompilationUnitRef::line_starts() -> std::span<const std::uint32_t> {
+    if(self->line_starts_cache.empty()) {
+        auto content = interested_content();
+        self->line_starts_cache.push_back(0);
+        for(std::uint32_t i = 0; i < content.size(); ++i) {
+            if(content[i] == '\n') {
+                self->line_starts_cache.push_back(i + 1);
+            }
+        }
+    }
+    return self->line_starts_cache;
+}
+
 bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {
     // No FileEntryRef => built-in/command line/scratch.
     if(!self->SM().getFileEntryRefForID(fid)) {

@@ -511,7 +511,7 @@ TEST_CASE(snapshot) {
             return "COMPILE_ERROR";
         auto idx = index::TUIndex::build(*unit);
         auto content = unit->interested_content();
-        auto line_starts = feature::lsp::build_line_starts(content);
+        auto line_starts = unit->line_starts();
         std::string result;
 
         auto sorted = idx.main_file_index.occurrences;

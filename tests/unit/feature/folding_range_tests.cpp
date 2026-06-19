@@ -38,7 +38,7 @@ void run(llvm::StringRef code) {
 
 auto to_local_range(const protocol::FoldingRange& range) -> LocalSourceRange {
     auto content = unit->interested_content();
-    auto line_starts = feature::lsp::build_line_starts(content);
+    auto line_starts = unit->line_starts();
 
     auto start = protocol::Position{
         .line = range.start_line,
@@ -438,7 +438,7 @@ TEST_CASE(snapshot) {
             return "COMPILE_ERROR";
         auto ranges = feature::folding_ranges(*unit);
         auto content = unit->interested_content();
-        auto line_starts = feature::lsp::build_line_starts(content);
+        auto line_starts = unit->line_starts();
         std::string result;
         for(auto& r: ranges) {
             auto start = feature::lsp::to_position(content,

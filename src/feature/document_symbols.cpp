@@ -219,7 +219,7 @@ auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     auto internal = document_symbols(unit);
 
     auto content = unit.interested_content();
-    auto line_starts = lsp::build_line_starts(content);
+    auto line_starts = unit.line_starts();
     std::vector<protocol::DocumentSymbol> symbols;
     symbols.reserve(internal.size());
 

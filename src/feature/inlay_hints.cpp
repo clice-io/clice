@@ -930,7 +930,7 @@ auto inlay_hints(CompilationUnitRef unit,
     auto collected = inlay_hints(unit, target, options);
 
     auto content = unit.interested_content();
-    auto line_starts = lsp::build_line_starts(content);
+    auto line_starts = unit.line_starts();
     std::vector<protocol::InlayHint> hints;
     hints.reserve(collected.size());
 

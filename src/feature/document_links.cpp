@@ -18,7 +18,7 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
     }
 
     auto content = unit.interested_content();
-    auto line_starts = lsp::build_line_starts(content);
+    auto line_starts = unit.line_starts();
     auto& directives = directives_it->second;
     auto* lang_opts = &unit.lang_options();
 

@@ -589,7 +589,7 @@ TEST_CASE(snapshot) {
             return "COMPILE_ERROR";
         auto content = unit->interested_content();
         auto tokens = feature::semantic_tokens(*unit);
-        auto line_starts = feature::lsp::build_line_starts(content);
+        auto line_starts = unit->line_starts();
         std::string result;
         for(auto& token: tokens) {
             if(!token.range.valid() || token.range.end <= token.range.begin ||
