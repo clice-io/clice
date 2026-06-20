@@ -97,7 +97,7 @@ private:
     /// The in memory data of the index.
     std::unique_ptr<Impl> impl;
 
-    mutable std::vector<std::uint32_t> cached_line_starts;
+    std::vector<std::uint32_t> cached_line_starts;
 };
 
 }  // namespace clice::index
