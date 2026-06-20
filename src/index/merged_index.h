@@ -68,7 +68,7 @@ public:
     /// Get the stored source content for position mapping.
     llvm::StringRef content(this const Self& self);
 
-    /// Get or lazily compute line starts from content.
+    /// Get line starts for position mapping.
     std::span<const std::uint32_t> line_starts(this const Self& self);
 
     /// Merge the index with given compilation context.
@@ -96,8 +96,6 @@ private:
 
     /// The in memory data of the index.
     std::unique_ptr<Impl> impl;
-
-    std::vector<std::uint32_t> cached_line_starts;
 };
 
 }  // namespace clice::index

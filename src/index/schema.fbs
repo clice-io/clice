@@ -118,6 +118,9 @@ removed:
 
 content:
     string;
+
+line_starts:
+    [uint];
 }
 
 table TUFileRelationsEntry {

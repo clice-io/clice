@@ -109,6 +109,9 @@ struct MergedIndex::Impl {
     /// The content of corresponding source file.
     std::string content;
 
+    /// Line start offsets for position mapping.
+    std::vector<std::uint32_t> line_starts;
+
     /// If this file is included by other source file, then it has header contexts.
     /// The key represents the source file id, value represents the context in the
     /// source file.
@@ -179,12 +182,7 @@ MergedIndex::MergedIndex(std::unique_ptr<llvm::MemoryBuffer> buffer, std::unique
 MergedIndex::MergedIndex() = default;
 
 MergedIndex::MergedIndex(llvm::StringRef data) :
-    MergedIndex(llvm::MemoryBuffer::getMemBuffer(data, "", false), nullptr) {
-    auto c = content();
-    if(!c.empty()) {
-        cached_line_starts = kota::ipc::lsp::build_line_starts(c);
-    }
-}
+    MergedIndex(llvm::MemoryBuffer::getMemBuffer(data, "", false), nullptr) {}
 
 MergedIndex::MergedIndex(MergedIndex&& other) = default;
 
@@ -261,7 +259,13 @@ void MergedIndex::load_in_memory(this Self& self) {
 
     if(root->content()) {
         index.content = root->content()->str();
-        self.cached_line_starts = kota::ipc::lsp::build_line_starts(index.content);
+    }
+
+    if(root->line_starts() && root->line_starts()->size() > 0) {
+        auto* ls = root->line_starts();
+        index.line_starts.assign(ls->begin(), ls->end());
+    } else if(!index.content.empty()) {
+        index.line_starts = kota::ipc::lsp::build_line_starts(index.content);
     }
 
     self.buffer.reset();
@@ -272,12 +276,7 @@ MergedIndex MergedIndex::load(llvm::StringRef path) {
     if(!buffer) {
         return MergedIndex();
     }
-    auto mi = MergedIndex(std::move(*buffer), nullptr);
-    auto c = mi.content();
-    if(!c.empty()) {
-        mi.cached_line_starts = kota::ipc::lsp::build_line_starts(c);
-    }
-    return mi;
+    return MergedIndex(std::move(*buffer), nullptr);
 }
 
 void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
@@ -371,6 +370,7 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
     auto removed = CreateVector(builder, buffer);
 
     auto content_offset = CreateString(builder, index->content);
+    auto line_starts_offset = builder.CreateVector(index->line_starts);
 
     auto merged_index = binary::CreateMergedIndex(builder,
                                                   index->max_canonical_id,
@@ -380,7 +380,8 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                                   CreateVector(builder, occurrences),
                                                   CreateVector(builder, relations),
                                                   removed,
-                                                  content_offset);
+                                                  content_offset,
+                                                  line_starts_offset);
     builder.Finish(merged_index);
 
     out.write(safe_cast<char>(builder.GetBufferPointer()), builder.GetSize());
@@ -598,6 +599,7 @@ void MergedIndex::merge(this Self& self,
                         llvm::StringRef content) {
     self.load_in_memory();
     self.impl->content = content.str();
+    self.impl->line_starts = kota::ipc::lsp::build_line_starts(self.impl->content);
     self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
         auto& context = self.compilation_contexts[path_id];
         context.canonical_id = canonical_id;
@@ -605,7 +607,6 @@ void MergedIndex::merge(this Self& self,
         context.include_locations = std::move(include_locations);
     });
     self.impl->occurrences_cache.clear();
-    self.cached_line_starts = kota::ipc::lsp::build_line_starts(self.impl->content);
 }
 
 void MergedIndex::merge(this Self& self,
@@ -616,7 +617,7 @@ void MergedIndex::merge(this Self& self,
     self.load_in_memory();
     if(self.impl->content.empty() && !content.empty()) {
         self.impl->content = content.str();
-        self.cached_line_starts = kota::ipc::lsp::build_line_starts(self.impl->content);
+        self.impl->line_starts = kota::ipc::lsp::build_line_starts(self.impl->content);
     }
     self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
         auto& context = self.header_contexts[path_id];
@@ -638,7 +639,15 @@ llvm::StringRef MergedIndex::content(this const Self& self) {
 }
 
 std::span<const std::uint32_t> MergedIndex::line_starts(this const Self& self) {
-    return self.cached_line_starts;
+    if(self.impl) {
+        return self.impl->line_starts;
+    } else if(self.buffer) {
+        auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
+        if(root->line_starts() && root->line_starts()->size() > 0) {
+            return {root->line_starts()->data(), root->line_starts()->size()};
+        }
+    }
+    return {};
 }
 
 bool operator==(MergedIndex& lhs, MergedIndex& rhs) {
