@@ -10,6 +10,7 @@
 #include "server/workspace/workspace.h"
 
 #include "kota/async/async.h"
+#include "kota/ipc/lsp/position.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace clice {
@@ -37,6 +38,11 @@ struct Session {
     /// Byte offsets of each line start in `text`, built by `build_line_starts`.
     /// Updated on didOpen and after every didChange.
     std::vector<std::uint32_t> line_starts;
+
+    /// Construct a LineMap borrowing from this session's text and line_starts.
+    kota::ipc::lsp::LineMap line_map() const {
+        return kota::ipc::lsp::LineMap(text, line_starts);
+    }
 
     /// Monotonic generation counter, incremented on every didChange and on close.
     /// Used to detect stale compilation results (ABA prevention).

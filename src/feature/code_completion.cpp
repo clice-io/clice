@@ -255,8 +255,8 @@ public:
         auto prefix = CompletionPrefix::from(content, offset);
         FuzzyMatcher matcher(prefix.spelling);
 
-        auto line_starts = lsp::build_line_starts(content);
-        auto replace_range = to_range(content, line_starts, encoding, prefix.range);
+        LineMap map(content, {}, encoding);
+        auto replace_range = to_range(map, prefix.range);
 
         std::vector<protocol::CompletionItem> collected;
         collected.reserve(candidate_count);

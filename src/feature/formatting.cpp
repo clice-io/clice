@@ -53,13 +53,13 @@ auto document_format(llvm::StringRef file,
         return edits;
     }
 
-    auto line_starts = lsp::build_line_starts(content);
+    LineMap map(content, {}, encoding);
 
     for(const auto& replacement: *replacements) {
         auto begin = replacement.getOffset();
         auto end = begin + replacement.getLength();
         protocol::TextEdit edit{
-            .range = to_range(content, line_starts, encoding, {begin, end}),
+            .range = to_range(map, {begin, end}),
             .new_text = replacement.getReplacementText().str(),
         };
         edits.push_back(std::move(edit));

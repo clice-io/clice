@@ -39,6 +39,7 @@ void run(llvm::StringRef code) {
 auto to_local_range(const protocol::FoldingRange& range) -> LocalSourceRange {
     auto content = unit->interested_content();
     auto line_starts = unit->line_starts();
+    feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
 
     auto start = protocol::Position{
         .line = range.start_line,
@@ -50,9 +51,7 @@ auto to_local_range(const protocol::FoldingRange& range) -> LocalSourceRange {
         .character = range.end_character.value_or(0),
     };
 
-    return LocalSourceRange(
-        *feature::lsp::to_offset(content, line_starts, feature::PositionEncoding::UTF8, start),
-        *feature::lsp::to_offset(content, line_starts, feature::PositionEncoding::UTF8, end));
+    return LocalSourceRange(*map.to_offset(start), *map.to_offset(end));
 }
 
 void EXPECT_FOLDING(std::uint32_t index,
@@ -439,16 +438,11 @@ TEST_CASE(snapshot) {
         auto ranges = feature::folding_ranges(*unit);
         auto content = unit->interested_content();
         auto line_starts = unit->line_starts();
+        feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
         std::string result;
         for(auto& r: ranges) {
-            auto start = feature::lsp::to_position(content,
-                                                   line_starts,
-                                                   feature::PositionEncoding::UTF8,
-                                                   r.range.begin);
-            auto end = feature::lsp::to_position(content,
-                                                 line_starts,
-                                                 feature::PositionEncoding::UTF8,
-                                                 r.range.end);
+            auto start = map.to_position(r.range.begin);
+            auto end = map.to_position(r.range.end);
             if(!start || !end)
                 continue;
             result += std::format("- {{ range: \"{}:{}-{}:{}\"",

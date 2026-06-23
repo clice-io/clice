@@ -24,12 +24,8 @@ void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
 auto to_local_range(const protocol::Range& range) -> LocalSourceRange {
     auto content = unit->interested_content();
     auto line_starts = unit->line_starts();
-    return LocalSourceRange(
-        *feature::lsp::to_offset(content,
-                                 line_starts,
-                                 feature::PositionEncoding::UTF8,
-                                 range.start),
-        *feature::lsp::to_offset(content, line_starts, feature::PositionEncoding::UTF8, range.end));
+    feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+    return LocalSourceRange(*map.to_offset(range.start), *map.to_offset(range.end));
 }
 
 void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) {

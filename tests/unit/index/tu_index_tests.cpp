@@ -520,12 +520,10 @@ TEST_CASE(snapshot) {
                    std::tuple(rhs.range.begin, rhs.range.end, rhs.target);
         });
 
+        feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
         for(auto& occ: sorted) {
             auto text = content.substr(occ.range.begin, occ.range.end - occ.range.begin);
-            auto pos = feature::lsp::to_position(content,
-                                                 line_starts,
-                                                 feature::PositionEncoding::UTF8,
-                                                 occ.range.begin);
+            auto pos = map.to_position(occ.range.begin);
             if(!pos)
                 continue;
 

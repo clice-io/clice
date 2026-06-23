@@ -27,17 +27,11 @@ namespace clice {
 namespace lsp = kota::ipc::lsp;
 
 static auto to_position(const Session& session, std::uint32_t offset) {
-    return lsp::to_position(session.text,
-                            session.line_starts,
-                            lsp::PositionEncoding::UTF16,
-                            offset);
+    return session.line_map().to_position(offset);
 }
 
 static auto to_offset(const Session& session, const protocol::Position& position) {
-    return lsp::to_offset(session.text,
-                          session.line_starts,
-                          lsp::PositionEncoding::UTF16,
-                          position);
+    return session.line_map().to_offset(position);
 }
 
 const static index::Occurrence* lookup_occurrence(const std::vector<index::Occurrence>& occs,
@@ -93,15 +87,12 @@ static std::optional<std::pair<index::SymbolHash, protocol::Range>>
     auto c = index.content();
     if(ls.empty())
         return std::nullopt;
+    lsp::LineMap map(c, ls);
     std::optional<std::pair<index::SymbolHash, protocol::Range>> result;
     index.lookup(offset, [&](const index::Occurrence& o) {
-        auto start = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, o.range.begin);
-        auto end = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, o.range.end);
-        if(start && end) {
-            result = {
-                o.target,
-                protocol::Range{*start, *end}
-            };
+        auto range = map.to_range(o.range.begin, o.range.end);
+        if(range) {
+            result = {o.target, *range};
         }
         return false;
     });
@@ -117,11 +108,11 @@ static void find_relations(const index::MergedIndex& index,
     auto c = index.content();
     if(ls.empty())
         return;
+    lsp::LineMap map(c, ls);
     index.lookup(hash, kind, [&](const index::Relation& r) {
-        auto start = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.begin);
-        auto end = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.end);
-        if(start && end) {
-            return fn(r, protocol::Range{*start, *end});
+        auto range = map.to_range(r.range.begin, r.range.end);
+        if(range) {
+            return fn(r, *range);
         }
         return true;
     });
@@ -605,21 +596,20 @@ std::optional<Indexer::DefinitionText> Indexer::get_definition_text(index::Symbo
         if(ls.empty())
             continue;
         auto content = mi.content();
+        lsp::LineMap map(content, ls);
 
         std::optional<DefinitionText> result;
         mi.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
             auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
             if(def_range.begin >= def_range.end || def_range.end > content.size())
                 return true;
-            auto start =
-                lsp::to_position(content, ls, lsp::PositionEncoding::UTF16, def_range.begin);
-            auto end = lsp::to_position(content, ls, lsp::PositionEncoding::UTF16, def_range.end);
-            if(!start || !end)
+            auto range = map.to_range(def_range.begin, def_range.end);
+            if(!range)
                 return true;
             result = DefinitionText{
                 .file = workspace.project_index.path_pool.path(file_id).str(),
-                .start_line = static_cast<int>(start->line) + 1,
-                .end_line = static_cast<int>(end->line) + 1,
+                .start_line = static_cast<int>(range->start.line) + 1,
+                .end_line = static_cast<int>(range->end.line) + 1,
                 .text =
                     std::string(content.substr(def_range.begin, def_range.end - def_range.begin)),
             };
@@ -649,16 +639,16 @@ std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::Sy
             if(ls.empty())
                 continue;
             auto content = mi.content();
+            lsp::LineMap map(content, ls);
             auto file_path = workspace.project_index.path_pool.path(file_id);
 
             mi.lookup(hash, kind, [&](const index::Relation& r) {
-                auto start =
-                    lsp::to_position(content, ls, lsp::PositionEncoding::UTF16, r.range.begin);
-                if(!start)
+                auto pos = map.to_position(r.range.begin);
+                if(!pos)
                     return true;
                 results.push_back(ReferenceWithContext{
                     .file = file_path.str(),
-                    .line = static_cast<int>(start->line) + 1,
+                    .line = static_cast<int>(pos->line) + 1,
                     .context = extract_line(content, r.range.begin),
                 });
                 return true;

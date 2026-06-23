@@ -33,11 +33,11 @@ static void find_relations(const index::MergedIndex& index,
     auto c = index.content();
     if(ls.empty())
         return;
+    lsp::LineMap map(c, ls);
     index.lookup(hash, kind, [&](const index::Relation& r) {
-        auto start = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.begin);
-        auto end = lsp::to_position(c, ls, lsp::PositionEncoding::UTF16, r.range.end);
-        if(start && end) {
-            return fn(r, protocol::Range{*start, *end});
+        auto range = map.to_range(r.range.begin, r.range.end);
+        if(range) {
+            return fn(r, *range);
         }
         return true;
     });
@@ -141,14 +141,12 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
         if(server_id != ~0u) {
             std::vector<ResolvedSymbol> session_result;
             indexer.with_session(server_id, [&](const Session& session) {
+                auto map = session.line_map();
                 for(auto& [hash, rels]: session.file_index->relations) {
                     for(auto& rel: rels) {
                         if(rel.kind.value() != RelationKind::Definition)
                             continue;
-                        auto start = lsp::to_position(session.text,
-                                                      session.line_starts,
-                                                      lsp::PositionEncoding::UTF16,
-                                                      rel.range.begin);
+                        auto start = map.to_position(rel.range.begin);
                         if(start && start->line == target_line) {
                             std::string name;
                             SymbolKind kind;
@@ -526,20 +524,13 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                             continue;
                         if(!is_document_level(kind))
                             continue;
-                        auto start = lsp::to_position(session.text,
-                                                      session.line_starts,
-                                                      lsp::PositionEncoding::UTF16,
-                                                      rel.range.begin);
-                        auto end = lsp::to_position(session.text,
-                                                    session.line_starts,
-                                                    lsp::PositionEncoding::UTF16,
-                                                    rel.range.end);
-                        if(start && end) {
+                        auto range = session.line_map().to_range(rel.range.begin, rel.range.end);
+                        if(range) {
                             result.symbols.push_back(DocumentSymbolEntry{
                                 .name = std::move(name),
                                 .kind = std::string(symbol_kind_name(kind)),
-                                .start_line = static_cast<int>(start->line) + 1,
-                                .end_line = static_cast<int>(end->line) + 1,
+                                .start_line = static_cast<int>(range->start.line) + 1,
+                                .end_line = static_cast<int>(range->end.line) + 1,
                                 .symbol_id = hash,
                             });
                             break;

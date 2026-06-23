@@ -192,17 +192,16 @@ void format_document_symbols(std::string& out,
                              feature::PositionEncoding encoding,
                              llvm::ArrayRef<feature::DocumentSymbol> nodes,
                              int depth) {
+    feature::lsp::LineMap map(content, line_starts, encoding);
     auto pad = std::string(depth * 2, ' ');
     for(auto& node: nodes) {
         auto kind = kota::meta::enum_name(static_cast<SymbolKind::Kind>(node.kind), "Unknown");
-        auto start = feature::lsp::to_position(content, line_starts, encoding, node.range.begin);
-        auto end = feature::lsp::to_position(content, line_starts, encoding, node.range.end);
+        auto start = map.to_position(node.range.begin);
+        auto end = map.to_position(node.range.end);
         if(!start || !end)
             continue;
-        auto sel_start =
-            feature::lsp::to_position(content, line_starts, encoding, node.selection_range.begin);
-        auto sel_end =
-            feature::lsp::to_position(content, line_starts, encoding, node.selection_range.end);
+        auto sel_start = map.to_position(node.selection_range.begin);
+        auto sel_end = map.to_position(node.selection_range.end);
         out += std::format("- {}{{ name: {}, kind: {}, range: \"{}:{}-{}:{}\"",
                            pad,
                            yaml_str(node.name),

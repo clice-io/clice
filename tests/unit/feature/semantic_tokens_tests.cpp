@@ -590,16 +590,14 @@ TEST_CASE(snapshot) {
         auto content = unit->interested_content();
         auto tokens = feature::semantic_tokens(*unit);
         auto line_starts = unit->line_starts();
+        feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
         std::string result;
         for(auto& token: tokens) {
             if(!token.range.valid() || token.range.end <= token.range.begin ||
                token.range.end > content.size())
                 continue;
 
-            auto pos = feature::lsp::to_position(content,
-                                                 line_starts,
-                                                 feature::PositionEncoding::UTF8,
-                                                 token.range.begin);
+            auto pos = map.to_position(token.range.begin);
             if(!pos)
                 continue;
 

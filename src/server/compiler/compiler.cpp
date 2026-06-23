@@ -834,8 +834,7 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
     auto gen = session->generation;
-    auto text = session->text;
-    auto line_starts = session->line_starts;
+    auto map = session->line_map();
 
     if(!co_await ensure_compiled(session)) {
         co_return serde_raw{"null"};
@@ -850,15 +849,15 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     wp.path = path;
 
     if(position) {
-        auto offset = lsp::to_offset(text, line_starts, lsp::PositionEncoding::UTF16, *position);
+        auto offset = map.to_offset(*position);
         if(!offset)
             co_return serde_raw{"null"};
         wp.offset = *offset;
     }
 
     if(range) {
-        auto start = lsp::to_offset(text, line_starts, lsp::PositionEncoding::UTF16, range->start);
-        auto end = lsp::to_offset(text, line_starts, lsp::PositionEncoding::UTF16, range->end);
+        auto start = map.to_offset(range->start);
+        auto end = map.to_offset(range->end);
         if(start && end) {
             wp.range = {*start, *end};
         }
@@ -877,7 +876,6 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
     auto gen = session->generation;
-    auto line_starts = session->line_starts;
 
     worker::BuildParams wp;
     wp.kind = kind;
@@ -896,7 +894,8 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
         co_return serde_raw{};
     }
 
-    auto offset = lsp::to_offset(wp.text, line_starts, lsp::PositionEncoding::UTF16, position);
+    lsp::LineMap map(wp.text);
+    auto offset = map.to_offset(position);
     if(!offset)
         co_return serde_raw{"null"};
     wp.offset = *offset;
@@ -919,10 +918,9 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     wp.text = session->text;
 
     if(range) {
-        auto line_starts = lsp::build_line_starts(wp.text);
-        auto begin =
-            lsp::to_offset(wp.text, line_starts, lsp::PositionEncoding::UTF16, range->start);
-        auto end = lsp::to_offset(wp.text, line_starts, lsp::PositionEncoding::UTF16, range->end);
+        lsp::LineMap map(wp.text);
+        auto begin = map.to_offset(range->start);
+        auto end = map.to_offset(range->end);
         if(!begin || !end)
             co_return serde_raw{"null"};
         wp.format_range = {*begin, *end};
@@ -940,8 +938,8 @@ Compiler::RawResult Compiler::handle_completion(const protocol::Position& positi
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
 
-    auto offset =
-        lsp::to_offset(session->text, session->line_starts, lsp::PositionEncoding::UTF16, position);
+    auto map = session->line_map();
+    auto offset = map.to_offset(position);
     if(offset) {
         auto pctx = detect_completion_context(session->text, *offset);
         if(pctx.kind == CompletionContext::IncludeQuoted ||

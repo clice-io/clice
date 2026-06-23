@@ -47,13 +47,13 @@ void add_related(protocol::Diagnostic& diagnostic,
     }
 
     auto content = unit.file_content(raw.fid);
-    auto line_starts = lsp::build_line_starts(content);
+    LineMap map(content, {}, encoding);
 
     protocol::DiagnosticRelatedInformation related{
         .location =
             protocol::Location{
                                .uri = to_uri(unit.file_path(raw.fid)),
-                               .range = to_range(content, line_starts, encoding, raw.range),
+                               .range = to_range(map, raw.range),
                                },
         .message = raw.message,
     };

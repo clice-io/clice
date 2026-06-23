@@ -2,9 +2,7 @@
 
 #include <cstdint>
 #include <optional>
-#include <span>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "compile/compilation.h"
@@ -20,29 +18,25 @@ namespace clice::feature {
 namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
+using kota::ipc::lsp::LineMap;
 using kota::ipc::lsp::PositionEncoding;
-using kota::ipc::lsp::parse_position_encoding;
 
-inline auto to_range(std::string_view content,
-                     std::span<const std::uint32_t> line_starts,
-                     lsp::PositionEncoding encoding,
-                     LocalSourceRange range) -> protocol::Range {
-    return protocol::Range{
-        .start = *lsp::to_position(content, line_starts, encoding, range.begin),
-        .end = *lsp::to_position(content, line_starts, encoding, range.end),
-    };
+inline auto to_range(const LineMap& map, LocalSourceRange range) -> protocol::Range {
+    return *map.to_range(range.begin, range.end);
 }
 
 inline auto to_position(CompilationUnitRef unit,
                         lsp::PositionEncoding encoding,
                         std::uint32_t offset) -> std::optional<protocol::Position> {
-    return lsp::to_position(unit.interested_content(), unit.line_starts(), encoding, offset);
+    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
+    return map.to_position(offset);
 }
 
 inline auto to_range(CompilationUnitRef unit,
                      lsp::PositionEncoding encoding,
                      LocalSourceRange range) -> protocol::Range {
-    return to_range(unit.interested_content(), unit.line_starts(), encoding, range);
+    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
+    return to_range(map, range);
 }
 
 struct CodeCompletionOptions {

@@ -482,10 +482,11 @@ public:
     SemanticTokenEncoder(CompilationUnitRef unit,
                          PositionEncoding encoding,
                          protocol::SemanticTokens& output) :
-        content(unit.interested_content()), line_starts(unit.line_starts()), encoding(encoding),
+        map(unit.interested_content(), unit.line_starts(), encoding), encoding(encoding),
         output(output) {}
 
     void append(const SemanticToken& token) {
+        auto content = map.content();
         if(!token.range.valid() || token.range.end <= token.range.begin ||
            token.range.end > content.size()) {
             return;
@@ -493,8 +494,8 @@ public:
 
         auto begin = token.range.begin;
         auto end = token.range.end;
-        auto begin_position = *lsp::to_position(content, line_starts, encoding, begin);
-        auto end_position = *lsp::to_position(content, line_starts, encoding, end);
+        auto begin_position = *map.to_position(begin);
+        auto end_position = *map.to_position(end);
         auto begin_line = static_cast<std::uint32_t>(begin_position.line);
         auto begin_char = static_cast<std::uint32_t>(begin_position.character);
         auto end_line = static_cast<std::uint32_t>(end_position.line);
@@ -560,8 +561,7 @@ private:
     }
 
 private:
-    llvm::StringRef content;
-    std::span<const std::uint32_t> line_starts;
+    lsp::LineMap map;
     PositionEncoding encoding;
     protocol::SemanticTokens& output;
     std::uint32_t last_line = 0;
