@@ -12,6 +12,7 @@
 #include "semantic/symbol_kind.h"
 #include "support/bitmap.h"
 
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice::index {
@@ -51,6 +52,12 @@ struct FileIndex {
     llvm::DenseMap<SymbolHash, std::vector<Relation>> relations;
 
     std::vector<Occurrence> occurrences;
+
+    const Occurrence* lookup(std::uint32_t offset) const;
+
+    void lookup(SymbolHash symbol,
+                RelationKind kind,
+                llvm::function_ref<bool(const Relation&)> callback) const;
 
     std::array<std::uint8_t, 32> hash();
 };

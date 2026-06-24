@@ -17,6 +17,7 @@ namespace clice::testing {
 
 namespace {
 
+namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 TEST_SUITE(document_symbol, Tester) {
@@ -192,7 +193,7 @@ void format_document_symbols(std::string& out,
                              feature::PositionEncoding encoding,
                              llvm::ArrayRef<feature::DocumentSymbol> nodes,
                              int depth) {
-    feature::lsp::LineMap map(content, line_starts, encoding);
+    lsp::LineMap map(content, line_starts, encoding);
     auto pad = std::string(depth * 2, ' ');
     for(auto& node: nodes) {
         auto kind = kota::meta::enum_name(static_cast<SymbolKind::Kind>(node.kind), "Unknown");

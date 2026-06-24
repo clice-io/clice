@@ -1,5 +1,6 @@
 #include "index/tu_index.h"
 
+#include <algorithm>
 #include <tuple>
 
 #include "index/serialization.h"
@@ -158,6 +159,33 @@ private:
 };
 
 }  // namespace
+
+const Occurrence* FileIndex::lookup(std::uint32_t offset) const {
+    auto it = std::ranges::lower_bound(occurrences, offset, {}, [](const Occurrence& o) {
+        return o.range.end;
+    });
+    const Occurrence* best = nullptr;
+    while(it != occurrences.end() && it->range.contains(offset)) {
+        if(!best || (it->range.end - it->range.begin) < (best->range.end - best->range.begin))
+            best = &*it;
+        ++it;
+    }
+    return best;
+}
+
+void FileIndex::lookup(SymbolHash symbol,
+                       RelationKind kind,
+                       llvm::function_ref<bool(const Relation&)> callback) const {
+    auto it = relations.find(symbol);
+    if(it == relations.end())
+        return;
+    for(auto& r: it->second) {
+        if(r.kind & kind) {
+            if(!callback(r))
+                return;
+        }
+    }
+}
 
 std::array<std::uint8_t, 32> FileIndex::hash() {
     llvm::SHA256 hasher;

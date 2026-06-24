@@ -21,24 +21,6 @@ namespace protocol = kota::ipc::protocol;
 using kota::ipc::lsp::LineMap;
 using kota::ipc::lsp::PositionEncoding;
 
-inline auto to_range(const LineMap& map, LocalSourceRange range) -> protocol::Range {
-    return *map.to_range(range.begin, range.end);
-}
-
-inline auto to_position(CompilationUnitRef unit,
-                        lsp::PositionEncoding encoding,
-                        std::uint32_t offset) -> std::optional<protocol::Position> {
-    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
-    return map.to_position(offset);
-}
-
-inline auto to_range(CompilationUnitRef unit,
-                     lsp::PositionEncoding encoding,
-                     LocalSourceRange range) -> protocol::Range {
-    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
-    return to_range(map, range);
-}
-
 struct CodeCompletionOptions {
     bool enable_keyword_snippet = false;
     bool enable_function_arguments_snippet = false;

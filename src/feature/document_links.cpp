@@ -20,6 +20,7 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
     auto content = unit.interested_content();
     auto& directives = directives_it->second;
     auto* lang_opts = &unit.lang_options();
+    LineMap map(content, unit.line_starts(), encoding);
 
     auto add_link = [&](clang::SourceLocation loc, llvm::StringRef target) {
         auto [fid, offset] = unit.decompose_location(loc);
@@ -28,7 +29,7 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
         auto range = find_directive_argument(content, offset, lang_opts);
         if(!range)
             return;
-        protocol::DocumentLink link{.range = to_range(unit, encoding, *range)};
+        protocol::DocumentLink link{.range = *map.to_range(range->begin, range->end)};
         link.target = target.str();
         links.push_back(std::move(link));
     };

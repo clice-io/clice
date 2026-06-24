@@ -178,14 +178,13 @@ void sort_symbols(std::vector<DocumentSymbol>& symbols) {
     }
 }
 
-auto to_protocol_symbol(const DocumentSymbol& symbol,
-                        CompilationUnitRef unit,
-                        PositionEncoding encoding) -> protocol::DocumentSymbol {
+auto to_protocol_symbol(const DocumentSymbol& symbol, const LineMap& map)
+    -> protocol::DocumentSymbol {
     protocol::DocumentSymbol result{
         .name = symbol.name,
         .kind = to_protocol_symbol_kind(symbol.kind),
-        .range = to_range(unit, encoding, symbol.range),
-        .selection_range = to_range(unit, encoding, symbol.selection_range),
+        .range = *map.to_range(symbol.range.begin, symbol.range.end),
+        .selection_range = *map.to_range(symbol.selection_range.begin, symbol.selection_range.end),
     };
 
     if(!symbol.detail.empty()) {
@@ -196,8 +195,8 @@ auto to_protocol_symbol(const DocumentSymbol& symbol,
         std::vector<std::shared_ptr<protocol::DocumentSymbol>> children;
         children.reserve(symbol.children.size());
         for(const auto& child: symbol.children) {
-            children.push_back(std::make_shared<protocol::DocumentSymbol>(
-                to_protocol_symbol(child, unit, encoding)));
+            children.push_back(
+                std::make_shared<protocol::DocumentSymbol>(to_protocol_symbol(child, map)));
         }
         result.children = std::move(children);
     }
@@ -216,12 +215,13 @@ auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol> {
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol> {
     auto internal = document_symbols(unit);
+    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
 
     std::vector<protocol::DocumentSymbol> symbols;
     symbols.reserve(internal.size());
 
     for(const auto& symbol: internal) {
-        symbols.push_back(to_protocol_symbol(symbol, unit, encoding));
+        symbols.push_back(to_protocol_symbol(symbol, map));
     }
 
     return symbols;

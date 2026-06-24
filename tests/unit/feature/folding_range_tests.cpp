@@ -9,6 +9,7 @@ namespace clice::testing {
 
 namespace {
 
+namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 TEST_SUITE(folding_range, Tester) {
@@ -39,7 +40,7 @@ void run(llvm::StringRef code) {
 auto to_local_range(const protocol::FoldingRange& range) -> LocalSourceRange {
     auto content = unit->interested_content();
     auto line_starts = unit->line_starts();
-    feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+    lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
 
     auto start = protocol::Position{
         .line = range.start_line,
@@ -438,7 +439,7 @@ TEST_CASE(snapshot) {
         auto ranges = feature::folding_ranges(*unit);
         auto content = unit->interested_content();
         auto line_starts = unit->line_starts();
-        feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+        lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
         std::string result;
         for(auto& r: ranges) {
             auto start = map.to_position(r.range.begin);

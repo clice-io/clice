@@ -11,6 +11,7 @@ namespace clice::testing {
 
 namespace {
 
+namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 TEST_SUITE(inlay_hint, Tester) {
@@ -28,7 +29,7 @@ void run(llvm::StringRef code, std::source_location location = std::source_locat
     hints_map.clear();
     auto content = unit->interested_content();
     auto line_starts = unit->line_starts();
-    feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+    lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
     for(auto& hint: hints) {
         hints_map[*map.to_offset(hint.position)] = hint;
     }
@@ -1542,7 +1543,7 @@ TEST_CASE(snapshot) {
         LocalSourceRange range(0, content.size());
         auto hints = feature::inlay_hints(*unit, range);
         auto line_starts = unit->line_starts();
-        feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+        lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
         std::string result;
         for(auto& hint: hints) {
             auto pos = map.to_position(hint.offset);

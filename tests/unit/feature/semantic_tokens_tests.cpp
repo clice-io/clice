@@ -15,6 +15,7 @@ namespace clice::testing {
 
 namespace {
 
+namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 struct DecodedToken {
@@ -590,7 +591,7 @@ TEST_CASE(snapshot) {
         auto content = unit->interested_content();
         auto tokens = feature::semantic_tokens(*unit);
         auto line_starts = unit->line_starts();
-        feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+        lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
         std::string result;
         for(auto& token: tokens) {
             if(!token.range.valid() || token.range.end <= token.range.begin ||

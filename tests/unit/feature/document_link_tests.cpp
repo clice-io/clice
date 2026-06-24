@@ -9,6 +9,7 @@ namespace clice::testing {
 
 namespace {
 
+namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 TEST_SUITE(document_link, Tester) {
@@ -24,7 +25,7 @@ void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
 auto to_local_range(const protocol::Range& range) -> LocalSourceRange {
     auto content = unit->interested_content();
     auto line_starts = unit->line_starts();
-    feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+    lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
     return LocalSourceRange(*map.to_offset(range.start), *map.to_offset(range.end));
 }
 

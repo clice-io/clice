@@ -59,7 +59,7 @@ auto document_format(llvm::StringRef file,
         auto begin = replacement.getOffset();
         auto end = begin + replacement.getLength();
         protocol::TextEdit edit{
-            .range = to_range(map, {begin, end}),
+            .range = *map.to_range(begin, end),
             .new_text = replacement.getReplacementText().str(),
         };
         edits.push_back(std::move(edit));

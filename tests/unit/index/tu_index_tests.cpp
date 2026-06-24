@@ -10,6 +10,9 @@
 #include "kota/meta/enum.h"
 
 namespace clice::testing {
+
+namespace lsp = kota::ipc::lsp;
+
 namespace {
 
 TEST_SUITE(tu_index, Tester) {
@@ -520,7 +523,7 @@ TEST_CASE(snapshot) {
                    std::tuple(rhs.range.begin, rhs.range.end, rhs.target);
         });
 
-        feature::lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+        lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
         for(auto& occ: sorted) {
             auto text = content.substr(occ.range.begin, occ.range.end - occ.range.begin);
             auto pos = map.to_position(occ.range.begin);
