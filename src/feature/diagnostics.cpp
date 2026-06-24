@@ -47,7 +47,7 @@ void add_related(protocol::Diagnostic& diagnostic,
     }
 
     auto content = unit.file_content(raw.fid);
-    LineMap map(content, {}, encoding);
+    LineMap map(content, encoding);
 
     protocol::DiagnosticRelatedInformation related{
         .location =

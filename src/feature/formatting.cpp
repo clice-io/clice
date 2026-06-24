@@ -53,7 +53,7 @@ auto document_format(llvm::StringRef file,
         return edits;
     }
 
-    LineMap map(content, {}, encoding);
+    LineMap map(content, encoding);
 
     for(const auto& replacement: *replacements) {
         auto begin = replacement.getOffset();
