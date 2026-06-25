@@ -46,7 +46,9 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
         [this](uint32_t server_path_id) { return sessions.contains(server_path_id); },
         [this](Indexer::SessionVisitor visitor) {
             for(auto& [path_id, session]: sessions) {
-                if(session && session->file_index && session->symbols) {
+                // FIXME: when ast_dirty, consider awaiting recompilation
+                // instead of silently falling back to MergedIndex.
+                if(session && session->file_index && session->symbols && !session->ast_dirty) {
                     if(!visitor(path_id, *session))
                         break;
                 }

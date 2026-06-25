@@ -211,8 +211,9 @@ bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, Symbol
 Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
                                            const protocol::Position& position,
                                            Session* session) {
-    // Try the session's open file index first.
-    if(session && session->file_index) {
+    // FIXME: when ast_dirty, we fall back to MergedIndex which may be staler.
+    // Consider awaiting the pending recompilation to serve fresher results.
+    if(session && session->file_index && !session->ast_dirty) {
         auto map = session->line_map();
         auto offset = map.to_offset(position);
         if(!offset)
