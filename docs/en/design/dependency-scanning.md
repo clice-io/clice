@@ -116,7 +116,7 @@ The include chain lookup uses BFS to guarantee the shortest path is found. The c
 
 ### Precise Scanning and Background Indexing as Supplements
 
-The fast scan provides approximate results during the startup phase. As the server runs, the background indexing system gradually compiles every translation unit in the project, obtaining precise include relationships during compilation (with full preprocessing, evaluating all macros and conditional compilation). These precise include relationships are recorded in the index data, and as background indexing progresses, the system's understanding of include relationships evolves from "fast but approximate" to "complete and precise."
+The fast scan provides approximate results during the startup phase. As the server runs, the background indexing system gradually compiles every translation unit in the project, obtaining precise include relationships during compilation (with full preprocessing, evaluating all macros and conditional compilation). These precise include relationships are recorded in the index data (TUIndex/MergedIndex). Note that background indexing currently does not update the DependencyGraph built during startup — the fast-scan include graph remains in use for host source lookup and file-dependency queries throughout the server's lifetime.
 
 Additionally, the system provides a precise scanning mode (scan_precise) -- running the full Clang preprocessor for specific scenarios that require accurate dependency information, such as lazy dependency resolution during module compilation (via CompileGraph's resolve_fn). Precise scan results are resolved file paths (rather than raw include names), accurately reflecting the actual include relationships under a specific compilation configuration.
 

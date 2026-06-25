@@ -25,7 +25,7 @@ The following issues come up repeatedly in clangd's issue tracker:
 
 clice uses a three-level index structure, each level serving a different purpose:
 
-```
+```text
 TUIndex (compilation artifact)
     ↓ merge
 ProjectIndex (global symbol directory) + MergedIndex (per-file sharded relation data)
@@ -108,7 +108,7 @@ Taking "go to definition" as an example, the query flow is:
    - If the file **is open** (has a Session), use its OpenFileIndex to look up relation data, **skipping** the corresponding MergedIndex shard
    - If the file **is not open**, use the MergedIndex shard to look up relation data
 
-Key point: For any given file, OpenFileIndex and MergedIndex are **mutually exclusive** — open files are queried only via OpenFileIndex, closed files only via MergedIndex. This is replacement, not layering. This ensures that query results for open files always reflect the latest buffer contents.
+Key point: For any given file, OpenFileIndex is **preferred** over MergedIndex — open files are queried via OpenFileIndex first, falling back to MergedIndex when the session AST is dirty or unavailable. Closed files are always queried via MergedIndex. This ensures that query results for open files reflect the latest buffer contents whenever possible.
 
 ### Real-Time Override for Open Files
 
@@ -116,7 +116,7 @@ Each open file maintains an OpenFileIndex in its Session, storing index data fro
 
 Design principle: The open file's index is not written to the Workspace (does not affect global state); only after the file is saved does background indexing update the MergedIndex. This preserves the stability of the global index — half-typed code that may be incomplete should not pollute query results for other files.
 
-During queries, if a referenced file is open, the query uses that file's OpenFileIndex instead of the MergedIndex shard — the two are mutually exclusive, not layered. This ensures the user sees results corresponding to the latest buffer contents.
+During queries, if a referenced file is open, the query prefers that file's OpenFileIndex over the MergedIndex shard, falling back to MergedIndex when the AST is dirty or unavailable. This ensures the user sees results corresponding to the latest buffer contents whenever possible.
 
 ## Background Indexing
 
@@ -125,7 +125,6 @@ During queries, if a referenced file is open, the query uses that file's OpenFil
 Background indexing is managed by the Indexer, which maintains a queue of files awaiting indexing. It uses the following scheduling strategy:
 
 - **Idle-timeout batching**: Files are not indexed immediately upon entering the queue. Instead, an idle timer is set. When the timer fires, all files currently in the queue are processed as a batch. This avoids frequent small indexing runs.
-- **Deduplication**: Files in the queue are deduplicated, preventing the same file from being indexed multiple times.
 - **Pause/resume**: When the user initiates interactive requests (hover, completion, etc.), background indexing can be paused to prioritize user requests. Nested pause semantics are supported.
 
 ### Index Merging

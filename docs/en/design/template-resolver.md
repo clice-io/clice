@@ -115,7 +115,7 @@ When resolving `allocator_traits<allocator<int>>::value_type`, clangd fails beca
 
 The standard library's allocator rebinding chain is a particularly deep typedef chain:
 
-```
+```text
 vector<T> -> __alloc_traits<allocator<T>> -> allocator_traits<allocator<T>>
   -> allocator_traits<Alloc>::rebind_alloc<U>
 ```

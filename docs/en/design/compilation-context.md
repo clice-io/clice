@@ -28,7 +28,7 @@ This case is relatively straightforward: the user selects a compilation command,
 
 For header files (`.h`), there are two cases:
 
-**Self-contained headers**: If a header can be compiled independently (it has its own CDB entry, or is protected by `#pragma once` / include guards and does not depend on external macro definitions), it can be treated like a source file and compiled directly using its own compilation command.
+**Self-contained headers**: If a header can be compiled independently without a synthesized host prefix (for example, it has its own CDB entry and does not rely on preceding includes or macros from a host source file), it can be treated like a source file and compiled directly using its own compilation command.
 
 **Non-self-contained headers**: If a header depends on preceding context provided by the source file that includes it (earlier `#include` and `#define` directives, etc.), a compilation context must be **synthesized**. This synthesized context consists of:
 

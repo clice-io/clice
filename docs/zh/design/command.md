@@ -18,7 +18,7 @@
 
 命令处理是一个多阶段管线：
 
-```
+```text
 compile_commands.json（原始命令）
     ↓ 加载与解析
 参数分类（codegen-only / discarded / user-content / semantic）
@@ -84,7 +84,7 @@ SearchConfig（四段式头文件搜索路径）
 3. **System**（`-isystem` 目录）：系统头文件路径，诊断被抑制
 4. **After**（`-idirafter` 目录）：在系统目录之后搜索
 
-这个四段式模型与 Clang 内部的搜索逻辑完全一致。段内的路径会去重（从 Angled 段开始，与 Clang 的 `RemoveDuplicates` 算法一致），确保搜索行为与实际编译器行为匹配。
+这个四段式模型与 Clang 内部的搜索逻辑基本一致（部分较少见的选项如 `-cxx-isystem`、`-iwithsysroot` 和 Framework 搜索路径尚未支持）。段内的路径会去重（从 Angled 段开始，与 Clang 的 `RemoveDuplicates` 算法一致），确保搜索行为与实际编译器行为匹配。
 
 SearchConfig 是 include 路径解析、include 路径补全、依赖图构建等功能的基础输入。
 

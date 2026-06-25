@@ -18,7 +18,7 @@ A language server needs to know how to compile every file. This information come
 
 Command processing is a multi-stage pipeline:
 
-```
+```text
 compile_commands.json (raw commands)
     | load and parse
 Argument classification (codegen-only / discarded / user-content / semantic)
@@ -84,7 +84,7 @@ After toolchain probing, the cc1 arguments contain the complete header search pa
 3. **System** (`-isystem` directories): System header paths where diagnostics are suppressed
 4. **After** (`-idirafter` directories): Searched after system directories
 
-This four-tier model is fully consistent with Clang's internal search logic. Paths within each tier are deduplicated (starting from the Angled tier, matching Clang's `RemoveDuplicates` algorithm), ensuring search behavior matches the actual compiler.
+This four-tier model is largely consistent with Clang's internal search logic (some less common options like `-cxx-isystem`, `-iwithsysroot`, and Framework search paths are not yet supported). Paths within each tier are deduplicated (starting from the Angled tier, matching Clang's `RemoveDuplicates` algorithm), ensuring search behavior matches the actual compiler.
 
 SearchConfig is the foundational input for include path resolution, include path completion, dependency graph construction, and other features.
 

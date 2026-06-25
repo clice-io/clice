@@ -115,7 +115,7 @@ template<typename T> struct allocator_traits<allocator<T>> {
 
 标准库的分配器重绑定链是一个特别深的 typedef 链：
 
-```
+```text
 vector<T> → __alloc_traits<allocator<T>> → allocator_traits<allocator<T>>
   → allocator_traits<Alloc>::rebind_alloc<U>
 ```

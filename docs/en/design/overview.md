@@ -166,7 +166,7 @@ Worker process management.
 
 The data flow roughly follows this direction:
 
-```
+```text
 command (compilation command parsing)
     |
 compile (drives Clang compilation)

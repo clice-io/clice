@@ -18,7 +18,7 @@ clice solves the above problems through a multi-process architecture: each compi
 
 ### Process Model
 
-```
+```text
 Master Process (MasterServer)
 ├── Event loop (kota)
 ├── LSP / Agentic protocol handling
@@ -124,7 +124,7 @@ The core value of process isolation lies in crash recovery — containing a work
 
 1. The master process detects the exit
 2. Crash backoff is triggered, lowering the concurrency cap
-3. All pending tasks are rescheduled (high priority first, low priority subject to `low_limit`) to other available workers
+3. In-flight tasks on the crashed worker receive an error; the upper scheduling layer (Compiler/Indexer) handles retry through its own queue
 4. If the maximum restart count has not been exceeded, a new worker is launched
 
 ### Maximum Restart Count

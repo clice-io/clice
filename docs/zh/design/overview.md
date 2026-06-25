@@ -166,7 +166,7 @@ LSP 功能的具体实现。每个功能接收一个 `CompilationUnitRef`（或 
 
 数据流方向大致为：
 
-```
+```text
 command（编译命令解析）
     ↓
 compile（驱动 Clang 编译）
