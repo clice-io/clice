@@ -220,8 +220,10 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
         CursorHit hit;
         session->file_index->lookup(*offset, [&](const index::Occurrence& occ) {
             auto range = map.to_range(occ.range.begin, occ.range.end);
-            if(range)
+            if(range) {
                 hit = {occ.target, *range};
+                return false;
+            }
             return true;
         });
         return hit;
