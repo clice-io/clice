@@ -63,6 +63,7 @@ resolve_fn 由外部提供（通常基于模块文件的精确扫描），返回
 CompileGraph 提供两个入口点：
 
 **compile(path_id)**——编译指定模块及其所有传递依赖：
+
 1. RefGuard 对目标模块执行 acquire
 2. 如果目标模块不脏，直接返回
 3. 如果没有正在进行的编译，启动编译任务
@@ -72,6 +73,7 @@ CompileGraph 提供两个入口点：
 **compile_deps(path_id)**——编译指定文件的所有传递模块依赖，但不编译文件本身。这用于普通源文件（非模块文件）——它们本身不是模块 DAG 的一部分，但可能 `import` 模块。
 
 编译任务（unit_body）的内部流程：
+
 1. 解析依赖（ensure_resolved）
 2. 检测自环（自己 import 自己）
 3. 对所有直接依赖执行 acquire

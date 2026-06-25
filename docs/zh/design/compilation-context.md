@@ -59,6 +59,7 @@ clice 将**编译上下文**（Compilation Context）作为一等公民贯穿整
 **第三步：合成前缀代码。** 对于 include 链中的每个文件（除了最后的目标文件），读取其内容，扫描找到包含下一个文件的 `#include` 行，提取该行之前的所有内容，加上 `#line` 指令用于正确的错误定位。
 
 例如，`main.cpp` 的内容是：
+
 ```cpp
 #include <vector>
 #define DEBUG 1
@@ -67,6 +68,7 @@ int main() { ... }
 ```
 
 `utils.h` 的内容是：
+
 ```cpp
 #pragma once
 #include <string>
@@ -75,6 +77,7 @@ void util_func();
 ```
 
 那么为 `math.h` 合成的前缀代码为：
+
 ```cpp
 #line 1 "main.cpp"
 #include <vector>

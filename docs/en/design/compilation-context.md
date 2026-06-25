@@ -59,6 +59,7 @@ The header context synthesis process works as follows:
 **Step 3: Synthesize the prefix code.** For each file in the include chain (except the final target file), read its contents, scan for the `#include` line that includes the next file, extract everything before that line, and add `#line` directives for accurate error location reporting.
 
 For example, if `main.cpp` contains:
+
 ```cpp
 #include <vector>
 #define DEBUG 1
@@ -67,6 +68,7 @@ int main() { ... }
 ```
 
 And `utils.h` contains:
+
 ```cpp
 #pragma once
 #include <string>
@@ -75,6 +77,7 @@ void util_func();
 ```
 
 Then the synthesized prefix code for `math.h` would be:
+
 ```cpp
 #line 1 "main.cpp"
 #include <vector>

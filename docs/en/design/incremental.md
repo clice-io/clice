@@ -71,6 +71,7 @@ The preamble portion of the file content is extracted and its xxh3 hash is compu
 **2. Look up the cache**
 
 The system checks whether a cache entry already exists for the file in the Workspace's pch_cache. If an entry exists and:
+
 - The preamble hash matches (preamble content has not changed)
 - Two-layer invalidation detection passes (dependency file contents have not changed)
 

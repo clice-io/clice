@@ -63,6 +63,7 @@ resolve_fn is provided externally (typically based on precise scanning of the mo
 CompileGraph provides two entry points:
 
 **compile(path_id)** — compile the specified module and all its transitive dependencies:
+
 1. RefGuard performs acquire on the target module
 2. If the target module is not dirty, return immediately
 3. If no compilation is in progress, start a compilation task
@@ -72,6 +73,7 @@ CompileGraph provides two entry points:
 **compile_deps(path_id)** — compile all transitive module dependencies of the specified file, but not the file itself. This is used for ordinary source files (non-module files) — they are not part of the module DAG themselves but may `import` modules.
 
 The internal flow of a compilation task (unit_body):
+
 1. Resolve dependencies (ensure_resolved)
 2. Check for self-cycles (self-importing)
 3. Acquire reference counts on all direct dependencies
