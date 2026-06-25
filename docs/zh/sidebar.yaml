@@ -26,11 +26,15 @@ features:
 design:
   label: 设计
   items:
-    - architecture
-    - compilation
-    - header-context
-    - index
+    - overview
+    - compilation-context
+    - command
+    - index-design
+    - multi-process
+    - module
+    - incremental
     - template-resolver
+    - dependency-scanning
 
 dev:
   label: 开发
