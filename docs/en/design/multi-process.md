@@ -82,7 +82,7 @@ Requests for each document are serialized through a per-document mutex, ensuring
 
 ### Document Eviction
 
-When the number of documents held by a worker exceeds the limit, an LRU strategy evicts the least recently used document, freeing the memory occupied by its AST. Upon eviction, the worker notifies the master process, which clears the binding in the routing table. Subsequent requests for that document trigger re-allocation and recompilation.
+When the number of documents held by a worker exceeds the limit, an LRU strategy evicts the least recently used document, freeing the memory occupied by its AST. The worker sends an eviction notification to the master process. Subsequent requests for that document trigger re-allocation to a worker and recompilation.
 
 ## Stateless Worker Processes
 
@@ -114,18 +114,16 @@ The core value of process isolation lies in crash recovery — containing a work
 ### Stateful Worker Crash
 
 1. The master process detects the worker exit via a monitoring task
-2. It collects the list of all documents owned by the crashed worker and notifies the upper layer via callback
-3. It clears all bindings for that worker in the routing table
-4. If the maximum restart count has not been exceeded, a new worker is launched
-5. The upper layer marks affected Sessions as dirty, triggering recompilation on the next request
-6. Subsequent requests for those documents are automatically routed to the new (or another available) worker
-7. The user may experience a brief delay (the AST needs to be recompiled), but no editing content is lost — the text buffer lives in the master process's Session
+2. It clears all bindings for that worker in the routing table
+3. If the maximum restart count has not been exceeded, a new worker is launched
+4. Subsequent requests for those documents are automatically routed to the new (or another available) worker and trigger recompilation
+5. The user may experience a brief delay (the AST needs to be recompiled), but no editing content is lost — the text buffer lives in the master process's Session
 
 ### Stateless Worker Crash
 
 1. The master process detects the exit
 2. Crash backoff is triggered, lowering the concurrency cap
-3. In-flight tasks on the crashed worker receive an error; the upper scheduling layer (Compiler/Indexer) handles retry through its own queue
+3. In-flight tasks on the crashed worker are lost; they are only redone if a later request or scheduling cycle requeues them
 4. If the maximum restart count has not been exceeded, a new worker is launched
 
 ### Maximum Restart Count
