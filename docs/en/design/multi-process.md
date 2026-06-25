@@ -117,8 +117,9 @@ The core value of process isolation lies in crash recovery — containing a work
 2. It collects the list of all documents owned by the crashed worker and notifies the upper layer via callback
 3. It clears all bindings for that worker in the routing table
 4. If the maximum restart count has not been exceeded, a new worker is launched
-5. Subsequent requests for those documents are automatically routed to the new (or another available) worker
-6. The user may experience a brief delay (the AST needs to be recompiled), but no editing content is lost — the text buffer lives in the master process's Session
+5. The upper layer marks affected Sessions as dirty, triggering recompilation on the next request
+6. Subsequent requests for those documents are automatically routed to the new (or another available) worker
+7. The user may experience a brief delay (the AST needs to be recompiled), but no editing content is lost — the text buffer lives in the master process's Session
 
 ### Stateless Worker Crash
 

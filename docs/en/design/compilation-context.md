@@ -102,7 +102,7 @@ This way, `math.h` is compiled as if it were at the correct position within the 
 clice supports user-initiated compilation context switching through LSP extension protocols:
 
 - **Query available contexts (`clice/queryContext`)**: Lists all available compilation contexts for a file. For headers, this returns all possible host source files; for source files, it returns all matching CDB entries.
-- **Query current context (`clice/currentContext`)**: Returns the currently active compilation context.
+- **Query current context (`clice/currentContext`)**: Returns the explicitly selected compilation context (if the user has called `switchContext`); returns empty if using the default context.
 - **Switch context (`clice/switchContext`)**: The user selects a new compilation context. This clears all cached compilation artifacts for the file (PCH reference, header context, dependency snapshot) and marks the AST as dirty, triggering recompilation.
 
 Context switching is a relatively heavyweight operation -- it causes recompilation. But this is the correct behavior: different contexts mean different compilation results.

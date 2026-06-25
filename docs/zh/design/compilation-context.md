@@ -102,7 +102,7 @@ clang -std=c++17 -Iinclude -include cache/header_context/abc123.h -c math.h
 clice 通过 LSP 扩展协议支持用户主动切换编译上下文：
 
 - **查询可用上下文（`clice/queryContext`）**：列出一个文件所有可用的编译上下文。对于头文件，返回所有可能的宿主源文件；对于源文件，返回所有匹配的 CDB 条目。
-- **查询当前上下文（`clice/currentContext`）**：返回当前正在使用的编译上下文。
+- **查询当前上下文（`clice/currentContext`）**：返回用户主动选择的编译上下文（即通过 `switchContext` 设置的）；如果使用默认上下文则返回空。
 - **切换上下文（`clice/switchContext`）**：用户选择一个新的编译上下文。这会清除该文件的所有缓存编译产物（PCH 引用、头文件上下文、依赖快照），并标记 AST 为脏，触发重新编译。
 
 切换上下文是一个相对重量级的操作——它会导致重新编译。但这是正确的行为：不同的上下文意味着不同的编译结果。

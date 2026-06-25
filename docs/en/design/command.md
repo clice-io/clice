@@ -73,7 +73,7 @@ Toolchain probing converts driver-level commands to cc1 arguments:
 
 **Startup warm-up**: At server startup, probing is initiated in parallel for all unique cache keys, pre-populating the cache. By the time LSP requests start arriving, all toolchain probing results are already available.
 
-**Compiler adaptation**: Different compiler families (GCC, Clang, MSVC/ClangCL, NVCC, Intel, Zig, etc.) have different driver invocation methods and output parsing logic.
+**Compiler adaptation**: Different compiler families (GCC, Clang, MSVC/ClangCL, etc.) have different driver invocation methods and output parsing logic. Some compiler families (NVCC, Intel, Zig) are recognized but fall through to a generic Clang-driver path rather than having fully dedicated handling.
 
 ### Search Path Extraction
 
