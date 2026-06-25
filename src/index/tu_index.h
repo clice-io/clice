@@ -53,7 +53,7 @@ struct FileIndex {
 
     std::vector<Occurrence> occurrences;
 
-    const Occurrence* lookup(std::uint32_t offset) const;
+    void lookup(std::uint32_t offset, llvm::function_ref<bool(const Occurrence&)> callback) const;
 
     void lookup(SymbolHash symbol,
                 RelationKind kind,

@@ -187,7 +187,7 @@ bool Indexer::need_update(llvm::StringRef file_path) {
 
 bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const {
     bool found = false;
-    for_each_session([&](std::uint32_t, const Session& session) -> bool {
+    foreach_session([&](std::uint32_t, const Session& session) -> bool {
         auto it = session.symbols->find(hash);
         if(it != session.symbols->end()) {
             name = it->second.name;
@@ -217,13 +217,14 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
         auto offset = map.to_offset(position);
         if(!offset)
             return {};
-        auto* occ = session->file_index->lookup(*offset);
-        if(!occ)
-            return {};
-        auto range = map.to_range(occ->range.begin, occ->range.end);
-        if(!range)
-            return {};
-        return {occ->target, *range};
+        CursorHit hit;
+        session->file_index->lookup(*offset, [&](const index::Occurrence& occ) {
+            auto range = map.to_range(occ.range.begin, occ.range.end);
+            if(range)
+                hit = {occ.target, *range};
+            return true;
+        });
+        return hit;
     }
 
     // Fallback to MergedIndex, using session text for position -> offset.
@@ -289,7 +290,7 @@ std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
         }
     }
 
-    for_each_session([&](std::uint32_t id, const Session& session) -> bool {
+    foreach_session([&](std::uint32_t id, const Session& session) -> bool {
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
             return true;
@@ -323,7 +324,7 @@ std::optional<SymbolInfo> Indexer::lookup_symbol(const std::string& uri,
 
 std::optional<protocol::Location> Indexer::find_definition_location(index::SymbolHash hash) {
     std::optional<protocol::Location> session_result;
-    for_each_session([&](std::uint32_t id, const Session& session) -> bool {
+    foreach_session([&](std::uint32_t id, const Session& session) -> bool {
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
             return true;
@@ -417,7 +418,7 @@ void Indexer::collect_grouped_relations(
             });
         }
     }
-    for_each_session([&](std::uint32_t, const Session& session) -> bool {
+    foreach_session([&](std::uint32_t, const Session& session) -> bool {
         auto map = session.line_map();
         session.file_index->lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end))
@@ -448,7 +449,7 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
             });
         }
     }
-    for_each_session([&](std::uint32_t, const Session& session) -> bool {
+    foreach_session([&](std::uint32_t, const Session& session) -> bool {
         auto rel_it = session.file_index->relations.find(hash);
         if(rel_it == session.file_index->relations.end())
             return true;
@@ -493,7 +494,7 @@ static std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
 
 std::optional<Indexer::DefinitionText> Indexer::get_definition_text(index::SymbolHash hash) {
     std::optional<DefinitionText> session_result;
-    for_each_session([&](std::uint32_t id, const Session& session) -> bool {
+    foreach_session([&](std::uint32_t id, const Session& session) -> bool {
         auto map = session.line_map();
         session.file_index->lookup(hash, RelationKind::Definition, [&](const index::Relation& rel) {
             auto def_range = std::bit_cast<LocalSourceRange>(rel.target_symbol);
@@ -591,7 +592,7 @@ std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::Sy
         }
     }
 
-    for_each_session([&](std::uint32_t id, const Session& session) -> bool {
+    foreach_session([&](std::uint32_t id, const Session& session) -> bool {
         auto map = session.line_map();
         auto file_path = workspace.path_pool.resolve(id);
         session.file_index->lookup(hash, kind, [&](const index::Relation& rel) {
@@ -712,7 +713,7 @@ std::vector<protocol::SymbolInformation> Indexer::search_symbols(llvm::StringRef
         seen.insert(hash);
     }
 
-    for_each_session([&](std::uint32_t, const Session& session) -> bool {
+    foreach_session([&](std::uint32_t, const Session& session) -> bool {
         if(results.size() >= max_results)
             return false;
         for(auto& [hash, symbol]: *session.symbols) {

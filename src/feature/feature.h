@@ -21,6 +21,9 @@ namespace protocol = kota::ipc::protocol;
 using kota::ipc::lsp::LineMap;
 using kota::ipc::lsp::PositionEncoding;
 
+// FIXME: feature code uses *map.to_range() without checking the optional.
+// Need a strategy for handling out-of-range offsets gracefully.
+
 struct CodeCompletionOptions {
     bool enable_keyword_snippet = false;
     bool enable_function_arguments_snippet = false;

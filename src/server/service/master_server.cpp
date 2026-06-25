@@ -44,7 +44,7 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
         pool,
         compiler,
         [this](uint32_t server_path_id) { return sessions.contains(server_path_id); },
-        [this](Indexer::OverlayVisitor visitor) {
+        [this](Indexer::SessionVisitor visitor) {
             for(auto& [path_id, session]: sessions) {
                 if(session && session->file_index && session->symbols) {
                     if(!visitor(path_id, *session))

@@ -566,6 +566,74 @@ TEST_CASE(snapshot) {
     });
 }
 
+TEST_CASE(LookupOccurrence) {
+    build_index(R"(
+        int @x[fo$(x)o]();
+        int @ref[fo$(ref)o]() { return 0; }
+    )");
+
+    auto& fi = tu_index.main_file_index;
+    ASSERT_FALSE(fi.occurrences.empty());
+
+    auto x_range = range("x");
+    const index::Occurrence* found = nullptr;
+    fi.lookup(point("x"), [&](const index::Occurrence& occ) {
+        found = &occ;
+        return true;
+    });
+    ASSERT_TRUE(found);
+    EXPECT_EQ(found->range.begin, x_range.begin);
+    EXPECT_EQ(found->range.end, x_range.end);
+
+    found = nullptr;
+    fi.lookup(point("ref"), [&](const index::Occurrence& occ) {
+        found = &occ;
+        return true;
+    });
+    ASSERT_TRUE(found);
+    EXPECT_EQ(found->target, fi.occurrences.front().target);
+
+    found = nullptr;
+    fi.lookup(0, [&](const index::Occurrence& occ) {
+        found = &occ;
+        return false;
+    });
+    EXPECT_FALSE(found);
+}
+
+TEST_CASE(LookupRelation) {
+    build_index(R"(
+        void @decl[fo$(decl)o]();
+        void @def[fo$(def)o]() {}
+    )");
+
+    auto& fi = tu_index.main_file_index;
+
+    const index::Occurrence* occ = nullptr;
+    fi.lookup(point("decl"), [&](const index::Occurrence& o) {
+        occ = &o;
+        return false;
+    });
+    ASSERT_TRUE(occ);
+
+    auto def_range = range("def");
+    bool found_def = false;
+    fi.lookup(occ->target, RelationKind::Definition, [&](const index::Relation& r) {
+        found_def = true;
+        EXPECT_EQ(r.range.begin, def_range.begin);
+        EXPECT_EQ(r.range.end, def_range.end);
+        return false;
+    });
+    EXPECT_TRUE(found_def);
+
+    bool found_any = false;
+    fi.lookup(occ->target, RelationKind::Caller, [&](const index::Relation&) {
+        found_any = true;
+        return false;
+    });
+    EXPECT_FALSE(found_any);
+}
+
 };  // TEST_SUITE(tu_index)
 
 }  // namespace
