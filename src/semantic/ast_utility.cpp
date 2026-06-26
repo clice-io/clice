@@ -1073,9 +1073,16 @@ clang::QualType maybe_desugar(clang::ASTContext& context, clang::QualType type) 
         return type.getCanonicalType();
     }
 
+    // Prefer desugared type when `auto` deduces to a `decltype(expr)`,
+    // `typeof(expr)`, or `typeof(type)` specifier. This prevents hints like
+    // `: typeof(int)` and instead shows the resolved type `: int`.
     if(const auto* AT = type->getContainedAutoType()) {
-        if(!AT->getDeducedType().isNull() && AT->getDeducedType()->isDecltypeType()) {
-            return type.getCanonicalType();
+        if(!AT->getDeducedType().isNull()) {
+            auto deduced = AT->getDeducedType();
+            if(deduced->isDecltypeType() || llvm::isa<clang::TypeOfExprType>(deduced) ||
+               llvm::isa<clang::TypeOfType>(deduced)) {
+                return type.getCanonicalType();
+            }
         }
     }
 

@@ -876,6 +876,16 @@ public:
         if(const auto* DT = llvm::dyn_cast<clang::DecltypeType>(TL.getType()))
             if(clang::QualType UT = DT->getUnderlyingType(); !UT->isDependentType())
                 builder.add_type_hint(TL.getSourceRange(), UT, ": ");
+
+        // Resolve `typeof(expr)` and `typeof(type)` specifiers, mirroring the
+        // decltype handling above.
+        if(const auto* TT = llvm::dyn_cast<clang::TypeOfExprType>(TL.getType()))
+            if(clang::QualType UT = TT->getUnderlyingExpr()->getType(); !UT->isDependentType())
+                builder.add_type_hint(TL.getSourceRange(), UT, ": ");
+
+        if(const auto* TT = llvm::dyn_cast<clang::TypeOfType>(TL.getType()))
+            if(clang::QualType UT = TT->getUnmodifiedType(); !UT->isDependentType())
+                builder.add_type_hint(TL.getSourceRange(), UT, ": ");
         return true;
     }
 
