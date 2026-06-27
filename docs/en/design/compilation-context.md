@@ -35,7 +35,7 @@ void initialize() {
 }
 ```
 
-Under Debug builds (`-O0 -DDEBUG`) and Release builds (`-O2 -DNDEBUG`), the visible symbols, diagnostics, and completion suggestions can all differ.
+Under Debug builds (`-O0`, without `NDEBUG` defined) and Release builds (`-O2 -DNDEBUG`), the visible symbols, diagnostics, and completion suggestions can all differ.
 
 For **header files**, the compilation context falls into two cases. First, it helps to understand what "self-contained" means: a header file is self-contained if it does not depend on `#define` or `#include` directives provided by the includer and can compile independently on its own. The vast majority of modern C++ headers are self-contained — they `#include` all their dependencies and make no assumptions about the includer's state.
 
@@ -178,7 +178,9 @@ If the index only records the result from one context, go-to-definition or find-
 
 - **Is injecting the prefix file via `-include` fully equivalent to the original compilation?**
 
-  Yes. The only ways user code can observe file names and line numbers are `__FILE__`, `__LINE__`, and `std::source_location`. According to the C++ standard, [`#line` directives](https://en.cppreference.com/w/cpp/preprocessor/line) change the values of `__LINE__` and `__FILE__`, and [`std::source_location`](https://en.cppreference.com/w/cpp/utility/source_location) behavior is also determined by them. Therefore, the `#line` directives in the prefix file ensure that `__FILE__` returns the target header's path, `__LINE__` returns line numbers within the target header, and `source_location::current()` reflects the target header's position. From the perspective of user code, the `-include` injection approach is fully equivalent to the original compilation.
+  For mechanisms defined by the C++ standard, yes. The only ways user code can observe file names and line numbers are `__FILE__`, `__LINE__`, and `std::source_location`. According to the C++ standard, [`#line` directives](https://en.cppreference.com/w/cpp/preprocessor/line) change the values of `__LINE__` and `__FILE__`, and [`std::source_location`](https://en.cppreference.com/w/cpp/utility/source_location) behavior is also determined by them. Therefore, the `#line` directives in the prefix file ensure that all three correctly reflect the target header's position information.
+
+  However, two GCC/Clang compiler extensions behave differently: `__INCLUDE_LEVEL__` is 0 under `-include` mode (the target file is the main file), whereas in the original compilation it reflects the nested include depth; `__BASE_FILE__` returns the target header's path under `-include` mode, whereas in the original compilation it returns the host source file's path. These two extensions are rarely used in practice and have no impact on language server functionality.
 
 - **Why write the prefix file to disk instead of using a virtual file?**
 
