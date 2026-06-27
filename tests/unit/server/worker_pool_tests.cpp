@@ -48,7 +48,7 @@ struct WorkerPoolFixture {
     }
 
     void set_max_restarts(unsigned n) {
-        pool.options_.max_restarts = n;
+        pool.options.max_restarts = n;
     }
 
     void set_restart_count(std::size_t idx, bool stateful, unsigned count) {

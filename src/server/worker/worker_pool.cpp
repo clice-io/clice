@@ -68,9 +68,9 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     opts.args.push_back("--worker-name");
     opts.args.push_back(worker_name);
 
-    if(!log_dir_.empty()) {
+    if(!log_dir.empty()) {
         opts.args.push_back("--log-dir");
-        opts.args.push_back(log_dir_);
+        opts.args.push_back(log_dir);
     }
 
     opts.streams = {
@@ -114,9 +114,9 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     return true;
 }
 
-bool WorkerPool::start(const WorkerPoolOptions& options) {
-    options_ = options;
-    log_dir_ = options.log_dir;
+bool WorkerPool::start(const WorkerPoolOptions& opts) {
+    options = opts;
+    log_dir = opts.log_dir;
 
     stateless_workers.reserve(options.stateless_count);
     stateful_workers.reserve(options.stateful_count);
@@ -160,7 +160,7 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
 
 kota::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopping...");
-    shutting_down_ = true;
+    shutting_down = true;
     fail_pending_requests();
 
     for(auto& w: stateless_workers)
@@ -246,7 +246,7 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
 
     auto result = co_await workers[index].proc.wait();
 
-    if(shutting_down_)
+    if(shutting_down)
         co_return;
 
     int exit_code = 0, exit_signal = 0;
@@ -298,10 +298,10 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     info.exit_code = exit_code;
     info.exit_signal = exit_signal;
     info.restart_count = w.restart_count;
-    info.will_restart = w.restart_count < options_.max_restarts;
+    info.will_restart = w.restart_count < options.max_restarts;
 
     if(!info.will_restart) {
-        LOG_ERROR("Worker {} exceeded max restarts ({}), giving up", w.name, options_.max_restarts);
+        LOG_ERROR("Worker {} exceeded max restarts ({}), giving up", w.name, options.max_restarts);
     }
 
     if(stateful) {
@@ -356,18 +356,18 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     }
 
     kota::process::options opts;
-    opts.file = options_.self_path;
-    opts.args = {options_.self_path, "worker"};
+    opts.file = options.self_path;
+    opts.args = {options.self_path, "worker"};
     if(stateful) {
         opts.args.push_back("--stateful");
         opts.args.push_back("--memory-limit");
-        opts.args.push_back(std::to_string(options_.worker_memory_limit));
+        opts.args.push_back(std::to_string(options.worker_memory_limit));
     }
     opts.args.push_back("--worker-name");
     opts.args.push_back(worker_name);
-    if(!log_dir_.empty()) {
+    if(!log_dir.empty()) {
         opts.args.push_back("--log-dir");
-        opts.args.push_back(log_dir_);
+        opts.args.push_back(log_dir);
     }
     opts.streams = {
         kota::process::stdio::pipe(true, false),
@@ -535,7 +535,7 @@ std::size_t WorkerPool::pick_idle_stateless() {
 kota::task<> WorkerPool::monitor_memory() {
     while(true) {
         co_await kota::sleep(std::chrono::milliseconds(3000));
-        if(shutting_down_)
+        if(shutting_down)
             co_return;
 
         auto mem = kota::sys::memory();

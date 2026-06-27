@@ -61,7 +61,7 @@ public:
     WorkerPool(kota::event_loop& loop) : loop(loop) {}
 
     /// Spawn all worker processes. Returns false on failure.
-    bool start(const WorkerPoolOptions& options);
+    bool start(const WorkerPoolOptions& opts);
 
     /// Gracefully stop all workers.
     kota::task<> stop();
@@ -232,15 +232,15 @@ private:
     /// AIMD multiplicative decrease on stateless concurrency limit.
     void apply_crash_backoff();
 
-    bool shutting_down_ = false;
+    bool shutting_down = false;
 
     /// Runs monitor_worker() and monitor_memory() coroutines.
     kota::task_group<> monitor_group{loop};
 
     /// Runs peer->run() and drain_stderr() coroutines.
     kota::task_group<> io_group{loop};
-    WorkerPoolOptions options_;
-    std::string log_dir_;
+    WorkerPoolOptions options;
+    std::string log_dir;
 
     /// Peers moved here during respawn so their coroutines can finish
     /// before the object is destroyed.
