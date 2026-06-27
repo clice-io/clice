@@ -21,8 +21,10 @@ struct WorkerPoolFixture {
     }
 
     void add_stateless(bool alive = true, bool busy = false) {
+        auto idx = pool.stateless_workers.size();
         pool.stateless_workers.push_back(WorkerPool::WorkerProcess{});
         auto& w = pool.stateless_workers.back();
+        w.name = "SL-" + std::to_string(idx);
         w.alive = alive;
         w.busy = busy;
         if(alive)
@@ -32,8 +34,10 @@ struct WorkerPoolFixture {
     }
 
     void add_stateful(bool alive = true, std::size_t owned = 0) {
+        auto idx = pool.stateful_workers.size();
         pool.stateful_workers.push_back(WorkerPool::WorkerProcess{});
         auto& w = pool.stateful_workers.back();
+        w.name = "SF-" + std::to_string(idx);
         w.alive = alive;
         w.owned_documents = owned;
     }
@@ -151,16 +155,31 @@ struct WorkerPoolFixture {
         bool low_dispatched;
     };
 
+    unsigned get_backoff_cooldown() const {
+        return pool.backoff_cooldown;
+    }
+
+    std::size_t max_low_limit() const {
+        return pool.max_low_limit;
+    }
+
+    std::size_t high_queue_size() const {
+        return pool.high_queue.size();
+    }
+
+    std::size_t low_queue_size() const {
+        return pool.low_queue.size();
+    }
+
     PriorityResult test_priority_dispatch(std::size_t release_idx) {
         auto high = std::make_unique<WorkerPool::PendingStateless>(worker::Priority::High);
         auto low = std::make_unique<WorkerPool::PendingStateless>(worker::Priority::Low);
         pool.high_queue.push_back(high.get());
+        high->queue = &pool.high_queue;
         pool.low_queue.push_back(low.get());
+        low->queue = &pool.low_queue;
         pool.release_stateless_slot(release_idx);
-        PriorityResult r{high->ready.is_set(), low->ready.is_set()};
-        pool.high_queue.clear();
-        pool.low_queue.clear();
-        return r;
+        return {high->ready.is_set(), low->ready.is_set()};
     }
 
     std::size_t test_low_dispatch(std::size_t count) {
@@ -169,13 +188,13 @@ struct WorkerPoolFixture {
             pending.push_back(
                 std::make_unique<WorkerPool::PendingStateless>(worker::Priority::Low));
             pool.low_queue.push_back(pending.back().get());
+            pending.back()->queue = &pool.low_queue;
         }
         pool.try_dispatch_pending();
         std::size_t dispatched = 0;
         for(auto& p: pending)
             if(p->ready.is_set())
                 ++dispatched;
-        pool.low_queue.clear();
         return dispatched;
     }
 
@@ -194,11 +213,51 @@ struct WorkerPoolFixture {
     ReleaseResult test_release_dispatches() {
         auto pending = std::make_unique<WorkerPool::PendingStateless>(worker::Priority::High);
         pool.high_queue.push_back(pending.get());
+        pending->queue = &pool.high_queue;
         bool before = pending->ready.is_set();
         pool.release_stateless_slot(0);
         bool after = pending->ready.is_set();
-        pool.high_queue.clear();
         return {before, after};
+    }
+
+    bool test_pending_cleanup_high() {
+        {
+            WorkerPool::PendingStateless pending(worker::Priority::High);
+            pool.high_queue.push_back(&pending);
+            pending.queue = &pool.high_queue;
+            if(pool.high_queue.size() != 1)
+                return false;
+        }
+        return pool.high_queue.empty();
+    }
+
+    bool test_pending_cleanup_low() {
+        {
+            WorkerPool::PendingStateless pending(worker::Priority::Low);
+            pool.low_queue.push_back(&pending);
+            pending.queue = &pool.low_queue;
+            if(pool.low_queue.size() != 1)
+                return false;
+        }
+        return pool.low_queue.empty();
+    }
+
+    struct DispatchResult {
+        bool dispatched;
+        bool queue_cleared;
+        bool queue_ptr_nulled;
+    };
+
+    DispatchResult test_dispatch_clears_queue() {
+        auto pending = std::make_unique<WorkerPool::PendingStateless>(worker::Priority::High);
+        pool.high_queue.push_back(pending.get());
+        pending->queue = &pool.high_queue;
+        pool.release_stateless_slot(0);
+        return {
+            pending->ready.is_set(),
+            pool.high_queue.empty(),
+            pending->queue == nullptr,
+        };
     }
 };
 
@@ -442,6 +501,42 @@ TEST_CASE(PriorityOrdering) {
     EXPECT_TRUE(high_order < low_order);
 }
 
+TEST_CASE(SingleWorkerShared) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.set_limits(1, 1);
+    EXPECT_EQ(f.max_low_limit(), 1u);
+
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        auto low = co_await f.acquire_slot(worker::Priority::Low);
+        EXPECT_TRUE(f.is_busy(low));
+        f.release_slot(low);
+
+        auto high = co_await f.acquire_slot(worker::Priority::High);
+        EXPECT_TRUE(f.is_busy(high));
+        f.release_slot(high);
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(PendingCleanupOnDestroy) {
+    WorkerPoolFixture f;
+    EXPECT_TRUE(f.test_pending_cleanup_high());
+    EXPECT_TRUE(f.test_pending_cleanup_low());
+}
+
+TEST_CASE(DispatchClearsQueue) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true);
+    f.set_limits(1, 1);
+    auto r = f.test_dispatch_clears_queue();
+    EXPECT_TRUE(r.dispatched);
+    EXPECT_TRUE(r.queue_cleared);
+    EXPECT_TRUE(r.queue_ptr_nulled);
+}
+
 };  // TEST_SUITE(WorkerPoolScheduling)
 
 TEST_SUITE(WorkerPoolCrash) {
@@ -654,6 +749,34 @@ TEST_CASE(RapidCrashSequence) {
     EXPECT_EQ(f.busy_count(), 0u);
     EXPECT_EQ(f.crash_reports.size(), 3u);
     EXPECT_LT(f.low_limit(), 8u);
+}
+
+TEST_CASE(BackoffSetsCooldown) {
+    WorkerPoolFixture f;
+    f.set_limits(8, 8);
+    EXPECT_EQ(f.get_backoff_cooldown(), 0u);
+    f.apply_backoff();
+    EXPECT_GT(f.get_backoff_cooldown(), 0u);
+}
+
+TEST_CASE(CrashSetsCooldown) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, false);
+    f.set_limits(8, 8);
+
+    f.simulate_crash(0, false);
+
+    EXPECT_EQ(f.low_limit(), 6u);
+    EXPECT_GT(f.get_backoff_cooldown(), 0u);
+}
+
+TEST_CASE(StatefulCrashNoCooldown) {
+    WorkerPoolFixture f;
+    f.add_stateful(true, 0);
+
+    f.simulate_crash(0, true);
+
+    EXPECT_EQ(f.get_backoff_cooldown(), 0u);
 }
 
 };  // TEST_SUITE(WorkerPoolCrash)

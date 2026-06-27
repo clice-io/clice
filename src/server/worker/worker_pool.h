@@ -86,6 +86,7 @@ private:
     struct WorkerProcess {
         kota::process proc;
         std::unique_ptr<kota::ipc::BincodePeer> peer;
+        std::string name;
         std::size_t owned_documents = 0;
         bool alive = true;
         bool busy = false;
@@ -110,8 +111,17 @@ private:
         worker::Priority priority;
         kota::event ready{};
         std::size_t assigned_worker = 0;
+        std::deque<PendingStateless*>* queue = nullptr;
 
         explicit PendingStateless(worker::Priority p) : priority(p) {}
+
+        PendingStateless(const PendingStateless&) = delete;
+        PendingStateless& operator=(const PendingStateless&) = delete;
+
+        ~PendingStateless() {
+            if(queue)
+                std::erase(*queue, this);
+        }
     };
 
     struct StatelessSlot {
@@ -134,6 +144,7 @@ private:
     std::size_t alive_stateless_count = 0;
     std::size_t low_limit = 0;
     std::size_t max_low_limit = 0;
+    unsigned backoff_cooldown = 0;
 
     kota::task<std::size_t> acquire_stateless_slot(worker::Priority priority);
     void release_stateless_slot(std::size_t worker_index);

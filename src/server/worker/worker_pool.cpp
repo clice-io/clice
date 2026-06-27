@@ -101,6 +101,7 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     workers.push_back(WorkerProcess{
         .proc = std::move(spawn.proc),
         .peer = std::move(peer),
+        .name = worker_name,
         .owned_documents = 0,
     });
 
@@ -143,6 +144,9 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
         });
     }
 
+    // Reserve one worker for high-priority requests by capping low-priority
+    // concurrency to N-1. With a single worker this collapses to 1: both
+    // priorities share it, and high wins only via queue ordering.
     max_low_limit = alive_stateless_count > 1 ? alive_stateless_count - 1 : alive_stateless_count;
     low_limit = max_low_limit;
 
@@ -249,15 +253,13 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         exit_code = result.value().status;
         exit_signal = result.value().term_signal;
     } else {
-        auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
-        LOG_ERROR("Worker {} lost: {}", name, result.error().message());
+        LOG_ERROR("Worker {} lost: {}", workers[index].name, result.error().message());
         exit_signal = 9;
     }
 
     if(process_crash(index, stateful, exit_code, exit_signal)) {
         if(!respawn_worker(index, stateful)) {
-            auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
-            LOG_ERROR("Worker {} respawn failed", name);
+            LOG_ERROR("Worker {} respawn failed", workers[index].name);
         }
     }
 }
@@ -267,14 +269,16 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     auto& w = workers[index];
     w.alive = false;
 
-    auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
     if(exit_signal != 0) {
         LOG_ERROR("Worker {} killed by signal {} (restarts: {})",
-                  name,
+                  w.name,
                   exit_signal,
                   w.restart_count);
     } else {
-        LOG_ERROR("Worker {} exited with code {} (restarts: {})", name, exit_code, w.restart_count);
+        LOG_ERROR("Worker {} exited with code {} (restarts: {})",
+                  w.name,
+                  exit_code,
+                  w.restart_count);
     }
 
     WorkerCrashInfo info;
@@ -302,7 +306,7 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
 
     info.will_restart = w.restart_count < options_.max_restarts;
     if(!info.will_restart) {
-        LOG_ERROR("Worker {} exceeded max restarts ({}), giving up", name, options_.max_restarts);
+        LOG_ERROR("Worker {} exceeded max restarts ({}), giving up", w.name, options_.max_restarts);
     }
 
     if(on_crash)
@@ -360,6 +364,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     workers[index] = WorkerProcess{
         .proc = std::move(spawn.proc),
         .peer = std::move(peer),
+        .name = worker_name,
         .owned_documents = 0,
         .alive = true,
         .busy = false,
@@ -401,10 +406,13 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
 
     if(!can_proceed()) {
         PendingStateless pending(priority);
-        if(priority == P::High)
+        if(priority == P::High) {
             high_queue.push_back(&pending);
-        else
+            pending.queue = &high_queue;
+        } else {
             low_queue.push_back(&pending);
+            pending.queue = &low_queue;
+        }
         co_await pending.ready.wait();
         co_return pending.assigned_worker;
     }
@@ -432,33 +440,25 @@ void WorkerPool::release_stateless_slot(std::size_t worker_index) {
 void WorkerPool::try_dispatch_pending() {
     auto idle = alive_stateless_count - stateless_busy_count;
 
-    while(!high_queue.empty() && idle > 0) {
-        auto* next = high_queue.front();
-        high_queue.pop_front();
-        auto idx = pick_idle_stateless();
-        stateless_workers[idx].busy = true;
-        ++stateless_busy_count;
-        --idle;
-        auto pid = stateless_workers[idx].proc.pid();
-        if(pid > 0)
-            kota::sys::set_priority(0, pid);
-        next->assigned_worker = idx;
-        next->ready.set();
-    }
+    auto dispatch = [&](std::deque<PendingStateless*>& queue, int nice, bool check_limit) {
+        while(!queue.empty() && idle > 0 && (!check_limit || stateless_busy_count < low_limit)) {
+            auto* next = queue.front();
+            queue.pop_front();
+            next->queue = nullptr;
+            auto idx = pick_idle_stateless();
+            stateless_workers[idx].busy = true;
+            ++stateless_busy_count;
+            --idle;
+            auto pid = stateless_workers[idx].proc.pid();
+            if(pid > 0)
+                kota::sys::set_priority(nice, pid);
+            next->assigned_worker = idx;
+            next->ready.set();
+        }
+    };
 
-    while(!low_queue.empty() && idle > 0 && stateless_busy_count < low_limit) {
-        auto* next = low_queue.front();
-        low_queue.pop_front();
-        auto idx = pick_idle_stateless();
-        stateless_workers[idx].busy = true;
-        ++stateless_busy_count;
-        --idle;
-        auto pid = stateless_workers[idx].proc.pid();
-        if(pid > 0)
-            kota::sys::set_priority(10, pid);
-        next->assigned_worker = idx;
-        next->ready.set();
-    }
+    dispatch(high_queue, 0, false);
+    dispatch(low_queue, 10, true);
 }
 
 std::size_t WorkerPool::pick_idle_stateless() {
@@ -484,11 +484,16 @@ kota::task<> WorkerPool::monitor_memory() {
         auto ratio = static_cast<double>(mem.available) / static_cast<double>(effective_total);
 
         if(ratio < 0.20 && low_limit > 1) {
-            --low_limit;
-            LOG_INFO("Stateless low_limit -> {} (memory pressure: {:.0f}% available)",
-                     low_limit,
-                     ratio * 100);
+            if(backoff_cooldown > 0) {
+                --backoff_cooldown;
+            } else {
+                --low_limit;
+                LOG_INFO("Stateless low_limit -> {} (memory pressure: {:.0f}% available)",
+                         low_limit,
+                         ratio * 100);
+            }
         } else if(ratio > 0.40 && low_limit < max_low_limit) {
+            backoff_cooldown = 0;
             ++low_limit;
             LOG_DEBUG("Stateless low_limit -> {} (memory OK: {:.0f}% available)",
                       low_limit,
@@ -503,6 +508,9 @@ void WorkerPool::apply_crash_backoff() {
         low_limit = new_limit;
         LOG_WARN("Stateless low_limit -> {} (worker crash AIMD backoff)", low_limit);
     }
+    // Suppress memory-pressure reductions for a few monitor cycles so
+    // crash backoff and memory throttling don't compound in the same window.
+    backoff_cooldown = 3;
 }
 
 }  // namespace clice
