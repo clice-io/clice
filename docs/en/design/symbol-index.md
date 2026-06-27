@@ -191,18 +191,45 @@ Background indexing scheduling must balance index timeliness against interferenc
 
   `Occurrence` is indexed by position — given an offset, binary search locates the symbol under the cursor, requiring position-sorted data. `Relation` is indexed by `SymbolHash` — given a symbol, look up all its relationships, requiring symbol-grouped data. Combining them into a single data structure would inevitably sacrifice efficiency in at least one of the two query patterns.
 
+- **Why are cross-file queries performed in the main process rather than subprocesses?**
+
+  clice uses a multi-process architecture where each open file is compiled in its own stateful subprocess. Cross-file queries (such as find-references) need to iterate over all open files' `Session` instances and aggregate their `FileIndex` results. If these Sessions were spread across different subprocesses, each query would require cross-process communication with multiple workers and then result aggregation — unacceptable in both latency and complexity. Instead, subprocesses send their `FileIndex` back to the main process after compilation, and the main process performs queries uniformly — it can access all open files' `FileIndex` entries as well as `ProjectIndex` and `MergedIndex`, completing the full query flow in a single process.
+
+  This design also has a semantic consideration: query results for open files should reflect the editor's buffer state, not the disk state. Even if a file on disk has been modified by an external tool, as long as the editor has not sent a `didChange` notification, query results should be based on the version the editor holds. Centralizing all `FileIndex` entries in the main process makes this semantic invariant easier to maintain.
+
+- **Why not use a database for index storage?**
+
+  clice needs to persist multiple types of cache files: index shards, PCH, PCM, etc. PCH and PCM files are large (potentially hundreds of MB) but few in number (roughly proportional to the number of open files or modules), and have a simple lifecycle — create, read, delete when stale. There are no complex query or transaction requirements. The capabilities databases excel at (transactions, indexing, complex queries) are irrelevant for these files; filesystem management is sufficient.
+
+  Index shards are the only part that could potentially benefit from a database: numerous (equal to the number of project files), small in size, and could benefit from atomic writes and automatic LRU eviction. But the current filesystem-based approach already handles these needs adequately. Whether the added complexity of introducing a database dependency is justified for this one use case needs to be evaluated when an actual bottleneck is encountered. For very large projects (tens of thousands of files), storing that many index shards in a single directory may create filesystem-level pressure; hierarchical storage or a lightweight database could be considered in the future.
+
 ## Known Limitations
 
-- **Symbol table locality**. Currently all symbols (including function-local variables) are merged into `ProjectIndex`'s global symbol table. This causes a large number of symbols meaningful only within a single file to be stored globally, increasing hash table insertion overhead during merging and memory usage. The improvement direction is to introduce multi-level symbol tables — local symbols are kept only in `MergedIndex` shards, while `ProjectIndex` stores only symbols that may be referenced across files. For example:
+- **Symbol table locality**. Currently all symbols (including function-local variables) are merged into `ProjectIndex`'s global symbol table. This causes a large number of symbols meaningful only within a single file to be stored globally, increasing hash table insertion overhead during merging and memory usage.
+
+  The improvement direction is to introduce multi-level symbol tables — not only `ProjectIndex` should have a `SymbolTable`, but `MergedIndex` shards should have their own as well. The rule for determining which level a symbol belongs to is: a symbol belongs to the `SymbolTable` of the file where it is defined, provided it is internal (will not be referenced by other files). For example:
 
   ```cpp
-  void process() {
-      auto result = compute();   // result is a local variable, no need for global symbol table
-      GlobalRegistry::add(result);
+  // utils.h
+  inline int helper(int x) {
+      auto temp = x * 2;    // temp is a local symbol of utils.h
+      return temp + 1;
   }
   ```
 
-  A symbol like `result` will never be referenced by other files; inserting it into the global symbol table serves no purpose. Only symbols like `GlobalRegistry`, `add`, and `compute` that may be referenced cross-file need global storage.
+  ```cpp
+  // main.cpp
+  #include "utils.h"
+  static int counter = 0;    // counter is a local symbol of main.cpp
+
+  int main() {
+      counter = helper(42);
+  }
+  ```
+
+  `temp` is defined in `utils.h` and will never be referenced by any other file — it should be in the `SymbolTable` of `utils.h`'s `MergedIndex` shard, not in `ProjectIndex`'s global symbol table. `counter` is a static variable in `main.cpp` and similarly should be in `main.cpp`'s `MergedIndex` shard. Note that although `temp` appears in a header file, it belongs to the header's `SymbolTable` rather than the including source file's `SymbolTable`, because it is defined in the header. Only symbols like `helper` and `main` that may be referenced cross-file need to enter `ProjectIndex`.
+
+  The goal is to minimize `ProjectIndex`'s size and merging overhead, while avoiding duplicate storage of the same local symbol across multiple translation units.
 
 - **Staleness detection precision**. The current staleness detection uses only mtime — re-indexing is triggered whenever a dependency file's mtime is later than the build timestamp. This produces unnecessary re-indexes in scenarios like `touch`, branch switching, or CI restores (file mtime changed but content is actually unchanged). The improvement direction is mtime + content hash dual-layer detection: the first layer uses mtime for a fast check — if unchanged, skip immediately (zero I/O); the second layer computes the content hash for files whose mtime changed — if the hash is unchanged, the content was not actually modified and can also be skipped. This approach is already used for compilation artifact staleness detection (PCH, AST); the index staleness detection should be aligned.
 
@@ -211,3 +238,9 @@ Background indexing scheduling must balance index timeliness against interferenc
   C++ symbol names have structure: `getSymbolHash` is camelCase, `get_symbol_hash` is snake_case, `std::vector<int>::push_back` has namespace qualification. When searching, users typically type abbreviations or fragments (e.g., `symhash`, `gSH`, `vec_pb`), expecting them to match the full symbol name. Substring matching cannot handle these queries.
 
   The improvement direction is to build a dedicated search index over symbol names. A tokenizer is needed to split symbol names by naming conventions (`getSymbolHash` → `[get, Symbol, Hash]`, `push_back` → `[push, back]`), then build an inverted index over the tokens. For example, trigrams (three-character groups) can be used as index keys, and at query time trigram intersections produce a candidate set that is then scored precisely. clangd's Dex index uses this trigram posting list approach and serves as a useful reference implementation. Another direction is to adopt a mature full-text search library, though the cost of introducing an external dependency needs to be evaluated.
+
+- **PCH-induced index split**. When using PCH (precompiled header) optimization, a file's compilation is effectively split into two phases: first the preamble (the `#include` directives at the top of the file) is compiled to produce the PCH, then the PCH is used to compile the rest of the file. The PCH itself is a compilation unit and produces its own index data.
+
+  This split affects the index. Take document links (clickable `#include` directives in the editor) as an example: `#include` directives in the preamble belong to the PCH compilation phase, and the main file's compilation cannot see them. Since the index system does not currently store document link information, it cannot reconstruct the PCH portion's results through the index. The current workaround is to pre-serialize the PCH's document links as JSON during PCH construction and store it in the PCH metadata, then manually splice it into the main file's results at query time. This works but is not clean.
+
+  A better approach would be to incorporate document links into the PCH metadata system (which already stores dependency file lists and other information), or to leverage the include relationship information already present in the index to reconstruct document links. The latter has the problem that index construction takes time, and after PCH compilation completes it should be put to use as quickly as possible — waiting for indexing to complete would add latency. Neither approach is fully implemented yet.

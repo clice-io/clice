@@ -102,7 +102,7 @@ Beyond automatic resolution, clice also provides three LSP extension requests th
 
 The header context is conceptually clear (host source file + include position), but given a header context, how to actually make Clang compile the header under the correct preprocessor state is an engineering problem that requires choosing an approach.
 
-> The prefix synthesis discussed here only applies to headers the user has opened. Headers on disk that are not open do not need special handling — they are included and processed normally when each source file is compiled. The indexing system collects symbol information from headers as part of each source file's indexing pass, and MergedIndex merges the index data produced for the same header under different source files (see [Index Design](index-design.md) for the merging mechanism).
+> The prefix synthesis discussed here only applies to headers the user has opened. Headers on disk that are not open do not need special handling — they are included and processed normally when each source file is compiled. The indexing system collects symbol information from headers as part of each source file's indexing pass, and MergedIndex merges the index data produced for the same header under different source files (see [Index Design](symbol-index.md) for the merging mechanism).
 
 clice uses **prefix synthesis + `-include` injection**: based on the host source file and include position from the header context, it extracts all content before the target header along the include chain, synthesizes it into prefix code, writes it to a prefix file on disk, and then injects that file into the compilation command via Clang's `-include` flag. The core advantage of this approach is its natural compatibility with PCH optimization — the prefix file's content is the target header's preamble, which can be compiled into a PCH and cached. When the user subsequently edits the header body, the large volume of header inclusions in the prefix does not need to be reprocessed each time. Detailed rationale for this design choice is in the FAQ section below. PCH construction, caching, and invalidation mechanisms are described in [Incremental Compilation Design](incremental.md).
 
@@ -168,7 +168,7 @@ Compilation context affects not only live compilation but also index constructio
 #endif
 ```
 
-If the index only records the result from one context, go-to-definition or find-references would miss information from the other context. MergedIndex merges and stores index data produced from the same file under different compilation contexts, returning the union of all contexts on queries — for `config.h`, find-references can find references to both `AsyncHandler` and `SyncHandler`. See [Index Design](index-design.md) for the specific merging and deduplication mechanisms.
+If the index only records the result from one context, go-to-definition or find-references would miss information from the other context. MergedIndex merges and stores index data produced from the same file under different compilation contexts, returning the union of all contexts on queries — for `config.h`, find-references can find references to both `AsyncHandler` and `SyncHandler`. See [Index Design](symbol-index.md) for the specific merging and deduplication mechanisms.
 
 ## FAQ
 

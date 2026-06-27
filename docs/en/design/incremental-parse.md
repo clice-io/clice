@@ -159,7 +159,7 @@ If the order were reversed -- hashing first, then obtaining the timestamp -- a w
 When a feature request arrives, the compilation pipeline executes in this order:
 
 1. Check whether the AST is cached and not stale -- if so, reuse it directly
-2. If C++20 modules are used, ensure module dependencies are ready (see [module compilation](module.md))
+2. If C++20 modules are used, ensure module dependencies are ready (see [module compilation](module-graph.md))
 3. Ensure the PCH is ready
 4. Dispatch the compilation task to a stateful worker process with the PCH path and module file paths
 5. The worker loads the PCH and compiles only the user code after the preamble

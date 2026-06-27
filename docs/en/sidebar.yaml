@@ -29,9 +29,9 @@ design:
     - overview
     - compilation-context
     - command
-    - index-design
+    - symbol-index
     - multi-process
-    - module
+    - module-graph
     - incremental
     - template-resolver
     - dependency-scanning
