@@ -38,7 +38,7 @@ design:
 
 dev:
   label: Development
-  collapsed: true
+  collapsed: false
   items:
     - build
     - contribution
