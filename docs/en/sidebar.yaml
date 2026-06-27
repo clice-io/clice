@@ -28,11 +28,11 @@ design:
   items:
     - overview
     - compilation-context
-    - command
+    - command-resolve
     - symbol-index
     - multi-process
     - module-graph
-    - incremental
+    - incremental-parse
     - template-resolver
     - dependency-scanning
 
