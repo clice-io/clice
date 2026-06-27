@@ -315,7 +315,10 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     } else {
         alive_stateless_count -= 1;
         if(w.busy) {
+            if(w.low_priority)
+                low_busy_count -= 1;
             w.busy = false;
+            w.low_priority = false;
             stateless_busy_count -= 1;
         }
         apply_crash_backoff();
@@ -396,6 +399,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
         .owned_documents = 0,
         .alive = true,
         .busy = false,
+        .low_priority = false,
         .restart_count = old_restart_count,
     };
 
@@ -433,7 +437,7 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
             return false;
         if(priority == P::High)
             return true;
-        return stateless_busy_count < low_limit;
+        return low_busy_count < low_limit;
     };
 
     while(true) {
@@ -471,7 +475,10 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
 
         auto idx = pick_idle_stateless();
         stateless_workers[idx].busy = true;
+        stateless_workers[idx].low_priority = (priority == P::Low);
         stateless_busy_count += 1;
+        if(priority == P::Low)
+            low_busy_count += 1;
 
         co_return idx;
     }
@@ -480,7 +487,10 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
 void WorkerPool::release_stateless_slot(std::size_t worker_index) {
     if(worker_index >= stateless_workers.size() || !stateless_workers[worker_index].busy)
         return;
+    if(stateless_workers[worker_index].low_priority)
+        low_busy_count -= 1;
     stateless_workers[worker_index].busy = false;
+    stateless_workers[worker_index].low_priority = false;
     stateless_busy_count -= 1;
     try_dispatch_pending();
 }
@@ -488,8 +498,8 @@ void WorkerPool::release_stateless_slot(std::size_t worker_index) {
 void WorkerPool::try_dispatch_pending() {
     auto idle = alive_stateless_count - stateless_busy_count;
 
-    auto dispatch = [&](std::deque<PendingStateless*>& queue, bool check_limit) {
-        while(!queue.empty() && idle > 0 && (!check_limit || stateless_busy_count < low_limit)) {
+    auto dispatch = [&](std::deque<PendingStateless*>& queue, bool is_low) {
+        while(!queue.empty() && idle > 0 && (!is_low || low_busy_count < low_limit)) {
             auto* next = queue.front();
             queue.pop_front();
             // Clear queue pointer before signalling so the PendingStateless
@@ -497,7 +507,10 @@ void WorkerPool::try_dispatch_pending() {
             next->queue = nullptr;
             auto idx = pick_idle_stateless();
             stateless_workers[idx].busy = true;
+            stateless_workers[idx].low_priority = is_low;
             stateless_busy_count += 1;
+            if(is_low)
+                low_busy_count += 1;
             idle -= 1;
             next->assigned_worker = idx;
             next->assigned_gen = stateless_workers[idx].restart_count;

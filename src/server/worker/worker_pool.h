@@ -108,6 +108,9 @@ private:
         /// Stateless only: true while a request is in-flight on this worker.
         bool busy = false;
 
+        /// Stateless only: true if the current in-flight request is low-priority.
+        bool low_priority = false;
+
         /// How many times this slot has been respawned.
         unsigned restart_count = 0;
     };
@@ -196,6 +199,7 @@ private:
     std::deque<PendingStateless*> low_queue;
 
     std::size_t stateless_busy_count = 0;
+    std::size_t low_busy_count = 0;
     std::size_t alive_stateless_count = 0;
 
     /// Max concurrent low-priority tasks.  Dynamically adjusted by

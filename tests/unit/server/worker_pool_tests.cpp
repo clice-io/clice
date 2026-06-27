@@ -20,17 +20,21 @@ struct WorkerPoolFixture {
         };
     }
 
-    void add_stateless(bool alive = true, bool busy = false) {
+    void add_stateless(bool alive = true, bool busy = false, bool low = true) {
         auto idx = pool.stateless_workers.size();
         pool.stateless_workers.push_back(WorkerPool::WorkerProcess{});
         auto& w = pool.stateless_workers.back();
         w.name = "SL-" + std::to_string(idx);
         w.alive = alive;
         w.busy = busy;
+        w.low_priority = busy && low;
         if(alive)
             pool.alive_stateless_count += 1;
-        if(busy)
+        if(busy) {
             pool.stateless_busy_count += 1;
+            if(low)
+                pool.low_busy_count += 1;
+        }
     }
 
     void add_stateful(bool alive = true, std::size_t owned = 0) {
@@ -202,7 +206,8 @@ struct WorkerPoolFixture {
         pool.stateless_workers[idx].busy = true;
         pool.stateless_busy_count += 1;
         { WorkerPool::StatelessSlot slot(pool, idx); }
-        return !pool.stateless_workers[idx].busy && pool.stateless_busy_count == 0;
+        return !pool.stateless_workers[idx].busy && pool.stateless_busy_count == 0 &&
+               pool.low_busy_count == 0;
     }
 
     struct ReleaseResult {
