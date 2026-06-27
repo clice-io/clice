@@ -127,8 +127,11 @@ private:
     std::size_t pick_least_loaded();
 
     /// A coroutine waiting for a stateless worker slot.  Lives on the coroutine
-    /// frame of acquire_stateless_slot(); the destructor auto-removes it from
-    /// the queue so cancellation never leaves a dangling pointer.
+    /// frame of acquire_stateless_slot(); the destructor handles two cancellation
+    /// scenarios:
+    ///   - Still queued (queue != nullptr): removes itself from the queue.
+    ///   - Dispatched but coroutine cancelled before StatelessSlot was created
+    ///     (pool != nullptr): releases the assigned slot to prevent leak.
     struct PendingStateless {
         worker::Priority priority;
 
@@ -143,14 +146,22 @@ private:
         /// once popped or if never enqueued.
         std::deque<PendingStateless*>* queue = nullptr;
 
+        /// Non-null while the slot hasn't been claimed by the coroutine.
+        /// Cleared after co_await returns so the destructor doesn't release
+        /// a slot that StatelessSlot now owns.
+        WorkerPool* pool = nullptr;
+
         explicit PendingStateless(worker::Priority p) : priority(p) {}
 
         PendingStateless(const PendingStateless&) = delete;
         PendingStateless& operator=(const PendingStateless&) = delete;
 
         ~PendingStateless() {
-            if(queue)
+            if(queue) {
                 std::erase(*queue, this);
+            } else if(assigned_worker != SIZE_MAX && pool) {
+                pool->release_stateless_slot(assigned_worker);
+            }
         }
     };
 
