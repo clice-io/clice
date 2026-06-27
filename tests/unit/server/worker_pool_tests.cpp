@@ -200,7 +200,7 @@ struct WorkerPoolFixture {
 
     bool test_slot_raii(std::size_t idx) {
         pool.stateless_workers[idx].busy = true;
-        ++pool.stateless_busy_count;
+        pool.stateless_busy_count += 1;
         { WorkerPool::StatelessSlot slot(pool, idx); }
         return !pool.stateless_workers[idx].busy && pool.stateless_busy_count == 0;
     }
@@ -259,6 +259,18 @@ struct WorkerPoolFixture {
         pending->queue = &pool.high_queue;
         simulate_crash(0, false);
         return {pending->ready.is_set(), pending->assigned_worker};
+    }
+
+    bool test_slot_gen_guard() {
+        // Old StatelessSlot should NOT release a slot that was crash-replaced.
+        {
+            WorkerPool::StatelessSlot slot(pool, 0);
+            // Simulate respawn bumping restart_count.
+            pool.stateless_workers[0].restart_count = 1;
+            pool.stateless_workers[0].busy = true;
+        }
+        // Destructor saw mismatched gen → skipped release.
+        return pool.stateless_workers[0].busy && pool.stateless_busy_count == 1;
     }
 
     DispatchResult test_dispatch_clears_queue() {
@@ -820,6 +832,28 @@ TEST_CASE(DeadPoolDrainsPending) {
     EXPECT_TRUE(r.drained);
     EXPECT_EQ(r.assigned_worker, SIZE_MAX);
     EXPECT_EQ(f.high_queue_size(), 0u);
+}
+
+TEST_CASE(SlotGenGuard) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true);
+    f.set_limits(1, 1);
+    EXPECT_TRUE(f.test_slot_gen_guard());
+}
+
+TEST_CASE(MaxLowLimitClamped) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, false);
+    f.add_stateless(true, false);
+    f.add_stateless(true, false);
+    f.set_limits(2, 2);
+    f.set_max_restarts(0);
+
+    f.simulate_crash(0, false);
+
+    // max_low_limit should shrink to alive-1 (or alive if 1).
+    EXPECT_EQ(f.max_low_limit(), 1u);
+    EXPECT_LE(f.low_limit(), f.max_low_limit());
 }
 
 };  // TEST_SUITE(WorkerPoolCrash)

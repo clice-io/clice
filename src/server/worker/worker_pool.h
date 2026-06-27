@@ -155,17 +155,22 @@ private:
     };
 
     /// RAII guard that releases a stateless worker slot on scope exit.
+    /// Captures restart_count at construction so that a crash-and-respawn
+    /// on the same index won't accidentally clear the new occupant's busy flag.
     struct StatelessSlot {
         WorkerPool& pool;
         std::size_t worker_index;
+        unsigned gen;
 
-        StatelessSlot(WorkerPool& p, std::size_t idx) : pool(p), worker_index(idx) {}
+        StatelessSlot(WorkerPool& p, std::size_t idx) :
+            pool(p), worker_index(idx), gen(p.stateless_workers[idx].restart_count) {}
 
         StatelessSlot(const StatelessSlot&) = delete;
         StatelessSlot& operator=(const StatelessSlot&) = delete;
 
         ~StatelessSlot() {
-            pool.release_stateless_slot(worker_index);
+            if(pool.stateless_workers[worker_index].restart_count == gen)
+                pool.release_stateless_slot(worker_index);
         }
     };
 
@@ -264,13 +269,15 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         if(!stateless_workers[idx].alive)
             continue;
 
-        // Snapshot restart_count to detect crash-and-respawn on the same slot:
-        // respawn_worker() reuses the index, so checking alive alone would
-        // see the NEW worker as alive and return the stale IPC error.
         auto gen = stateless_workers[idx].restart_count;
         auto result = co_await stateless_workers[idx].peer->send_request(params, opts);
 
-        if(result.has_value() || stateless_workers[idx].restart_count == gen)
+        // Retry when the worker crashed: either restart_count changed
+        // (crash + respawn on same slot) or alive is false (crash without
+        // respawn, e.g. max_restarts exceeded but other workers remain).
+        bool same_process =
+            stateless_workers[idx].restart_count == gen && stateless_workers[idx].alive;
+        if(result.has_value() || same_process)
             co_return std::move(result);
     }
     co_return kota::outcome_error(kota::ipc::Error{"Stateless request failed after retries"});

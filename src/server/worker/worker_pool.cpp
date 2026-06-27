@@ -260,6 +260,8 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     if(process_crash(index, stateful, exit_code, exit_signal)) {
         if(!respawn_worker(index, stateful)) {
             LOG_ERROR("Worker {} respawn failed", workers[index].name);
+            if(!stateful && alive_stateless_count == 0)
+                fail_pending_requests();
         }
     }
 }
@@ -308,6 +310,16 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
             stateless_busy_count -= 1;
         }
         apply_crash_backoff();
+
+        // Permanently lost slot: shrink the ceiling so monitor_memory()
+        // can't raise low_limit above the surviving worker count.
+        if(!info.will_restart) {
+            max_low_limit =
+                alive_stateless_count > 1 ? alive_stateless_count - 1 : alive_stateless_count;
+            if(low_limit > max_low_limit)
+                low_limit = max_low_limit;
+        }
+
         // If no workers remain and none will restart, wake all waiters
         // with SIZE_MAX so they can return an error instead of hanging.
         if(alive_stateless_count == 0 && !info.will_restart)
