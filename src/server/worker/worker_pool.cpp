@@ -108,7 +108,7 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     auto& w = workers.back();
     w.alive = true;
     if(!stateful)
-        ++alive_stateless_count;
+        alive_stateless_count += 1;
     io_group.spawn(w.peer->run());
 
     return true;
@@ -193,7 +193,7 @@ std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
     // New assignment: pick the least-loaded worker
     auto selected = pick_least_loaded();
     owner[path_id] = selected;
-    stateful_workers[selected].owned_documents++;
+    stateful_workers[selected].owned_documents += 1;
     owner_lru.push_front(path_id);
     owner_lru_index[path_id] = owner_lru.begin();
     return selected;
@@ -218,7 +218,7 @@ void WorkerPool::remove_owner(std::uint32_t path_id) {
         return;
 
     auto worker_idx = it->second;
-    stateful_workers[worker_idx].owned_documents--;
+    stateful_workers[worker_idx].owned_documents -= 1;
     owner.erase(it);
 
     auto lru_it = owner_lru_index.find(path_id);
@@ -287,26 +287,33 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     info.exit_code = exit_code;
     info.exit_signal = exit_signal;
     info.restart_count = w.restart_count;
+    info.will_restart = w.restart_count < options_.max_restarts;
+
+    if(!info.will_restart) {
+        LOG_ERROR("Worker {} exceeded max restarts ({}), giving up", w.name, options_.max_restarts);
+    }
 
     if(stateful) {
+        // Collect documents owned by this worker so the caller (on_crash)
+        // can mark them dirty for recompilation on the next request.
         for(auto& [path_id, widx]: owner) {
             if(widx == index)
                 info.lost_documents.push_back(path_id);
         }
         clear_owner(index);
     } else {
-        --alive_stateless_count;
+        alive_stateless_count -= 1;
         if(w.busy) {
             w.busy = false;
-            --stateless_busy_count;
+            stateless_busy_count -= 1;
         }
         apply_crash_backoff();
-        try_dispatch_pending();
-    }
-
-    info.will_restart = w.restart_count < options_.max_restarts;
-    if(!info.will_restart) {
-        LOG_ERROR("Worker {} exceeded max restarts ({}), giving up", w.name, options_.max_restarts);
+        // If no workers remain and none will restart, wake all waiters
+        // with SIZE_MAX so they can return an error instead of hanging.
+        if(alive_stateless_count == 0 && !info.will_restart)
+            fail_pending_requests();
+        else
+            try_dispatch_pending();
     }
 
     if(on_crash)
@@ -372,11 +379,12 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     };
 
     if(!stateful)
-        ++alive_stateless_count;
+        alive_stateless_count += 1;
 
     auto& w = workers[index];
     io_group.spawn(w.peer->run());
 
+    // Dispatch pending requests now that a fresh worker is available.
     if(!stateful)
         try_dispatch_pending();
 
@@ -394,7 +402,14 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
 }
 
 kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority priority) {
+    // Fast-fail: no workers alive means no possibility of dispatch.
+    if(alive_stateless_count == 0)
+        co_return SIZE_MAX;
+
     using P = worker::Priority;
+    // High-priority proceeds whenever any worker is idle.
+    // Low-priority is additionally gated by low_limit to reserve
+    // capacity for high-priority requests.
     auto can_proceed = [&]() {
         auto idle = alive_stateless_count - stateless_busy_count;
         if(idle == 0)
@@ -405,6 +420,8 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
     };
 
     if(!can_proceed()) {
+        // Enqueue and suspend until try_dispatch_pending() wakes us.
+        // PendingStateless destructor auto-removes from queue on cancellation.
         PendingStateless pending(priority);
         if(priority == P::High) {
             high_queue.push_back(&pending);
@@ -419,46 +436,55 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
 
     auto idx = pick_idle_stateless();
     stateless_workers[idx].busy = true;
-    ++stateless_busy_count;
-
-    auto pid = stateless_workers[idx].proc.pid();
-    if(pid > 0) {
-        kota::sys::set_priority(priority == P::Low ? 10 : 0, pid);
-    }
+    stateless_busy_count += 1;
 
     co_return idx;
 }
 
 void WorkerPool::release_stateless_slot(std::size_t worker_index) {
-    if(!stateless_workers[worker_index].busy)
+    if(worker_index >= stateless_workers.size() || !stateless_workers[worker_index].busy)
         return;
     stateless_workers[worker_index].busy = false;
-    --stateless_busy_count;
+    stateless_busy_count -= 1;
     try_dispatch_pending();
 }
 
 void WorkerPool::try_dispatch_pending() {
     auto idle = alive_stateless_count - stateless_busy_count;
 
-    auto dispatch = [&](std::deque<PendingStateless*>& queue, int nice, bool check_limit) {
+    auto dispatch = [&](std::deque<PendingStateless*>& queue, bool check_limit) {
         while(!queue.empty() && idle > 0 && (!check_limit || stateless_busy_count < low_limit)) {
             auto* next = queue.front();
             queue.pop_front();
+            // Clear queue pointer before signalling so the PendingStateless
+            // destructor won't attempt a redundant erase.
             next->queue = nullptr;
             auto idx = pick_idle_stateless();
             stateless_workers[idx].busy = true;
-            ++stateless_busy_count;
-            --idle;
-            auto pid = stateless_workers[idx].proc.pid();
-            if(pid > 0)
-                kota::sys::set_priority(nice, pid);
+            stateless_busy_count += 1;
+            idle -= 1;
             next->assigned_worker = idx;
             next->ready.set();
         }
     };
 
-    dispatch(high_queue, 0, false);
-    dispatch(low_queue, 10, true);
+    dispatch(high_queue, false);
+    dispatch(low_queue, true);
+}
+
+void WorkerPool::fail_pending_requests() {
+    // SIZE_MAX signals to send_stateless() that no worker was assigned.
+    auto drain = [](std::deque<PendingStateless*>& queue) {
+        while(!queue.empty()) {
+            auto* next = queue.front();
+            queue.pop_front();
+            next->queue = nullptr;
+            next->assigned_worker = SIZE_MAX;
+            next->ready.set();
+        }
+    };
+    drain(high_queue);
+    drain(low_queue);
 }
 
 std::size_t WorkerPool::pick_idle_stateless() {
@@ -485,16 +511,16 @@ kota::task<> WorkerPool::monitor_memory() {
 
         if(ratio < 0.20 && low_limit > 1) {
             if(backoff_cooldown > 0) {
-                --backoff_cooldown;
+                backoff_cooldown -= 1;
             } else {
-                --low_limit;
+                low_limit -= 1;
                 LOG_INFO("Stateless low_limit -> {} (memory pressure: {:.0f}% available)",
                          low_limit,
                          ratio * 100);
             }
         } else if(ratio > 0.40 && low_limit < max_low_limit) {
             backoff_cooldown = 0;
-            ++low_limit;
+            low_limit += 1;
             LOG_DEBUG("Stateless low_limit -> {} (memory OK: {:.0f}% available)",
                       low_limit,
                       ratio * 100);

@@ -98,6 +98,15 @@ void MasterServer::initialize() {
 
     lifecycle = ServerLifecycle::Ready;
 
+    pool.on_crash = [this](const WorkerCrashInfo& info) {
+        if(!info.stateful)
+            return;
+        for(auto path_id: info.lost_documents) {
+            if(auto it = sessions.find(path_id); it != sessions.end())
+                it->second->ast_dirty = true;
+        }
+    };
+
     compiler.on_indexing_needed = [this]() {
         indexer.schedule();
     };

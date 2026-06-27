@@ -28,9 +28,9 @@ struct WorkerPoolFixture {
         w.alive = alive;
         w.busy = busy;
         if(alive)
-            ++pool.alive_stateless_count;
+            pool.alive_stateless_count += 1;
         if(busy)
-            ++pool.stateless_busy_count;
+            pool.stateless_busy_count += 1;
     }
 
     void add_stateful(bool alive = true, std::size_t owned = 0) {
@@ -194,7 +194,7 @@ struct WorkerPoolFixture {
         std::size_t dispatched = 0;
         for(auto& p: pending)
             if(p->ready.is_set())
-                ++dispatched;
+                dispatched += 1;
         return dispatched;
     }
 
@@ -247,6 +247,19 @@ struct WorkerPoolFixture {
         bool queue_cleared;
         bool queue_ptr_nulled;
     };
+
+    struct DrainResult {
+        bool drained;
+        std::size_t assigned_worker;
+    };
+
+    DrainResult test_dead_pool_drain() {
+        auto pending = std::make_unique<WorkerPool::PendingStateless>(worker::Priority::High);
+        pool.high_queue.push_back(pending.get());
+        pending->queue = &pool.high_queue;
+        simulate_crash(0, false);
+        return {pending->ready.is_set(), pending->assigned_worker};
+    }
 
     DispatchResult test_dispatch_clears_queue() {
         auto pending = std::make_unique<WorkerPool::PendingStateless>(worker::Priority::High);
@@ -777,6 +790,36 @@ TEST_CASE(StatefulCrashNoCooldown) {
     f.simulate_crash(0, true);
 
     EXPECT_EQ(f.get_backoff_cooldown(), 0u);
+}
+
+TEST_CASE(DeadPoolReturnsError) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, false);
+    f.set_limits(1, 1);
+    f.set_max_restarts(0);
+
+    f.simulate_crash(0, false);
+    EXPECT_EQ(f.alive_count(), 0u);
+
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        auto idx = co_await f.acquire_slot(worker::Priority::High);
+        EXPECT_EQ(idx, SIZE_MAX);
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(DeadPoolDrainsPending) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true);
+    f.set_limits(1, 1);
+    f.set_max_restarts(0);
+
+    auto r = f.test_dead_pool_drain();
+    EXPECT_TRUE(r.drained);
+    EXPECT_EQ(r.assigned_worker, SIZE_MAX);
+    EXPECT_EQ(f.high_queue_size(), 0u);
 }
 
 };  // TEST_SUITE(WorkerPoolCrash)

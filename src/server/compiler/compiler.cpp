@@ -93,6 +93,7 @@ void Compiler::init_compile_graph() {
         auto file_path = std::string(workspace.path_pool.resolve(path_id));
 
         worker::BuildParams bp;
+        bp.priority = worker::Priority::High;
         bp.kind = worker::BuildKind::BuildPCM;
         bp.file = file_path;
         if(!fill_compile_args(file_path, bp.directory, bp.arguments))

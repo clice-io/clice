@@ -30,10 +30,18 @@ struct WorkerCrashInfo {
     std::size_t worker_index;
     bool stateful;
     int exit_code = 0;
+
+    /// Non-zero when the worker was killed by a signal (e.g. 9 = SIGKILL).
     int exit_signal = 0;
+
+    /// How many times this slot had restarted before this crash.
     unsigned restart_count;
+
+    /// Whether the pool will attempt to respawn this worker.
     bool will_restart;
-    /// For stateful workers: path_ids of documents that were owned by this worker.
+
+    /// Stateful only: path_ids of documents owned by the crashed worker.
+    /// The on_crash handler should mark these dirty for recompilation.
     llvm::SmallVector<std::uint32_t> lost_documents;
 };
 
@@ -43,6 +51,8 @@ struct WorkerPoolOptions {
     std::uint32_t stateful_count = 2;
     std::uint64_t worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB default
     std::string log_dir;
+
+    /// Per-worker restart cap before the pool gives up on that slot.
     unsigned max_restarts = 2;
 };
 
@@ -86,10 +96,19 @@ private:
     struct WorkerProcess {
         kota::process proc;
         std::unique_ptr<kota::ipc::BincodePeer> peer;
+
+        /// Display name for logging, e.g. "SL-0" or "SF-1".
         std::string name;
+
+        /// Stateful only: number of documents routed to this worker.
         std::size_t owned_documents = 0;
+
         bool alive = true;
+
+        /// Stateless only: true while a request is in-flight on this worker.
         bool busy = false;
+
+        /// How many times this slot has been respawned.
         unsigned restart_count = 0;
     };
 
@@ -97,20 +116,31 @@ private:
     llvm::SmallVector<WorkerProcess> stateless_workers;
     llvm::SmallVector<WorkerProcess> stateful_workers;
 
-    // Stateful worker routing: path_id -> worker index with LRU tracking
-    llvm::DenseMap<std::uint32_t, std::size_t> owner;
-    std::list<std::uint32_t> owner_lru;
+    // Stateful routing: each open document (path_id) is pinned to one worker.
+    // LRU tracks access order so stale assignments can be evicted.
+    llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
+    std::list<std::uint32_t> owner_lru;                // most-recent at front
     llvm::DenseMap<std::uint32_t, std::list<std::uint32_t>::iterator> owner_lru_index;
 
     std::size_t assign_worker(std::uint32_t path_id);
     void clear_owner(std::size_t worker_index);
     std::size_t pick_least_loaded();
 
-    // Priority-aware stateless scheduling
+    /// A coroutine waiting for a stateless worker slot.  Lives on the coroutine
+    /// frame of acquire_stateless_slot(); the destructor auto-removes it from
+    /// the queue so cancellation never leaves a dangling pointer.
     struct PendingStateless {
         worker::Priority priority;
+
+        /// Signalled by try_dispatch_pending() when a worker becomes available.
         kota::event ready{};
+
+        /// Set by try_dispatch_pending() before signalling ready.
+        /// SIZE_MAX means the pool is dead and no worker was assigned.
         std::size_t assigned_worker = 0;
+
+        /// Points to whichever queue (high/low) this entry sits in; nullptr
+        /// once popped or if never enqueued.
         std::deque<PendingStateless*>* queue = nullptr;
 
         explicit PendingStateless(worker::Priority p) : priority(p) {}
@@ -124,6 +154,7 @@ private:
         }
     };
 
+    /// RAII guard that releases a stateless worker slot on scope exit.
     struct StatelessSlot {
         WorkerPool& pool;
         std::size_t worker_index;
@@ -138,18 +169,39 @@ private:
         }
     };
 
+    /// Pending requests waiting for a worker, split by priority.
+    /// High queue is drained first; low queue respects low_limit.
     std::deque<PendingStateless*> high_queue;
     std::deque<PendingStateless*> low_queue;
+
     std::size_t stateless_busy_count = 0;
     std::size_t alive_stateless_count = 0;
+
+    /// Max concurrent low-priority tasks.  Dynamically adjusted by
+    /// monitor_memory() and apply_crash_backoff().
     std::size_t low_limit = 0;
+
+    /// Ceiling for low_limit recovery (set once at start).
     std::size_t max_low_limit = 0;
+
+    /// Remaining monitor_memory cycles to skip after a crash backoff,
+    /// prevents crash AIMD and memory pressure from compounding.
     unsigned backoff_cooldown = 0;
 
+    /// Wait for an idle stateless worker. Returns SIZE_MAX when the pool
+    /// is dead (all workers down, no restarts left).
     kota::task<std::size_t> acquire_stateless_slot(worker::Priority priority);
     void release_stateless_slot(std::size_t worker_index);
+
+    /// Wake queued requests when a worker becomes available.
     void try_dispatch_pending();
+
+    /// Wake all queued requests with SIZE_MAX (pool is dead).
+    void fail_pending_requests();
+
     std::size_t pick_idle_stateless();
+
+    /// Periodically adjusts low_limit based on system memory pressure.
     kota::task<> monitor_memory();
 
     /// Handle worker crash: update state, fire on_crash callback.
@@ -160,7 +212,11 @@ private:
     void apply_crash_backoff();
 
     bool shutting_down_ = false;
+
+    /// Runs monitor_worker() and monitor_memory() coroutines.
     kota::task_group<> monitor_group{loop};
+
+    /// Runs peer->run() and drain_stderr() coroutines.
     kota::task_group<> io_group{loop};
     WorkerPoolOptions options_;
     std::string log_dir_;
@@ -197,21 +253,25 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         co_return kota::outcome_error(kota::ipc::Error{"No stateless workers available"});
     }
 
-    // Try up to 2 times: if the worker crashes mid-request, retry on another.
+    // Retry once: if the worker crashes mid-request, acquire a fresh slot.
     for(int attempt = 0; attempt < 2; ++attempt) {
         auto idx = co_await acquire_stateless_slot(params.priority);
+        if(idx >= stateless_workers.size())
+            co_return kota::outcome_error(kota::ipc::Error{"All stateless workers are down"});
+
         StatelessSlot slot(*this, idx);
 
         if(!stateless_workers[idx].alive)
             continue;
 
+        // Snapshot restart_count to detect crash-and-respawn on the same slot:
+        // respawn_worker() reuses the index, so checking alive alone would
+        // see the NEW worker as alive and return the stale IPC error.
+        auto gen = stateless_workers[idx].restart_count;
         auto result = co_await stateless_workers[idx].peer->send_request(params, opts);
 
-        // Success, or application-level error (worker still alive) — return as-is.
-        if(result.has_value() || stateless_workers[idx].alive)
+        if(result.has_value() || stateless_workers[idx].restart_count == gen)
             co_return std::move(result);
-
-        // Worker crashed during this request — retry on next iteration.
     }
     co_return kota::outcome_error(kota::ipc::Error{"Stateless request failed after retries"});
 }
