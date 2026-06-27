@@ -142,6 +142,9 @@ private:
         /// SIZE_MAX means the pool is dead and no worker was assigned.
         std::size_t assigned_worker = 0;
 
+        /// restart_count of the assigned worker at dispatch time.
+        unsigned assigned_gen = 0;
+
         /// Points to whichever queue (high/low) this entry sits in; nullptr
         /// once popped or if never enqueued.
         std::deque<PendingStateless*>* queue = nullptr;
@@ -160,7 +163,9 @@ private:
             if(queue) {
                 std::erase(*queue, this);
             } else if(assigned_worker != SIZE_MAX && pool) {
-                pool->release_stateless_slot(assigned_worker);
+                // Only release if the slot hasn't been crash-replaced.
+                if(pool->stateless_workers[assigned_worker].restart_count == assigned_gen)
+                    pool->release_stateless_slot(assigned_worker);
             }
         }
     };

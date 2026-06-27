@@ -161,6 +161,7 @@ bool WorkerPool::start(const WorkerPoolOptions& options) {
 kota::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopping...");
     shutting_down_ = true;
+    fail_pending_requests();
 
     for(auto& w: stateless_workers)
         w.peer->close_output();
@@ -422,10 +423,6 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
 }
 
 kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority priority) {
-    // Fast-fail: no workers alive means no possibility of dispatch.
-    if(alive_stateless_count == 0)
-        co_return SIZE_MAX;
-
     using P = worker::Priority;
     // High-priority proceeds whenever any worker is idle.
     // Low-priority is additionally gated by low_limit to reserve
@@ -439,30 +436,45 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
         return stateless_busy_count < low_limit;
     };
 
-    if(!can_proceed()) {
-        // Enqueue and suspend until try_dispatch_pending() wakes us.
-        // PendingStateless destructor handles cleanup on cancellation:
-        //   - still queued → removes from queue
-        //   - dispatched but cancelled before StatelessSlot → releases slot
-        PendingStateless pending(priority);
-        pending.pool = this;
-        if(priority == P::High) {
-            high_queue.push_back(&pending);
-            pending.queue = &high_queue;
-        } else {
-            low_queue.push_back(&pending);
-            pending.queue = &low_queue;
+    while(true) {
+        if(alive_stateless_count == 0)
+            co_return SIZE_MAX;
+
+        if(!can_proceed()) {
+            // Enqueue and suspend until try_dispatch_pending() wakes us.
+            // PendingStateless destructor handles cleanup on cancellation:
+            //   - still queued → removes from queue
+            //   - dispatched but cancelled before StatelessSlot → releases slot
+            PendingStateless pending(priority);
+            pending.pool = this;
+            if(priority == P::High) {
+                high_queue.push_back(&pending);
+                pending.queue = &high_queue;
+            } else {
+                low_queue.push_back(&pending);
+                pending.queue = &low_queue;
+            }
+            co_await pending.ready.wait();
+            pending.pool = nullptr;  // claimed — StatelessSlot will handle release
+
+            if(pending.assigned_worker == SIZE_MAX)
+                co_return SIZE_MAX;
+
+            // If the assigned worker crashed and was respawned between
+            // dispatch and resume, the slot is stale — loop to re-acquire.
+            auto idx = pending.assigned_worker;
+            if(stateless_workers[idx].restart_count != pending.assigned_gen)
+                continue;
+
+            co_return idx;
         }
-        co_await pending.ready.wait();
-        pending.pool = nullptr;  // claimed — StatelessSlot will handle release
-        co_return pending.assigned_worker;
+
+        auto idx = pick_idle_stateless();
+        stateless_workers[idx].busy = true;
+        stateless_busy_count += 1;
+
+        co_return idx;
     }
-
-    auto idx = pick_idle_stateless();
-    stateless_workers[idx].busy = true;
-    stateless_busy_count += 1;
-
-    co_return idx;
 }
 
 void WorkerPool::release_stateless_slot(std::size_t worker_index) {
@@ -488,6 +500,7 @@ void WorkerPool::try_dispatch_pending() {
             stateless_busy_count += 1;
             idle -= 1;
             next->assigned_worker = idx;
+            next->assigned_gen = stateless_workers[idx].restart_count;
             next->ready.set();
         }
     };
@@ -548,6 +561,7 @@ kota::task<> WorkerPool::monitor_memory() {
             LOG_DEBUG("Stateless low_limit -> {} (memory OK: {:.0f}% available)",
                       low_limit,
                       ratio * 100);
+            try_dispatch_pending();
         }
     }
 }
