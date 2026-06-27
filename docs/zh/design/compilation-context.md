@@ -58,7 +58,7 @@ X(Timeout,      3, "operation timed out")
 ```cpp
 // error_enum.cpp —— 生成枚举
 #define X(name, code, msg) name = code,
-enum ErrorCode { 
+enum ErrorCode {
 #include "errors.def"
 };
 #undef X

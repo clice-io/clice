@@ -58,7 +58,7 @@ Different source files include the same `errors.def`, each defining a different 
 ```cpp
 // error_enum.cpp — generates an enum
 #define X(name, code, msg) name = code,
-enum ErrorCode { 
+enum ErrorCode {
 #include "errors.def"
 };
 #undef X
