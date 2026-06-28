@@ -634,6 +634,56 @@ TEST_CASE(LookupRelation) {
     EXPECT_FALSE(found_any);
 }
 
+TEST_CASE(ScopeExternal) {
+    build_index(R"(
+            int global_var = 0;
+            void global_func() {}
+            struct GlobalClass { int member; };
+            namespace ns { int ns_var = 1; }
+        )");
+
+    for(auto& [hash, symbol]: tu_index.symbols) {
+        if(symbol.name == "global_var" || symbol.name == "global_func" ||
+           symbol.name == "GlobalClass" || symbol.name == "member" || symbol.name == "ns_var" ||
+           symbol.name == "ns") {
+            ASSERT_EQ(static_cast<int>(symbol.scope),
+                      static_cast<int>(index::SymbolScope::External));
+        }
+    }
+}
+
+TEST_CASE(ScopeFileLocal) {
+    build_index(R"(
+            void foo() {
+                int local_var = 42;
+            }
+            void bar(int param) {}
+        )");
+
+    for(auto& [hash, symbol]: tu_index.symbols) {
+        if(symbol.name == "local_var" || symbol.name == "param") {
+            ASSERT_EQ(static_cast<int>(symbol.scope),
+                      static_cast<int>(index::SymbolScope::FileLocal));
+        }
+    }
+}
+
+TEST_CASE(ScopeTULocal) {
+    build_index(R"(
+            static int static_var = 0;
+            static void static_func() {}
+            namespace { int anon_var = 1; }
+        )");
+
+    for(auto& [hash, symbol]: tu_index.symbols) {
+        if(symbol.name == "static_var" || symbol.name == "static_func" ||
+           symbol.name == "anon_var") {
+            ASSERT_EQ(static_cast<int>(symbol.scope),
+                      static_cast<int>(index::SymbolScope::TULocal));
+        }
+    }
+}
+
 };  // TEST_SUITE(tu_index)
 
 }  // namespace

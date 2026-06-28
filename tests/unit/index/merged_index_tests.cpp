@@ -357,6 +357,83 @@ TEST_CASE(CacheInvalidatedAfterMerge) {
     ASSERT_TRUE(found_second);
 }
 
+TEST_CASE(LocalSymbolTable) {
+    build_index(R"(
+            void foo() { int local = 42; }
+            int global = 0;
+        )");
+
+    index::MergedIndex merged;
+    auto main_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
+    merged.merge(main_path_id, tu_index.built_at, {}, tu_index.main_file_index, "");
+
+    // Collect non-External symbols from the TU that appear in the FileIndex.
+    index::SymbolTable local_syms;
+    for(auto& occ: tu_index.main_file_index.occurrences) {
+        auto it = tu_index.symbols.find(occ.target);
+        if(it != tu_index.symbols.end() && it->second.scope != index::SymbolScope::External) {
+            local_syms.try_emplace(occ.target, it->second);
+        }
+    }
+    merged.merge_symbols(local_syms);
+
+    // FileLocal symbols should be findable in the shard.
+    std::string name;
+    SymbolKind kind;
+    bool found_local = false;
+    for(auto& [hash, symbol]: local_syms) {
+        if(symbol.name == "local") {
+            ASSERT_TRUE(merged.find_symbol(hash, name, kind));
+            ASSERT_EQ(name, "local");
+            found_local = true;
+        }
+    }
+    ASSERT_TRUE(found_local);
+
+    // External symbol should NOT be in the shard's local table.
+    for(auto& [hash, symbol]: tu_index.symbols) {
+        if(symbol.name == "global") {
+            ASSERT_FALSE(merged.find_symbol(hash, name, kind));
+        }
+    }
+}
+
+TEST_CASE(LocalSymbolSerialization) {
+    build_index(R"(
+            static int static_var = 0;
+            void foo() { int local = 1; }
+        )");
+
+    index::MergedIndex merged;
+    auto main_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
+    merged.merge(main_path_id, tu_index.built_at, {}, tu_index.main_file_index, "");
+
+    index::SymbolTable local_syms;
+    for(auto& occ: tu_index.main_file_index.occurrences) {
+        auto it = tu_index.symbols.find(occ.target);
+        if(it != tu_index.symbols.end() && it->second.scope != index::SymbolScope::External) {
+            local_syms.try_emplace(occ.target, it->second);
+        }
+    }
+    merged.merge_symbols(local_syms);
+
+    // Serialize and deserialize.
+    llvm::SmallString<4096> buf;
+    {
+        llvm::raw_svector_ostream os(buf);
+        merged.serialize(os);
+    }
+    auto restored = index::MergedIndex(llvm::StringRef(buf.data(), buf.size()));
+
+    // Symbols should survive round-trip (via buffer path).
+    std::string name;
+    SymbolKind kind;
+    for(auto& [hash, symbol]: local_syms) {
+        ASSERT_TRUE(restored.find_symbol(hash, name, kind));
+        ASSERT_EQ(name, symbol.name);
+    }
+}
+
 };  // TEST_SUITE(MergedIndex)
 }  // namespace
 }  // namespace clice::testing

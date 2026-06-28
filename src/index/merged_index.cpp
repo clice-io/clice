@@ -141,6 +141,9 @@ struct MergedIndex::Impl {
     /// All merged symbol relations.
     llvm::DenseMap<SymbolHash, llvm::DenseMap<Relation, roaring::Roaring>> relations;
 
+    /// Symbols local to this file (FileLocal) or TU (TULocal).
+    SymbolTable symbols;
+
     /// Sorted occurrences cache for fast lookup.
     std::vector<Occurrence> occurrences_cache;
 
@@ -268,6 +271,19 @@ void MergedIndex::load_in_memory(this Self& self) {
         index.line_starts = kota::ipc::lsp::build_line_starts(index.content);
     }
 
+    if(root->symbols()) {
+        for(auto entry: *root->symbols()) {
+            auto& symbol = index.symbols[entry->symbol_id()];
+            if(auto* s = entry->symbol()) {
+                if(s->name())
+                    symbol.name = s->name()->str();
+                symbol.kind = SymbolKind(static_cast<std::uint8_t>(s->kind()));
+                symbol.scope = static_cast<SymbolScope>(s->scope());
+                symbol.reference_files = read_bitmap(s->refs());
+            }
+        }
+    }
+
     self.buffer.reset();
 }
 
@@ -372,6 +388,20 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
     auto content_offset = CreateString(builder, index->content);
     auto line_starts_offset = builder.CreateVector(index->line_starts);
 
+    auto symbols = transform(index->symbols, [&](auto&& value) {
+        auto& [symbol_id, symbol] = value;
+        buffer.clear();
+        buffer.resize_for_overwrite(symbol.reference_files.getSizeInBytes(false));
+        symbol.reference_files.write(buffer.data(), false);
+        return binary::CreateSymbolEntry(builder,
+                                         symbol_id,
+                                         binary::CreateSymbol(builder,
+                                                              CreateString(builder, symbol.name),
+                                                              symbol.kind.value(),
+                                                              static_cast<uint8_t>(symbol.scope),
+                                                              CreateVector(builder, buffer)));
+    });
+
     auto merged_index = binary::CreateMergedIndex(builder,
                                                   index->max_canonical_id,
                                                   CreateVector(builder, canonical_cache),
@@ -381,7 +411,8 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                                   CreateVector(builder, relations),
                                                   removed,
                                                   content_offset,
-                                                  line_starts_offset);
+                                                  line_starts_offset,
+                                                  CreateVector(builder, symbols));
     builder.Finish(merged_index);
 
     out.write(safe_cast<char>(builder.GetBufferPointer()), builder.GetSize());
@@ -589,6 +620,47 @@ void MergedIndex::remove(this Self& self, std::uint32_t path_id) {
 
     // Invalidate cached occurrences.
     index.occurrences_cache.clear();
+}
+
+bool MergedIndex::find_symbol(this const Self& self,
+                              SymbolHash hash,
+                              std::string& name,
+                              SymbolKind& kind) {
+    if(self.impl) {
+        auto it = self.impl->symbols.find(hash);
+        if(it != self.impl->symbols.end()) {
+            name = it->second.name;
+            kind = it->second.kind;
+            return true;
+        }
+    } else if(self.buffer) {
+        auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
+        if(root->symbols()) {
+            for(auto entry: *root->symbols()) {
+                if(entry->symbol_id() == hash) {
+                    if(auto* s = entry->symbol()) {
+                        if(s->name())
+                            name = s->name()->str();
+                        kind = SymbolKind(static_cast<std::uint8_t>(s->kind()));
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void MergedIndex::merge_symbols(this Self& self, const SymbolTable& symbols) {
+    self.load_in_memory();
+    for(auto& [hash, symbol]: symbols) {
+        auto [it, inserted] = self.impl->symbols.try_emplace(hash);
+        if(inserted) {
+            it->second.name = symbol.name;
+            it->second.kind = symbol.kind;
+            it->second.scope = symbol.scope;
+        }
+    }
 }
 
 void MergedIndex::merge(this Self& self,

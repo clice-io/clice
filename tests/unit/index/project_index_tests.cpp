@@ -33,9 +33,11 @@ TEST_CASE(MergeSingleTU) {
     // Symbols from the TU should be merged into the project.
     ASSERT_FALSE(project.symbols.empty());
 
-    // Every symbol from the TU should be in the project.
+    // Only External symbols should be in the project.
     for(auto& [hash, symbol]: tu.symbols) {
-        ASSERT_TRUE(project.symbols.contains(hash));
+        if(symbol.scope == index::SymbolScope::External) {
+            ASSERT_TRUE(project.symbols.contains(hash));
+        }
     }
 }
 
@@ -197,6 +199,58 @@ TEST_CASE(NameSurvivesRoundTrip) {
         ASSERT_TRUE(restored.symbols.contains(hash));
         ASSERT_EQ(restored.symbols[hash].name, symbol.name);
         ASSERT_EQ(restored.symbols[hash].kind.value(), symbol.kind.value());
+    }
+}
+
+TEST_CASE(LocalSymbolsExcluded) {
+    index::TUIndex tu;
+    ASSERT_TRUE(build_and_index(R"(
+            int global = 0;
+            static int file_static = 1;
+            void foo() { int local = 2; }
+        )",
+                                tu));
+
+    index::ProjectIndex project;
+    project.merge(tu);
+
+    // global (External) should be in ProjectIndex.
+    bool found_global = false;
+    bool found_static = false;
+    bool found_local = false;
+    for(auto& [hash, symbol]: project.symbols) {
+        if(symbol.name == "global")
+            found_global = true;
+        if(symbol.name == "file_static")
+            found_static = true;
+        if(symbol.name == "local")
+            found_local = true;
+    }
+    ASSERT_TRUE(found_global);
+    ASSERT_FALSE(found_static);
+    ASSERT_FALSE(found_local);
+}
+
+TEST_CASE(ScopeRoundTrip) {
+    index::TUIndex tu;
+    ASSERT_TRUE(build_and_index(R"(
+            int external_var = 0;
+            static int tu_local_var = 1;
+            void foo() { int file_local_var = 2; }
+        )",
+                                tu));
+
+    index::ProjectIndex project;
+    project.merge(tu);
+
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    project.serialize(os);
+    auto restored = index::ProjectIndex::from(buf.data());
+
+    for(auto& [hash, symbol]: project.symbols) {
+        ASSERT_TRUE(restored.symbols.contains(hash));
+        ASSERT_EQ(static_cast<int>(restored.symbols[hash].scope), static_cast<int>(symbol.scope));
     }
 }
 

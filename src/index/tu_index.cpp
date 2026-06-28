@@ -8,10 +8,20 @@
 #include "semantic/semantic_visitor.h"
 
 #include "llvm/Support/SHA256.h"
+#include "clang/AST/DeclCXX.h"
 
 namespace clice::index {
 
 namespace {
+
+SymbolScope classify_scope(const clang::NamedDecl* decl) {
+    auto linkage = decl->getFormalLinkage();
+    if(linkage == clang::Linkage::None)
+        return SymbolScope::FileLocal;
+    if(linkage == clang::Linkage::Internal)
+        return SymbolScope::TULocal;
+    return SymbolScope::External;
+}
 
 class Builder : public SemanticVisitor<Builder> {
 public:
@@ -48,6 +58,7 @@ public:
             auto& symbol = it->second;
             symbol.name = ast::display_name_of(decl);
             symbol.kind = SymbolKind::from(decl);
+            symbol.scope = classify_scope(decl);
         }
         index.occurrences.emplace_back(range, symbol_id.hash);
     }
@@ -243,6 +254,7 @@ void TUIndex::serialize(llvm::raw_ostream& os) const {
                                          binary::CreateSymbol(builder,
                                                               CreateString(builder, symbol.name),
                                                               symbol.kind.value(),
+                                                              static_cast<uint8_t>(symbol.scope),
                                                               CreateVector(builder, buffer)));
     });
 
@@ -301,6 +313,7 @@ TUIndex TUIndex::from(const void* data) {
         auto& symbol = index.symbols[entry->symbol_id()];
         symbol.name = entry->symbol()->name()->str();
         symbol.kind = SymbolKind(static_cast<std::uint8_t>(entry->symbol()->kind()));
+        symbol.scope = static_cast<SymbolScope>(entry->symbol()->scope());
         symbol.reference_files = read_bitmap(entry->symbol()->refs());
     }
 

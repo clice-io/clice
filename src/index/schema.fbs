@@ -83,6 +83,8 @@ name:
     string;
 kind:
     ubyte;
+scope:
+    ubyte;
 refs:
     [ubyte];
 }
@@ -121,6 +123,9 @@ content:
 
 line_starts:
     [uint];
+
+symbols:
+    [SymbolEntry];
 }
 
 table TUFileRelationsEntry {

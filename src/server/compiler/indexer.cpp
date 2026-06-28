@@ -35,6 +35,20 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     auto file_ids_map = workspace.project_index.merge(tu_index);
     auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
 
+    // Collect non-External symbols referenced in a FileIndex.  Each file's
+    // MergedIndex shard stores exactly the local symbols its occurrences
+    // reference, so lookup is a single shard check — no scanning.
+    auto collect_local_symbols = [&](const index::FileIndex& file_idx) {
+        index::SymbolTable result;
+        for(auto& occ: file_idx.occurrences) {
+            auto it = tu_index.symbols.find(occ.target);
+            if(it != tu_index.symbols.end() && it->second.scope != index::SymbolScope::External) {
+                result.try_emplace(occ.target, it->second);
+            }
+        }
+        return result;
+    };
+
     auto merge_file_index = [&](std::uint32_t tu_path_id, index::FileIndex& file_idx) {
         auto global_path_id = file_ids_map[tu_path_id];
         auto& shard = workspace.merged_indices[global_path_id];
@@ -59,6 +73,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
                         std::move(include_locs),
                         file_idx,
                         file_content);
+            shard.merge_symbols(collect_local_symbols(file_idx));
         } else {
             std::optional<std::uint32_t> include_id;
             for(std::uint32_t i = 0; i < tu_index.graph.locations.size(); ++i) {
@@ -80,6 +95,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
                 header_content = header_content_storage;
             }
             shard.merge(global_path_id, *include_id, file_idx, header_content);
+            shard.merge_symbols(collect_local_symbols(file_idx));
         }
     };
 
@@ -88,9 +104,13 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     }
     merge_file_index(main_tu_path_id, tu_index.main_file_index);
 
-    LOG_INFO("Merged TUIndex: {} paths, {} symbols, {} merged_shards",
+    auto external_count = std::ranges::count_if(tu_index.symbols, [](auto& kv) {
+        return kv.second.scope == index::SymbolScope::External;
+    });
+    LOG_INFO("Merged TUIndex: {} paths, {} symbols ({} external), {} merged_shards",
              tu_index.graph.paths.size(),
              tu_index.symbols.size(),
+             external_count,
              workspace.merged_indices.size());
 }
 
@@ -244,8 +264,11 @@ bool Indexer::need_update(llvm::StringRef file_path) {
 }
 
 bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const {
+    // Check open sessions first (has all symbols for unsaved buffers).
     bool found = false;
     foreach_session([&](std::uint32_t, const Session& session) -> bool {
+        if(!session.symbols)
+            return true;
         auto it = session.symbols->find(hash);
         if(it != session.symbols->end()) {
             name = it->second.name;
@@ -257,11 +280,21 @@ bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, Symbol
     });
     if(found)
         return true;
+
+    // Check ProjectIndex (external symbols).
     auto it = workspace.project_index.symbols.find(hash);
     if(it != workspace.project_index.symbols.end()) {
         name = it->second.name;
         kind = it->second.kind;
         return true;
+    }
+
+    // Check per-file MergedIndex shards (TU-local + file-local symbols).
+    // Each shard stores exactly the local symbols its occurrences reference,
+    // so the symbol will be in the shard that produced the occurrence.
+    for(auto& [path_id, shard]: workspace.merged_indices) {
+        if(shard.find_symbol(hash, name, kind))
+            return true;
     }
     return false;
 }

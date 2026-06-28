@@ -20,6 +20,20 @@ namespace clice::index {
 using Range = LocalSourceRange;
 using SymbolHash = std::uint64_t;
 
+/// Visibility scope of a symbol, determining which level of the multi-level
+/// symbol table stores it.
+enum class SymbolScope : std::uint8_t {
+    /// Can be referenced from any TU (external linkage).  Stored in ProjectIndex.
+    External = 0,
+    /// Can be referenced across files within one TU but not across TUs
+    /// (internal linkage: static, anonymous namespace).  Stored in the main
+    /// file's MergedIndex shard.
+    TULocal = 1,
+    /// Cannot be referenced from any other file (local variables, parameters,
+    /// labels).  Stored in the defining file's MergedIndex shard.
+    FileLocal = 2,
+};
+
 struct Relation {
     RelationKind kind;
 
@@ -66,6 +80,8 @@ struct Symbol {
     std::string name;
 
     SymbolKind kind;
+
+    SymbolScope scope = SymbolScope::External;
 
     /// All files that referenced this symbol.
     Bitmap reference_files;

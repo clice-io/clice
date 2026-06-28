@@ -71,6 +71,12 @@ public:
     /// Get line starts for position mapping.
     std::span<const std::uint32_t> line_starts(this const Self& self);
 
+    /// Look up a symbol in this shard's local symbol table.
+    bool find_symbol(this const Self& self, SymbolHash hash, std::string& name, SymbolKind& kind);
+
+    /// Add symbols to this shard's local symbol table (idempotent by hash).
+    void merge_symbols(this Self& self, const SymbolTable& symbols);
+
     /// Merge the index with given compilation context.
     void merge(this Self& self,
                std::uint32_t path_id,
