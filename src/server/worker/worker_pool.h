@@ -289,16 +289,15 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         if(!stateless_workers[idx].alive)
             continue;
 
-        auto gen = stateless_workers[idx].restart_count;
         auto result = co_await stateless_workers[idx].peer->send_request(params, opts);
 
-        // Retry when the worker crashed: either restart_count changed
-        // (crash + respawn on same slot) or alive is false (crash without
-        // respawn, e.g. max_restarts exceeded but other workers remain).
-        bool same_process =
-            stateless_workers[idx].restart_count == gen && stateless_workers[idx].alive;
-        if(result.has_value() || same_process)
+        // Transport-level success: return (app errors are inside the value).
+        if(result.has_value())
             co_return std::move(result);
+
+        // Transport error (broken pipe, etc.): always retry. The worker
+        // likely crashed but monitor_worker may not have run process_crash
+        // yet, so alive/restart_count can still look valid at this point.
     }
     co_return kota::outcome_error(kota::ipc::Error{"Stateless request failed after retries"});
 }

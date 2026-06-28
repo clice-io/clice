@@ -913,9 +913,11 @@ TEST_CASE(CrashAndRestart) {
 
         f.kill_worker(0);
 
+        // Wait for respawn: PID must change (not just alive, which is
+        // true before the kill is processed).
         for(int i = 0; i < 50; ++i) {
             co_await kota::sleep(100);
-            if(f.worker_alive(0))
+            if(f.worker_alive(0) && f.worker_pid(0) != pid)
                 break;
         }
         EXPECT_TRUE(f.worker_alive(0));
