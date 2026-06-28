@@ -426,13 +426,16 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     return true;
 }
 
-kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority priority) {
+kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority priority,
+                                                           std::size_t exclude) {
     using P = worker::Priority;
-    // High-priority proceeds whenever any worker is idle.
-    // Low-priority is additionally gated by low_limit to reserve
-    // capacity for high-priority requests.
     auto can_proceed = [&]() {
         auto idle = alive_stateless_count - stateless_busy_count;
+        // Don't count the excluded worker (failed peer whose crash
+        // hasn't been processed by monitor_worker yet).
+        if(exclude < stateless_workers.size() && stateless_workers[exclude].alive &&
+           !stateless_workers[exclude].busy)
+            idle -= 1;
         if(idle == 0)
             return false;
         if(priority == P::High)
@@ -537,9 +540,9 @@ void WorkerPool::fail_pending_requests() {
     drain(low_queue);
 }
 
-std::size_t WorkerPool::pick_idle_stateless() {
+std::size_t WorkerPool::pick_idle_stateless(std::size_t exclude) {
     for(std::size_t i = 0; i < stateless_workers.size(); ++i) {
-        if(stateless_workers[i].alive && !stateless_workers[i].busy)
+        if(i != exclude && stateless_workers[i].alive && !stateless_workers[i].busy)
             return i;
     }
     llvm_unreachable("pick_idle_stateless called with no idle workers");

@@ -215,7 +215,10 @@ private:
 
     /// Wait for an idle stateless worker. Returns SIZE_MAX when the pool
     /// is dead (all workers down, no restarts left).
-    kota::task<std::size_t> acquire_stateless_slot(worker::Priority priority);
+    /// @param exclude  worker index to skip (e.g. a peer that just failed
+    ///                 but whose crash hasn't been processed yet).
+    kota::task<std::size_t> acquire_stateless_slot(worker::Priority priority,
+                                                   std::size_t exclude = SIZE_MAX);
     void release_stateless_slot(std::size_t worker_index);
 
     /// Wake queued requests when a worker becomes available.
@@ -224,7 +227,7 @@ private:
     /// Wake all queued requests with SIZE_MAX (pool is dead).
     void fail_pending_requests();
 
-    std::size_t pick_idle_stateless();
+    std::size_t pick_idle_stateless(std::size_t exclude = SIZE_MAX);
 
     /// Periodically adjusts low_limit based on system memory pressure.
     kota::task<> monitor_memory();
@@ -278,9 +281,11 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         co_return kota::outcome_error(kota::ipc::Error{"No stateless workers available"});
     }
 
-    // Retry once: if the worker crashes mid-request, acquire a fresh slot.
+    // Retry once on transport error, excluding the failed peer so the
+    // retry doesn't hit the same dead worker before process_crash runs.
+    std::size_t exclude = SIZE_MAX;
     for(int attempt = 0; attempt < 2; ++attempt) {
-        auto idx = co_await acquire_stateless_slot(params.priority);
+        auto idx = co_await acquire_stateless_slot(params.priority, exclude);
         if(idx >= stateless_workers.size())
             co_return kota::outcome_error(kota::ipc::Error{"All stateless workers are down"});
 
@@ -291,13 +296,11 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
 
         auto result = co_await stateless_workers[idx].peer->send_request(params, opts);
 
-        // Transport-level success: return (app errors are inside the value).
         if(result.has_value())
             co_return std::move(result);
 
-        // Transport error (broken pipe, etc.): always retry. The worker
-        // likely crashed but monitor_worker may not have run process_crash
-        // yet, so alive/restart_count can still look valid at this point.
+        // Transport error — retry on a different worker.
+        exclude = idx;
     }
     co_return kota::outcome_error(kota::ipc::Error{"Stateless request failed after retries"});
 }
