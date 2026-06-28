@@ -59,8 +59,8 @@ void ProjectIndex::serialize(this ProjectIndex& self, llvm::raw_ostream& os) {
                                          binary::CreateSymbol(builder,
                                                               CreateString(builder, symbol.name),
                                                               symbol.kind.value(),
-                                                              static_cast<uint8_t>(symbol.scope),
-                                                              CreateVector(builder, buffer)));
+                                                              CreateVector(builder, buffer),
+                                                              static_cast<uint8_t>(symbol.scope)));
     });
 
     auto project_index =

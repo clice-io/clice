@@ -18,7 +18,7 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
     auto linkage = decl->getFormalLinkage();
     if(linkage == clang::Linkage::None)
         return SymbolScope::FileLocal;
-    if(linkage == clang::Linkage::Internal)
+    if(linkage == clang::Linkage::Internal || linkage == clang::Linkage::Module)
         return SymbolScope::TULocal;
     return SymbolScope::External;
 }
@@ -254,8 +254,8 @@ void TUIndex::serialize(llvm::raw_ostream& os) const {
                                          binary::CreateSymbol(builder,
                                                               CreateString(builder, symbol.name),
                                                               symbol.kind.value(),
-                                                              static_cast<uint8_t>(symbol.scope),
-                                                              CreateVector(builder, buffer)));
+                                                              CreateVector(builder, buffer),
+                                                              static_cast<uint8_t>(symbol.scope)));
     });
 
     /// Serialize a single FileIndex into a TUFileIndexEntry.

@@ -642,14 +642,21 @@ TEST_CASE(ScopeExternal) {
             namespace ns { int ns_var = 1; }
         )");
 
+    std::set<std::string> expected{"global_var",
+                                   "global_func",
+                                   "GlobalClass",
+                                   "member",
+                                   "ns_var",
+                                   "ns"};
+    std::set<std::string> found;
     for(auto& [hash, symbol]: tu_index.symbols) {
-        if(symbol.name == "global_var" || symbol.name == "global_func" ||
-           symbol.name == "GlobalClass" || symbol.name == "member" || symbol.name == "ns_var" ||
-           symbol.name == "ns") {
+        if(expected.contains(symbol.name)) {
             ASSERT_EQ(static_cast<int>(symbol.scope),
                       static_cast<int>(index::SymbolScope::External));
+            found.insert(symbol.name);
         }
     }
+    ASSERT_EQ(found, expected);
 }
 
 TEST_CASE(ScopeFileLocal) {
@@ -660,12 +667,16 @@ TEST_CASE(ScopeFileLocal) {
             void bar(int param) {}
         )");
 
+    std::set<std::string> expected{"local_var", "param"};
+    std::set<std::string> found;
     for(auto& [hash, symbol]: tu_index.symbols) {
-        if(symbol.name == "local_var" || symbol.name == "param") {
+        if(expected.contains(symbol.name)) {
             ASSERT_EQ(static_cast<int>(symbol.scope),
                       static_cast<int>(index::SymbolScope::FileLocal));
+            found.insert(symbol.name);
         }
     }
+    ASSERT_EQ(found, expected);
 }
 
 TEST_CASE(ScopeTULocal) {
@@ -675,13 +686,16 @@ TEST_CASE(ScopeTULocal) {
             namespace { int anon_var = 1; }
         )");
 
+    std::set<std::string> expected{"static_var", "static_func", "anon_var"};
+    std::set<std::string> found;
     for(auto& [hash, symbol]: tu_index.symbols) {
-        if(symbol.name == "static_var" || symbol.name == "static_func" ||
-           symbol.name == "anon_var") {
+        if(expected.contains(symbol.name)) {
             ASSERT_EQ(static_cast<int>(symbol.scope),
                       static_cast<int>(index::SymbolScope::TULocal));
+            found.insert(symbol.name);
         }
     }
+    ASSERT_EQ(found, expected);
 }
 
 };  // TEST_SUITE(tu_index)

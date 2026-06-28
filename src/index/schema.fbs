@@ -83,10 +83,10 @@ name:
     string;
 kind:
     ubyte;
-scope:
-    ubyte;
 refs:
     [ubyte];
+scope:
+    ubyte;
 }
 
 table SymbolEntry {

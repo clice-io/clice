@@ -375,6 +375,7 @@ TEST_CASE(LocalSymbolTable) {
             local_syms.try_emplace(occ.target, it->second);
         }
     }
+    ASSERT_FALSE(local_syms.empty());
     merged.merge_symbols(local_syms);
 
     // FileLocal symbols should be findable in the shard.
@@ -415,6 +416,7 @@ TEST_CASE(LocalSymbolSerialization) {
             local_syms.try_emplace(occ.target, it->second);
         }
     }
+    ASSERT_FALSE(local_syms.empty());
     merged.merge_symbols(local_syms);
 
     // Serialize and deserialize.
