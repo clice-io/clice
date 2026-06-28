@@ -482,15 +482,17 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
         if(!ws.empty())
             server.initialize(ws);
 
+        bool register_lsp = ws.empty();
         LOG_INFO("Listening on {}:{} ...", host, port);
         loop.schedule([](MasterServer& server,
                          kota::tcp::acceptor acceptor,
+                         bool register_lsp,
                          std::list<Connection>& connections) -> kota::task<> {
             co_await kota::when_any(
-                accept_connections(server, std::move(acceptor), true, connections),
+                accept_connections(server, std::move(acceptor), register_lsp, connections),
                 server.get_shutdown_event().wait());
             co_await server.shutdown_and_cleanup();
-        }(server, std::move(*acceptor), connections));
+        }(server, std::move(*acceptor), register_lsp, connections));
         loop.run();
         return 0;
     }
