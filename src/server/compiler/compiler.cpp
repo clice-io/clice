@@ -170,7 +170,9 @@ void Compiler::init_compile_graph() {
         bp.output_path = pending.tmp_path;
 
         // Clang needs ALL transitive PCM deps, not just direct imports.
-        workspace.fill_pcm_deps(bp.pcms);
+        // Exclude the module being built — its old PCM path may still be
+        // in pcm_paths from a previous (now-invalidated) build.
+        workspace.fill_pcm_deps(bp.pcms, path_id);
 
         auto result = co_await pool.send_stateless(bp);
         if(!result.has_value() || !result.value().success) {
