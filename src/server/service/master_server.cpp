@@ -410,13 +410,14 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     auto record = opts.record.value_or("");
     auto ws = opts.workspace.value_or("");
 
+    if(mode == ServerMode::Tcp && (port <= 0 || port > 65535)) {
+        LOG_ERROR("--port must be between 1 and 65535 in tcp mode");
+        return 1;
+    }
+
     kota::event_loop loop;
     MasterServer server(loop, self_path);
     std::list<Connection> connections;
-
-    // Pre-initialize for standalone (no-editor) use; LSP initialize will be rejected.
-    if(!ws.empty())
-        server.initialize(ws);
 
     if(mode == ServerMode::Pipe) {
         auto transport = kota::ipc::StreamTransport::open_stdio(loop);
@@ -424,6 +425,10 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             LOG_ERROR("failed to open stdio transport");
             return 1;
         }
+
+        // Pre-initialize for standalone (no-editor) use; LSP initialize will be rejected.
+        if(!ws.empty())
+            server.initialize(ws);
 
         std::unique_ptr<kota::ipc::Transport> final_transport = std::move(*transport);
         if(!record.empty()) {
@@ -473,6 +478,9 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             LOG_ERROR("failed to listen on {}:{}", host, port);
             return 1;
         }
+
+        if(!ws.empty())
+            server.initialize(ws);
 
         LOG_INFO("Listening on {}:{} ...", host, port);
         loop.schedule([](MasterServer& server,

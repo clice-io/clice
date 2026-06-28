@@ -55,7 +55,7 @@ end
 local plugin_root = vim.fn.fnamemodify(arg[0], ':p:h:h')
 local config = dofile(plugin_root .. '/doc/clice.lua')
 config.name = 'clice'
-config.cmd = { clice_path, 'server' }
+config.cmd = { clice_path, 'serve' }
 config.root_dir = fixture_dir
 
 local main_file_uri = vim.uri_from_fname(fixture_dir .. '/' .. scenario.file)

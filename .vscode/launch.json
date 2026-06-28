@@ -12,7 +12,7 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug clice (socket, RelWithDebInfo)",
+      "name": "Debug clice (tcp, RelWithDebInfo)",
       "program": "${workspaceFolder}/build/RelWithDebInfo/bin/clice",
       "args": ["serve", "--mode", "tcp", "--port", "50051"],
       "cwd": "${workspaceFolder}"

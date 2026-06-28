@@ -25,7 +25,7 @@ Equivalent to:
 
 ### Integration Tests
 
-End-to-end tests that start a real clice serve and communicate via LSP protocol.
+End-to-end tests that start a real `clice serve` instance and communicate via LSP protocol.
 
 ```bash
 pixi run integration-test          # default RelWithDebInfo
@@ -79,7 +79,7 @@ Prerequisites outside the pixi env:
 
 ## Debug
 
-If you want to attach a debugger to clice, start it in socket mode independently, then connect a client.
+If you want to attach a debugger to clice, start it in tcp mode independently, then connect a client.
 
 ```shell
 ./build/Debug/bin/clice serve --mode tcp --port 50051
@@ -130,6 +130,6 @@ The extension lives in-tree at `editors/vscode/`:
 
 2. Open the **repository root** in VS Code (the launch configurations are in `.vscode/launch.json` at the root).
 
-3. Create `.vscode/settings.json` with the socket config above.
+3. Create `.vscode/settings.json` with the tcp config above.
 
-4. Press `F5` and select `VSCode Extension (pipe)` or `VSCode Extension (socket)` to launch an Extension Development Host window.
+4. Press `F5` and select `VSCode Extension (pipe)` or `VSCode Extension (tcp)` to launch an Extension Development Host window.

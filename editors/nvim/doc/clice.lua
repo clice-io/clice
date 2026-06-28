@@ -25,7 +25,7 @@ local clice = {
 
     cmd = {
         'clice',
-        'server',
+        'serve',
     },
 }
 
