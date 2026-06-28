@@ -17,23 +17,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Path to the clice executable.",
     )
     parser.addoption(
-        "--mode",
-        type=str,
-        choices=["pipe", "tcp"],
-        default="pipe",
-        help="The connection mode to use.",
-    )
-    parser.addoption(
         "--host",
         type=str,
         default="127.0.0.1",
         help="The host to connect to (default: 127.0.0.1)",
-    )
-    parser.addoption(
-        "--port",
-        type=int,
-        default=50051,
-        help="The port to connect to",
     )
 
 
@@ -98,11 +85,7 @@ async def client(
     workspace: Path | None,
 ):
     """Spawn clice server, auto-initialize if @pytest.mark.workspace is present."""
-    config = request.config
-    mode = config.getoption("--mode")
-    host = config.getoption("--host")
-
-    cmd = [str(executable), "serve", "--mode", mode, "--host", host]
+    cmd = [str(executable), "serve"]
 
     c = CliceClient()
     await c.start_io(*cmd)
