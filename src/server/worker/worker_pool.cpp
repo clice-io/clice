@@ -173,15 +173,21 @@ kota::task<> WorkerPool::stop() {
     shutting_down = true;
     fail_pending_requests();
 
+    // Retired workers (scale-down) have their peer moved to retired_peers
+    // and their process already exited — skip them to avoid null deref / SEGV.
     for(auto& w: stateless_workers)
-        w.peer->close_output();
+        if(w.peer)
+            w.peer->close_output();
     for(auto& w: stateful_workers)
-        w.peer->close_output();
+        if(w.peer)
+            w.peer->close_output();
 
     for(auto& w: stateless_workers)
-        w.proc.kill(SIGTERM);
+        if(w.alive)
+            w.proc.kill(SIGTERM);
     for(auto& w: stateful_workers)
-        w.proc.kill(SIGTERM);
+        if(w.alive)
+            w.proc.kill(SIGTERM);
 
     co_await kota::when_all(monitor_group.join(), io_group.join());
 
@@ -676,6 +682,8 @@ void WorkerPool::apply_crash_backoff() {
 }
 
 bool WorkerPool::scale_up_worker() {
+    if(shutting_down)
+        return false;
     if(alive_stateless_count >= options.max_stateless)
         return false;
 
@@ -700,6 +708,8 @@ bool WorkerPool::scale_up_worker() {
 }
 
 void WorkerPool::retire_idle_worker() {
+    if(shutting_down)
+        return;
     if(alive_stateless_count <= options.min_stateless)
         return;
 
@@ -724,6 +734,8 @@ void WorkerPool::retire_idle_worker() {
 }
 
 void WorkerPool::check_scaling() {
+    if(shutting_down)
+        return;
     bool has_queued = !high_queue.empty() || !low_queue.empty();
 
     // The pool is saturated when all workers are busy with queued work, OR
