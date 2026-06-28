@@ -904,7 +904,6 @@ kota::task<> Indexer::run_background_indexing() {
     }
 
     kota::task_group<> workers(loop);
-    kota::semaphore in_flight(32);
 
     while(index_queue_pos < index_queue.size()) {
         if(pause_depth > 0)
@@ -917,11 +916,9 @@ kota::task<> Indexer::run_background_indexing() {
             continue;
         }
 
-        co_await in_flight.acquire();
         ++dispatched;
         workers.spawn([&, server_path_id]() -> kota::task<> {
             co_await index_one(server_path_id);
-            in_flight.release();
             ++completed;
             if(progress) {
                 auto pct = total > 0 ? static_cast<std::uint32_t>(completed * 100 / total) : 100;
