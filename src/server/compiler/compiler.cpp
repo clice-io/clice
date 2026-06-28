@@ -32,6 +32,11 @@ using serde_raw = kota::codec::RawValue;
 /// Render hash-input fragments into an unambiguous byte stream (length-
 /// prefixed, so embedded NULs cannot create colliding splits) and return
 /// the 32-hex xxh3_128bits cache key.
+///
+/// FIXME: this concatenates all parts (including the preamble text, which
+/// can be 10-100 KB) into a temporary std::string before hashing.  Use an
+/// incremental xxh3 hasher to feed each StringRef directly and avoid the
+/// large allocation on the ensure_pch hot path.
 static std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
     std::string input;
     for(auto part: parts) {
@@ -636,6 +641,11 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     // path.  Building dependencies can itself evict another clean
     // module's PCM under budget pressure, which reopens the window the
     // scan just closed — hence the bounded retry until the set is stable.
+    //
+    // FIXME: this scans every pcm_paths entry (one stat() per module) on
+    // every compile, even in steady state when nothing was evicted.  For
+    // large modular projects on NFS this adds measurable latency.  Consider
+    // having CacheStore notify on eviction or caching the scan result.
     if(workspace.compile_graph) {
         for(int attempt = 0; attempt < 3; ++attempt) {
             llvm::SmallVector<std::uint32_t> evicted;

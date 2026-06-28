@@ -167,6 +167,9 @@ kota::task<> Indexer::save() {
         co_return;
     }
 
+    // FIXME: shard commits are strictly sequential (one co_await per shard).
+    // For large projects this adds ~N×2ms of round-trip overhead.  Consider
+    // batching commits or dispatching them in parallel on the thread pool.
     for(auto& pending: shards) {
         auto key = pending.key;
         auto result = co_await kota::queue([&] { return store.commit(std::move(pending)); });
