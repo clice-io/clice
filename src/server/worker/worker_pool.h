@@ -54,6 +54,12 @@ struct WorkerPoolOptions {
 
     /// Per-worker restart cap before the pool gives up on that slot.
     unsigned max_restarts = 2;
+
+    /// Dynamic scaling bounds for stateless workers.
+    /// min_stateless: floor — never retire below this count.
+    /// max_stateless: ceiling — never spawn above this count (0 = auto = CPU cores).
+    std::uint32_t min_stateless = 1;
+    std::uint32_t max_stateless = 0;
 };
 
 class WorkerPool {
@@ -113,6 +119,10 @@ private:
 
         /// How many times this slot has been respawned.
         unsigned restart_count = 0;
+
+        /// True when this worker is being intentionally shut down (scale-down),
+        /// as opposed to an unexpected crash.
+        bool retiring = false;
     };
 
     kota::event_loop& loop;
@@ -229,7 +239,8 @@ private:
 
     std::size_t pick_idle_stateless(std::size_t exclude = SIZE_MAX);
 
-    /// Periodically adjusts low_limit based on system memory pressure.
+    /// Periodically adjusts low_limit based on system memory pressure
+    /// and triggers dynamic scaling checks.
     kota::task<> monitor_memory();
 
     /// Handle worker crash: update state, fire on_crash callback.
@@ -238,6 +249,39 @@ private:
 
     /// AIMD multiplicative decrease on stateless concurrency limit.
     void apply_crash_backoff();
+
+    // --- Dynamic scaling ---
+
+    /// Spawn an additional stateless worker. Returns true on success.
+    bool scale_up_worker();
+
+    /// Find the highest-index idle worker above min_stateless, mark it
+    /// retiring, and close its output pipe + send SIGTERM.
+    void retire_idle_worker();
+
+    /// Evaluate scaling conditions and act (called from monitor_memory).
+    void check_scaling();
+
+    /// Cancel up to `count` in-flight low-priority requests to relieve
+    /// memory pressure.
+    void cancel_low_priority_requests(std::size_t count);
+
+    /// CUBIC-style fast recovery target: last low_limit before a reduction.
+    std::size_t w_max = 0;
+
+    /// Consecutive monitor ticks where all workers were busy with queued work.
+    unsigned saturated_cycles = 0;
+
+    /// Consecutive monitor ticks where workers were idle with no queued work.
+    unsigned idle_cycles = 0;
+
+    constexpr static unsigned scale_up_ticks = 5;
+    constexpr static unsigned scale_down_ticks = 10;
+
+    /// Per-slot cancellation source for in-flight low-priority requests.
+    /// Indexed by stateless worker index; null when no low-priority request
+    /// is in flight.
+    llvm::SmallVector<std::shared_ptr<kota::cancellation_source>> slot_cancel_sources;
 
     bool shutting_down = false;
 
@@ -294,10 +338,26 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         if(!stateless_workers[idx].alive)
             continue;
 
+        // For low-priority requests, install a cancellation source so
+        // monitor_memory() can preempt under severe memory pressure.
+        std::shared_ptr<kota::cancellation_source> preempt_src;
+        if(params.priority == worker::Priority::Low) {
+            preempt_src = std::make_shared<kota::cancellation_source>();
+            if(idx < slot_cancel_sources.size())
+                slot_cancel_sources[idx] = preempt_src;
+            if(!opts.token)
+                opts.token = preempt_src->token();
+        }
+
         auto result = co_await stateless_workers[idx].peer->send_request(params, opts);
 
         if(result.has_value())
             co_return std::move(result);
+
+        // If deliberately cancelled by memory pressure, don't retry.
+        if(preempt_src && preempt_src->cancelled())
+            co_return kota::outcome_error(
+                kota::ipc::Error{"Request cancelled due to memory pressure"});
 
         // Transport error — retry on a different worker.
         exclude = idx;

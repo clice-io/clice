@@ -294,7 +294,7 @@ private:
     kota::event resume_event{true};
 
     kota::task<> run_background_indexing();
-    kota::task<> index_one(std::uint32_t server_path_id);
+    kota::task<> index_one(std::uint32_t server_path_id, std::size_t index, std::size_t total);
 };
 
 }  // namespace clice

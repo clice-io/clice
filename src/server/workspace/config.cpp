@@ -70,6 +70,7 @@ void Config::apply_defaults(llvm::StringRef workspace_root) {
         auto cores = kota::sys::parallelism();
         p.stateless_worker_count = std::max(cores / 2, 2u);
     }
+    // min/max default to 0 meaning "auto" — resolved by WorkerPool::start().
     if(p.worker_memory_limit == 0)
         p.worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB
 

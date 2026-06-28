@@ -144,11 +144,21 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
         });
     }
 
+    // Resolve auto max_stateless (0 = CPU cores).
+    if(options.max_stateless == 0)
+        options.max_stateless = kota::sys::parallelism();
+    if(options.min_stateless == 0)
+        options.min_stateless = 1;
+    options.min_stateless = std::min(options.min_stateless, options.stateless_count);
+    options.max_stateless = std::max(options.max_stateless, options.stateless_count);
+
     // Reserve one worker for high-priority requests by capping low-priority
     // concurrency to N-1. With a single worker this collapses to 1: both
     // priorities share it, and high wins only via queue ordering.
     max_low_limit = alive_stateless_count > 1 ? alive_stateless_count - 1 : alive_stateless_count;
     low_limit = max_low_limit;
+
+    slot_cancel_sources.resize(stateless_workers.size());
 
     monitor_group.spawn(monitor_memory());
 
@@ -248,6 +258,29 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
 
     if(shutting_down)
         co_return;
+
+    // Intentional retirement (scale-down): skip crash processing and respawn.
+    if(!stateful && workers[index].retiring) {
+        LOG_INFO("Worker {} retired gracefully", workers[index].name);
+        workers[index].alive = false;
+        alive_stateless_count -= 1;
+        if(workers[index].busy) {
+            if(workers[index].low_priority)
+                low_busy_count -= 1;
+            workers[index].busy = false;
+            workers[index].low_priority = false;
+            stateless_busy_count -= 1;
+        }
+        if(workers[index].peer) {
+            workers[index].peer->close();
+            retired_peers.push_back(std::move(workers[index].peer));
+        }
+        max_low_limit =
+            alive_stateless_count > 1 ? alive_stateless_count - 1 : alive_stateless_count;
+        if(low_limit > max_low_limit)
+            low_limit = max_low_limit;
+        co_return;
+    }
 
     int exit_code = 0, exit_signal = 0;
     if(result.has_value()) {
@@ -490,11 +523,17 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
 void WorkerPool::release_stateless_slot(std::size_t worker_index) {
     if(worker_index >= stateless_workers.size() || !stateless_workers[worker_index].busy)
         return;
+    if(worker_index < slot_cancel_sources.size())
+        slot_cancel_sources[worker_index].reset();
     if(stateless_workers[worker_index].low_priority)
         low_busy_count -= 1;
     stateless_workers[worker_index].busy = false;
     stateless_workers[worker_index].low_priority = false;
     stateless_busy_count -= 1;
+    LOG_DEBUG("Release {} (busy={}, low_busy={})",
+              stateless_workers[worker_index].name,
+              stateless_busy_count,
+              low_busy_count);
     try_dispatch_pending();
 }
 
@@ -505,8 +544,6 @@ void WorkerPool::try_dispatch_pending() {
         while(!queue.empty() && idle > 0 && (!is_low || low_busy_count < low_limit)) {
             auto* next = queue.front();
             queue.pop_front();
-            // Clear queue pointer before signalling so the PendingStateless
-            // destructor won't attempt a redundant erase.
             next->queue = nullptr;
             auto idx = pick_idle_stateless();
             stateless_workers[idx].busy = true;
@@ -517,6 +554,12 @@ void WorkerPool::try_dispatch_pending() {
             idle -= 1;
             next->assigned_worker = idx;
             next->assigned_gen = stateless_workers[idx].restart_count;
+            LOG_DEBUG("Dispatch {} -> {} (busy={}, low_busy={}, idle={})",
+                      is_low ? "low" : "high",
+                      stateless_workers[idx].name,
+                      stateless_busy_count,
+                      low_busy_count,
+                      idle);
             next->ready.set();
         }
     };
@@ -542,7 +585,8 @@ void WorkerPool::fail_pending_requests() {
 
 std::size_t WorkerPool::pick_idle_stateless(std::size_t exclude) {
     for(std::size_t i = 0; i < stateless_workers.size(); ++i) {
-        if(i != exclude && stateless_workers[i].alive && !stateless_workers[i].busy)
+        if(i != exclude && stateless_workers[i].alive && !stateless_workers[i].busy &&
+           !stateless_workers[i].retiring)
             return i;
     }
     llvm_unreachable("pick_idle_stateless called with no idle workers");
@@ -550,7 +594,7 @@ std::size_t WorkerPool::pick_idle_stateless(std::size_t exclude) {
 
 kota::task<> WorkerPool::monitor_memory() {
     while(true) {
-        co_await kota::sleep(std::chrono::milliseconds(3000));
+        co_await kota::sleep(std::chrono::milliseconds(3000), loop);
         if(shutting_down)
             co_return;
 
@@ -562,22 +606,60 @@ kota::task<> WorkerPool::monitor_memory() {
             (mem.constrained > 0 && mem.constrained < mem.total) ? mem.constrained : mem.total;
         auto ratio = static_cast<double>(mem.available) / static_cast<double>(effective_total);
 
+        LOG_DEBUG(
+            "Memory: {:.0f}% available, low_limit={}/{}, busy={} (low={}), " "queued=hi:{}/lo:{}, alive={}, sat={}/idle={}",
+            ratio * 100,
+            low_limit,
+            max_low_limit,
+            stateless_busy_count,
+            low_busy_count,
+            high_queue.size(),
+            low_queue.size(),
+            alive_stateless_count,
+            saturated_cycles,
+            idle_cycles);
+
+        // Severe pressure: preempt low-priority in-flight requests.
+        if(ratio < 0.10 && low_busy_count > 0) {
+            cancel_low_priority_requests(low_busy_count);
+        }
+
+        // Inner loop: adjust low_limit with CUBIC-style fast recovery.
         if(ratio < 0.20 && low_limit > 1) {
             if(backoff_cooldown > 0) {
                 backoff_cooldown -= 1;
             } else {
+                if(w_max == 0 || low_limit > w_max)
+                    w_max = low_limit;
                 low_limit -= 1;
-                LOG_INFO("Stateless low_limit -> {} (memory pressure: {:.0f}% available)",
+                LOG_INFO("low_limit -> {} (memory pressure: {:.0f}% available)",
                          low_limit,
                          ratio * 100);
             }
         } else if(ratio > 0.40 && low_limit < max_low_limit) {
             backoff_cooldown = 0;
-            low_limit += 1;
-            LOG_DEBUG("Stateless low_limit -> {} (memory OK: {:.0f}% available)",
+            if(w_max > 0 && low_limit < w_max) {
+                auto gap = w_max - low_limit;
+                auto increment = std::max<std::size_t>(1, gap / 2);
+                low_limit = std::min(low_limit + increment, max_low_limit);
+            } else {
+                low_limit += 1;
+                if(low_limit >= max_low_limit)
+                    w_max = 0;
+            }
+            LOG_DEBUG("low_limit -> {} (memory OK: {:.0f}% available, w_max={})",
                       low_limit,
-                      ratio * 100);
+                      ratio * 100,
+                      w_max);
             try_dispatch_pending();
+        }
+
+        // Outer loop: dynamic scaling.
+        check_scaling();
+
+        // Severe pressure: also scale down immediately.
+        if(ratio < 0.10 && alive_stateless_count > options.min_stateless) {
+            retire_idle_worker();
         }
     }
 }
@@ -585,12 +667,115 @@ kota::task<> WorkerPool::monitor_memory() {
 void WorkerPool::apply_crash_backoff() {
     auto new_limit = std::max<std::size_t>(1, low_limit * 3 / 4);
     if(new_limit < low_limit) {
+        if(w_max == 0 || low_limit > w_max)
+            w_max = low_limit;
         low_limit = new_limit;
-        LOG_WARN("Stateless low_limit -> {} (worker crash AIMD backoff)", low_limit);
+        LOG_WARN("low_limit -> {} (worker crash AIMD backoff)", low_limit);
     }
-    // Suppress memory-pressure reductions for a few monitor cycles so
-    // crash backoff and memory throttling don't compound in the same window.
     backoff_cooldown = 3;
+}
+
+bool WorkerPool::scale_up_worker() {
+    if(alive_stateless_count >= options.max_stateless)
+        return false;
+
+    auto new_index = stateless_workers.size();
+    if(!spawn_worker(options.self_path, false, 0)) {
+        LOG_WARN("scale_up: spawn_worker failed");
+        return false;
+    }
+
+    slot_cancel_sources.push_back(nullptr);
+    monitor_group.spawn(monitor_worker(new_index, false));
+
+    max_low_limit = alive_stateless_count > 1 ? alive_stateless_count - 1 : alive_stateless_count;
+    low_limit = max_low_limit;
+    w_max = 0;
+    try_dispatch_pending();
+
+    LOG_INFO("Scaled up: spawned {} (alive={})",
+             stateless_workers.back().name,
+             alive_stateless_count);
+    return true;
+}
+
+void WorkerPool::retire_idle_worker() {
+    if(alive_stateless_count <= options.min_stateless)
+        return;
+
+    std::size_t target = SIZE_MAX;
+    for(std::size_t i = stateless_workers.size(); i-- > 0;) {
+        auto& w = stateless_workers[i];
+        if(w.alive && !w.busy && !w.retiring) {
+            target = i;
+            break;
+        }
+    }
+
+    if(target == SIZE_MAX)
+        return;
+
+    auto& w = stateless_workers[target];
+    w.retiring = true;
+    w.peer->close_output();
+    w.proc.kill(SIGTERM);
+
+    LOG_INFO("Retiring worker {} (alive={})", w.name, alive_stateless_count);
+}
+
+void WorkerPool::check_scaling() {
+    bool has_queued = !high_queue.empty() || !low_queue.empty();
+
+    // The pool is saturated when all workers are busy with queued work, OR
+    // when low-priority slots are at capacity with low-priority work queued.
+    // The second condition handles the case where low_limit reserves a worker
+    // for high-priority requests: the reserved slot stays idle, so busy_count
+    // never equals alive_count, but the pool is effectively saturated for
+    // low-priority (indexing) work.
+    bool saturated = (stateless_busy_count == alive_stateless_count && has_queued) ||
+                     (low_busy_count >= low_limit && !low_queue.empty());
+
+    if(saturated) {
+        saturated_cycles += 1;
+        idle_cycles = 0;
+    } else if(stateless_busy_count == 0 && !has_queued) {
+        idle_cycles += 1;
+        saturated_cycles = 0;
+    } else {
+        saturated_cycles = 0;
+        idle_cycles = 0;
+    }
+
+    if(saturated_cycles >= scale_up_ticks) {
+        auto mem = kota::sys::memory();
+        auto effective =
+            (mem.constrained > 0 && mem.constrained < mem.total) ? mem.constrained : mem.total;
+        auto ratio = effective > 0 ? static_cast<double>(mem.available) / effective : 1.0;
+        if(ratio > 0.30) {
+            if(scale_up_worker())
+                saturated_cycles = 0;
+        }
+    }
+
+    if(idle_cycles >= scale_down_ticks) {
+        retire_idle_worker();
+        idle_cycles = 0;
+    }
+}
+
+void WorkerPool::cancel_low_priority_requests(std::size_t count) {
+    std::size_t cancelled = 0;
+    for(std::size_t i = 0; i < stateless_workers.size() && cancelled < count; ++i) {
+        auto& w = stateless_workers[i];
+        if(w.alive && w.busy && w.low_priority) {
+            if(i < slot_cancel_sources.size() && slot_cancel_sources[i]) {
+                slot_cancel_sources[i]->cancel();
+                ++cancelled;
+            }
+        }
+    }
+    if(cancelled > 0)
+        LOG_WARN("Cancelled {} low-priority requests (memory pressure)", cancelled);
 }
 
 }  // namespace clice

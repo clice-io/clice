@@ -89,6 +89,8 @@ void MasterServer::initialize() {
     pool_opts.self_path = self_path;
     pool_opts.stateful_count = cfg.stateful_worker_count;
     pool_opts.stateless_count = cfg.stateless_worker_count;
+    pool_opts.min_stateless = cfg.min_stateless_worker_count;
+    pool_opts.max_stateless = cfg.max_stateless_worker_count;
     pool_opts.worker_memory_limit = cfg.worker_memory_limit;
     pool_opts.log_dir = session_log_dir;
     if(!pool.start(pool_opts)) {

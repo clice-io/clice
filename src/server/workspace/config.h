@@ -38,6 +38,8 @@ struct ProjectConfig {
 
     defaulted<std::uint32_t> stateful_worker_count = {};
     defaulted<std::uint32_t> stateless_worker_count = {};
+    defaulted<std::uint32_t> min_stateless_worker_count = {};
+    defaulted<std::uint32_t> max_stateless_worker_count = {};
     defaulted<std::uint64_t> worker_memory_limit = {};
 };
 
