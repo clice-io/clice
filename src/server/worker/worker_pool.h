@@ -340,6 +340,11 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
 
         // For low-priority requests, install a cancellation source so
         // monitor_memory() can preempt under severe memory pressure.
+        // FIXME: cancelling only aborts the IPC wait — the worker process
+        // continues compiling until it finishes. The slot is released here
+        // but the worker won't accept new work until the in-flight RPC
+        // completes, so the next request dispatched to it queues at the
+        // IPC layer. Not a correctness bug, but limits preemption efficacy.
         std::shared_ptr<kota::cancellation_source> preempt_src;
         if(params.priority == worker::Priority::Low) {
             preempt_src = std::make_shared<kota::cancellation_source>();

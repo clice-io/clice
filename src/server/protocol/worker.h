@@ -79,6 +79,9 @@ enum class BuildKind : uint8_t {
 ///   - SignatureHelp: + text, version, offset, pch, pcms
 ///   - Format:        + text, format_range (optional)
 struct BuildParams {
+    // FIXME: BuildPCM dispatched via compile_graph defaults to Low, which can
+    // starve interactive dep-resolution (hover/completion) behind indexing.
+    // Consider routing module-dep builds as High when triggered by a user request.
     Priority priority = Priority::Low;
     BuildKind kind;
     std::string file;
