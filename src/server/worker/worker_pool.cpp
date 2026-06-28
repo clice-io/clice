@@ -475,6 +475,10 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
         if(exclude < stateless_workers.size() && stateless_workers[exclude].alive &&
            !stateless_workers[exclude].busy)
             idle -= 1;
+        // Don't count retiring workers — they are alive but won't accept work.
+        for(auto& w: stateless_workers)
+            if(w.retiring && w.alive && !w.busy)
+                idle -= 1;
         if(idle == 0)
             return false;
         if(priority == P::High)
@@ -544,7 +548,12 @@ void WorkerPool::release_stateless_slot(std::size_t worker_index) {
 }
 
 void WorkerPool::try_dispatch_pending() {
-    auto idle = alive_stateless_count - stateless_busy_count;
+    // Subtract retiring workers from idle count — they won't accept new work.
+    std::size_t retiring_idle = 0;
+    for(auto& w: stateless_workers)
+        if(w.retiring && w.alive && !w.busy)
+            retiring_idle += 1;
+    auto idle = alive_stateless_count - stateless_busy_count - retiring_idle;
 
     auto dispatch = [&](std::deque<PendingStateless*>& queue, bool is_low) {
         while(!queue.empty() && idle > 0 && (!is_low || low_busy_count < low_limit)) {
@@ -626,6 +635,8 @@ kota::task<> WorkerPool::monitor_memory() {
             idle_cycles);
 
         // Severe pressure: preempt low-priority in-flight requests.
+        // FIXME: cancelled Index requests are not requeued by the indexer,
+        // so those files will be skipped until the next indexing cycle.
         if(ratio < 0.10 && low_busy_count > 0) {
             cancel_low_priority_requests(low_busy_count);
         }
@@ -710,7 +721,13 @@ bool WorkerPool::scale_up_worker() {
 void WorkerPool::retire_idle_worker() {
     if(shutting_down)
         return;
-    if(alive_stateless_count <= options.min_stateless)
+    // Count workers already marked retiring (exit not yet observed by
+    // monitor_worker) to avoid retiring below min_stateless.
+    std::size_t pending_retires = 0;
+    for(auto& w: stateless_workers)
+        if(w.retiring && w.alive)
+            pending_retires += 1;
+    if(alive_stateless_count - pending_retires <= options.min_stateless)
         return;
 
     std::size_t target = SIZE_MAX;
