@@ -82,7 +82,7 @@ pixi 环境之外的依赖：
 如果想在 clice 上附加调试器，推荐先以 socket 模式单独启动 clice，然后连接客户端。
 
 ```shell
-./build/Debug/bin/clice server --mode socket --port 50051
+./build/Debug/bin/clice serve --mode tcp --port 50051
 ```
 
 服务器启动后，可以通过以下两种方式连接客户端：
@@ -94,7 +94,7 @@ pixi 环境之外的依赖：
 ```shell
 pytest -s --log-cli-level=INFO \
     tests/integration/lifecycle/test_file_operation.py::test_did_open \
-    --mode=socket --port=50051
+    --mode=tcp --port=50051
 ```
 
 ### 通过 VS Code 连接
@@ -108,7 +108,7 @@ pytest -s --log-cli-level=INFO \
    ```jsonc
    {
      "clice.executable": "/path/to/your/clice/executable",
-     "clice.mode": "socket",
+     "clice.mode": "tcp",
      "clice.port": 50051,
      // 可选：禁用 clangd
      "clangd.path": "",

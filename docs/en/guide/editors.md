@@ -34,7 +34,7 @@ Add to `~/.config/helix/languages.toml`:
 ```toml
 [language-server.clice]
 command = "clice"
-args = ["server"]
+args = ["serve"]
 
 [[language]]
 name = "cpp"
@@ -53,7 +53,7 @@ With the built-in eglot:
 (with-eval-after-load 'eglot
   (add-to-list 'eglot-server-programs
                '((c-mode c-ts-mode c++-mode c++-ts-mode)
-                 . ("clice" "server"))))
+                 . ("clice" "serve"))))
 ```
 
 ### Sublime Text
@@ -65,7 +65,7 @@ Install the [LSP package](https://packagecontrol.io/packages/LSP), then add to i
   "clients": {
     "clice": {
       "enabled": true,
-      "command": ["clice", "server"],
+      "command": ["clice", "serve"],
       "selector": "source.c | source.c++"
     }
   }
@@ -80,7 +80,7 @@ Open `Settings → Configure Kate → LSP Client → User Server Settings` and a
 {
   "servers": {
     "c": {
-      "command": ["clice", "server"],
+      "command": ["clice", "serve"],
       "url": "https://github.com/clice-io/clice",
       "highlightingModeRegex": "^(C|C\\+\\+)$"
     }

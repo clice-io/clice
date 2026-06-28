@@ -1,17 +1,9 @@
 #include "server/service/master_server.h"
 
-#include <cerrno>
-#include <cstring>
 #include <list>
 #include <memory>
 #include <string>
 #include <vector>
-
-#ifndef _WIN32
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
-#endif
 
 #include "server/protocol/worker.h"
 #include "server/service/agent_client.h"
@@ -20,7 +12,6 @@
 #include "support/logging.h"
 
 #include "kota/async/async.h"
-#include "kota/async/io/fs_event.h"
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
 #include "kota/ipc/lsp/protocol.h"
@@ -119,42 +110,6 @@ void MasterServer::initialize() {
 void MasterServer::initialize(llvm::StringRef root) {
     workspace_root = root.str();
     initialize();
-}
-
-kota::task<> MasterServer::file_watcher_task() {
-    auto watcher = kota::fs_event::create(workspace_root, {}, loop);
-    if(!watcher) {
-        LOG_WARN("Failed to start file watcher for {}", workspace_root);
-        co_return;
-    }
-
-    LOG_INFO("File watcher started for {}", workspace_root);
-
-    while(true) {
-        auto changes = co_await watcher->next();
-        if(!changes)
-            break;
-
-        for(auto& change: *changes) {
-            if(change.type != kota::fs_event::effect::modify &&
-               change.type != kota::fs_event::effect::create)
-                continue;
-
-            llvm::StringRef file(change.path);
-            if(file.ends_with("compile_commands.json")) {
-                LOG_INFO("CDB changed, reloading workspace");
-                load_workspace();
-                continue;
-            }
-
-            if(file.ends_with(".cpp") || file.ends_with(".cc") || file.ends_with(".cxx") ||
-               file.ends_with(".c") || file.ends_with(".h") || file.ends_with(".hpp") ||
-               file.ends_with(".hxx") || file.ends_with(".cppm") || file.ends_with(".ixx")) {
-                auto path_id = workspace.path_pool.intern(file);
-                on_file_saved(path_id);
-            }
-        }
-    }
 }
 
 std::shared_ptr<Session> MasterServer::find_session(std::uint32_t path_id) {
@@ -446,17 +401,22 @@ static kota::task<> accept_connections(MasterServer& server,
     co_await group.join();
 }
 
-int run_server_mode(const ServerOptions& opts, const char* self_path) {
+int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     logging::stderr_logger("master", logging::options);
 
     auto mode = opts.mode.value_or(ServerMode::Pipe);
     auto host = opts.host.value_or("127.0.0.1");
     auto port = opts.port.value_or(0);
     auto record = opts.record.value_or("");
+    auto ws = opts.workspace.value_or("");
 
     kota::event_loop loop;
     MasterServer server(loop, self_path);
     std::list<Connection> connections;
+
+    // Pre-initialize for standalone (no-editor) use; LSP initialize will be rejected.
+    if(!ws.empty())
+        server.initialize(ws);
 
     if(mode == ServerMode::Pipe) {
         auto transport = kota::ipc::StreamTransport::open_stdio(loop);
@@ -507,7 +467,7 @@ int run_server_mode(const ServerOptions& opts, const char* self_path) {
         return 0;
     }
 
-    if(mode == ServerMode::Socket) {
+    if(mode == ServerMode::Tcp) {
         auto acceptor = kota::tcp::listen(host, port, {}, loop);
         if(!acceptor) {
             LOG_ERROR("failed to listen on {}:{}", host, port);
@@ -529,128 +489,6 @@ int run_server_mode(const ServerOptions& opts, const char* self_path) {
 
     LOG_ERROR("unexpected server mode");
     return 1;
-}
-
-struct DaemonConnection {
-    std::unique_ptr<kota::ipc::JsonPeer> peer;
-    std::unique_ptr<AgentClient> agent_client;
-};
-
-static kota::task<> run_daemon_connection(kota::ipc::JsonPeer* peer,
-                                          std::list<DaemonConnection>& connections,
-                                          std::list<DaemonConnection>::iterator pos) {
-    co_await peer->run();
-    LOG_INFO("Daemon client disconnected");
-    connections.erase(pos);
-}
-
-static kota::task<> daemon_accept(MasterServer& server, kota::pipe::acceptor acceptor) {
-    auto& loop = kota::event_loop::current();
-    std::list<DaemonConnection> connections;
-    kota::task_group<> group(loop);
-    group.spawn([](MasterServer& server,
-                   kota::pipe::acceptor& acceptor,
-                   std::list<DaemonConnection>& connections,
-                   kota::task_group<>& group) -> kota::task<> {
-        auto& loop = kota::event_loop::current();
-
-        while(true) {
-            auto conn = co_await acceptor.accept();
-            if(!conn.has_value())
-                break;
-
-            LOG_INFO("Daemon client connected");
-
-            auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-            auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
-            auto agent = std::make_unique<AgentClient>(server, *peer);
-
-            auto* peer_ptr = peer.get();
-            auto it = connections.emplace(connections.end(),
-                                          DaemonConnection{
-                                              .peer = std::move(peer),
-                                              .agent_client = std::move(agent),
-                                          });
-
-            group.spawn(run_daemon_connection(peer_ptr, connections, it));
-        }
-    }(server, acceptor, connections, group));
-
-    co_await group.join();
-}
-
-static kota::task<> resilient_file_watcher(MasterServer& server) {
-    co_await server.file_watcher_task();
-    co_await server.get_shutdown_event().wait();
-}
-
-static kota::task<> daemon_main(MasterServer& server,
-                                kota::pipe::acceptor acceptor,
-                                bool watch_files) {
-    if(watch_files) {
-        co_await kota::when_any(daemon_accept(server, std::move(acceptor)),
-                                resilient_file_watcher(server),
-                                server.get_shutdown_event().wait());
-    } else {
-        co_await kota::when_any(daemon_accept(server, std::move(acceptor)),
-                                server.get_shutdown_event().wait());
-    }
-    co_await server.shutdown_and_cleanup();
-}
-
-int run_daemon_mode(const ServerOptions& opts, const char* self_path) {
-    logging::stderr_logger("daemon", logging::options);
-
-    auto sock = opts.socket.value_or("");
-    auto socket_path = sock.empty() ? path::default_socket_path() : sock;
-    auto ws = opts.workspace.value_or("");
-
-    auto socket_dir = llvm::sys::path::parent_path(socket_path);
-    if(auto ec = llvm::sys::fs::create_directories(socket_dir)) {
-        LOG_ERROR("Failed to create socket directory {}: {}", socket_dir, ec.message());
-        return 1;
-    }
-
-    if(llvm::sys::fs::exists(socket_path)) {
-#ifndef _WIN32
-        int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
-        if(fd >= 0) {
-            struct sockaddr_un addr{};
-            addr.sun_family = AF_UNIX;
-            auto len = std::min(socket_path.size(), sizeof(addr.sun_path) - 1);
-            std::memcpy(addr.sun_path, socket_path.data(), len);
-            bool live = ::connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) == 0;
-            ::close(fd);
-            if(live) {
-                LOG_ERROR("Another daemon is already running on {}", socket_path);
-                return 1;
-            }
-        }
-#endif
-        llvm::sys::fs::remove(socket_path);
-    }
-
-    kota::event_loop loop;
-    MasterServer server(loop, self_path);
-
-    bool watch_files = false;
-    if(!ws.empty()) {
-        server.initialize(ws);
-        watch_files = true;
-    }
-
-    auto acceptor = kota::pipe::listen(socket_path, {}, loop);
-    if(!acceptor) {
-        LOG_ERROR("Failed to listen on {}", socket_path);
-        return 1;
-    }
-
-    LOG_INFO("Daemon listening on {}", socket_path);
-    loop.schedule(daemon_main(server, std::move(*acceptor), watch_files));
-    loop.run();
-
-    llvm::sys::fs::remove(socket_path);
-    return 0;
 }
 
 }  // namespace clice

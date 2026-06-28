@@ -18,24 +18,24 @@ namespace clice {
 
 namespace deco = kota::deco;
 
-enum class ServerMode : std::uint8_t { Pipe, Socket, Relay, Daemon };
+enum class ServerMode : std::uint8_t { Pipe, Tcp };
 
 struct ServerOptions {
     DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
     help;
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Server mode: pipe (default), socket, relay, or daemon",
+           help = "Server mode: pipe (default) or tcp (debug)",
            required = false)
     <ServerMode> mode = ServerMode::Pipe;
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Socket mode address",
+           help = "TCP listen address",
            required = false)
     <std::string> host = "127.0.0.1";
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Agentic TCP port (0 = disabled)",
+           help = "TCP port (pipe mode: agentic only; tcp mode: LSP + agentic)",
            required = false)
     <int> port = 0;
 
@@ -45,12 +45,7 @@ struct ServerOptions {
     <std::string> record;
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Unix domain socket path (relay/daemon mode)",
-           required = false)
-    <std::string> socket;
-
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Workspace root directory (daemon mode)",
+           help = "Workspace root directory (optional, skips LSP initialize)",
            required = false)
     <std::string> workspace;
 
@@ -85,7 +80,7 @@ public:
     void initialize();
     void initialize(llvm::StringRef root);
 
-    kota::task<> file_watcher_task();
+    // TODO: add periodic stat-based file watching
     kota::task<> shutdown_and_cleanup();
 
     std::shared_ptr<Session> find_session(std::uint32_t path_id);
@@ -131,8 +126,6 @@ private:
     std::string init_options_json;
 };
 
-int run_server_mode(const ServerOptions& opts, const char* self_path);
-
-int run_daemon_mode(const ServerOptions& opts, const char* self_path);
+int run_serve_mode(const ServerOptions& opts, const char* self_path);
 
 }  // namespace clice

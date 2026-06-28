@@ -12,7 +12,7 @@ export function getSetting(): Setting | undefined {
     const executable = process.env.CLICE_EXECUTABLE || setting.get<string>("executable");
     const mode = process.env.CLICE_MODE || setting.get<string>("mode");
 
-    if (mode !== "pipe" && mode !== "socket") {
+    if (mode !== "pipe" && mode !== "tcp") {
         vscode.window.showErrorMessage(`Unexpected mode: ${mode}`);
         return undefined;
     }
@@ -20,8 +20,8 @@ export function getSetting(): Setting | undefined {
     const host = setting.get<string>("host")!;
     const port = setting.get<number>("port")!;
 
-    if (mode === "socket" && (!host || !port)) {
-        vscode.window.showErrorMessage("Socket mode requires both host and port to be configured.");
+    if (mode === "tcp" && (!host || !port)) {
+        vscode.window.showErrorMessage("TCP mode requires both host and port to be configured.");
         return undefined;
     }
 

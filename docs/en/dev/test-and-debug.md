@@ -25,7 +25,7 @@ Equivalent to:
 
 ### Integration Tests
 
-End-to-end tests that start a real clice server and communicate via LSP protocol.
+End-to-end tests that start a real clice serve and communicate via LSP protocol.
 
 ```bash
 pixi run integration-test          # default RelWithDebInfo
@@ -82,7 +82,7 @@ Prerequisites outside the pixi env:
 If you want to attach a debugger to clice, start it in socket mode independently, then connect a client.
 
 ```shell
-./build/Debug/bin/clice server --mode socket --port 50051
+./build/Debug/bin/clice serve --mode tcp --port 50051
 ```
 
 After the server starts, you can connect a client in two ways:
@@ -94,7 +94,7 @@ Run a single integration test against the running instance:
 ```shell
 pytest -s --log-cli-level=INFO \
     tests/integration/lifecycle/test_file_operation.py::test_did_open \
-    --mode=socket --port=50051
+    --mode=tcp --port=50051
 ```
 
 ### Connect via VS Code
@@ -108,7 +108,7 @@ Configure the clice extension to connect to your running instance:
    ```jsonc
    {
      "clice.executable": "/path/to/your/clice/executable",
-     "clice.mode": "socket",
+     "clice.mode": "tcp",
      "clice.port": 50051,
      // Optional: disable clangd if also installed
      "clangd.path": "",

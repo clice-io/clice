@@ -138,7 +138,7 @@ async def replay_one(
 
     proc = await asyncio.create_subprocess_exec(
         str(clice_bin),
-        "server",
+        "serve",
         env=env,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,

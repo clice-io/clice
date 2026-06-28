@@ -35,7 +35,7 @@ async def indexed_server(request, executable, workspace):
 
     host = "127.0.0.1"
     port = find_free_port()
-    cmd = [str(executable), "server", "--host", host, "--port", str(port)]
+    cmd = [str(executable), "serve", "--host", host, "--port", str(port)]
 
     c = CliceClient()
     await c.start_io(*cmd)
@@ -192,23 +192,13 @@ async def test_cli_status(indexed_server, workspace):
 # --- Server mode and CLI entry point tests ---
 
 
-def test_daemon_requires_workspace(executable):
-    r = subprocess.run(
-        [str(executable), "server", "--mode", "daemon"],
-        capture_output=True,
-        text=True,
-        timeout=5,
-    )
-    assert r.returncode != 0
-
-
 @pytest.mark.workspace("hello_world")
-async def test_socket_mode_connects(executable, workspace):
+async def test_tcp_mode_connects(executable, workspace):
     from tests.conftest import find_free_port, shutdown_client
     from tests.integration.utils.client import CliceClient
 
     port = find_free_port()
-    cmd = [str(executable), "server", "--mode", "socket", "--port", str(port)]
+    cmd = [str(executable), "serve", "--mode", "tcp", "--port", str(port)]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdin=asyncio.subprocess.PIPE,
@@ -218,7 +208,6 @@ async def test_socket_mode_connects(executable, workspace):
 
     try:
         c = CliceClient()
-        # Retry until the server starts listening (slow on Debug builds).
         for _ in range(150):
             assert proc.returncode is None, "server exited before accepting connections"
             try:

@@ -46,9 +46,9 @@
           "default": "pipe",
           "enum": [
             "pipe",
-            "socket"
+            "tcp"
           ],
-          "description": "How to communicate with clice. pipe or socket. For daily use please use pipe."
+          "description": "How to communicate with clice. pipe (default) or tcp (debug)."
         },
         "clice.host": {
           "type": "string",

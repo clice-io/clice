@@ -84,30 +84,17 @@ int main(int argc, const char** argv) {
 
     int exit_code = 1;
 
-    auto server_cmd = deco::cli::command<clice::ServerOptions>("clice server [OPTIONS]");
-    server_cmd
+    auto serve_cmd = deco::cli::command<clice::ServerOptions>("clice serve [OPTIONS]");
+    serve_cmd
         .matchAll([&](clice::ServerOptions opts) {
             if(opts.help) {
-                clice::print_usage(server_cmd);
+                clice::print_usage(serve_cmd);
                 exit_code = 0;
                 return;
             }
             if(!clice::apply_log_level(opts.log_level.value_or("info")))
                 return;
-            using clice::ServerMode;
-            auto mode = opts.mode.value_or(ServerMode::Pipe);
-            if(mode == ServerMode::Relay) {
-                exit_code = clice::run_relay_mode(opts.socket.value_or(""));
-            } else if(mode == ServerMode::Daemon) {
-                auto workspace = opts.workspace.value_or("");
-                if(workspace.empty()) {
-                    LOG_ERROR("--workspace is required for daemon mode");
-                    return;
-                }
-                exit_code = clice::run_daemon_mode(opts, self_path);
-            } else {
-                exit_code = clice::run_server_mode(opts, self_path);
-            }
+            exit_code = clice::run_serve_mode(opts, self_path);
         })
         .on_error([](auto err) { LOG_ERROR("{}", err.message); });
 
@@ -181,7 +168,7 @@ int main(int argc, const char** argv) {
         clice::print_usage(clice);
     };
 
-    clice.add({.name = "server", .description = "Start LSP server"}, server_cmd)
+    clice.add({.name = "serve", .description = "Start LSP server"}, serve_cmd)
         .add({.name = "query", .description = "Query symbol information from a running server"},
              query_cmd)
         .add({.name = "worker"}, worker_cmd)

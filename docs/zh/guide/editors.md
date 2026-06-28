@@ -34,7 +34,7 @@ Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/edi
 ```toml
 [language-server.clice]
 command = "clice"
-args = ["server"]
+args = ["serve"]
 
 [[language]]
 name = "cpp"
@@ -53,7 +53,7 @@ language-servers = ["clice"]
 (with-eval-after-load 'eglot
   (add-to-list 'eglot-server-programs
                '((c-mode c-ts-mode c++-mode c++-ts-mode)
-                 . ("clice" "server"))))
+                 . ("clice" "serve"))))
 ```
 
 ### Sublime Text
@@ -65,7 +65,7 @@ language-servers = ["clice"]
   "clients": {
     "clice": {
       "enabled": true,
-      "command": ["clice", "server"],
+      "command": ["clice", "serve"],
       "selector": "source.c | source.c++"
     }
   }
@@ -80,7 +80,7 @@ language-servers = ["clice"]
 {
   "servers": {
     "c": {
-      "command": ["clice", "server"],
+      "command": ["clice", "serve"],
       "url": "https://github.com/clice-io/clice",
       "highlightingModeRegex": "^(C|C\\+\\+)$"
     }

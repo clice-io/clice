@@ -274,7 +274,7 @@ async def run_stress_test(args):
         init_options["project"]["min_stateless_worker_count"] = args.min_stateless
 
     client = CliceClient()
-    await client.start_io(str(executable), "server")
+    await client.start_io(str(executable), "serve")
 
     server = getattr(client, "_server", None)
     start_time = time.monotonic()

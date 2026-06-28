@@ -45,12 +45,12 @@ export async function activate(context: ExtensionContext) {
             }
         }
 
-        let args = ["server"];
+        let args = ["serve"];
         serverOptions = {
             run: { command: executable, args: args },
             debug: { command: executable, args: args },
         };
-    } else if (setting.mode === "socket") {
+    } else if (setting.mode === "tcp") {
         serverOptions = (): Promise<StreamInfo> => {
             return new Promise((resolve, reject) => {
                 const client = new net.Socket();
@@ -66,7 +66,7 @@ export async function activate(context: ExtensionContext) {
             });
         };
     } else {
-        vscode.window.showErrorMessage("Invalid mode, please set the mode to 'pipe' or 'socket'.");
+        vscode.window.showErrorMessage("Invalid mode, please set the mode to 'pipe' or 'tcp'.");
         return;
     }
 

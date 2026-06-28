@@ -60,6 +60,4 @@ struct QueryOptions {
 
 int run_agentic_mode(const QueryOptions& opts);
 
-int run_relay_mode(llvm::StringRef socket_path);
-
 }  // namespace clice

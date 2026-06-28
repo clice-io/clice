@@ -5,7 +5,6 @@
 #include <string>
 
 #include "server/protocol/agentic.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/async/async.h"
@@ -122,50 +121,6 @@ int run_agentic_mode(const QueryOptions& opts) {
     int exit_code = 1;
     std::unique_ptr<kota::ipc::JsonPeer> peer;
     loop.schedule(agentic_client(exit_code, peer, opts));
-    loop.run();
-    return exit_code;
-}
-
-static kota::task<> relay_forward(kota::ipc::Transport& from, kota::ipc::Transport& to) {
-    while(true) {
-        auto msg = co_await from.read_message();
-        if(!msg)
-            break;
-        co_await to.write_message(*msg);
-    }
-    to.close();
-}
-
-static kota::task<> relay_main(kota::event_loop& loop, int& exit_code, std::string socket_path) {
-    auto stdio = kota::ipc::StreamTransport::open_stdio(loop);
-    if(!stdio) {
-        LOG_ERROR("failed to open stdio transport");
-        loop.stop();
-        co_return;
-    }
-
-    auto conn = co_await kota::pipe::connect(socket_path, {}, loop);
-    if(!conn) {
-        LOG_ERROR("failed to connect to {}", socket_path);
-        loop.stop();
-        co_return;
-    }
-
-    auto socket = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-
-    co_await kota::when_all(relay_forward(**stdio, *socket), relay_forward(*socket, **stdio));
-    exit_code = 0;
-    loop.stop();
-}
-
-int run_relay_mode(llvm::StringRef socket_path) {
-    logging::stderr_logger("relay", logging::options);
-
-    auto path = socket_path.empty() ? path::default_socket_path() : socket_path.str();
-
-    kota::event_loop loop;
-    int exit_code = 1;
-    loop.schedule(relay_main(loop, exit_code, std::move(path)));
     loop.run();
     return exit_code;
 }
