@@ -322,17 +322,15 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     w.alive = false;
 
     if(exit_signal != 0) {
-        LOG_ANOMALY(WorkerCrash,
-                    "Worker {} killed by signal {} (restarts: {})",
-                    w.name,
-                    exit_signal,
-                    w.restart_count);
+        LOG_ERROR("Worker {} killed by signal {} (restarts: {})",
+                  w.name,
+                  exit_signal,
+                  w.restart_count);
     } else {
-        LOG_ANOMALY(WorkerCrash,
-                    "Worker {} exited with code {} (restarts: {})",
-                    w.name,
-                    exit_code,
-                    w.restart_count);
+        LOG_ERROR("Worker {} exited with code {} (restarts: {})",
+                  w.name,
+                  exit_code,
+                  w.restart_count);
     }
 
     WorkerCrashInfo info;
