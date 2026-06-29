@@ -2,13 +2,6 @@ name: native-test
 
 on:
   workflow_call:
-    inputs:
-      os:
-        required: true
-        type: string
-      build_type:
-        required: true
-        type: string
 
 env:
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
@@ -20,23 +13,37 @@ env:
   SCCACHE_CACHE_SIZE: 2G
 
 jobs:
-  build:
-    runs-on: ${{ inputs.os }}
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            build_type: RelWithDebInfo
+          - os: ubuntu-24.04
+            build_type: Debug
+          - os: ubuntu-24.04
+            build_type: RelWithDebInfo
+          - os: macos-15
+            build_type: Debug
+          - os: macos-15
+            build_type: RelWithDebInfo
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: default
+          environments: default test-run
 
       - name: Restore compiler cache
         uses: actions/cache@v4
         with:
           path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
-          key: ${{ runner.os }}-${{ inputs.build_type }}-native-ccache-${{ github.sha }}
+          key: ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ inputs.build_type }}-native-ccache-
+            ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-
 
       - name: Zero cache stats
         run: |
@@ -49,23 +56,21 @@ jobs:
         shell: bash
 
       - name: Build
-        run: pixi run build ${{ inputs.build_type }} ON
+        run: pixi run build ${{ matrix.build_type }} ON
 
-      # The .llvm globs cover prebuilt LLVM packages with shared libraries
-      # (e.g. Debug): test binaries reference them via build-tree RPATH, so
-      # they must exist at the same path on the test runner. Static packages
-      # simply match nothing here.
+      # Upload artifacts for editor tests (only ubuntu RelWithDebInfo is needed,
+      # but uploading all keeps the option open for other downstream consumers).
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
-          name: native-build-${{ inputs.os }}-${{ inputs.build_type }}
+          name: native-build-${{ matrix.os }}-${{ matrix.build_type }}
           include-hidden-files: true
           path: |
-            build/${{ inputs.build_type }}/bin/
-            build/${{ inputs.build_type }}/lib/
-            build/${{ inputs.build_type }}/.llvm/lib/*.so*
-            build/${{ inputs.build_type }}/.llvm/lib/*.dylib
-            build/${{ inputs.build_type }}/.llvm/bin/*.dll
+            build/${{ matrix.build_type }}/bin/
+            build/${{ matrix.build_type }}/lib/
+            build/${{ matrix.build_type }}/.llvm/lib/*.so*
+            build/${{ matrix.build_type }}/.llvm/lib/*.dylib
+            build/${{ matrix.build_type }}/.llvm/bin/*.dll
           if-no-files-found: error
           retention-days: 1
 
@@ -80,35 +85,14 @@ jobs:
           fi
         shell: bash
 
-  test:
-    needs: build
-    runs-on: ${{ inputs.os }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: test-run
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: native-build-${{ inputs.os }}-${{ inputs.build_type }}
-          path: build/${{ inputs.build_type }}/
-
-      - name: Make binaries executable
-        if: runner.os != 'Windows'
-        run: chmod +x build/${{ inputs.build_type }}/bin/*
-
       - name: Unit tests
         timeout-minutes: 5
-        run: pixi run -e test-run unit-test ${{ inputs.build_type }}
+        run: pixi run -e test-run unit-test ${{ matrix.build_type }}
 
       - name: Integration tests
         timeout-minutes: 20
-        run: pixi run -e test-run integration-test ${{ inputs.build_type }}
+        run: pixi run -e test-run integration-test ${{ matrix.build_type }}
 
       - name: Smoke tests
         timeout-minutes: 15
-        run: pixi run -e test-run smoke-test ${{ inputs.build_type }}
+        run: pixi run -e test-run smoke-test ${{ matrix.build_type }}

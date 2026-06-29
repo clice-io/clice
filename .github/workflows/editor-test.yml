@@ -1,0 +1,49 @@
+name: editor-test
+
+on:
+  workflow_call:
+
+jobs:
+  editor:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: editor
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: native-build-ubuntu-24.04-RelWithDebInfo
+          path: build/RelWithDebInfo/
+
+      - name: Make binaries executable
+        run: chmod +x build/RelWithDebInfo/bin/*
+
+      # Always the latest stable release on purpose: this job exists to
+      # catch breakage caused by new editor versions.
+      - name: Install neovim (stable)
+        run: |
+          curl -fsSL -o /tmp/nvim.tar.gz \
+            https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz
+          sudo tar -xzf /tmp/nvim.tar.gz -C /opt
+          echo "/opt/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Restore VSCode download cache
+        uses: actions/cache@v4
+        with:
+          path: editors/vscode/.vscode-test
+          key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package.json') }}
+          restore-keys: |
+            vscode-test-${{ runner.os }}-
+
+      - name: Neovim E2E tests
+        timeout-minutes: 15
+        run: pixi run -e editor nvim-e2e RelWithDebInfo
+
+      - name: VSCode E2E tests
+        timeout-minutes: 20
+        run: xvfb-run -a pixi run -e editor vscode-e2e RelWithDebInfo
