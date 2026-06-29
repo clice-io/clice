@@ -93,14 +93,14 @@ input_file: values.cpp
   kind: Variable
   namespace_scope: "enum_var_value::"
   definition: "Color x = RED"
-  type: "Color"
+  type: "enum Color"
   value: "RED (0xffffff85)"
   symbol_range: "[783, 784)"
   markdown: |
     ### variable `x`  
 
     ---
-    Type: `Color`  
+    Type: `enum Color`  
     Value = `RED (0xffffff85)`  
 
     ---

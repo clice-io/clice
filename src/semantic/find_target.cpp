@@ -456,14 +456,6 @@ public:
             void VisitTemplateSpecializationType(const clang::TemplateSpecializationType* type) {
                 /// Have to handle these case-by-case.
 
-                /// For dependent template specializations, try heuristic resolution.
-                if(type->isDependentType() && outer.resolver) {
-                    for(const clang::NamedDecl* decl:
-                        outer.resolver->resolveTemplateSpecializationType(type)) {
-                        outer.add(decl, flags);
-                    }
-                }
-
                 if(const auto* shadow = type->getTemplateName().getAsUsingShadowDecl()) {
                     outer.add(shadow, flags);
                 }
