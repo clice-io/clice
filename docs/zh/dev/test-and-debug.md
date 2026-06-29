@@ -87,16 +87,6 @@ pixi 环境之外的依赖：
 
 服务器启动后，可以通过以下两种方式连接客户端：
 
-### 通过 pytest 连接
-
-运行单个集成测试连接到正在运行的 clice 实例：
-
-```shell
-pytest -s --log-cli-level=INFO \
-    tests/integration/lifecycle/test_file_operation.py::test_did_open \
-    --mode=tcp --port=50051
-```
-
 ### 通过 VS Code 连接
 
 配置 clice 插件连接到正在运行的实例：
