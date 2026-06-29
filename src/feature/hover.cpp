@@ -1051,11 +1051,11 @@ void add_layout_info(const clang::NamedDecl& decl, HoverInfo& info) {
 
     const auto& context = decl.getASTContext();
     if(auto* record = llvm::dyn_cast<clang::RecordDecl>(&decl)) {
-        if(auto size = context.getTypeSizeInCharsIfKnown(record->getTypeForDecl())) {
+        if(auto size = context.getTypeSizeInCharsIfKnown(context.getCanonicalTagType(record))) {
             info.size = size->getQuantity() * 8;
         }
         if(!record->isDependentType() && record->isCompleteDefinition()) {
-            info.align = context.getTypeAlign(record->getTypeForDecl());
+            info.align = context.getTypeAlign(context.getCanonicalTagType(record));
         }
         return;
     }

@@ -551,11 +551,6 @@ public:
     /// std::vector<T>::value_type
     ///                      ^~~~ reference
     VISIT_TYPELOC(DependentNameTypeLoc) {
-        auto location = loc.getNameLoc();
-        // for(auto decl: resolver.lookup(loc.getTypePtr())) {
-        //     handleDeclOccurrence(decl, RelationKind::WeakReference, location);
-        //     handleRelation(decl, RelationKind::WeakReference, decl, location);
-        // }
         return true;
     }
 
@@ -564,13 +559,13 @@ public:
     /// ============================================================================
 
     bool VisitNestedNameSpecifierLoc(clang::NestedNameSpecifierLoc loc) {
-        auto NNS = loc.getNestedNameSpecifier();
-        switch(NNS.getKind()) {
+        auto nns = loc.getNestedNameSpecifier();
+        switch(nns.getKind()) {
             case clang::NestedNameSpecifier::Kind::Namespace: {
-                auto [NS, Prefix] = loc.castAsNamespaceAndPrefix();
+                auto [ns, prefix] = loc.castAsNamespaceAndPrefix();
                 auto location = loc.getLocalBeginLoc();
-                handleDeclOccurrence(NS, RelationKind::Reference, location);
-                handleRelation(NS, RelationKind::Reference, NS, location);
+                handleDeclOccurrence(ns, RelationKind::Reference, location);
+                handleRelation(ns, RelationKind::Reference, ns, location);
                 break;
             }
 

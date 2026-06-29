@@ -523,10 +523,6 @@ public:
             return lookup_result();
         }
 
-        if(auto iter = resolved.find(NNS.getAsVoidPointer()); iter != resolved.end()) {
-            return lookup(iter->second, name);
-        }
-
         // Handle each NestedNameSpecifier kind:
         // - Type: concrete or dependent type used as qualifier (e.g. `vector<T>::`)
         // - Global/Namespace/MicrosoftSuper/Null: not dependent, cannot resolve further

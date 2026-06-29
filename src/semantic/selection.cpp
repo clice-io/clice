@@ -756,8 +756,8 @@ public:
         return traverse_node(X, [&] { return Base::TraverseDecl(X); });
     }
 
-    bool TraverseTypeLoc(clang::TypeLoc X, bool TraverseQualifier = true) {
-        return traverse_node(&X, [&] { return Base::TraverseTypeLoc(X, TraverseQualifier); });
+    bool TraverseTypeLoc(clang::TypeLoc X, bool traverse_qualifier = true) {
+        return traverse_node(&X, [&] { return Base::TraverseTypeLoc(X, traverse_qualifier); });
     }
 
     bool TraverseTemplateArgumentLoc(const clang::TemplateArgumentLoc& X) {
@@ -815,7 +815,7 @@ public:
     // (The reason for the behavior is to avoid traversing the nested Type twice,
     // but we ignore TraverseType anyway).
     bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX,
-                                  [[maybe_unused]] bool TraverseQualifier = true) {
+                                  [[maybe_unused]] bool traverse_qualifier = true) {
         return traverse_node<clang::TypeLoc>(&QX, [&] {
             return TraverseTypeLoc(QX.getUnqualifiedLoc());
         });

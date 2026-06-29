@@ -475,7 +475,7 @@ TEST_CASE(structured_no_crash) {
              hi.kind = SymbolKind::Variable;
              hi.namespace_scope = "";
              hi.definition = "X x";
-             hi.type = "X";
+             hi.type = "struct X";
          }},
         // Don't crash on null types.
         {R"cpp(auto [@sym[$x]] = 1; /*error-ok*/)cpp",
@@ -573,7 +573,7 @@ TEST_CASE(all_no_crash) {
              hi.kind = SymbolKind::Parameter;
              hi.namespace_scope = "";
              hi.local_scope = "Foo::foo::";
-             hi.type = "Bar";
+             hi.type = "struct Bar";
              hi.definition = "Bar x = <recovery - expr>()";
          }},
     };

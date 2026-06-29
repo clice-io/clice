@@ -192,7 +192,7 @@ input_file: callee_args.cpp
   definition: "const int x = 0"
   type: "const int"
   value: "0"
-  callee_arg_info: "Foo"
+  callee_arg_info: "struct Foo"
   passed: by const reference (converted)
   symbol_range: "[1800, 1801)"
   markdown: |
@@ -201,7 +201,7 @@ input_file: callee_args.cpp
     ---
     Type: `const int`  
     Value = `0`  
-    Passed by const reference (converted to Foo)  
+    Passed by const reference (converted to struct Foo)  
 
     ---
     ```cpp

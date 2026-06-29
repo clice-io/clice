@@ -135,14 +135,14 @@ input_file: tag_decls.cpp
   kind: EnumMember
   namespace_scope: "anon_enum::"
   definition: "ONE"
-  type: "enum anon_enum::(unnamed)"
+  type: "enum anon_enum::(unnamed enum)"
   value: "0"
   symbol_range: "[1140, 1143)"
   markdown: |
     ### enumerator `ONE`  
 
     ---
-    Type: `enum anon_enum::(unnamed)`  
+    Type: `enum anon_enum::(unnamed enum)`  
     Value = `0`  
 
     ---
@@ -178,13 +178,13 @@ input_file: tag_decls.cpp
   namespace_scope: "typedef_embedded::"
   documentation: "Typedef with embedded definition"
   definition: "typedef struct Bar Foo"
-  type: "struct typedef_embedded::Bar"
+  type: "struct struct Bar"
   symbol_range: "[1339, 1342)"
   markdown: |
     ### type `Foo`  
 
     ---
-    Type: `struct typedef_embedded::Bar`  
+    Type: `struct struct Bar`  
     Typedef with embedded definition  
 
     ---

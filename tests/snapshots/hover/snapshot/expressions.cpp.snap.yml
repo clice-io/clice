@@ -32,27 +32,27 @@ input_file: expressions.cpp
 03_sizeof_expr:
   name: "expression"
   kind: Invalid
-  type: "unsigned long"
+  type: "__size_t (aka unsigned long)"
   value: "1"
   symbol_range: "[280, 286)"
   markdown: |
     ### `expression`  
 
     ---
-    Type: `unsigned long`  
+    Type: `__size_t (aka unsigned long)`  
     Value = `1`
 
 04_alignof_expr:
   name: "expression"
   kind: Invalid
-  type: "unsigned long"
+  type: "__size_t (aka unsigned long)"
   value: "1"
   symbol_range: "[343, 350)"
   markdown: |
     ### `expression`  
 
     ---
-    Type: `unsigned long`  
+    Type: `__size_t (aka unsigned long)`  
     Value = `1`
 
 

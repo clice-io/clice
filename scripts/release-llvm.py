@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -404,8 +405,6 @@ def _wait_and_download_manifest(
     max_attempts: int,
     sleep_seconds: int,
 ) -> Path:
-    import time
-
     download_dir.mkdir(parents=True, exist_ok=True)
     for attempt in range(1, max_attempts + 1):
         print(

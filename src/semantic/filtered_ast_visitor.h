@@ -107,7 +107,7 @@ public:
         return true;
     }
 
-    bool TraverseTypeLoc(clang::TypeLoc loc, bool TraverseQualifier = true) {
+    bool TraverseTypeLoc(clang::TypeLoc loc, bool traverse_qualifier = true) {
         CHECK_DERIVED_IMPL(TraverseTypeLoc);
 
         if(!loc) {
@@ -116,10 +116,10 @@ public:
 
         /// FIXME: Workaround for `QualifiedTypeLoc`.
         if(auto QL = loc.getAs<clang::QualifiedTypeLoc>()) {
-            return Base::TraverseTypeLoc(QL.getUnqualifiedLoc(), TraverseQualifier);
+            return Base::TraverseTypeLoc(QL.getUnqualifiedLoc(), traverse_qualifier);
         }
 
-        return Base::TraverseTypeLoc(loc, TraverseQualifier);
+        return Base::TraverseTypeLoc(loc, traverse_qualifier);
     }
 
     bool TraverseAttr(clang::Attr* attr) {

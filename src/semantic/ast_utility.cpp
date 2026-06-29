@@ -1198,8 +1198,8 @@ std::string print_name(const clang::NamedDecl& decl) {
     /// Handle 'using namespace'. They all have the same name - <using-directive>.
     if(auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(&decl)) {
         os << "using namespace ";
-        if(auto* qualifier = directive->getQualifier()) {
-            qualifier->print(os, policy);
+        if(auto qualifier = directive->getQualifier()) {
+            qualifier.print(os, policy);
         }
         directive->getNominatedNamespaceAsWritten()->printName(os);
         return name;
@@ -1226,8 +1226,8 @@ std::string print_name(const clang::NamedDecl& decl) {
     }
 
     /// Print nested name qualifier if it was written in the source code.
-    if(auto* qualifier = qualifier_loc(decl).getNestedNameSpecifier()) {
-        qualifier->print(os, policy);
+    if(auto qualifier = qualifier_loc(decl).getNestedNameSpecifier()) {
+        qualifier.print(os, policy);
     }
 
     /// Print the name itself.
@@ -1244,6 +1244,7 @@ clang::QualType declared_type(const clang::TypeDecl* decl) {
     if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
         if(const auto* args = spec->getTemplateArgsAsWritten()) {
             return context.getTemplateSpecializationType(
+                clang::ElaboratedTypeKeyword::None,
                 clang::TemplateName(spec->getSpecializedTemplate()),
                 args->arguments(),
                 /*CanonicalArgs=*/{});

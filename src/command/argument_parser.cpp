@@ -12,6 +12,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Types.h"
+#include "clang/Options/OptionUtils.h"
 
 namespace clice {
 
@@ -22,11 +23,11 @@ namespace eo = kota::option;
 namespace detail {
 
 #define OPTTABLE_STR_TABLE_CODE
-#include "clang/Driver/Options.inc"
+#include "clang/Options/Options.inc"
 #undef OPTTABLE_STR_TABLE_CODE
 
 #define OPTTABLE_PREFIXES_TABLE_CODE
-#include "clang/Driver/Options.inc"
+#include "clang/Options/Options.inc"
 #undef OPTTABLE_PREFIXES_TABLE_CODE
 
 static_assert(OptionPrefixesTable[0].value() == 0, "pfx_none: 0 prefixes");
@@ -87,7 +88,8 @@ const eo::OptTable& table() {
                HELP,                                                                               \
                HELP_TEXTS,                                                                         \
                META_VAR,                                                                           \
-               VALUES)                                                                             \
+               VALUES,                                                                             \
+               ...)                                                                                \
     eo::Option{                                                                                    \
         .prefixes = prefixes(PREFIXES_OFFSET),                                                     \
         .prefixed_name = str_at(NAME_OFFSET),                                                      \
@@ -102,7 +104,7 @@ const eo::OptTable& table() {
         .help_text = HELP,                                                                         \
         .meta_var = META_VAR,                                                                      \
     },
-#include "clang/Driver/Options.inc"
+#include "clang/Options/Options.inc"
 #undef OPTION
     };
 
@@ -202,7 +204,7 @@ llvm::StringRef resource_dir() {
         if(exe.empty()) {
             return std::string{};
         }
-        return clang::driver::Driver::GetResourcesPath(exe);
+        return clang::GetResourcesPath(exe);
     }();
     return dir;
 }
