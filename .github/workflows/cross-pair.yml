@@ -28,7 +28,6 @@ env:
 
 jobs:
   build:
-    name: build (${{ inputs.build_os }}, RelWithDebInfo, ${{ inputs.target_triple }})
     runs-on: ${{ inputs.build_os }}
     steps:
       - name: Checkout repository
@@ -85,7 +84,6 @@ jobs:
         shell: bash
 
   test:
-    name: test (${{ inputs.test_os }}, RelWithDebInfo, ${{ inputs.target_triple }})
     needs: build
     runs-on: ${{ inputs.test_os }}
     steps:
