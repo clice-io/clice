@@ -160,7 +160,6 @@ async def agentic(
     check_no_anomaly(request, c)
 
 
-
 async def make_client(executable: Path, workspace: Path) -> CliceClient:
     """Spawn a fresh clice server and initialize it. For multi-session tests."""
     c = CliceClient()
