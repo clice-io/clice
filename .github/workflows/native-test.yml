@@ -75,17 +75,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Print cache stats and stop server
-        if: always()
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -- sccache --show-stats
-            pixi run -- sccache --stop-server || true
-          else
-            pixi run -- ccache --show-stats
-          fi
-        shell: bash
-
       - name: Unit tests
         timeout-minutes: 5
         run: pixi run -e test-run unit-test ${{ matrix.build_type }}
@@ -97,3 +86,14 @@ jobs:
       - name: Smoke tests
         timeout-minutes: 15
         run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
+
+      - name: Print cache stats and stop server
+        if: always()
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -- sccache --show-stats
+            pixi run -- sccache --stop-server || true
+          else
+            pixi run -- ccache --show-stats
+          fi
+        shell: bash
