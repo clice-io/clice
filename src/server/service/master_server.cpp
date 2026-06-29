@@ -410,8 +410,8 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     auto record = opts.record.value_or("");
     auto ws = opts.workspace.value_or("");
 
-    if(mode == ServerMode::Tcp && (port <= 0 || port > 65535)) {
-        LOG_ERROR("--port must be between 1 and 65535 in tcp mode");
+    if(mode == ServerMode::Socket && (port <= 0 || port > 65535)) {
+        LOG_ERROR("--port must be between 1 and 65535 in socket mode");
         return 1;
     }
 
@@ -472,7 +472,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
         return 0;
     }
 
-    if(mode == ServerMode::Tcp) {
+    if(mode == ServerMode::Socket) {
         auto acceptor = kota::tcp::listen(host, port, {}, loop);
         if(!acceptor) {
             LOG_ERROR("failed to listen on {}:{}", host, port);

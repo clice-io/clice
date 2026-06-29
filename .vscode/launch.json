@@ -6,7 +6,7 @@
       "request": "launch",
       "name": "Debug clice",
       "program": "${workspaceFolder}/build/Debug/bin/clice",
-      "args": ["serve", "--mode", "tcp", "--port", "50051"],
+      "args": ["serve", "--mode", "socket", "--port", "50051"],
       "cwd": "${workspaceFolder}"
     },
     {
@@ -14,7 +14,7 @@
       "request": "launch",
       "name": "Debug clice (tcp, RelWithDebInfo)",
       "program": "${workspaceFolder}/build/RelWithDebInfo/bin/clice",
-      "args": ["serve", "--mode", "tcp", "--port", "50051"],
+      "args": ["serve", "--mode", "socket", "--port", "50051"],
       "cwd": "${workspaceFolder}"
     },
     {
@@ -44,7 +44,7 @@
         "--extensionDevelopmentPath=${workspaceFolder}/editors/vscode"
       ],
       "env": {
-        "CLICE_MODE": "tcp"
+        "CLICE_MODE": "socket"
       },
       "outFiles": ["${workspaceFolder}/editors/vscode/dist/**/*.js"],
       "preLaunchTask": "npm: watch vscode ext"

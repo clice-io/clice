@@ -79,10 +79,10 @@ Prerequisites outside the pixi env:
 
 ## Debug
 
-If you want to attach a debugger to clice, start it in tcp mode independently, then connect a client.
+If you want to attach a debugger to clice, start it in socket mode independently, then connect a client.
 
 ```shell
-./build/Debug/bin/clice serve --mode tcp --port 50051
+./build/Debug/bin/clice serve --mode socket --port 50051
 ```
 
 After the server starts, you can connect a client in two ways:
@@ -98,7 +98,7 @@ Configure the clice extension to connect to your running instance:
    ```jsonc
    {
      "clice.executable": "/path/to/your/clice/executable",
-     "clice.mode": "tcp",
+     "clice.mode": "socket",
      "clice.port": 50051,
      // Optional: disable clangd if also installed
      "clangd.path": "",
@@ -122,4 +122,4 @@ The extension lives in-tree at `editors/vscode/`:
 
 3. Create `.vscode/settings.json` with the tcp config above.
 
-4. Press `F5` and select `VSCode Extension (pipe)` or `VSCode Extension (tcp)` to launch an Extension Development Host window.
+4. Press `F5` and select `VSCode Extension (pipe)` or `VSCode Extension (socket)` to launch an Extension Development Host window.

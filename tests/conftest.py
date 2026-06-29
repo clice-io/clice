@@ -16,12 +16,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         required=False,
         help="Path to the clice executable.",
     )
-    parser.addoption(
-        "--host",
-        type=str,
-        default="127.0.0.1",
-        help="The host to connect to (default: 127.0.0.1)",
-    )
 
 
 @pytest.fixture(scope="session")

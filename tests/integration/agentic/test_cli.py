@@ -193,12 +193,12 @@ async def test_cli_status(indexed_server, workspace):
 
 
 @pytest.mark.workspace("hello_world")
-async def test_tcp_mode_connects(executable, workspace):
+async def test_socket_mode_connects(executable, workspace):
     from tests.conftest import find_free_port, shutdown_client
     from tests.integration.utils.client import CliceClient
 
     port = find_free_port()
-    cmd = [str(executable), "serve", "--mode", "tcp", "--port", str(port)]
+    cmd = [str(executable), "serve", "--mode", "socket", "--port", str(port)]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdin=asyncio.subprocess.PIPE,

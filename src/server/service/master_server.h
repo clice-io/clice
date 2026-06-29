@@ -18,24 +18,24 @@ namespace clice {
 
 namespace deco = kota::deco;
 
-enum class ServerMode : std::uint8_t { Pipe, Tcp };
+enum class ServerMode : std::uint8_t { Pipe, Socket };
 
 struct ServerOptions {
     DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
     help;
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Server mode: pipe (default) or tcp (debug)",
+           help = "Server mode: pipe (default) or socket (debug)",
            required = false)
     <ServerMode> mode = ServerMode::Pipe;
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "TCP listen address",
+           help = "Socket mode address",
            required = false)
     <std::string> host = "127.0.0.1";
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "TCP port (pipe mode: agentic only; tcp mode: LSP + agentic)",
+           help = "TCP port (pipe mode: agentic only; socket mode: LSP + agentic)",
            required = false)
     <int> port = 0;
 

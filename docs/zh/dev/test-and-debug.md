@@ -79,10 +79,10 @@ pixi 环境之外的依赖：
 
 ## 调试
 
-如果想在 clice 上附加调试器，推荐先以 tcp 模式单独启动 clice，然后连接客户端。
+如果想在 clice 上附加调试器，推荐先以 socket 模式单独启动 clice，然后连接客户端。
 
 ```shell
-./build/Debug/bin/clice serve --mode tcp --port 50051
+./build/Debug/bin/clice serve --mode socket --port 50051
 ```
 
 服务器启动后，可以通过以下两种方式连接客户端：
@@ -98,7 +98,7 @@ pixi 环境之外的依赖：
    ```jsonc
    {
      "clice.executable": "/path/to/your/clice/executable",
-     "clice.mode": "tcp",
+     "clice.mode": "socket",
      "clice.port": 50051,
      // 可选：禁用 clangd
      "clangd.path": "",
@@ -120,6 +120,6 @@ pixi 环境之外的依赖：
 
 2. 用 VS Code 打开 `editors/vscode`。
 
-3. 创建上述 tcp 配置的 `.vscode/settings.json`。
+3. 创建上述 socket 配置的 `.vscode/settings.json`。
 
 4. 按 `F5` 启动扩展开发宿主窗口。
