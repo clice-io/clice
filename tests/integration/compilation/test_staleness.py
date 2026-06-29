@@ -345,7 +345,9 @@ async def test_didclose_clears_hover(client, tmp_path):
     with pytest.raises(Exception, match="Document not open"):
         await asyncio.wait_for(
             client.text_document_hover_async(
-                HoverParams(text_document=doc(uri), position=Position(line=0, character=4))
+                HoverParams(
+                    text_document=doc(uri), position=Position(line=0, character=4)
+                )
             ),
             timeout=10.0,
         )
