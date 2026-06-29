@@ -87,6 +87,9 @@ jobs:
         timeout-minutes: 15
         run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
 
+      # sccache runs a background server that holds file locks; if it is
+      # still alive when the pixi post-action tries to clean up the env
+      # cache on Windows, the cleanup fails and marks the job as failed.
       - name: Print cache stats and stop server
         if: always()
         run: |
