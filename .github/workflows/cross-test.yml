@@ -13,96 +13,51 @@ env:
   SCCACHE_CACHE_SIZE: 2G
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15
-            build_type: RelWithDebInfo
-            target_triple: x86_64-apple-darwin
-          - os: ubuntu-24.04
-            build_type: RelWithDebInfo
-            target_triple: aarch64-linux-gnu
-            pixi_env: cross-linux-aarch64
-          - os: windows-2025
-            build_type: RelWithDebInfo
-            target_triple: aarch64-pc-windows-msvc
-            pixi_env: cross-windows-arm64
-    runs-on: ${{ matrix.os }}
+  # === macOS x86_64 (cross from arm64) ===
+  build-macos-x64:
+    name: build (macos-15, RelWithDebInfo, x86_64-apple-darwin)
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-pixi
-        with:
-          environments: ${{ matrix.pixi_env || 'default' }}
 
       - name: Restore compiler cache
         uses: actions/cache@v4
         with:
-          path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
-          key: ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.target_triple }}-ccache-${{ github.sha }}
+          path: .cache/ccache
+          key: macOS-RelWithDebInfo-x86_64-apple-darwin-ccache-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.target_triple }}-ccache-
+            macOS-RelWithDebInfo-x86_64-apple-darwin-ccache-
 
       - name: Zero cache stats
-        run: |
-          ENV="${{ matrix.pixi_env || 'default' }}"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -e "$ENV" -- sccache --stop-server || true
-            pixi run -e "$ENV" -- sccache --zero-stats || true
-          else
-            pixi run -e "$ENV" -- ccache --zero-stats || true
-          fi
-        shell: bash
+        run: pixi run -- ccache --zero-stats || true
 
       - name: Build
-        shell: bash
         run: |
-          ENV="${{ matrix.pixi_env || 'default' }}"
-          pixi run -e "$ENV" cmake-config ${{ matrix.build_type }} OFF -- \
-            "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
-          pixi run -e "$ENV" cmake-build ${{ matrix.build_type }}
+          pixi run cmake-config RelWithDebInfo OFF -- \
+            "-DCLICE_TARGET_TRIPLE=x86_64-apple-darwin"
+          pixi run cmake-build RelWithDebInfo
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
-          name: cross-build-${{ matrix.target_triple }}
+          name: cross-build-x86_64-apple-darwin
           path: |
-            build/${{ matrix.build_type }}/bin/
-            build/${{ matrix.build_type }}/lib/
+            build/RelWithDebInfo/bin/
+            build/RelWithDebInfo/lib/
           if-no-files-found: error
           retention-days: 1
 
-      - name: Print cache stats and stop server
+      - name: Print cache stats
         if: always()
-        run: |
-          ENV="${{ matrix.pixi_env || 'default' }}"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -e "$ENV" -- sccache --show-stats
-            pixi run -e "$ENV" -- sccache --stop-server || true
-          else
-            pixi run -e "$ENV" -- ccache --show-stats
-          fi
-        shell: bash
+        run: pixi run -- ccache --show-stats
 
-  test:
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15-intel
-            build_type: RelWithDebInfo
-            target_triple: x86_64-apple-darwin
-          - os: ubuntu-24.04-arm
-            build_type: RelWithDebInfo
-            target_triple: aarch64-linux-gnu
-          - os: windows-11-arm
-            build_type: RelWithDebInfo
-            target_triple: aarch64-pc-windows-msvc
-    runs-on: ${{ matrix.os }}
+  test-macos-x64:
+    name: test (macos-15-intel, RelWithDebInfo, x86_64-apple-darwin)
+    needs: build-macos-x64
+    runs-on: macos-15-intel
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -114,21 +69,176 @@ jobs:
       - name: Download binaries
         uses: actions/download-artifact@v4
         with:
-          name: cross-build-${{ matrix.target_triple }}
-          path: build/${{ matrix.build_type }}/
+          name: cross-build-x86_64-apple-darwin
+          path: build/RelWithDebInfo/
 
       - name: Make binaries executable
-        if: runner.os != 'Windows'
-        run: chmod +x build/${{ matrix.build_type }}/bin/*
+        run: chmod +x build/RelWithDebInfo/bin/*
 
       - name: Unit tests
         timeout-minutes: 5
-        run: pixi run -e test-run unit-test ${{ matrix.build_type }}
+        run: pixi run -e test-run unit-test RelWithDebInfo
 
       - name: Integration tests
         timeout-minutes: 20
-        run: pixi run -e test-run integration-test ${{ matrix.build_type }}
+        run: pixi run -e test-run integration-test RelWithDebInfo
 
       - name: Smoke tests
         timeout-minutes: 10
-        run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
+        run: pixi run -e test-run smoke-test RelWithDebInfo
+
+  # === Linux aarch64 (cross from x86_64) ===
+  build-linux-aarch64:
+    name: build (ubuntu-24.04, RelWithDebInfo, aarch64-linux-gnu)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: cross-linux-aarch64
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/ccache
+          key: Linux-RelWithDebInfo-aarch64-linux-gnu-ccache-${{ github.sha }}
+          restore-keys: |
+            Linux-RelWithDebInfo-aarch64-linux-gnu-ccache-
+
+      - name: Zero cache stats
+        run: pixi run -e cross-linux-aarch64 -- ccache --zero-stats || true
+
+      - name: Build
+        run: |
+          pixi run -e cross-linux-aarch64 cmake-config RelWithDebInfo OFF -- \
+            "-DCLICE_TARGET_TRIPLE=aarch64-linux-gnu"
+          pixi run -e cross-linux-aarch64 cmake-build RelWithDebInfo
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-build-aarch64-linux-gnu
+          path: |
+            build/RelWithDebInfo/bin/
+            build/RelWithDebInfo/lib/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Print cache stats
+        if: always()
+        run: pixi run -e cross-linux-aarch64 -- ccache --show-stats
+
+  test-linux-aarch64:
+    name: test (ubuntu-24.04-arm, RelWithDebInfo, aarch64-linux-gnu)
+    needs: build-linux-aarch64
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: test-run
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: cross-build-aarch64-linux-gnu
+          path: build/RelWithDebInfo/
+
+      - name: Make binaries executable
+        run: chmod +x build/RelWithDebInfo/bin/*
+
+      - name: Unit tests
+        timeout-minutes: 5
+        run: pixi run -e test-run unit-test RelWithDebInfo
+
+      - name: Integration tests
+        timeout-minutes: 20
+        run: pixi run -e test-run integration-test RelWithDebInfo
+
+      - name: Smoke tests
+        timeout-minutes: 10
+        run: pixi run -e test-run smoke-test RelWithDebInfo
+
+  # === Windows aarch64 (cross from x86_64) ===
+  build-windows-arm64:
+    name: build (windows-2025, RelWithDebInfo, aarch64-pc-windows-msvc)
+    runs-on: windows-2025
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: cross-windows-arm64
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/sccache
+          key: Windows-RelWithDebInfo-aarch64-pc-windows-msvc-ccache-${{ github.sha }}
+          restore-keys: |
+            Windows-RelWithDebInfo-aarch64-pc-windows-msvc-ccache-
+
+      - name: Zero cache stats
+        run: |
+          pixi run -e cross-windows-arm64 -- sccache --stop-server || true
+          pixi run -e cross-windows-arm64 -- sccache --zero-stats || true
+        shell: bash
+
+      - name: Build
+        shell: bash
+        run: |
+          pixi run -e cross-windows-arm64 cmake-config RelWithDebInfo OFF -- \
+            "-DCLICE_TARGET_TRIPLE=aarch64-pc-windows-msvc"
+          pixi run -e cross-windows-arm64 cmake-build RelWithDebInfo
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-build-aarch64-pc-windows-msvc
+          path: |
+            build/RelWithDebInfo/bin/
+            build/RelWithDebInfo/lib/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Print cache stats and stop server
+        if: always()
+        run: |
+          pixi run -e cross-windows-arm64 -- sccache --show-stats
+          pixi run -e cross-windows-arm64 -- sccache --stop-server || true
+        shell: bash
+
+  test-windows-arm64:
+    name: test (windows-11-arm, RelWithDebInfo, aarch64-pc-windows-msvc)
+    needs: build-windows-arm64
+    runs-on: windows-11-arm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: test-run
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: cross-build-aarch64-pc-windows-msvc
+          path: build/RelWithDebInfo/
+
+      - name: Unit tests
+        timeout-minutes: 5
+        run: pixi run -e test-run unit-test RelWithDebInfo
+
+      - name: Integration tests
+        timeout-minutes: 20
+        run: pixi run -e test-run integration-test RelWithDebInfo
+
+      - name: Smoke tests
+        timeout-minutes: 10
+        run: pixi run -e test-run smoke-test RelWithDebInfo
