@@ -1,0 +1,114 @@
+name: native-test
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+      build_type:
+        required: true
+        type: string
+
+env:
+  CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+  SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  SCCACHE_BASEDIRS: ${{ github.workspace }}
+  CCACHE_COMPILERCHECK: content
+  CCACHE_MAXSIZE: 2G
+  SCCACHE_CACHE_SIZE: 2G
+
+jobs:
+  build:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: default
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
+          key: ${{ runner.os }}-${{ inputs.build_type }}-native-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ inputs.build_type }}-native-ccache-
+
+      - name: Zero cache stats
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -- sccache --stop-server || true
+            pixi run -- sccache --zero-stats || true
+          else
+            pixi run -- ccache --zero-stats || true
+          fi
+        shell: bash
+
+      - name: Build
+        run: pixi run build ${{ inputs.build_type }} ON
+
+      # The .llvm globs cover prebuilt LLVM packages with shared libraries
+      # (e.g. Debug): test binaries reference them via build-tree RPATH, so
+      # they must exist at the same path on the test runner. Static packages
+      # simply match nothing here.
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-build-${{ inputs.os }}-${{ inputs.build_type }}
+          include-hidden-files: true
+          path: |
+            build/${{ inputs.build_type }}/bin/
+            build/${{ inputs.build_type }}/lib/
+            build/${{ inputs.build_type }}/.llvm/lib/*.so*
+            build/${{ inputs.build_type }}/.llvm/lib/*.dylib
+            build/${{ inputs.build_type }}/.llvm/bin/*.dll
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Print cache stats and stop server
+        if: always()
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -- sccache --show-stats
+            pixi run -- sccache --stop-server || true
+          else
+            pixi run -- ccache --show-stats
+          fi
+        shell: bash
+
+  test:
+    needs: build
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: test-run
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: native-build-${{ inputs.os }}-${{ inputs.build_type }}
+          path: build/${{ inputs.build_type }}/
+
+      - name: Make binaries executable
+        if: runner.os != 'Windows'
+        run: chmod +x build/${{ inputs.build_type }}/bin/*
+
+      - name: Unit tests
+        timeout-minutes: 5
+        run: pixi run -e test-run unit-test ${{ inputs.build_type }}
+
+      - name: Integration tests
+        timeout-minutes: 20
+        run: pixi run -e test-run integration-test ${{ inputs.build_type }}
+
+      - name: Smoke tests
+        timeout-minutes: 15
+        run: pixi run -e test-run smoke-test ${{ inputs.build_type }}

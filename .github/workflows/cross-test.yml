@@ -1,0 +1,120 @@
+name: cross-test
+
+on:
+  workflow_call:
+    inputs:
+      build_os:
+        required: true
+        type: string
+      test_os:
+        required: true
+        type: string
+      build_type:
+        required: true
+        type: string
+      target_triple:
+        required: true
+        type: string
+      pixi_env:
+        required: false
+        type: string
+        default: "default"
+
+env:
+  CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+  SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  SCCACHE_BASEDIRS: ${{ github.workspace }}
+  CCACHE_COMPILERCHECK: content
+  CCACHE_MAXSIZE: 2G
+  SCCACHE_CACHE_SIZE: 2G
+
+jobs:
+  build:
+    runs-on: ${{ inputs.build_os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: ${{ inputs.pixi_env }}
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
+          key: ${{ runner.os }}-${{ inputs.build_type }}-${{ inputs.target_triple }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ inputs.build_type }}-${{ inputs.target_triple }}-ccache-
+
+      - name: Zero cache stats
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -e "${{ inputs.pixi_env }}" -- sccache --stop-server || true
+            pixi run -e "${{ inputs.pixi_env }}" -- sccache --zero-stats || true
+          else
+            pixi run -e "${{ inputs.pixi_env }}" -- ccache --zero-stats || true
+          fi
+        shell: bash
+
+      - name: Build
+        shell: bash
+        run: |
+          pixi run -e "${{ inputs.pixi_env }}" cmake-config ${{ inputs.build_type }} OFF -- \
+            "-DCLICE_TARGET_TRIPLE=${{ inputs.target_triple }}"
+          pixi run -e "${{ inputs.pixi_env }}" cmake-build ${{ inputs.build_type }}
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-build-${{ inputs.target_triple }}
+          path: |
+            build/${{ inputs.build_type }}/bin/
+            build/${{ inputs.build_type }}/lib/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Print cache stats and stop server
+        if: always()
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -e "${{ inputs.pixi_env }}" -- sccache --show-stats
+            pixi run -e "${{ inputs.pixi_env }}" -- sccache --stop-server || true
+          else
+            pixi run -e "${{ inputs.pixi_env }}" -- ccache --show-stats
+          fi
+        shell: bash
+
+  test:
+    needs: build
+    runs-on: ${{ inputs.test_os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: test-run
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: cross-build-${{ inputs.target_triple }}
+          path: build/${{ inputs.build_type }}/
+
+      - name: Make binaries executable
+        if: runner.os != 'Windows'
+        run: chmod +x build/${{ inputs.build_type }}/bin/*
+
+      - name: Unit tests
+        timeout-minutes: 5
+        run: pixi run -e test-run unit-test ${{ inputs.build_type }}
+
+      - name: Integration tests
+        timeout-minutes: 20
+        run: pixi run -e test-run integration-test ${{ inputs.build_type }}
+
+      - name: Smoke tests
+        timeout-minutes: 10
+        run: pixi run -e test-run smoke-test ${{ inputs.build_type }}

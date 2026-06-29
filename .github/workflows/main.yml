@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -57,8 +57,8 @@ jobs:
               - 'editors/vscode/**'
               - 'pixi.toml'
               - 'pixi.lock'
-              - '.github/workflows/build.yml'
-              - '.github/workflows/test.yml'
+              - '.github/workflows/native-test.yml'
+              - '.github/workflows/cross-test.yml'
 
   conventional-commit:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -114,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.1
         with:
           workspaces: editors/zed
       - name: Build Zed extension
@@ -122,15 +122,126 @@ jobs:
           rustup target add wasm32-wasip1
           cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1 --release
 
-  build:
+  # Native build + test (per-config, each test only waits for its own build)
+  native-windows-release:
     needs: changes
     if: ${{ needs.changes.outputs.cmake == 'true' }}
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/native-test.yml
+    with:
+      os: windows-2025
+      build_type: RelWithDebInfo
 
-  test:
-    needs: [changes, build]
+  native-ubuntu-debug:
+    needs: changes
     if: ${{ needs.changes.outputs.cmake == 'true' }}
-    uses: ./.github/workflows/test.yml
+    uses: ./.github/workflows/native-test.yml
+    with:
+      os: ubuntu-24.04
+      build_type: Debug
+
+  native-ubuntu-release:
+    needs: changes
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    uses: ./.github/workflows/native-test.yml
+    with:
+      os: ubuntu-24.04
+      build_type: RelWithDebInfo
+
+  native-macos-debug:
+    needs: changes
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    uses: ./.github/workflows/native-test.yml
+    with:
+      os: macos-15
+      build_type: Debug
+
+  native-macos-release:
+    needs: changes
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    uses: ./.github/workflows/native-test.yml
+    with:
+      os: macos-15
+      build_type: RelWithDebInfo
+
+  # Cross build + test (per-config)
+  cross-macos-x64:
+    needs: changes
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    uses: ./.github/workflows/cross-test.yml
+    with:
+      build_os: macos-15
+      test_os: macos-15-intel
+      build_type: RelWithDebInfo
+      target_triple: x86_64-apple-darwin
+
+  cross-linux-aarch64:
+    needs: changes
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    uses: ./.github/workflows/cross-test.yml
+    with:
+      build_os: ubuntu-24.04
+      test_os: ubuntu-24.04-arm
+      build_type: RelWithDebInfo
+      target_triple: aarch64-linux-gnu
+      pixi_env: cross-linux-aarch64
+
+  cross-windows-arm64:
+    needs: changes
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    uses: ./.github/workflows/cross-test.yml
+    with:
+      build_os: windows-2025
+      test_os: windows-11-arm
+      build_type: RelWithDebInfo
+      target_triple: aarch64-pc-windows-msvc
+      pixi_env: cross-windows-arm64
+
+  # Editor E2E tests (only need ubuntu RelWithDebInfo)
+  editor:
+    needs: [changes, native-ubuntu-release]
+    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: editor
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: native-build-ubuntu-24.04-RelWithDebInfo
+          path: build/RelWithDebInfo/
+
+      - name: Make binaries executable
+        run: chmod +x build/RelWithDebInfo/bin/*
+
+      # Always the latest stable release on purpose: this job exists to
+      # catch breakage caused by new editor versions.
+      - name: Install neovim (stable)
+        run: |
+          curl -fsSL -o /tmp/nvim.tar.gz \
+            https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz
+          sudo tar -xzf /tmp/nvim.tar.gz -C /opt
+          echo "/opt/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Restore VSCode download cache
+        uses: actions/cache@v4
+        with:
+          path: editors/vscode/.vscode-test
+          key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package.json') }}
+          restore-keys: |
+            vscode-test-${{ runner.os }}-
+
+      - name: Neovim E2E tests
+        timeout-minutes: 15
+        run: pixi run -e editor nvim-e2e RelWithDebInfo
+
+      - name: VSCode E2E tests
+        timeout-minutes: 20
+        run: xvfb-run -a pixi run -e editor vscode-e2e RelWithDebInfo
 
   release-clice:
     permissions:
@@ -155,13 +266,25 @@ jobs:
       # - clice
       - vscode
       - zed
-      - build
-      - test
+      - native-windows-release
+      - native-ubuntu-debug
+      - native-ubuntu-release
+      - native-macos-debug
+      - native-macos-release
+      - cross-macos-x64
+      - cross-linux-aarch64
+      - cross-windows-arm64
+      - editor
 
     runs-on: ubuntu-latest
     steps:
       - name: Check results
-        uses: re-actors/alls-green@release/v1
+        uses: re-actors/alls-green@v1.2.2
         with:
-          allowed-skips: conventional-commit,format,deploy,clice,vscode,zed,build,test
+          allowed-skips: >-
+            conventional-commit,format,deploy,clice,vscode,zed,
+            native-windows-release,native-ubuntu-debug,native-ubuntu-release,
+            native-macos-debug,native-macos-release,
+            cross-macos-x64,cross-linux-aarch64,cross-windows-arm64,
+            editor
           jobs: ${{ toJSON(needs) }}
