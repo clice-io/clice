@@ -3,9 +3,13 @@ description: "setup pixi"
 
 inputs:
   environments:
-    description: "The pixi environments to install (e.g. default, docs, test)"
+    description: "The pixi environments to install (space-separated, e.g. 'default test-run')"
     required: false
     default: "default"
+  activate-environment:
+    description: "Which environment to activate (set to env name, or 'true' for single-env installs)"
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -15,6 +19,6 @@ runs:
       with:
         pixi-version: v0.71.1
         environments: ${{ inputs.environments }}
-        activate-environment: true
+        activate-environment: ${{ inputs.activate-environment }}
         cache: true
         locked: true
