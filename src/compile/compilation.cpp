@@ -254,6 +254,8 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
                                                                instance.getDiagnostics(),
                                                                params.vfs)) {
         instance.setVirtualFileSystem(std::move(remapping));
+    } else {
+        instance.setVirtualFileSystem(params.vfs);
     }
     instance.createFileManager();
 
