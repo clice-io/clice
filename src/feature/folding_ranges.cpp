@@ -357,12 +357,14 @@ auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
     for(const auto& item: collected) {
         auto start = to_position(map, item.range.begin);
         auto end = to_position(map, item.range.end);
+        if(!start || !end)
+            continue;
 
         protocol::FoldingRange range{
-            .start_line = start.line,
-            .start_character = start.character,
-            .end_line = end.line,
-            .end_character = end.character,
+            .start_line = start->line,
+            .start_character = start->character,
+            .end_line = end->line,
+            .end_character = end->character,
         };
 
         if(item.kind.has_value()) {

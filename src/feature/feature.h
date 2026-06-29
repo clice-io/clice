@@ -22,19 +22,21 @@ namespace protocol = kota::ipc::protocol;
 using kota::ipc::lsp::LineMap;
 using kota::ipc::lsp::PositionEncoding;
 
-inline auto to_position(const LineMap& map, std::uint32_t offset) -> protocol::Position {
+inline auto to_position(const LineMap& map, std::uint32_t offset)
+    -> std::optional<protocol::Position> {
     if(auto position = map.to_position(offset)) {
         return *position;
     }
     LOG_ANOMALY(PositionMapFail, "offset {} cannot be mapped to a position", offset);
-    return protocol::Position{.line = 0, .character = 0};
+    return std::nullopt;
 }
 
-inline auto to_range(const LineMap& map, LocalSourceRange range) -> protocol::Range {
-    return protocol::Range{
-        .start = to_position(map, range.begin),
-        .end = to_position(map, range.end),
-    };
+inline auto to_range(const LineMap& map, LocalSourceRange range) -> std::optional<protocol::Range> {
+    auto start = to_position(map, range.begin);
+    auto end = to_position(map, range.end);
+    if(!start || !end)
+        return std::nullopt;
+    return protocol::Range{.start = *start, .end = *end};
 }
 
 struct CodeCompletionOptions {
