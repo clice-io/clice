@@ -160,27 +160,6 @@ async def agentic(
     check_no_anomaly(request, c)
 
 
-def generate_cdb(workspace: Path) -> None:
-    """Generate compile_commands.json using CMake with Ninja backend."""
-    cmake = shutil.which("cmake")
-    if cmake is None:
-        raise RuntimeError("cmake executable not found in PATH")
-    toolchain = Path(__file__).resolve().parent.parent / "cmake" / "toolchain.cmake"
-    cmd = [
-        cmake,
-        "-G",
-        "Ninja",
-        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-        f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
-        "-S",
-        str(workspace),
-        "-B",
-        str(workspace / "build"),
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    if result.returncode != 0:
-        raise RuntimeError(f"cmake failed:\n{result.stderr}")
-
 
 async def make_client(executable: Path, workspace: Path) -> CliceClient:
     """Spawn a fresh clice server and initialize it. For multi-session tests."""

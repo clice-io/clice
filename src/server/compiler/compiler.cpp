@@ -706,6 +706,14 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return false;
     }
 
+    // Commit on the thread pool: it fsyncs the freshly written PCH.
+    auto committed =
+        co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
+    if(!committed.has_value() || !committed.value().has_value()) {
+        LOG_WARN("Failed to commit PCH for {}", path);
+        co_return false;
+    }
+
     auto& st = workspace.pch_cache[path_id];
     st.path = committed.value().value();
     st.bound = bound;
@@ -878,10 +886,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
     params.path = file_path;
     params.version = session->version;
     params.text = session->text;
-    if(!fill_compile_args(file_path, params.directory, params.arguments, session.get())) {
-        finish_compile();
-        co_return;
-    }
+    auto source = fill_compile_args(file_path, params.directory, params.arguments, session.get());
 
     bool deps_ok = co_await ensure_deps(*session,
                                         params.directory,
@@ -1098,9 +1103,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     wp.file = path;
     wp.version = session->version;
     wp.text = session->text;
-    if(!fill_compile_args(path, wp.directory, wp.arguments, session.get())) {
-        co_return kota::outcome_error(kota::ipc::Error{"Failed to fill compile arguments"});
-    }
+    fill_compile_args(path, wp.directory, wp.arguments, session.get());
 
     if(!co_await ensure_deps(*session, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
         LOG_WARN("forward_build: dependency preparation failed for {}", path);

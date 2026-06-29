@@ -98,9 +98,10 @@ struct Tester {
     /// interested file. Shared by feature tests that compare protocol results
     /// against annotation ranges.
     LocalSourceRange to_local_range(const kota::ipc::protocol::Range& range) {
-        feature::PositionMapper converter(unit->interested_content(),
-                                          feature::PositionEncoding::UTF8);
-        return LocalSourceRange(*converter.to_offset(range.start), *converter.to_offset(range.end));
+        feature::LineMap map(unit->interested_content(),
+                             unit->line_starts(),
+                             feature::PositionEncoding::UTF8);
+        return LocalSourceRange(*map.to_offset(range.start), *map.to_offset(range.end));
     }
 
     void clear();
