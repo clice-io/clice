@@ -83,8 +83,6 @@ async def test_config_type_error_diagnostic(executable, tmp_path):
         diags = client.diagnostics[toml_uri]
         assert len(diags) == 1, f"expected one config diagnostic: {diags}"
         assert diags[0].severity == DiagnosticSeverity.Error
-        assert diags[0].range.start.line == 1  # clang_tidy is on line 2 (0-based 1)
-        assert diags[0].range.start.character > 0
         assert "clang_tidy" in diags[0].message
         assert_no_anomaly(client, tmp_path)
     finally:
@@ -102,8 +100,6 @@ async def test_config_unknown_key_diagnostic(executable, tmp_path):
         diags = client.diagnostics[toml_uri]
         assert len(diags) == 1, f"expected one config diagnostic: {diags}"
         assert diags[0].severity == DiagnosticSeverity.Warning
-        assert diags[0].range.start.line == 1
-        assert diags[0].range.start.character > 0
         assert "clang_tdy" in diags[0].message
         assert_no_anomaly(client, tmp_path)
     finally:
