@@ -34,7 +34,7 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 | **VS Code** | Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode) from the Marketplace |
 | **Neovim**  | Add `editors/nvim` to your runtime path: `vim.opt.rtp:append("/path/to/clice/editors/nvim")`                               |
 | **Zed**     | Load `editors/zed` as a local extension                                                                                    |
-| **Other**   | Any LSP client works — point it at `clice server`                                                                          |
+| **Other**   | Any LSP client works — point it at `clice serve`                                                                           |
 
 ### Project Setup
 
