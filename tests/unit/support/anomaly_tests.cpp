@@ -11,7 +11,7 @@ namespace {
 using logging::AnomalyId;
 using logging::NotifyLevel;
 
-/// RAII fixture: capture the notify hook and trap, restore globals afterwards.
+/// RAII fixture: install test hooks and clear them on destruction.
 struct AnomalyCapture {
     std::vector<std::pair<NotifyLevel, std::string>> notified;
     std::vector<AnomalyId> trapped;
