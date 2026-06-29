@@ -59,6 +59,7 @@ jobs:
               - 'pixi.lock'
               - '.github/workflows/native-test.yml'
               - '.github/workflows/cross-test.yml'
+              - '.github/workflows/cross-pair.yml'
               - '.github/workflows/editor-test.yml'
 
   conventional-commit:

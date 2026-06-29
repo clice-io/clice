@@ -58,7 +58,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          pixi run -e "${{ inputs.pixi_env }}" cmake-config RelWithDebInfo OFF -- \
+          pixi run -e "${{ inputs.pixi_env }}" cmake-config RelWithDebInfo ON -- \
             "-DCLICE_TARGET_TRIPLE=${{ inputs.target_triple }}"
           pixi run -e "${{ inputs.pixi_env }}" cmake-build RelWithDebInfo
 
