@@ -26,7 +26,7 @@ jobs:
       cmake: ${{ steps.filter.outputs.cmake }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -114,7 +114,7 @@ jobs:
     if: ${{ needs.changes.outputs.zed == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2.9.1
         with:
           workspaces: editors/zed

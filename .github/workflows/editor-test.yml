@@ -13,14 +13,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-pixi
         with:
           environments: editor
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: native-build-ubuntu-24.04-RelWithDebInfo
           path: build/RelWithDebInfo/
@@ -38,7 +38,7 @@ jobs:
           echo "/opt/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
 
       - name: Restore VSCode download cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: editors/vscode/.vscode-test
           key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package.json') }}

@@ -31,7 +31,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-pixi
         with:
@@ -39,7 +39,7 @@ jobs:
           activate-environment: default
 
       - name: Restore compiler cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
           key: ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
@@ -62,7 +62,7 @@ jobs:
       # Upload artifacts for editor tests (only ubuntu RelWithDebInfo is needed,
       # but uploading all keeps the option open for other downstream consumers).
       - name: Upload binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-build-${{ matrix.os }}-${{ matrix.build_type }}
           include-hidden-files: true

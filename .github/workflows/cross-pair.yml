@@ -31,14 +31,14 @@ jobs:
     runs-on: ${{ inputs.build_os }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-pixi
         with:
           environments: ${{ inputs.pixi_env }}
 
       - name: Restore compiler cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
           key: ${{ runner.os }}-RelWithDebInfo-${{ inputs.target_triple }}-ccache-${{ github.sha }}
@@ -63,7 +63,7 @@ jobs:
           pixi run -e "${{ inputs.pixi_env }}" cmake-build RelWithDebInfo
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cross-build-${{ inputs.target_triple }}
           path: |
@@ -88,14 +88,14 @@ jobs:
     runs-on: ${{ inputs.test_os }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-pixi
         with:
           environments: test-run
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cross-build-${{ inputs.target_triple }}
           path: build/RelWithDebInfo/
