@@ -206,6 +206,9 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
                                    std::vector<ConfigIssue>* issues,
                                    std::string* loaded_path,
                                    bool with_defaults) {
+    if(loaded_path)
+        loaded_path->clear();
+
     if(!workspace_root.empty()) {
         for(auto* name: {"clice.toml", ".clice/config.toml"}) {
             auto config_path = path::join(workspace_root, name);
