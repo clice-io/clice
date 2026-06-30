@@ -4,7 +4,6 @@ import subprocess
 import shutil
 import argparse
 import os
-import json
 from pathlib import Path
 
 
@@ -157,9 +156,16 @@ def main():
     print(f"Toolchain:      {toolchain_file}")
     print("---------------------")
 
-    components_path = Path(__file__).resolve().parent / "llvm-components.json"
-    with components_path.open() as f:
-        llvm_distribution_components = json.load(f)["components"]
+    llvm_distribution_components = [
+        "llvm-libraries",
+        "clang-libraries",
+        "llvm-headers",
+        "clang-headers",
+        "clang-tidy-headers",
+        "clang-resource-headers",
+        "cmake-exports",
+        "clang-cmake-exports",
+    ]
 
     components_joined = ";".join(llvm_distribution_components)
     cmake_args = [
