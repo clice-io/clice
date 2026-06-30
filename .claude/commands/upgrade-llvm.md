@@ -11,7 +11,6 @@ gh workflow run build-llvm.yml \
   --field llvm_version="<VERSION>"
 ```
 
-- `build-llvm.yml` only builds LLVM (does not compile clice), so no skip flags needed
 - Poll until all 14 matrix builds complete (~2-3 hours), note the workflow run ID
 
 ## Step 2: Download Local Platform Artifact
