@@ -106,13 +106,11 @@ jobs:
         run: |
           TAG="${{ env.LLVM_VERSION }}"
           REPO="clice-io/clice-llvm"
+          NOTES="LLVM ${TAG} — build run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if gh release view "$TAG" --repo "$REPO" &>/dev/null; then
-            echo "Release $TAG already exists, will overwrite assets"
+            gh release edit "$TAG" --repo "$REPO" --notes "$NOTES"
           else
-            gh release create "$TAG" \
-              --repo "$REPO" \
-              --title "$TAG" \
-              --notes "LLVM ${TAG} — build run https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "$NOTES"
           fi
 
   repackage:
