@@ -118,6 +118,17 @@ If the LLVM source is not available locally, look up changes on GitHub by search
 
 Group changes by category (Type System, NNS, Driver/Frontend, Other) with a table per category. See the existing `LLVM 21 → 22` section as a template.
 
+## Step 8: Report to User
+
+Present a summary to the user and **wait for confirmation** before considering the upgrade complete. The summary should include:
+
+- All API changes that were adapted and how they were resolved
+- All test expectation changes (snapshot updates, assertion value changes) and why
+- Any unavoidable behavior changes from upstream LLVM (e.g., TypePrinter output differences, type sugar changes) that affect user-visible features like hover
+- The LLVM changelog that was written
+
+The user decides whether all changes are acceptable or if adjustments are needed. Do NOT push final changes or mark the work as done until the user confirms.
+
 ## Notes
 
 - **Artifact size limit**: GitHub Release max 2GB per file. macOS LTO artifacts are largest, currently ~1.7GB with xz -9e.
