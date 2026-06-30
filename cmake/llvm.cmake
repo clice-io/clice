@@ -174,15 +174,15 @@ function(setup_llvm LLVM_VERSION)
         support frontendopenmp option targetparser)
 
     add_library(llvm-libs INTERFACE IMPORTED)
-    target_link_libraries(llvm-libs INTERFACE
-        ${LLVM_RESOLVED}
-        clangAST clangASTMatchers clangBasic clangDriver clangOptions
+
+    set(_CLANG_LIBS
+        clangAST clangASTMatchers clangBasic clangDriver
         clangFormat clangFrontend clangLex clangSema clangSerialization
         clangTidy clangTidyUtils
         clangTidyAbseilModule clangTidyAlteraModule clangTidyAndroidModule
         clangTidyBoostModule clangTidyBugproneModule clangTidyCERTModule
         clangTidyConcurrencyModule clangTidyCppCoreGuidelinesModule
-        clangTidyCustomModule clangTidyDarwinModule clangTidyFuchsiaModule
+        clangTidyDarwinModule clangTidyFuchsiaModule
         clangTidyGoogleModule clangTidyHICPPModule clangTidyLinuxKernelModule
         clangTidyLLVMModule clangTidyLLVMLibcModule clangTidyMiscModule
         clangTidyModernizeModule clangTidyMPIModule clangTidyObjCModule
@@ -192,6 +192,15 @@ function(setup_llvm LLVM_VERSION)
         clangTooling clangToolingCore
         clangToolingInclusions clangToolingInclusionsStdlib clangToolingSyntax
     )
+
+    # Libraries added in newer LLVM versions — link if available.
+    foreach(_OPT_LIB clangOptions clangTidyCustomModule)
+        if(TARGET ${_OPT_LIB})
+            list(APPEND _CLANG_LIBS ${_OPT_LIB})
+        endif()
+    endforeach()
+
+    target_link_libraries(llvm-libs INTERFACE ${LLVM_RESOLVED} ${_CLANG_LIBS})
 
     target_include_directories(llvm-libs INTERFACE
         ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
