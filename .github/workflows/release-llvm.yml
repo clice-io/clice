@@ -30,7 +30,7 @@ jobs:
             artifact: x64-windows-msvc-releasedbg.tar.xz
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-pixi
         with:
@@ -91,7 +91,7 @@ jobs:
           "
 
       - name: Upload manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: prune-manifest-${{ matrix.os }}
           path: pruned-libs.json
@@ -140,7 +140,7 @@ jobs:
           - x64-windows-msvc-releasedbg-lto.tar.xz
           - x64-windows-msvc-releasedbg.tar.xz
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Free disk space
         run: |
@@ -148,7 +148,7 @@ jobs:
             /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup
 
       - name: Download prune manifests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: prune-manifest-*
           path: manifests
@@ -175,7 +175,7 @@ jobs:
             --clobber
 
       - name: Upload metadata
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: metadata-${{ matrix.artifact }}
           path: artifacts/${{ matrix.artifact }}.meta.json
@@ -187,7 +187,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download all metadata
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: metadata-*
           path: metadata
@@ -219,7 +219,7 @@ jobs:
             --clobber
 
       - name: Save manifest artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llvm-manifest-final
           path: llvm-manifest.json

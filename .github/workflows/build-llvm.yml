@@ -78,7 +78,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -196,7 +196,7 @@ jobs:
           echo "LLVM_INSTALL_ARCHIVE=${ARCHIVE}" >> "${GITHUB_ENV}"
 
       - name: Upload LLVM install artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.LLVM_INSTALL_ARCHIVE }}
           path: ${{ env.LLVM_INSTALL_ARCHIVE }}
