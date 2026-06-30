@@ -247,15 +247,6 @@ depends-on = [
 [tasks.build-llvm]
 cmd = ["python3", "scripts/build-llvm.py"]
 
-[tasks.upload-llvm]
-args = ["workflow_id", "llvm_version", { "arg" = "branch", default = "main" }]
-cmd = """
-gh workflow run upload-llvm.yml \
-    --ref {{ branch }} \
-    --field workflow_id={{workflow_id}} \
-    --field version={{llvm_version}}
-"""
-
 [tasks.delete-artifacts]
 args = ["file_name"]
 cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]

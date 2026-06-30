@@ -241,7 +241,7 @@ def build_metadata_entry(path: Path, version: str) -> dict:
     elif "linux" in name:
         platform = "linux"
     elif "macos" in name:
-        platform = "macosx"
+        platform = "macos"
     else:
         platform = "unknown"
 

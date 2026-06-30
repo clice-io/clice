@@ -8,11 +8,10 @@ Trigger the `build-llvm` workflow on GitHub Actions:
 
 ```bash
 gh workflow run build-llvm.yml \
-  --field llvm_version="<VERSION>" \
-  --field skip_clice_build=true
+  --field llvm_version="<VERSION>"
 ```
 
-- `skip_clice_build=true`: new LLVM APIs likely have breaking changes, skip clice compilation
+- `build-llvm.yml` only builds LLVM (does not compile clice), so no skip flags needed
 - Poll until all 14 matrix builds complete (~2-3 hours), note the workflow run ID
 
 ## Step 2: Download Local Platform Artifact
@@ -99,7 +98,7 @@ Poll CI until all platforms pass.
 
 **Every LLVM upgrade MUST append to `docs/en/changelog/llvm-changelog.md`.**
 
-Add a new H1 section (e.g., `# LLVM 22 → 23`) documenting all breaking changes encountered. For each API change, record:
+Add a new H2 section (e.g., `## LLVM 22 → 23`) documenting all breaking changes encountered. For each API change, record:
 
 - Change description
 - Upstream commit hash

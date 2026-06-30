@@ -37,7 +37,7 @@
       "sha256": "2fe6675cf9fb6fa15e5b59dbc8debafed5f09a104a7c5a5932a8651a4da85442",
       "lto": false,
       "asan": true,
-      "platform": "macosx",
+      "platform": "macos",
       "arch": "arm64",
       "build_type": "Debug"
     },
@@ -45,7 +45,7 @@
       "sha256": "ad793e1380c14d8d93cbe62bb167a3d7566f9468f67a63a13fec669afd497555",
       "lto": true,
       "asan": false,
-      "platform": "macosx",
+      "platform": "macos",
       "arch": "arm64",
       "build_type": "RelWithDebInfo"
     },
@@ -53,7 +53,7 @@
       "sha256": "6051d80dcb64c6ec0299f4064d43f8ea27afbc0f5e0cb6b40d438997e7c31aca",
       "lto": false,
       "asan": false,
-      "platform": "macosx",
+      "platform": "macos",
       "arch": "arm64",
       "build_type": "RelWithDebInfo"
     },
@@ -85,7 +85,7 @@
       "sha256": "e429544401e034f11ff3ef4b5fc7fda726d2c9216b88d45dcc6ea4e6ef19ebbc",
       "lto": true,
       "asan": false,
-      "platform": "macosx",
+      "platform": "macos",
       "arch": "x64",
       "build_type": "RelWithDebInfo"
     },
@@ -93,7 +93,7 @@
       "sha256": "6e0da9f68ac51b8760aefd06b999304da71e251d0c47e00d21d30424010cc292",
       "lto": false,
       "asan": false,
-      "platform": "macosx",
+      "platform": "macos",
       "arch": "x64",
       "build_type": "RelWithDebInfo"
     },

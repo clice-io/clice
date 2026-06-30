@@ -114,7 +114,8 @@ function(_download_llvm LLVM_VERSION)
         message(FATAL_ERROR "No matching LLVM artifact in manifest for: ${_FILENAME}")
     endif()
 
-    set(_BASE_URL "https://github.com/clice-io/clice-llvm/releases/download/${LLVM_VERSION}")
+    string(REPLACE "+" "%2B" _URL_VERSION "${LLVM_VERSION}")
+    set(_BASE_URL "https://github.com/clice-io/clice-llvm/releases/download/${_URL_VERSION}")
     set(_INSTALL_ROOT "${CMAKE_CURRENT_BINARY_DIR}/.llvm")
     set(_VERSION_STAMP "${_INSTALL_ROOT}/.llvm-version")
 
