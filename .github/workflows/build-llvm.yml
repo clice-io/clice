@@ -7,11 +7,6 @@ on:
         description: "LLVM version to build (e.g., 21.1.8)"
         required: true
         type: string
-  push:
-    branches: [build/modernize-llvm-workflow]
-    paths:
-      - .github/workflows/build-llvm.yml
-      - scripts/build-llvm.py
 
 jobs:
   build:
