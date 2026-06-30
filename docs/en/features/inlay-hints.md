@@ -56,7 +56,7 @@
 - [x] Structured binding type hints
 - [x] Lambda return type hints
 - [x] Range-based for loop variable type hints
-- [ ] Lambda init-capture type hints ([clangd#1163](https://github.com/clangd/clangd/issues/1163))
+- [x] Lambda init-capture type hints ([clangd#1163](https://github.com/clangd/clangd/issues/1163))
 
   ```cpp
   auto f = [val = compute()] {};
@@ -67,7 +67,7 @@
 
 - [x] Don't show type hint when deduction fails ([clangd#1475](https://github.com/clangd/clangd/issues/1475))
 
-- [ ] Don't show type hint when the type is explicitly specified ([clangd#1749](https://github.com/clangd/clangd/issues/1749))
+- [x] Don't show type hint when the type is explicitly specified ([clangd#1749](https://github.com/clangd/clangd/issues/1749))
 
   ```cpp
   auto x = static_cast<int>(val);  // no type hint — already explicit

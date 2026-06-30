@@ -56,7 +56,7 @@
 - [x] Structured binding 类型提示
 - [x] Lambda 返回类型提示
 - [x] Range-based for 循环变量类型提示
-- [ ] Lambda init-capture 类型提示（[clangd#1163](https://github.com/clangd/clangd/issues/1163)）
+- [x] Lambda init-capture 类型提示（[clangd#1163](https://github.com/clangd/clangd/issues/1163)）
 
   ```cpp
   auto f = [val = compute()] {};
@@ -67,7 +67,7 @@
 
 - [x] 推导失败时不显示类型提示（[clangd#1475](https://github.com/clangd/clangd/issues/1475)）
 
-- [ ] 类型已显式指定时不显示类型提示（[clangd#1749](https://github.com/clangd/clangd/issues/1749)）
+- [x] 类型已显式指定时不显示类型提示（[clangd#1749](https://github.com/clangd/clangd/issues/1749)）
 
   ```cpp
   auto x = static_cast<int>(val);  // 无需类型提示 — 已是显式的

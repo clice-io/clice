@@ -1,0 +1,19 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-06-18
+input_file: expressions/auto/explicit_type.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "auto_explicit_type", relations: [Definition] }
+- { loc: "3:7", kind: Struct, text: "Box", relations: [Definition] }
+- { loc: "4:13", kind: Method, text: "Box", relations: [Declaration] }
+- { loc: "4:20", kind: Parameter, text: ")", relations: [Definition] }
+- { loc: "7:5", kind: Function, text: "test", relations: [Definition] }
+- { loc: "7:14", kind: Parameter, text: "val", relations: [Definition] }
+- { loc: "8:9", kind: Variable, text: "x", relations: [Definition] }
+- { loc: "8:30", kind: Parameter, text: "val", relations: [Reference] }
+- { loc: "9:9", kind: Variable, text: "y", relations: [Definition] }
+- { loc: "10:9", kind: Variable, text: "object", relations: [Definition] }
+- { loc: "10:18", kind: Struct, text: "Box", relations: [Reference] }
+- { loc: "11:9", kind: Variable, text: "z", relations: [Definition] }
+- { loc: "11:13", kind: Parameter, text: "val", relations: [Reference] }
+

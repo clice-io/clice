@@ -1,0 +1,11 @@
+---
+source: folding_range_tests.cpp
+created_at: 2026-06-18
+input_file: expressions/lambda/init_capture.cpp
+---
+- { range: "1:30-20:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "8:21-12:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "9:31-10:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "14:17-18:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "15:83-17:5", kind: compoundStmt, collapsed_text: "{...}" }
+

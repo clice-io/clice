@@ -1,0 +1,32 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-06-18
+input_file: expressions/lambda/init_capture.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "lambda_init_capture", relations: [Definition] }
+- { loc: "3:7", kind: Struct, text: "InterestingType", relations: [Definition] }
+- { loc: "5:0", kind: Struct, text: "InterestingType", relations: [Reference] }
+- { loc: "5:16", kind: Function, text: "foo", relations: [Declaration] }
+- { loc: "5:23", kind: Parameter, text: ")", relations: [Definition] }
+- { loc: "6:4", kind: Function, text: "compute", relations: [Declaration] }
+- { loc: "8:5", kind: Function, text: "issue_example", relations: [Definition] }
+- { loc: "9:9", kind: Variable, text: "f", relations: [Definition] }
+- { loc: "9:14", kind: Variable, text: "val", relations: [Definition] }
+- { loc: "9:20", kind: Function, text: "compute", relations: [Reference] }
+- { loc: "11:10", kind: Variable, text: "f", relations: [Reference] }
+- { loc: "14:5", kind: Function, text: "test", relations: [Definition] }
+- { loc: "14:14", kind: Parameter, text: "x", relations: [Definition] }
+- { loc: "15:9", kind: Variable, text: "lambda", relations: [Definition] }
+- { loc: "15:19", kind: Variable, text: "interesting", relations: [Definition] }
+- { loc: "15:33", kind: Function, text: "foo", relations: [Reference] }
+- { loc: "15:37", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "15:41", kind: Variable, text: "braced", relations: [Definition] }
+- { loc: "15:48", kind: Function, text: "foo", relations: [Reference] }
+- { loc: "15:52", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "15:58", kind: Variable, text: "ref", relations: [Definition] }
+- { loc: "15:64", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "15:67", kind: Variable, text: "pointer", relations: [Definition] }
+- { loc: "15:78", kind: Parameter, text: "x", relations: [Reference] }
+- { loc: "16:15", kind: Variable, text: "pointer", relations: [Reference] }
+- { loc: "16:25", kind: Variable, text: "ref", relations: [Reference] }
+

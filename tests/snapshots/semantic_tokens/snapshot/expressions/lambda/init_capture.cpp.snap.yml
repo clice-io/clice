@@ -1,0 +1,45 @@
+---
+source: semantic_tokens_tests.cpp
+created_at: 2026-06-18
+input_file: expressions/lambda/init_capture.cpp
+---
+- { loc: "0:0", text: "// lambda init-captures", kind: Comment }
+- { loc: "1:0", text: "namespace", kind: Keyword }
+- { loc: "1:10", text: "lambda_init_capture", kind: Namespace, modifiers: [Definition] }
+- { loc: "3:0", text: "struct", kind: Keyword }
+- { loc: "3:7", text: "InterestingType", kind: Struct, modifiers: [Definition] }
+- { loc: "5:0", text: "InterestingType", kind: Struct }
+- { loc: "5:16", text: "foo", kind: Function, modifiers: [Declaration] }
+- { loc: "5:20", text: "int", kind: Keyword }
+- { loc: "5:23", text: ")", kind: Parameter, modifiers: [Definition] }
+- { loc: "6:0", text: "int", kind: Keyword }
+- { loc: "6:4", text: "compute", kind: Function, modifiers: [Declaration] }
+- { loc: "8:0", text: "void", kind: Keyword }
+- { loc: "8:5", text: "issue_example", kind: Function, modifiers: [Definition] }
+- { loc: "9:4", text: "auto", kind: Keyword }
+- { loc: "9:9", text: "f", kind: Variable, modifiers: [Definition] }
+- { loc: "9:14", text: "val", kind: Variable, modifiers: [Definition] }
+- { loc: "9:20", text: "compute", kind: Function }
+- { loc: "11:5", text: "void", kind: Keyword }
+- { loc: "11:10", text: "f", kind: Variable }
+- { loc: "14:0", text: "void", kind: Keyword }
+- { loc: "14:5", text: "test", kind: Function, modifiers: [Definition] }
+- { loc: "14:10", text: "int", kind: Keyword }
+- { loc: "14:14", text: "x", kind: Parameter, modifiers: [Definition] }
+- { loc: "15:4", text: "auto", kind: Keyword }
+- { loc: "15:9", text: "lambda", kind: Variable, modifiers: [Definition] }
+- { loc: "15:19", text: "interesting", kind: Variable, modifiers: [Definition] }
+- { loc: "15:33", text: "foo", kind: Function }
+- { loc: "15:37", text: "x", kind: Parameter }
+- { loc: "15:41", text: "braced", kind: Variable, modifiers: [Definition] }
+- { loc: "15:48", text: "foo", kind: Function }
+- { loc: "15:52", text: "x", kind: Parameter }
+- { loc: "15:58", text: "ref", kind: Variable, modifiers: [Definition] }
+- { loc: "15:64", text: "x", kind: Parameter }
+- { loc: "15:67", text: "pointer", kind: Variable, modifiers: [Definition] }
+- { loc: "15:78", text: "x", kind: Parameter }
+- { loc: "16:8", text: "return", kind: Keyword }
+- { loc: "16:15", text: "pointer", kind: Variable }
+- { loc: "16:25", text: "ref", kind: Variable }
+- { loc: "20:3", text: "// namespace lambda_init_capture", kind: Comment }
+
