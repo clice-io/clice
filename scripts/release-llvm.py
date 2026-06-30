@@ -24,59 +24,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional
 
-PLATFORM_INFO = {
-    "linux": {"toolchain": "gnu", "arm_arch": "aarch64"},
-    "macos": {"toolchain": "clang", "arm_arch": "arm64"},
-    "windows": {"toolchain": "msvc", "arm_arch": "aarch64"},
-}
-
-
-def build_artifact_name(
-    platform: str,
-    arch: str,
-    mode: str,
-    *,
-    lto: bool = False,
-    asan: bool = False,
-) -> str:
-    info = PLATFORM_INFO.get(platform)
-    if not info:
-        raise ValueError(f"Unknown platform: {platform}")
-    toolchain = info["toolchain"]
-    mode_tag = "debug" if mode == "Debug" else "releasedbg"
-    suffix = ""
-    if lto:
-        suffix += "-lto"
-    if asan:
-        suffix += "-asan"
-    return f"{arch}-{platform}-{toolchain}-{mode_tag}{suffix}.tar.xz"
-
-
 ARTIFACTS = [
-    build_artifact_name(p, a, m, lto=l, asan=s)
-    for p, a, m, l, s in [
-        ("linux", "aarch64", "RelWithDebInfo", True, False),
-        ("linux", "aarch64", "RelWithDebInfo", False, False),
-        ("windows", "aarch64", "RelWithDebInfo", True, False),
-        ("windows", "aarch64", "RelWithDebInfo", False, False),
-        ("macos", "arm64", "Debug", False, True),
-        ("macos", "arm64", "RelWithDebInfo", True, False),
-        ("macos", "arm64", "RelWithDebInfo", False, False),
-        ("linux", "x64", "Debug", False, True),
-        ("linux", "x64", "RelWithDebInfo", True, False),
-        ("linux", "x64", "RelWithDebInfo", False, False),
-        ("macos", "x64", "RelWithDebInfo", True, False),
-        ("macos", "x64", "RelWithDebInfo", False, False),
-        ("windows", "x64", "RelWithDebInfo", True, False),
-        ("windows", "x64", "RelWithDebInfo", False, False),
-    ]
+    "aarch64-linux-gnu-releasedbg-lto.tar.xz",
+    "aarch64-linux-gnu-releasedbg.tar.xz",
+    "aarch64-windows-msvc-releasedbg-lto.tar.xz",
+    "aarch64-windows-msvc-releasedbg.tar.xz",
+    "arm64-macos-clang-debug-asan.tar.xz",
+    "arm64-macos-clang-releasedbg-lto.tar.xz",
+    "arm64-macos-clang-releasedbg.tar.xz",
+    "x64-linux-gnu-debug-asan.tar.xz",
+    "x64-linux-gnu-releasedbg-lto.tar.xz",
+    "x64-linux-gnu-releasedbg.tar.xz",
+    "x64-macos-clang-releasedbg-lto.tar.xz",
+    "x64-macos-clang-releasedbg.tar.xz",
+    "x64-windows-msvc-releasedbg-lto.tar.xz",
+    "x64-windows-msvc-releasedbg.tar.xz",
 ]
-
-MANIFEST_DIRS = {
-    "linux": "prune-manifest-ubuntu-24.04",
-    "macos": "prune-manifest-macos-15",
-    "windows": "prune-manifest-windows-2025",
-}
 
 ARCHIVE_MAGIC = b"!<arch>\n"
 
@@ -120,13 +83,15 @@ def _run_build(build_dir: Path) -> bool:
 
 
 def _manifest_for(artifact: str, manifests_dir: Path) -> Optional[Path]:
-    for platform, dirname in MANIFEST_DIRS.items():
+    manifest_dirs = {
+        "linux": "prune-manifest-ubuntu-24.04",
+        "macos": "prune-manifest-macos-15",
+        "windows": "prune-manifest-windows-2025",
+    }
+    for platform, dirname in manifest_dirs.items():
         if platform in artifact:
             return manifests_dir / dirname / "pruned-libs.json"
     return None
-
-
-# ── discover ─────────────────────────────────────────────────────────
 
 
 def _candidate_files(
@@ -188,25 +153,6 @@ def discover(
     return nullified + deletable
 
 
-def _write_manifest(
-    manifest: Path, removed: List[dict], install_dir: Path, build_dir: Path
-) -> None:
-    total_size = sum(e["size"] for e in removed)
-    data = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "install_dir": str(install_dir),
-        "build_dir": str(build_dir),
-        "total_saved_bytes": total_size,
-        "removed": removed,
-    }
-    manifest.write_text(json.dumps(data, indent=2))
-    print(f"Wrote manifest with {len(removed)} entries to {manifest}")
-    print(f"Total space saved: {total_size / 1048576:.1f} MB")
-
-
-# ── apply ────────────────────────────────────────────────────────────
-
-
 def apply_manifest(manifest: Path, install_dir: Path) -> None:
     if not manifest.is_file():
         raise FileNotFoundError(f"Manifest not found: {manifest}")
@@ -223,18 +169,7 @@ def apply_manifest(manifest: Path, install_dir: Path) -> None:
             print(f"Already absent: {target}")
 
 
-# ── metadata ─────────────────────────────────────────────────────────
-
-
-def sha256sum(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def build_metadata_entry(path: Path, version: str) -> dict:
+def build_metadata_entry(path: Path) -> dict:
     name = path.name.lower()
     if "windows" in name:
         platform = "windows"
@@ -252,19 +187,20 @@ def build_metadata_entry(path: Path, version: str) -> dict:
     else:
         arch = "unknown"
 
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+
     return {
-        "version": version,
         "filename": path.name,
-        "sha256": sha256sum(path),
+        "sha256": digest.hexdigest(),
         "lto": "-lto" in name,
         "asan": "-asan" in name,
         "platform": platform,
         "arch": arch,
         "build_type": "Debug" if "debug" in name else "RelWithDebInfo",
     }
-
-
-# ── repackage ────────────────────────────────────────────────────────
 
 
 def _compress_tar_xz(
@@ -344,7 +280,7 @@ def _process_artifact(
         print(f"[{artifact}] Done ({file_size / 1048576:.1f} MB)", flush=True)
 
         if version:
-            meta = build_metadata_entry(output_path, version)
+            meta = build_metadata_entry(output_path)
             meta_path = output_dir / f"{artifact}.meta.json"
             meta_path.write_text(json.dumps(meta, indent=2))
     finally:
@@ -390,13 +326,6 @@ def repackage(
             print(f"  {path.stat().st_size / 1048576:>8.1f} MB  {path.name}")
 
 
-def _find_manifest(download_dir: Path, manifest_name: str) -> Optional[Path]:
-    for path in download_dir.rglob(manifest_name):
-        if path.is_file():
-            return path
-    return None
-
-
 def _wait_and_download_manifest(
     run_id: str,
     artifact: str,
@@ -426,46 +355,16 @@ def _wait_and_download_manifest(
             text=True,
         )
         if result.returncode == 0:
-            found = _find_manifest(download_dir, manifest_name)
-            if found:
-                print(f"Found manifest at {found}")
-                return found
+            for path in download_dir.rglob(manifest_name):
+                if path.is_file():
+                    print(f"Found manifest at {path}")
+                    return path
             print("Download succeeded but manifest not found; retrying...")
         else:
             print(f"gh run download failed: {result.stderr.strip()}")
         if attempt < max_attempts:
             time.sleep(sleep_seconds)
     raise RuntimeError("Manifest could not be downloaded within the allotted attempts")
-
-
-def _ensure_manifest(
-    manifest: Path,
-    run_id: Optional[str],
-    artifact: str,
-    download_dir: Path,
-    max_attempts: int,
-    sleep_seconds: int,
-) -> Path:
-    if manifest.exists():
-        return manifest
-    if not run_id:
-        raise FileNotFoundError(
-            f"Manifest {manifest} missing and no gh run ID provided"
-        )
-    downloaded = _wait_and_download_manifest(
-        run_id,
-        artifact,
-        download_dir,
-        manifest.name,
-        max_attempts,
-        sleep_seconds,
-    )
-    if downloaded != manifest:
-        shutil.copy(downloaded, manifest)
-    return manifest
-
-
-# ── CLI ──────────────────────────────────────────────────────────────
 
 
 def parse_args() -> argparse.Namespace:
@@ -495,15 +394,6 @@ def parse_args() -> argparse.Namespace:
     rp.add_argument("--artifacts", nargs="*")
     rp.add_argument("--version", type=str)
 
-    np = sub.add_parser(
-        "artifact-name", help="Print the artifact filename for given params"
-    )
-    np.add_argument("--platform", required=True, choices=["linux", "macos", "windows"])
-    np.add_argument("--arch", required=True, choices=["x64", "arm64", "aarch64"])
-    np.add_argument("--mode", required=True, choices=["Debug", "RelWithDebInfo"])
-    np.add_argument("--lto", action="store_true")
-    np.add_argument("--asan", action="store_true")
-
     return parser.parse_args()
 
 
@@ -512,16 +402,34 @@ def main() -> None:
 
     if args.action == "discover":
         removed = discover(args.install_dir, args.build_dir, args.skip_pattern)
-        _write_manifest(args.manifest, removed, args.install_dir, args.build_dir)
+        total_size = sum(e["size"] for e in removed)
+        data = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "install_dir": str(args.install_dir),
+            "build_dir": str(args.build_dir),
+            "total_saved_bytes": total_size,
+            "removed": removed,
+        }
+        args.manifest.write_text(json.dumps(data, indent=2))
+        print(f"Wrote manifest with {len(removed)} entries to {args.manifest}")
+        print(f"Total space saved: {total_size / 1048576:.1f} MB")
     elif args.action == "apply":
-        manifest = _ensure_manifest(
-            manifest=args.manifest,
-            run_id=args.gh_run_id,
-            artifact=args.gh_artifact,
-            download_dir=args.gh_download_dir,
-            max_attempts=args.max_attempts,
-            sleep_seconds=args.sleep_seconds,
-        )
+        manifest = args.manifest
+        if not manifest.exists():
+            if not args.gh_run_id:
+                raise FileNotFoundError(
+                    f"Manifest {manifest} missing and no gh run ID provided"
+                )
+            downloaded = _wait_and_download_manifest(
+                args.gh_run_id,
+                args.gh_artifact,
+                args.gh_download_dir,
+                manifest.name,
+                args.max_attempts,
+                args.sleep_seconds,
+            )
+            if downloaded != manifest:
+                shutil.copy(downloaded, manifest)
         apply_manifest(manifest, args.install_dir)
     elif args.action == "repackage":
         repackage(
@@ -531,16 +439,6 @@ def main() -> None:
             max_parallel=args.max_parallel,
             artifacts=args.artifacts,
             version=args.version,
-        )
-    elif args.action == "artifact-name":
-        print(
-            build_artifact_name(
-                args.platform,
-                args.arch,
-                args.mode,
-                lto=args.lto,
-                asan=args.asan,
-            )
         )
 
 

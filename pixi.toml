@@ -241,16 +241,6 @@ depends-on = [
     { task = "vscode-e2e", args = ["{{ type }}"] },
 ]
 
-# ============================================================================== #
-#                                  HELPER TASKS                                  #
-# ============================================================================== #
-[tasks.build-llvm]
-cmd = ["python3", "scripts/build-llvm.py"]
-
-[tasks.delete-artifacts]
-args = ["file_name"]
-cmd = ["scripts/delete-artifacts.bash", "{{ file_name }}"]
-
 [dependencies]
 
 # ============================================================================== #

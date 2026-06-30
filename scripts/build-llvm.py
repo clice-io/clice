@@ -7,19 +7,12 @@ import os
 from pathlib import Path
 
 
-def normalize_mode(value: str) -> str:
-    mapping = {
-        "debug": "Debug",
-        "release": "Release",
-        "relwithdebinfo": "RelWithDebInfo",
-        "releasedbg": "RelWithDebInfo",
-    }
-    key = value.strip().lower()
-    if key in mapping:
-        return mapping[key]
-    raise argparse.ArgumentTypeError(
-        f"Invalid mode '{value}'. Choose from Debug, Release, RelWithDebInfo."
-    )
+MODE_MAP = {
+    "debug": "Debug",
+    "release": "Release",
+    "relwithdebinfo": "RelWithDebInfo",
+    "releasedbg": "RelWithDebInfo",
+}
 
 
 def build_native_tools(project_root: Path, build_dir: Path) -> Path:
@@ -93,8 +86,6 @@ def main():
     parser.add_argument(
         "--mode",
         default="Release",
-        type=normalize_mode,
-        choices=["Debug", "Release", "RelWithDebInfo"],
         help="Build mode (default: Release)",
     )
     parser.add_argument(
@@ -114,6 +105,13 @@ def main():
     )
 
     args = parser.parse_args()
+
+    mode_key = args.mode.strip().lower()
+    if mode_key not in MODE_MAP:
+        parser.error(
+            f"Invalid mode '{args.mode}'. Choose from Debug, Release, RelWithDebInfo."
+        )
+    args.mode = MODE_MAP[mode_key]
 
     repo_root = Path(__file__).resolve().parent.parent
     toolchain_file = repo_root / "cmake" / "toolchain.cmake"
@@ -146,15 +144,13 @@ def main():
         build_dir = project_root / build_dir
     install_prefix = build_dir.parent / f"{build_dir.name}-install"
 
-    print("--- Configuration ---")
-    print(f"Mode:           {args.mode}")
-    print(f"LTO:            {args.lto}")
-    print(f"Target Triple:  {args.target_triple or '(native)'}")
-    print(f"Root:           {project_root}")
-    print(f"Build Dir:      {build_dir}")
-    print(f"Install Prefix: {install_prefix}")
-    print(f"Toolchain:      {toolchain_file}")
-    print("---------------------")
+    print(f"mode={args.mode}")
+    print(f"lto={args.lto}")
+    print(f"target_triple={args.target_triple or '(native)'}")
+    print(f"root={project_root}")
+    print(f"build_dir={build_dir}")
+    print(f"install_prefix={install_prefix}")
+    print(f"toolchain={toolchain_file}")
 
     llvm_distribution_components = [
         "llvm-libraries",
@@ -327,13 +323,6 @@ def main():
         else:
             print(f"  Warning: {header} not found in source.")
 
-    def human_readable(num: int) -> str:
-        for unit in ["B", "KB", "MB", "GB"]:
-            if num < 1024.0:
-                return f"{num:,.1f}{unit}"
-            num /= 1024.0
-        return f"{num:.1f}TB"
-
     lib_dir = install_prefix / "lib"
     sizes = []
     if lib_dir.exists():
@@ -344,10 +333,10 @@ def main():
 
     total_size = sum(sz for _, sz in sizes)
     print(f"\nLibrary size summary under {lib_dir}:")
-    print(f"  Total: {human_readable(total_size)} across {len(sizes)} files")
+    print(f"  Total: {total_size / 1048576:.1f} MB across {len(sizes)} files")
     for path, sz in sizes:
         rel = path.relative_to(install_prefix)
-        print(f"  {human_readable(sz):>8}  {rel}")
+        print(f"  {sz / 1048576:>8.1f} MB  {rel}")
     if not sizes:
         print("  (no files found)")
 

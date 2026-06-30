@@ -1,117 +1,128 @@
-{
-  "version": "21.1.8+r1",
-  "artifacts": {
-    "aarch64-linux-gnu-releasedbg-lto.tar.xz": {
-      "sha256": "36a8afa48fb4906d7a6861f95d31035c8fe0f76b92648d34d9b40ddde23ae466",
-      "lto": true,
-      "asan": false,
-      "platform": "linux",
-      "arch": "arm64",
-      "build_type": "RelWithDebInfo"
-    },
-    "aarch64-linux-gnu-releasedbg.tar.xz": {
-      "sha256": "d7ab8a9c9f7b8d757de7aa55092f3bc7a8830426fc0bb85b7935d5a003396863",
-      "lto": false,
-      "asan": false,
-      "platform": "linux",
-      "arch": "arm64",
-      "build_type": "RelWithDebInfo"
-    },
-    "aarch64-windows-msvc-releasedbg-lto.tar.xz": {
-      "sha256": "f99ca3a69610ff0de0387a737be8c7f4706a04c48db0a7eccc27ec61235e362b",
-      "lto": true,
-      "asan": false,
-      "platform": "windows",
-      "arch": "arm64",
-      "build_type": "RelWithDebInfo"
-    },
-    "aarch64-windows-msvc-releasedbg.tar.xz": {
-      "sha256": "ffb5840a96491bf5a0c7bc4dabf1828c02221325a5d247ab8d811909968709cb",
-      "lto": false,
-      "asan": false,
-      "platform": "windows",
-      "arch": "arm64",
-      "build_type": "RelWithDebInfo"
-    },
-    "arm64-macos-clang-debug-asan.tar.xz": {
-      "sha256": "2fe6675cf9fb6fa15e5b59dbc8debafed5f09a104a7c5a5932a8651a4da85442",
-      "lto": false,
-      "asan": true,
-      "platform": "macos",
-      "arch": "arm64",
-      "build_type": "Debug"
-    },
-    "arm64-macos-clang-releasedbg-lto.tar.xz": {
-      "sha256": "ad793e1380c14d8d93cbe62bb167a3d7566f9468f67a63a13fec669afd497555",
-      "lto": true,
-      "asan": false,
-      "platform": "macos",
-      "arch": "arm64",
-      "build_type": "RelWithDebInfo"
-    },
-    "arm64-macos-clang-releasedbg.tar.xz": {
-      "sha256": "6051d80dcb64c6ec0299f4064d43f8ea27afbc0f5e0cb6b40d438997e7c31aca",
-      "lto": false,
-      "asan": false,
-      "platform": "macos",
-      "arch": "arm64",
-      "build_type": "RelWithDebInfo"
-    },
-    "x64-linux-gnu-debug-asan.tar.xz": {
-      "sha256": "cd009604080f2d212c7fe4ec9266651e165d491d9903ff541efdaa8f8d88f22d",
-      "lto": false,
-      "asan": true,
-      "platform": "linux",
-      "arch": "x64",
-      "build_type": "Debug"
-    },
-    "x64-linux-gnu-releasedbg-lto.tar.xz": {
-      "sha256": "51c6927eac679c054e2653db1d2ab24ff94f4781eccd1ada318c8fc1525f11f4",
-      "lto": true,
-      "asan": false,
-      "platform": "linux",
-      "arch": "x64",
-      "build_type": "RelWithDebInfo"
-    },
-    "x64-linux-gnu-releasedbg.tar.xz": {
-      "sha256": "d235824ad2e807876efdebb432dd66fac0a509551545b05465e494ae43265429",
-      "lto": false,
-      "asan": false,
-      "platform": "linux",
-      "arch": "x64",
-      "build_type": "RelWithDebInfo"
-    },
-    "x64-macos-clang-releasedbg-lto.tar.xz": {
-      "sha256": "e429544401e034f11ff3ef4b5fc7fda726d2c9216b88d45dcc6ea4e6ef19ebbc",
-      "lto": true,
-      "asan": false,
-      "platform": "macos",
-      "arch": "x64",
-      "build_type": "RelWithDebInfo"
-    },
-    "x64-macos-clang-releasedbg.tar.xz": {
-      "sha256": "6e0da9f68ac51b8760aefd06b999304da71e251d0c47e00d21d30424010cc292",
-      "lto": false,
-      "asan": false,
-      "platform": "macos",
-      "arch": "x64",
-      "build_type": "RelWithDebInfo"
-    },
-    "x64-windows-msvc-releasedbg-lto.tar.xz": {
-      "sha256": "d62570a869cffc6259cb09f7aa5478165646814baea57fd335524af9bf85ad96",
-      "lto": true,
-      "asan": false,
-      "platform": "windows",
-      "arch": "x64",
-      "build_type": "RelWithDebInfo"
-    },
-    "x64-windows-msvc-releasedbg.tar.xz": {
-      "sha256": "e7b6bac1be724bc0b30c224e91e6257d62b2f230956dc8be381dafda94be5c5a",
-      "lto": false,
-      "asan": false,
-      "platform": "windows",
-      "arch": "x64",
-      "build_type": "RelWithDebInfo"
-    }
+[
+  {
+    "filename": "aarch64-linux-gnu-releasedbg-lto.tar.xz",
+    "sha256": "36a8afa48fb4906d7a6861f95d31035c8fe0f76b92648d34d9b40ddde23ae466",
+    "platform": "linux",
+    "arch": "arm64",
+    "build_type": "RelWithDebInfo",
+    "lto": true,
+    "asan": false
+  },
+  {
+    "filename": "aarch64-linux-gnu-releasedbg.tar.xz",
+    "sha256": "d7ab8a9c9f7b8d757de7aa55092f3bc7a8830426fc0bb85b7935d5a003396863",
+    "platform": "linux",
+    "arch": "arm64",
+    "build_type": "RelWithDebInfo",
+    "lto": false,
+    "asan": false
+  },
+  {
+    "filename": "aarch64-windows-msvc-releasedbg-lto.tar.xz",
+    "sha256": "f99ca3a69610ff0de0387a737be8c7f4706a04c48db0a7eccc27ec61235e362b",
+    "platform": "windows",
+    "arch": "arm64",
+    "build_type": "RelWithDebInfo",
+    "lto": true,
+    "asan": false
+  },
+  {
+    "filename": "aarch64-windows-msvc-releasedbg.tar.xz",
+    "sha256": "ffb5840a96491bf5a0c7bc4dabf1828c02221325a5d247ab8d811909968709cb",
+    "platform": "windows",
+    "arch": "arm64",
+    "build_type": "RelWithDebInfo",
+    "lto": false,
+    "asan": false
+  },
+  {
+    "filename": "arm64-macos-clang-debug-asan.tar.xz",
+    "sha256": "2fe6675cf9fb6fa15e5b59dbc8debafed5f09a104a7c5a5932a8651a4da85442",
+    "platform": "macos",
+    "arch": "arm64",
+    "build_type": "Debug",
+    "lto": false,
+    "asan": true
+  },
+  {
+    "filename": "arm64-macos-clang-releasedbg-lto.tar.xz",
+    "sha256": "ad793e1380c14d8d93cbe62bb167a3d7566f9468f67a63a13fec669afd497555",
+    "platform": "macos",
+    "arch": "arm64",
+    "build_type": "RelWithDebInfo",
+    "lto": true,
+    "asan": false
+  },
+  {
+    "filename": "arm64-macos-clang-releasedbg.tar.xz",
+    "sha256": "6051d80dcb64c6ec0299f4064d43f8ea27afbc0f5e0cb6b40d438997e7c31aca",
+    "platform": "macos",
+    "arch": "arm64",
+    "build_type": "RelWithDebInfo",
+    "lto": false,
+    "asan": false
+  },
+  {
+    "filename": "x64-linux-gnu-debug-asan.tar.xz",
+    "sha256": "cd009604080f2d212c7fe4ec9266651e165d491d9903ff541efdaa8f8d88f22d",
+    "platform": "linux",
+    "arch": "x64",
+    "build_type": "Debug",
+    "lto": false,
+    "asan": true
+  },
+  {
+    "filename": "x64-linux-gnu-releasedbg-lto.tar.xz",
+    "sha256": "51c6927eac679c054e2653db1d2ab24ff94f4781eccd1ada318c8fc1525f11f4",
+    "platform": "linux",
+    "arch": "x64",
+    "build_type": "RelWithDebInfo",
+    "lto": true,
+    "asan": false
+  },
+  {
+    "filename": "x64-linux-gnu-releasedbg.tar.xz",
+    "sha256": "d235824ad2e807876efdebb432dd66fac0a509551545b05465e494ae43265429",
+    "platform": "linux",
+    "arch": "x64",
+    "build_type": "RelWithDebInfo",
+    "lto": false,
+    "asan": false
+  },
+  {
+    "filename": "x64-macos-clang-releasedbg-lto.tar.xz",
+    "sha256": "e429544401e034f11ff3ef4b5fc7fda726d2c9216b88d45dcc6ea4e6ef19ebbc",
+    "platform": "macos",
+    "arch": "x64",
+    "build_type": "RelWithDebInfo",
+    "lto": true,
+    "asan": false
+  },
+  {
+    "filename": "x64-macos-clang-releasedbg.tar.xz",
+    "sha256": "6e0da9f68ac51b8760aefd06b999304da71e251d0c47e00d21d30424010cc292",
+    "platform": "macos",
+    "arch": "x64",
+    "build_type": "RelWithDebInfo",
+    "lto": false,
+    "asan": false
+  },
+  {
+    "filename": "x64-windows-msvc-releasedbg-lto.tar.xz",
+    "sha256": "d62570a869cffc6259cb09f7aa5478165646814baea57fd335524af9bf85ad96",
+    "platform": "windows",
+    "arch": "x64",
+    "build_type": "RelWithDebInfo",
+    "lto": true,
+    "asan": false
+  },
+  {
+    "filename": "x64-windows-msvc-releasedbg.tar.xz",
+    "sha256": "e7b6bac1be724bc0b30c224e91e6257d62b2f230956dc8be381dafda94be5c5a",
+    "platform": "windows",
+    "arch": "x64",
+    "build_type": "RelWithDebInfo",
+    "lto": false,
+    "asan": false
   }
-}
+]

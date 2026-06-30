@@ -198,15 +198,10 @@ jobs:
           python3 -c "
           import json, pathlib
           entries = [json.loads(p.read_text()) for p in sorted(pathlib.Path('metadata').glob('*.meta.json'))]
-          manifest = {'version': entries[0]['version'], 'artifacts': {}}
-          for entry in entries:
-              filename = entry.pop('filename')
-              entry.pop('version', None)
-              manifest['artifacts'][filename] = entry
           with open('llvm-manifest.json', 'w') as f:
-              json.dump(manifest, f, indent=2)
+              json.dump(entries, f, indent=2)
               f.write('\n')
-          print(f'Manifest: {len(manifest[\"artifacts\"])} artifacts')
+          print(f'Manifest: {len(entries)} artifacts')
           "
 
       - name: Upload manifest to release

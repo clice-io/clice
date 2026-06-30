@@ -185,11 +185,16 @@ jobs:
             fi
           fi
 
-          NAME_ARGS="--platform $PLATFORM --arch $ARCH --mode ${{ matrix.llvm_mode }}"
-          if [[ "${{ matrix.lto }}" == "ON" ]]; then NAME_ARGS+=" --lto"; fi
-          if [[ "${{ matrix.llvm_mode }}" == "Debug" && "${{ matrix.os }}" != windows-* ]]; then NAME_ARGS+=" --asan"; fi
-
-          ARCHIVE=$(python3 scripts/release-llvm.py artifact-name $NAME_ARGS)
+          case "$PLATFORM" in
+            linux)   TOOLCHAIN="gnu" ;;
+            macos)   TOOLCHAIN="clang" ;;
+            windows) TOOLCHAIN="msvc" ;;
+          esac
+          if [[ "${{ matrix.llvm_mode }}" == "Debug" ]]; then MODE_TAG="debug"; else MODE_TAG="releasedbg"; fi
+          SUFFIX=""
+          if [[ "${{ matrix.lto }}" == "ON" ]]; then SUFFIX+="-lto"; fi
+          if [[ "${{ matrix.llvm_mode }}" == "Debug" && "${{ matrix.os }}" != windows-* ]]; then SUFFIX+="-asan"; fi
+          ARCHIVE="${ARCH}-${PLATFORM}-${TOOLCHAIN}-${MODE_TAG}${SUFFIX}.tar.xz"
 
           set -eo pipefail
           tar -C .llvm -cf - build-install | xz -T0 -9 -c > "${ARCHIVE}"

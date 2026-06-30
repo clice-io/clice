@@ -81,11 +81,18 @@ This will: discover unused libs → create clice-llvm release → repackage with
 ```bash
 gh run list --workflow release-llvm.yml --limit 1
 gh run download <RELEASE_RUN_ID> -n llvm-manifest-final -D .
-python3 scripts/update-llvm-version.py \
-  --version "<VERSION>" \
-  --manifest-src llvm-manifest.json \
-  --manifest-dest config/llvm-manifest.json \
-  --package-cmake cmake/package.cmake
+cp llvm-manifest.json config/llvm-manifest.json
+```
+
+Also update the version string in `cmake/package.cmake`:
+
+```
+setup_llvm("<VERSION>")
+```
+
+Then commit and push:
+
+```bash
 git add config/llvm-manifest.json cmake/package.cmake
 git commit -m "chore: update llvm-manifest.json to <VERSION>"
 git push
@@ -131,5 +138,4 @@ The user decides whether all changes are acceptable or if adjustments are needed
 
 - **Artifact size limit**: GitHub Release max 2GB per file. macOS LTO artifacts are largest, currently ~1.7GB with xz -9e.
 - **Pruning safety**: discover phase validates by deleting .a files one by one and rebuilding clice. clang-tidy modules can't be deleted due to force-link.
-- **Version cache**: cmake download logic writes `.llvm/.llvm-version` stamp, auto-cleans on version change.
 - **Private headers**: clice depends on private Clang Sema headers (TreeTransform.h etc.), copied from source during `build-llvm.py`. Users must use our packaged LLVM.
