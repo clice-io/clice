@@ -92,14 +92,14 @@ input_file: tag_decls.cpp
   namespace_scope: "enumerator::"
   local_scope: "Hello::"
   definition: "ONE"
-  type: "enum enumerator::Hello"
+  type: "enumerator::Hello"
   value: "0"
   symbol_range: "[873, 876)"
   markdown: |
     ### enumerator `ONE`  
 
     ---
-    Type: `enum enumerator::Hello`  
+    Type: `enumerator::Hello`  
     Value = `0`  
 
     ---
@@ -114,14 +114,14 @@ input_file: tag_decls.cpp
   namespace_scope: "using_enum::"
   local_scope: "Hello::"
   definition: "ONE"
-  type: "enum using_enum::Hello"
+  type: "using_enum::Hello"
   value: "0"
   symbol_range: "[1019, 1022)"
   markdown: |
     ### enumerator `ONE`  
 
     ---
-    Type: `enum using_enum::Hello`  
+    Type: `using_enum::Hello`  
     Value = `0`  
 
     ---
@@ -135,14 +135,14 @@ input_file: tag_decls.cpp
   kind: EnumMember
   namespace_scope: "anon_enum::"
   definition: "ONE"
-  type: "enum anon_enum::(unnamed enum)"
+  type: "anon_enum::(unnamed enum)"
   value: "0"
   symbol_range: "[1140, 1143)"
   markdown: |
     ### enumerator `ONE`  
 
     ---
-    Type: `enum anon_enum::(unnamed enum)`  
+    Type: `anon_enum::(unnamed enum)`  
     Value = `0`  
 
     ---
@@ -178,13 +178,13 @@ input_file: tag_decls.cpp
   namespace_scope: "typedef_embedded::"
   documentation: "Typedef with embedded definition"
   definition: "typedef struct Bar Foo"
-  type: "struct struct Bar"
+  type: "struct Bar"
   symbol_range: "[1339, 1342)"
   markdown: |
     ### type `Foo`  
 
     ---
-    Type: `struct struct Bar`  
+    Type: `struct Bar`  
     Typedef with embedded definition  
 
     ---

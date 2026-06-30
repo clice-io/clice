@@ -171,7 +171,7 @@ input_file: pass_types.cpp
   namespace_scope: ""
   local_scope: "fun::"
   definition: "Base base"
-  type: "class Base"
+  type: "Base"
   callee_arg_info: "Base & x"
   passed: by reference
   symbol_range: "[1070, 1074)"
@@ -179,7 +179,7 @@ input_file: pass_types.cpp
     ### variable `base`  
 
     ---
-    Type: `class Base`  
+    Type: `Base`  
     Passed by reference as x  
 
     ---
@@ -194,7 +194,7 @@ input_file: pass_types.cpp
   namespace_scope: ""
   local_scope: "fun::"
   definition: "Base base"
-  type: "class Base"
+  type: "Base"
   callee_arg_info: "const Base & x"
   passed: by const reference
   symbol_range: "[1097, 1101)"
@@ -202,7 +202,7 @@ input_file: pass_types.cpp
     ### variable `base`  
 
     ---
-    Type: `class Base`  
+    Type: `Base`  
     Passed by const reference as x  
 
     ---
@@ -240,15 +240,15 @@ input_file: pass_types.cpp
   namespace_scope: ""
   local_scope: "fun::"
   definition: "Base base"
-  type: "class Base"
-  callee_arg_info: "class Base x"
+  type: "Base"
+  callee_arg_info: "Base x"
   passed: by value
   symbol_range: "[1157, 1161)"
   markdown: |
     ### variable `base`  
 
     ---
-    Type: `class Base`  
+    Type: `Base`  
     Passed as x  
 
     ---
@@ -264,7 +264,7 @@ input_file: pass_types.cpp
   local_scope: "fun::"
   definition: "const Base &base_const_ref = base"
   type: "const Base &"
-  callee_arg_info: "class Base x"
+  callee_arg_info: "Base x"
   passed: by value
   symbol_range: "[1180, 1194)"
   markdown: |
@@ -286,7 +286,7 @@ input_file: pass_types.cpp
   namespace_scope: ""
   local_scope: "fun::"
   definition: "Derived derived"
-  type: "class Derived"
+  type: "Derived"
   callee_arg_info: "Base & x"
   passed: by reference
   symbol_range: "[1211, 1218)"
@@ -294,7 +294,7 @@ input_file: pass_types.cpp
     ### variable `derived`  
 
     ---
-    Type: `class Derived`  
+    Type: `Derived`  
     Passed by reference as x  
 
     ---
@@ -309,7 +309,7 @@ input_file: pass_types.cpp
   namespace_scope: ""
   local_scope: "fun::"
   definition: "Derived derived"
-  type: "class Derived"
+  type: "Derived"
   callee_arg_info: "const Base & x"
   passed: by const reference
   symbol_range: "[1241, 1248)"
@@ -317,7 +317,7 @@ input_file: pass_types.cpp
     ### variable `derived`  
 
     ---
-    Type: `class Derived`  
+    Type: `Derived`  
     Passed by const reference as x  
 
     ---
@@ -332,15 +332,15 @@ input_file: pass_types.cpp
   namespace_scope: ""
   local_scope: "fun::"
   definition: "Derived derived"
-  type: "class Derived"
-  callee_arg_info: "class Base x"
+  type: "Derived"
+  callee_arg_info: "Base x"
   passed: by value
   symbol_range: "[1267, 1274)"
   markdown: |
     ### variable `derived`  
 
     ---
-    Type: `class Derived`  
+    Type: `Derived`  
     Passed as x  
 
     ---
@@ -355,7 +355,7 @@ input_file: pass_types.cpp
   namespace_scope: ""
   local_scope: "fun::"
   definition: "Base base"
-  type: "class Base"
+  type: "Base"
   callee_arg_info: "const Base & x"
   passed: by const reference
   symbol_range: "[1330, 1334)"
@@ -363,7 +363,7 @@ input_file: pass_types.cpp
     ### variable `base`  
 
     ---
-    Type: `class Base`  
+    Type: `Base`  
     Passed by const reference as x  
 
     ---
@@ -378,7 +378,7 @@ input_file: pass_types.cpp
   namespace_scope: ""
   local_scope: "fun::"
   definition: "Base base"
-  type: "class Base"
+  type: "Base"
   callee_arg_info: "const Base & x"
   passed: by const reference
   symbol_range: "[1365, 1369)"
@@ -386,7 +386,7 @@ input_file: pass_types.cpp
     ### variable `base`  
 
     ---
-    Type: `class Base`  
+    Type: `Base`  
     Passed by const reference as x  
 
     ---
@@ -541,7 +541,7 @@ input_file: pass_types.cpp
   local_scope: "fun::"
   definition: "int int_x"
   type: "int"
-  callee_arg_info: "class CustomClass x"
+  callee_arg_info: "CustomClass x"
   passed: by reference (converted)
   symbol_range: "[1602, 1607)"
   markdown: |
@@ -549,7 +549,7 @@ input_file: pass_types.cpp
 
     ---
     Type: `int`  
-    Passed by reference as x (converted to class CustomClass)  
+    Passed by reference as x (converted to CustomClass)  
 
     ---
     ```cpp
@@ -564,7 +564,7 @@ input_file: pass_types.cpp
   local_scope: "fun::"
   definition: "float float_x"
   type: "float"
-  callee_arg_info: "class CustomClass x"
+  callee_arg_info: "CustomClass x"
   passed: by value (converted)
   symbol_range: "[1628, 1635)"
   markdown: |
@@ -572,7 +572,7 @@ input_file: pass_types.cpp
 
     ---
     Type: `float`  
-    Passed as x (converted to class CustomClass)  
+    Passed as x (converted to CustomClass)  
 
     ---
     ```cpp
@@ -586,16 +586,16 @@ input_file: pass_types.cpp
   namespace_scope: ""
   local_scope: "fun::"
   definition: "Base base"
-  type: "class Base"
-  callee_arg_info: "class CustomClass x"
+  type: "Base"
+  callee_arg_info: "CustomClass x"
   passed: by const reference (converted)
   symbol_range: "[1656, 1660)"
   markdown: |
     ### variable `base`  
 
     ---
-    Type: `class Base`  
-    Passed by const reference as x (converted to class CustomClass)  
+    Type: `Base`  
+    Passed by const reference as x (converted to CustomClass)  
 
     ---
     ```cpp

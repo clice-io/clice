@@ -148,18 +148,17 @@ auto print_type(clang::QualType type,
         type = type->castAs<clang::DecltypeType>()->getUnderlyingType();
     }
 
+    // Skip PredefinedSugarType (__size_t, __ptrdiff_t, etc.) — these are
+    // internal Clang sugar not meaningful to users.
+    if(!type.isNull()) {
+        if(auto* PST = type->getAs<clang::PredefinedSugarType>()) {
+            type = PST->desugar();
+        }
+    }
+
     PrintedType result;
     llvm::raw_string_ostream os(result.type);
 
-    /// Special case: if the outer type is a tag type without qualifiers, then
-    /// include the tag for extra clarity. This isn't very idiomatic, so don't
-    /// attempt it for complex cases, including pointers/references, template
-    /// specializations, etc.
-    if(!type.isNull() && !type.hasQualifiers() && policy.SuppressTagKeyword) {
-        if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr())) {
-            os << tag->getDecl()->getKindName() << " ";
-        }
-    }
     type.print(os, policy);
 
     if(!type.isNull() && options.show_aka) {

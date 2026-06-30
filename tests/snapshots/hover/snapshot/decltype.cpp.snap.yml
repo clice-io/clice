@@ -59,7 +59,7 @@ input_file: decltype.cpp
   name: "decltype"
   kind: Type
   documentation: "decltype(auto) in function return"
-  definition: "struct Bar"
+  definition: "Bar"
   symbol_range: "[770, 778)"
   markdown: |
     ### type `decltype`  
@@ -69,7 +69,7 @@ input_file: decltype.cpp
 
     ---
     ```cpp
-    struct Bar
+    Bar
     ```
 
 06_decltype_auto_ref_return:
@@ -154,7 +154,7 @@ input_file: decltype.cpp
   name: "decltype"
   kind: Type
   documentation: "decltype of function with trailing return type."
-  definition: "struct Bar"
+  definition: "Bar"
   symbol_range: "[1754, 1762)"
   markdown: |
     ### type `decltype`  
@@ -164,7 +164,7 @@ input_file: decltype.cpp
 
     ---
     ```cpp
-    struct Bar
+    Bar
     ```
 
 13_decltype_of_decltype:

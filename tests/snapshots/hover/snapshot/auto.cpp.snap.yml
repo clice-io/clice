@@ -6,14 +6,14 @@ input_file: auto.cpp
 01_structured_bindings:
   name: "auto"
   kind: Type
-  definition: "struct S"
+  definition: "S"
   symbol_range: "[353, 357)"
   markdown: |
     ### type `auto`  
 
     ---
     ```cpp
-    struct S
+    S
     ```
 
 02_undeduced_auto:
@@ -45,14 +45,14 @@ input_file: auto.cpp
 04_auto_lambda:
   name: "auto"
   kind: Type
-  definition: "class(lambda)"
+  definition: "(lambda)"
   symbol_range: "[628, 632)"
   markdown: |
     ### type `auto`  
 
     ---
     ```cpp
-    class(lambda)
+    (lambda)
     ```
 
 05_auto_instantiation:
@@ -202,7 +202,7 @@ input_file: auto.cpp
   name: "auto"
   kind: Type
   documentation: "auto function return with trailing type"
-  definition: "struct Bar"
+  definition: "Bar"
   symbol_range: "[1985, 1989)"
   markdown: |
     ### type `auto`  
@@ -212,14 +212,14 @@ input_file: auto.cpp
 
     ---
     ```cpp
-    struct Bar
+    Bar
     ```
 
 17_auto_fn_return:
   name: "auto"
   kind: Type
   documentation: "auto in function return"
-  definition: "struct Bar"
+  definition: "Bar"
   symbol_range: "[2103, 2107)"
   markdown: |
     ### type `auto`  
@@ -229,14 +229,14 @@ input_file: auto.cpp
 
     ---
     ```cpp
-    struct Bar
+    Bar
     ```
 
 18_auto_ref_fn_return:
   name: "auto"
   kind: Type
   documentation: "auto& in function return"
-  definition: "struct Bar"
+  definition: "Bar"
   symbol_range: "[2207, 2211)"
   markdown: |
     ### type `auto`  
@@ -246,14 +246,14 @@ input_file: auto.cpp
 
     ---
     ```cpp
-    struct Bar
+    Bar
     ```
 
 19_auto_ptr_fn_return:
   name: "auto"
   kind: Type
   documentation: "auto* in function return"
-  definition: "struct Bar"
+  definition: "Bar"
   symbol_range: "[2324, 2328)"
   markdown: |
     ### type `auto`  
@@ -263,14 +263,14 @@ input_file: auto.cpp
 
     ---
     ```cpp
-    struct Bar
+    Bar
     ```
 
 20_const_auto_ref_fn_return:
   name: "auto"
   kind: Type
   documentation: "const auto& in function return"
-  definition: "struct Bar"
+  definition: "Bar"
   symbol_range: "[2457, 2461)"
   markdown: |
     ### type `auto`  
@@ -280,7 +280,7 @@ input_file: auto.cpp
 
     ---
     ```cpp
-    struct Bar
+    Bar
     ```
 
 21_auto_fn_pointer:
