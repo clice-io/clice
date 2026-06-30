@@ -159,7 +159,7 @@ jobs:
           if [[ -n "${{ matrix.target_triple }}" ]]; then
             EXTRA_ARGS="--target-triple=${{ matrix.target_triple }}"
           fi
-          pixi run -e "$ENV" build-llvm \
+          pixi run -e "$ENV" python3 scripts/build-llvm.py \
             --llvm-src=.llvm \
             --mode="${{ matrix.llvm_mode }}" \
             --lto="${{ matrix.lto }}" \

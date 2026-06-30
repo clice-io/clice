@@ -12,10 +12,6 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
-  actions: read
-
 env:
   SOURCE_RUN_ID: ${{ inputs.source_run_id }}
   LLVM_VERSION: ${{ inputs.llvm_version }}

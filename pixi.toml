@@ -241,9 +241,6 @@ depends-on = [
     { task = "vscode-e2e", args = ["{{ type }}"] },
 ]
 
-[tasks.build-llvm]
-cmd = ["python3", "scripts/build-llvm.py"]
-
 [dependencies]
 
 # ============================================================================== #
