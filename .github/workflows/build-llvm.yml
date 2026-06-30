@@ -1,5 +1,4 @@
 name: build llvm
-# trigger rebuild
 
 on:
   workflow_dispatch:
@@ -8,10 +7,6 @@ on:
         description: "LLVM version to build (e.g., 21.1.8)"
         required: true
         type: string
-  push:
-    branches: [build/modernize-llvm-workflow]
-    paths:
-      - .github/workflows/build-llvm.yml
 
 concurrency:
   group: build-llvm-${{ github.ref }}
