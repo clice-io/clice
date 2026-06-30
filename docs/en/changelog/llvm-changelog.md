@@ -1,6 +1,10 @@
-# LLVM 21 → 22 Changelog
+# LLVM Changelog
 
-Upgrade commit: LLVM 22.1.4 (`llvmorg-22.1.4`)
+Breaking changes encountered during each LLVM upgrade, with upstream commit references.
+
+# LLVM 21 → 22
+
+Upgrade version: LLVM 22.1.4 (`llvmorg-22.1.4`)
 
 The single largest source of breaking changes is `91cdd35008e9` ([#147835](https://github.com/llvm/llvm-project/pull/147835)), which simultaneously restructured the type system and NNS representation.
 

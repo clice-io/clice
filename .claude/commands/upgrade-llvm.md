@@ -1,6 +1,6 @@
 Upgrade LLVM to a new version. Accepts the target version as argument (e.g., `22.1.4`).
 
-This is the complete workflow for upgrading the LLVM prebuilt packages that clice depends on. Follow each step in order. The LLVM source repo is expected at `../llvm-project` (for investigating API changes).
+This is the complete workflow for upgrading the LLVM prebuilt packages that clice depends on. Follow each step in order. Steps that involve CI should use polling (check every ~5 minutes) to wait for completion.
 
 ## Step 1: Trigger LLVM Build
 
@@ -13,7 +13,7 @@ gh workflow run build-llvm.yml \
 ```
 
 - `skip_clice_build=true`: new LLVM APIs likely have breaking changes, skip clice compilation
-- Wait for all 14 matrix builds to complete (~2-3 hours), note the workflow run ID
+- Poll until all 14 matrix builds complete (~2-3 hours), note the workflow run ID
 
 ## Step 2: Download Local Platform Artifact
 
@@ -52,7 +52,7 @@ Strategy:
 3. Update test expectations (AST structure changes affect test output)
 4. Ensure `pixi run unit-test RelWithDebInfo` passes
 
-**Use `../llvm-project` to read LLVM source code** when the fix is not obvious. Check TypePrinter.cpp, ASTContext.cpp, etc.
+When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
 ## Step 4: Create PR
 
@@ -76,7 +76,7 @@ gh workflow run release-llvm.yml \
   --field llvm_version="<VERSION>"
 ```
 
-This will: discover unused libs → create clice-llvm release → repackage with pruning → upload manifest.
+This will: discover unused libs → create clice-llvm release → repackage with pruning → upload manifest. Poll until complete.
 
 ## Step 6: Update Manifest
 
@@ -93,24 +93,30 @@ git commit -m "chore: update llvm-manifest.json to <VERSION>"
 git push
 ```
 
-CI should now pass on all platforms.
+Poll CI until all platforms pass.
 
 ## Step 7: Write LLVM Changelog (REQUIRED)
 
-**Every LLVM upgrade MUST produce a changelog file.** Create `docs/en/changelog/llvm-<MAJOR>.md` documenting all breaking changes encountered.
+**Every LLVM upgrade MUST append to `docs/en/changelog/llvm-changelog.md`.**
 
-For each API change:
+Add a new H1 section (e.g., `# LLVM 22 → 23`) documenting all breaking changes encountered. For each API change, record:
 
-1. Search `../llvm-project` git history between the old and new version tags to find the upstream commit
-2. Record: change description, commit hash, PR number, and impact on clice
+- Change description
+- Upstream commit hash
+- PR number (link to `https://github.com/llvm/llvm-project/pull/<NUM>`)
+- Impact on clice
+
+To find upstream commits, search the LLVM git history between version tags:
 
 ```bash
-# Example: find commits that changed NestedNameSpecifier
+# If ../llvm-project exists locally:
 cd ../llvm-project
-git log --oneline llvmorg-<OLD>..llvmorg-<NEW> -- clang/include/clang/AST/NestedNameSpecifier*.h
+git log --oneline llvmorg-<OLD>..llvmorg-<NEW> -- clang/include/clang/AST/
 ```
 
-Use the format established in `docs/en/changelog/llvm-22.md` as a template: group changes by category (Type System, NNS, Driver/Frontend, Other) with a table per category.
+If the LLVM source is not available locally, look up changes on GitHub by searching the LLVM repository commit history.
+
+Group changes by category (Type System, NNS, Driver/Frontend, Other) with a table per category. See the existing `LLVM 21 → 22` section as a template.
 
 ## Step 8: Merge
 
