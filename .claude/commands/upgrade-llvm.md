@@ -70,6 +70,7 @@ Trigger `release-llvm` to build pruned packages:
 
 ```bash
 gh workflow run release-llvm.yml \
+  --ref <BRANCH> \
   --field source_run_id="<STEP1_RUN_ID>" \
   --field llvm_version="<VERSION>"
 ```
