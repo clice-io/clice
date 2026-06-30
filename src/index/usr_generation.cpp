@@ -739,11 +739,8 @@ void USRGenerator::VisitType(QualType T) {
             Out << ':' << DNT->getIdentifier()->getName();
             return;
         }
-        if(const InjectedClassNameType* InjT = T->getAs<InjectedClassNameType>()) {
-            Out << '$';
-            VisitTagDecl(InjT->getDecl());
-            return;
-        }
+        // InjectedClassNameType inherits from TagType in LLVM 22,
+        // so it is already handled by the TagType branch above.
         if(const auto* VT = T->getAs<VectorType>()) {
             Out << (T->isExtVectorType() ? ']' : '[');
             Out << VT->getNumElements();
