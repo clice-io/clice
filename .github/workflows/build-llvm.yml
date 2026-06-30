@@ -12,6 +12,10 @@ on:
     paths:
       - .github/workflows/build-llvm.yml
 
+concurrency:
+  group: build-llvm-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
@@ -177,8 +181,8 @@ jobs:
           if [[ -n "${{ matrix.target_triple }}" ]]; then
             case "${{ matrix.target_triple }}" in
               x86_64-apple-darwin)       PLATFORM="macos";   ARCH="x64" ;;
-              aarch64-linux-gnu)         PLATFORM="linux";   ARCH="aarch64" ;;
-              aarch64-pc-windows-msvc)   PLATFORM="windows"; ARCH="aarch64" ;;
+              aarch64-linux-gnu)         PLATFORM="linux";   ARCH="arm64" ;;
+              aarch64-pc-windows-msvc)   PLATFORM="windows"; ARCH="arm64" ;;
             esac
           else
             PLATFORM="linux"; ARCH="x64"

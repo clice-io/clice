@@ -12,6 +12,10 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: release-llvm
+  cancel-in-progress: true
+
 env:
   SOURCE_RUN_ID: ${{ inputs.source_run_id }}
   LLVM_VERSION: ${{ inputs.llvm_version }}
@@ -123,10 +127,10 @@ jobs:
       fail-fast: false
       matrix:
         artifact:
-          - aarch64-linux-gnu-releasedbg-lto.tar.xz
-          - aarch64-linux-gnu-releasedbg.tar.xz
-          - aarch64-windows-msvc-releasedbg-lto.tar.xz
-          - aarch64-windows-msvc-releasedbg.tar.xz
+          - arm64-linux-gnu-releasedbg-lto.tar.xz
+          - arm64-linux-gnu-releasedbg.tar.xz
+          - arm64-windows-msvc-releasedbg-lto.tar.xz
+          - arm64-windows-msvc-releasedbg.tar.xz
           - arm64-macos-clang-debug-asan.tar.xz
           - arm64-macos-clang-releasedbg-lto.tar.xz
           - arm64-macos-clang-releasedbg.tar.xz

@@ -1,6 +1,6 @@
 [
   {
-    "filename": "aarch64-linux-gnu-releasedbg-lto.tar.xz",
+    "filename": "arm64-linux-gnu-releasedbg-lto.tar.xz",
     "sha256": "729d84c80c7c17fb7d75be28a9ddf0386b90c1f06c2f44429d7d87a12e77b0e7",
     "lto": true,
     "asan": false,
@@ -9,7 +9,7 @@
     "build_type": "RelWithDebInfo"
   },
   {
-    "filename": "aarch64-linux-gnu-releasedbg.tar.xz",
+    "filename": "arm64-linux-gnu-releasedbg.tar.xz",
     "sha256": "2ca57bd2bafb26b69accc30ee4606dbdcd1d83bcb5a14cdd42821da214c99614",
     "lto": false,
     "asan": false,
@@ -18,7 +18,7 @@
     "build_type": "RelWithDebInfo"
   },
   {
-    "filename": "aarch64-windows-msvc-releasedbg-lto.tar.xz",
+    "filename": "arm64-windows-msvc-releasedbg-lto.tar.xz",
     "sha256": "cb81cca7b65812a957c6975f6de34ab2bdfd6f3548435ca4e9ce40777a63e153",
     "lto": true,
     "asan": false,
@@ -27,7 +27,7 @@
     "build_type": "RelWithDebInfo"
   },
   {
-    "filename": "aarch64-windows-msvc-releasedbg.tar.xz",
+    "filename": "arm64-windows-msvc-releasedbg.tar.xz",
     "sha256": "d89724c251c08dd7ce3678f07c18adfefd99550c4a29b04e0ad90c54e5bb6f4f",
     "lto": false,
     "asan": false,

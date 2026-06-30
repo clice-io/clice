@@ -25,10 +25,10 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 ARTIFACTS = [
-    "aarch64-linux-gnu-releasedbg-lto.tar.xz",
-    "aarch64-linux-gnu-releasedbg.tar.xz",
-    "aarch64-windows-msvc-releasedbg-lto.tar.xz",
-    "aarch64-windows-msvc-releasedbg.tar.xz",
+    "arm64-linux-gnu-releasedbg-lto.tar.xz",
+    "arm64-linux-gnu-releasedbg.tar.xz",
+    "arm64-windows-msvc-releasedbg-lto.tar.xz",
+    "arm64-windows-msvc-releasedbg.tar.xz",
     "arm64-macos-clang-debug-asan.tar.xz",
     "arm64-macos-clang-releasedbg-lto.tar.xz",
     "arm64-macos-clang-releasedbg.tar.xz",
@@ -180,7 +180,7 @@ def build_metadata_entry(path: Path) -> dict:
     else:
         platform = "unknown"
 
-    if name.startswith("aarch64-") or name.startswith("arm64-"):
+    if name.startswith("arm64-"):
         arch = "arm64"
     elif name.startswith("x64-") or name.startswith("x86_64-"):
         arch = "x64"
