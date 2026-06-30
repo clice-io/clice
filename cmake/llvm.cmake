@@ -91,11 +91,7 @@ function(_download_llvm LLVM_VERSION)
     )
     FetchContent_MakeAvailable(llvm_prebuilt)
 
-    if(EXISTS "${llvm_prebuilt_SOURCE_DIR}/build-install")
-        set(LLVM_INSTALL_PATH "${llvm_prebuilt_SOURCE_DIR}/build-install" PARENT_SCOPE)
-    else()
-        set(LLVM_INSTALL_PATH "${llvm_prebuilt_SOURCE_DIR}" PARENT_SCOPE)
-    endif()
+    set(LLVM_INSTALL_PATH "${llvm_prebuilt_SOURCE_DIR}" PARENT_SCOPE)
 endfunction()
 
 function(setup_llvm LLVM_VERSION)

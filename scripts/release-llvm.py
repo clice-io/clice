@@ -253,7 +253,6 @@ def _process_artifact(
         subprocess.run(
             [
                 "tar",
-                "--strip-components=1",
                 "-xf",
                 str(dl_dir / artifact),
                 "-C",
