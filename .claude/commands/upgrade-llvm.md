@@ -118,10 +118,6 @@ If the LLVM source is not available locally, look up changes on GitHub by search
 
 Group changes by category (Type System, NNS, Driver/Frontend, Other) with a table per category. See the existing `LLVM 21 → 22` section as a template.
 
-## Step 8: Merge
-
-Once CI is green and changelog is written, merge the PR.
-
 ## Notes
 
 - **Artifact size limit**: GitHub Release max 2GB per file. macOS LTO artifacts are largest, currently ~1.7GB with xz -9e.
