@@ -68,14 +68,14 @@ jobs:
         shell: bash
         run: |
           pixi run cmake-config RelWithDebInfo ON -- \
-            "-DLLVM_INSTALL_PATH=.llvm/build-install"
+            "-DLLVM_INSTALL_PATH=.llvm"
           pixi run cmake-build RelWithDebInfo
 
       - name: Discover unused libraries
         shell: bash
         run: |
           python3 scripts/release-llvm.py discover \
-            --install-dir .llvm/build-install/lib \
+            --install-dir .llvm/lib \
             --build-dir build/RelWithDebInfo \
             --manifest pruned-libs.json \
             --skip-pattern "*Tidy*Module*"
