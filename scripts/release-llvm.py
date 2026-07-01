@@ -18,7 +18,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -283,47 +282,6 @@ def repackage(
             print(f"  {path.stat().st_size / 1048576:>8.1f} MB  {path.name}")
 
 
-def _wait_and_download_manifest(
-    run_id: str,
-    artifact: str,
-    download_dir: Path,
-    manifest_name: str,
-    max_attempts: int,
-    sleep_seconds: int,
-) -> Path:
-    download_dir.mkdir(parents=True, exist_ok=True)
-    for attempt in range(1, max_attempts + 1):
-        print(
-            f"[{attempt}/{max_attempts}] Downloading manifest "
-            f"(run={run_id}, artifact={artifact})"
-        )
-        result = subprocess.run(
-            [
-                "gh",
-                "run",
-                "download",
-                str(run_id),
-                "--pattern",
-                artifact,
-                "--dir",
-                str(download_dir),
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            for path in download_dir.rglob(manifest_name):
-                if path.is_file():
-                    print(f"Found manifest at {path}")
-                    return path
-            print("Download succeeded but manifest not found; retrying...")
-        else:
-            print(f"gh run download failed: {result.stderr.strip()}")
-        if attempt < max_attempts:
-            time.sleep(sleep_seconds)
-    raise RuntimeError("Manifest could not be downloaded within the allotted attempts")
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="LLVM release pipeline utilities.")
     sub = parser.add_subparsers(dest="action", required=True)
@@ -333,15 +291,6 @@ def parse_args() -> argparse.Namespace:
     dp.add_argument("--build-dir", type=Path, required=True)
     dp.add_argument("--manifest", type=Path, required=True)
     dp.add_argument("--skip-pattern", action="append", default=[])
-
-    ap = sub.add_parser("apply", help="Replace listed libs with empty archives")
-    ap.add_argument("--manifest", type=Path, required=True)
-    ap.add_argument("--install-dir", type=Path, required=True)
-    ap.add_argument("--gh-run-id", type=str)
-    ap.add_argument("--gh-artifact", type=str, default="llvm-pruned-libs")
-    ap.add_argument("--gh-download-dir", type=Path, default=Path("artifacts"))
-    ap.add_argument("--max-attempts", type=int, default=30)
-    ap.add_argument("--sleep-seconds", type=int, default=60)
 
     rp = sub.add_parser("repackage", help="Download, prune, and repackage artifacts")
     rp.add_argument("--source-run-id", type=str, required=True)
@@ -369,24 +318,6 @@ def main() -> None:
         args.manifest.write_text(json.dumps(data, indent=2))
         print(f"Wrote manifest with {len(removed)} entries to {args.manifest}")
         print(f"Total space saved: {total_size / 1048576:.1f} MB")
-    elif args.action == "apply":
-        manifest = args.manifest
-        if not manifest.exists():
-            if not args.gh_run_id:
-                raise FileNotFoundError(
-                    f"Manifest {manifest} missing and no gh run ID provided"
-                )
-            downloaded = _wait_and_download_manifest(
-                args.gh_run_id,
-                args.gh_artifact,
-                args.gh_download_dir,
-                manifest.name,
-                args.max_attempts,
-                args.sleep_seconds,
-            )
-            if downloaded != manifest:
-                shutil.copy(downloaded, manifest)
-        apply_manifest(manifest, args.install_dir)
     elif args.action == "repackage":
         repackage(
             source_run_id=args.source_run_id,

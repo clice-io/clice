@@ -37,8 +37,10 @@ function(_download_llvm LLVM_VERSION)
 
         if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
             set(_ARCH "arm64")
-        else()
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|x64")
             set(_ARCH "x64")
+        else()
+            message(FATAL_ERROR "Unsupported processor: ${CMAKE_SYSTEM_PROCESSOR}")
         endif()
     endif()
 
