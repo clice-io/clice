@@ -367,9 +367,6 @@ struct S {
 )cpp");
     t2.run();
 
-    llvm::errs() << "injected S:    " << t1.lookup("f") << "\n";
-    llvm::errs() << "explicit S<T>: " << t2.lookup("f") << "\n";
-
     ASSERT_EQ(t1.lookup("f"), t2.lookup("f"));
 }
 

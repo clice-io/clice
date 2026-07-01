@@ -569,12 +569,9 @@ public:
                 break;
             }
 
-            case clang::NestedNameSpecifier::Kind::Null:
-            case clang::NestedNameSpecifier::Kind::Type:
-            case clang::NestedNameSpecifier::Kind::Global:
-            case clang::NestedNameSpecifier::Kind::MicrosoftSuper: {
+            default: {
                 break;
-            };
+            }
         }
 
         return true;

@@ -14,7 +14,7 @@
 /// Architecture:
 ///   PseudoInstantiator (TreeTransform) — heuristic lookup in primary templates/partial specs
 ///     ├─ TransformDependentNameType       — lookup member in template, substitute, recurse
-///     ├─ TransformDependentTemplateSPTType — resolve DTST via hole()/lookup, CTD→TST
+///     ├─ TransformTemplateSpecializationType — resolve dep-TST via hole()/lookup, CTD→TST
 ///     ├─ TransformTemplateTypeParmType     — substitute from stack (+ default arg fallback)
 ///     ├─ TransformTypedefType              — delegate to SubstituteOnly (no lookup)
 ///     └─ TransformType                     — depth guard + null safety
@@ -179,7 +179,7 @@ static clang::QualType get_decl_type(clang::Decl* decl, clang::ASTContext& conte
 /// lookup. This breaks the typedef ↔ lookup cycle that would occur if typedef expansion
 /// triggered PseudoInstantiator's TransformDependentNameType.
 ///
-/// Handles: TypedefType, ElaboratedType, InjectedClassNameType, alias TST, TTPT.
+/// Handles: TypedefType, InjectedClassNameType, alias TST, TTPT.
 /// Does NOT handle: multi-element pack expansion, NTTP, template template params.
 class SubstituteOnly : public clang::TreeTransform<SubstituteOnly> {
     using Base = clang::TreeTransform<SubstituteOnly>;
@@ -531,15 +531,10 @@ public:
                 return lookup(clang::QualType(NNS.getAsType(), 0), name);
             }
 
-            case clang::NestedNameSpecifier::Kind::Null:
-            case clang::NestedNameSpecifier::Kind::Global:
-            case clang::NestedNameSpecifier::Kind::Namespace:
-            case clang::NestedNameSpecifier::Kind::MicrosoftSuper: {
+            default: {
                 return {};
             }
         }
-
-        return lookup_result();
     }
 
     /// Search for `name` in the dependent base classes of `CRD`. Each base type
