@@ -27,7 +27,7 @@ tar -xf .llvm-download/x64-linux-gnu-releasedbg.tar.xz -C .llvm
 Configure clice to build against it:
 
 ```bash
-pixi run cmake-config RelWithDebInfo ON -- "-DLLVM_INSTALL_PATH=.llvm/build-install"
+pixi run cmake-config RelWithDebInfo ON -- "-DLLVM_INSTALL_PATH=.llvm"
 pixi run cmake-build RelWithDebInfo
 ```
 
