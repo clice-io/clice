@@ -13,7 +13,6 @@ Actions:
 import argparse
 import concurrent.futures
 import fnmatch
-import hashlib
 import json
 import shutil
 import subprocess
@@ -169,40 +168,6 @@ def apply_manifest(manifest: Path, install_dir: Path) -> None:
             print(f"Already absent: {target}")
 
 
-def build_metadata_entry(path: Path) -> dict:
-    name = path.name.lower()
-    if "windows" in name:
-        platform = "windows"
-    elif "linux" in name:
-        platform = "linux"
-    elif "macos" in name:
-        platform = "macos"
-    else:
-        platform = "unknown"
-
-    if name.startswith("arm64-"):
-        arch = "arm64"
-    elif name.startswith("x64-") or name.startswith("x86_64-"):
-        arch = "x64"
-    else:
-        arch = "unknown"
-
-    digest = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            digest.update(chunk)
-
-    return {
-        "filename": path.name,
-        "sha256": digest.hexdigest(),
-        "lto": "-lto" in name,
-        "asan": "-asan" in name,
-        "platform": platform,
-        "arch": arch,
-        "build_type": "Debug" if "debug" in name else "RelWithDebInfo",
-    }
-
-
 def _compress_tar_xz(
     source_dir: Path,
     output_path: Path,
@@ -235,7 +200,6 @@ def _process_artifact(
     source_run_id: str,
     manifests_dir: Path,
     output_dir: Path,
-    version: Optional[str] = None,
 ) -> None:
     workdir = Path(tempfile.mkdtemp(prefix="repackage-"))
     try:
@@ -277,11 +241,6 @@ def _process_artifact(
         file_size = _compress_tar_xz(content_dir, output_path, "-9e", artifact)
 
         print(f"[{artifact}] Done ({file_size / 1048576:.1f} MB)", flush=True)
-
-        if version:
-            meta = build_metadata_entry(output_path)
-            meta_path = output_dir / f"{artifact}.meta.json"
-            meta_path.write_text(json.dumps(meta, indent=2))
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
@@ -292,7 +251,6 @@ def repackage(
     output_dir: Path,
     max_parallel: int = 3,
     artifacts: Optional[List[str]] = None,
-    version: Optional[str] = None,
 ) -> None:
     targets = artifacts if artifacts else ARTIFACTS
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -301,7 +259,7 @@ def repackage(
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel) as pool:
         futures = {
             pool.submit(
-                _process_artifact, a, source_run_id, manifests_dir, output_dir, version
+                _process_artifact, a, source_run_id, manifests_dir, output_dir
             ): a
             for a in targets
         }
@@ -391,7 +349,6 @@ def parse_args() -> argparse.Namespace:
     rp.add_argument("--output-dir", type=Path, required=True)
     rp.add_argument("--max-parallel", type=int, default=3)
     rp.add_argument("--artifacts", nargs="*")
-    rp.add_argument("--version", type=str)
 
     return parser.parse_args()
 
@@ -437,7 +394,6 @@ def main() -> None:
             output_dir=args.output_dir,
             max_parallel=args.max_parallel,
             artifacts=args.artifacts,
-            version=args.version,
         )
 
 

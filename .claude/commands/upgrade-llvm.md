@@ -75,31 +75,25 @@ gh workflow run release-llvm.yml \
   --field llvm_version="<VERSION>"
 ```
 
-This will: discover unused libs → create clice-llvm release → repackage with pruning → upload manifest. Poll until complete.
+This will: discover unused libs → create clice-llvm release → repackage with pruning. Poll until complete.
 
-## Step 6: Update Manifest
+## Step 6: Update Version
 
-```bash
-gh run list --workflow release-llvm.yml --limit 1
-gh run download <RELEASE_RUN_ID> -n llvm-manifest-final -D .
-cp llvm-manifest.json config/llvm-manifest.json
-```
-
-Also update the version string in `cmake/package.cmake`:
+Update the version string in `cmake/package.cmake`:
 
 ```
 setup_llvm("<VERSION>")
 ```
 
-Then commit and push:
+Commit and push:
 
 ```bash
-git add config/llvm-manifest.json cmake/package.cmake
-git commit -m "chore: update llvm-manifest.json to <VERSION>"
+git add cmake/package.cmake
+git commit -m "chore: update LLVM to <VERSION>"
 git push
 ```
 
-Poll CI until all platforms pass.
+Poll CI until all platforms pass. CMake downloads the correct artifact automatically based on the version and platform — no manifest file needed.
 
 ## Step 7: Write LLVM Changelog (REQUIRED)
 
