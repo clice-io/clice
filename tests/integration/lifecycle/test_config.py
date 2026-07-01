@@ -6,10 +6,13 @@ clean; otherwise an undeclared-identifier diagnostic surfaces.
 """
 
 import pytest
+from lsprotocol.types import DiagnosticSeverity
 
+from tests.conftest import make_client, shutdown_client
 from tests.integration.utils.assertions import (
     assert_clean_compile,
     assert_has_errors,
+    assert_no_anomaly,
     get_errors,
 )
 
@@ -66,3 +69,62 @@ async def test_init_options_replaces_toml_rules(client, workspace):
 async def test_rules_pattern_mismatch(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     assert_has_errors(client, uri, "Rule pattern should not have matched main.cpp")
+
+
+async def test_config_type_error_diagnostic(executable, tmp_path):
+    # Wrong value type → Error diagnostic on the clice.toml URI with the
+    # offending line/column; the config falls back to defaults.
+    (tmp_path / "clice.toml").write_text('[project]\nclang_tidy = "yes"\n')
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
+    client = await make_client(executable, tmp_path)
+    try:
+        toml_uri = client.path_to_uri(tmp_path / "clice.toml")
+        await client.wait_diagnostics(toml_uri, timeout=10)
+        diags = client.diagnostics[toml_uri]
+        assert len(diags) == 1, f"expected one config diagnostic: {diags}"
+        assert diags[0].severity == DiagnosticSeverity.Error
+        assert "clang_tidy" in diags[0].message
+        assert_no_anomaly(client, tmp_path)
+    finally:
+        await shutdown_client(client)
+
+
+async def test_config_unknown_key_diagnostic(executable, tmp_path):
+    # Typo'd key → Warning diagnostic; the rest of the config still applies.
+    (tmp_path / "clice.toml").write_text("[project]\nclang_tdy = true\n")
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
+    client = await make_client(executable, tmp_path)
+    try:
+        toml_uri = client.path_to_uri(tmp_path / "clice.toml")
+        await client.wait_diagnostics(toml_uri, timeout=10)
+        diags = client.diagnostics[toml_uri]
+        assert len(diags) == 1, f"expected one config diagnostic: {diags}"
+        assert diags[0].severity == DiagnosticSeverity.Warning
+        assert "clang_tdy" in diags[0].message
+        assert_no_anomaly(client, tmp_path)
+    finally:
+        await shutdown_client(client)
+
+
+async def test_config_diagnostic_clears_after_fix(executable, tmp_path):
+    (tmp_path / "clice.toml").write_text('[project]\nclang_tidy = "yes"\n')
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
+    client = await make_client(executable, tmp_path)
+    try:
+        toml_uri = client.path_to_uri(tmp_path / "clice.toml")
+        await client.wait_diagnostics(toml_uri, timeout=10)
+        assert client.diagnostics[toml_uri], "broken config should be diagnosed"
+    finally:
+        await shutdown_client(client)
+
+    # Fix the config and restart — the new session publishes an empty list
+    # for the config URI so stale markers clear.
+    (tmp_path / "clice.toml").write_text("[project]\nclang_tidy = true\n")
+    client = await make_client(executable, tmp_path)
+    try:
+        toml_uri = client.path_to_uri(tmp_path / "clice.toml")
+        await client.wait_diagnostics(toml_uri, timeout=10)
+        assert client.diagnostics[toml_uri] == [], "fixed config must clear diagnostics"
+        assert_no_anomaly(client, tmp_path)
+    finally:
+        await shutdown_client(client)

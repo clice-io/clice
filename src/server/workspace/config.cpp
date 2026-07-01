@@ -136,7 +136,29 @@ void Config::match_rules(llvm::StringRef file_path,
     }
 }
 
-std::optional<Config> Config::load(llvm::StringRef path, llvm::StringRef workspace_root) {
+/// Codec config for the strict validation pass: reject unknown keys.
+struct DenyUnknownKeys {
+    constexpr static bool deny_unknown_fields = true;
+};
+
+static ConfigIssue make_issue(ConfigIssue::Severity severity,
+                              llvm::StringRef path,
+                              const kota::codec::rich_error& error) {
+    ConfigIssue issue;
+    issue.severity = severity;
+    issue.file = path.str();
+    issue.message = error.to_string();
+    if(error.location) {
+        issue.line = static_cast<std::uint32_t>(error.location->line);
+        issue.column = static_cast<std::uint32_t>(error.location->column);
+    }
+    return issue;
+}
+
+std::optional<Config> Config::load(llvm::StringRef path,
+                                   llvm::StringRef workspace_root,
+                                   std::vector<ConfigIssue>* issues,
+                                   bool with_defaults) {
     auto content = fs::read(path);
     if(!content)
         return std::nullopt;
@@ -144,11 +166,25 @@ std::optional<Config> Config::load(llvm::StringRef path, llvm::StringRef workspa
     auto result = kota::codec::toml::parse<Config>(*content);
     if(!result) {
         LOG_ERROR("Invalid clice.toml {}: {}", path, result.error().to_string());
+        if(issues)
+            issues->push_back(make_issue(ConfigIssue::Severity::Error, path, result.error()));
         return std::nullopt;
     }
 
+    // Second, strict decode pass that rejects unknown keys. The lenient
+    // result above still applies — this only surfaces typos (e.g. a
+    // misspelled option silently doing nothing) as Warning issues.
+    if(issues) {
+        Config probe{};
+        if(auto strict = kota::codec::toml::from_toml<DenyUnknownKeys>(*content, probe); !strict) {
+            LOG_WARN("clice.toml {}: {}", path, strict.error().to_string());
+            issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, strict.error()));
+        }
+    }
+
     auto config = std::move(*result);
-    config.apply_defaults(workspace_root);
+    if(with_defaults)
+        config.apply_defaults(workspace_root);
     LOG_INFO("Loaded config from {}", path);
     return config;
 }
@@ -166,13 +202,21 @@ std::optional<Config> Config::load_from_json(llvm::StringRef json, llvm::StringR
     return config;
 }
 
-Config Config::load_from_workspace(llvm::StringRef workspace_root) {
+Config Config::load_from_workspace(llvm::StringRef workspace_root,
+                                   std::vector<ConfigIssue>* issues,
+                                   std::string* loaded_path,
+                                   bool with_defaults) {
+    if(loaded_path)
+        loaded_path->clear();
+
     if(!workspace_root.empty()) {
         for(auto* name: {"clice.toml", ".clice/config.toml"}) {
             auto config_path = path::join(workspace_root, name);
             if(!llvm::sys::fs::exists(config_path))
                 continue;
-            if(auto config = load(config_path, workspace_root))
+            if(loaded_path)
+                *loaded_path = config_path;
+            if(auto config = load(config_path, workspace_root, issues, with_defaults))
                 return std::move(*config);
             // Present but malformed: fall through to defaults, but surface
             // the situation clearly so users know their config wasn't applied.
@@ -181,6 +225,8 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root) {
     }
 
     Config config;
+    if(!with_defaults)
+        return config;
     config.apply_defaults(workspace_root);
     LOG_INFO(
         "No clice.toml found, using default configuration " "(stateful={}, stateless={}, memory_limit={}MB)",

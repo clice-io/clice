@@ -494,12 +494,14 @@ public:
 
         auto begin = token.range.begin;
         auto end = token.range.end;
-        auto begin_position = *map.to_position(begin);
-        auto end_position = *map.to_position(end);
-        auto begin_line = static_cast<std::uint32_t>(begin_position.line);
-        auto begin_char = static_cast<std::uint32_t>(begin_position.character);
-        auto end_line = static_cast<std::uint32_t>(end_position.line);
-        auto end_char = static_cast<std::uint32_t>(end_position.character);
+        auto begin_position = to_position(map, begin);
+        auto end_position = to_position(map, end);
+        if(!begin_position || !end_position)
+            return;
+        auto begin_line = static_cast<std::uint32_t>(begin_position->line);
+        auto begin_char = static_cast<std::uint32_t>(begin_position->character);
+        auto end_line = static_cast<std::uint32_t>(end_position->line);
+        auto end_char = static_cast<std::uint32_t>(end_position->character);
 
         if(begin_line == end_line) [[likely]] {
             auto delta_line = begin_line - last_line;

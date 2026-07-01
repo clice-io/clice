@@ -151,7 +151,11 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         auto offset = unit.file_offset(include_location);
         auto end_offset =
             static_cast<std::uint32_t>(offset + unit.token_spelling(include_location).size());
-        diagnostic.range = *map.to_range(offset, end_offset);
+        auto start_pos = to_position(map, offset);
+        auto end_pos = to_position(map, end_offset);
+        if(!start_pos || !end_pos)
+            continue;
+        diagnostic.range = protocol::Range{.start = *start_pos, .end = *end_pos};
 
         current = std::move(diagnostic);
     }

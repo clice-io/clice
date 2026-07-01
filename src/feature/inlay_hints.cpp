@@ -934,8 +934,11 @@ auto inlay_hints(CompilationUnitRef unit,
     hints.reserve(collected.size());
 
     for(const auto& hint: collected) {
+        auto pos = to_position(map, hint.offset);
+        if(!pos)
+            continue;
         protocol::InlayHint out{
-            .position = *map.to_position(hint.offset),
+            .position = *pos,
             .label = hint.label,
         };
 

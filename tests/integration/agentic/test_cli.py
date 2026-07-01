@@ -31,7 +31,7 @@ async def indexed_server(request, executable, workspace):
     """Start server with LSP+agentic, compile a file, wait for indexing."""
     import asyncio
     from tests.integration.utils.client import CliceClient
-    from tests.conftest import shutdown_client, find_free_port
+    from tests.conftest import check_no_anomaly, shutdown_client, find_free_port
 
     host = "127.0.0.1"
     port = find_free_port()
@@ -60,6 +60,7 @@ async def indexed_server(request, executable, workspace):
 
     c.close(uri)
     await shutdown_client(c)
+    check_no_anomaly(request, c)
 
 
 @pytest.mark.workspace("index_features")

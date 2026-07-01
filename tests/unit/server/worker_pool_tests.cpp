@@ -2,6 +2,7 @@
 #include "server/protocol/worker.h"
 #include "server/worker/worker_pool.h"
 #include "server/worker_test_helpers.h"
+#include "support/anomaly.h"
 
 #include "kota/async/async.h"
 
@@ -15,9 +16,14 @@ struct WorkerPoolFixture {
     std::vector<WorkerCrashInfo> crash_reports;
 
     WorkerPoolFixture() : pool(loop) {
+        logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
         pool.on_crash = [this](const WorkerCrashInfo& info) {
             crash_reports.push_back(info);
         };
+    }
+
+    ~WorkerPoolFixture() {
+        logging::reset_anomaly_for_testing();
     }
 
     void add_stateless(bool alive = true, bool busy = false, bool low = true) {

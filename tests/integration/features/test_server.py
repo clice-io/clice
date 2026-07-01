@@ -10,6 +10,7 @@ from lsprotocol.types import (
 )
 
 from tests.integration.utils import doc
+from tests.integration.utils.wait import SETTLE_TIME
 from tests.integration.utils.workspace import did_change
 
 
@@ -72,7 +73,7 @@ async def test_semantic_token_modifier_legend(client, workspace):
 @pytest.mark.workspace("hello_world")
 async def test_did_open_close_cycle(client, workspace):
     uri, _ = client.open(workspace / "main.cpp")
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(SETTLE_TIME)
     client.close(uri)
 
 
@@ -85,8 +86,8 @@ async def test_shutdown_exit(client, workspace):
 async def test_feature_requests_after_close(client, workspace):
     uri, _ = client.open(workspace / "main.cpp")
     client.close(uri)
-    result = await client.hover_at(uri, 0, 0)
-    assert result is None
+    with pytest.raises(Exception, match="Document not open"):
+        await client.hover_at(uri, 0, 0)
 
 
 @pytest.mark.workspace("hello_world")
@@ -96,7 +97,7 @@ async def test_incremental_change(client, workspace):
         content += f"\n// change {i}"
         did_change(client, uri, i + 1, content)
         await asyncio.sleep(0.05)
-    await asyncio.sleep(1)
+    await asyncio.sleep(SETTLE_TIME * 2)
     client.close(uri)
 
 
@@ -193,23 +194,30 @@ async def test_rapid_changes_stress(client, workspace):
     for i in range(20):
         content += f"\n// stress change {i}\n"
         did_change(client, uri, i + 1, content)
-    await asyncio.sleep(2)
+    await asyncio.sleep(SETTLE_TIME * 4)
     client.close(uri)
 
 
 @pytest.mark.workspace("hello_world")
 async def test_save_notification(client, workspace):
     uri, _ = client.open(workspace / "main.cpp")
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(SETTLE_TIME)
     client.text_document_did_save(DidSaveTextDocumentParams(text_document=doc(uri)))
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(SETTLE_TIME)
     client.close(uri)
 
 
 @pytest.mark.workspace("hello_world")
 async def test_hover_on_unknown_file(client, workspace):
-    result = await client.hover_at("file:///nonexistent/fake.cpp", 0, 0)
-    assert result is None
+    with pytest.raises(Exception, match="Document not open"):
+        await client.hover_at("file:///nonexistent/fake.cpp", 0, 0)
+
+
+@pytest.mark.workspace("hello_world")
+async def test_hover_out_of_range_position(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    with pytest.raises(Exception, match="Invalid position"):
+        await client.hover_at(uri, 99999, 0)
 
 
 @pytest.mark.workspace("hello_world")

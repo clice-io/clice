@@ -4,6 +4,7 @@
 #include <csignal>
 #include <string>
 
+#include "support/anomaly.h"
 #include "support/logging.h"
 
 #include "kota/async/io/system.h"
@@ -81,9 +82,10 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
 
     auto result = kota::process::spawn(opts, loop);
     if(!result) {
-        LOG_ERROR("Failed to spawn {} worker: {}",
-                  stateful ? "stateful" : "stateless",
-                  result.error().message());
+        LOG_ANOMALY(WorkerSpawnFail,
+                    "Failed to spawn {} worker: {}",
+                    stateful ? "stateful" : "stateless",
+                    result.error().message());
         return false;
     }
 
@@ -320,15 +322,17 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     w.alive = false;
 
     if(exit_signal != 0) {
-        LOG_ERROR("Worker {} killed by signal {} (restarts: {})",
-                  w.name,
-                  exit_signal,
-                  w.restart_count);
+        LOG_ANOMALY(WorkerCrash,
+                    "Worker {} killed by signal {} (restarts: {})",
+                    w.name,
+                    exit_signal,
+                    w.restart_count);
     } else {
-        LOG_ERROR("Worker {} exited with code {} (restarts: {})",
-                  w.name,
-                  exit_code,
-                  w.restart_count);
+        LOG_ANOMALY(WorkerCrash,
+                    "Worker {} exited with code {} (restarts: {})",
+                    w.name,
+                    exit_code,
+                    w.restart_count);
     }
 
     WorkerCrashInfo info;
@@ -419,7 +423,10 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
 
     auto result = kota::process::spawn(opts, loop);
     if(!result) {
-        LOG_ERROR("Failed to respawn worker {}: {}", worker_name, result.error().message());
+        LOG_ANOMALY(WorkerSpawnFail,
+                    "Failed to respawn worker {}: {}",
+                    worker_name,
+                    result.error().message());
         return false;
     }
 

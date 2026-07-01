@@ -16,6 +16,9 @@ public:
 private:
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
+    /// Push clice.toml load problems as diagnostics on the config file URI.
+    void publish_config_diagnostics();
+
     MasterServer& server;
     kota::ipc::JsonPeer& peer;
 };

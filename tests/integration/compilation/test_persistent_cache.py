@@ -17,6 +17,7 @@ from lsprotocol.types import (
 
 from tests.conftest import make_client, shutdown_client
 from tests.integration.utils import write_cdb, doc
+from tests.integration.utils.wait import MTIME_GRANULARITY, SETTLE_TIME
 from tests.integration.utils.cache import (
     cache_root,
     list_pch_files,
@@ -25,7 +26,7 @@ from tests.integration.utils.cache import (
     pin_cache_to_workspace,
     read_cache_json,
 )
-from tests.integration.utils.assertions import assert_clean_compile
+from tests.integration.utils.assertions import assert_clean_compile, assert_no_anomaly
 
 
 async def test_pch_written_to_cache_dir(client, tmp_path):
@@ -97,7 +98,7 @@ async def test_pch_reused_on_close_reopen(client, tmp_path):
 
     # Close.
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=doc(uri)))
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(SETTLE_TIME)
 
     # Clear diagnostics so we can wait for fresh ones.
     client.diagnostics.pop(uri, None)
@@ -134,6 +135,7 @@ async def test_pch_survives_server_restart(executable, tmp_path):
     cache_s1 = read_cache_json(tmp_path)
     assert cache_s1 is not None, "cache.json should exist after session 1"
 
+    assert_no_anomaly(c1, tmp_path)
     await shutdown_client(c1)
 
     # Session 2: restart server, reopen file.
@@ -152,6 +154,7 @@ async def test_pch_survives_server_restart(executable, tmp_path):
         "PCH file should not be rebuilt (mtime should be unchanged)"
     )
 
+    assert_no_anomaly(c2, tmp_path)
     await shutdown_client(c2)
 
 
@@ -224,7 +227,7 @@ async def test_pch_rebuilt_on_header_change(client, tmp_path):
     assert len(pch_before) >= 1
 
     # Modify header — changes preamble content hash.
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     (tmp_path / "header.h").write_text("#pragma once\nstruct V2 { int b; };\n")
     # Also update main.cpp to use V2 so it compiles cleanly.
     (tmp_path / "main.cpp").write_text(
@@ -233,7 +236,7 @@ async def test_pch_rebuilt_on_header_change(client, tmp_path):
 
     # Close and reopen to get fresh preamble.
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=doc(uri)))
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(SETTLE_TIME)
     client.diagnostics.pop(uri, None)
 
     uri2, _ = await client.open_and_wait(tmp_path / "main.cpp")

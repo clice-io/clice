@@ -941,7 +941,10 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     worker::BuildParams params;
     params.kind = worker::BuildKind::Index;
     params.file = file_path;
-    if(!compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr))
+    // Bulk background indexing sticks to real commands; synthesized fallback
+    // commands would fill the index with guesses.
+    if(compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr) ==
+       CommandSource::Fallback)
         co_return;
 
     workspace.fill_pcm_deps(params.pcms);

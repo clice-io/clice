@@ -107,6 +107,9 @@ struct BuildParams {
 struct BuildResult {
     bool success = true;
     std::string error;
+    /// On failure: whether `error` carries user-code compile errors. A failure
+    /// without user errors indicates clice infrastructure breakage (anomaly).
+    bool has_user_errors = false;
     std::string output_path;  ///< PCH or PCM path
     std::vector<std::string> deps;
     std::string tu_index_data;

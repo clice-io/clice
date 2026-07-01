@@ -23,7 +23,11 @@ from lsprotocol.types import (
 from tests.conftest import make_client, shutdown_client
 from tests.integration.utils import write_cdb, doc
 from tests.integration.utils.cache import list_pch_files, pin_cache_to_workspace
-from tests.integration.utils.wait import wait_for_recompile
+from tests.integration.utils.wait import (
+    MTIME_GRANULARITY,
+    SETTLE_TIME,
+    wait_for_recompile,
+)
 from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
 
 
@@ -44,7 +48,7 @@ async def test_header_change_invalidates_ast(client, tmp_path):
 
     # Modify header on disk — introduce an error.
     # Ensure mtime advances past filesystem granularity (1s on some FSes).
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     (tmp_path / "header.h").write_text(
         "inline int value() { return }\n"
     )  # syntax error
@@ -73,7 +77,7 @@ async def test_header_change_invalidates_pch(client, tmp_path):
 
     # Modify header — rename struct field.
     # Ensure mtime advances past filesystem granularity (1s on some FSes).
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     (tmp_path / "header.h").write_text(
         "#pragma once\nstruct Foo { int y; };\n"  # x -> y
     )
@@ -117,16 +121,22 @@ async def test_touch_without_content_change_skips_recompile(client, tmp_path):
     assert_clean_compile(client, uri)
 
     # Touch the header — mtime changes but content stays the same.
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     original_content = (tmp_path / "header.h").read_text()
     (tmp_path / "header.h").write_text(original_content)
 
     # Hover triggers ensure_compiled which runs deps_changed.
     # Layer 2 hash confirms nothing actually changed → cached AST reused.
-    # Hover on "main" (line 1, col 4) which should be hoverable.
-    hover = await client.text_document_hover_async(
-        HoverParams(text_document=doc(uri), position=Position(line=1, character=4))
-    )
+    # The first hover may see ast_dirty=true (mtime changed, hash check in
+    # progress), so retry to let the hash check complete.
+    hover = None
+    for _ in range(3):
+        hover = await client.text_document_hover_async(
+            HoverParams(text_document=doc(uri), position=Position(line=1, character=4))
+        )
+        if hover is not None:
+            break
+        await asyncio.sleep(SETTLE_TIME)
     assert hover is not None
 
     # No new diagnostics should appear — the file is still clean.
@@ -147,7 +157,7 @@ async def test_header_replaced_with_different_content(client, tmp_path):
     assert_clean_compile(client, uri)
 
     # Replace header — delete and recreate with a breaking change.
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     (tmp_path / "header.h").unlink()
     (tmp_path / "header.h").write_text("inline int renamed_value() { return 1; }\n")
 
@@ -172,7 +182,7 @@ async def test_fix_error_clears_diagnostics(client, tmp_path):
     assert_has_errors(client, uri, "Expected diagnostics from broken header")
 
     # Fix the header.
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     (tmp_path / "header.h").write_text("inline int value() { return 1; }\n")
 
     # Hover triggers recompilation — diagnostics should clear.
@@ -200,7 +210,7 @@ async def test_multiple_files_share_header(client, tmp_path):
     assert_clean_compile(client, uri_b)
 
     # Break the shared header.
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     (tmp_path / "shared.h").write_text("inline int shared() { return }\n")
 
     # Both files should get diagnostics after hover.
@@ -225,7 +235,7 @@ async def test_transitive_header_change(client, tmp_path):
     assert_clean_compile(client, uri)
 
     # Modify the transitive dep (base.h).
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     (tmp_path / "base.h").write_text("inline int base() { return }\n")  # broken
 
     await wait_for_recompile(client, uri)
@@ -312,7 +322,7 @@ async def test_didclose_then_reopen(client, tmp_path):
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=doc(uri)))
 
     # Modify on disk while closed.
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     (tmp_path / "main.cpp").write_text("int main() { return }\n")  # broken
 
     # Reopen — should compile the new (broken) content from disk.
@@ -323,7 +333,7 @@ async def test_didclose_then_reopen(client, tmp_path):
 
 
 async def test_didclose_clears_hover(client, tmp_path):
-    """After didClose, hover on the closed file should return None."""
+    """After didClose, hover on the closed file should return an error."""
     (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
     write_cdb(tmp_path, ["main.cpp"])
     await client.initialize(tmp_path)
@@ -332,10 +342,15 @@ async def test_didclose_clears_hover(client, tmp_path):
 
     client.text_document_did_close(DidCloseTextDocumentParams(text_document=doc(uri)))
 
-    hover = await client.text_document_hover_async(
-        HoverParams(text_document=doc(uri), position=Position(line=0, character=4))
-    )
-    assert hover is None, "Hover on closed file should return None"
+    with pytest.raises(Exception, match="Document not open"):
+        await asyncio.wait_for(
+            client.text_document_hover_async(
+                HoverParams(
+                    text_document=doc(uri), position=Position(line=0, character=4)
+                )
+            ),
+            timeout=10.0,
+        )
 
 
 async def test_didsave_triggers_recompile_for_dependents(client, tmp_path):
@@ -351,7 +366,7 @@ async def test_didsave_triggers_recompile_for_dependents(client, tmp_path):
     assert_clean_compile(client, uri)
 
     # Modify header on disk and send didSave.
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(MTIME_GRANULARITY)
     (tmp_path / "header.h").write_text("inline int value() { return }\n")  # broken
     client.text_document_did_save(
         DidSaveTextDocumentParams(

@@ -4,9 +4,12 @@ CallHierarchy, TypeHierarchy, and WorkspaceSymbol."""
 import pytest
 from lsprotocol.types import (
     CallHierarchyIncomingCallsParams,
+    CallHierarchyItem,
     CallHierarchyOutgoingCallsParams,
     CallHierarchyPrepareParams,
     Position,
+    Range,
+    SymbolKind,
     TypeHierarchyPrepareParams,
     TypeHierarchySubtypesParams,
     TypeHierarchySupertypesParams,
@@ -72,6 +75,24 @@ async def test_call_hierarchy_prepare(client, workspace):
     assert len(result) > 0, f"prepareCallHierarchy returned empty, result={result}"
     assert result[0].name == "add", f"Expected 'add', got '{result[0].name}'"
 
+    client.close(uri)
+
+
+@pytest.mark.workspace("index_features")
+async def test_call_hierarchy_bogus_item(client, workspace):
+    """incomingCalls with an unresolvable item returns an error, not null."""
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    bogus = CallHierarchyItem(
+        name="ghost",
+        kind=SymbolKind.Function,
+        uri="file:///nonexistent/ghost.cpp",
+        range=Range(start=Position(0, 0), end=Position(0, 5)),
+        selection_range=Range(start=Position(0, 0), end=Position(0, 5)),
+    )
+    with pytest.raises(Exception, match="Failed to resolve call hierarchy item"):
+        await client.call_hierarchy_incoming_calls_async(
+            CallHierarchyIncomingCallsParams(item=bogus)
+        )
     client.close(uri)
 
 

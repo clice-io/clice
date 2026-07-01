@@ -70,7 +70,11 @@ std::optional<std::string> DiagnosticID::diagnostic_document_uri() const {
         }
 
         case DiagnosticSource::Clice: {
-            /// TODO: Add diagnostic for clice.
+            // clice's own guidance diagnostics link to the setup guide that
+            // explains how to provide a compilation database.
+            if(name == "inferred-compile-command") {
+                return "https://clice.io/en/guide/quick-start";
+            }
             return std::nullopt;
         }
     }

@@ -14,6 +14,7 @@ from lsprotocol.types import (
 )
 
 from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
+from tests.integration.utils.wait import IDLE_TIMEOUT
 
 
 @pytest.mark.workspace("modules/single_module_no_deps")
@@ -267,7 +268,7 @@ async def test_circular_module_dependency(client, workspace):
     the server remains responsive by opening a non-cyclic file afterwards.
     """
     client.open(workspace / "cycle_a.cppm")
-    await asyncio.sleep(5.0)
+    await asyncio.sleep(IDLE_TIMEOUT)
 
     uri_ok, _ = await client.open_and_wait(workspace / "ok.cppm")
     diags = client.diagnostics.get(uri_ok, [])

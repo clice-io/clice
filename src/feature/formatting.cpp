@@ -58,8 +58,12 @@ auto document_format(llvm::StringRef file,
     for(const auto& replacement: *replacements) {
         auto begin = replacement.getOffset();
         auto end = begin + replacement.getLength();
+        auto start_pos = to_position(map, begin);
+        auto end_pos = to_position(map, end);
+        if(!start_pos || !end_pos)
+            continue;
         protocol::TextEdit edit{
-            .range = *map.to_range(begin, end),
+            .range = protocol::Range{.start = *start_pos, .end = *end_pos},
             .new_text = replacement.getReplacementText().str(),
         };
         edits.push_back(std::move(edit));

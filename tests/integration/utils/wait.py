@@ -9,6 +9,11 @@ from lsprotocol.types import (
     WorkspaceSymbolParams,
 )
 
+# Standard timing constants — use these instead of hardcoded sleep values.
+MTIME_GRANULARITY = 1.1  # Filesystem mtime precision (1s on some FSes, +0.1 margin)
+SETTLE_TIME = 0.5  # Time for the server to stabilize after an operation
+IDLE_TIMEOUT = 5.0  # Idle soak time in lifecycle tests
+
 
 async def wait_for_recompile(client, uri: str, *, timeout: float = 60.0) -> None:
     """Trigger recompilation via hover and wait for fresh diagnostics.
