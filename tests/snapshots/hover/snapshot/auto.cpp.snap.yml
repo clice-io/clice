@@ -45,14 +45,14 @@ input_file: auto.cpp
 04_auto_lambda:
   name: "auto"
   kind: Type
-  definition: "class(lambda)"
+  definition: "(lambda)"
   symbol_range: "[628, 632)"
   markdown: |
     ### type `auto`  
 
     ---
     ```cpp
-    class(lambda)
+    (lambda)
     ```
 
 05_auto_instantiation:
@@ -313,7 +313,7 @@ input_file: auto.cpp
   name: "auto"
   kind: Type
   documentation: "auto on alias"
-  definition: "cls_type // aka: alias_class::cls"
+  definition: "cls_type // aka: cls"
   symbol_range: "[2765, 2769)"
   markdown: |
     ### type `auto`  
@@ -323,7 +323,7 @@ input_file: auto.cpp
 
     ---
     ```cpp
-    cls_type // aka: alias_class::cls
+    cls_type // aka: cls
     ```
 
 24_auto_alias_template:

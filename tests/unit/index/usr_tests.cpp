@@ -348,6 +348,28 @@ public:
     ASSERT_NE(usr1, usr2);
 }
 
+TEST_CASE(InjectedClassName) {
+    // S and S<T> inside a class template body should produce identical USRs
+    // for functions with the same signature (injected class name == S<T>).
+    USRTester t1("main.cpp", R"cpp(
+template<typename T>
+struct S {
+    void $(f)f(S other);
+};
+)cpp");
+    t1.run();
+
+    USRTester t2("main.cpp", R"cpp(
+template<typename T>
+struct S {
+    void $(f)f(S<T> other);
+};
+)cpp");
+    t2.run();
+
+    ASSERT_EQ(t1.lookup("f"), t2.lookup("f"));
+}
+
 };  // TEST_SUITE(USR)
 
 }  // namespace

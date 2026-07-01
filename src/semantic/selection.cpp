@@ -756,8 +756,8 @@ public:
         return traverse_node(X, [&] { return Base::TraverseDecl(X); });
     }
 
-    bool TraverseTypeLoc(clang::TypeLoc X) {
-        return traverse_node(&X, [&] { return Base::TraverseTypeLoc(X); });
+    bool TraverseTypeLoc(clang::TypeLoc X, bool traverse_qualifier = true) {
+        return traverse_node(&X, [&] { return Base::TraverseTypeLoc(X, traverse_qualifier); });
     }
 
     bool TraverseTemplateArgumentLoc(const clang::TemplateArgumentLoc& X) {
@@ -814,7 +814,8 @@ public:
     // This means we'd never see 'int' in 'const int'! Work around that here.
     // (The reason for the behavior is to avoid traversing the nested Type twice,
     // but we ignore TraverseType anyway).
-    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX) {
+    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX,
+                                  [[maybe_unused]] bool traverse_qualifier = true) {
         return traverse_node<clang::TypeLoc>(&QX, [&] {
             return TraverseTypeLoc(QX.getUnqualifiedLoc());
         });
@@ -825,7 +826,7 @@ public:
     }
 
     // Uninteresting parts of the AST that don't have locations within them.
-    bool TraverseNestedNameSpecifier(clang::NestedNameSpecifier*) {
+    bool TraverseNestedNameSpecifier(clang::NestedNameSpecifier) {
         return true;
     }
 

@@ -28,9 +28,10 @@ enum ID : unsigned {
                HELP,                                                                               \
                HELP_TEXTS,                                                                         \
                META_VAR,                                                                           \
-               VALUES)                                                                             \
+               VALUES,                                                                             \
+               ...)                                                                                \
     OPT_##ID,
-#include "clang/Driver/Options.inc"
+#include "clang/Options/Options.inc"
 #undef OPTION
 };
 

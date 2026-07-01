@@ -397,12 +397,8 @@ public:
                 outer.add(type->getAsTagDecl(), flags);
             }
 
-            void VisitElaboratedType(const clang::ElaboratedType* type) {
-                outer.add(type->desugar(), flags);
-            }
-
             void VisitUsingType(const clang::UsingType* type) {
-                outer.add(type->getFoundDecl(), flags);
+                outer.add(type->getDecl(), flags);
             }
 
             void VisitInjectedClassNameType(const clang::InjectedClassNameType* type) {
@@ -445,16 +441,6 @@ public:
                 if(outer.resolver) {
                     for(const clang::NamedDecl* decl:
                         outer.resolver->resolveDependentNameType(type)) {
-                        outer.add(decl, flags);
-                    }
-                }
-            }
-
-            void VisitDependentTemplateSpecializationType(
-                const clang::DependentTemplateSpecializationType* type) {
-                if(outer.resolver) {
-                    for(const clang::NamedDecl* decl:
-                        outer.resolver->resolveTemplateSpecializationType(type)) {
                         outer.add(decl, flags);
                     }
                 }
@@ -531,30 +517,20 @@ public:
         Visitor(*this, flags).Visit(type.getTypePtr());
     }
 
-    void add(const clang::NestedNameSpecifier* nns, RelSet flags) {
+    void add(clang::NestedNameSpecifier nns, RelSet flags) {
         if(!nns) {
             return;
         }
 
-        switch(nns->getKind()) {
-            case clang::NestedNameSpecifier::Namespace: add(nns->getAsNamespace(), flags); return;
-            case clang::NestedNameSpecifier::NamespaceAlias:
-                add(nns->getAsNamespaceAlias(), flags);
-                return;
-            case clang::NestedNameSpecifier::Identifier:
-                if(resolver) {
-                    add(resolver->resolveNestedNameSpecifierToType(nns), flags);
-                }
-                return;
-            case clang::NestedNameSpecifier::TypeSpec:
-                add(clang::QualType(nns->getAsType(), 0), flags);
-                return;
-            case clang::NestedNameSpecifier::Global:
-                /// This should be TUDecl, but we can't get a pointer to it!
-                return;
-            case clang::NestedNameSpecifier::Super: add(nns->getAsRecordDecl(), flags); return;
+        using Kind = clang::NestedNameSpecifier::Kind;
+        switch(nns.getKind()) {
+            case Kind::Namespace: add(nns.getAsNamespaceAndPrefix().Namespace, flags); return;
+            case Kind::Type: add(clang::QualType(nns.getAsType(), 0), flags); return;
+            case Kind::Global: return;
+            case Kind::MicrosoftSuper: add(nns.getAsRecordDecl(), flags); return;
+            case Kind::Null: return;
         }
-        llvm_unreachable("unhandled NestedNameSpecifier::SpecifierKind");
+        llvm_unreachable("unhandled NestedNameSpecifier::Kind");
     }
 
     void add(const clang::CXXCtorInitializer* init, RelSet flags) {
@@ -604,7 +580,7 @@ auto all_target_decls(const clang::DynTypedNode& node, const clang::HeuristicRes
     } else if(const auto* nns_loc = node.get<clang::NestedNameSpecifierLoc>()) {
         finder.add(nns_loc->getNestedNameSpecifier(), flags);
     } else if(const auto* nns = node.get<clang::NestedNameSpecifier>()) {
-        finder.add(nns, flags);
+        finder.add(*nns, flags);
     } else if(const auto* type_loc = node.get<clang::TypeLoc>()) {
         finder.add(type_loc->getType(), flags);
     } else if(const auto* type = node.get<clang::QualType>()) {

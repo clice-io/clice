@@ -41,21 +41,10 @@ public:
     using lookup_result = clang::DeclContext::lookup_result;
 
     /// Look up the name in the given nested name specifier.
-    lookup_result lookup(const clang::NestedNameSpecifier* NNS, clang::DeclarationName name);
+    lookup_result lookup(clang::NestedNameSpecifier NNS, clang::DeclarationName name);
 
     lookup_result lookup(const clang::DependentNameType* type) {
         return lookup(type->getQualifier(), type->getIdentifier());
-    }
-
-    lookup_result lookup(const clang::DependentTemplateSpecializationType* type) {
-        auto& template_name = type->getDependentTemplateName();
-        auto identifier = template_name.getName().getIdentifier();
-        if(identifier) {
-            return lookup(template_name.getQualifier(), identifier);
-        } else {
-            /// TODO: Operators don't have an IdentifierInfo; need DeclarationName-based lookup.
-            return {};
-        }
     }
 
     lookup_result lookup(const clang::DependentScopeDeclRefExpr* expr) {
