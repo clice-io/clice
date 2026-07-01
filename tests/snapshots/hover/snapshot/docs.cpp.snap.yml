@@ -80,7 +80,7 @@ input_file: docs.cpp
     ```
 
 05_var_tmpl_ref_doc:
-  name: "baz<X<int>>"
+  name: "baz"
   kind: Variable
   namespace_scope: "docs_ast::"
   documentation: "doc"
@@ -88,7 +88,7 @@ input_file: docs.cpp
   type: "docs_ast::X<int>"
   symbol_range: "[411, 414)"
   markdown: |
-    ### variable `baz<X<int>>`  
+    ### variable `baz`  
 
     ---
     Type: `docs_ast::X<int>`  
@@ -101,7 +101,7 @@ input_file: docs.cpp
     ```
 
 06_var_tmpl_assign_doc:
-  name: "baz<int>"
+  name: "baz"
   kind: Variable
   namespace_scope: "docs_ast::"
   documentation: "doc"
@@ -109,7 +109,7 @@ input_file: docs.cpp
   type: "int"
   symbol_range: "[426, 429)"
   markdown: |
-    ### variable `baz<int>`  
+    ### variable `baz`  
 
     ---
     Type: `int`  

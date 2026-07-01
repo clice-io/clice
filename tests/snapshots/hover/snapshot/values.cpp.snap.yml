@@ -72,14 +72,14 @@ input_file: values.cpp
   namespace_scope: "enumerator_value::"
   local_scope: "Color::"
   definition: "GREEN = 5"
-  type: "enum enumerator_value::Color"
+  type: "enumerator_value::Color"
   value: "5"
   symbol_range: "[622, 627)"
   markdown: |
     ### enumerator `GREEN`  
 
     ---
-    Type: `enum enumerator_value::Color`  
+    Type: `enumerator_value::Color`  
     Value = `5`  
 
     ---

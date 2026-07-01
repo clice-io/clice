@@ -92,13 +92,13 @@ function(setup_llvm LLVM_VERSION)
     add_library(llvm-libs INTERFACE IMPORTED)
     target_link_libraries(llvm-libs INTERFACE
         ${LLVM_RESOLVED}
-        clangAST clangASTMatchers clangBasic clangDriver
+        clangAST clangASTMatchers clangBasic clangDriver clangOptions
         clangFormat clangFrontend clangLex clangSema clangSerialization
         clangTidy clangTidyUtils
         clangTidyAbseilModule clangTidyAlteraModule clangTidyAndroidModule
         clangTidyBoostModule clangTidyBugproneModule clangTidyCERTModule
         clangTidyConcurrencyModule clangTidyCppCoreGuidelinesModule
-        clangTidyDarwinModule clangTidyFuchsiaModule
+        clangTidyCustomModule clangTidyDarwinModule clangTidyFuchsiaModule
         clangTidyGoogleModule clangTidyHICPPModule clangTidyLinuxKernelModule
         clangTidyLLVMModule clangTidyLLVMLibcModule clangTidyMiscModule
         clangTidyModernizeModule clangTidyMPIModule clangTidyObjCModule

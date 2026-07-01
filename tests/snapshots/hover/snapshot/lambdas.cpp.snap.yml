@@ -63,7 +63,7 @@ input_file: lambdas.cpp
   namespace_scope: "decltype_param::"
   local_scope: "foo::"
   definition: "decltype(lamb) bar"
-  type: "class decltype_param::(lambda)"
+  type: "decltype_param::(lambda)"
   return_type: "bool"
   parameters:
     - "int T"
@@ -93,7 +93,7 @@ input_file: lambdas.cpp
   namespace_scope: "lambda_variable::"
   local_scope: "foo::"
   definition: "auto lamb = [&bar](int T, bool B) -> bool {}"
-  type: "class (lambda)"
+  type: "(lambda)"
   return_type: "bool"
   parameters:
     - "int T"

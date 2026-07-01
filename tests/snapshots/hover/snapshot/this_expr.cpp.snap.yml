@@ -19,40 +19,40 @@ input_file: this_expr.cpp
 02_this_template_class:
   name: "this"
   kind: Invalid
-  definition: "const Foo2<T> *"
+  definition: "const ns::Foo2<T> *"
   symbol_range: "[374, 378)"
   markdown: |
     ### `this`  
 
     ---
     ```cpp
-    const Foo2<T> *
+    const ns::Foo2<T> *
     ```
 
 03_this_specialization:
   name: "this"
   kind: Invalid
-  definition: "Foo3<int> *"
+  definition: "ns::Foo3<int> *"
   symbol_range: "[553, 557)"
   markdown: |
     ### `this`  
 
     ---
     ```cpp
-    Foo3<int> *
+    ns::Foo3<int> *
     ```
 
 04_this_partial_specialization:
   name: "this"
   kind: Invalid
-  definition: "const Foo4<int, F> *"
+  definition: "const ns::Foo4<int, F> *"
   symbol_range: "[773, 777)"
   markdown: |
     ### `this`  
 
     ---
     ```cpp
-    const Foo4<int, F> *
+    const ns::Foo4<int, F> *
     ```
 
 
