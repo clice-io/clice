@@ -422,7 +422,10 @@ llvm::SmallVector<CompileCommand> CompilationDatabase::lookup(llvm::StringRef fi
             results.push_back(build_command(path_id, entry.info, options));
         }
     } else {
-        // No matching entry — synthesize a default command.
+        // No matching entry — synthesize a default command. Config rule
+        // appends still apply: users without a CDB rely on them to supply
+        // include paths. (Removes target flags of real CDB commands; there
+        // is nothing to remove from the two-flag default.)
         std::vector<const char*> flags;
         if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
             flags = {"clang++", "-std=c++20"};
@@ -432,6 +435,9 @@ llvm::SmallVector<CompileCommand> CompilationDatabase::lookup(llvm::StringRef fi
         if(options.inject_resource_dir && !resource_dir().empty()) {
             flags.push_back(strings.save("-resource-dir").data());
             flags.push_back(strings.save(resource_dir()).data());
+        }
+        for(auto& arg: options.append) {
+            flags.push_back(strings.save(arg).data());
         }
         results.push_back(CompileCommand{
             ResolvedFlags{{}, std::move(flags), false},

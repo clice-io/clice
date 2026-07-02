@@ -378,7 +378,10 @@ TEST_CASE(TomlErrorLocated) {
     EXPECT_FALSE(result.has_value());
 }
 
-TEST_CASE(SyntaxIssueHasLocation) {
+// FIXME: assert ConfigIssue::line/column once kotatsu's TOML decoder exposes
+// error locations (feature 60661c1 on the unmerged kotatsu branch); the
+// plumbing here already forwards rich_error.location when present.
+TEST_CASE(SyntaxIssueReported) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\nclang_tidy = true\n");
     std::vector<ConfigIssue> issues;
@@ -388,7 +391,7 @@ TEST_CASE(SyntaxIssueHasLocation) {
     EXPECT_EQ(issues[0].severity, ConfigIssue::Severity::Error);
 }
 
-TEST_CASE(TypeIssueHasLocation) {
+TEST_CASE(TypeIssueReported) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project]\nclang_tidy = \"yes\"\n");
     std::vector<ConfigIssue> issues;

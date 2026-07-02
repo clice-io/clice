@@ -15,6 +15,29 @@ namespace clice::worker {
 
 namespace protocol = kota::ipc::protocol;
 
+/// Error codes attached to master-side dispatch failures. They mark expected
+/// operational conditions — memory-pressure preemption and crash/restart
+/// windows — as opposed to real IPC breakage: callers must not classify them
+/// as anomalies (see support/anomaly.h). The crash itself is already reported
+/// as a WorkerCrash anomaly by the pool.
+namespace dispatch_errc {
+
+/// The request was deliberately cancelled (memory-pressure preemption).
+constexpr inline protocol::integer cancelled =
+    static_cast<protocol::integer>(protocol::ErrorCode::RequestCancelled);
+
+/// No live worker could take the request (crash/restart window or pool stop).
+constexpr inline protocol::integer worker_unavailable = -33000;
+
+}  // namespace dispatch_errc
+
+/// True when a dispatch failure is an expected operational condition rather
+/// than clice infrastructure breakage.
+inline bool is_operational_error(const protocol::Error& error) {
+    return error.code == dispatch_errc::cancelled ||
+           error.code == dispatch_errc::worker_unavailable;
+}
+
 /// Kind of AST query dispatched to a stateful worker.
 enum class QueryKind : uint8_t {
     Hover,

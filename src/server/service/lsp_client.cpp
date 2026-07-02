@@ -42,12 +42,20 @@ static kota::ipc::Error document_not_open() {
     return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams, "Document not open"};
 }
 
+/// Error response when a call/type hierarchy item cannot be resolved back to
+/// an indexed symbol.
+static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
+    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
+                            std::format("Failed to resolve {} item", kind)};
+}
+
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
     server.compiler.set_peer(&peer);
     server.indexer.set_peer(&peer);
 
-    // Anomaly/guidance messages from the master process reach the client as
-    // window/logMessage notifications from here on.
+    // The notify hook is process-wide and forwards anomaly/guidance messages
+    // as window/logMessage notifications. It captures the peer, so it must
+    // live exactly as long as this LSPClient (cleared in the destructor).
     logging::set_notify_hook([&peer](logging::NotifyLevel level, std::string_view message) {
         peer.send_notification(protocol::LogMessageParams{
             static_cast<protocol::MessageType>(level),
@@ -526,9 +534,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                         const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
-            co_return kota::outcome_error(
-                kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                                 "Failed to resolve call hierarchy item"});
+            co_return kota::outcome_error(item_not_resolved("call hierarchy"));
         auto results = this->server.indexer.find_incoming_calls(info->hash);
         co_return to_raw(results);
     });
@@ -538,9 +544,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                         const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
-            co_return kota::outcome_error(
-                kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                                 "Failed to resolve call hierarchy item"});
+            co_return kota::outcome_error(item_not_resolved("call hierarchy"));
         auto results = this->server.indexer.find_outgoing_calls(info->hash);
         co_return to_raw(results);
     });
@@ -568,9 +572,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                              const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
             auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
             if(!info)
-                co_return kota::outcome_error(
-                    kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                                     "Failed to resolve type hierarchy item"});
+                co_return kota::outcome_error(item_not_resolved("type hierarchy"));
             auto results = this->server.indexer.find_supertypes(info->hash);
             co_return to_raw(results);
         });
@@ -580,9 +582,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                              const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
             auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
             if(!info)
-                co_return kota::outcome_error(
-                    kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                                     "Failed to resolve type hierarchy item"});
+                co_return kota::outcome_error(item_not_resolved("type hierarchy"));
             auto results = this->server.indexer.find_subtypes(info->hash);
             co_return to_raw(results);
         });
@@ -731,7 +731,9 @@ void LSPClient::publish_config_diagnostics() {
         return;
 
     llvm::StringMap<std::vector<protocol::Diagnostic>> by_file;
-    by_file[server.config_path];
+    // The loaded file always gets a publish (even with zero issues), so a
+    // clean load clears diagnostics from a previous broken state.
+    by_file.try_emplace(server.config_path);
     for(auto& issue: server.config_issues) {
         // rich_error positions are 1-based; LSP wants 0-based. An unknown
         // position (0) maps to the file top. The range spans a single
@@ -741,8 +743,8 @@ void LSPClient::publish_config_diagnostics() {
 
         protocol::Diagnostic diagnostic;
         diagnostic.range = protocol::Range{
-            .start = protocol::Position{line, character    },
-            .end = protocol::Position{line, character + 1},
+            .start = protocol::Position{.line = line, .character = character    },
+            .end = protocol::Position{.line = line, .character = character + 1},
         };
         diagnostic.severity = issue.severity == ConfigIssue::Severity::Error
                                   ? protocol::DiagnosticSeverity::Error

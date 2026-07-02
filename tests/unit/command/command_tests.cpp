@@ -160,6 +160,28 @@ TEST_CASE(DefaultFallback) {
     ASSERT_EQ(h_results.front().to_argv()[0], "clang"sv);
 };
 
+TEST_CASE(FallbackAppliesAppend) {
+    /// Config rule appends must reach the synthesized fallback command:
+    /// users without a CDB rely on them to supply include paths.
+    CompilationDatabase database;
+    auto options = quiet_options();
+    std::vector<std::string> append = {"-I/opt/include"};
+    options.append = append;
+
+    auto results = database.lookup("unknown.cpp", options);
+    auto argv = results.front().to_argv();
+    ASSERT_EQ(argv.size(), 4U);
+    ASSERT_EQ(argv[0], "clang++"sv);
+    ASSERT_EQ(argv[1], "-std=c++20"sv);
+    ASSERT_EQ(argv[2], "-I/opt/include"sv);
+
+    /// The plain-clang branch applies them too.
+    auto c_argv = database.lookup("unknown.c", options).front().to_argv();
+    ASSERT_EQ(c_argv.size(), 3U);
+    ASSERT_EQ(c_argv[0], "clang"sv);
+    ASSERT_EQ(c_argv[1], "-I/opt/include"sv);
+};
+
 TEST_CASE(MultiCommand) {
     /// A file can have multiple compilation commands (e.g. different configs).
     CompilationDatabase database;

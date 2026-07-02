@@ -49,11 +49,15 @@ void add_related(protocol::Diagnostic& diagnostic,
     auto content = unit.file_content(raw.fid);
     LineMap map(content, encoding);
 
+    auto range = to_range(map, raw.range);
+    if(!range)
+        return;
+
     protocol::DiagnosticRelatedInformation related{
         .location =
             protocol::Location{
                                .uri = to_uri(unit.file_path(raw.fid)),
-                               .range = *map.to_range(raw.range.begin, raw.range.end),
+                               .range = *range,
                                },
         .message = raw.message,
     };
@@ -133,7 +137,10 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         }
 
         if(raw.fid == unit.interested_file()) {
-            diagnostic.range = *map.to_range(raw.range.begin, raw.range.end);
+            auto range = to_range(map, raw.range);
+            if(!range)
+                continue;
+            diagnostic.range = *range;
             current = std::move(diagnostic);
             continue;
         }
@@ -151,11 +158,10 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         auto offset = unit.file_offset(include_location);
         auto end_offset =
             static_cast<std::uint32_t>(offset + unit.token_spelling(include_location).size());
-        auto start_pos = to_position(map, offset);
-        auto end_pos = to_position(map, end_offset);
-        if(!start_pos || !end_pos)
+        auto range = to_range(map, {offset, end_offset});
+        if(!range)
             continue;
-        diagnostic.range = protocol::Range{.start = *start_pos, .end = *end_pos};
+        diagnostic.range = *range;
 
         current = std::move(diagnostic);
     }

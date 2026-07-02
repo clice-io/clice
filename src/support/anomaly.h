@@ -33,10 +33,12 @@ enum class AnomalyId : std::uint8_t {
     WorkerSpawnFail,
     /// An internally-produced offset or range failed to map to a position.
     PositionMapFail,
+
+    /// Number of ids, not a reportable anomaly — keep last.
+    Count,
 };
 
-constexpr inline std::size_t anomaly_id_count =
-    static_cast<std::size_t>(AnomalyId::PositionMapFail) + 1;
+constexpr inline std::size_t anomaly_id_count = static_cast<std::size_t>(AnomalyId::Count);
 
 /// Stable snake_case name used in the `[anomaly:<name>]` marker. Integration
 /// tests match on these strings — renaming an enumerator must not silently

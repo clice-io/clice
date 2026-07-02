@@ -65,7 +65,10 @@ TEST_CASE(RateLimitSuppresses) {
         LOG_ANOMALY(CompileFail, "occurrence {}", i);
     }
 
-    EXPECT_EQ(capture.notified.size(), logging::anomaly_report_limit);
+    /// The client sees the reports plus one final suppression notice; the
+    /// trap fires only for real reports.
+    ASSERT_EQ(capture.notified.size(), logging::anomaly_report_limit + 1);
+    EXPECT_NE(capture.notified.back().second.find("report limit"), std::string::npos);
     EXPECT_EQ(capture.trapped.size(), logging::anomaly_report_limit);
 }
 
@@ -77,7 +80,8 @@ TEST_CASE(RateLimitPerId) {
     }
     LOG_ANOMALY(PcmBuildFail, "different id still reports");
 
-    EXPECT_EQ(capture.notified.size(), logging::anomaly_report_limit + 1);
+    /// CompileFail reports + its suppression notice + the PcmBuildFail report.
+    EXPECT_EQ(capture.notified.size(), logging::anomaly_report_limit + 2);
 }
 
 TEST_CASE(SuppressedArgsNotEvaluated) {

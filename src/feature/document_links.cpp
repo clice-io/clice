@@ -29,7 +29,10 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
         auto range = find_directive_argument(content, offset, lang_opts);
         if(!range)
             return;
-        protocol::DocumentLink link{.range = *map.to_range(range->begin, range->end)};
+        auto protocol_range = to_range(map, *range);
+        if(!protocol_range)
+            return;
+        protocol::DocumentLink link{.range = *protocol_range};
         link.target = target.str();
         links.push_back(std::move(link));
     };

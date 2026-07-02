@@ -179,12 +179,17 @@ void sort_symbols(std::vector<DocumentSymbol>& symbols) {
 }
 
 auto to_protocol_symbol(const DocumentSymbol& symbol, const LineMap& map)
-    -> protocol::DocumentSymbol {
+    -> std::optional<protocol::DocumentSymbol> {
+    auto range = to_range(map, symbol.range);
+    auto selection_range = to_range(map, symbol.selection_range);
+    if(!range || !selection_range)
+        return std::nullopt;
+
     protocol::DocumentSymbol result{
         .name = symbol.name,
         .kind = to_protocol_symbol_kind(symbol.kind),
-        .range = *map.to_range(symbol.range.begin, symbol.range.end),
-        .selection_range = *map.to_range(symbol.selection_range.begin, symbol.selection_range.end),
+        .range = *range,
+        .selection_range = *selection_range,
     };
 
     if(!symbol.detail.empty()) {
@@ -195,8 +200,10 @@ auto to_protocol_symbol(const DocumentSymbol& symbol, const LineMap& map)
         std::vector<std::shared_ptr<protocol::DocumentSymbol>> children;
         children.reserve(symbol.children.size());
         for(const auto& child: symbol.children) {
-            children.push_back(
-                std::make_shared<protocol::DocumentSymbol>(to_protocol_symbol(child, map)));
+            if(auto converted = to_protocol_symbol(child, map)) {
+                children.push_back(
+                    std::make_shared<protocol::DocumentSymbol>(std::move(*converted)));
+            }
         }
         result.children = std::move(children);
     }
@@ -221,7 +228,9 @@ auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     symbols.reserve(internal.size());
 
     for(const auto& symbol: internal) {
-        symbols.push_back(to_protocol_symbol(symbol, map));
+        if(auto converted = to_protocol_symbol(symbol, map)) {
+            symbols.push_back(std::move(*converted));
+        }
     }
 
     return symbols;

@@ -1311,7 +1311,7 @@ auto to_protocol_hover(CompilationUnitRef unit,
 
     if(info.symbol_range) {
         LineMap map(unit.interested_content(), unit.line_starts(), encoding);
-        result.range = *map.to_range(info.symbol_range->begin, info.symbol_range->end);
+        result.range = to_range(map, *info.symbol_range);
     }
 
     return result;

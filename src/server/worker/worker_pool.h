@@ -309,11 +309,13 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
                                                 const Params& params,
                                                 kota::ipc::request_options opts) {
     if(stateful_workers.empty()) {
-        co_return kota::outcome_error(kota::ipc::Error{"No stateful workers available"});
+        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+                                                       "No stateful workers available"});
     }
     auto idx = assign_worker(path_id);
     if(!stateful_workers[idx].alive) {
-        co_return kota::outcome_error(kota::ipc::Error{"Assigned stateful worker is down"});
+        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+                                                       "Assigned stateful worker is down"});
     }
     co_return co_await stateful_workers[idx].peer->send_request(params, opts);
 }
@@ -322,7 +324,8 @@ template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  kota::ipc::request_options opts) {
     if(stateless_workers.empty()) {
-        co_return kota::outcome_error(kota::ipc::Error{"No stateless workers available"});
+        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+                                                       "No stateless workers available"});
     }
 
     // Retry once on transport error, excluding the failed peer so the
@@ -331,7 +334,9 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     for(int attempt = 0; attempt < 2; ++attempt) {
         auto idx = co_await acquire_stateless_slot(params.priority, exclude);
         if(idx >= stateless_workers.size())
-            co_return kota::outcome_error(kota::ipc::Error{"All stateless workers are down"});
+            co_return kota::outcome_error(
+                kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+                                 "All stateless workers are down"});
 
         StatelessSlot slot(*this, idx);
 
@@ -362,12 +367,14 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         // If deliberately cancelled by memory pressure, don't retry.
         if(preempt_src && preempt_src->cancelled())
             co_return kota::outcome_error(
-                kota::ipc::Error{"Request cancelled due to memory pressure"});
+                kota::ipc::Error{worker::dispatch_errc::cancelled,
+                                 "Request cancelled due to memory pressure"});
 
         // Transport error — retry on a different worker.
         exclude = idx;
     }
-    co_return kota::outcome_error(kota::ipc::Error{"Stateless request failed after retries"});
+    co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+                                                   "Stateless request failed after retries"});
 }
 
 template <typename Params>

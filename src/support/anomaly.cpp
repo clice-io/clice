@@ -29,10 +29,10 @@ void trap(AnomalyId id) {
         return;
     }
 #ifndef NDEBUG
-    /// Debug builds treat anomalies as assertion failures: flush the log so
-    /// the report survives, then abort. CLICE_ANOMALY_NO_TRAP exists for
-    /// integration tests that intentionally trigger anomalies and verify the
-    /// Release behavior (report and continue).
+    // Debug builds treat anomalies as assertion failures: flush the log so
+    // the report survives, then abort. CLICE_ANOMALY_NO_TRAP exists for
+    // integration tests that intentionally trigger anomalies and verify the
+    // Release behavior (report and continue).
     if(!trap_disabled_by_env()) {
         spdlog::shutdown();
         std::abort();
@@ -51,6 +51,7 @@ std::string_view anomaly_name(AnomalyId id) {
         case AnomalyId::WorkerCrash: return "worker_crash";
         case AnomalyId::WorkerSpawnFail: return "worker_spawn_fail";
         case AnomalyId::PositionMapFail: return "position_map_fail";
+        case AnomalyId::Count: break;
     }
     return "unknown";
 }
@@ -65,9 +66,13 @@ bool anomaly_should_report(AnomalyId id) {
         return true;
 
     if(previous == anomaly_report_limit) {
-        logging::err("[anomaly:{}] report limit ({}) reached, suppressing further reports",
-                     anomaly_name(id),
-                     anomaly_report_limit);
+        auto text =
+            std::format("[anomaly:{}] report limit ({}) reached, suppressing further reports",
+                        anomaly_name(id),
+                        anomaly_report_limit);
+        logging::err("{}", text);
+        if(notify_hook)
+            notify_hook(NotifyLevel::Error, text);
     }
     return false;
 }

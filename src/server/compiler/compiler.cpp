@@ -4,6 +4,7 @@
 #include <format>
 #include <ranges>
 #include <string>
+#include <utility>
 
 #include "command/argument_parser.h"
 #include "command/search_config.h"
@@ -69,6 +70,36 @@ struct BuildingGuard {
         completion->set();
     }
 };
+
+/// A PCH/PCM build failure is expected when the worker reported user-code
+/// errors or the dispatch failed for an operational reason (memory-pressure
+/// preemption, crash/restart window); anything else is clice breakage and is
+/// reported as an anomaly.
+static bool expected_build_failure(const auto& result) {
+    return result.has_value() ? result.value().has_user_errors
+                              : worker::is_operational_error(result.error());
+}
+
+/// The error text of a failed build: the worker's message when it responded,
+/// the dispatch error otherwise.
+const static std::string& build_failure_message(const auto& result) {
+    return result.has_value() ? result.value().error : result.error().message;
+}
+
+/// Clamp a client-supplied position to the document, following LSP
+/// semantics: a character beyond the line length defaults to the line end,
+/// a line beyond the document defaults to the end of the content.
+static lsp::LineMap::Offset clamped_offset(const lsp::LineMap& map,
+                                           const protocol::Position& position) {
+    if(auto offset = map.to_offset(position)) {
+        return *offset;
+    }
+    auto starts = map.line_starts();
+    if(position.line >= starts.size()) {
+        return static_cast<lsp::LineMap::Offset>(map.content().size());
+    }
+    return map.line_bounds(starts[position.line]).end;
+}
 
 /// Detect whether the cursor is inside a preamble directive (include/import).
 
@@ -159,13 +190,25 @@ void Compiler::init_compile_graph() {
                                               canonicalize(bp.arguments, ArgsProfile::Frontend)}));
 
         // Check if cached PCM is still valid.
+        llvm::StringRef pcm_miss = "no_entry";
         if(auto pcm_it = workspace.pcm_cache.find(path_id); pcm_it != workspace.pcm_cache.end()) {
-            if(pcm_it->second.key == pcm_key && workspace.store->lookup("pcm", pcm_key) &&
-               !deps_changed(workspace.path_pool, pcm_it->second.deps)) {
+            if(pcm_it->second.key != pcm_key) {
+                pcm_miss = "key_changed";
+            } else if(!workspace.store->lookup("pcm", pcm_key)) {
+                pcm_miss = "evicted";
+            } else if(deps_changed(workspace.path_pool, pcm_it->second.deps)) {
+                pcm_miss = "deps_changed";
+            } else {
                 workspace.pcm_paths[path_id] = pcm_it->second.path;
+                LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, mod_it->second);
                 co_return true;
             }
         }
+        LOG_PERF("cache",
+                 "ns=pcm event=miss reason={} key={} module={}",
+                 pcm_miss,
+                 pcm_key,
+                 mod_it->second);
 
         bp.module_name = mod_it->second;
         auto pending = workspace.store->begin_store("pcm", pcm_key);
@@ -179,13 +222,15 @@ void Compiler::init_compile_graph() {
         auto result = co_await pool.send_stateless(bp);
         if(!result.has_value() || !result.value().success) {
             workspace.store->abort(pending);
-            if(result.has_value() && result.value().has_user_errors) {
-                LOG_WARN("BuildPCM failed for module {}: {}", mod_it->second, result.value().error);
+            if(expected_build_failure(result)) {
+                LOG_WARN("BuildPCM failed for module {}: {}",
+                         mod_it->second,
+                         build_failure_message(result));
             } else {
                 LOG_ANOMALY(PcmBuildFail,
                             "PCM build failed for module {}: {}",
                             mod_it->second,
-                            result.has_value() ? result.value().error : result.error().message);
+                            build_failure_message(result));
             }
             co_return false;
         }
@@ -221,14 +266,15 @@ void Compiler::init_compile_graph() {
     LOG_INFO("CompileGraph initialized with {} module(s)", workspace.path_to_module.size());
 }
 
-llvm::StringRef command_source_name(CommandSource source) {
+/// Stable snake_case name of a CommandSource, used in the decision log.
+static llvm::StringRef command_source_name(CommandSource source) {
     switch(source) {
         case CommandSource::CdbExact: return "cdb_exact";
         case CommandSource::IncludeGraph: return "include_graph";
         case CommandSource::Inferred: return "inferred";
         case CommandSource::Fallback: return "fallback";
     }
-    return "unknown";
+    std::unreachable();
 }
 
 /// Per-file command selection decision log: which tiers were tried, which one
@@ -258,6 +304,19 @@ CommandSource Compiler::fill_compile_args(llvm::StringRef path,
     auto path_id = workspace.path_pool.intern(path);
     llvm::SmallVector<llvm::StringRef, 3> tried;
 
+    // Fill from the CDB layer with config rules applied (append/remove flags
+    // based on file patterns). Also used for tier 4: lookup() synthesizes a
+    // default command for files without an entry.
+    auto fill_from_cdb = [&] {
+        std::vector<std::string> rule_append, rule_remove;
+        workspace.config.match_rules(path, rule_append, rule_remove);
+        auto results = workspace.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
+        workspace.toolchain.resolve_or_warn(results.front());
+        auto& cmd = results.front();
+        directory = cmd.resolved.directory.str();
+        arguments = cmd.to_string_argv();
+    };
+
     // 1. If the session has an active header context via switchContext,
     //    use the host source's CDB entry with file path replaced and preamble injected.
     if(session && session->active_context.has_value()) {
@@ -270,16 +329,9 @@ CommandSource Compiler::fill_compile_args(llvm::StringRef path,
 
     // 2. Real CDB entry for the file itself (lookup() synthesizes a command
     //    for unknown files, so a non-empty result alone proves nothing).
-    //    Apply rules from config (append/remove flags based on file patterns).
     tried.push_back("cdb");
     if(workspace.cdb.has_entry(path)) {
-        std::vector<std::string> rule_append, rule_remove;
-        workspace.config.match_rules(path, rule_append, rule_remove);
-        auto results = workspace.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
-        workspace.toolchain.resolve_or_warn(results.front());
-        auto& cmd = results.front();
-        directory = cmd.resolved.directory.str();
-        arguments = cmd.to_string_argv();
+        fill_from_cdb();
         log_command_decision(path, tried, CommandSource::CdbExact, arguments);
         return CommandSource::CdbExact;
     }
@@ -297,13 +349,7 @@ CommandSource Compiler::fill_compile_args(llvm::StringRef path,
     //    for unknown files, so the file still compiles and produces
     //    diagnostics instead of failing silently.
     tried.push_back("fallback");
-    std::vector<std::string> rule_append, rule_remove;
-    workspace.config.match_rules(path, rule_append, rule_remove);
-    auto results = workspace.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
-    workspace.toolchain.resolve_or_warn(results.front());
-    auto& cmd = results.front();
-    directory = cmd.resolved.directory.str();
-    arguments = cmd.to_string_argv();
+    fill_from_cdb();
     log_command_decision(path, tried, CommandSource::Fallback, arguments);
     return CommandSource::Fallback;
 }
@@ -638,15 +684,25 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
 
     // Reuse existing PCH if the key and deps haven't changed.  The store
     // lookup refreshes the blob's LRU position and catches eviction.
+    llvm::StringRef pch_miss = "no_entry";
     if(auto it = workspace.pch_cache.find(path_id); it != workspace.pch_cache.end()) {
         auto& st = it->second;
-        if(st.key == pch_key && !st.path.empty() && workspace.store &&
-           workspace.store->lookup("pch", pch_key) && !deps_changed(workspace.path_pool, st.deps)) {
+        if(st.key != pch_key) {
+            pch_miss = "key_changed";
+        } else if(st.path.empty()) {
+            pch_miss = "incomplete_entry";
+        } else if(!(workspace.store && workspace.store->lookup("pch", pch_key))) {
+            pch_miss = "evicted";
+        } else if(deps_changed(workspace.path_pool, st.deps)) {
+            pch_miss = "deps_changed";
+        } else {
             st.bound = bound;
             session.pch_ref = Session::PCHRef{path_id, pch_key, bound};
+            LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, path);
             co_return true;
         }
     }
+    LOG_PERF("cache", "ns=pch event=miss reason={} key={} file={}", pch_miss, pch_key, path);
 
     // Preamble incomplete (user still typing) — defer rebuild, reuse old PCH if available.
     if(!is_preamble_complete(text, bound)) {
@@ -695,13 +751,13 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
 
     if(!result.has_value() || !result.value().success) {
         workspace.store->abort(pending);
-        if(result.has_value() && result.value().has_user_errors) {
-            LOG_WARN("PCH build failed for {}: {}", path, result.value().error);
+        if(expected_build_failure(result)) {
+            LOG_WARN("PCH build failed for {}: {}", path, build_failure_message(result));
         } else {
             LOG_ANOMALY(PchBuildFail,
                         "PCH build failed for {}: {}",
                         path,
-                        result.has_value() ? result.value().error : result.error().message);
+                        build_failure_message(result));
         }
         co_return false;
     }
@@ -922,9 +978,14 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
     }
 
     if(!result.has_value()) {
-        // The worker accepts arbitrary user code; a failure at this layer is
-        // an IPC/worker breakage, never a user-code problem.
-        LOG_ANOMALY(CompileFail, "Compile failed for {}: {}", uri_str, result.error().message);
+        if(worker::is_operational_error(result.error())) {
+            LOG_WARN("Compile did not complete for {}: {}", uri_str, result.error().message);
+        } else {
+            // The worker accepts arbitrary user code; a non-operational
+            // failure at this layer is IPC/worker breakage, never a
+            // user-code problem.
+            LOG_ANOMALY(CompileFail, "Compile failed for {}: {}", uri_str, result.error().message);
+        }
         clear_diagnostics(uri_str);
         finish_compile();
         co_return;
@@ -1059,32 +1120,22 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     wp.path = path;
 
     if(position) {
-        auto offset = map.to_offset(*position);
-        if(!offset) {
-            co_return kota::outcome_error(kota::ipc::Error{
-                kota::ipc::protocol::ErrorCode::InvalidParams,
-                std::format("Invalid position {}:{}", position->line, position->character)});
-        }
-        wp.offset = *offset;
+        wp.offset = clamped_offset(map, *position);
     }
 
     if(range) {
-        auto start = map.to_offset(range->start);
-        auto end = map.to_offset(range->end);
-        if(!start || !end) {
-            co_return kota::outcome_error(
-                kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams, "Invalid range"});
-        }
-        wp.range = {*start, *end};
+        wp.range = {clamped_offset(map, range->start), clamped_offset(map, range->end)};
     }
 
     auto result = co_await pool.send_stateful(path_id, wp);
     if(!result.has_value()) {
-        LOG_ANOMALY(WorkerRequestFail,
-                    "query (kind={}) failed for {}: {}",
-                    static_cast<int>(kind),
-                    path,
-                    result.error().message);
+        if(!worker::is_operational_error(result.error())) {
+            LOG_ANOMALY(WorkerRequestFail,
+                        "query (kind={}) failed for {}: {}",
+                        static_cast<int>(kind),
+                        path,
+                        result.error().message);
+        }
         co_return kota::outcome_error(std::move(result.error()));
     }
     co_return std::move(result.value());
@@ -1111,25 +1162,21 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     }
 
     if(session->generation != gen) {
-        co_return serde_raw{};
+        co_return serde_raw{"null"};
     }
 
     lsp::LineMap map(wp.text);
-    auto offset = map.to_offset(position);
-    if(!offset) {
-        co_return kota::outcome_error(kota::ipc::Error{
-            kota::ipc::protocol::ErrorCode::InvalidParams,
-            std::format("Invalid position {}:{}", position.line, position.character)});
-    }
-    wp.offset = *offset;
+    wp.offset = clamped_offset(map, position);
 
     auto result = co_await pool.send_stateless(wp);
     if(!result.has_value()) {
-        LOG_ANOMALY(WorkerRequestFail,
-                    "build (kind={}) failed for {}: {}",
-                    static_cast<int>(kind),
-                    path,
-                    result.error().message);
+        if(!worker::is_operational_error(result.error())) {
+            LOG_ANOMALY(WorkerRequestFail,
+                        "build (kind={}) failed for {}: {}",
+                        static_cast<int>(kind),
+                        path,
+                        result.error().message);
+        }
         co_return kota::outcome_error(std::move(result.error()));
     }
     co_return std::move(result.value().result_json);
@@ -1148,19 +1195,17 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
 
     if(range) {
         lsp::LineMap map(wp.text);
-        auto begin = map.to_offset(range->start);
-        auto end = map.to_offset(range->end);
-        if(!begin || !end) {
-            co_return kota::outcome_error(
-                kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                                 "Invalid formatting range"});
-        }
-        wp.format_range = {*begin, *end};
+        wp.format_range = {clamped_offset(map, range->start), clamped_offset(map, range->end)};
     }
 
     auto result = co_await pool.send_stateless(wp);
     if(!result.has_value()) {
-        LOG_ANOMALY(WorkerRequestFail, "format failed for {}: {}", path, result.error().message);
+        if(!worker::is_operational_error(result.error())) {
+            LOG_ANOMALY(WorkerRequestFail,
+                        "format failed for {}: {}",
+                        path,
+                        result.error().message);
+        }
         co_return kota::outcome_error(std::move(result.error()));
     }
     co_return std::move(result.value().result_json);
