@@ -35,8 +35,9 @@
 /// "[perf:<topic>] key=value ..." at info level, e.g.
 /// `grep 'perf:index' master.log`. Topics in use: "index" (per-file and
 /// phase timings), "cache" (hit/miss with reason), "startup" (phase
-/// durations). Use stable key=value pairs and `_ms` suffixes for durations —
-/// scripts aggregate these lines.
+/// durations), "request" (per-request latency: wait_ms = time until a
+/// worker was ready, total_ms = end-to-end). Use stable key=value pairs and
+/// `_ms` suffixes for durations — scripts aggregate these lines.
 ///
 /// ## Anomalies — LOG_ANOMALY(id, ...) (support/anomaly.h)
 /// Soft assertions for states that are unreachable unless clice itself is

@@ -14,6 +14,7 @@
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "support/timer.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
@@ -21,6 +22,7 @@
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/uri.h"
+#include "kota/meta/enum.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -934,6 +936,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
 
     LOG_INFO("ensure_compiled: starting compile path_id={} gen={}", pid, gen);
 
+    ScopedTimer timer;
     auto file_path = std::string(workspace.path_pool.resolve(pid));
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
@@ -1004,6 +1007,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
     auto version = session->version;
     finish_compile();
 
+    LOG_PERF("request", "kind=Compile file={} total_ms={}", file_path, timer.ms());
     publish_diagnostics(uri_str, version, result.value().diagnostics, source);
     if(on_indexing_needed)
         on_indexing_needed();
@@ -1107,9 +1111,11 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     auto gen = session->generation;
     auto map = session->line_map();
 
+    ScopedTimer timer;
     if(!co_await ensure_compiled(session)) {
         co_return serde_raw{"null"};
     }
+    auto wait_ms = timer.ms();
 
     if(session->generation != gen) {
         co_return serde_raw{"null"};
@@ -1138,6 +1144,12 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
+    LOG_PERF("request",
+             "kind={} file={} wait_ms={} total_ms={}",
+             kota::meta::enum_name(kind, "query"),
+             path,
+             wait_ms,
+             timer.ms());
     co_return std::move(result.value());
 }
 
@@ -1156,10 +1168,12 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     wp.text = session->text;
     fill_compile_args(path, wp.directory, wp.arguments, session.get());
 
+    ScopedTimer timer;
     if(!co_await ensure_deps(*session, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
         LOG_WARN("forward_build: dependency preparation failed for {}", path);
         co_return kota::outcome_error(kota::ipc::Error{"Dependency preparation failed"});
     }
+    auto wait_ms = timer.ms();
 
     if(session->generation != gen) {
         co_return serde_raw{"null"};
@@ -1179,6 +1193,12 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
+    LOG_PERF("request",
+             "kind={} file={} wait_ms={} total_ms={}",
+             kota::meta::enum_name(kind, "build"),
+             path,
+             wait_ms,
+             timer.ms());
     co_return std::move(result.value().result_json);
 }
 
@@ -1198,6 +1218,7 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
         wp.format_range = {clamped_offset(map, range->start), clamped_offset(map, range->end)};
     }
 
+    ScopedTimer timer;
     auto result = co_await pool.send_stateless(wp);
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
@@ -1208,6 +1229,7 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
+    LOG_PERF("request", "kind=Format file={} total_ms={}", path, timer.ms());
     co_return std::move(result.value().result_json);
 }
 
