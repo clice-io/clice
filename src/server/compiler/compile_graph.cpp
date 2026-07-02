@@ -121,7 +121,10 @@ void CompileGraph::release(std::uint32_t path_id) {
 }
 
 kota::task<> CompileGraph::zero_interest_check(std::uint32_t path_id) {
-    co_await kota::sleep(0);
+    // Resumes on the next event-loop iteration, strictly after every deferred
+    // resume of the current one — i.e. after the release/re-acquire cascade
+    // that scheduled this check has fully settled.
+    co_await kota::yield();
 
     auto& unit = units.find(path_id)->second;
     unit.zero_check_pending = false;

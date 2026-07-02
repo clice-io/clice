@@ -278,10 +278,6 @@ TEST_CASE(concurrent_requests_share_round) {
             co_await md.gate(1).started.wait();
             EXPECT_EQ(graph->refcount(1), 2u);
             md.gate(1).proceed.set();
-            // Suspend once before finishing: a when_all child that completes
-            // synchronously during the arm phase trips a when_any bookkeeping
-            // assert downstream (kotatsu bug, pending an upstream fix).
-            co_await kota::sleep(0);
             co_return;
         };
 
@@ -1086,9 +1082,6 @@ TEST_CASE(shared_dep_failure_propagates) {
             co_await md.gate(5).started.wait();
             EXPECT_EQ(graph->refcount(5), 2u);
             md.gate(5).proceed.set();
-            // Suspend once before finishing (kotatsu when_all arm bug, see
-            // concurrent_requests_share_round).
-            co_await kota::sleep(0);
             co_return;
         };
 
@@ -1682,7 +1675,7 @@ TEST_CASE(randomized_stress) {
             }
 
             // Let deferred unwinds land, then check structural sanity.
-            co_await kota::sleep(0);
+            co_await kota::yield();
             EXPECT_TRUE(graph->consistent());
         }
 
