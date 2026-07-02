@@ -11,6 +11,7 @@
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "support/timer.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
@@ -78,6 +79,7 @@ void MasterServer::initialize() {
         session_log_dir =
             path::join(cfg.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
         logging::file_logger("master", session_log_dir, logging::options);
+        LOG_INFO("Session log directory: {}", session_log_dir);
     }
 
     LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
@@ -301,8 +303,10 @@ void MasterServer::load_workspace() {
         return;
     }
 
+    ScopedTimer cdb_timer;
     auto count = workspace.cdb.load(cdb_path);
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
+    LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", count, cdb_timer.ms());
 
     auto report = scan_dependency_graph(workspace.cdb,
                                         workspace.toolchain,
@@ -334,6 +338,11 @@ void MasterServer::load_workspace() {
         report.waves);
     if(unresolved > 0)
         LOG_WARN("{} unresolved includes", unresolved);
+    LOG_PERF("startup",
+             "phase=dep_scan files={} edges={} elapsed_ms={}",
+             report.total_files,
+             report.total_edges,
+             report.elapsed_ms);
 
     workspace.build_module_map();
     indexer.load();
@@ -420,6 +429,11 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     auto port = opts.port.value_or(0);
     auto record = opts.record.value_or("");
     auto ws = opts.workspace.value_or("");
+
+    LOG_INFO("clice master starting: pid={}, mode={}, workspace={}",
+             llvm::sys::Process::getProcessId(),
+             mode == ServerMode::Pipe ? "pipe" : "socket",
+             ws.empty() ? "<from LSP initialize>" : ws);
 
     if(mode == ServerMode::Socket && (port <= 0 || port > 65535)) {
         LOG_ERROR("--port must be between 1 and 65535 in socket mode");

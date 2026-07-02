@@ -551,10 +551,11 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
                       ns.config.name);
             continue;
         }
-        LOG_DEBUG("CacheStore: evicted {} ({} bytes) from {}",
-                  candidate.key,
-                  candidate.size,
-                  ns.config.name);
+        LOG_PERF("cache",
+                 "ns={} event=evict key={} bytes={}",
+                 ns.config.name,
+                 candidate.key,
+                 candidate.size);
         ns.total_size -= candidate.size;
         ns.entries.erase(candidate.key);
         dirty = true;

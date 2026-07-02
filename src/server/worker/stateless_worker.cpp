@@ -291,7 +291,9 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 
     logging::stderr_logger(worker_name, logging::options);
     if(!log_dir.empty()) {
-        logging::file_logger(worker_name, log_dir, logging::options);
+        // File only: worker stderr is reserved for crash/unexpected output,
+        // which the master relays into its own log (see logging taxonomy).
+        logging::file_logger(worker_name, log_dir, logging::options, /*mirror_stderr=*/false);
     }
 
     LOG_INFO("Starting stateless worker");

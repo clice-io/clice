@@ -11,6 +11,7 @@
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/sinks/stdout_sinks.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Signals.h"
 
 namespace clice::logging {
@@ -39,7 +40,10 @@ void stderr_logger(std::string_view name, const Options& options) {
     spdlog::set_default_logger(std::move(logger));
 }
 
-void file_logger(std::string_view name, std::string_view dir, const Options& options) {
+void file_logger(std::string_view name,
+                 std::string_view dir,
+                 const Options& options,
+                 bool mirror_stderr) {
     if(auto ec = llvm::sys::fs::create_directories(dir)) {
         spdlog::error("Failed to create log directory {}: {}", std::string(dir), ec.message());
         return;
@@ -59,8 +63,10 @@ void file_logger(std::string_view name, std::string_view dir, const Options& opt
 
     auto replay_buffer = ringbuffer_sink;
 
-    auto console_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>(options.color);
-    std::array<spdlog::sink_ptr, 2> sinks = {file_sink, console_sink};
+    llvm::SmallVector<spdlog::sink_ptr, 2> sinks = {file_sink};
+    if(mirror_stderr) {
+        sinks.push_back(std::make_shared<spdlog::sinks::stderr_color_sink_mt>(options.color));
+    }
     auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
     logger->set_level(options.level);
     logger->set_pattern(pattern);
@@ -80,7 +86,7 @@ void file_logger(std::string_view name, std::string_view dir, const Options& opt
         ringbuffer_sink.reset();
     }
 
-    install_crash_handler(filepath);
+    install_crash_handler(filepath, /*stderr_trace=*/mirror_stderr);
 }
 
 static std::unique_ptr<llvm::raw_fd_ostream> crash_log_stream;
@@ -93,7 +99,7 @@ static void crash_handler(void*) {
     }
 }
 
-void install_crash_handler(std::string_view log_path) {
+void install_crash_handler(std::string_view log_path, bool stderr_trace) {
     std::error_code ec;
     crash_log_stream =
         std::make_unique<llvm::raw_fd_ostream>(llvm::StringRef(log_path.data(), log_path.size()),
@@ -105,7 +111,11 @@ void install_crash_handler(std::string_view log_path) {
         return;
     }
     llvm::sys::AddSignalHandler(crash_handler, nullptr);
-    llvm::sys::PrintStackTraceOnErrorSignal("clice");
+    // Workers skip the stderr backtrace: their crash traces belong in their
+    // own log file only, not relayed into the master log via the stderr pipe.
+    if(stderr_trace) {
+        llvm::sys::PrintStackTraceOnErrorSignal("clice");
+    }
 }
 
 }  // namespace clice::logging

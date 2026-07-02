@@ -12,6 +12,7 @@
 #include "server/worker/worker_pool.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "support/timer.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
@@ -145,6 +146,7 @@ kota::task<> Indexer::save() {
     if(!workspace.store)
         co_return;
     auto& store = *workspace.store;
+    ScopedTimer timer;
 
     // Phase 1, synchronous: serialize the ProjectIndex and every dirty
     // shard to tmp files.  No suspension point in between, so the batch is
@@ -197,11 +199,18 @@ kota::task<> Indexer::save() {
             LOG_WARN("Failed to commit index blob {}", key);
         }
     }
+
+    LOG_PERF("index",
+             "phase=save shards={} total={} elapsed_ms={}",
+             shards.size(),
+             total,
+             timer.ms());
 }
 
 void Indexer::load() {
     if(!workspace.store)
         return;
+    ScopedTimer timer;
 
     bool has_project = false;
     auto project_path = workspace.store->lookup("index", "project");
@@ -245,6 +254,11 @@ void Indexer::load() {
     if(!workspace.merged_indices.empty()) {
         LOG_INFO("Loaded {} MergedIndex shards", workspace.merged_indices.size());
     }
+    LOG_PERF("startup",
+             "phase=index_load symbols={} shards={} elapsed_ms={}",
+             workspace.project_index.symbols.size(),
+             workspace.merged_indices.size(),
+             timer.ms());
 }
 
 bool Indexer::need_update(llvm::StringRef file_path) {
@@ -951,14 +965,20 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
 
     LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
 
+    ScopedTimer timer;
     auto result = co_await pool.send_stateless(params);
     if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
-        LOG_INFO("[{}/{}] Indexed {}: {} bytes",
+        auto index_ms = timer.ms();
+        ScopedTimer merge_timer;
+        merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
+        LOG_PERF("index",
+                 "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
                  index,
                  total,
                  file_path,
-                 result.value().tu_index_data.size());
-        merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
+                 result.value().tu_index_data.size(),
+                 index_ms,
+                 merge_timer.ms());
     } else if(result.has_value() && !result.value().success) {
         LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, result.value().error);
     } else if(result.has_value() && result.value().tu_index_data.empty()) {
@@ -1009,6 +1029,9 @@ kota::task<> Indexer::run_background_indexing() {
         }
     }
 
+    // Timed after the progress handshake so a slow client's create() wait
+    // (up to 3s) does not inflate the reported indexing duration.
+    ScopedTimer timer;
     kota::task_group<> workers(loop);
 
     while(index_queue_pos < index_queue.size()) {
@@ -1041,7 +1064,12 @@ kota::task<> Indexer::run_background_indexing() {
     }
 
     indexing_active = false;
-    LOG_INFO("Background indexing complete: {} files dispatched", dispatched);
+    LOG_PERF("index",
+             "phase=run dispatched={} skipped={} total={} elapsed_ms={}",
+             dispatched,
+             total - dispatched,
+             total,
+             timer.ms());
     co_await save();
 }
 

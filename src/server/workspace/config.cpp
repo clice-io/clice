@@ -209,11 +209,13 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
     if(loaded_path)
         loaded_path->clear();
 
+    bool found = false;
     if(!workspace_root.empty()) {
         for(auto* name: {"clice.toml", ".clice/config.toml"}) {
             auto config_path = path::join(workspace_root, name);
             if(!llvm::sys::fs::exists(config_path))
                 continue;
+            found = true;
             if(loaded_path)
                 *loaded_path = config_path;
             if(auto config = load(config_path, workspace_root, issues, with_defaults))
@@ -224,15 +226,14 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
         }
     }
 
+    if(!found) {
+        LOG_INFO("No clice.toml found in {}, using default configuration", workspace_root);
+    }
+
     Config config;
-    if(!with_defaults)
-        return config;
-    config.apply_defaults(workspace_root);
-    LOG_INFO(
-        "No clice.toml found, using default configuration " "(stateful={}, stateless={}, memory_limit={}MB)",
-        config.project.stateful_worker_count.value,
-        config.project.stateless_worker_count.value,
-        config.project.worker_memory_limit.value / (1024 * 1024));
+    if(with_defaults) {
+        config.apply_defaults(workspace_root);
+    }
     return config;
 }
 
