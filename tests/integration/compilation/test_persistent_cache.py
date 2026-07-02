@@ -378,6 +378,7 @@ async def test_kill9_recovery(executable, tmp_path):
     # Blob directories contain only committed blobs, never partial writes.
     stray = [p for p in (cache_root(tmp_path) / "pch").iterdir() if p.suffix != ".pch"]
     assert stray == [], f"Crash residue in pch/: {stray}"
+    assert_no_anomaly(c2, tmp_path)
     await shutdown_client(c2)
 
     # Clean shutdown removed session 2's own tmp; session 1's residue was

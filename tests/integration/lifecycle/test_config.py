@@ -72,8 +72,9 @@ async def test_rules_pattern_mismatch(client, workspace):
 
 
 async def test_config_type_error_diagnostic(executable, tmp_path):
-    # Wrong value type → Error diagnostic on the clice.toml URI with the
-    # offending line/column; the config falls back to defaults.
+    # Wrong value type → Error diagnostic on the clice.toml URI; the config
+    # falls back to defaults. (Line/column pinpointing awaits the kotatsu
+    # TOML error-location feature — see config_tests.cpp.)
     (tmp_path / "clice.toml").write_text('[project]\nclang_tidy = "yes"\n')
     (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
     client = await make_client(executable, tmp_path)
@@ -114,6 +115,7 @@ async def test_config_diagnostic_clears_after_fix(executable, tmp_path):
         toml_uri = client.path_to_uri(tmp_path / "clice.toml")
         await client.wait_diagnostics(toml_uri, timeout=10)
         assert client.diagnostics[toml_uri], "broken config should be diagnosed"
+        assert_no_anomaly(client, tmp_path)
     finally:
         await shutdown_client(client)
 

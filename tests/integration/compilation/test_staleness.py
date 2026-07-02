@@ -28,7 +28,11 @@ from tests.integration.utils.wait import (
     SETTLE_TIME,
     wait_for_recompile,
 )
-from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
+from tests.integration.utils.assertions import (
+    assert_clean_compile,
+    assert_has_errors,
+    assert_no_anomaly,
+)
 
 
 async def test_header_change_invalidates_ast(client, tmp_path):
@@ -431,6 +435,7 @@ async def test_flag_change_invalidates_pch(executable, tmp_path):
     uri, _ = await c1.open_and_wait(tmp_path / "main.cpp")
     assert_clean_compile(c1, uri)
     assert len(list_pch_files(tmp_path)) == 1
+    assert_no_anomaly(c1, tmp_path)
     await shutdown_client(c1)
 
     # Session 2: same preamble text, different flag — must not reuse.
@@ -441,4 +446,5 @@ async def test_flag_change_invalidates_pch(executable, tmp_path):
     assert len(list_pch_files(tmp_path)) == 2, (
         "A flag change must produce a second, separately keyed PCH"
     )
+    assert_no_anomaly(c2, tmp_path)
     await shutdown_client(c2)

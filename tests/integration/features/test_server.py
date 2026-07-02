@@ -215,9 +215,21 @@ async def test_hover_on_unknown_file(client, workspace):
 
 @pytest.mark.workspace("hello_world")
 async def test_hover_out_of_range_position(client, workspace):
+    # Positions beyond the document clamp to the end of content (LSP spec).
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    with pytest.raises(Exception, match="Invalid position"):
-        await client.hover_at(uri, 99999, 0)
+    await client.hover_at(uri, 99999, 0)
+
+
+@pytest.mark.workspace("hello_world")
+async def test_format_range_out_of_range(client, workspace):
+    # Range endpoints beyond the document clamp as well (forward_format path).
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    await client.format_range(
+        uri,
+        Range(
+            start=Position(line=0, character=999), end=Position(line=9999, character=0)
+        ),
+    )
 
 
 @pytest.mark.workspace("hello_world")

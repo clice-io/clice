@@ -113,8 +113,12 @@ async def client(
         getattr(request.node, "rep_call", None) is not None
         and request.node.rep_call.failed
     )
-    await shutdown_client(c, verbose=test_failed)
-    check_no_anomaly(request, c)
+    # The anomaly gate must run even when shutdown itself fails — a crashed
+    # server is exactly when the anomaly evidence matters most.
+    try:
+        await shutdown_client(c, verbose=test_failed)
+    finally:
+        check_no_anomaly(request, c)
 
 
 def check_no_anomaly(request: pytest.FixtureRequest, c: CliceClient) -> None:
@@ -156,8 +160,10 @@ async def agentic(
 
     yield executable, host, port
 
-    await shutdown_client(c)
-    check_no_anomaly(request, c)
+    try:
+        await shutdown_client(c)
+    finally:
+        check_no_anomaly(request, c)
 
 
 async def make_client(executable: Path, workspace: Path) -> CliceClient:

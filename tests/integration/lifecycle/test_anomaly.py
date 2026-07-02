@@ -54,10 +54,14 @@ async def test_worker_crash_reported(executable, tmp_path):
     try:
         await client.open_and_wait(tmp_path / "main.cpp")
 
-        server_pid = client._server.pid
+        server_pid = client.server.pid
         workers = child_pids(server_pid)
         assert workers, "server should have spawned worker processes"
-        os.kill(workers[0], signal.SIGKILL)
+        # SIGABRT: dies via the same signal path as clice's own Debug traps,
+        # exercises the crash handler, and is not intercepted by ASan
+        # (handle_abort=0), unlike SIGSEGV which ASan turns into its own
+        # report and a plain exit(1).
+        os.kill(workers[0], signal.SIGABRT)
 
         for _ in range(50):
             if "worker_crash" in anomalies_in_log_messages(client):
@@ -73,3 +77,21 @@ async def test_worker_crash_reported(executable, tmp_path):
     # The same marker must be greppable in the log files (this is what
     # assert_no_anomaly relies on for worker-side anomalies).
     assert any("worker_crash" in entry for entry in anomalies_in_log_files(tmp_path))
+
+    # The abort also exercises the crash handler: the worker's backtrace
+    # must land in its own log file — and ONLY there, never relayed into
+    # the master log.
+    logs_dir = tmp_path / ".clice" / "logs"
+    worker_texts = [
+        p.read_text(errors="replace")
+        for p in logs_dir.rglob("*.log")
+        if p.name != "master.log"
+    ]
+    assert any("CRASH STACK TRACE" in text for text in worker_texts), (
+        "worker crash backtrace should be written to its log file"
+    )
+    master_texts = [p.read_text(errors="replace") for p in logs_dir.rglob("master.log")]
+    assert master_texts and all(
+        "CRASH STACK TRACE" not in text and "Stack dump" not in text
+        for text in master_texts
+    ), "worker backtrace must not leak into the master log"

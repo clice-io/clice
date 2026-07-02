@@ -60,6 +60,29 @@ async def test_fallback_guidance_lifecycle(executable, tmp_path):
         await shutdown_client(client)
 
 
+async def test_fallback_applies_rule_appends(executable, tmp_path):
+    # Without a CDB, include paths supplied via clice.toml rules must reach
+    # the synthesized fallback command.
+    (tmp_path / "inc").mkdir()
+    (tmp_path / "inc" / "dep.h").write_text("#pragma once\nconstexpr int dep = 1;\n")
+    (tmp_path / "main.cpp").write_text('#include "dep.h"\nint main() { return dep; }\n')
+    include_dir = (tmp_path / "inc").as_posix()
+    (tmp_path / "clice.toml").write_text(
+        f'[[rules]]\npatterns = ["**/*.cpp"]\nappend = ["-I{include_dir}"]\n'
+    )
+
+    client = await make_client(executable, tmp_path)
+    try:
+        uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+        assert not file_not_found_diags(client, uri), (
+            "rule -I must reach the fallback command"
+        )
+        assert not guidance_diags(client, uri)
+        assert_no_anomaly(client, tmp_path)
+    finally:
+        await shutdown_client(client)
+
+
 async def test_fallback_clean_no_guidance(executable, tmp_path):
     # A guessed command that works produces no guidance noise.
     (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
