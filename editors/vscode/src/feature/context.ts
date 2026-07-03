@@ -121,10 +121,10 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
             return;
         }
         try {
-            const query = await this.client.sendRequest<QueryContextResult>(
-                "clice/queryContext",
-                { uri: this.uri, offset: this.loaded.length },
-            );
+            const query = await this.client.sendRequest<QueryContextResult>("clice/queryContext", {
+                uri: this.uri,
+                offset: this.loaded.length,
+            });
             this.loaded.push(...(query?.contexts ?? []));
             this.total = query?.total ?? this.loaded.length;
         } catch {
@@ -152,10 +152,9 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
             return;
         }
         try {
-            const result = await client.sendRequest<CurrentContextResult>(
-                "clice/currentContext",
-                { uri: editor.document.uri.toString() },
-            );
+            const result = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
+                uri: editor.document.uri.toString(),
+            });
             const label = result?.context?.label ?? "auto";
             status.text = `$(list-tree) ${label}`;
             status.show();
@@ -198,10 +197,10 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
 
         while (true) {
             if (loaded.length < total) {
-                const result = await client.sendRequest<QueryContextResult>(
-                    "clice/queryContext",
-                    { uri, offset: loaded.length },
-                );
+                const result = await client.sendRequest<QueryContextResult>("clice/queryContext", {
+                    uri,
+                    offset: loaded.length,
+                });
                 loaded.push(...(result?.contexts ?? []));
                 total = result?.total ?? loaded.length;
                 if (loaded.length === 0) {
