@@ -27,6 +27,12 @@ const scenarios: Record<string, Scenario> = {
         indexSymbol: "magic_number",
         definitionFile: "defs.cppm",
     },
+    header_context: {
+        file: "utils.h",
+        symbol: "distance(p",
+        indexSymbol: "calc",
+        definitionFile: "types.h",
+    },
 };
 
 suite("clice E2E", function () {

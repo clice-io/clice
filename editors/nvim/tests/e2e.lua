@@ -45,6 +45,12 @@ local scenarios = {
         index_symbol = 'magic_number',
         definition_file = 'defs.cppm',
     },
+    header_context = {
+        file = 'utils.h',
+        symbol = 'distance(p',
+        index_symbol = 'calc',
+        definition_file = 'types.h',
+    },
 }
 
 local scenario = scenarios[vim.fs.basename(fixture_dir)]

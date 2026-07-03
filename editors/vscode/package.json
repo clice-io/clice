@@ -66,6 +66,10 @@
       {
         "command": "clice.restart",
         "title": "Clice: Restart Language Server"
+      },
+      {
+        "command": "clice.selectContext",
+        "title": "Clice: Select Compilation Context"
       }
     ],
     "semanticTokenTypes": [

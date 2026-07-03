@@ -9,6 +9,7 @@ import {
 } from "vscode-languageclient/node";
 import { getSetting } from "./setting";
 import { ensureServerBinary } from "./download";
+import { registerCompilationContext } from "./feature/context";
 
 let client: LanguageClient;
 
@@ -84,6 +85,8 @@ export async function activate(context: ExtensionContext) {
     await registerCommands(client, context);
 
     await client.start();
+
+    registerCompilationContext(client, context);
 }
 
 export function deactivate(): Thenable<void> | undefined {
