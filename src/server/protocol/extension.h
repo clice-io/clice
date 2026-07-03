@@ -33,6 +33,10 @@ struct QueryContextParams {
 struct QueryContextResult {
     std::vector<ContextItem> contexts;
     int total = 0;
+
+    /// Workspace state generation these results were computed against.
+    /// Pass it back in switchContext to detect stale listings.
+    std::uint64_t epoch = 0;
 };
 
 struct CurrentContextParams {
@@ -53,10 +57,18 @@ struct SwitchContextParams {
     /// Canonical CDB entry hash to pin (source files with multiple
     /// compile commands).
     std::optional<std::string> command_hash;
+
+    /// Epoch of the queryContext result this choice came from. When set
+    /// and the workspace has changed since, the switch is rejected with
+    /// stale = true and the client should re-query.
+    std::optional<std::uint64_t> epoch;
 };
 
 struct SwitchContextResult {
     bool success = false;
+
+    /// The request referenced an outdated queryContext listing.
+    bool stale = false;
 };
 
 }  // namespace clice::ext

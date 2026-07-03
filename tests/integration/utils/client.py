@@ -397,6 +397,7 @@ class CliceClient(BaseLanguageClient):
         *,
         occurrence: int | None = None,
         command_hash: str | None = None,
+        epoch: int | None = None,
         timeout: float = 30.0,
     ):
         """Send clice/switchContext extension request."""
@@ -405,6 +406,8 @@ class CliceClient(BaseLanguageClient):
             params["occurrence"] = occurrence
         if command_hash is not None:
             params["commandHash"] = command_hash
+        if epoch is not None:
+            params["epoch"] = epoch
         return await asyncio.wait_for(
             self.protocol.send_request_async("clice/switchContext", params),
             timeout=timeout,

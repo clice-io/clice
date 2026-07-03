@@ -61,6 +61,8 @@ llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path
 }
 
 llvm::SmallVector<std::uint32_t> Workspace::on_file_saved(std::uint32_t path_id) {
+    context_epoch += 1;
+
     llvm::SmallVector<std::uint32_t> dirtied;
 
     // Re-scan the saved file for module declarations and update path_to_module.

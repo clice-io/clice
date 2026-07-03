@@ -166,6 +166,13 @@ struct Workspace {
     /// for position mapping.
     llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
 
+    /// Monotonic generation of context-affecting workspace state (include
+    /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext
+    /// stamps its results with it and clice/switchContext rejects requests
+    /// made against an older epoch, so a client can never apply a context
+    /// picked from a stale listing without noticing.
+    std::uint64_t context_epoch = 1;
+
     /// Self-containment verdicts for headers, persisted in cache.json.
     /// Reset when the header itself is saved.
     llvm::DenseMap<std::uint32_t, HeaderMode> header_modes;

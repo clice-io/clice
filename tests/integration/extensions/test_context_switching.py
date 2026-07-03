@@ -180,3 +180,45 @@ async def test_query_context_pagination(client, tmp_path):
     first_uris = {get_field(c, "uri") for c in get_field(first, "contexts", [])}
     second_uris = {get_field(c, "uri") for c in get_field(second, "contexts", [])}
     assert not (first_uris & second_uris)
+
+
+async def test_stale_epoch_rejected(client, tmp_path):
+    """A switch made against an outdated queryContext listing is rejected
+    with stale=true; re-querying yields a fresh epoch that works."""
+    import asyncio
+
+    from lsprotocol.types import DidSaveTextDocumentParams
+
+    from tests.integration.utils import doc
+
+    (tmp_path / "shared.h").write_text("VALUE_TYPE get_value();\n")
+    (tmp_path / "main.cpp").write_text(
+        '#define VALUE_TYPE int\n#include "shared.h"\nint main() { return 0; }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    main_uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    shared_uri, _ = client.open(tmp_path / "shared.h")
+
+    query = await client.query_context(shared_uri)
+    old_epoch = get_field(query, "epoch")
+    assert old_epoch, f"queryContext must stamp an epoch, got: {query}"
+
+    # Any save bumps the workspace epoch.
+    client.text_document_did_save(
+        DidSaveTextDocumentParams(text_document=doc(main_uri))
+    )
+    await asyncio.sleep(0.5)
+
+    switch = await client.switch_context(shared_uri, main_uri, epoch=old_epoch)
+    assert get_field(switch, "success") is False
+    assert get_field(switch, "stale") is True, (
+        f"Expected stale rejection, got: {switch}"
+    )
+
+    fresh = await client.query_context(shared_uri)
+    switch = await client.switch_context(
+        shared_uri, main_uri, epoch=get_field(fresh, "epoch")
+    )
+    assert get_field(switch, "success") is True, f"Fresh epoch must work, got: {switch}"
