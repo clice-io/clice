@@ -92,9 +92,20 @@ struct Session {
     /// Stores the host source file and synthesized preamble for this header.
     std::optional<HeaderContext> header_context;
 
-    /// User-selected compilation context override (via clice/switchContext).
+    /// User-selected header context override (via clice/switchContext).
     /// When set, overrides automatic header context resolution.
-    std::optional<std::uint32_t> active_context;
+    struct ActiveContext {
+        std::uint32_t host_path_id = 0;  ///< Host source file.
+        std::uint32_t occurrence = 0;    ///< Nth include of this header in
+                                         ///< its direct includer (0-based).
+    };
+
+    std::optional<ActiveContext> active_context;
+
+    /// User-selected CDB entry for source files with multiple compile
+    /// commands (via clice/switchContext). Stores the canonical frontend
+    /// flags hash identifying the chosen entry.
+    std::optional<std::string> active_command;
 
     /// Symbol index built from the latest compilation of this file's buffer.
     /// Used for queries (hover, goto, references) on this file.

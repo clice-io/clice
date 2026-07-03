@@ -303,10 +303,21 @@ CommandSource Compiler::fill_compile_args(llvm::StringRef path,
         std::vector<std::string> rule_append, rule_remove;
         workspace.config.match_rules(path, rule_append, rule_remove);
         auto results = workspace.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
-        workspace.toolchain.resolve_or_warn(results.front());
-        auto& cmd = results.front();
-        directory = cmd.resolved.directory.str();
-        arguments = cmd.to_string_argv();
+        auto* cmd = &results.front();
+        // Multi-config projects: honor the user's chosen CDB entry, matched
+        // by canonical command hash so the choice survives CDB reordering.
+        if(session && session->active_command.has_value()) {
+            for(auto& candidate: results) {
+                if(canonical_command_hash(candidate.to_string_argv()) ==
+                   *session->active_command) {
+                    cmd = &candidate;
+                    break;
+                }
+            }
+        }
+        workspace.toolchain.resolve_or_warn(*cmd);
+        directory = cmd->resolved.directory.str();
+        arguments = cmd->to_string_argv();
     };
 
     // 1. If the session has an active header context via switchContext,
@@ -352,13 +363,15 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
                                         std::vector<std::string>& arguments,
                                         Session* session) {
     // Use cached context if it is still valid; otherwise resolve. The cache
-    // is dropped when an active context override points to a different host,
-    // or when any chain file changed on disk (the synthesized preamble
-    // embeds their content, so it must be rebuilt).
+    // is dropped when an active context override points to a different host
+    // or include occurrence, or when any chain file changed on disk (the
+    // synthesized preamble embeds their content, so it must be rebuilt).
     if(session && session->header_context.has_value()) {
-        if((session->active_context.has_value() &&
-            session->header_context->host_path_id != *session->active_context) ||
-           deps_changed(workspace.path_pool, session->header_context->deps)) {
+        bool override_mismatch =
+            session->active_context.has_value() &&
+            (session->header_context->host_path_id != session->active_context->host_path_id ||
+             session->header_context->occurrence != session->active_context->occurrence);
+        if(override_mismatch || deps_changed(workspace.path_pool, session->header_context->deps)) {
             session->header_context.reset();
         }
     }
@@ -429,25 +442,28 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
         return std::nullopt;
     }
 
-    // If there's an active context override, prefer that host.
+    // If there's an active context override, prefer that host (and its
+    // chosen include occurrence).
     std::uint32_t host_path_id = 0;
+    std::optional<std::uint32_t> occurrence;
     std::vector<std::uint32_t> chain;
     if(session && session->active_context.has_value()) {
-        auto preferred = *session->active_context;
+        auto preferred = session->active_context->host_path_id;
         auto preferred_path = workspace.path_pool.resolve(preferred);
         if(workspace.cdb.has_entry(preferred_path)) {
             auto c = workspace.dep_graph.find_include_chain(preferred, header_path_id);
             if(!c.empty()) {
                 host_path_id = preferred;
+                occurrence = session->active_context->occurrence;
                 chain = std::move(c);
             }
         }
     }
 
-    // Fall back to the first available host that has a real CDB entry —
+    // Fall back to the most relevant host that has a real CDB entry —
     // a host with a synthesized command would just be a fallback in disguise.
     if(chain.empty()) {
-        for(auto candidate: hosts) {
+        for(auto candidate: workspace.rank_hosts(header_path_id, hosts)) {
             auto candidate_path = workspace.path_pool.resolve(candidate);
             if(!workspace.cdb.has_entry(candidate_path))
                 continue;
@@ -527,7 +543,7 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
     }
 
     auto target_path = workspace.path_pool.resolve(chain.back());
-    auto synthesized = synthesize_preamble(chain_entries, target_path, resolver);
+    auto synthesized = synthesize_preamble(chain_entries, target_path, resolver, occurrence);
     if(!synthesized) {
         LOG_WARN("resolve_header_context: cannot match include chain for {} (host={})",
                  target_path,
@@ -577,6 +593,7 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
     return HeaderContext{host_path_id,
                          preamble_path,
                          preamble_hash,
+                         occurrence.value_or(0),
                          std::move(chain_ids),
                          std::move(deps)};
 }

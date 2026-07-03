@@ -386,12 +386,21 @@ class CliceClient(BaseLanguageClient):
         )
 
     async def switch_context(
-        self, uri: str, context_uri: str, *, timeout: float = 30.0
+        self,
+        uri: str,
+        context_uri: str,
+        *,
+        occurrence: int | None = None,
+        command_hash: str | None = None,
+        timeout: float = 30.0,
     ):
         """Send clice/switchContext extension request."""
+        params = {"uri": uri, "contextUri": context_uri}
+        if occurrence is not None:
+            params["occurrence"] = occurrence
+        if command_hash is not None:
+            params["commandHash"] = command_hash
         return await asyncio.wait_for(
-            self.protocol.send_request_async(
-                "clice/switchContext", {"uri": uri, "contextUri": context_uri}
-            ),
+            self.protocol.send_request_async("clice/switchContext", params),
             timeout=timeout,
         )

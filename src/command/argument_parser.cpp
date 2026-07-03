@@ -1,5 +1,6 @@
 #include "command/argument_parser.h"
 
+#include <format>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -10,6 +11,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/xxhash.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Types.h"
 
@@ -328,6 +330,12 @@ std::string canonicalize(llvm::ArrayRef<std::string> args, ArgsProfile profile) 
     }
 
     return buf;
+}
+
+std::string canonical_command_hash(llvm::ArrayRef<std::string> args) {
+    auto canonical = canonicalize(args, ArgsProfile::Frontend);
+    auto hash = llvm::xxh3_64bits(llvm::StringRef(canonical));
+    return std::format("{:016x}", hash);
 }
 
 std::string print_argv(llvm::ArrayRef<const char*> args) {

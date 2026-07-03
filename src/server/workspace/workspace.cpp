@@ -1,6 +1,9 @@
 #include "server/workspace/workspace.h"
 
 #include <chrono>
+#include <algorithm>
+#include <ranges>
+#include <tuple>
 
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -15,6 +18,37 @@
 #include "llvm/Support/xxhash.h"
 
 namespace clice {
+
+llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path_id,
+                                                       llvm::ArrayRef<std::uint32_t> hosts) {
+    auto header_path = path_pool.resolve(header_path_id);
+    auto header_stem = llvm::sys::path::stem(header_path);
+    auto header_dir = llvm::sys::path::parent_path(header_path);
+
+    auto score = [&](std::uint32_t host_id) -> std::tuple<int, int, std::size_t> {
+        auto host_path = path_pool.resolve(host_id);
+        int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
+        int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
+        // Longer shared prefix means "closer" in the tree; negate for
+        // ascending sort.
+        std::size_t common = 0;
+        auto n = std::min(host_path.size(), header_path.size());
+        while(common < n && host_path[common] == header_path[common]) {
+            ++common;
+        }
+        return {stem_match, same_dir, n - common};
+    };
+
+    llvm::SmallVector<std::uint32_t> ranked(hosts.begin(), hosts.end());
+    std::ranges::sort(ranked, [&](std::uint32_t a, std::uint32_t b) {
+        auto sa = score(a), sb = score(b);
+        if(sa != sb) {
+            return sa < sb;
+        }
+        return path_pool.resolve(a) < path_pool.resolve(b);
+    });
+    return ranked;
+}
 
 llvm::SmallVector<std::uint32_t> Workspace::on_file_saved(std::uint32_t path_id) {
     llvm::SmallVector<std::uint32_t> dirtied;

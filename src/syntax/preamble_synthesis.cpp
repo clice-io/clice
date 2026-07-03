@@ -21,55 +21,74 @@ static void append_line_marker(std::string& out, llvm::StringRef path) {
     out += "\"\n";
 }
 
-/// Find the directive in `includes` that brings in `next_path`. Prefers an
-/// exact resolved-path match, falling back to a filename match so a
-/// resolution failure doesn't kill the whole synthesis. Within each phase,
-/// unconditional directives win over ones inside #if blocks: an include
-/// occurrence in an untaken branch must not shadow the real one.
-static std::optional<std::size_t> find_match(llvm::ArrayRef<ScanResult::IncludeInfo> includes,
-                                             llvm::ArrayRef<std::optional<std::string>> resolved,
-                                             llvm::StringRef next_path) {
-    std::optional<std::size_t> match;
+/// Collect all directives in `includes` that bring in `next_path`, in
+/// directive order. Prefers exact resolved-path matches; when resolution
+/// found nothing, falls back to filename matches — but only if all
+/// fallback candidates share one raw spelling (distinct spellings could
+/// name different files, so refuse to guess between them).
+static llvm::SmallVector<std::size_t>
+    collect_candidates(llvm::ArrayRef<ScanResult::IncludeInfo> includes,
+                       llvm::ArrayRef<std::optional<std::string>> resolved,
+                       llvm::StringRef next_path) {
+    llvm::SmallVector<std::size_t> candidates;
     for(std::size_t j = 0; j < includes.size(); ++j) {
         if(resolved[j].has_value() && *resolved[j] == next_path) {
-            if(!includes[j].conditional) {
-                return j;
-            }
-            if(!match) {
-                match = j;
-            }
+            candidates.push_back(j);
         }
     }
-    if(match) {
-        return match;
+    if(!candidates.empty()) {
+        return candidates;
     }
 
-    // Filename fallback: refuse to guess between distinct raw spellings,
-    // but duplicates of the same spelling bring in the same file — take
-    // the first (preferring an unconditional one).
     auto next_filename = llvm::sys::path::filename(next_path);
     for(std::size_t j = 0; j < includes.size(); ++j) {
         if(llvm::sys::path::filename(includes[j].path) != next_filename) {
             continue;
         }
-        if(match.has_value() && includes[*match].path != includes[j].path) {
+        if(!candidates.empty() && includes[candidates.front()].path != includes[j].path) {
+            return {};
+        }
+        candidates.push_back(j);
+    }
+    return candidates;
+}
+
+/// Pick the directive to cut at. An explicit occurrence indexes the
+/// candidate list directly; otherwise unconditional directives win over
+/// ones inside #if blocks, so an include occurrence in an untaken branch
+/// does not shadow the real one.
+static std::optional<std::size_t> find_match(llvm::ArrayRef<ScanResult::IncludeInfo> includes,
+                                             llvm::ArrayRef<std::optional<std::string>> resolved,
+                                             llvm::StringRef next_path,
+                                             std::optional<std::uint32_t> occurrence) {
+    auto candidates = collect_candidates(includes, resolved, next_path);
+    if(candidates.empty()) {
+        return std::nullopt;
+    }
+    if(occurrence.has_value()) {
+        if(*occurrence >= candidates.size()) {
             return std::nullopt;
         }
-        if(!match || (includes[*match].conditional && !includes[j].conditional)) {
-            match = j;
+        return candidates[*occurrence];
+    }
+    for(auto j: candidates) {
+        if(!includes[j].conditional) {
+            return j;
         }
     }
-    return match;
+    return candidates.front();
 }
 
 std::optional<std::string> synthesize_preamble(llvm::ArrayRef<ChainEntry> chain,
                                                llvm::StringRef target_path,
-                                               IncludeResolver resolve) {
+                                               IncludeResolver resolve,
+                                               std::optional<std::uint32_t> occurrence) {
     std::string preamble;
 
     for(std::size_t i = 0; i < chain.size(); ++i) {
         auto& entry = chain[i];
-        auto next_path = (i + 1 < chain.size()) ? chain[i + 1].path : target_path;
+        bool is_last = i + 1 == chain.size();
+        auto next_path = is_last ? target_path : chain[i + 1].path;
         auto includer_dir = llvm::sys::path::parent_path(entry.path);
 
         auto scan_result = scan(entry.content);
@@ -81,7 +100,11 @@ std::optional<std::string> synthesize_preamble(llvm::ArrayRef<ChainEntry> chain,
                 resolve(include.path, include.is_angled, include.is_include_next, includer_dir));
         }
 
-        auto match = find_match(scan_result.includes, resolved, next_path);
+        // The occurrence choice applies to the direct includer only.
+        auto match = find_match(scan_result.includes,
+                                resolved,
+                                next_path,
+                                is_last ? occurrence : std::nullopt);
         if(!match) {
             return std::nullopt;
         }
@@ -124,6 +147,24 @@ std::optional<std::string> synthesize_preamble(llvm::ArrayRef<ChainEntry> chain,
     }
 
     return preamble;
+}
+
+std::uint32_t count_include_occurrences(llvm::StringRef content,
+                                        llvm::StringRef includer_path,
+                                        llvm::StringRef target_path,
+                                        IncludeResolver resolve) {
+    auto includer_dir = llvm::sys::path::parent_path(includer_path);
+    auto scan_result = scan(content);
+
+    llvm::SmallVector<std::optional<std::string>> resolved;
+    resolved.reserve(scan_result.includes.size());
+    for(auto& include: scan_result.includes) {
+        resolved.push_back(
+            resolve(include.path, include.is_angled, include.is_include_next, includer_dir));
+    }
+
+    return static_cast<std::uint32_t>(
+        collect_candidates(scan_result.includes, resolved, target_path).size());
 }
 
 }  // namespace clice

@@ -326,6 +326,64 @@ TEST_CASE(IncludeNextKeptVerbatim) {
 )");
 }
 
+TEST_CASE(OccurrenceSelectsMatch) {
+    // Explicit occurrence indexes the candidate list of the direct
+    // includer, overriding the prefer-unconditional default.
+    llvm::StringMap<std::string> mapping = {
+        {"list.def", "/proj/list.def"},
+    };
+
+    ChainEntry entry{"/proj/main.cpp", R"(#define X(name) int name;
+#include "list.def"
+#undef X
+#define X(name) void get_##name();
+#include "list.def"
+)"};
+
+    auto second =
+        synthesize_preamble({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(1));
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(*second, R"(#line 1 "/proj/main.cpp"
+#define X(name) int name;
+#include "/proj/list.def"
+#undef X
+#define X(name) void get_##name();
+)");
+
+    auto first =
+        synthesize_preamble({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(0));
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(*first, R"(#line 1 "/proj/main.cpp"
+#define X(name) int name;
+)");
+}
+
+TEST_CASE(OccurrenceOutOfRange) {
+    llvm::StringMap<std::string> mapping = {
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry entry{"/proj/main.cpp", R"(#include "target.h"
+)"};
+
+    auto result =
+        synthesize_preamble({entry}, "/proj/target.h", map_resolver(mapping), std::uint32_t(1));
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST_CASE(CountOccurrences) {
+    llvm::StringMap<std::string> empty;
+
+    auto count = count_include_occurrences(R"(#include "list.def"
+#undef X
+#include "list.def"
+)",
+                                           "/proj/main.cpp",
+                                           "/proj/list.def",
+                                           map_resolver(empty));
+    EXPECT_EQ(count, 2u);
+}
+
 TEST_CASE(CrlfLineEndings) {
     llvm::StringMap<std::string> empty;
 

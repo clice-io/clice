@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <variant>
 
+#include "command/argument_parser.h"
 #include "semantic/symbol_kind.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/worker.h"
@@ -13,12 +14,15 @@
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "syntax/preamble_synthesis.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
 #include "kota/meta/enum.h"
+#include "llvm/ADT/StringSet.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 
@@ -593,32 +597,99 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             co_return to_raw(results);
         });
 
+    // ── Compilation context helpers ─────────────────────────────────
+
+    // Human-readable summary of the distinguishing flags of a command.
+    auto flags_label = [](const CompileCommand& cmd) {
+        auto argv = cmd.to_argv();
+        std::string desc;
+        for(std::size_t j = 0; j < argv.size(); ++j) {
+            llvm::StringRef a(argv[j]);
+            if(a.starts_with("-D") || a.starts_with("-O") || a.starts_with("-std=") ||
+               a.starts_with("-g")) {
+                if(!desc.empty())
+                    desc += ' ';
+                desc += argv[j];
+                if((a == "-D" || a == "-O") && j + 1 < argv.size()) {
+                    desc += argv[++j];
+                }
+            }
+        }
+        return desc;
+    };
+
+    // How many includes of `target_id` the direct includer along the
+    // host's chain contains. Spelling-based (no search-path resolution):
+    // multiple inclusions of one header always share a spelling, and the
+    // synthesis validates the real occurrence anyway.
+    auto count_occurrences = [this](std::uint32_t host_id, std::uint32_t target_id) {
+        auto& ws = this->server.workspace;
+        auto chain = ws.dep_graph.find_include_chain(host_id, target_id);
+        if(chain.size() < 2)
+            return std::uint32_t(0);
+        auto includer_path = ws.path_pool.resolve(chain[chain.size() - 2]);
+        auto target_path = ws.path_pool.resolve(target_id);
+        auto buf = llvm::MemoryBuffer::getFile(includer_path);
+        if(!buf)
+            return std::uint32_t(0);
+        auto null_resolver = [](llvm::StringRef, bool, bool, llvm::StringRef)
+            -> std::optional<std::string> { return std::nullopt; };
+        return count_include_occurrences((*buf)->getBuffer(),
+                                         includer_path,
+                                         target_path,
+                                         null_resolver);
+    };
+
     peer.on_request(
         "clice/queryContext",
-        [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
+        [this, flags_label, count_occurrences](
+            RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
             auto& srv = this->server;
+            auto& ws = srv.workspace;
             auto path = uri_to_path(params.uri);
-            auto path_id = srv.workspace.path_pool.intern(path);
+            auto path_id = ws.path_pool.intern(path);
             int offset_val = std::max(0, params.offset.value_or(0));
             constexpr int page_size = 10;
 
             ext::QueryContextResult result;
             std::vector<ext::ContextItem> all_items;
 
-            auto& ws = srv.workspace;
+            // Contexts that would produce identical compilation results are
+            // collapsed: identical canonical flags mean an identical compile.
+            llvm::StringSet<> seen_configs;
+
             auto hosts = ws.dep_graph.find_host_sources(path_id);
-            for(auto host_id: hosts) {
+            for(auto host_id: ws.rank_hosts(path_id, hosts)) {
                 auto host_path = ws.path_pool.resolve(host_id);
                 if(!ws.cdb.has_entry(host_path))
                     continue;
                 auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
                 if(!host_uri_opt)
                     continue;
+
+                auto cmds = ws.cdb.lookup(host_path);
+                if(!seen_configs.insert(canonical_command_hash(cmds.front().to_string_argv()))
+                        .second)
+                    continue;
+
                 ext::ContextItem item;
                 item.label = llvm::sys::path::filename(host_path).str();
                 item.description = std::string(host_path);
                 item.uri = host_uri_opt->str();
-                all_items.push_back(std::move(item));
+
+                // A guard-less header can be included several times by one
+                // host — each occurrence is a distinct context.
+                auto occurrences = count_occurrences(host_id, path_id);
+                if(occurrences > 1) {
+                    for(std::uint32_t n = 0; n < occurrences; ++n) {
+                        auto occ_item = item;
+                        occ_item.label = std::format("{} (#{})", item.label, n + 1);
+                        occ_item.occurrence = n;
+                        all_items.push_back(std::move(occ_item));
+                    }
+                } else {
+                    all_items.push_back(std::move(item));
+                }
             }
 
             // Real entries only: lookup() would synthesize a default command
@@ -626,32 +697,19 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             // switchContext would then reject.
             if(hosts.empty() && ws.cdb.has_entry(path)) {
                 auto entries = ws.cdb.lookup(path);
-                for(std::size_t i = 0; i < entries.size(); ++i) {
+                auto uri_opt = lsp::URI::from_file_path(std::string(path));
+                for(std::size_t i = 0; uri_opt && i < entries.size(); ++i) {
                     auto& cmd = entries[i];
-                    auto argv = cmd.to_argv();
-                    std::string desc;
-                    for(std::size_t j = 0; j < argv.size(); ++j) {
-                        llvm::StringRef a(argv[j]);
-                        if(a.starts_with("-D") || a.starts_with("-O") || a.starts_with("-std=") ||
-                           a.starts_with("-g")) {
-                            if(!desc.empty())
-                                desc += ' ';
-                            desc += argv[j];
-                            if((a == "-D" || a == "-O") && j + 1 < argv.size()) {
-                                desc += argv[++j];
-                            }
-                        }
-                    }
-                    if(desc.empty())
-                        desc = std::format("config #{}", i);
-
-                    auto uri_opt = lsp::URI::from_file_path(std::string(path));
-                    if(!uri_opt)
+                    auto hash = canonical_command_hash(cmd.to_string_argv());
+                    if(!seen_configs.insert(hash).second)
                         continue;
+
+                    auto desc = flags_label(cmd);
                     ext::ContextItem item;
-                    item.label = desc;
+                    item.label = desc.empty() ? std::format("config #{}", i) : desc;
                     item.description = cmd.resolved.directory.str();
                     item.uri = uri_opt->str();
+                    item.command_hash = std::move(hash);
                     all_items.push_back(std::move(item));
                 }
             }
@@ -666,7 +724,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
 
     peer.on_request(
         "clice/currentContext",
-        [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
+        [this,
+         flags_label](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
             auto& srv = this->server;
             auto path = uri_to_path(params.uri);
             auto path_id = srv.workspace.path_pool.intern(path);
@@ -674,43 +733,98 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             ext::CurrentContextResult result;
             auto session = srv.find_session(path_id);
             if(session && session->active_context) {
-                auto ctx_path = srv.workspace.path_pool.resolve(*session->active_context);
+                auto& active = *session->active_context;
+                auto ctx_path = srv.workspace.path_pool.resolve(active.host_path_id);
                 auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
                 if(ctx_uri_opt) {
                     ext::ContextItem item;
                     item.label = llvm::sys::path::filename(ctx_path).str();
+                    if(active.occurrence > 0) {
+                        item.label = std::format("{} (#{})", item.label, active.occurrence + 1);
+                    }
                     item.description = std::string(ctx_path);
                     item.uri = ctx_uri_opt->str();
+                    item.occurrence = active.occurrence;
                     result.context = std::move(item);
                 }
+            } else if(session && session->active_command) {
+                auto& ws = srv.workspace;
+                ext::ContextItem item;
+                item.uri = params.uri;
+                item.command_hash = *session->active_command;
+                item.label = std::format("config {}", session->active_command->substr(0, 8));
+                if(ws.cdb.has_entry(path)) {
+                    for(auto& cmd: ws.cdb.lookup(path)) {
+                        if(canonical_command_hash(cmd.to_string_argv()) ==
+                           *session->active_command) {
+                            auto desc = flags_label(cmd);
+                            if(!desc.empty()) {
+                                item.label = std::move(desc);
+                            }
+                            item.description = cmd.resolved.directory.str();
+                            break;
+                        }
+                    }
+                }
+                result.context = std::move(item);
             }
             co_return to_raw(result);
         });
 
     peer.on_request(
         "clice/switchContext",
-        [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
+        [this,
+         count_occurrences](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             auto& srv = this->server;
+            auto& ws = srv.workspace;
             auto path = uri_to_path(params.uri);
-            auto path_id = srv.workspace.path_pool.intern(path);
+            auto path_id = ws.path_pool.intern(path);
             auto context_path = uri_to_path(params.context_uri);
-            auto context_path_id = srv.workspace.path_pool.intern(context_path);
+            auto context_path_id = ws.path_pool.intern(context_path);
 
             ext::SwitchContextResult result;
 
-            auto& ws = srv.workspace;
-            if(!ws.cdb.has_entry(context_path)) {
-                result.success = false;
-                co_return to_raw(result);
-            }
-
             auto session = srv.find_session(path_id);
             if(!session) {
-                result.success = false;
                 co_return to_raw(result);
             }
 
-            session->active_context = context_path_id;
+            if(params.command_hash.has_value()) {
+                // Pin one of the file's own CDB entries.
+                bool found = false;
+                if(ws.cdb.has_entry(path)) {
+                    for(auto& cmd: ws.cdb.lookup(path)) {
+                        if(canonical_command_hash(cmd.to_string_argv()) == *params.command_hash) {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if(!found) {
+                    co_return to_raw(result);
+                }
+                session->active_command = *params.command_hash;
+                session->active_context.reset();
+            } else {
+                // Pin a host source for a header: it must have a real CDB
+                // entry and actually (transitively) include this header.
+                if(!ws.cdb.has_entry(context_path)) {
+                    co_return to_raw(result);
+                }
+                if(ws.dep_graph.find_include_chain(context_path_id, path_id).empty()) {
+                    co_return to_raw(result);
+                }
+                auto occurrence = params.occurrence.value_or(0);
+                if(occurrence > 0) {
+                    auto count = count_occurrences(context_path_id, path_id);
+                    if(count > 0 && occurrence >= count) {
+                        co_return to_raw(result);
+                    }
+                }
+                session->active_context = Session::ActiveContext{context_path_id, occurrence};
+                session->active_command.reset();
+            }
+
             session->header_context.reset();
             session->pch_ref.reset();
             session->ast_deps.reset();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -39,8 +40,24 @@ using IncludeResolver =
 /// to the next path (e.g. resolution failed for an exotic search setup),
 /// falls back to a filename match — but only if it is unambiguous.
 /// Returns nullopt when a chain step cannot be matched.
+///
+/// `occurrence` selects among multiple includes of the target in its
+/// direct includer (the last chain entry): a file without include guards
+/// can be included several times with different preprocessor states, and
+/// each occurrence is a distinct context. It indexes the candidate list in
+/// directive order (0-based); out of range fails the synthesis. When
+/// unset, unconditional candidates are preferred over ones inside #if
+/// blocks.
 std::optional<std::string> synthesize_preamble(llvm::ArrayRef<ChainEntry> chain,
                                                llvm::StringRef target_path,
-                                               IncludeResolver resolve);
+                                               IncludeResolver resolve,
+                                               std::optional<std::uint32_t> occurrence = {});
+
+/// Count how many include directives in `content` bring in `target_path`
+/// (candidates in the sense of synthesize_preamble's matching).
+std::uint32_t count_include_occurrences(llvm::StringRef content,
+                                        llvm::StringRef includer_path,
+                                        llvm::StringRef target_path,
+                                        IncludeResolver resolve);
 
 }  // namespace clice

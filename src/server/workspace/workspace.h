@@ -51,6 +51,10 @@ struct HeaderContext {
     std::string preamble_path;    ///< Path to generated preamble file on disk.
     std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
 
+    /// Which include of this header in its direct includer produced the
+    /// preamble (0-based, in directive order).
+    std::uint32_t occurrence = 0;
+
     /// Include chain from host to the target's direct includer (excludes the
     /// target itself). The synthesized preamble embeds these files' content,
     /// so clang never opens them — staleness must be tracked here.
@@ -144,6 +148,13 @@ struct Workspace {
     /// path_id.  Contains symbol occurrences, relations, and stored content
     /// for position mapping.
     llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
+
+    /// Rank host source candidates for a header by relevance: a source
+    /// with the header's stem (utils.h -> utils.cpp) wins, then sources in
+    /// the same directory, then longer common path prefixes; ties break
+    /// lexicographically so the choice is deterministic.
+    llvm::SmallVector<std::uint32_t> rank_hosts(std::uint32_t header_path_id,
+                                                llvm::ArrayRef<std::uint32_t> hosts);
 
     /// Called when a file is saved to disk.  Cascades invalidation through
     /// compile_graph and clears affected PCM caches.
