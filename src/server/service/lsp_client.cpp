@@ -344,7 +344,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto& links = result.value();
         if(session->pch_ref) {
             auto& pch_cache = srv.workspace.pch_cache;
-            auto pch_it = pch_cache.find(session->pch_ref->path_id);
+            auto pch_it = pch_cache.find(session->pch_ref->key);
             if(pch_it != pch_cache.end() && !pch_it->second.document_links_json.empty()) {
                 auto& pch_json = pch_it->second.document_links_json;
                 if(!links.data.empty() && links.data != "null" && links.data.size() > 2) {

@@ -45,7 +45,8 @@ void Workspace::on_file_closed(std::uint32_t path_id) {
     if(compile_graph && compile_graph->has_unit(path_id)) {
         compile_graph->update(path_id);
     }
-    pch_cache.erase(path_id);
+    // PCH entries are content-keyed and may be shared with other sessions;
+    // blob eviction is the CacheStore's job, so nothing to clean up here.
 }
 
 std::uint64_t hash_file(llvm::StringRef path) {
@@ -101,8 +102,7 @@ struct CacheDepEntry {
 };
 
 struct CachePCHEntry {
-    std::string key;            // CacheStore key in the "pch" namespace
-    std::uint32_t source_file;  // index into CacheData::paths
+    std::string key;  // CacheStore key in the "pch" namespace
     std::uint32_t bound;
     std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
@@ -161,18 +161,15 @@ void Workspace::load_cache() {
 
     for(auto& entry: data.pch) {
         auto pch_path = store->lookup("pch", entry.key);
-        auto source = resolve(entry.source_file);
-        if(!pch_path || source.empty())
+        if(!pch_path)
             continue;
 
-        auto path_id = path_pool.intern(source);
-        auto& st = pch_cache[path_id];
+        auto& st = pch_cache[entry.key];
         st.path = *pch_path;
-        st.key = entry.key;
         st.bound = entry.bound;
         st.deps = load_deps(entry.build_at, entry.deps);
 
-        LOG_DEBUG("Loaded cached PCH: {} -> {}", source, *pch_path);
+        LOG_DEBUG("Loaded cached PCH: {} -> {}", entry.key, *pch_path);
     }
 
     for(auto& entry: data.pcm) {
@@ -210,13 +207,13 @@ void Workspace::save_cache() {
         return it->second;
     };
 
-    for(auto& [path_id, st]: pch_cache) {
+    for(auto& e: pch_cache) {
+        auto& st = e.second;
         if(st.path.empty())
             continue;
 
         CachePCHEntry entry;
-        entry.key = st.key;
-        entry.source_file = intern(path_id);
+        entry.key = e.getKey().str();
         entry.bound = st.bound;
         entry.build_at = st.deps.build_at;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {

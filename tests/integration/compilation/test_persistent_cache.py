@@ -1,7 +1,7 @@
 """Integration tests for persistent PCH/PCM cache.
 
 Verifies that PCH/PCM artifacts are written to the unified cache store
-(.clice/cache/v1/{pch,pcm}/) with content-addressed filenames, survive
+(.clice/cache/v2/{pch,pcm}/) with content-addressed filenames, survive
 server restarts via cache.json, and are properly reused across sessions.
 """
 
@@ -75,7 +75,7 @@ async def test_cache_json_persisted(client, tmp_path):
     assert "key" in entry
     assert "build_at" in entry
     assert "deps" in entry
-    assert "source_file" in entry
+    assert "bound" in entry
 
 
 async def test_pch_reused_on_close_reopen(client, tmp_path):

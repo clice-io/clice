@@ -21,6 +21,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -28,7 +29,7 @@ namespace clice {
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 1;
+constexpr inline std::uint32_t cache_format_version = 2;
 
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
 ///
@@ -59,13 +60,12 @@ struct HeaderContext {
     DepsSnapshot deps;
 };
 
-/// Cached PCH state.  Content-addressed by preamble text + frontend compile
-/// flags — shared across all files (open or on-disk) with the same key.
+/// Cached PCH state.  Stored in Workspace.pch_cache keyed by the content
+/// key (hex of xxh3_128bits over preamble text + directories + canonical
+/// flags), so files with identical preambles share one PCH.
 struct PCHState {
     std::string path;
     std::uint32_t bound = 0;
-    /// CacheStore key: hex of xxh3_128bits(preamble text + canonical flags).
-    std::string key;
     DepsSnapshot deps;
     std::string document_links_json;  ///< Pre-serialized DocumentLink[] from PCH build
     std::shared_ptr<kota::event> building;
@@ -125,10 +125,10 @@ struct Workspace {
     /// declarations change.
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
-    /// PCH cache, keyed by file path_id.  Hot-path mirror of CacheStore
-    /// state; blob paths come from the store.
-    /// TODO: re-key by content hash to enable cross-file sharing.
-    llvm::DenseMap<std::uint32_t, PCHState> pch_cache;
+    /// PCH cache, keyed by content key (preamble text + canonical flags),
+    /// so files with identical preambles share one PCH.  Hot-path mirror
+    /// of CacheStore state; blob paths come from the store.
+    llvm::StringMap<PCHState> pch_cache;
 
     /// PCM cache, keyed by module source path_id.
     llvm::DenseMap<std::uint32_t, PCMState> pcm_cache;

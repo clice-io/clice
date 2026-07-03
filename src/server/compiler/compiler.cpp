@@ -60,13 +60,13 @@ static std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
 /// which would otherwise leave waiters suspended on the event forever.
 struct BuildingGuard {
     Workspace& workspace;
-    std::uint32_t path_id;
+    llvm::StringRef key;
     std::shared_ptr<kota::event> completion;
 
     ~BuildingGuard() {
-        // Reset only our own registration: the entry may have been erased
-        // (didClose) and re-registered by a newer build in the meantime.
-        if(auto it = workspace.pch_cache.find(path_id);
+        // Reset only our own registration: the entry may have been
+        // re-registered by a newer build in the meantime.
+        if(auto it = workspace.pch_cache.find(key);
            it != workspace.pch_cache.end() && it->second.building == completion) {
             it->second.building.reset();
         }
@@ -673,12 +673,18 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto path = workspace.path_pool.resolve(path_id);
     auto& text = session.text;
     auto bound = compute_preamble_bound(text);
-    if(bound == 0) {
-        // No preamble directives — PCH would be empty. Clear any stale entry.
-        workspace.pch_cache.erase(path_id);
+    if(bound == 0 && !session.header_context.has_value()) {
+        // No preamble directives and no injected -include — PCH would be empty.
         session.pch_ref.reset();
         co_return true;
     }
+
+    // With a header context, the PCH is worth building even at bound == 0:
+    // the -include'd preamble file is processed via the predefines buffer
+    // and lands in the PCH, so the (potentially huge) synthesized prefix is
+    // not re-parsed on every edit. The -include flag is part of the
+    // canonicalized arguments below, and the preamble file name is its
+    // content hash, so the key tracks prefix changes automatically.
 
     // Key the PCH by preamble text plus the frontend-relevant compile flags,
     // so files with the same preamble text but different flags (-D, -I, -std)
@@ -695,49 +701,55 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
                               preamble_text,
                               canonicalize(arguments, ArgsProfile::Frontend)});
 
-    // Reuse existing PCH if the key and deps haven't changed.  The store
-    // lookup refreshes the blob's LRU position and catches eviction.
+    // Reuse an existing PCH with the same content key — possibly built for
+    // a different file.  The store lookup refreshes the blob's LRU position
+    // and catches eviction.
     llvm::StringRef pch_miss = "no_entry";
-    if(auto it = workspace.pch_cache.find(path_id); it != workspace.pch_cache.end()) {
+    if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
         auto& st = it->second;
-        if(st.key != pch_key) {
-            pch_miss = "key_changed";
-        } else if(st.path.empty()) {
+        if(st.path.empty()) {
             pch_miss = "incomplete_entry";
         } else if(!(workspace.store && workspace.store->lookup("pch", pch_key))) {
             pch_miss = "evicted";
         } else if(deps_changed(workspace.path_pool, st.deps)) {
             pch_miss = "deps_changed";
         } else {
-            st.bound = bound;
-            session.pch_ref = Session::PCHRef{path_id, pch_key, bound};
+            session.pch_ref = Session::PCHRef{pch_key, bound};
             LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, path);
             co_return true;
         }
     }
     LOG_PERF("cache", "ns=pch event=miss reason={} key={} file={}", pch_miss, pch_key, path);
 
-    // Preamble incomplete (user still typing) — defer rebuild, reuse old PCH if available.
+    // Preamble incomplete (user still typing) — defer rebuild, keep using
+    // the session's previous PCH if it is still available.
     if(!is_preamble_complete(text, bound)) {
         LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
-        co_return workspace.pch_cache.count(path_id) && !workspace.pch_cache[path_id].path.empty();
+        if(session.pch_ref.has_value()) {
+            auto it = workspace.pch_cache.find(session.pch_ref->key);
+            co_return it != workspace.pch_cache.end() && !it->second.path.empty();
+        }
+        co_return false;
     }
 
-    // If another coroutine is already building PCH for this file, wait for it.
-    if(auto it = workspace.pch_cache.find(path_id);
+    // If another coroutine is already building a PCH with this key
+    // (same file, or another file with an identical preamble), wait for it.
+    if(auto it = workspace.pch_cache.find(pch_key);
        it != workspace.pch_cache.end() && it->second.building) {
         co_await it->second.building->wait();
-        if(auto it2 = workspace.pch_cache.find(path_id); it2 != workspace.pch_cache.end()) {
-            session.pch_ref = Session::PCHRef{path_id, it2->second.key, it2->second.bound};
+        if(auto it2 = workspace.pch_cache.find(pch_key);
+           it2 != workspace.pch_cache.end() && !it2->second.path.empty()) {
+            session.pch_ref = Session::PCHRef{pch_key, it2->second.bound};
+            co_return true;
         }
-        co_return workspace.pch_cache.count(path_id) && !workspace.pch_cache[path_id].path.empty();
+        co_return false;
     }
 
     // Register in-flight build so concurrent requests wait on us.  The
     // guard wakes them on every exit, including cancellation mid-await.
     auto completion = std::make_shared<kota::event>();
-    workspace.pch_cache[path_id].building = completion;
-    BuildingGuard guard{workspace, path_id, completion};
+    workspace.pch_cache[pch_key].building = completion;
+    BuildingGuard guard{workspace, pch_key, completion};
 
     if(!workspace.store) {
         LOG_WARN("PCH build skipped: cache store is unavailable");
@@ -783,14 +795,13 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return false;
     }
 
-    auto& st = workspace.pch_cache[path_id];
+    auto& st = workspace.pch_cache[pch_key];
     st.path = committed.value().value();
     st.bound = bound;
-    st.key = pch_key;
     st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
     st.document_links_json = std::move(result.value().pch_links_json);
 
-    session.pch_ref = Session::PCHRef{path_id, pch_key, bound};
+    session.pch_ref = Session::PCHRef{pch_key, bound};
 
     LOG_INFO("PCH built for {}: {}", path, st.path);
 
@@ -895,8 +906,9 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
 
     // Build or reuse PCH.
     auto pch_ok = co_await ensure_pch(session, directory, arguments);
-    if(pch_ok) {
-        if(auto pch_it = workspace.pch_cache.find(path_id); pch_it != workspace.pch_cache.end()) {
+    if(pch_ok && session.pch_ref.has_value()) {
+        if(auto pch_it = workspace.pch_cache.find(session.pch_ref->key);
+           pch_it != workspace.pch_cache.end()) {
             pch = {pch_it->second.path, pch_it->second.bound};
         }
     }
@@ -920,7 +932,7 @@ bool Compiler::is_stale(const Session& session) {
 
     // Check PCH staleness via the session's pch_ref.
     if(session.pch_ref.has_value()) {
-        auto pch_it = workspace.pch_cache.find(session.pch_ref->path_id);
+        auto pch_it = workspace.pch_cache.find(session.pch_ref->key);
         if(pch_it != workspace.pch_cache.end() &&
            deps_changed(workspace.path_pool, pch_it->second.deps))
             return true;

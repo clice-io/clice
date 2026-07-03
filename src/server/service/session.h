@@ -78,9 +78,8 @@ struct Session {
     /// The PCH itself is owned by Workspace (shared, content-addressed);
     /// Session only stores enough to locate and validate it.
     struct PCHRef {
-        std::uint32_t path_id = 0;  ///< Key into Workspace.pch_cache.
-        std::string key;            ///< CacheStore key at build time.
-        std::uint32_t bound = 0;    ///< Preamble byte boundary.
+        std::string key;          ///< Content key into Workspace.pch_cache.
+        std::uint32_t bound = 0;  ///< Preamble byte boundary.
     };
 
     std::optional<PCHRef> pch_ref;
