@@ -243,7 +243,10 @@ Implicit navigation requires an unambiguous source token — patterns where the 
 
 Navigate from a symbol usage or definition to its declaration. In C++, many entities have separate declarations and definitions; go-to-declaration always targets the declaration side.
 
-- [ ] Functions — from usage or out-of-line definition to the declaration/prototype
+clice returns the declaration locations plus the definition: symbols defined inline have no separate declaration, and navigating to the definition is what clients expect in that case.
+
+- [x] Index-based cross-TU go-to-declaration
+- [x] Functions — from usage or out-of-line definition to the declaration/prototype
 
   ```cpp
   // widget.h
@@ -289,7 +292,9 @@ Navigate from a symbol usage or definition to its declaration. In C++, many enti
 
 ## Go to Implementation
 
-- [ ] Virtual method → all override implementations
+- [x] Index-based go-to-implementation (direct overrides; each level of a
+      deep chain navigates to its own overriders)
+- [x] Virtual method → all override implementations
 
   ```cpp
   struct Base { virtual void draw(); };
@@ -339,7 +344,11 @@ Navigate from a symbol usage or definition to its declaration. In C++, many enti
 
 Navigate to the type definition of a symbol. Applicable to variables, parameters, fields, and any other named entity that has a type. When the type is a type alias or a pointer-like wrapper, navigation should unwrap to the underlying/pointee type.
 
-- [ ] Local variables and parameters
+- [x] Index-based go-to-type-definition for declared entities (variables,
+      parameters, fields). Known limitations: `auto`-deduced variables have no
+      type relation yet, and alias-typed variables navigate to the `using`
+      declaration rather than unwrapping to the underlying type.
+- [x] Local variables and parameters
 
   ```cpp
   void process(Widget w) {
@@ -575,8 +584,9 @@ Highlight all references to the symbol under cursor within the current file (`te
 
 ## Changelog
 
-| Date | Change                                           | PR  |
-| ---- | ------------------------------------------------ | --- |
-| —    | Index-based go-to-definition and find references | —   |
-| —    | Call hierarchy (incoming/outgoing)               | —   |
-| —    | Type hierarchy (supertypes/subtypes)             | —   |
+| Date | Change                                                                                             | PR  |
+| ---- | -------------------------------------------------------------------------------------------------- | --- |
+| —    | declaration / implementation / typeDefinition; references includeDeclaration includes declarations | —   |
+| —    | Index-based go-to-definition and find references                                                   | —   |
+| —    | Call hierarchy (incoming/outgoing)                                                                 | —   |
+| —    | Type hierarchy (supertypes/subtypes)                                                               | —   |
