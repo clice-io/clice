@@ -393,6 +393,29 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         return this->server.indexer.query_relations(path, pos, kind, session);
     };
 
+    auto query_targets_at = [this,
+                             resolve_uri](const std::string& uri,
+                                          const protocol::Position& pos,
+                                          RelationKind kind) -> std::vector<protocol::Location> {
+        auto [path, path_id, session] = resolve_uri(uri);
+        return this->server.indexer.query_symbol_targets(path, pos, kind, session);
+    };
+
+    // Index-only navigation handlers share one shape: index results if any;
+    // otherwise an error for closed documents (matching go-to-definition's
+    // fallback branch) and an empty array for open ones.
+    auto finish_navigation = [this](const std::string& uri,
+                                    std::vector<protocol::Location> locations)
+        -> kota::outcome<kota::codec::RawValue, kota::ipc::Error> {
+        if(!locations.empty())
+            return to_raw(locations);
+        auto& srv = this->server;
+        auto path_id = srv.workspace.path_pool.intern(uri_to_path(uri));
+        if(!srv.find_session(path_id))
+            return kota::outcome_error(document_not_open());
+        return to_raw(locations);
+    };
+
     auto resolve_item =
         [this,
          resolve_uri](const std::string& uri,
@@ -423,38 +446,56 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                                                       pos);
     });
 
-    peer.on_request([this, query_at](RequestContext& ctx,
-                                     const protocol::ReferenceParams& params) -> RawResult {
+    peer.on_request(
+        [query_at, finish_navigation](RequestContext& ctx,
+                                      const protocol::ReferenceParams& params) -> RawResult {
+            auto& uri = params.text_document_position_params.text_document.uri;
+            auto& pos = params.text_document_position_params.position;
+
+            auto locations = query_at(uri, pos, RelationKind::Reference);
+
+            if(params.context.include_declaration) {
+                for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+                    auto extra = query_at(uri, pos, kind);
+                    locations.insert(locations.end(),
+                                     std::make_move_iterator(extra.begin()),
+                                     std::make_move_iterator(extra.end()));
+                }
+            }
+
+            co_return finish_navigation(uri, std::move(locations));
+        });
+
+    peer.on_request([query_targets_at,
+                     finish_navigation](RequestContext& ctx,
+                                        const protocol::TypeDefinitionParams& params) -> RawResult {
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
+        co_return finish_navigation(uri, query_targets_at(uri, pos, RelationKind::TypeDefinition));
+    });
 
-        auto locations = query_at(uri, pos, RelationKind::Reference);
+    peer.on_request([query_targets_at,
+                     finish_navigation](RequestContext& ctx,
+                                        const protocol::ImplementationParams& params) -> RawResult {
+        auto& uri = params.text_document_position_params.text_document.uri;
+        auto& pos = params.text_document_position_params.position;
+        co_return finish_navigation(uri, query_targets_at(uri, pos, RelationKind::Implementation));
+    });
 
-        if(params.context.include_declaration) {
+    // Declarations plus the definition: symbols defined inline have no
+    // separate Declaration relation, and navigating to the definition is
+    // what every client expects in that case.
+    peer.on_request(
+        [query_at, finish_navigation](RequestContext& ctx,
+                                      const protocol::DeclarationParams& params) -> RawResult {
+            auto& uri = params.text_document_position_params.text_document.uri;
+            auto& pos = params.text_document_position_params.position;
+            auto locations = query_at(uri, pos, RelationKind::Declaration);
             auto defs = query_at(uri, pos, RelationKind::Definition);
             locations.insert(locations.end(),
                              std::make_move_iterator(defs.begin()),
                              std::make_move_iterator(defs.end()));
-        }
-
-        if(locations.empty())
-            co_return serde_raw{"null"};
-        co_return to_raw(locations);
-    });
-
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {
-            co_return serde_raw{"null"};
-        });
-
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::ImplementationParams& params) -> RawResult {
-            co_return serde_raw{"null"};
-        });
-
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DeclarationParams& params) -> RawResult {
-            co_return serde_raw{"null"};
+            co_return finish_navigation(uri, std::move(locations));
         });
 
     peer.on_request([this](RequestContext& ctx,

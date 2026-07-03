@@ -365,6 +365,85 @@ TEST_CASE(CrossFileQuery) {
     ASSERT_FALSE(decls.empty());
 }
 
+TEST_CASE(ImplementationDirection) {
+    /// Locks the relation direction used by go-to-implementation: at a base
+    /// virtual method, Implementation relations point to the overrides; at
+    /// an override, Interface relations point back to the overridden method.
+    reset();
+    build_and_merge(R"(
+        struct Base {
+            virtual void $(base)draw();
+        };
+        struct Circle : Base {
+            void $(circle)draw() override;
+        };
+        struct Square : Circle {
+            void $(square)draw() override;
+        };
+    )");
+
+    auto base = lookup_symbol("base");
+    auto circle = lookup_symbol("circle");
+    auto square = lookup_symbol("square");
+    ASSERT_NE(base, 0UL);
+    ASSERT_NE(circle, 0UL);
+    ASSERT_NE(square, 0UL);
+
+    auto targets_of = [&](index::SymbolHash sym, RelationKind kind) {
+        std::vector<index::SymbolHash> targets;
+        for(auto& r: find_relations(sym, kind))
+            targets.push_back(r.target_symbol);
+        return targets;
+    };
+
+    auto impls = targets_of(base, RelationKind::Implementation);
+    EXPECT_TRUE(std::ranges::contains(impls, circle));
+
+    auto interfaces = targets_of(circle, RelationKind::Interface);
+    EXPECT_TRUE(std::ranges::contains(interfaces, base));
+
+    // The chain is direct-base only: Square::draw implements Circle::draw.
+    auto circle_impls = targets_of(circle, RelationKind::Implementation);
+    EXPECT_TRUE(std::ranges::contains(circle_impls, square));
+    EXPECT_FALSE(std::ranges::contains(impls, square));
+}
+
+TEST_CASE(TypeDefinitionTargets) {
+    /// Locks the data go-to-type-definition relies on: TypeDefinition
+    /// relations at variable declarations carry the type's symbol hash.
+    reset();
+    build_and_merge(R"(
+        struct $(widget)Widget {};
+        using $(alias)Alias = Widget;
+
+        Widget $(plain)w;
+        Alias $(aliased)a;
+        auto $(deduced)b = Widget{};
+    )");
+
+    auto widget = lookup_symbol("widget");
+    auto alias = lookup_symbol("alias");
+    ASSERT_NE(widget, 0UL);
+    ASSERT_NE(alias, 0UL);
+
+    auto type_targets = [&](llvm::StringRef pos) {
+        auto sym = lookup_symbol(pos);
+        EXPECT_NE(sym, 0UL);
+        std::vector<index::SymbolHash> targets;
+        for(auto& r: find_relations(sym, RelationKind::TypeDefinition))
+            targets.push_back(r.target_symbol);
+        return targets;
+    };
+
+    EXPECT_TRUE(std::ranges::contains(type_targets("plain"), widget));
+    // Known index gaps (recorded, to be fixed in the indexer separately):
+    // auto-deduced and alias-typed variables do not resolve to the
+    // underlying record yet. Lock the current behavior so a future fix
+    // shows up as an intentional test update.
+    EXPECT_TRUE(type_targets("deduced").empty());
+    EXPECT_TRUE(std::ranges::contains(type_targets("aliased"), alias));
+}
+
 };  // TEST_SUITE(IndexQuery)
 }  // namespace
 }  // namespace clice::testing
