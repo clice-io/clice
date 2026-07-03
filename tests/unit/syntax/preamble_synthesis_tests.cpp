@@ -199,9 +199,11 @@ TEST_CASE(ConditionalShadowSkipped) {
 
     auto result = synthesize_preamble({entry}, "/proj/target.h", map_resolver(mapping));
     ASSERT_TRUE(result.has_value());
+    // The shadowed occurrence of the target itself is blanked (line kept):
+    // at compile time the target's path is remapped to the open buffer.
     EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
 #if 0
-#include "/proj/target.h"
+
 #endif
 #define X 1
 )");
@@ -343,9 +345,10 @@ TEST_CASE(OccurrenceSelectsMatch) {
     auto second =
         synthesize_preamble({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(1));
     ASSERT_TRUE(second.has_value());
+    // The other occurrence of the target is blanked (line kept).
     EXPECT_EQ(*second, R"(#line 1 "/proj/main.cpp"
 #define X(name) int name;
-#include "/proj/list.def"
+
 #undef X
 #define X(name) void get_##name();
 )");
@@ -402,6 +405,84 @@ TEST_CASE(EmptyChain) {
         synthesize_preamble(llvm::ArrayRef<ChainEntry>(), "/proj/x.h", map_resolver(empty));
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, "");
+}
+
+TEST_CASE(SuffixClosesBraces) {
+    // Function-body X-macro: the suffix restores the closing brace and
+    // trailing directives after the include position.
+    llvm::StringMap<std::string> mapping = {
+        {"errors.def", "/proj/errors.def"},
+    };
+
+    ChainEntry entry{"/proj/main.cpp", R"(void register_all() {
+#define X(name) handle(name);
+#include "errors.def"
+#undef X
+}
+)"};
+
+    auto result = synthesize_context({entry}, "/proj/errors.def", map_resolver(mapping));
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->prefix, R"(#line 1 "/proj/main.cpp"
+void register_all() {
+#define X(name) handle(name);
+)");
+    EXPECT_EQ(result->suffix, R"(#line 4 "/proj/main.cpp"
+#undef X
+}
+)");
+}
+
+TEST_CASE(SuffixReopensGuard) {
+    // The prefix closed the include guard early with a balancing #endif;
+    // the suffix reopens it with `#if 1` so its own #endif stays matched.
+    llvm::StringMap<std::string> mapping = {
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry entry{"/proj/a.h", R"(#ifndef A_H
+#define A_H
+#include "target.h"
+void tail();
+#endif
+)"};
+
+    auto result = synthesize_context({entry}, "/proj/target.h", map_resolver(mapping));
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->prefix, R"(#line 1 "/proj/a.h"
+#ifndef A_H
+#define A_H
+#endif
+)");
+    EXPECT_EQ(result->suffix, R"(#if 1
+#line 4 "/proj/a.h"
+void tail();
+#endif
+)");
+}
+
+TEST_CASE(SuffixMirrorsChain) {
+    // Multi-level: the suffix is assembled innermost-first, mirroring the
+    // prefix's host-first order.
+    llvm::StringMap<std::string> mapping = {
+        {"mid.h",    "/proj/mid.h"   },
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", R"(#include "mid.h"
+int main() {}
+)"};
+    ChainEntry mid{"/proj/mid.h", R"(#include "target.h"
+void mid_tail();
+)"};
+
+    auto result = synthesize_context({host, mid}, "/proj/target.h", map_resolver(mapping));
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->suffix, R"(#line 2 "/proj/mid.h"
+void mid_tail();
+#line 2 "/proj/main.cpp"
+int main() {}
+)");
 }
 
 };  // TEST_SUITE(PreambleSynthesis)

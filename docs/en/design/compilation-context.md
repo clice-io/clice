@@ -102,6 +102,8 @@ Beyond automatic resolution, clice also provides three LSP extension requests th
 
 **`clice/switchContext`** switches to the user's chosen new context. The choice is validated: the host must actually (transitively) include the header, the occurrence must be in range, and the command hash must correspond to a real CDB entry of the file, otherwise the request fails.
 
+Besides the requests, after every compile the server pushes a **`clice/inactiveRegions`** notification carrying the file's preprocessor-inactive regions (bodies of untaken `#if` branches) under the current compilation context. Editors render them dimmed; a context switch recompiles and flips the regions — the most immediate visual feedback of switching.
+
 ## Automatic Self-Containedness Detection
 
 The vast majority of headers are self-contained, and synthesizing a prefix for them is pure waste — it requires computing the include chain, reading every file on it, and pulling in a large number of preceding dependencies. clice therefore uses a **try-then-fall-back** strategy for headers without a CDB entry:
@@ -169,7 +171,9 @@ Clang processes the `-include` prefix file first, then compiles `math.h`. The ef
 
 Several engineering details matter here. Include directives are resolved against the host command's real search paths and matched by **absolute path**, so same-named headers in different directories cannot be confused; since the prefix file lives in the cache directory, quoted includes with relative paths are rewritten to their resolved absolute paths, otherwise they would be looked up against the wrong base directory. Matching prefers includes outside `#if` blocks (an occurrence in an untaken branch must not shadow the real one); when the cut lands inside `#if` blocks (most commonly an include guard on an intermediate header), balancing `#endif`s are appended so the prefix stays well-formed — the guard condition is still evaluated by the compiler, preserving the semantics.
 
-The synthesis result (host, prefix file path, content hash, and the include chain with a content snapshot) is cached in the Session. The chain files' content is embedded in the prefix and the compiler never opens them, so regular dependency tracking is blind to them — staleness is handled by the chain snapshot (two-layer mtime + content hash detection): any change to a chain file re-synthesizes the prefix. Saving a chain file forces content re-validation even when its mtime is unchanged.
+Beyond the prefix there is also a **suffix**: the content after the include position (mirrored along the chain — the direct includer's remainder first, the host's last) is synthesized into a suffix file and injected by appending a single `#include` line to the header's buffer at compile time. X macro fragments embedded in enums or function bodies thus see their surrounding braces close — the token stream runs continuously through prefix, main file and suffix. When the cut lands inside `#if` blocks, the prefix closes them with `#endif`s and the suffix reopens the same depth with `#if 1`s, keeping both sides balanced. Includes of the header itself along the chain (other occurrences) are redirected to a disk snapshot of it — the header's own path is remapped to the buffer with the trailing suffix include, so keeping them verbatim would recurse forever. The appended line sits past the editor's visible content, and diagnostics inside the suffix file are never attributed to the header itself.
+
+The synthesis result (host, prefix file path, suffix file path, content hash, and the include chain with a content snapshot) is cached in the Session. The chain files' content is embedded in the prefix and the compiler never opens them, so regular dependency tracking is blind to them — staleness is handled by the chain snapshot (two-layer mtime + content hash detection): any change to a chain file re-synthesizes the prefix. Saving a chain file forces content re-validation even when its mtime is unchanged.
 
 ## Multi-Context in Indexing
 
@@ -213,19 +217,6 @@ If the index only records the result from one context, go-to-definition or find-
   For a header the user is actively editing, the file body is the most frequently updated part, requiring recompilation on each edit. Without PCH caching for the prefix content, every compilation would need to reprocess the large volume of preceding header inclusions in the host source file — an unacceptable cost in large projects. The prefix synthesis approach makes the target header the compilation subject and the prefix code a separately cacheable preamble, fully preserving PCH generation and usage.
 
 ## Known Limitations
-
-- **No suffix handling**. The current prefix synthesis approach only injects content before the include position and does not handle content after it. For most headers this is not an issue, but X macro style headers embedded inside function bodies lose their closing braces:
-
-  ```cpp
-  // generate.cpp
-  void register_all() {
-  #define X(name, code, msg) register_error(code, msg);
-  #include "errors.def"    // prefix is cut here; the } below is lost
-  #undef X
-  }
-  ```
-
-  These incomplete syntactic structures may cause Clang to report errors, but since the errors occur in the prefix file rather than the target header, they are usually filtered out. Suffix injection may be introduced in the future to handle such scenarios.
 
 - **Occurrence numbering only covers the direct includer**. By design, a header context is uniquely determined by the host source file plus a position number in its include tree. The current implementation's occurrence only distinguishes multiple includes of the target in its **direct includer** (which covers the typical X macro usage), not a flattened numbering over the host's entire include tree — when the same header is transitively included by one host via different intermediate paths, only the context corresponding to the shortest chain is presented.
 

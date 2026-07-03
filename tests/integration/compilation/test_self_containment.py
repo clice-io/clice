@@ -16,7 +16,13 @@ from tests.integration.utils.wait import wait_for_recompile
 
 def prefix_files(workspace):
     prefix_dir = workspace / ".clice" / "header_context"
-    return sorted(prefix_dir.glob("*.h")) if prefix_dir.exists() else []
+    if not prefix_dir.exists():
+        return []
+    return sorted(
+        f
+        for f in prefix_dir.glob("*.h")
+        if not f.name.endswith((".suffix.h", ".self.h"))
+    )
 
 
 async def test_self_contained_skips_synthesis(client, tmp_path):
@@ -212,3 +218,47 @@ async def test_dependency_change_retries_trial(client, tmp_path):
     assert len(prefix_files(tmp_path)) == 1, (
         "Dependency change must re-run the trial and fall back to synthesis"
     )
+
+
+async def test_suffix_closes_embedding(client, tmp_path):
+    """X-macro fragments embedded in an enum or a function body compile
+    cleanly: the synthesized suffix closes the surrounding braces."""
+    (tmp_path / "errors.def").write_text(
+        'X(Ok, 0, "success")\nX(NotFound, 1, "not found")\n'
+    )
+    (tmp_path / "main.cpp").write_text(
+        "#define X(name, code, msg) name = code,\n"
+        "enum ErrorCode {\n"
+        '#include "errors.def"\n'
+        "};\n"
+        "#undef X\n"
+        "int main() { return Ok; }\n"
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    await client.open_and_wait(tmp_path / "main.cpp")
+    def_uri, _ = await client.open_and_wait(tmp_path / "errors.def")
+    assert_clean_compile(client, def_uri)
+
+
+async def test_suffix_function_body(client, tmp_path):
+    """The doc's classic register_all() case: statements expanded inside a
+    function body, closing brace restored by the suffix."""
+    (tmp_path / "handlers.def").write_text("X(alpha)\nX(beta)\n")
+    (tmp_path / "main.cpp").write_text(
+        "inline void handle(int) {}\n"
+        "enum Ids { alpha, beta };\n"
+        "void register_all() {\n"
+        "#define X(name) handle(name);\n"
+        '#include "handlers.def"\n'
+        "#undef X\n"
+        "}\n"
+        "int main() { register_all(); return 0; }\n"
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    await client.open_and_wait(tmp_path / "main.cpp")
+    def_uri, _ = await client.open_and_wait(tmp_path / "handlers.def")
+    assert_clean_compile(client, def_uri)

@@ -79,11 +79,90 @@ static std::optional<std::size_t> find_match(llvm::ArrayRef<ScanResult::IncludeI
     return candidates.front();
 }
 
-std::optional<std::string> synthesize_preamble(llvm::ArrayRef<ChainEntry> chain,
-                                               llvm::StringRef target_path,
-                                               IncludeResolver resolve,
-                                               std::optional<std::uint32_t> occurrence) {
-    std::string preamble;
+/// Append a #line marker for line `line` (1-based) of `path`.
+static void append_line_marker_at(std::string& out, llvm::StringRef path, std::uint32_t line) {
+    out += "#line ";
+    out += std::to_string(line);
+    out += " \"";
+    for(char c: path) {
+        if(c == '\\' || c == '"') {
+            out += '\\';
+        }
+        out += c;
+    }
+    out += "\"\n";
+}
+
+/// Emit content[from, to) rewriting resolved quoted includes to absolute
+/// paths: the synthesized files live in the cache directory, so
+/// includer-relative lookup would resolve against the wrong location.
+/// Angled includes never use the includer's directory and keep their
+/// system-header semantics; #include_next is kept verbatim (its
+/// search-resume semantics cannot survive relocation anyway).
+static void emit_rewritten(std::string& out,
+                           llvm::StringRef content,
+                           std::uint32_t from,
+                           std::uint32_t to,
+                           llvm::ArrayRef<ScanResult::IncludeInfo> includes,
+                           llvm::ArrayRef<std::optional<std::string>> resolved,
+                           llvm::StringRef target_path,
+                           llvm::StringRef self_snapshot_path) {
+    std::uint32_t pos = from;
+    for(std::size_t j = 0; j < includes.size(); ++j) {
+        auto& include = includes[j];
+        if(include.name_offset < from || include.offset >= to) {
+            continue;
+        }
+        if(!resolved[j].has_value()) {
+            continue;
+        }
+
+        // Another include of the target itself (a different occurrence):
+        // redirect it to the disk snapshot, or blank the directive line
+        // (keeping the line count) when no snapshot is available.
+        if(*resolved[j] == target_path) {
+            if(!self_snapshot_path.empty()) {
+                out += content.substr(pos, include.name_offset - pos);
+                out += '"';
+                out += self_snapshot_path;
+                out += '"';
+                pos = include.name_offset + include.name_length;
+                continue;
+            }
+            auto line_start = content.rfind('\n', include.offset);
+            auto begin = line_start == llvm::StringRef::npos
+                             ? from
+                             : std::max(from, static_cast<std::uint32_t>(line_start + 1));
+            auto eol = content.find('\n', include.offset);
+            auto end = eol == llvm::StringRef::npos ? to
+                                                    : std::min(to, static_cast<std::uint32_t>(eol));
+            out += content.substr(pos, begin - pos);
+            pos = end;
+            continue;
+        }
+
+        if(include.is_angled || include.is_include_next) {
+            continue;
+        }
+        out += content.substr(pos, include.name_offset - pos);
+        out += '"';
+        out += *resolved[j];
+        out += '"';
+        pos = include.name_offset + include.name_length;
+    }
+    out += content.substr(pos, to - pos);
+    if(!out.ends_with('\n')) {
+        out += '\n';
+    }
+}
+
+std::optional<SynthesizedContext> synthesize_context(llvm::ArrayRef<ChainEntry> chain,
+                                                     llvm::StringRef target_path,
+                                                     IncludeResolver resolve,
+                                                     std::optional<std::uint32_t> occurrence,
+                                                     llvm::StringRef self_snapshot_path) {
+    SynthesizedContext out;
+    llvm::SmallVector<std::string> suffix_fragments;
 
     for(std::size_t i = 0; i < chain.size(); ++i) {
         auto& entry = chain[i];
@@ -109,44 +188,69 @@ std::optional<std::string> synthesize_preamble(llvm::ArrayRef<ChainEntry> chain,
             return std::nullopt;
         }
 
-        auto cut = scan_result.includes[*match].offset;
-        append_line_marker(preamble, entry.path);
+        auto& matched = scan_result.includes[*match];
+        auto cut = matched.offset;
+        auto depth = matched.conditional_depth;
 
-        // Emit the fragment before the cut, rewriting resolved quoted
-        // includes to absolute paths: the preamble file lives in the cache
-        // directory, so includer-relative lookup would resolve against the
-        // wrong location. Angled includes never use the includer's directory
-        // and keep their system-header semantics by staying untouched.
-        // #include_next is kept verbatim too; its search-resume semantics
-        // are wrong from the cache directory, but rewriting can't fix that.
-        std::uint32_t pos = 0;
-        for(std::size_t j = 0; j < *match; ++j) {
-            auto& include = scan_result.includes[j];
-            if(include.is_angled || include.is_include_next || !resolved[j].has_value()) {
-                continue;
-            }
-            preamble += entry.content.substr(pos, include.name_offset - pos);
-            preamble += '"';
-            preamble += *resolved[j];
-            preamble += '"';
-            pos = include.name_offset + include.name_length;
-        }
-        preamble += entry.content.substr(pos, cut - pos);
-        if(!preamble.ends_with('\n')) {
-            preamble += '\n';
+        // Prefix: everything before the matched directive, then balancing
+        // #endifs when the cut lands inside #if blocks (most commonly an
+        // include guard on an intermediate header). The guard condition is
+        // still evaluated by the compiler, so the fragment's semantics hold.
+        append_line_marker(out.prefix, entry.path);
+        emit_rewritten(out.prefix,
+                       entry.content,
+                       0,
+                       cut,
+                       scan_result.includes,
+                       resolved,
+                       target_path,
+                       self_snapshot_path);
+        for(std::uint16_t d = depth; d > 0; --d) {
+            out.prefix += "#endif\n";
         }
 
-        // The cut may land inside #if blocks — most commonly a classic
-        // include guard on an intermediate header. Close them so the
-        // preamble stays well-formed; the guard condition itself is still
-        // evaluated by the compiler, so the fragment's semantics hold.
-        for(std::uint16_t depth = scan_result.includes[*match].conditional_depth; depth > 0;
-            --depth) {
-            preamble += "#endif\n";
+        // Suffix: everything after the matched directive's line, mirrored
+        // (assembled innermost-first below). The prefix closed `depth`
+        // conditionals early, so reopen them with `#if 1` to keep the
+        // fragment's own #endifs balanced.
+        auto line_end = entry.content.find('\n', cut);
+        auto resume = line_end == llvm::StringRef::npos
+                          ? static_cast<std::uint32_t>(entry.content.size())
+                          : static_cast<std::uint32_t>(line_end + 1);
+        std::string fragment;
+        for(std::uint16_t d = depth; d > 0; --d) {
+            fragment += "#if 1\n";
         }
+        auto resume_line =
+            static_cast<std::uint32_t>(entry.content.substr(0, resume).count('\n')) + 1;
+        append_line_marker_at(fragment, entry.path, resume_line);
+        emit_rewritten(fragment,
+                       entry.content,
+                       resume,
+                       entry.content.size(),
+                       scan_result.includes,
+                       resolved,
+                       target_path,
+                       self_snapshot_path);
+        suffix_fragments.push_back(std::move(fragment));
     }
 
-    return preamble;
+    for(auto& fragment: llvm::reverse(suffix_fragments)) {
+        out.suffix += fragment;
+    }
+
+    return out;
+}
+
+std::optional<std::string> synthesize_preamble(llvm::ArrayRef<ChainEntry> chain,
+                                               llvm::StringRef target_path,
+                                               IncludeResolver resolve,
+                                               std::optional<std::uint32_t> occurrence) {
+    auto context = synthesize_context(chain, target_path, resolve, occurrence);
+    if(!context) {
+        return std::nullopt;
+    }
+    return std::move(context->prefix);
 }
 
 std::uint32_t count_include_occurrences(llvm::StringRef content,

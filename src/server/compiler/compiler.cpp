@@ -11,6 +11,7 @@
 #include "command/search_config.h"
 #include "compile/diagnostic.h"
 #include "index/tu_index.h"
+#include "server/protocol/extension.h"
 #include "server/protocol/worker.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
@@ -525,7 +526,13 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
     // The chain is kept so a didSave along it still invalidates the session.
     if(!synthesize) {
         llvm::SmallVector<std::uint32_t> chain_ids(chain.begin(), chain.end() - 1);
-        return HeaderContext{host_path_id, "", 0, occurrence.value_or(0), std::move(chain_ids), {}};
+        return HeaderContext{host_path_id,
+                             "",
+                             0,
+                             "",
+                             occurrence.value_or(0),
+                             std::move(chain_ids),
+                             {}};
     }
 
     // Include directives along the chain are resolved with the host's real
@@ -588,20 +595,47 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
         chain_entries.push_back({cur_path, chain_contents.back()});
     }
 
+    // Snapshot the header itself for other occurrences along the chain:
+    // its real path is remapped to the open buffer at compile time, so
+    // includes of it inside the prefix/suffix must point at a copy.
     auto target_path = workspace.path_pool.resolve(chain.back());
-    auto synthesized = synthesize_preamble(chain_entries, target_path, resolver, occurrence);
+    std::string self_snapshot_path;
+    std::uint64_t target_hash = 0;
+    auto preamble_dir = path::join(workspace.config.project.cache_dir, "header_context");
+    if(auto target_buf = llvm::MemoryBuffer::getFile(target_path)) {
+        auto content = (*target_buf)->getBuffer();
+        target_hash = llvm::xxh3_64bits(content);
+        self_snapshot_path = path::join(preamble_dir, std::format("{:016x}.self.h", target_hash));
+        if(!llvm::sys::fs::exists(self_snapshot_path)) {
+            auto ec = llvm::sys::fs::create_directories(preamble_dir);
+            if(ec) {
+                LOG_WARN("resolve_header_context: cannot create dir {}: {}",
+                         preamble_dir,
+                         ec.message());
+                return std::nullopt;
+            }
+            if(auto result = fs::write(self_snapshot_path, content); !result) {
+                LOG_WARN("resolve_header_context: cannot write snapshot {}: {}",
+                         self_snapshot_path,
+                         result.error().message());
+                return std::nullopt;
+            }
+        }
+    }
+
+    auto synthesized =
+        synthesize_context(chain_entries, target_path, resolver, occurrence, self_snapshot_path);
     if(!synthesized) {
         LOG_WARN("resolve_header_context: cannot match include chain for {} (host={})",
                  target_path,
                  host_path);
         return std::nullopt;
     }
-    auto& preamble = *synthesized;
+    auto& preamble = synthesized->prefix;
 
     // Hash the preamble and write to cache directory.
     auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(preamble));
     auto preamble_filename = std::format("{:016x}.h", preamble_hash);
-    auto preamble_dir = path::join(workspace.config.project.cache_dir, "header_context");
     auto preamble_path = path::join(preamble_dir, preamble_filename);
 
     if(!llvm::sys::fs::exists(preamble_path)) {
@@ -623,6 +657,23 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
                  header_path_id);
     }
 
+    // The suffix restores everything after the include position (closing
+    // braces of enums/functions the fragment is embedded in). Injected by
+    // appending one #include line to the header's buffer at compile time.
+    std::string suffix_path;
+    if(!synthesized->suffix.empty()) {
+        auto suffix_hash = llvm::xxh3_64bits(llvm::StringRef(synthesized->suffix));
+        suffix_path = path::join(preamble_dir, std::format("{:016x}.suffix.h", suffix_hash));
+        if(!llvm::sys::fs::exists(suffix_path)) {
+            if(auto result = fs::write(suffix_path, synthesized->suffix); !result) {
+                LOG_WARN("resolve_header_context: cannot write suffix {}: {}",
+                         suffix_path,
+                         result.error().message());
+                return std::nullopt;
+            }
+        }
+    }
+
     // Snapshot the chain files for staleness detection: their content lives
     // inside the synthesized preamble, so clang's own dependency tracking
     // never sees them. Hash the buffers already read above — re-reading from
@@ -631,14 +682,21 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
     deps.build_at = build_at;
     llvm::SmallVector<std::uint32_t> chain_ids(chain.begin(), chain.end() - 1);
     deps.path_ids.assign(chain_ids.begin(), chain_ids.end());
-    deps.hashes.reserve(chain_contents.size());
+    deps.hashes.reserve(chain_contents.size() + 1);
     for(auto& content: chain_contents) {
         deps.hashes.push_back(llvm::xxh3_64bits(content));
+    }
+    if(!self_snapshot_path.empty()) {
+        // The self-snapshot mirrors the header's disk state; re-synthesize
+        // when it changes so other-occurrence expansions stay current.
+        deps.path_ids.push_back(chain.back());
+        deps.hashes.push_back(target_hash);
     }
 
     return HeaderContext{host_path_id,
                          preamble_path,
                          preamble_hash,
+                         std::move(suffix_path),
                          occurrence.value_or(0),
                          std::move(chain_ids),
                          std::move(deps)};
@@ -718,6 +776,50 @@ void Compiler::publish_diagnostics(const std::string& uri,
     params.version = version;
     params.diagnostics = std::move(diagnostics);
     peer->send_notification(params);
+}
+
+/// Append the header context's suffix as one trailing #include line: the
+/// suffix content (everything after the include position along the chain)
+/// lives in its own file so features never see it, while the token stream
+/// still closes any braces the fragment is embedded in. The single extra
+/// line sits past the editor's EOF and is invisible to the client.
+void Compiler::append_suffix_include(const Session& session, std::string& text) {
+    if(!session.header_context.has_value() || session.header_context->suffix_path.empty()) {
+        return;
+    }
+    if(!text.ends_with('\n')) {
+        text += '\n';
+    }
+    text += "#include \"";
+    text += session.header_context->suffix_path;
+    text += "\"\n";
+}
+
+/// Push the file's preprocessor-inactive regions (clice/inactiveRegions).
+/// Sent after every compile so a context switch immediately re-dims the
+/// regions selected away by the new preprocessor state.
+void Compiler::publish_inactive_regions(const std::string& uri,
+                                        const Session& session,
+                                        llvm::ArrayRef<std::uint32_t> regions) {
+    if(!peer) {
+        return;
+    }
+    auto map = session.line_map();
+    ext::InactiveRegionsParams params;
+    params.uri = uri;
+    params.regions.reserve(regions.size() / 2);
+    for(std::size_t i = 0; i + 1 < regions.size(); i += 2) {
+        auto start = map.to_position(regions[i]);
+        auto end = map.to_position(regions[i + 1]);
+        if(!start || !end) {
+            continue;
+        }
+        protocol::Range range;
+        range.start = *start;
+        range.end = *end;
+        params.regions.push_back(range);
+    }
+    peer->send_notification("clice/inactiveRegions", params);
 }
 
 void Compiler::clear_diagnostics(const std::string& uri) {
@@ -1054,6 +1156,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         params.text = session->text;
         auto source =
             fill_compile_args(file_path, params.directory, params.arguments, session.get());
+        append_suffix_include(*session, params.text);
 
         bool deps_ok = co_await ensure_deps(*session,
                                             params.directory,
@@ -1146,6 +1249,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
 
         LOG_PERF("request", "kind=Compile file={} total_ms={}", file_path, timer.ms());
         publish_diagnostics(uri_str, version, result.value().diagnostics, source);
+        publish_inactive_regions(uri_str, *session, result.value().inactive_regions);
         if(on_indexing_needed)
             on_indexing_needed();
         co_return;
@@ -1310,6 +1414,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     wp.version = session->version;
     wp.text = session->text;
     fill_compile_args(path, wp.directory, wp.arguments, session.get());
+    append_suffix_include(*session, wp.text);
 
     ScopedTimer timer;
     if(!co_await ensure_deps(*session, wp.directory, wp.arguments, wp.pch, wp.pcms)) {

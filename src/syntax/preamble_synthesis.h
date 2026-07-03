@@ -53,6 +53,36 @@ std::optional<std::string> synthesize_preamble(llvm::ArrayRef<ChainEntry> chain,
                                                IncludeResolver resolve,
                                                std::optional<std::uint32_t> occurrence = {});
 
+/// Prefix and suffix restoring the full includer context of a header.
+struct SynthesizedContext {
+    /// Everything before the target's include, host-first (see
+    /// synthesize_preamble). Injected via -include.
+    std::string prefix;
+
+    /// Everything after the target's include, mirrored: the rest of the
+    /// direct includer first, then the rest of its includer, up to the
+    /// host. Each fragment gets a #line marker; a cut inside #if blocks
+    /// opens matching `#if 1`s so the fragment's own #endifs stay
+    /// balanced. Injected by appending one #include line to the header's
+    /// buffer, so X-macro fragments embedded in enums or function bodies
+    /// see their surrounding braces close.
+    std::string suffix;
+};
+
+/// Synthesize both sides of the includer context in one pass. The prefix
+/// equals synthesize_preamble's result for the same inputs.
+/// `self_snapshot_path`: replacement target for includes of the header
+/// itself (other occurrences along the chain). At compile time the
+/// target's path is remapped to the open buffer with a trailing suffix
+/// include, so keeping such directives verbatim would recurse; they are
+/// redirected to a disk snapshot of the header instead, or blanked (line
+/// count preserved) when no snapshot is provided.
+std::optional<SynthesizedContext> synthesize_context(llvm::ArrayRef<ChainEntry> chain,
+                                                     llvm::StringRef target_path,
+                                                     IncludeResolver resolve,
+                                                     std::optional<std::uint32_t> occurrence = {},
+                                                     llvm::StringRef self_snapshot_path = {});
+
 /// Count how many include directives in `content` bring in `target_path`
 /// (candidates in the sense of synthesize_preamble's matching).
 std::uint32_t count_include_occurrences(llvm::StringRef content,

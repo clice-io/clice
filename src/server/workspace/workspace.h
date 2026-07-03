@@ -51,6 +51,11 @@ struct HeaderContext {
     std::string preamble_path;    ///< Path to generated preamble file on disk.
     std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
 
+    /// Path to the generated suffix file (content after the include
+    /// position along the chain), appended to the header's buffer as one
+    /// trailing #include line. Empty when the suffix is empty.
+    std::string suffix_path;
+
     /// Which include of this header in its direct includer produced the
     /// preamble (0-based, in directive order).
     std::uint32_t occurrence = 0;
