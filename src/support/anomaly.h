@@ -7,6 +7,10 @@
 #include <string>
 #include <string_view>
 
+/// Anomaly and guidance reporting — the policy layer on top of the logging
+/// transport. The full channel design (which situation goes to which
+/// channel, and why this file is separate from logging.h) is documented at
+/// the top of support/logging.h.
 namespace clice::logging {
 
 /// Stable identifiers for anomalies — internal states that should be
@@ -16,13 +20,14 @@ namespace clice::logging {
 ///
 /// Debug builds abort on the first occurrence so the CI Debug matrix and
 /// local development surface the bug as early as possible. Release builds
-/// log the occurrence with an `[anomaly:<name>]` marker, forward it to the
+/// log the occurrence with an `[anomaly:<id>]` marker (the enumerator name,
+/// rendered via the reflective enum formatter), forward it to the
 /// notify hook (master process: `window/logMessage`) and continue running.
 enum class AnomalyId : std::uint8_t {
     /// PCH build failed without a user-code error to explain it.
-    PchBuildFail,
+    PCHBuildFail,
     /// PCM build failed without a user-code error to explain it.
-    PcmBuildFail,
+    PCMBuildFail,
     /// AST compile request to a stateful worker failed at the IPC layer.
     CompileFail,
     /// Feature query/build forwarded to a worker failed at the IPC layer.
@@ -39,11 +44,6 @@ enum class AnomalyId : std::uint8_t {
 };
 
 constexpr inline std::size_t anomaly_id_count = static_cast<std::size_t>(AnomalyId::Count);
-
-/// Stable snake_case name used in the `[anomaly:<name>]` marker. Integration
-/// tests match on these strings — renaming an enumerator must not silently
-/// change them.
-std::string_view anomaly_name(AnomalyId id);
 
 /// Per-ID report cap per process; further occurrences are suppressed.
 constexpr inline std::uint32_t anomaly_report_limit = 8;

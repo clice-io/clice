@@ -22,7 +22,6 @@
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/uri.h"
-#include "kota/meta/enum.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -229,7 +228,7 @@ void Compiler::init_compile_graph() {
                          mod_it->second,
                          build_failure_message(result));
             } else {
-                LOG_ANOMALY(PcmBuildFail,
+                LOG_ANOMALY(PCMBuildFail,
                             "PCM build failed for module {}: {}",
                             mod_it->second,
                             build_failure_message(result));
@@ -268,17 +267,6 @@ void Compiler::init_compile_graph() {
     LOG_INFO("CompileGraph initialized with {} module(s)", workspace.path_to_module.size());
 }
 
-/// Stable snake_case name of a CommandSource, used in the decision log.
-static llvm::StringRef command_source_name(CommandSource source) {
-    switch(source) {
-        case CommandSource::CdbExact: return "cdb_exact";
-        case CommandSource::IncludeGraph: return "include_graph";
-        case CommandSource::Inferred: return "inferred";
-        case CommandSource::Fallback: return "fallback";
-    }
-    std::unreachable();
-}
-
 /// Per-file command selection decision log: which tiers were tried, which one
 /// was hit, and a hash of the final command for correlating later failures.
 static void log_command_decision(llvm::StringRef path,
@@ -295,7 +283,7 @@ static void log_command_decision(llvm::StringRef path,
     LOG_INFO("compile_args: file={} tried=[{}] source={} args_hash={:016x}",
              path,
              llvm::join(tried, ","),
-             command_source_name(source),
+             source,
              llvm::xxh3_64bits(llvm::StringRef(joined)));
 }
 
@@ -334,8 +322,8 @@ CommandSource Compiler::fill_compile_args(llvm::StringRef path,
     tried.push_back("cdb");
     if(workspace.cdb.has_entry(path)) {
         fill_from_cdb();
-        log_command_decision(path, tried, CommandSource::CdbExact, arguments);
-        return CommandSource::CdbExact;
+        log_command_decision(path, tried, CommandSource::CDBExact, arguments);
+        return CommandSource::CDBExact;
     }
 
     // 3. No CDB entry — try automatic header context resolution.
@@ -635,7 +623,7 @@ void Compiler::publish_diagnostics(const std::string& uri,
 
     // Guidance (and only when it can explain something): an exact CDB match
     // never gets the note, and neither does a guessed command that worked.
-    if(source != CommandSource::CdbExact && std::ranges::any_of(diagnostics, is_file_not_found)) {
+    if(source != CommandSource::CDBExact && std::ranges::any_of(diagnostics, is_file_not_found)) {
         diagnostics.insert(diagnostics.begin(), make_inferred_command_diagnostic(source));
     }
 
@@ -756,7 +744,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", path, build_failure_message(result));
         } else {
-            LOG_ANOMALY(PchBuildFail,
+            LOG_ANOMALY(PCHBuildFail,
                         "PCH build failed for {}: {}",
                         path,
                         build_failure_message(result));
@@ -1138,18 +1126,13 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
                         "query (kind={}) failed for {}: {}",
-                        static_cast<int>(kind),
+                        kind,
                         path,
                         result.error().message);
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
-    LOG_PERF("request",
-             "kind={} file={} wait_ms={} total_ms={}",
-             kota::meta::enum_name(kind, "query"),
-             path,
-             wait_ms,
-             timer.ms());
+    LOG_PERF("request", "kind={} file={} wait_ms={} total_ms={}", kind, path, wait_ms, timer.ms());
     co_return std::move(result.value());
 }
 
@@ -1187,18 +1170,13 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
                         "build (kind={}) failed for {}: {}",
-                        static_cast<int>(kind),
+                        kind,
                         path,
                         result.error().message);
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
-    LOG_PERF("request",
-             "kind={} file={} wait_ms={} total_ms={}",
-             kota::meta::enum_name(kind, "build"),
-             path,
-             wait_ms,
-             timer.ms());
+    LOG_PERF("request", "kind={} file={} wait_ms={} total_ms={}", kind, path, wait_ms, timer.ms());
     co_return std::move(result.value().result_json);
 }
 

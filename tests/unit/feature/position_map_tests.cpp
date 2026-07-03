@@ -9,7 +9,7 @@ namespace {
 TEST_SUITE(PositionMap) {
 
 TEST_CASE(OutOfRangeAnomaly) {
-    /// Production trigger for the position_map_fail anomaly: the checked
+    /// Production trigger for the PositionMapFail anomaly: the checked
     /// feature-layer converters report internally produced offsets that
     /// cannot be mapped back to a position.
     logging::reset_anomaly_for_testing();

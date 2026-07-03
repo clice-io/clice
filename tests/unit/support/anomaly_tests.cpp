@@ -37,12 +37,12 @@ TEST_SUITE(Anomaly) {
 TEST_CASE(MarkerAndNotify) {
     AnomalyCapture capture;
 
-    LOG_ANOMALY(PchBuildFail, "stale build for {}", "main.cpp");
+    LOG_ANOMALY(PCHBuildFail, "stale build for {}", "main.cpp");
 
     ASSERT_EQ(capture.notified.size(), 1u);
     auto& [level, message] = capture.notified.front();
     EXPECT_EQ(level, NotifyLevel::Error);
-    EXPECT_EQ(message, "[anomaly:pch_build_fail] stale build for main.cpp");
+    EXPECT_EQ(message, "[anomaly:PCHBuildFail] stale build for main.cpp");
 }
 
 TEST_CASE(TrapInvokedPerReport) {
@@ -78,9 +78,9 @@ TEST_CASE(RateLimitPerId) {
     for(std::uint32_t i = 0; i < logging::anomaly_report_limit + 5; ++i) {
         LOG_ANOMALY(CompileFail, "occurrence {}", i);
     }
-    LOG_ANOMALY(PcmBuildFail, "different id still reports");
+    LOG_ANOMALY(PCMBuildFail, "different id still reports");
 
-    /// CompileFail reports + its suppression notice + the PcmBuildFail report.
+    /// CompileFail reports + its suppression notice + the PCMBuildFail report.
     EXPECT_EQ(capture.notified.size(), logging::anomaly_report_limit + 2);
 }
 
@@ -111,7 +111,7 @@ TEST_CASE(LevelGateSkipsEvaluation) {
         ++evaluations;
         return 42;
     };
-    LOG_ANOMALY(PchBuildFail, "value {}", observe());
+    LOG_ANOMALY(PCHBuildFail, "value {}", observe());
 
     EXPECT_EQ(evaluations, 0);
     EXPECT_EQ(capture.notified.size(), 0u);
@@ -150,8 +150,8 @@ TEST_CASE(MarkerNamesStable) {
     /// Integration tests grep these exact strings — keep them stable.
     AnomalyCapture capture;
 
-    LOG_ANOMALY(PchBuildFail, "x");
-    LOG_ANOMALY(PcmBuildFail, "x");
+    LOG_ANOMALY(PCHBuildFail, "x");
+    LOG_ANOMALY(PCMBuildFail, "x");
     LOG_ANOMALY(CompileFail, "x");
     LOG_ANOMALY(WorkerRequestFail, "x");
     LOG_ANOMALY(WorkerCrash, "x");
@@ -160,13 +160,13 @@ TEST_CASE(MarkerNamesStable) {
 
     ASSERT_EQ(capture.notified.size(), logging::anomaly_id_count);
     const char* expected[] = {
-        "pch_build_fail",
-        "pcm_build_fail",
-        "compile_fail",
-        "worker_request_fail",
-        "worker_crash",
-        "worker_spawn_fail",
-        "position_map_fail",
+        "PCHBuildFail",
+        "PCMBuildFail",
+        "CompileFail",
+        "WorkerRequestFail",
+        "WorkerCrash",
+        "WorkerSpawnFail",
+        "PositionMapFail",
     };
     for(std::size_t i = 0; i < logging::anomaly_id_count; ++i) {
         EXPECT_EQ(capture.notified[i].second, std::format("[anomaly:{}] x", expected[i]));

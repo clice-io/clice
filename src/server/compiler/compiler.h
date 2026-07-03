@@ -30,12 +30,12 @@ namespace protocol = kota::ipc::protocol;
 std::string uri_to_path(const std::string& uri);
 
 /// Where the compile command for a file came from. Anything other than
-/// CdbExact means the command was guessed to some degree, which is why
+/// CDBExact means the command was guessed to some degree, which is why
 /// diagnostics produced with it may deserve a guidance note (see
 /// Compiler::publish_diagnostics).
 enum class CommandSource : std::uint8_t {
     /// Direct compilation database entry for the file.
-    CdbExact,
+    CDBExact,
     /// Header compiled in the context of a host source found through the
     /// include graph (automatic or via clice/switchContext).
     IncludeGraph,

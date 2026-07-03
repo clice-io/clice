@@ -42,20 +42,6 @@ void trap(AnomalyId id) {
 
 }  // namespace
 
-std::string_view anomaly_name(AnomalyId id) {
-    switch(id) {
-        case AnomalyId::PchBuildFail: return "pch_build_fail";
-        case AnomalyId::PcmBuildFail: return "pcm_build_fail";
-        case AnomalyId::CompileFail: return "compile_fail";
-        case AnomalyId::WorkerRequestFail: return "worker_request_fail";
-        case AnomalyId::WorkerCrash: return "worker_crash";
-        case AnomalyId::WorkerSpawnFail: return "worker_spawn_fail";
-        case AnomalyId::PositionMapFail: return "position_map_fail";
-        case AnomalyId::Count: break;
-    }
-    return "unknown";
-}
-
 bool anomaly_should_report(AnomalyId id) {
     if(options.level > Level::err)
         return false;
@@ -68,7 +54,7 @@ bool anomaly_should_report(AnomalyId id) {
     if(previous == anomaly_report_limit) {
         auto text =
             std::format("[anomaly:{}] report limit ({}) reached, suppressing further reports",
-                        anomaly_name(id),
+                        id,
                         anomaly_report_limit);
         logging::err("{}", text);
         if(notify_hook)
@@ -78,7 +64,7 @@ bool anomaly_should_report(AnomalyId id) {
 }
 
 void report_anomaly(AnomalyId id, std::string_view message, std::source_location location) {
-    auto text = std::format("[anomaly:{}] {}", anomaly_name(id), message);
+    auto text = std::format("[anomaly:{}] {}", id, message);
     logging::log(spdlog::level::err, location, "{}", text);
     if(notify_hook)
         notify_hook(NotifyLevel::Error, text);

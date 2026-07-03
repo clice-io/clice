@@ -631,7 +631,7 @@ TEST_CASE(StatefulLostDocuments) {
 }
 
 TEST_CASE(CrashReportsAnomaly) {
-    /// Production trigger for the worker_crash anomaly: process_crash is the
+    /// Production trigger for the WorkerCrash anomaly: process_crash is the
     /// exact site the pool reports from.
     WorkerPoolFixture f;
     f.add_stateless(true, false);
@@ -646,7 +646,7 @@ TEST_CASE(CrashReportsAnomaly) {
 }
 
 TEST_CASE(SpawnFailReportsAnomaly) {
-    /// Production trigger for the worker_spawn_fail anomaly.
+    /// Production trigger for the WorkerSpawnFail anomaly.
     WorkerPoolFixture f;
 
     std::vector<logging::AnomalyId> trapped;

@@ -1,6 +1,6 @@
 """End-to-end check of the anomaly reporting machinery.
 
-Kills a worker process and verifies the master reports `[anomaly:worker_crash]`
+Kills a worker process and verifies the master reports `[anomaly:WorkerCrash]`
 both via window/logMessage and in its log file — the same channels
 assert_no_anomaly() watches in every other test's teardown.
 """
@@ -64,11 +64,11 @@ async def test_worker_crash_reported(executable, tmp_path):
         os.kill(workers[0], signal.SIGABRT)
 
         for _ in range(50):
-            if "worker_crash" in anomalies_in_log_messages(client):
+            if "WorkerCrash" in anomalies_in_log_messages(client):
                 break
             await asyncio.sleep(0.2)
-        assert "worker_crash" in anomalies_in_log_messages(client), (
-            f"expected worker_crash anomaly, got messages: "
+        assert "WorkerCrash" in anomalies_in_log_messages(client), (
+            f"expected WorkerCrash anomaly, got messages: "
             f"{[m.message for m in client.log_messages]}"
         )
     finally:
@@ -76,7 +76,7 @@ async def test_worker_crash_reported(executable, tmp_path):
 
     # The same marker must be greppable in the log files (this is what
     # assert_no_anomaly relies on for worker-side anomalies).
-    assert any("worker_crash" in entry for entry in anomalies_in_log_files(tmp_path))
+    assert any("WorkerCrash" in entry for entry in anomalies_in_log_files(tmp_path))
 
     # The abort also exercises the crash handler: the worker's backtrace
     # must land in its own log file — and ONLY there, never relayed into

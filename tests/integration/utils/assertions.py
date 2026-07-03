@@ -5,7 +5,7 @@ from pathlib import Path
 
 from lsprotocol.types import Diagnostic, DiagnosticSeverity
 
-ANOMALY_PATTERN = re.compile(r"\[anomaly:([a-z_]+)\]")
+ANOMALY_PATTERN = re.compile(r"\[anomaly:([A-Za-z]+)\]")
 
 
 def anomalies_in_log_messages(client) -> list[str]:
