@@ -69,3 +69,22 @@ async def test_bare_header_skips_pch(client, tmp_path):
     assert len(list_pch_files(tmp_path)) == before, (
         "A self-contained header with an empty preamble must not build a PCH"
     )
+
+
+async def test_links_merge_empty_pch(client, tmp_path):
+    """documentLink must stay valid JSON when the PCH contributes no links
+    (a preamble of only #defines) but the body has includes."""
+    (tmp_path / "list.def").write_text("X(alpha)\n")
+    (tmp_path / "main.cpp").write_text(
+        "#define X(name) int name;\n"
+        "int before = 0;\n"
+        '#include "list.def"\n'
+        "#undef X\n"
+        "int main() { return alpha; }\n"
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    main_uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    links = await client.document_links(main_uri)
+    assert links, "Expected a document link for the body include"

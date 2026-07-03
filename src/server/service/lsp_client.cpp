@@ -361,7 +361,9 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         if(session->pch_ref) {
             auto& pch_cache = srv.workspace.pch_cache;
             auto pch_it = pch_cache.find(session->pch_ref->key);
-            if(pch_it != pch_cache.end() && !pch_it->second.document_links_json.empty()) {
+            // size() > 2 skips both "" and an empty "[]": splicing an empty
+            // array into a non-empty one would leave a trailing comma.
+            if(pch_it != pch_cache.end() && pch_it->second.document_links_json.size() > 2) {
                 auto& pch_json = pch_it->second.document_links_json;
                 if(!links.data.empty() && links.data != "null" && links.data.size() > 2) {
                     links.data.pop_back();
@@ -733,6 +735,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 }
             }
 
+            result.epoch = ws.context_epoch;
             result.total = static_cast<int>(all_items.size());
             int end = std::min(offset_val + page_size, static_cast<int>(all_items.size()));
             for(int i = offset_val; i < end; ++i) {
@@ -803,6 +806,13 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto context_path_id = ws.path_pool.intern(context_path);
 
             ext::SwitchContextResult result;
+
+            // A choice made against an outdated listing may reference
+            // contexts that no longer exist — make the client re-query.
+            if(params.epoch.has_value() && *params.epoch != ws.context_epoch) {
+                result.stale = true;
+                co_return to_raw(result);
+            }
 
             auto session = srv.find_session(path_id);
             if(!session) {
