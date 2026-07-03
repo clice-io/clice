@@ -736,17 +736,21 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto path = workspace.path_pool.resolve(path_id);
     auto& text = session.text;
     auto bound = compute_preamble_bound(text);
-    if(bound == 0 && !session.header_context.has_value()) {
-        // No preamble directives and no injected -include — PCH would be empty.
+    bool has_prefix =
+        session.header_context.has_value() && !session.header_context->preamble_path.empty();
+    if(bound == 0 && !has_prefix) {
+        // No preamble directives and no injected -include — PCH would be
+        // empty. Self-contained header contexts land here too: they borrow
+        // a command but inject nothing.
         session.pch_ref.reset();
         co_return true;
     }
 
-    // With a header context, the PCH is worth building even at bound == 0:
-    // the -include'd preamble file is processed via the predefines buffer
-    // and lands in the PCH, so the (potentially huge) synthesized prefix is
-    // not re-parsed on every edit. The -include flag is part of the
-    // canonicalized arguments below, and the preamble file name is its
+    // With a synthesized prefix, the PCH is worth building even at
+    // bound == 0: the -include'd preamble file is processed via the
+    // predefines buffer and lands in the PCH, so the (potentially huge)
+    // prefix is not re-parsed on every edit. The -include flag is part of
+    // the canonicalized arguments below, and the preamble file name is its
     // content hash, so the key tracks prefix changes automatically.
 
     // Key the PCH by preamble text plus the frontend-relevant compile flags,

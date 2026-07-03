@@ -49,3 +49,23 @@ async def test_def_file_builds_pch(client, tmp_path):
     assert len(list_pch_files(tmp_path)) == before + 1, (
         "bound == 0 header context must still build a PCH for the prefix"
     )
+
+
+async def test_bare_header_skips_pch(client, tmp_path):
+    """A self-contained header with no directives of its own has nothing to
+    precompile — no PCH must be built for it."""
+    (tmp_path / "bare.h").write_text("inline int bare() { return 1; }\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "bare.h"\nint main() { return bare(); }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    await client.open_and_wait(tmp_path / "main.cpp")
+    before = len(list_pch_files(tmp_path))
+
+    bare_uri, _ = await client.open_and_wait(tmp_path / "bare.h")
+    assert_clean_compile(client, bare_uri)
+    assert len(list_pch_files(tmp_path)) == before, (
+        "A self-contained header with an empty preamble must not build a PCH"
+    )
