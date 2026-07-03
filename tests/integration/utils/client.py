@@ -13,6 +13,7 @@ from lsprotocol.types import (
     CodeActionContext,
     CodeActionParams,
     CompletionParams,
+    DeclarationParams,
     DefinitionParams,
     Diagnostic,
     DidCloseTextDocumentParams,
@@ -25,6 +26,7 @@ from lsprotocol.types import (
     FormattingOptions,
     HoverParams,
     InlayHintParams,
+    ImplementationParams,
     InitializeParams,
     InitializeResult,
     InitializedParams,
@@ -38,6 +40,7 @@ from lsprotocol.types import (
     SemanticTokensParams,
     SignatureHelpParams,
     TextDocumentIdentifier,
+    TypeDefinitionParams,
     TextDocumentItem,
     WorkDoneProgressCreateParams,
     WorkspaceFolder,
@@ -223,6 +226,48 @@ class CliceClient(BaseLanguageClient):
         return await asyncio.wait_for(
             self.text_document_definition_async(
                 DefinitionParams(
+                    text_document=TextDocumentIdentifier(uri=uri),
+                    position=Position(line=line, character=character),
+                )
+            ),
+            timeout=timeout,
+        )
+
+    async def declaration_at(
+        self, uri: str, line: int, character: int, *, timeout: float = 30.0
+    ):
+        """Send go-to-declaration request at given position."""
+        return await asyncio.wait_for(
+            self.text_document_declaration_async(
+                DeclarationParams(
+                    text_document=TextDocumentIdentifier(uri=uri),
+                    position=Position(line=line, character=character),
+                )
+            ),
+            timeout=timeout,
+        )
+
+    async def implementation_at(
+        self, uri: str, line: int, character: int, *, timeout: float = 30.0
+    ):
+        """Send go-to-implementation request at given position."""
+        return await asyncio.wait_for(
+            self.text_document_implementation_async(
+                ImplementationParams(
+                    text_document=TextDocumentIdentifier(uri=uri),
+                    position=Position(line=line, character=character),
+                )
+            ),
+            timeout=timeout,
+        )
+
+    async def type_definition_at(
+        self, uri: str, line: int, character: int, *, timeout: float = 30.0
+    ):
+        """Send go-to-type-definition request at given position."""
+        return await asyncio.wait_for(
+            self.text_document_type_definition_async(
+                TypeDefinitionParams(
                     text_document=TextDocumentIdentifier(uri=uri),
                     position=Position(line=line, character=character),
                 )

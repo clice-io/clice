@@ -247,3 +247,95 @@ async def test_workspace_symbol_class(client, workspace):
     assert "Animal" in names
 
     client.close(uri)
+
+
+def locations_of(result):
+    if result is None:
+        return []
+    if isinstance(result, (list, tuple)):
+        return list(result)
+    return [result]
+
+
+@pytest.mark.workspace("index_features")
+async def test_goto_declaration_cross_file(client, workspace):
+    # Query a closed file: background indexing skips open files, so nav.h's
+    # shard only exists while nav.cpp stays closed (recorded index gap).
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    assert await wait_for_index(client, uri, "area"), "Index not ready after 30s"
+    nav_uri = (workspace / "nav.cpp").as_uri()
+
+    # 'area' definition in nav.cpp line 2; declaration in nav.h line 4.
+    locs = locations_of(await client.declaration_at(nav_uri, 2, 4))
+    lines = [(loc.uri.split("/")[-1], loc.range.start.line) for loc in locs]
+    assert ("nav.h", 4) in lines, f"expected nav.h:4 declaration, got {lines}"
+    # Union semantics: the definition itself is also listed.
+    assert ("nav.cpp", 2) in lines, f"expected nav.cpp:2 definition, got {lines}"
+
+    client.close(uri)
+
+
+@pytest.mark.workspace("index_features")
+async def test_goto_declaration_inline_definition(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    assert await wait_for_index(client, uri), "Index not ready after 30s"
+
+    # 'add' (line 18) is defined inline with no separate declaration;
+    # declaration must still navigate to the definition, not return empty.
+    locs = locations_of(await client.declaration_at(uri, 18, 4))
+    assert any(loc.range.start.line == 18 for loc in locs), (
+        f"expected the definition at line 18, got"
+        f" {[(loc.uri, loc.range.start.line) for loc in locs]}"
+    )
+
+    client.close(uri)
+
+
+@pytest.mark.workspace("index_features")
+async def test_goto_implementation(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    assert await wait_for_index(client, uri), "Index not ready after 30s"
+
+    # Animal::speak (line 2) is overridden by Dog::speak (9) and Cat::speak (14).
+    locs = locations_of(await client.implementation_at(uri, 2, 17))
+    lines = sorted(loc.range.start.line for loc in locs)
+    assert lines == [9, 14], f"expected overrides at lines 9 and 14, got {lines}"
+
+    client.close(uri)
+
+
+@pytest.mark.workspace("index_features")
+async def test_goto_type_definition(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    assert await wait_for_index(client, uri, "area"), "Index not ready after 30s"
+    nav_uri = (workspace / "nav.cpp").as_uri()
+
+    # global_shape (line 6) has type Shape, defined in nav.h line 6.
+    locs = locations_of(await client.type_definition_at(nav_uri, 6, 6))
+    lines = [(loc.uri.split("/")[-1], loc.range.start.line) for loc in locs]
+    assert ("nav.h", 6) in lines, f"expected Shape definition nav.h:6, got {lines}"
+
+    client.close(uri)
+
+
+@pytest.mark.workspace("index_features")
+async def test_references_declaration_flag(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    assert await wait_for_index(client, uri, "area"), "Index not ready after 30s"
+    nav_uri = (workspace / "nav.cpp").as_uri()
+
+    # 'area': declaration nav.h:4, definition nav.cpp:2, call nav.cpp:9.
+    with_decl = locations_of(await client.references_at(nav_uri, 2, 4))
+    without_decl = locations_of(
+        await client.references_at(nav_uri, 2, 4, include_declaration=False)
+    )
+    with_lines = [(loc.uri.split("/")[-1], loc.range.start.line) for loc in with_decl]
+    assert ("nav.cpp", 9) in with_lines, f"missing call site, got {with_lines}"
+    assert ("nav.h", 4) in with_lines, f"missing declaration, got {with_lines}"
+    assert ("nav.cpp", 2) in with_lines, f"missing definition, got {with_lines}"
+    assert len(without_decl) < len(with_decl), (
+        f"includeDeclaration=False must drop decl/def:"
+        f" {len(without_decl)} vs {len(with_decl)}"
+    )
+
+    client.close(uri)
