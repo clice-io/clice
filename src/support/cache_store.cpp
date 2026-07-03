@@ -362,6 +362,13 @@ CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::Strin
         return {};
     }
 
+    // The cache directory can be wiped externally while the server runs
+    // (a user resetting state with `rm -rf`); re-create the tmp dir so
+    // writers don't fail forever afterwards. Idempotent and cheap.
+    if(auto ec = llvm::sys::fs::create_directories(state->tmp_dir)) {
+        LOG_WARN("CacheStore: cannot re-create tmp dir {}: {}", state->tmp_dir, ec.message());
+    }
+
     auto tmp_name = std::format("{}{}", state->next_tmp_id++, ns_state->config.extension);
     return PendingEntry{ns.str(), key.str(), path::join(state->tmp_dir, tmp_name)};
 }
@@ -406,6 +413,11 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
         }
 
         final_path = state->blob_path(*ns_state, pending.key);
+        // The namespace dir can be wiped externally while the server runs;
+        // re-create it so the rename below doesn't fail forever.
+        if(auto ec = llvm::sys::fs::create_directories(ns_state->dir)) {
+            LOG_WARN("CacheStore: cannot re-create dir {}: {}", ns_state->dir, ec.message());
+        }
         if(auto result = fs::rename(pending.tmp_path, final_path); !result) {
             if(same_content(pending.tmp_path, final_path)) {
                 // Benign collision: an identical blob is already published

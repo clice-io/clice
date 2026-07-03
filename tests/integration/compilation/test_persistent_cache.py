@@ -384,3 +384,36 @@ async def test_kill9_recovery(executable, tmp_path):
     # Clean shutdown removed session 2's own tmp; session 1's residue was
     # swept at session 2 startup, so nothing may remain.
     assert list_tmp_files(tmp_path) == [], "tmp residue should be swept"
+
+
+async def test_cache_wiped_while_running(client, tmp_path):
+    """Wiping the cache directory under a running server must not wedge
+    PCH builds forever: the store re-creates its directories on demand."""
+    import asyncio
+    import shutil
+
+    pin_cache_to_workspace(tmp_path)
+    (tmp_path / "header.h").write_text("#pragma once\nstruct W { int x; };\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { W w; return w.x; }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    assert_clean_compile(client, uri)
+
+    # Simulate a user resetting state without restarting the server.
+    shutil.rmtree(tmp_path / ".clice" / "cache")
+
+    # Change the preamble so a fresh PCH build is required.
+    await asyncio.sleep(1.1)
+    (tmp_path / "header.h").write_text("#pragma once\nstruct W { int x; int y; };\n")
+
+    from tests.integration.utils.wait import wait_for_recompile
+
+    await wait_for_recompile(client, uri)
+    assert_clean_compile(client, uri)
+    assert len(list_pch_files(tmp_path)) == 1, (
+        "PCH build must recover after a cache wipe"
+    )
