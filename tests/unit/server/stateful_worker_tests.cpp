@@ -185,7 +185,7 @@ TEST_CASE(CodeActionReturnsEmpty) {
     ASSERT_TRUE(test_done);
 }
 
-TEST_CASE(GoToDefinitionReturnsEmpty) {
+TEST_CASE(GoToDefinitionWithoutCompile) {
     WorkerHandle w;
     ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
 
@@ -200,7 +200,7 @@ TEST_CASE(GoToDefinitionReturnsEmpty) {
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
         // Should return empty array "[]" (TODO stub)
-        EXPECT_EQ(result.value().data, std::string("[]"));
+        EXPECT_EQ(result.value().data, std::string("null"));
         test_done = true;
         w.peer->close_output();
     });

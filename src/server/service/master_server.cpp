@@ -291,7 +291,8 @@ std::vector<protocol::Location>
     if(!line_begin || !cursor_offset)
         return locations;
     auto bounds = map.line_bounds(*line_begin);
-    llvm::StringRef line(session.text.data() + bounds.start, bounds.end - bounds.start);
+    // Copied, not a view: clang's raw lexer asserts a NUL-terminated buffer.
+    std::string line(session.text, bounds.start, bounds.end - bounds.start);
     auto cursor = *cursor_offset - bounds.start;
 
     // Byte offsets and UTF-16 columns coincide here: directive lines are

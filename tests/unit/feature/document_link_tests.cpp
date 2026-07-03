@@ -140,12 +140,12 @@ ABCDE
 }
 
 TEST_CASE(IncludeDefinition) {
-    add_files("main.cpp", R"(
+    add_file("test.h", "#pragma once\n");
+    add_main("main.cpp", R"(
 #include @arg["test.h"]
 $(inside)
 int x = 0;
 )");
-    add_file("test.h", "#pragma once\n");
     ASSERT_TRUE(compile());
 
     // Inside the include argument: the included file's location.
