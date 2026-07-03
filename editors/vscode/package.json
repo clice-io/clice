@@ -70,6 +70,19 @@
       {
         "command": "clice.selectContext",
         "title": "Clice: Select Compilation Context"
+      },
+      {
+        "command": "clice.refreshContexts",
+        "title": "Clice: Refresh Compilation Contexts",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "clice.applyContext",
+        "title": "Clice: Apply Compilation Context"
+      },
+      {
+        "command": "clice.loadMoreContexts",
+        "title": "Clice: Load More Compilation Contexts"
       }
     ],
     "semanticTokenTypes": [
@@ -143,7 +156,42 @@
         "description": "Angle brackets `<>`",
         "superType": "operator"
       }
-    ]
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "clice.contexts",
+          "name": "Compilation Contexts",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "clice.applyContext",
+          "when": "false"
+        },
+        {
+          "command": "clice.loadMoreContexts",
+          "when": "false"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "clice.selectContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp",
+          "group": "clice@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "clice.refreshContexts",
+          "when": "view == clice.contexts",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "main": "./dist/extension.js",
   "scripts": {
