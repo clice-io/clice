@@ -78,6 +78,10 @@ struct CompileResult {
     std::vector<std::string> deps;
     /// Serialized TUIndex for the main file (interested_only=true).
     std::string tu_index_data;
+
+    /// Preprocessor-inactive regions as flat byte-offset pairs
+    /// [begin0, end0, begin1, end1, ...] in the main file.
+    std::vector<std::uint32_t> inactive_regions;
 };
 
 enum class Priority : uint8_t { High, Low };

@@ -10,6 +10,7 @@ import {
 import { getSetting } from "./setting";
 import { ensureServerBinary } from "./download";
 import { registerCompilationContext } from "./feature/context";
+import { registerInactiveRegions } from "./feature/inactive";
 
 let client: LanguageClient;
 
@@ -87,6 +88,7 @@ export async function activate(context: ExtensionContext) {
     await client.start();
 
     registerCompilationContext(client, context);
+    registerInactiveRegions(client, context);
 
     // Exposed for E2E tests to exercise custom requests directly.
     return { client };

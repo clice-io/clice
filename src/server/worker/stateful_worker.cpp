@@ -9,6 +9,7 @@
 
 #include "compile/compilation.h"
 #include "feature/feature.h"
+#include "feature/inactive_regions.h"
 #include "index/tu_index.h"
 #include "server/protocol/worker.h"
 #include "server/worker/worker_common.h"
@@ -182,6 +183,7 @@ void StatefulWorker::register_handlers() {
                 }
                 result.memory_usage = 0;  // TODO: query actual memory
                 if(doc->unit.completed()) {
+                    result.inactive_regions = feature::inactive_regions(doc->unit);
                     result.deps = doc->unit.deps();
 
                     // Build index for main file only (interested_only=true).
