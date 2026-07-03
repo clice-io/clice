@@ -136,6 +136,37 @@ suite("clice E2E", function () {
         assert.strictEqual(path.basename(target.fsPath), scenario.definitionFile);
     });
 
+    test("compilation context requests", async function () {
+        this.timeout(60 * 1000);
+        const folder = vscode.workspace.workspaceFolders![0];
+        if (path.basename(folder.uri.fsPath) !== "header_context") {
+            this.skip();
+        }
+        assert.ok(document, "main file was not opened (earlier test failed)");
+
+        const extension = vscode.extensions.getExtension("ykiko.clice-vscode");
+        assert.ok(extension?.isActive, "extension not active");
+        const client = extension.exports.client;
+        const uri = document.uri.toString();
+
+        const query = await client.sendRequest("clice/queryContext", { uri });
+        assert.ok(query.total >= 1, `expected at least one context, got ${query.total}`);
+        const host = query.contexts.find((c: { uri: string }) => c.uri.includes("main.cpp"));
+        assert.ok(host, "main.cpp should be offered as a context");
+
+        const switched = await client.sendRequest("clice/switchContext", {
+            uri,
+            contextUri: host.uri,
+        });
+        assert.ok(switched.success, "switchContext should succeed");
+
+        const current = await client.sendRequest("clice/currentContext", { uri });
+        assert.ok(
+            current.context && current.context.uri.includes("main.cpp"),
+            "currentContext should report the switched host",
+        );
+    });
+
     test("completion", async function () {
         this.timeout(60 * 1000);
         assert.ok(document, "main file was not opened (earlier test failed)");

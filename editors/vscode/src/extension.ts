@@ -87,6 +87,9 @@ export async function activate(context: ExtensionContext) {
     await client.start();
 
     registerCompilationContext(client, context);
+
+    // Exposed for E2E tests to exercise custom requests directly.
+    return { client };
 }
 
 export function deactivate(): Thenable<void> | undefined {
