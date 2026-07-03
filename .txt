@@ -1,0 +1,57 @@
+[2026-07-03 21:28:46.374] [info] [thread 1078467] [master_server.cpp:453] clice master starting: pid=1078467, mode=pipe, workspace=<from LSP initialize>
+[2026-07-03 21:28:46.379] [info] [thread 1078467] [lsp_client.cpp:92] Initialized with workspace: /home/ykiko/workspace/cxx-test-workspace
+[2026-07-03 21:28:46.383] [info] [thread 1078467] [config.cpp:188] Loaded config from /home/ykiko/workspace/cxx-test-workspace/clice.toml
+[2026-07-03 21:28:46.383] [info] [thread 1078467] [master_server.cpp:83] Session log directory: /home/ykiko/workspace/cxx-test-workspace/.clice/logs/2026-07-03_13-28-46.383171176_1078467
+[2026-07-03 21:28:46.383] [info] [thread 1078467] [master_server.cpp:89] Server ready (stateful=2, stateless=10, idle=3000ms)
+[2026-07-03 21:28:46.397] [info] [thread 1078467] [worker_pool.cpp:169] WorkerPool started: 10 stateless, 2 stateful workers
+[2026-07-03 21:28:46.399] [info] [thread 1078467] [master_server.cpp:264] Cache store: /home/ykiko/workspace/cxx-test-workspace/.clice/cache/v2
+[2026-07-03 21:28:46.399] [info] [thread 1078467] [master_server.cpp:325] Loaded CDB from /home/ykiko/workspace/cxx-test-workspace/compile_commands.json with 6 entries
+[2026-07-03 21:28:46.399] [info] [thread 1078467] [master_server.cpp:326] [perf:startup] phase=cdb_load entries=6 elapsed_ms=0
+[2026-07-03 21:28:46.399] [info] [thread 1078467] [toolchain.cpp:622] Warming toolchain cache: 1 unique queries
+[2026-07-03 21:28:46.399] [info] [thread 1078467] [toolchain.cpp:85] Execute command: /home/ykiko/.pixi/bin/c++
+[2026-07-03 21:28:46.401] [info] [thread 1078467] [toolchain.cpp:85] Execute command: /home/ykiko/.pixi/bin/c++
+[2026-07-03 21:28:46.410] [info] [thread 1078467] [toolchain.cpp:668] Toolchain cache warmed: 1 succeeded, 0 failed
+[2026-07-03 21:28:46.411] [info] [thread 1078467] [dependency_graph.cpp:331] Config extracted: 2 groups, 0.5ms
+[2026-07-03 21:28:46.411] [info] [thread 1078467] [dependency_graph.cpp:391] Launched 11 dir cache tasks (running in background)
+[2026-07-03 21:28:46.412] [info] [thread 1078467] [dependency_graph.cpp:508] Pre-populated dir cache: 11 directories
+[2026-07-03 21:28:46.412] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 0: 6 files | read+scan=1ms resolve=0ms graph=0ms | next=3 prefetch=3
+[2026-07-03 21:28:46.412] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 1: 3 files | read+scan=0ms resolve=0ms graph=0ms | next=2 prefetch=2
+[2026-07-03 21:28:46.413] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 2: 2 files | read+scan=0ms resolve=0ms graph=0ms | next=26 prefetch=26
+[2026-07-03 21:28:46.415] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 3: 26 files | read+scan=1ms resolve=0ms graph=0ms | next=52 prefetch=52
+[2026-07-03 21:28:46.417] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 4: 52 files | read+scan=2ms resolve=0ms graph=0ms | next=32 prefetch=32
+[2026-07-03 21:28:46.418] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 5: 32 files | read+scan=1ms resolve=0ms graph=0ms | next=49 prefetch=49
+[2026-07-03 21:28:46.420] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 6: 49 files | read+scan=1ms resolve=0ms graph=0ms | next=47 prefetch=47
+[2026-07-03 21:28:46.422] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 7: 47 files | read+scan=1ms resolve=0ms graph=0ms | next=27 prefetch=27
+[2026-07-03 21:28:46.424] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 8: 27 files | read+scan=1ms resolve=0ms graph=0ms | next=25 prefetch=25
+[2026-07-03 21:28:46.425] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 9: 25 files | read+scan=1ms resolve=0ms graph=0ms | next=12 prefetch=12
+[2026-07-03 21:28:46.426] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 10: 12 files | read+scan=0ms resolve=0ms graph=0ms | next=4 prefetch=4
+[2026-07-03 21:28:46.426] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 11: 4 files | read+scan=0ms resolve=0ms graph=0ms | next=4 prefetch=4
+[2026-07-03 21:28:46.427] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 12: 4 files | read+scan=0ms resolve=0ms graph=0ms | next=2 prefetch=2
+[2026-07-03 21:28:46.427] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 13: 2 files | read+scan=0ms resolve=0ms graph=0ms | next=1 prefetch=1
+[2026-07-03 21:28:46.427] [info] [thread 1078467] [dependency_graph.cpp:767] Wave 14: 1 files | read+scan=0ms resolve=0ms graph=0ms | next=0 prefetch=0
+[2026-07-03 21:28:46.427] [info] [thread 1078467] [master_server.cpp:355] Dependency scan: 28ms, 292 files (6 source + 286 header), 737 edges, 737/745 resolved (98.9%), 15 waves
+[2026-07-03 21:28:46.427] [warning] [thread 1078467] [master_server.cpp:357] 8 unresolved includes
+[2026-07-03 21:28:46.427] [info] [thread 1078467] [master_server.cpp:362] [perf:startup] phase=dep_scan files=292 edges=737 elapsed_ms=28
+[2026-07-03 21:28:46.427] [info] [thread 1078467] [indexer.cpp:261] [perf:startup] phase=index_load symbols=0 shards=0 elapsed_ms=0
+[2026-07-03 21:28:46.427] [info] [thread 1078467] [compiler.cpp:152] No C++20 modules detected, skipping CompileGraph
+[2026-07-03 21:28:46.695] [info] [thread 1078467] [compiler.cpp:1230] ensure_compiled: launching compile path_id=2 gen=1
+[2026-07-03 21:28:46.695] [info] [thread 1078467] [compiler.cpp:1039] ensure_compiled: starting compile path_id=2 gen=1
+[2026-07-03 21:28:46.695] [info] [thread 1078467] [compiler.cpp:312] compile_args: file=/home/ykiko/workspace/cxx-test-workspace/src/registry.cpp tried=[cdb] source=CDBExact args_hash=9e812f316cf3b646
+[2026-07-03 21:28:46.695] [info] [thread 1078467] [compiler.cpp:795] [perf:cache] ns=pch event=miss reason=no_entry key=8d23740bdd7b312a43b2ed0b415d98e4 file=/home/ykiko/workspace/cxx-test-workspace/src/registry.cpp
+[2026-07-03 21:28:46.709] [info] [thread 1078467] [compiler.cpp:879] PCH built for /home/ykiko/workspace/cxx-test-workspace/src/registry.cpp: /home/ykiko/workspace/cxx-test-workspace/.clice/cache/v2/pch/8d23740bdd7b312a43b2ed0b415d98e4.pch
+[2026-07-03 21:28:46.716] [info] [thread 1078467] [compiler.cpp:1035] ensure_compiled: finish path_id=2
+[2026-07-03 21:28:46.716] [info] [thread 1078467] [compiler.cpp:1147] [perf:request] kind=Compile file=/home/ykiko/workspace/cxx-test-workspace/src/registry.cpp total_ms=20
+[2026-07-03 21:28:46.716] [info] [thread 1078467] [compiler.cpp:1295] [perf:request] kind=CodeAction file=/home/ykiko/workspace/cxx-test-workspace/src/registry.cpp wait_ms=4 total_ms=5
+[2026-07-03 21:28:46.716] [info] [thread 1078467] [compiler.cpp:1295] [perf:request] kind=DocumentLink file=/home/ykiko/workspace/cxx-test-workspace/src/registry.cpp wait_ms=10 total_ms=11
+[2026-07-03 21:28:46.716] [info] [thread 1078467] [compiler.cpp:1295] [perf:request] kind=InlayHints file=/home/ykiko/workspace/cxx-test-workspace/src/registry.cpp wait_ms=10 total_ms=11
+[Error - 9:28:46 PM] Client clice: connection to server is erroring.
+Unexpected token ']', ..."ors.def"},]}" is not valid JSON
+Shutting down server.
+[2026-07-03 21:28:46.797] [info] [thread 1078467] [lsp_client.cpp:180] Shutdown requested
+[2026-07-03 21:28:46.842] [info] [thread 1078467] [lsp_client.cpp:185] Exit notification received
+[2026-07-03 21:28:46.842] [info] [thread 1078467] [indexer.cpp:164] Saved ProjectIndex (0 symbols)
+[2026-07-03 21:28:46.842] [info] [thread 1078467] [indexer.cpp:177] Saved 0 MergedIndex shards (of 0 total)
+[2026-07-03 21:28:46.846] [info] [thread 1078467] [indexer.cpp:207] [perf:index] phase=save shards=0 total=0 elapsed_ms=3
+[2026-07-03 21:28:46.846] [info] [thread 1078467] [worker_pool.cpp:174] WorkerPool stopping...
+[2026-07-03 21:28:49.385] [info] [thread 1078467] [worker_pool.cpp:196] WorkerPool stopped
+[Error - 9:28:49 PM] Server process exited with code 0.
