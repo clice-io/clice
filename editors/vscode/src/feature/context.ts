@@ -144,7 +144,7 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
 
 export function registerCompilationContext(client: LanguageClient, ext: vscode.ExtensionContext) {
     const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    status.command = "clice.selectContext";
+    status.command = "clice.switchContext";
     status.tooltip = "clice: active compilation context (click to switch)";
 
     const tree = new ContextTreeProvider(client);
@@ -241,7 +241,7 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
             }
 
             const chosen = await vscode.window.showQuickPick(items, {
-                title: "Select Compilation Context",
+                title: "Switch Compilation Context",
                 placeHolder: "Compilation context to use for this file",
             });
             if (!chosen) {
@@ -278,11 +278,42 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
         }
     }
 
+    async function showCurrent() {
+        const editor = vscode.window.activeTextEditor;
+        if (!isCppEditor(editor)) {
+            return;
+        }
+        const result = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
+            uri: editor.document.uri.toString(),
+        });
+        const context = result?.context;
+        if (!context) {
+            vscode.window.showInformationMessage(
+                "clice: automatic compilation context (no explicit selection)",
+            );
+            return;
+        }
+        const occurrence =
+            context.occurrence !== undefined && context.occurrence > 0
+                ? ` (occurrence #${context.occurrence + 1})`
+                : "";
+        vscode.window.showInformationMessage(
+            `clice: ${context.label}${occurrence} — ${context.description}`,
+        );
+    }
+
+    async function query() {
+        await refresh(vscode.window.activeTextEditor);
+        await vscode.commands.executeCommand("clice.contexts.focus");
+    }
+
     ext.subscriptions.push(
         status,
         vscode.workspace.onDidOpenTextDocument((document) => void detectCxxFragment(document)),
         vscode.window.registerTreeDataProvider("clice.contexts", tree),
-        vscode.commands.registerCommand("clice.selectContext", select),
+        vscode.commands.registerCommand("clice.switchContext", select),
+        vscode.commands.registerCommand("clice.showCurrentContext", showCurrent),
+        vscode.commands.registerCommand("clice.queryContexts", query),
         vscode.commands.registerCommand("clice.applyContext", applyContext),
         vscode.commands.registerCommand("clice.loadMoreContexts", () => tree.loadMore()),
         vscode.commands.registerCommand("clice.refreshContexts", () =>

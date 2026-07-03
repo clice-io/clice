@@ -68,8 +68,16 @@
         "title": "Clice: Restart Language Server"
       },
       {
-        "command": "clice.selectContext",
-        "title": "Clice: Select Compilation Context"
+        "command": "clice.switchContext",
+        "title": "Clice: Switch Compilation Context"
+      },
+      {
+        "command": "clice.showCurrentContext",
+        "title": "Clice: Show Current Compilation Context"
+      },
+      {
+        "command": "clice.queryContexts",
+        "title": "Clice: Query Compilation Contexts"
       },
       {
         "command": "clice.refreshContexts",
@@ -175,13 +183,34 @@
         {
           "command": "clice.loadMoreContexts",
           "when": "false"
+        },
+        {
+          "command": "clice.refreshContexts",
+          "when": "false"
+        },
+        {
+          "command": "clice.switchContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.showCurrentContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.queryContexts",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
         }
       ],
       "editor/context": [
         {
-          "command": "clice.selectContext",
+          "command": "clice.switchContext",
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp",
           "group": "clice@1"
+        },
+        {
+          "command": "clice.showCurrentContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp",
+          "group": "clice@2"
         }
       ],
       "view/title": [
