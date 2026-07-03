@@ -3,7 +3,7 @@
 ## Go to Definition
 
 - [x] Index-based cross-TU go-to-definition
-- [ ] Go to definition on `#include` directives (navigate to the included file)
+- [x] Go to definition on `#include` directives (navigate to the included file), including preamble includes compiled into the PCH
 - [ ] AST-based fallback for local/unsaved symbols
 - [ ] Navigate through macro wrappers to the underlying declaration
 
@@ -533,7 +533,7 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 
 ## Module Navigation
 
-- [ ] `import module_name` → jump to module interface unit ([clangd#2310](https://github.com/clangd/clangd/issues/2310))
+- [x] `import module_name` → jump to module interface unit ([clangd#2310](https://github.com/clangd/clangd/issues/2310))
 
   ```cpp
   import mylib;  // go-to-def on mylib → module interface unit (export module mylib;)
@@ -545,7 +545,7 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
   import :core;  // go-to-def on core → partition unit (export module mylib:core;)
   ```
 
-- [ ] Navigate between interface and implementation units of the same module
+- [ ] Navigate between interface and implementation units of the same module (implementation → interface works via go-to-def on the `module m;` name; the reverse is not implemented)
 
   ```cpp
   // interface unit:       export module mylib;
@@ -586,6 +586,7 @@ Highlight all references to the symbol under cursor within the current file (`te
 
 | Date | Change                                                                                             | PR  |
 | ---- | -------------------------------------------------------------------------------------------------- | --- |
+| —    | go-to-definition on include directives and module names                                            | —   |
 | —    | declaration / implementation / typeDefinition; references includeDeclaration includes declarations | —   |
 | —    | Index-based go-to-definition and find references                                                   | —   |
 | —    | Call hierarchy (incoming/outgoing)                                                                 | —   |

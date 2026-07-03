@@ -278,13 +278,12 @@ TEST_CASE(DocumentLinkWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::DocumentLink;
+        worker::DocumentLinkParams params;
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        EXPECT_TRUE(result.value().empty());
         test_done = true;
         w.peer->close_output();
     });

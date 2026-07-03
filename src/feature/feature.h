@@ -13,6 +13,7 @@
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
+#include "kota/ipc/lsp/uri.h"
 
 namespace clice::feature {
 
@@ -21,6 +22,21 @@ namespace protocol = kota::ipc::protocol;
 
 using kota::ipc::lsp::LineMap;
 using kota::ipc::lsp::PositionEncoding;
+
+/// Render a file path (or an already-formed URI) as an LSP URI string.
+inline auto to_uri(llvm::StringRef file) -> std::string {
+    const auto file_view = std::string_view(file.data(), file.size());
+
+    if(auto parsed = kota::ipc::lsp::URI::parse(file_view)) {
+        return parsed->str();
+    }
+
+    if(auto uri = kota::ipc::lsp::URI::from_file_path(file_view)) {
+        return uri->str();
+    }
+
+    return file.str();
+}
 
 inline auto to_position(const LineMap& map, std::uint32_t offset)
     -> std::optional<protocol::Position> {
@@ -274,6 +290,12 @@ auto inlay_hints(CompilationUnitRef unit,
 
 auto document_links(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::DocumentLink>;
+
+/// Go-to-definition on an include directive: when `offset` falls on the
+/// argument of an #include in the interested file, the included file's
+/// location (at its start). Empty otherwise.
+auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
+    -> std::vector<protocol::Location>;
 
 auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::Diagnostic>;

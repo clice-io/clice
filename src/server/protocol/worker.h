@@ -9,6 +9,7 @@
 #include "syntax/token.h"
 
 #include "kota/codec/json/json.h"
+#include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/protocol.h"
 
 namespace clice::worker {
@@ -46,7 +47,6 @@ enum class QueryKind : uint8_t {
     InlayHints,
     FoldingRange,
     DocumentSymbol,
-    DocumentLink,
     CodeAction,
 };
 
@@ -124,6 +124,15 @@ struct BuildParams {
     LocalSourceRange format_range;         ///< Format (default = full document)
 };
 
+/// A resolved link in a source file: the argument range of an include (or
+/// similar) directive and the absolute path of its target. Deliberately a
+/// plain struct — protocol::DocumentLink carries optional/LSPAny fields that
+/// the bincode codec cannot represent.
+struct FileLink {
+    protocol::Range range;
+    std::string target;
+};
+
 /// Unified result for stateless build tasks.
 /// For Completion/SignatureHelp, the result JSON is in `result_json`.
 /// For BuildPCH/BuildPCM/Index, structured fields are used.
@@ -136,8 +145,17 @@ struct BuildResult {
     std::string output_path;  ///< PCH or PCM path
     std::vector<std::string> deps;
     std::string tu_index_data;
-    std::string pch_links_json;         ///< Pre-serialized DocumentLink[] from PCH
+    /// Include directives of the PCH preamble. Structured so the master can
+    /// serve both document links and go-to-definition on preamble lines.
+    std::vector<FileLink> preamble_links;
     kota::codec::RawValue result_json;  ///< Completion/SignatureHelp result
+};
+
+/// Request the document links of an open file's AST. Only the main-file
+/// region is covered: the preamble is compiled into the PCH, and its links
+/// travel in BuildResult::preamble_links.
+struct DocumentLinkParams {
+    std::string path;
 };
 
 struct DocumentUpdateParams {
@@ -167,6 +185,12 @@ template <>
 struct RequestTraits<clice::worker::QueryParams> {
     using Result = kota::codec::RawValue;
     constexpr inline static std::string_view method = "clice/worker/query";
+};
+
+template <>
+struct RequestTraits<clice::worker::DocumentLinkParams> {
+    using Result = std::vector<clice::worker::FileLink>;
+    constexpr inline static std::string_view method = "clice/worker/documentLink";
 };
 
 template <>

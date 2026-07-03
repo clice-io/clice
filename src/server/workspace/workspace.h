@@ -14,6 +14,7 @@
 #include "index/project_index.h"
 #include "semantic/relation_kind.h"
 #include "server/compiler/compile_graph.h"
+#include "server/protocol/worker.h"
 #include "server/workspace/config.h"
 #include "support/cache_store.h"
 #include "support/path_pool.h"
@@ -59,7 +60,9 @@ struct PCHState {
     /// CacheStore key: hex of xxh3_128bits(preamble text + canonical flags).
     std::string key;
     DepsSnapshot deps;
-    std::string document_links_json;  ///< Pre-serialized DocumentLink[] from PCH build
+    /// Include directives of the preamble, used for document links and
+    /// go-to-definition on preamble include lines.
+    std::vector<worker::FileLink> preamble_links;
     std::shared_ptr<kota::event> building;
 };
 

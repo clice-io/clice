@@ -89,12 +89,12 @@ class StatefulWorker {
     }
 
     /// Look up document, wait for AST, lock strand, run fn(doc) on thread pool, unlock.
-    /// Returns "null" if document not found or AST not usable.
-    template <typename F>
-    kota::task<kota::codec::RawValue> with_ast(llvm::StringRef path, F&& fn) {
+    /// Returns `missing` if the document is not found or its AST unusable.
+    template <typename R, typename F>
+    kota::task<R> with_ast_or(llvm::StringRef path, R missing, F&& fn) {
         auto it = documents.find(path);
         if(it == documents.end()) {
-            co_return kota::codec::RawValue{"null"};
+            co_return std::move(missing);
         }
 
         // Hold shared_ptr so Evict can't destroy the entry mid-request.
@@ -104,14 +104,20 @@ class StatefulWorker {
         co_await doc->ast_ready.wait();
         co_await doc->strand.lock();
 
-        auto result = co_await kota::queue([&]() -> kota::codec::RawValue {
+        auto result = co_await kota::queue([&]() -> R {
             if(!doc->has_ast || (!doc->unit.completed() && !doc->unit.fatal_error()))
-                return kota::codec::RawValue{"null"};
+                return std::move(missing);
             return fn(*doc);
         });
 
         doc->strand.unlock();
         co_return result.value();
+    }
+
+    /// Returns "null" if document not found or AST not usable.
+    template <typename F>
+    kota::task<kota::codec::RawValue> with_ast(llvm::StringRef path, F&& fn) {
+        co_return co_await with_ast_or(path, kota::codec::RawValue{"null"}, std::forward<F>(fn));
     }
 
 public:
@@ -199,6 +205,18 @@ void StatefulWorker::register_handlers() {
             co_return compile_result.value();
         });
 
+    // === DocumentLink ===
+    peer.on_request([this](RequestContext& ctx, const worker::DocumentLinkParams& params)
+                        -> RequestResult<worker::DocumentLinkParams> {
+        co_return co_await with_ast_or(
+            params.path,
+            std::vector<worker::FileLink>{},
+            [&](DocumentEntry& doc) {
+                return to_file_links(
+                    feature::document_links(doc.unit, feature::PositionEncoding::UTF16));
+            });
+    });
+
     // === DocumentUpdate ===
     // Only mark the document dirty — do NOT update doc.text or doc.version
     // here.  The kota::queue compilation work may be reading doc.text on the
@@ -241,8 +259,11 @@ void StatefulWorker::register_handlers() {
                         return result ? to_raw(*result) : kota::codec::RawValue{"null"};
                     });
                 case K::GoToDefinition:
-                    // TODO: Implement go-to-definition
-                    co_return kota::codec::RawValue{"[]"};
+                    // Include directives only; symbol definitions are served
+                    // from the index by the master.
+                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                        return to_raw(feature::include_definition(doc.unit, params.offset));
+                    });
                 case K::SemanticTokens:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
                         return to_raw(
@@ -267,11 +288,6 @@ void StatefulWorker::register_handlers() {
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
                         return to_raw(
                             feature::document_symbols(doc.unit, feature::PositionEncoding::UTF16));
-                    });
-                case K::DocumentLink:
-                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-                        return to_raw(
-                            feature::document_links(doc.unit, feature::PositionEncoding::UTF16));
                     });
                 case K::CodeAction:
                     // TODO: Implement code actions

@@ -275,3 +275,11 @@ async def test_circular_module_dependency(client, workspace):
     assert len(diags) == 0, (
         f"Non-cyclic module should compile fine after cycle attempt, got: {diags}"
     )
+
+
+@pytest.mark.workspace("modules/consumer_imports_module")
+async def test_import_definition(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    result = await client.definition_at(uri, 0, 8)
+    locs = result if isinstance(result, (list, tuple)) else ([result] if result else [])
+    assert any(loc.uri.endswith("math.cppm") for loc in locs), locs

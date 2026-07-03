@@ -64,4 +64,38 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
     return links;
 }
 
+auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
+    -> std::vector<protocol::Location> {
+    std::vector<protocol::Location> locations;
+
+    auto interested = unit.interested_file();
+    auto directives_it = unit.directives().find(interested);
+    if(directives_it == unit.directives().end()) {
+        return locations;
+    }
+
+    auto content = unit.interested_content();
+    auto* lang_opts = &unit.lang_options();
+
+    for(const auto& include: directives_it->second.includes) {
+        if(!include.fid.isValid()) {
+            continue;
+        }
+        auto [fid, directive_offset] = unit.decompose_location(include.location);
+        if(fid != interested || directive_offset >= content.size()) {
+            continue;
+        }
+        auto range = find_directive_argument(content, directive_offset, lang_opts);
+        if(!range || !range->contains(offset)) {
+            continue;
+        }
+        locations.push_back(protocol::Location{
+            .uri = to_uri(unit.file_path(include.fid)),
+            .range = protocol::Range{},
+        });
+        break;
+    }
+    return locations;
+}
+
 }  // namespace clice::feature

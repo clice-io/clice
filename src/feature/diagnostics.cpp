@@ -10,20 +10,6 @@ namespace clice::feature {
 
 namespace {
 
-auto to_uri(llvm::StringRef file) -> std::string {
-    const auto file_view = std::string_view(file.data(), file.size());
-
-    if(auto parsed = lsp::URI::parse(file_view)) {
-        return parsed->str();
-    }
-
-    if(auto uri = lsp::URI::from_file_path(file_view)) {
-        return uri->str();
-    }
-
-    return file.str();
-}
-
 void add_tag(protocol::Diagnostic& diagnostic, DiagnosticID id) {
     if(id.is_deprecated()) {
         if(!diagnostic.tags.has_value()) {

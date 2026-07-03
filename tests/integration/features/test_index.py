@@ -411,3 +411,25 @@ async def test_navigation_closed_document_empty(client, workspace):
     # real answer, not an error.
     result = await client.implementation_at(nav_uri, 2, 4)
     assert result is not None and len(result) == 0, result
+
+
+@pytest.mark.workspace("index_features")
+async def test_definition_on_include(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "nav.cpp")
+
+    # Preamble include (line 0): served master-side from the PCH's links.
+    locs = locations_of(await client.definition_at(uri, 0, 12))
+    assert any(loc.uri.endswith("nav.h") for loc in locs), locs
+
+    # Non-preamble include (line 20): served by the worker's AST.
+    locs = locations_of(await client.definition_at(uri, 20, 12))
+    assert any(loc.uri.endswith("nav_late.h") for loc in locs), locs
+
+
+@pytest.mark.workspace("index_features")
+async def test_document_links_include_preamble(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "nav.cpp")
+    links = await client.document_links(uri)
+    targets = [link.target or "" for link in links or []]
+    assert any("nav.h" in target for target in targets), targets
+    assert any("nav_late.h" in target for target in targets), targets

@@ -17,3 +17,5 @@ void DebugGLRenderer::render() {}
 Shape make_unit_shape() {
     return {1, 1};
 }
+
+#include "nav_late.h"
