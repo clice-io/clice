@@ -28,7 +28,7 @@ private:
                        clang::PPCallbacks::ConditionValueKind value,
                        clang::SourceRange condition_range) {
         Condition::ConditionValue cond_value =
-            value == clang::PPCallbacks::CVK_False          ? Condition::None
+            value == clang::PPCallbacks::CVK_False          ? Condition::False
             : value == clang::PPCallbacks::CVK_True         ? Condition::True
             : value == clang::PPCallbacks::CVK_NotEvaluated ? Condition::Skipped
                                                             : Condition::None;

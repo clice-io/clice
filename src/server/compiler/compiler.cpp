@@ -1008,6 +1008,8 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     st.bound = bound;
     st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
     st.document_links_json = std::move(result.value().pch_links_json);
+    st.inactive_regions = std::move(result.value().inactive_regions);
+    st.open_conditionals = std::move(result.value().open_conditionals);
 
     session.pch_ref = Session::PCHRef{pch_key, bound};
 
@@ -1213,6 +1215,17 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             co_return;
         }
 
+        // Seed the inactive-region scan with the conditional stack the
+        // PCH's preamble left open (a #if cut by the bound).
+        const PCHState* pch_state = nullptr;
+        if(session->pch_ref.has_value()) {
+            if(auto it = workspace.pch_cache.find(session->pch_ref->key);
+               it != workspace.pch_cache.end()) {
+                pch_state = &it->second;
+                params.open_conditionals = it->second.open_conditionals;
+            }
+        }
+
         auto result = co_await pool.send_stateful(pid, params);
 
         if(session->generation != gen) {
@@ -1282,7 +1295,13 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
 
         LOG_PERF("request", "kind=Compile file={} total_ms={}", file_path, timer.ms());
         publish_diagnostics(uri_str, version, result.value().diagnostics, source);
-        publish_inactive_regions(uri_str, *session, result.value().inactive_regions);
+        // The preamble's share lives with the PCH; the compile result
+        // covers the content past the bound. Publish both.
+        auto inactive = pch_state ? pch_state->inactive_regions : std::vector<std::uint32_t>{};
+        inactive.insert(inactive.end(),
+                        result.value().inactive_regions.begin(),
+                        result.value().inactive_regions.end());
+        publish_inactive_regions(uri_str, *session, inactive);
         if(on_indexing_needed)
             on_indexing_needed();
         co_return;

@@ -6,21 +6,23 @@
 
 namespace clice::feature {
 
-std::vector<std::uint32_t> inactive_regions(CompilationUnitRef unit) {
-    std::vector<std::uint32_t> regions;
+InactiveScan inactive_regions(CompilationUnitRef unit,
+                              llvm::ArrayRef<std::uint8_t> open_stack,
+                              std::uint32_t resume_offset,
+                              std::uint32_t end_offset) {
+    InactiveScan result;
 
     auto interested = unit.interested_file();
-    auto directives_it = unit.directives().find(interested);
-    if(directives_it == unit.directives().end()) {
-        return regions;
-    }
-
     auto content = unit.file_content(interested);
+    if(end_offset > content.size()) {
+        end_offset = static_cast<std::uint32_t>(content.size());
+    }
 
     // Offset just past the end of the line containing `offset`.
     auto line_end = [&](std::uint32_t offset) -> std::uint32_t {
         auto pos = content.find('\n', offset);
-        return pos == llvm::StringRef::npos ? content.size() : static_cast<std::uint32_t>(pos + 1);
+        return pos == llvm::StringRef::npos ? static_cast<std::uint32_t>(content.size())
+                                            : static_cast<std::uint32_t>(pos + 1);
     };
 
     // Offset of the start of the line containing `offset`.
@@ -37,74 +39,111 @@ std::vector<std::uint32_t> inactive_regions(CompilationUnitRef unit) {
         return offset;
     };
 
-    // Walk the branch directives with an explicit nesting stack. Each level
-    // remembers where its currently-inactive branch body started; the next
-    // sibling directive (elif/else/endif) closes it.
+    // Walk the branch directives with an explicit nesting stack, seeded
+    // from a preceding preamble scan: its pending inactive levels start
+    // at the resume offset.
     struct Level {
         std::optional<std::uint32_t> inactive_begin;
+
+        /// Whether some earlier branch of this level was taken — an #else
+        /// carries no condition value, so its inactivity is derived.
+        bool taken = false;
     };
 
     llvm::SmallVector<Level> stack;
+    for(auto inactive: open_stack) {
+        Level level;
+        if(inactive) {
+            level.inactive_begin = resume_offset;
+        } else {
+            level.taken = true;
+        }
+        stack.push_back(level);
+    }
 
     auto is_inactive = [](const Condition& condition) {
         return condition.value == Condition::ConditionValue::False ||
                condition.value == Condition::ConditionValue::Skipped;
     };
 
-    auto close_pending = [&](Level& level, std::uint32_t terminator_offset) {
+    auto close_pending = [&](Level& level, std::uint32_t end) {
         if(!level.inactive_begin.has_value()) {
             return;
         }
         auto begin = *level.inactive_begin;
-        auto end = line_begin(terminator_offset);
         if(begin < end) {
-            regions.push_back(begin);
-            regions.push_back(end);
+            result.regions.push_back(begin);
+            result.regions.push_back(end);
         }
         level.inactive_begin.reset();
     };
 
-    for(const auto& condition: directives_it->second.conditions) {
-        auto offset = local_offset(condition.loc);
-        if(!offset) {
-            continue;
-        }
+    auto directives_it = unit.directives().find(interested);
+    if(directives_it != unit.directives().end()) {
+        for(const auto& condition: directives_it->second.conditions) {
+            auto offset = local_offset(condition.loc);
+            if(!offset) {
+                continue;
+            }
 
-        switch(condition.kind) {
-            case Condition::BranchKind::If:
-            case Condition::BranchKind::Ifdef:
-            case Condition::BranchKind::Ifndef: {
-                stack.push_back({});
-                if(is_inactive(condition)) {
-                    stack.back().inactive_begin = line_end(*offset);
-                }
-                break;
-            }
-            case Condition::BranchKind::Elif:
-            case Condition::BranchKind::Elifdef:
-            case Condition::BranchKind::Elifndef:
-            case Condition::BranchKind::Else: {
-                if(stack.empty()) {
+            switch(condition.kind) {
+                case Condition::BranchKind::If:
+                case Condition::BranchKind::Ifdef:
+                case Condition::BranchKind::Ifndef: {
+                    stack.push_back({});
+                    if(is_inactive(condition)) {
+                        stack.back().inactive_begin = line_end(*offset);
+                    } else {
+                        stack.back().taken = true;
+                    }
                     break;
                 }
-                close_pending(stack.back(), *offset);
-                if(is_inactive(condition)) {
-                    stack.back().inactive_begin = line_end(*offset);
-                }
-                break;
-            }
-            case Condition::BranchKind::EndIf: {
-                if(stack.empty()) {
+                case Condition::BranchKind::Elif:
+                case Condition::BranchKind::Elifdef:
+                case Condition::BranchKind::Elifndef: {
+                    if(stack.empty()) {
+                        break;
+                    }
+                    close_pending(stack.back(), line_begin(*offset));
+                    if(is_inactive(condition)) {
+                        stack.back().inactive_begin = line_end(*offset);
+                    } else {
+                        stack.back().taken = true;
+                    }
                     break;
                 }
-                close_pending(stack.back(), *offset);
-                stack.pop_back();
-                break;
+                case Condition::BranchKind::Else: {
+                    if(stack.empty()) {
+                        break;
+                    }
+                    close_pending(stack.back(), line_begin(*offset));
+                    // #else has no condition value: it is inactive exactly
+                    // when an earlier branch of this level was taken.
+                    if(stack.back().taken) {
+                        stack.back().inactive_begin = line_end(*offset);
+                    }
+                    break;
+                }
+                case Condition::BranchKind::EndIf: {
+                    if(stack.empty()) {
+                        break;
+                    }
+                    close_pending(stack.back(), line_begin(*offset));
+                    stack.pop_back();
+                    break;
+                }
             }
         }
     }
 
-    return regions;
+    // Levels still open at the content bound: close their regions there
+    // and report the stack so a follow-up scan can resume.
+    for(auto& level: stack) {
+        result.open_stack.push_back(level.inactive_begin.has_value() ? 1 : 0);
+        close_pending(level, end_offset);
+    }
+
+    return result;
 }
 
 }  // namespace clice::feature

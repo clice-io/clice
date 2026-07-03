@@ -4,6 +4,7 @@
 
 #include "compile/compilation.h"
 #include "feature/feature.h"
+#include "feature/inactive_regions.h"
 #include "index/tu_index.h"
 #include "server/protocol/worker.h"
 #include "server/worker/worker_common.h"
@@ -95,11 +96,13 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
 
     std::string tu_index_data;
     std::string pch_links_json;
+    feature::InactiveScan inactive;
     if(success) {
         tu_index_data = serialize_tu_index(unit);
         auto links = feature::document_links(unit);
         auto raw = to_raw(links);
         pch_links_json = std::move(raw.data);
+        inactive = feature::inactive_regions(unit, {}, 0, params.preamble_bound);
     }
 
     // Destroy CompilationUnit to flush PCH to disk.
@@ -113,6 +116,8 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
         result.deps = pch_info.deps;
         result.tu_index_data = std::move(tu_index_data);
         result.pch_links_json = std::move(pch_links_json);
+        result.inactive_regions = std::move(inactive.regions);
+        result.open_conditionals = std::move(inactive.open_stack);
         return result;
     } else {
         LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]", params.file, timer.ms(), errors);

@@ -124,82 +124,83 @@ public:
 
 void StatefulWorker::register_handlers() {
     // === Compile ===
-    peer.on_request(
-        [this](RequestContext& ctx,
-               const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
-            LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
+    peer.on_request([this](RequestContext& ctx, const worker::CompileParams& params)
+                        -> RequestResult<worker::CompileParams> {
+        LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
 
-            // Hold shared_ptr so Evict can't destroy the entry mid-compile.
-            auto doc = get_or_create(params.path);
-            touch_lru(params.path);
+        // Hold shared_ptr so Evict can't destroy the entry mid-compile.
+        auto doc = get_or_create(params.path);
+        touch_lru(params.path);
 
-            co_await doc->strand.lock();
+        co_await doc->strand.lock();
 
-            // Copy params to doc AFTER acquiring the strand lock, so that
-            // concurrent Compile requests waiting on the strand don't
-            // overwrite our fields before we use them.
-            doc->version = params.version;
-            doc->text = params.text;
-            doc->directory = params.directory;
-            doc->arguments = params.arguments;
-            doc->pch = params.pch;
-            doc->pcms.clear();
-            for(auto& [name, pcm_path]: params.pcms) {
-                doc->pcms.try_emplace(name, pcm_path);
+        // Copy params to doc AFTER acquiring the strand lock, so that
+        // concurrent Compile requests waiting on the strand don't
+        // overwrite our fields before we use them.
+        doc->version = params.version;
+        doc->text = params.text;
+        doc->directory = params.directory;
+        doc->arguments = params.arguments;
+        doc->pch = params.pch;
+        doc->pcms.clear();
+        for(auto& [name, pcm_path]: params.pcms) {
+            doc->pcms.try_emplace(name, pcm_path);
+        }
+
+        auto compile_result = co_await kota::queue([&]() -> worker::CompileResult {
+            ScopedTimer timer;
+
+            CompilationParams cp;
+            cp.kind = CompilationKind::Content;
+            fill_args(cp, doc->directory, doc->arguments);
+            if(!doc->pch.first.empty()) {
+                cp.pch = doc->pch;
+            }
+            cp.add_remapped_file(params.path, doc->text);
+            for(auto& entry: doc->pcms) {
+                cp.pcms.try_emplace(entry.getKey(), entry.getValue());
             }
 
-            auto compile_result = co_await kota::queue([&]() -> worker::CompileResult {
-                ScopedTimer timer;
+            doc->unit = compile(cp);
+            doc->has_ast = true;
+            doc->dirty.store(false, std::memory_order_release);
 
-                CompilationParams cp;
-                cp.kind = CompilationKind::Content;
-                fill_args(cp, doc->directory, doc->arguments);
-                if(!doc->pch.first.empty()) {
-                    cp.pch = doc->pch;
-                }
-                cp.add_remapped_file(params.path, doc->text);
-                for(auto& entry: doc->pcms) {
-                    cp.pcms.try_emplace(entry.getKey(), entry.getValue());
-                }
+            worker::CompileResult result;
+            result.version = doc->version;
+            if(doc->unit.completed() || doc->unit.fatal_error()) {
+                auto diags = feature::diagnostics(doc->unit);
+                auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(diags);
+                result.diagnostics = kota::codec::RawValue{json ? std::move(*json) : "[]"};
+                LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
+                         params.path,
+                         timer.ms(),
+                         diags.size(),
+                         doc->unit.fatal_error());
+            } else {
+                result.diagnostics = kota::codec::RawValue{"[]"};
+                LOG_WARN("Compile incomplete: path={}, {}ms", params.path, timer.ms());
+            }
+            result.memory_usage = 0;  // TODO: query actual memory
+            if(doc->unit.completed()) {
+                result.inactive_regions =
+                    feature::inactive_regions(doc->unit, params.open_conditionals, doc->pch.second)
+                        .regions;
+                result.deps = doc->unit.deps();
 
-                doc->unit = compile(cp);
-                doc->has_ast = true;
-                doc->dirty.store(false, std::memory_order_release);
-
-                worker::CompileResult result;
-                result.version = doc->version;
-                if(doc->unit.completed() || doc->unit.fatal_error()) {
-                    auto diags = feature::diagnostics(doc->unit);
-                    auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(diags);
-                    result.diagnostics = kota::codec::RawValue{json ? std::move(*json) : "[]"};
-                    LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
-                             params.path,
-                             timer.ms(),
-                             diags.size(),
-                             doc->unit.fatal_error());
-                } else {
-                    result.diagnostics = kota::codec::RawValue{"[]"};
-                    LOG_WARN("Compile incomplete: path={}, {}ms", params.path, timer.ms());
-                }
-                result.memory_usage = 0;  // TODO: query actual memory
-                if(doc->unit.completed()) {
-                    result.inactive_regions = feature::inactive_regions(doc->unit);
-                    result.deps = doc->unit.deps();
-
-                    // Build index for main file only (interested_only=true).
-                    auto tu_index = index::TUIndex::build(doc->unit, true);
-                    llvm::raw_string_ostream os(result.tu_index_data);
-                    tu_index.serialize(os);
-                }
-                return result;
-            });
-
-            doc->strand.unlock();
-            doc->ast_ready.set();
-            shrink_if_over_limit();
-
-            co_return compile_result.value();
+                // Build index for main file only (interested_only=true).
+                auto tu_index = index::TUIndex::build(doc->unit, true);
+                llvm::raw_string_ostream os(result.tu_index_data);
+                tu_index.serialize(os);
+            }
+            return result;
         });
+
+        doc->strand.unlock();
+        doc->ast_ready.set();
+        shrink_if_over_limit();
+
+        co_return compile_result.value();
+    });
 
     // === DocumentUpdate ===
     // Only mark the document dirty — do NOT update doc.text or doc.version

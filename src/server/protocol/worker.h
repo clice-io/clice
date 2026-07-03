@@ -68,6 +68,10 @@ struct CompileParams {
     std::vector<std::string> arguments;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
+
+    /// Conditional levels left open by the PCH's preamble (1 = branch
+    /// inactive), seeding the main compile's inactive-region scan.
+    std::vector<std::uint8_t> open_conditionals;
 };
 
 struct CompileResult {
@@ -80,7 +84,9 @@ struct CompileResult {
     std::string tu_index_data;
 
     /// Preprocessor-inactive regions as flat byte-offset pairs
-    /// [begin0, end0, begin1, end1, ...] in the main file.
+    /// [begin0, end0, begin1, end1, ...] in the main file. Covers only
+    /// the content past the PCH bound; the preamble's share lives in
+    /// PCHState (analogous to document links).
     std::vector<std::uint32_t> inactive_regions;
 };
 
@@ -140,8 +146,13 @@ struct BuildResult {
     std::string output_path;  ///< PCH or PCM path
     std::vector<std::string> deps;
     std::string tu_index_data;
-    std::string pch_links_json;         ///< Pre-serialized DocumentLink[] from PCH
-    kota::codec::RawValue result_json;  ///< Completion/SignatureHelp result
+    std::string pch_links_json;
+
+    /// Inactive regions within the preamble region (flat offset pairs)
+    /// and the conditional stack still open at the bound.
+    std::vector<std::uint32_t> inactive_regions;
+    std::vector<std::uint8_t> open_conditionals;  ///< Pre-serialized DocumentLink[] from PCH
+    kota::codec::RawValue result_json;            ///< Completion/SignatureHelp result
 };
 
 struct DocumentUpdateParams {

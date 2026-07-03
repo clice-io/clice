@@ -94,6 +94,13 @@ struct PCHState {
     std::uint32_t bound = 0;
     DepsSnapshot deps;
     std::string document_links_json;  ///< Pre-serialized DocumentLink[] from PCH build
+
+    /// Inactive regions within the preamble (flat offset pairs) and the
+    /// conditional stack still open at the bound — a #if cut by the bound
+    /// resumes in the AST compile's scan.
+    std::vector<std::uint32_t> inactive_regions;
+    std::vector<std::uint8_t> open_conditionals;
+
     std::shared_ptr<kota::event> building;
 };
 
