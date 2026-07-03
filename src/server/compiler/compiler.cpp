@@ -1119,6 +1119,11 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
 
     if(range) {
         wp.range = {clamped_offset(map, range->start), clamped_offset(map, range->end)};
+        if(wp.range.begin > wp.range.end) {
+            co_return kota::outcome_error(
+                kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
+                                 "Range start is after its end"});
+        }
     }
 
     auto result = co_await pool.send_stateful(path_id, wp);
@@ -1194,6 +1199,11 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     if(range) {
         lsp::LineMap map(wp.text);
         wp.format_range = {clamped_offset(map, range->start), clamped_offset(map, range->end)};
+        if(wp.format_range.begin > wp.format_range.end) {
+            co_return kota::outcome_error(
+                kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
+                                 "Range start is after its end"});
+        }
     }
 
     ScopedTimer timer;
