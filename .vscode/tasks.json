@@ -12,6 +12,17 @@
       "problemMatcher": []
     },
     {
+      "label": "npm: compile vscode ext",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "compile"],
+      "options": {
+        "cwd": "${workspaceFolder}/editors/vscode"
+      },
+      "dependsOn": "npm: install vscode deps",
+      "problemMatcher": []
+    },
+    {
       "label": "npm: watch vscode ext",
       "type": "shell",
       "command": "pnpm",
