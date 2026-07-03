@@ -90,7 +90,9 @@ When a file needs to be compiled, the compilation context is automatically deter
 
 3. **Dependency graph lookup**. If the file is not in the CDB (the common case for headers), the dependency graph's include relationships are used to find a source file that includes it, and that source file's compilation command is borrowed. Host candidates are ranked by relevance: a source sharing the header's stem (`utils.h` -> `utils.cpp`) wins, then sources in the same directory, then path proximity, with a lexicographic tie-break for determinism. For self-contained headers, borrowing the compilation command is sufficient; for non-self-contained headers, prefix code must also be synthesized to restore the preprocessor state — the distinction is made automatically, see the next section.
 
-4. **Default command fallback**. An isolated file with neither a CDB entry nor any host compiles with a synthesized default command, so basic language services keep working.
+4. **Command transfer heuristics (reserved, not yet implemented)**. For a file with neither a CDB entry nor any host, infer the best command from the CDB. Two strategies are planned: first, build a reverse table from the header search directories (`-I` etc.) of compile commands to the commands using them, and walk up from the file's parent directory — a header living under some command's search path borrows that command, and its own includes then resolve correctly (the typical case: a freshly created header not yet included by anything); second, nearest-path inference, borrowing from the CDB entry closest by path. This turns clangd's command interpolation into an explicit, observable tier instead of a hidden guess. The command source labeling already reserves an `Inferred` slot, and suspicious errors from inferred commands come with guidance diagnostics.
+
+5. **Default command fallback**. When everything above falls through, an isolated file compiles with a synthesized default command, so basic language services keep working.
 
 Beyond automatic resolution, clice also provides three LSP extension requests that let users explicitly query and switch compilation contexts:
 
