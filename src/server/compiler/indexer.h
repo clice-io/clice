@@ -131,6 +131,16 @@ public:
                                                     RelationKind kind,
                                                     Session* session);
 
+    /// Query between-symbol relations (Implementation, TypeDefinition, ...)
+    /// for the symbol at cursor and resolve each target symbol to its
+    /// definition location — the two-hop query behind go-to-implementation
+    /// and go-to-type-definition.
+    /// @param session  Active Session for this file, or nullptr.
+    std::vector<protocol::Location> query_symbol_targets(llvm::StringRef path,
+                                                         const protocol::Position& position,
+                                                         RelationKind kind,
+                                                         Session* session);
+
     /// Look up symbol info (hash, name, kind, range) at a cursor position.
     /// @param session  Active Session for this file, or nullptr.
     std::optional<SymbolInfo> lookup_symbol(const std::string& uri,

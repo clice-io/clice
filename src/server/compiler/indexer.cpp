@@ -335,13 +335,9 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
         return hit;
     }
 
-    // Fallback to MergedIndex, using session text for position -> offset.
-    if(!session)
-        return {};
-    auto offset = session->line_map().to_offset(position);
-    if(!offset)
-        return {};
-
+    // Fallback to MergedIndex. Position -> offset uses the session text when
+    // one exists (open but not yet compiled); for closed files the shard's
+    // own stored content provides the mapping.
     auto proj_it = workspace.project_index.path_pool.find(path);
     if(proj_it == workspace.project_index.path_pool.cache.end())
         return {};
@@ -354,6 +350,10 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
     if(ls.empty())
         return {};
     lsp::LineMap map(merged_index.content(), ls);
+
+    auto offset = session ? session->line_map().to_offset(position) : map.to_offset(position);
+    if(!offset)
+        return {};
     CursorHit hit;
     merged_index.lookup(*offset, [&](const index::Occurrence& o) {
         auto range = map.to_range(o.range.begin, o.range.end);
@@ -411,6 +411,26 @@ std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
         return true;
     });
 
+    return locations;
+}
+
+std::vector<protocol::Location> Indexer::query_symbol_targets(llvm::StringRef path,
+                                                              const protocol::Position& position,
+                                                              RelationKind kind,
+                                                              Session* session) {
+    auto hit = resolve_cursor(path, position, session);
+    if(hit.hash == 0)
+        return {};
+
+    llvm::SmallVector<index::SymbolHash> targets;
+    collect_unique_targets(hit.hash, kind, targets);
+
+    std::vector<protocol::Location> locations;
+    for(auto target: targets) {
+        if(auto info = resolve_symbol(target)) {
+            locations.push_back({std::move(info->uri), info->range});
+        }
+    }
     return locations;
 }
 
