@@ -186,6 +186,20 @@ struct Workspace {
     /// and restored into the Session on didOpen.
     llvm::DenseMap<std::uint32_t, SavedContext> saved_contexts;
 
+    /// Host source of each synthesized artifact (prefix/suffix/snapshot
+    /// file path -> host path_id), recorded at synthesis time and
+    /// persisted in cache.json. Opening an artifact compiles it with its
+    /// host's command — it is a fragment of that TU, and treated as
+    /// self-contained (an artifact needing context itself is out of scope).
+    llvm::StringMap<std::uint32_t> synthesized_hosts;
+
+    /// Whether `path` is one of our own synthesized context artifacts
+    /// (prefix/suffix/self-snapshot files under the cache directory). A
+    /// user can open these for debugging; they must never go through
+    /// header-context resolution themselves — a synthesized file deriving
+    /// context from other synthesized files would chain junk state.
+    bool is_synthesized_artifact(llvm::StringRef path) const;
+
     /// Effective self-containment mode for a header. X-macro style
     /// extensions are non-self-contained by construction; otherwise use
     /// the persisted verdict. Only NeedsContext is ever persisted — a

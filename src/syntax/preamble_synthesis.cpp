@@ -134,8 +134,8 @@ static void emit_rewritten(std::string& out,
                              ? from
                              : std::max(from, static_cast<std::uint32_t>(line_start + 1));
             auto eol = content.find('\n', include.offset);
-            auto end = eol == llvm::StringRef::npos ? to
-                                                    : std::min(to, static_cast<std::uint32_t>(eol));
+            auto end =
+                eol == llvm::StringRef::npos ? to : std::min(to, static_cast<std::uint32_t>(eol));
             out += content.substr(pos, begin - pos);
             pos = end;
             continue;

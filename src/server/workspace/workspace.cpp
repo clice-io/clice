@@ -19,6 +19,14 @@
 
 namespace clice {
 
+bool Workspace::is_synthesized_artifact(llvm::StringRef path) const {
+    if(config.project.cache_dir.empty()) {
+        return false;
+    }
+    auto artifact_dir = path::join(config.project.cache_dir, "header_context");
+    return path.starts_with(artifact_dir);
+}
+
 HeaderMode Workspace::header_mode(llvm::StringRef path, std::uint32_t path_id) const {
     if(path.ends_with(".def") || path.ends_with(".inc")) {
         return HeaderMode::NeedsContext;
@@ -174,12 +182,18 @@ struct CacheContextEntry {
     std::string command_hash;
 };
 
+struct CacheArtifactEntry {
+    std::uint32_t file;  // index into CacheData::paths
+    std::uint32_t host;  // index into CacheData::paths
+};
+
 struct CacheData {
     std::vector<std::string> paths;
     std::vector<CachePCHEntry> pch;
     std::vector<CachePCMEntry> pcm;
     std::vector<CacheModeEntry> header_modes;
     std::vector<CacheContextEntry> contexts;
+    std::vector<CacheArtifactEntry> artifacts;
 };
 
 }  // namespace
@@ -268,6 +282,14 @@ void Workspace::load_cache() {
         saved_contexts[path_pool.intern(file)] = std::move(saved);
     }
 
+    for(auto& entry: data.artifacts) {
+        auto file = resolve(entry.file);
+        auto host = resolve(entry.host);
+        if(file.empty() || host.empty())
+            continue;
+        synthesized_hosts[file] = path_pool.intern(host);
+    }
+
     LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries, {} context choices",
              pch_cache.size(),
              pcm_cache.size(),
@@ -326,6 +348,15 @@ void Workspace::save_cache() {
         if(mode != HeaderMode::NeedsContext)
             continue;
         data.header_modes.push_back({intern(path_id), static_cast<std::uint32_t>(mode)});
+    }
+
+    for(auto& entry: synthesized_hosts) {
+        auto [it, inserted] = index_map.try_emplace(entry.getKey().str(),
+                                                    static_cast<std::uint32_t>(data.paths.size()));
+        if(inserted) {
+            data.paths.push_back(entry.getKey().str());
+        }
+        data.artifacts.push_back({it->second, intern(entry.second)});
     }
 
     for(auto& [path_id, saved]: saved_contexts) {

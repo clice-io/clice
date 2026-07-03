@@ -385,6 +385,33 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
                                         std::string& directory,
                                         std::vector<std::string>& arguments,
                                         Session* session) {
+    // Opening one of our own synthesized files (prefix/suffix/snapshot):
+    // it is a fragment of the host TU it was synthesized for, so compile
+    // it with that host's command, treated as self-contained. It must not
+    // derive context from other synthesized state; without a recorded
+    // host (e.g. a stale artifact from a wiped cache), fall through to
+    // the default command.
+    if(workspace.is_synthesized_artifact(path)) {
+        auto it = workspace.synthesized_hosts.find(path);
+        if(it == workspace.synthesized_hosts.end()) {
+            return false;
+        }
+        auto host_path = workspace.path_pool.resolve(it->second);
+        if(!workspace.cdb.has_entry(host_path)) {
+            return false;
+        }
+        std::vector<std::string> rule_append, rule_remove;
+        workspace.config.match_rules(path, rule_append, rule_remove);
+        auto host_results =
+            workspace.cdb.lookup(host_path, {.remove = rule_remove, .append = rule_append});
+        workspace.toolchain.resolve_or_warn(host_results.front());
+        CompileCommand artifact_cmd = host_results.front();
+        artifact_cmd.source_file = workspace.path_pool.resolve(path_id).data();
+        directory = artifact_cmd.resolved.directory.str();
+        arguments = artifact_cmd.to_string_argv();
+        return true;
+    }
+
     // Self-containment routing: an Unknown or SelfContained header borrows
     // the host command without a prefix; NeedsContext synthesizes one.
     // run_compile() flips Unknown to NeedsContext when the trial compile's
@@ -623,6 +650,10 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
         }
     }
 
+    if(!self_snapshot_path.empty()) {
+        workspace.synthesized_hosts[self_snapshot_path] = host_path_id;
+    }
+
     auto synthesized =
         synthesize_context(chain_entries, target_path, resolver, occurrence, self_snapshot_path);
     if(!synthesized) {
@@ -656,6 +687,7 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
                  preamble_path,
                  header_path_id);
     }
+    workspace.synthesized_hosts[preamble_path] = host_path_id;
 
     // The suffix restores everything after the include position (closing
     // braces of enums/functions the fragment is embedded in). Injected by
@@ -672,6 +704,7 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
                 return std::nullopt;
             }
         }
+        workspace.synthesized_hosts[suffix_path] = host_path_id;
     }
 
     // Snapshot the chain files for staleness detection: their content lives

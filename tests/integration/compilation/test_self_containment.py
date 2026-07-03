@@ -262,3 +262,57 @@ async def test_suffix_function_body(client, tmp_path):
     await client.open_and_wait(tmp_path / "main.cpp")
     def_uri, _ = await client.open_and_wait(tmp_path / "handlers.def")
     assert_clean_compile(client, def_uri)
+
+
+async def test_open_synthesized_artifact(client, tmp_path):
+    """Opening a synthesized prefix file compiles it with its host's
+    command (it is a fragment of that TU), not with junk context."""
+    (tmp_path / "types.h").write_text("#pragma once\nstruct Point { int x; int y; };\n")
+    (tmp_path / "utils.h").write_text("inline int get_x(Point p) { return p.x; }\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "types.h"\n#include "utils.h"\nint main() { return get_x({1, 2}); }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    await client.open_and_wait(tmp_path / "main.cpp")
+    utils_uri, _ = await client.open_and_wait(tmp_path / "utils.h")
+    assert_clean_compile(client, utils_uri)
+
+    prefixes = prefix_files(tmp_path)
+    assert len(prefixes) == 1
+    prefix_uri, _ = await client.open_and_wait(prefixes[0])
+    assert_clean_compile(client, prefix_uri)
+
+    # No context of its own, and no further synthesis chained off it.
+    q = await client.query_context(prefix_uri)
+    assert get_field(q, "total") == 0, q
+    assert len(prefix_files(tmp_path)) == 1, (
+        "Opening an artifact must not synthesize more"
+    )
+
+
+async def test_unbalanced_brace_degrades_gracefully(client, tmp_path):
+    """A user-typed unbalanced brace in an embedded fragment steals the
+    suffix's closer: diagnostics must appear, and the server must keep
+    serving requests afterwards."""
+    (tmp_path / "list.def").write_text("X(alpha)\nvoid oops() {\n")  # unbalanced {
+    (tmp_path / "main.cpp").write_text(
+        "#define X(name) int name;\n"
+        "enum Ids {\n"
+        '#include "list.def"\n'
+        "};\n"
+        "#undef X\n"
+        "int main() { return 0; }\n"
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    await client.open_and_wait(tmp_path / "main.cpp")
+    def_uri, _ = await client.open_and_wait(tmp_path / "list.def")
+    diags = client.diagnostics.get(def_uri, [])
+    assert diags, "The imbalance must surface as diagnostics"
+
+    # The server stays healthy: a follow-up request still answers.
+    q = await client.query_context(def_uri)
+    assert get_field(q, "total") >= 1
