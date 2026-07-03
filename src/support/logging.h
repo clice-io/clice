@@ -11,15 +11,44 @@
 
 #include "spdlog/spdlog.h"
 
-/// # Logging taxonomy
+/// # Logging & error-feedback design
 ///
-/// clice reports through several channels; pick by audience and purpose:
+/// Every report in clice answers one question first: WHO must act on it,
+/// and is it clice's fault? That decides the channel — not how severe the
+/// message feels. The channels:
 ///
-/// ## File/console log — LOG_TRACE .. LOG_FATAL
-/// The developer-facing record of what the server did.
+///   situation                                   → channel
+///   ─────────────────────────────────────────────────────────────────────
+///   a clice invariant broke (a bug in clice)    → LOG_ANOMALY   (anomaly.h)
+///   the user must fix their setup or config     → LOG_GUIDANCE  (anomaly.h)
+///     ... and it is tied to a specific file     →   + a published diagnostic
+///   a request cannot be served                  → LSP error response
+///   an operation failed but is expected in       → LOG_WARN / LOG_ERROR
+///     operation (user code errors, crash
+///     windows, cancellations)
+///   a measurement for profiling                 → LOG_PERF
+///   the narrative of what the server did        → LOG_INFO/DEBUG/TRACE
+///
+/// Two hard rules fall out of this:
+/// - LOG_ANOMALY is a soft assertion. If a condition is reachable through
+///   user input or normal operation, it is NOT an anomaly — downgrade it.
+///   Debug builds abort on anomalies (see CLICE_ANOMALY_NO_TRAP); Release
+///   logs "[anomaly:<id>]" and pushes window/logMessage.
+/// - Failures the user can cause must never abort or spam anomalies:
+///   classify them structurally (has_user_errors, dispatch_errc) and log
+///   them as warn/error instead.
+///
+/// The anomaly/guidance channels live in support/anomaly.h, deliberately
+/// NOT in this header: they are reporting policy (trap, per-id rate limit,
+/// client notify hook, test hooks) layered on top of this transport, and
+/// their AnomalyId enum evolves — this header is included by every TU, so
+/// keeping the enum out of it keeps "add an anomaly id" from recompiling
+/// the whole project.
+///
+/// ## Levels — LOG_TRACE .. LOG_FATAL
 /// - trace: extremely verbose, per-token / per-payload detail.
-/// - debug: control-flow detail for chasing a specific bug (per-lookup
-///   cache decisions, scheduler state changes, generation checks).
+/// - debug: control-flow detail for chasing a specific bug (scheduler
+///   state changes, generation checks, deferred rebuilds).
 /// - info: one line per meaningful event — startup steps, per-file
 ///   compile/index results, command decision logs. This is the default
 ///   level; an info-level session log must be enough to reconstruct what
@@ -38,18 +67,6 @@
 /// durations), "request" (per-request latency: wait_ms = time until a
 /// worker was ready, total_ms = end-to-end). Use stable key=value pairs and
 /// `_ms` suffixes for durations — scripts aggregate these lines.
-///
-/// ## Anomalies — LOG_ANOMALY(id, ...) (support/anomaly.h)
-/// Soft assertions for states that are unreachable unless clice itself is
-/// buggy. Debug builds abort (see CLICE_ANOMALY_NO_TRAP); Release logs
-/// "[anomaly:<id>]" and pushes window/logMessage. Never use for conditions
-/// reachable through user input or normal operation.
-///
-/// ## Guidance — LOG_GUIDANCE(...) (support/anomaly.h)
-/// User-actionable situations that are not clice bugs (missing CDB, invalid
-/// configuration), pushed to the client via window/logMessage as warnings.
-/// File-specific guidance is additionally published as diagnostics
-/// (inferred-compile-command, clice.toml issues).
 ///
 /// ## Process ownership
 /// The master logs to <logging_dir>/<session>/master.log and mirrors to
