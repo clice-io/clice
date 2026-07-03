@@ -199,6 +199,18 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         session->text = params.text_document.text;
         session->line_starts = lsp::build_line_starts(session->text);
 
+        // Restore a context choice persisted from an earlier session.
+        if(auto it = srv.workspace.saved_contexts.find(path_id);
+           it != srv.workspace.saved_contexts.end()) {
+            auto& saved = it->second;
+            if(saved.host_path_id != 0) {
+                session->active_context =
+                    Session::ActiveContext{saved.host_path_id, saved.occurrence};
+            } else if(!saved.command_hash.empty()) {
+                session->active_command = saved.command_hash;
+            }
+        }
+
         session->generation++;
 
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
@@ -632,8 +644,10 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto buf = llvm::MemoryBuffer::getFile(includer_path);
         if(!buf)
             return std::uint32_t(0);
-        auto null_resolver = [](llvm::StringRef, bool, bool, llvm::StringRef)
-            -> std::optional<std::string> { return std::nullopt; };
+        auto null_resolver =
+            [](llvm::StringRef, bool, bool, llvm::StringRef) -> std::optional<std::string> {
+            return std::nullopt;
+        };
         return count_include_occurrences((*buf)->getBuffer(),
                                          includer_path,
                                          target_path,
@@ -642,8 +656,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
 
     peer.on_request(
         "clice/queryContext",
-        [this, flags_label, count_occurrences](
-            RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
+        [this, flags_label, count_occurrences](RequestContext& ctx,
+                                               const ext::QueryContextParams& params) -> RawResult {
             auto& srv = this->server;
             auto& ws = srv.workspace;
             auto path = uri_to_path(params.uri);
@@ -722,59 +736,60 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             co_return to_raw(result);
         });
 
-    peer.on_request(
-        "clice/currentContext",
-        [this,
-         flags_label](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
-            auto& srv = this->server;
-            auto path = uri_to_path(params.uri);
-            auto path_id = srv.workspace.path_pool.intern(path);
+    peer.on_request("clice/currentContext",
+                    [this, flags_label](RequestContext& ctx,
+                                        const ext::CurrentContextParams& params) -> RawResult {
+                        auto& srv = this->server;
+                        auto path = uri_to_path(params.uri);
+                        auto path_id = srv.workspace.path_pool.intern(path);
 
-            ext::CurrentContextResult result;
-            auto session = srv.find_session(path_id);
-            if(session && session->active_context) {
-                auto& active = *session->active_context;
-                auto ctx_path = srv.workspace.path_pool.resolve(active.host_path_id);
-                auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
-                if(ctx_uri_opt) {
-                    ext::ContextItem item;
-                    item.label = llvm::sys::path::filename(ctx_path).str();
-                    if(active.occurrence > 0) {
-                        item.label = std::format("{} (#{})", item.label, active.occurrence + 1);
-                    }
-                    item.description = std::string(ctx_path);
-                    item.uri = ctx_uri_opt->str();
-                    item.occurrence = active.occurrence;
-                    result.context = std::move(item);
-                }
-            } else if(session && session->active_command) {
-                auto& ws = srv.workspace;
-                ext::ContextItem item;
-                item.uri = params.uri;
-                item.command_hash = *session->active_command;
-                item.label = std::format("config {}", session->active_command->substr(0, 8));
-                if(ws.cdb.has_entry(path)) {
-                    for(auto& cmd: ws.cdb.lookup(path)) {
-                        if(canonical_command_hash(cmd.to_string_argv()) ==
-                           *session->active_command) {
-                            auto desc = flags_label(cmd);
-                            if(!desc.empty()) {
-                                item.label = std::move(desc);
+                        ext::CurrentContextResult result;
+                        auto session = srv.find_session(path_id);
+                        if(session && session->active_context) {
+                            auto& active = *session->active_context;
+                            auto ctx_path = srv.workspace.path_pool.resolve(active.host_path_id);
+                            auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
+                            if(ctx_uri_opt) {
+                                ext::ContextItem item;
+                                item.label = llvm::sys::path::filename(ctx_path).str();
+                                if(active.occurrence > 0) {
+                                    item.label =
+                                        std::format("{} (#{})", item.label, active.occurrence + 1);
+                                }
+                                item.description = std::string(ctx_path);
+                                item.uri = ctx_uri_opt->str();
+                                item.occurrence = active.occurrence;
+                                result.context = std::move(item);
                             }
-                            item.description = cmd.resolved.directory.str();
-                            break;
+                        } else if(session && session->active_command) {
+                            auto& ws = srv.workspace;
+                            ext::ContextItem item;
+                            item.uri = params.uri;
+                            item.command_hash = *session->active_command;
+                            item.label =
+                                std::format("config {}", session->active_command->substr(0, 8));
+                            if(ws.cdb.has_entry(path)) {
+                                for(auto& cmd: ws.cdb.lookup(path)) {
+                                    if(canonical_command_hash(cmd.to_string_argv()) ==
+                                       *session->active_command) {
+                                        auto desc = flags_label(cmd);
+                                        if(!desc.empty()) {
+                                            item.label = std::move(desc);
+                                        }
+                                        item.description = cmd.resolved.directory.str();
+                                        break;
+                                    }
+                                }
+                            }
+                            result.context = std::move(item);
                         }
-                    }
-                }
-                result.context = std::move(item);
-            }
-            co_return to_raw(result);
-        });
+                        co_return to_raw(result);
+                    });
 
     peer.on_request(
         "clice/switchContext",
-        [this,
-         count_occurrences](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
+        [this, count_occurrences](RequestContext& ctx,
+                                  const ext::SwitchContextParams& params) -> RawResult {
             auto& srv = this->server;
             auto& ws = srv.workspace;
             auto path = uri_to_path(params.uri);
@@ -829,6 +844,17 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             session->pch_ref.reset();
             session->ast_deps.reset();
             session->ast_dirty = true;
+
+            // Persist the choice across sessions.
+            SavedContext saved;
+            if(session->active_context) {
+                saved.host_path_id = session->active_context->host_path_id;
+                saved.occurrence = session->active_context->occurrence;
+            } else if(session->active_command) {
+                saved.command_hash = *session->active_command;
+            }
+            ws.saved_contexts[path_id] = std::move(saved);
+            ws.save_cache();
 
             result.success = true;
             co_return to_raw(result);

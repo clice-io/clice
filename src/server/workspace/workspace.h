@@ -21,8 +21,8 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -62,6 +62,23 @@ struct HeaderContext {
 
     /// Staleness snapshot over the chain files (mtime + content hash).
     DepsSnapshot deps;
+};
+
+/// Whether a header can compile on its own (given a borrowed command)
+/// or needs a synthesized prefix restoring the includer's preprocessor
+/// state. Determined by compiling self-contained first and falling back
+/// when the diagnostics indicate missing context.
+enum class HeaderMode : std::uint32_t {
+    Unknown = 0,
+    SelfContained = 1,
+    NeedsContext = 2,
+};
+
+/// A user's context choice, persisted across sessions.
+struct SavedContext {
+    std::uint32_t host_path_id = 0;  ///< Header context host; 0 = none.
+    std::uint32_t occurrence = 0;
+    std::string command_hash;  ///< Pinned CDB entry; empty = none.
 };
 
 /// Cached PCH state.  Stored in Workspace.pch_cache keyed by the content
@@ -148,6 +165,14 @@ struct Workspace {
     /// path_id.  Contains symbol occurrences, relations, and stored content
     /// for position mapping.
     llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
+
+    /// Self-containment verdicts for headers, persisted in cache.json.
+    /// Reset when the header itself is saved.
+    llvm::DenseMap<std::uint32_t, HeaderMode> header_modes;
+
+    /// User context choices (clice/switchContext), persisted in cache.json
+    /// and restored into the Session on didOpen.
+    llvm::DenseMap<std::uint32_t, SavedContext> saved_contexts;
 
     /// Rank host source candidates for a header by relevance: a source
     /// with the header's stem (utils.h -> utils.cpp) wins, then sources in

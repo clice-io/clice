@@ -1,7 +1,7 @@
 #include "server/workspace/workspace.h"
 
-#include <chrono>
 #include <algorithm>
+#include <chrono>
 #include <ranges>
 #include <tuple>
 
@@ -150,10 +150,24 @@ struct CachePCMEntry {
     std::vector<CacheDepEntry> deps;
 };
 
+struct CacheModeEntry {
+    std::uint32_t file;  // index into CacheData::paths
+    std::uint32_t mode;  // HeaderMode
+};
+
+struct CacheContextEntry {
+    std::uint32_t file;  // index into CacheData::paths
+    std::uint32_t host;  // index into CacheData::paths; ~0u = none
+    std::uint32_t occurrence;
+    std::string command_hash;
+};
+
 struct CacheData {
     std::vector<std::string> paths;
     std::vector<CachePCHEntry> pch;
     std::vector<CachePCMEntry> pcm;
+    std::vector<CacheModeEntry> header_modes;
+    std::vector<CacheContextEntry> contexts;
 };
 
 }  // namespace
@@ -219,9 +233,33 @@ void Workspace::load_cache() {
         LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, *pcm_path);
     }
 
-    LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries",
+    for(auto& entry: data.header_modes) {
+        auto file = resolve(entry.file);
+        if(file.empty())
+            continue;
+        header_modes[path_pool.intern(file)] = static_cast<HeaderMode>(entry.mode);
+    }
+
+    for(auto& entry: data.contexts) {
+        auto file = resolve(entry.file);
+        if(file.empty())
+            continue;
+        SavedContext saved;
+        if(entry.host != ~0u) {
+            auto host = resolve(entry.host);
+            if(host.empty())
+                continue;
+            saved.host_path_id = path_pool.intern(host);
+        }
+        saved.occurrence = entry.occurrence;
+        saved.command_hash = entry.command_hash;
+        saved_contexts[path_pool.intern(file)] = std::move(saved);
+    }
+
+    LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries, {} context choices",
              pch_cache.size(),
-             pcm_cache.size());
+             pcm_cache.size(),
+             saved_contexts.size());
 }
 
 void Workspace::save_cache() {
@@ -270,6 +308,21 @@ void Workspace::save_cache() {
             entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }
         data.pcm.push_back(std::move(entry));
+    }
+
+    for(auto& [path_id, mode]: header_modes) {
+        if(mode == HeaderMode::Unknown)
+            continue;
+        data.header_modes.push_back({intern(path_id), static_cast<std::uint32_t>(mode)});
+    }
+
+    for(auto& [path_id, saved]: saved_contexts) {
+        CacheContextEntry entry;
+        entry.file = intern(path_id);
+        entry.host = saved.host_path_id ? intern(saved.host_path_id) : ~0u;
+        entry.occurrence = saved.occurrence;
+        entry.command_hash = saved.command_hash;
+        data.contexts.push_back(std::move(entry));
     }
 
     auto json_str = kota::codec::json::to_json(data);

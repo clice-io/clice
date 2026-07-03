@@ -153,7 +153,8 @@ private:
                              CommandSource source);
 
     std::optional<HeaderContext> resolve_header_context(std::uint32_t header_path_id,
-                                                        Session* session);
+                                                        Session* session,
+                                                        bool synthesize);
 
     bool fill_header_context_args(llvm::StringRef path,
                                   std::uint32_t path_id,

@@ -167,6 +167,10 @@ void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& pee
 }
 
 void MasterServer::on_file_saved(std::uint32_t path_id) {
+    // The saved file's own self-containment may have changed; re-evaluate
+    // on its next compile.
+    workspace.header_modes.erase(path_id);
+
     auto dirtied = workspace.on_file_saved(path_id);
     for(auto dirty_id: dirtied) {
         auto session = find_session(dirty_id);

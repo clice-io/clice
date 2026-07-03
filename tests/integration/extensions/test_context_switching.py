@@ -23,7 +23,13 @@ def write_entries(workspace, entries):
         {
             "directory": str(workspace),
             "file": str(workspace / f),
-            "arguments": ["clang++", "-std=c++17", "-fsyntax-only", *args, str(workspace / f)],
+            "arguments": [
+                "clang++",
+                "-std=c++17",
+                "-fsyntax-only",
+                *args,
+                str(workspace / f),
+            ],
         }
         for f, args in entries
     ]
@@ -47,7 +53,9 @@ async def test_source_command_switch(client, tmp_path):
     assert get_field(query, "total") == 2
     contexts = get_field(query, "contexts", [])
     hashes = {get_field(c, "label"): get_field(c, "commandHash") for c in contexts}
-    assert all(hashes.values()), f"Source contexts must carry commandHash, got: {contexts}"
+    assert all(hashes.values()), (
+        f"Source contexts must carry commandHash, got: {contexts}"
+    )
     plain_hash = next(h for l, h in hashes.items() if "-DEXPECTED" not in l)
     defined_hash = next(h for l, h in hashes.items() if "-DEXPECTED" in l)
 
@@ -87,7 +95,9 @@ async def test_occurrence_switch(client, tmp_path):
     def_uri, _ = await client.open_and_wait(tmp_path / "list.def")
 
     query = await client.query_context(def_uri)
-    assert get_field(query, "total") == 2, f"Expected 2 occurrence contexts, got {query}"
+    assert get_field(query, "total") == 2, (
+        f"Expected 2 occurrence contexts, got {query}"
+    )
     contexts = get_field(query, "contexts", [])
     occurrences = sorted(get_field(c, "occurrence") for c in contexts)
     assert occurrences == [0, 1], f"Expected occurrences 0 and 1, got: {contexts}"
@@ -108,7 +118,9 @@ async def test_context_dedup_and_ranking(client, tmp_path):
     the representative is the best-ranked host (matching stem wins)."""
     (tmp_path / "widget.h").write_text("inline int widget_size() { return 4; }\n")
     for name in ("zzz.cpp", "widget.cpp", "aaa.cpp"):
-        (tmp_path / name).write_text(f'#include "widget.h"\nint {name[0]}() {{ return widget_size(); }}\n')
+        (tmp_path / name).write_text(
+            f'#include "widget.h"\nint {name[0]}() {{ return widget_size(); }}\n'
+        )
     write_cdb(tmp_path, ["zzz.cpp", "widget.cpp", "aaa.cpp"])
     await client.initialize(tmp_path)
 
@@ -128,7 +140,9 @@ async def test_context_dedup_and_ranking(client, tmp_path):
 async def test_switch_rejects_non_includer(client, tmp_path):
     """Switching a header to a source that does not include it must fail."""
     (tmp_path / "utils.h").write_text("inline int util() { return 1; }\n")
-    (tmp_path / "main.cpp").write_text('#include "utils.h"\nint main() { return util(); }\n')
+    (tmp_path / "main.cpp").write_text(
+        '#include "utils.h"\nint main() { return util(); }\n'
+    )
     (tmp_path / "other.cpp").write_text("int other() { return 2; }\n")
     write_cdb(tmp_path, ["main.cpp", "other.cpp"])
     await client.initialize(tmp_path)
