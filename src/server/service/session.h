@@ -91,7 +91,7 @@ struct Session {
 
     /// Compilation context for header files that lack their own CDB entry.
     /// Stores the host source file and synthesized preamble for this header.
-    std::optional<HeaderFileContext> header_context;
+    std::optional<HeaderContext> header_context;
 
     /// User-selected compilation context override (via clice/switchContext).
     /// When set, overrides automatic header context resolution.

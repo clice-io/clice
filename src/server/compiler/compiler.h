@@ -152,8 +152,8 @@ private:
                              const kota::codec::RawValue& diags,
                              CommandSource source);
 
-    std::optional<HeaderFileContext> resolve_header_context(std::uint32_t header_path_id,
-                                                            Session* session);
+    std::optional<HeaderContext> resolve_header_context(std::uint32_t header_path_id,
+                                                        Session* session);
 
     bool fill_header_context_args(llvm::StringRef path,
                                   std::uint32_t path_id,

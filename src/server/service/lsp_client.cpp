@@ -609,8 +609,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto hosts = ws.dep_graph.find_host_sources(path_id);
             for(auto host_id: hosts) {
                 auto host_path = ws.path_pool.resolve(host_id);
-                auto host_cdb = ws.cdb.lookup(host_path);
-                if(host_cdb.empty())
+                if(!ws.cdb.has_entry(host_path))
                     continue;
                 auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
                 if(!host_uri_opt)
@@ -622,7 +621,10 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 all_items.push_back(std::move(item));
             }
 
-            if(hosts.empty()) {
+            // Real entries only: lookup() would synthesize a default command
+            // even for unknown files, offering a bogus context that
+            // switchContext would then reject.
+            if(hosts.empty() && ws.cdb.has_entry(path)) {
                 auto entries = ws.cdb.lookup(path);
                 for(std::size_t i = 0; i < entries.size(); ++i) {
                     auto& cmd = entries[i];
@@ -697,8 +699,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             ext::SwitchContextResult result;
 
             auto& ws = srv.workspace;
-            auto context_cdb = ws.cdb.lookup(context_path);
-            if(context_cdb.empty()) {
+            if(!ws.cdb.has_entry(context_path)) {
                 result.success = false;
                 co_return to_raw(result);
             }

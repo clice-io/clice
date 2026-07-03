@@ -45,10 +45,18 @@ struct DepsSnapshot {
 };
 
 /// Context for compiling a header file that lacks its own CDB entry.
-struct HeaderFileContext {
+struct HeaderContext {
     std::uint32_t host_path_id;   ///< Source file acting as host.
     std::string preamble_path;    ///< Path to generated preamble file on disk.
     std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
+
+    /// Include chain from host to the target's direct includer (excludes the
+    /// target itself). The synthesized preamble embeds these files' content,
+    /// so clang never opens them — staleness must be tracked here.
+    llvm::SmallVector<std::uint32_t> chain;
+
+    /// Staleness snapshot over the chain files (mtime + content hash).
+    DepsSnapshot deps;
 };
 
 /// Cached PCH state.  Content-addressed by preamble text + frontend compile

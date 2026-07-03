@@ -28,8 +28,21 @@ struct ScanResult {
         /// Resolved file path (fuzzy/precise scan) or raw header name (lexer scan).
         std::string path;
 
+        /// Byte offset of the directive's `#` in the scanned content.
+        /// Only populated by the lexer-based scan(); 0 for other scan modes.
+        std::uint32_t offset = 0;
+
+        /// Range of the filename token including delimiters (`"..."` or
+        /// `<...>`). Only populated by the lexer-based scan().
+        std::uint32_t name_offset = 0;
+        std::uint32_t name_length = 0;
+
         /// Whether this include is inside a conditional directive context.
         bool conditional = false;
+
+        /// Number of #if/#ifdef/#ifndef blocks open at this directive.
+        /// Only populated by the lexer-based scan().
+        std::uint16_t conditional_depth = 0;
 
         /// Whether the included file was not found during resolution.
         bool not_found = false;

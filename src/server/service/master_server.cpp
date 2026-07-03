@@ -20,6 +20,7 @@
 #include "kota/ipc/lsp/uri.h"
 #include "kota/ipc/recording_transport.h"
 #include "kota/ipc/transport.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
@@ -176,9 +177,16 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
         }
     }
 
-    for(auto& [path_id, session]: sessions) {
-        if(session->header_context && session->header_context->host_path_id == path_id) {
-            session->header_context.reset();
+    // Header sessions whose include chain contains the saved file must
+    // re-synthesize their preamble: it embeds the chain files' content, so
+    // neither the dependents cascade above nor clang's own dependency
+    // tracking catches this. Zeroing build_at forces deps_changed() to
+    // re-validate every chain file by content hash. Do NOT reset the
+    // context itself: an in-flight compile can clobber ast_dirty when it
+    // finishes, and the surviving snapshot is what lets is_stale() recover.
+    for(auto& [session_id, session]: sessions) {
+        if(session->header_context && llvm::is_contained(session->header_context->chain, path_id)) {
+            session->header_context->deps.build_at = 0;
             session->ast_dirty = true;
         }
     }

@@ -1,6 +1,7 @@
 #include "server/compiler/compiler.h"
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <ranges>
 #include <string>
@@ -16,6 +17,7 @@
 #include "support/logging.h"
 #include "support/timer.h"
 #include "syntax/include_resolver.h"
+#include "syntax/preamble_synthesis.h"
 #include "syntax/scan.h"
 
 #include "kota/async/async.h"
@@ -349,19 +351,23 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
                                         std::string& directory,
                                         std::vector<std::string>& arguments,
                                         Session* session) {
-    // Use cached context if available; otherwise resolve.
-    // If an active context override exists, invalidate cache if it points to
-    // a different host so we re-resolve with the correct one.
-    const HeaderFileContext* ctx_ptr = nullptr;
+    // Use cached context if it is still valid; otherwise resolve. The cache
+    // is dropped when an active context override points to a different host,
+    // or when any chain file changed on disk (the synthesized preamble
+    // embeds their content, so it must be rebuilt).
     if(session && session->header_context.has_value()) {
-        if(session->active_context.has_value() &&
-           session->header_context->host_path_id != *session->active_context) {
+        if((session->active_context.has_value() &&
+            session->header_context->host_path_id != *session->active_context) ||
+           deps_changed(workspace.path_pool, session->header_context->deps)) {
             session->header_context.reset();
-        } else {
-            ctx_ptr = &*session->header_context;
         }
     }
-    if(!ctx_ptr) {
+
+    std::optional<HeaderContext> local_ctx;
+    const HeaderContext* ctx_ptr = nullptr;
+    if(session && session->header_context.has_value()) {
+        ctx_ptr = &*session->header_context;
+    } else {
         auto resolved = resolve_header_context(path_id, session);
         if(!resolved) {
             LOG_WARN("No CDB entry and no header context for {}", path);
@@ -371,12 +377,9 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
             session->header_context = std::move(*resolved);
             ctx_ptr = &*session->header_context;
         } else {
-            // Background indexing path — no session to store on.
-            // Use a temporary (caller will use it immediately).
-            // Store in a local and return.
-            static thread_local std::optional<HeaderFileContext> tl_ctx;
-            tl_ctx = std::move(*resolved);
-            ctx_ptr = &*tl_ctx;
+            // Background indexing path — no session to cache on.
+            local_ctx = std::move(*resolved);
+            ctx_ptr = &*local_ctx;
         }
     }
 
@@ -417,8 +420,8 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     return true;
 }
 
-std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t header_path_id,
-                                                                  Session* session) {
+std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t header_path_id,
+                                                              Session* session) {
     // Find source files that transitively include this header.
     auto hosts = workspace.dep_graph.find_host_sources(header_path_id);
     if(hosts.empty()) {
@@ -463,72 +466,75 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
         return std::nullopt;
     }
 
-    // Build preamble text: for each file in the chain except the last (target),
-    // append all content up to (but not including) the line that includes the
-    // next file in the chain.
-    std::string preamble;
+    // Include directives along the chain are resolved with the host's real
+    // search configuration, so same-named headers in different directories
+    // cannot be confused.
+    auto host_path = workspace.path_pool.resolve(host_path_id);
+    std::vector<std::string> rule_append, rule_remove;
+    workspace.config.match_rules(host_path, rule_append, rule_remove);
+    auto host_results =
+        workspace.cdb.lookup(host_path, {.remove = rule_remove, .append = rule_append});
+    if(host_results.empty()) {
+        return std::nullopt;
+    }
+    workspace.toolchain.resolve_or_warn(host_results.front());
+
+    auto argv = host_results.front().to_argv();
+    auto search_config = extract_search_config(argv, host_results.front().resolved.directory);
+    DirListingCache dir_cache;
+    auto resolved_config = resolve_search_config(search_config, dir_cache);
+
+    auto resolver = [&](llvm::StringRef filename,
+                        bool is_angled,
+                        bool is_include_next,
+                        llvm::StringRef includer_dir) -> std::optional<std::string> {
+        auto entries = resolve_dir(includer_dir, dir_cache);
+        auto result = resolve_include(filename,
+                                      is_angled,
+                                      entries,
+                                      includer_dir,
+                                      is_include_next,
+                                      0,
+                                      resolved_config,
+                                      dir_cache);
+        if(!result) {
+            return std::nullopt;
+        }
+        // Normalize through the path pool: resolve_include builds native
+        // separators, but chain paths compared against it are pool-normalized.
+        return std::string(workspace.path_pool.resolve(workspace.path_pool.intern(result->path)));
+    };
+
+    // Read the chain files (all but the target) from disk. The synthesized
+    // preamble deliberately reflects disk state, never open-document buffers:
+    // open files must not be depended upon by other files. The staleness
+    // snapshot timestamp is taken before the reads so a concurrent write
+    // lands past build_at and triggers re-validation.
+    auto build_at = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::vector<std::string> chain_contents;
+    llvm::SmallVector<ChainEntry> chain_entries;
+    chain_contents.reserve(chain.size() - 1);
+    chain_entries.reserve(chain.size() - 1);
     for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
-        auto cur_id = chain[i];
-        auto next_id = chain[i + 1];
-
-        auto cur_path = workspace.path_pool.resolve(cur_id);
-        auto next_path = workspace.path_pool.resolve(next_id);
-        auto next_filename = llvm::sys::path::filename(next_path);
-
-        // Prefer in-memory document text over disk content.
-        std::string content;
+        auto cur_path = workspace.path_pool.resolve(chain[i]);
         auto buf = llvm::MemoryBuffer::getFile(cur_path);
         if(!buf) {
             LOG_WARN("resolve_header_context: cannot read {}", cur_path);
             return std::nullopt;
         }
-        content = (*buf)->getBuffer().str();
-
-        // Scan line by line for the #include that brings in next_filename.
-        llvm::StringRef content_ref(content);
-        std::size_t line_start = 0;
-        std::size_t include_line_start = std::string::npos;
-        while(line_start <= content_ref.size()) {
-            auto newline_pos = content_ref.find('\n', line_start);
-            auto line_end =
-                (newline_pos == llvm::StringRef::npos) ? content_ref.size() : newline_pos;
-            auto line = content_ref.slice(line_start, line_end).trim();
-
-            if(line.starts_with("#include") || line.starts_with("# include")) {
-                // Extract the filename from the #include directive.
-                // Handles: #include "foo.h", #include <foo.h>, # include "foo.h"
-                auto quote_start = line.find_first_of("\"<");
-                auto quote_end = llvm::StringRef::npos;
-                if(quote_start != llvm::StringRef::npos) {
-                    char close = (line[quote_start] == '"') ? '"' : '>';
-                    quote_end = line.find(close, quote_start + 1);
-                }
-                if(quote_start != llvm::StringRef::npos && quote_end != llvm::StringRef::npos) {
-                    auto included = line.slice(quote_start + 1, quote_end);
-                    auto included_filename = llvm::sys::path::filename(included);
-                    if(included_filename == next_filename) {
-                        include_line_start = line_start;
-                        break;
-                    }
-                }
-            }
-
-            line_start =
-                (newline_pos == llvm::StringRef::npos) ? content_ref.size() + 1 : newline_pos + 1;
-        }
-
-        // Emit a #line marker then all content before the include line.
-        preamble += std::format("#line 1 \"{}\"\n", cur_path.str());
-        if(include_line_start != std::string::npos) {
-            preamble += content_ref.substr(0, include_line_start).str();
-        } else {
-            // No matching include line found — emit the whole file to be safe.
-            LOG_DEBUG("resolve_header_context: include line for {} not found in {}, emitting full",
-                      next_filename,
-                      cur_path);
-            preamble += content;
-        }
+        chain_contents.emplace_back((*buf)->getBuffer());
+        chain_entries.push_back({cur_path, chain_contents.back()});
     }
+
+    auto target_path = workspace.path_pool.resolve(chain.back());
+    auto synthesized = synthesize_preamble(chain_entries, target_path, resolver);
+    if(!synthesized) {
+        LOG_WARN("resolve_header_context: cannot match include chain for {} (host={})",
+                 target_path,
+                 host_path);
+        return std::nullopt;
+    }
+    auto& preamble = *synthesized;
 
     // Hash the preamble and write to cache directory.
     auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(preamble));
@@ -555,7 +561,24 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
                  header_path_id);
     }
 
-    return HeaderFileContext{host_path_id, preamble_path, preamble_hash};
+    // Snapshot the chain files for staleness detection: their content lives
+    // inside the synthesized preamble, so clang's own dependency tracking
+    // never sees them. Hash the buffers already read above — re-reading from
+    // disk could capture content newer than what the preamble embeds.
+    DepsSnapshot deps;
+    deps.build_at = build_at;
+    llvm::SmallVector<std::uint32_t> chain_ids(chain.begin(), chain.end() - 1);
+    deps.path_ids.assign(chain_ids.begin(), chain_ids.end());
+    deps.hashes.reserve(chain_contents.size());
+    for(auto& content: chain_contents) {
+        deps.hashes.push_back(llvm::xxh3_64bits(content));
+    }
+
+    return HeaderContext{host_path_id,
+                         preamble_path,
+                         preamble_hash,
+                         std::move(chain_ids),
+                         std::move(deps)};
 }
 
 std::string uri_to_path(const std::string& uri) {
@@ -887,6 +910,12 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
 
 bool Compiler::is_stale(const Session& session) {
     if(session.ast_deps.has_value() && deps_changed(workspace.path_pool, *session.ast_deps))
+        return true;
+
+    // Chain files of a header context are embedded in the synthesized
+    // preamble, invisible to ast_deps — check them explicitly.
+    if(session.header_context.has_value() &&
+       deps_changed(workspace.path_pool, session.header_context->deps))
         return true;
 
     // Check PCH staleness via the session's pch_ref.
