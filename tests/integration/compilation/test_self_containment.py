@@ -7,18 +7,11 @@ only the final diagnostics are published. Verdicts and user context
 choices persist across server sessions via cache.json.
 """
 
-import json
-
 from tests.conftest import make_client, shutdown_client
-from tests.integration.utils import write_cdb
+from tests.integration.utils import get_field, write_cdb, write_entries
 from tests.integration.utils.assertions import assert_clean_compile
 from tests.integration.utils.cache import read_cache_json
-
-
-def get_field(obj, key, default=None):
-    if isinstance(obj, dict):
-        return obj.get(key, default)
-    return getattr(obj, key, default)
+from tests.integration.utils.wait import wait_for_recompile
 
 
 def prefix_files(workspace):
@@ -101,15 +94,7 @@ async def test_choice_persisted_across_sessions(executable, tmp_path):
     (tmp_path / "b.cpp").write_text(
         '#define VALUE_TYPE float\n#include "shared.h"\nfloat f() { return 0; }\n'
     )
-    entries = [
-        {
-            "directory": str(tmp_path),
-            "file": str(tmp_path / f),
-            "arguments": ["clang++", "-std=c++17", "-fsyntax-only", str(tmp_path / f)],
-        }
-        for f in ("a.cpp", "b.cpp")
-    ]
-    (tmp_path / "compile_commands.json").write_text(json.dumps(entries))
+    write_entries(tmp_path, [("a.cpp", []), ("b.cpp", [])])
 
     c1 = await make_client(executable, tmp_path)
     await c1.open_and_wait(tmp_path / "a.cpp")
@@ -128,3 +113,102 @@ async def test_choice_persisted_across_sessions(executable, tmp_path):
         f"Persisted context choice should be restored on didOpen, got: {current}"
     )
     await shutdown_client(c2)
+
+
+async def test_ordinary_error_no_fallback(client, tmp_path):
+    """A self-contained header with a benign syntax error must not trigger
+    prefix synthesis nor persist any verdict."""
+    (tmp_path / "typo.h").write_text("inline int broken() { return }\n")  # syntax error
+    (tmp_path / "main.cpp").write_text('#include "typo.h"\nint main() { return 0; }\n')
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    typo_uri, _ = await client.open_and_wait(tmp_path / "typo.h")
+    diags = client.diagnostics.get(typo_uri, [])
+    assert diags, "The syntax error must be published"
+    assert prefix_files(tmp_path) == [], (
+        "Ordinary errors must not trigger prefix synthesis"
+    )
+
+
+async def test_header_save_resets_verdict(executable, tmp_path):
+    """Saving the header itself re-evaluates its self-containment: a header
+    that gains its own include stops using the synthesized prefix."""
+    import asyncio
+
+    from lsprotocol.types import (
+        DidChangeTextDocumentParams,
+        DidSaveTextDocumentParams,
+        TextDocumentContentChangeWholeDocument,
+        VersionedTextDocumentIdentifier,
+    )
+
+    from tests.integration.utils import doc
+
+    (tmp_path / "types.h").write_text("#pragma once\nstruct Point { int x; int y; };\n")
+    utils_h = tmp_path / "utils.h"
+    utils_h.write_text("inline int get_x(Point p) { return p.x; }\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "types.h"\n#include "utils.h"\nint main() { return get_x({1, 2}); }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+
+    c = await make_client(executable, tmp_path)
+    await c.open_and_wait(tmp_path / "main.cpp")
+    utils_uri, _ = await c.open_and_wait(utils_h)
+    assert_clean_compile(c, utils_uri)
+    assert len(prefix_files(tmp_path)) == 1, "Initial verdict: needs context"
+
+    # Make the header self-contained on disk and in the buffer, then save.
+    await asyncio.sleep(1.1)
+    new_text = '#include "types.h"\ninline int get_x(Point p) { return p.x; }\n'
+    utils_h.write_text(new_text)
+    c.text_document_did_change(
+        DidChangeTextDocumentParams(
+            text_document=VersionedTextDocumentIdentifier(uri=utils_uri, version=2),
+            content_changes=[TextDocumentContentChangeWholeDocument(text=new_text)],
+        )
+    )
+    c.text_document_did_save(DidSaveTextDocumentParams(text_document=doc(utils_uri)))
+
+    await wait_for_recompile(c, utils_uri)
+    assert_clean_compile(c, utils_uri)
+    await shutdown_client(c)
+
+    # After shutdown the persisted verdict must be gone.
+    cache = read_cache_json(tmp_path)
+    assert not (cache or {}).get("header_modes"), (
+        f"Verdict should be reset after the header was saved, got: {cache}"
+    )
+
+
+async def test_dependency_change_retries_trial(client, tmp_path):
+    """A header judged self-contained must be re-evaluated when one of its
+    own includes changes: here foo.h stops providing FOO, and only the
+    includer context (the host's define) can still supply it."""
+    import asyncio
+
+    (tmp_path / "foo.h").write_text("#pragma once\n#define FOO 1\n")
+    (tmp_path / "h.h").write_text(
+        '#pragma once\n#include "foo.h"\ninline int get() { return FOO; }\n'
+    )
+    (tmp_path / "main.cpp").write_text(
+        '#define FOO 2\n#include "h.h"\nint main() { return get(); }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    await client.open_and_wait(tmp_path / "main.cpp")
+    h_uri, _ = await client.open_and_wait(tmp_path / "h.h")
+    assert_clean_compile(client, h_uri)
+    assert prefix_files(tmp_path) == [], "Initially self-contained"
+
+    # foo.h stops defining FOO; only the host's #define can provide it now.
+    await asyncio.sleep(1.1)
+    (tmp_path / "foo.h").write_text("#pragma once\n")
+
+    await wait_for_recompile(client, h_uri)
+    assert_clean_compile(client, h_uri)
+    assert len(prefix_files(tmp_path)) == 1, (
+        "Dependency change must re-run the trial and fall back to synthesis"
+    )

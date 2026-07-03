@@ -1,7 +1,13 @@
 """Shared utilities for clice integration tests."""
 
 from tests.integration.utils.client import CliceClient
-from tests.integration.utils.workspace import doc, write_cdb, write_source
+from tests.integration.utils.workspace import (
+    doc,
+    get_field,
+    write_cdb,
+    write_entries,
+    write_source,
+)
 from tests.integration.utils.assertions import (
     assert_no_errors,
     assert_has_errors,
@@ -16,6 +22,8 @@ from tests.integration.utils.cache import (
 )
 
 __all__ = [
+    "get_field",
+    "write_entries",
     "CliceClient",
     "doc",
     "write_cdb",

@@ -54,24 +54,11 @@ static std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
     return std::format("{:016x}{:016x}", hash.high64, hash.low64);
 }
 
-/// Effective self-containment mode for a header. X-macro style extensions
-/// are non-self-contained by construction; otherwise use the persisted
-/// verdict (Unknown until the first trial compile settles it).
-static HeaderMode header_mode(Workspace& workspace, llvm::StringRef path, std::uint32_t path_id) {
-    if(path.ends_with(".def") || path.ends_with(".inc")) {
-        return HeaderMode::NeedsContext;
-    }
-    if(auto it = workspace.header_modes.find(path_id); it != workspace.header_modes.end()) {
-        return it->second;
-    }
-    return HeaderMode::Unknown;
-}
-
 /// Diagnostic codes that strictly indicate a missing includer context (as
 /// opposed to ordinary in-progress typing errors). Deliberately narrow:
 /// a false positive costs a pointless prefix synthesis, a false negative
 /// just leaves the header in trial mode.
-static bool indicates_missing_context(const std::vector<protocol::Diagnostic>& diagnostics) {
+static bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics) {
     constexpr static llvm::StringRef codes[] = {
         "err_unknown_typename",
         "err_undeclared_var_use",
@@ -400,8 +387,12 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     // Self-containment routing: an Unknown or SelfContained header borrows
     // the host command without a prefix; NeedsContext synthesizes one.
     // run_compile() flips Unknown to NeedsContext when the trial compile's
-    // diagnostics indicate missing includer state.
-    bool synthesize = header_mode(workspace, path, path_id) == HeaderMode::NeedsContext;
+    // diagnostics indicate missing includer state. An explicit occurrence
+    // choice (> 0) only has meaning under includer-context semantics, so
+    // it forces synthesis regardless of the verdict.
+    bool synthesize =
+        workspace.header_mode(path, path_id) == HeaderMode::NeedsContext ||
+        (session && session->active_context.has_value() && session->active_context->occurrence > 0);
 
     // Use cached context if it is still valid; otherwise resolve. The cache
     // is dropped when an active context override points to a different host
@@ -779,9 +770,10 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     llvm::StringRef pch_miss = "no_entry";
     if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
         auto& st = it->second;
+        bool in_store = workspace.store && workspace.store->lookup("pch", pch_key);
         if(st.path.empty()) {
             pch_miss = "incomplete_entry";
-        } else if(!(workspace.store && workspace.store->lookup("pch", pch_key))) {
+        } else if(!in_store) {
             pch_miss = "evicted";
         } else if(deps_changed(workspace.path_pool, st.deps)) {
             pch_miss = "deps_changed";
@@ -789,6 +781,11 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
             session.pch_ref = Session::PCHRef{pch_key, bound};
             LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, path);
             co_return true;
+        }
+        // Blob evicted by the store's LRU: drop the metadata too, or the
+        // content-keyed map grows for the server's lifetime.
+        if(!in_store && !st.building) {
+            workspace.pch_cache.erase(it);
         }
     }
     LOG_PERF("cache", "ns=pch event=miss reason={} key={} file={}", pch_miss, pch_key, path);
@@ -1104,15 +1101,21 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             co_return;
         }
 
-        // Self-containment trial verdict.
-        if(attempt == 0 && session->header_context.has_value() &&
+        // Self-containment trial verdict. Scored once per settled input
+        // state: trial_done is reset whenever compile inputs change for
+        // reasons other than buffer edits, so a dependency change re-runs
+        // the trial while ordinary typing never does. Only NeedsContext is
+        // persisted — "self-contained" stays a session-local impression
+        // that costs nothing to keep re-earning.
+        if(attempt == 0 && !session->trial_done && session->header_context.has_value() &&
            session->header_context->preamble_path.empty() &&
-           header_mode(workspace, file_path, pid) == HeaderMode::Unknown) {
+           workspace.header_mode(file_path, pid) == HeaderMode::Unknown) {
             std::vector<protocol::Diagnostic> diagnostics;
             if(!result.value().diagnostics.empty()) {
                 [[maybe_unused]] auto status =
                     kota::codec::json::from_json(result.value().diagnostics.data, diagnostics);
             }
+            session->trial_done = true;
 
             if(indicates_missing_context(diagnostics)) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
@@ -1121,16 +1124,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                 session->header_context.reset();
                 session->pch_ref.reset();
                 continue;
-            }
-
-            // Only a clean compile settles the verdict: ordinary typing
-            // errors keep the header in trial mode for the next compile.
-            bool has_error = std::ranges::any_of(diagnostics, [](auto& diag) {
-                return diag.severity == protocol::DiagnosticSeverity::Error;
-            });
-            if(!has_error) {
-                workspace.header_modes[pid] = HeaderMode::SelfContained;
-                workspace.save_cache();
             }
         }
 
@@ -1194,7 +1187,9 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
         if(!is_stale(*session)) {
             co_return true;
         }
+        // Dependency change, not a buffer edit: re-run the trial too.
         session->ast_dirty = true;
+        session->trial_done = false;
     }
 
     // If an up-to-date compile is already in flight, wait for it.

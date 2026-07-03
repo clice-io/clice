@@ -9,7 +9,6 @@ server cannot compile utils.h at all.
 """
 
 import asyncio
-import json
 
 import pytest
 from lsprotocol.types import (
@@ -18,13 +17,7 @@ from lsprotocol.types import (
     TextDocumentIdentifier,
 )
 
-from tests.integration.utils import doc
-
-
-def get_field(obj, key, default=None):
-    if isinstance(obj, dict):
-        return obj.get(key, default)
-    return getattr(obj, key, default)
+from tests.integration.utils import doc, get_field, write_entries
 
 
 @pytest.mark.workspace("header_context")
@@ -226,15 +219,7 @@ async def test_switch_between_two_hosts(client, tmp_path):
     (tmp_path / "b.cpp").write_text(
         '#define VALUE_TYPE float\n#include "shared.h"\nfloat f() { return 0; }\n'
     )
-    entries = [
-        {
-            "directory": str(tmp_path),
-            "file": str(tmp_path / f),
-            "arguments": ["clang++", "-std=c++17", "-fsyntax-only", str(tmp_path / f)],
-        }
-        for f in ("a.cpp", "b.cpp")
-    ]
-    (tmp_path / "compile_commands.json").write_text(json.dumps(entries))
+    write_entries(tmp_path, [("a.cpp", []), ("b.cpp", [])])
     await client.initialize(tmp_path)
 
     a_uri, _ = await client.open_and_wait(tmp_path / "a.cpp")

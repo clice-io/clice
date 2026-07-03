@@ -174,6 +174,13 @@ struct Workspace {
     /// and restored into the Session on didOpen.
     llvm::DenseMap<std::uint32_t, SavedContext> saved_contexts;
 
+    /// Effective self-containment mode for a header. X-macro style
+    /// extensions are non-self-contained by construction; otherwise use
+    /// the persisted verdict. Only NeedsContext is ever persisted — a
+    /// "self-contained" impression is session-local and re-evaluated when
+    /// compile inputs change, so it can never go stale.
+    HeaderMode header_mode(llvm::StringRef path, std::uint32_t path_id) const;
+
     /// Rank host source candidates for a header by relevance: a source
     /// with the header's stem (utils.h -> utils.cpp) wins, then sources in
     /// the same directory, then longer common path prefixes; ties break

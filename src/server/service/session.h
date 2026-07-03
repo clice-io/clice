@@ -88,6 +88,13 @@ struct Session {
     /// Used for two-layer staleness detection (mtime + content hash).
     std::optional<DepsSnapshot> ast_deps;
 
+    /// Whether this session's self-containment trial has settled. Reset
+    /// when compile inputs change for reasons other than buffer edits
+    /// (didSave cascades, chain invalidation, mtime staleness), so the
+    /// verdict re-evaluates on dependency changes but ordinary typing
+    /// errors never trigger a pointless prefix synthesis.
+    bool trial_done = false;
+
     /// Compilation context for header files that lack their own CDB entry.
     /// Stores the host source file and synthesized preamble for this header.
     std::optional<HeaderContext> header_context;

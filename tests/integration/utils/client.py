@@ -371,10 +371,15 @@ class CliceClient(BaseLanguageClient):
 
     # ── Extension protocol ───────────────────────────────────────────
 
-    async def query_context(self, uri: str, *, timeout: float = 30.0):
+    async def query_context(
+        self, uri: str, *, offset: int | None = None, timeout: float = 30.0
+    ):
         """Send clice/queryContext extension request."""
+        params = {"uri": uri}
+        if offset is not None:
+            params["offset"] = offset
         return await asyncio.wait_for(
-            self.protocol.send_request_async("clice/queryContext", {"uri": uri}),
+            self.protocol.send_request_async("clice/queryContext", params),
             timeout=timeout,
         )
 

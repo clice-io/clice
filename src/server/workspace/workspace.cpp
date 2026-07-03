@@ -19,6 +19,16 @@
 
 namespace clice {
 
+HeaderMode Workspace::header_mode(llvm::StringRef path, std::uint32_t path_id) const {
+    if(path.ends_with(".def") || path.ends_with(".inc")) {
+        return HeaderMode::NeedsContext;
+    }
+    if(auto it = header_modes.find(path_id); it != header_modes.end()) {
+        return it->second;
+    }
+    return HeaderMode::Unknown;
+}
+
 llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path_id,
                                                        llvm::ArrayRef<std::uint32_t> hosts) {
     auto header_path = path_pool.resolve(header_path_id);
@@ -235,9 +245,9 @@ void Workspace::load_cache() {
 
     for(auto& entry: data.header_modes) {
         auto file = resolve(entry.file);
-        if(file.empty())
+        if(file.empty() || static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
             continue;
-        header_modes[path_pool.intern(file)] = static_cast<HeaderMode>(entry.mode);
+        header_modes[path_pool.intern(file)] = HeaderMode::NeedsContext;
     }
 
     for(auto& entry: data.contexts) {
@@ -311,7 +321,7 @@ void Workspace::save_cache() {
     }
 
     for(auto& [path_id, mode]: header_modes) {
-        if(mode == HeaderMode::Unknown)
+        if(mode != HeaderMode::NeedsContext)
             continue;
         data.header_modes.push_back({intern(path_id), static_cast<std::uint32_t>(mode)});
     }

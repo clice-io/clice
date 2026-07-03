@@ -669,8 +669,12 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             std::vector<ext::ContextItem> all_items;
 
             // Contexts that would produce identical compilation results are
-            // collapsed: identical canonical flags mean an identical compile.
+            // collapsed: identical canonical flags mean an identical compile
+            // — but only for headers compiled self-contained. A header that
+            // needs includer context gets a different synthesized prefix
+            // per host, so every host is a distinct context.
             llvm::StringSet<> seen_configs;
+            bool dedup_hosts = ws.header_mode(path, path_id) != HeaderMode::NeedsContext;
 
             auto hosts = ws.dep_graph.find_host_sources(path_id);
             for(auto host_id: ws.rank_hosts(path_id, hosts)) {
@@ -682,7 +686,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                     continue;
 
                 auto cmds = ws.cdb.lookup(host_path);
-                if(!seen_configs.insert(canonical_command_hash(cmds.front().to_string_argv()))
+                if(dedup_hosts &&
+                   !seen_configs.insert(canonical_command_hash(cmds.front().to_string_argv()))
                         .second)
                     continue;
 
@@ -844,6 +849,10 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             session->pch_ref.reset();
             session->ast_deps.reset();
             session->ast_dirty = true;
+            // Invalidate any in-flight compile: without the bump it would
+            // clobber ast_dirty on completion and publish results for the
+            // old context, with nothing left for is_stale() to detect.
+            session->generation++;
 
             // Persist the choice across sessions.
             SavedContext saved;

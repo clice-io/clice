@@ -5,35 +5,9 @@ include-occurrence contexts for guard-less headers, context deduplication
 by canonical flags, host ranking, and switch validation.
 """
 
-import json
-
-from tests.integration.utils import write_cdb
+from tests.integration.utils import get_field, write_cdb, write_entries
 from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
 from tests.integration.utils.wait import wait_for_recompile
-
-
-def get_field(obj, key, default=None):
-    if isinstance(obj, dict):
-        return obj.get(key, default)
-    return getattr(obj, key, default)
-
-
-def write_entries(workspace, entries):
-    data = [
-        {
-            "directory": str(workspace),
-            "file": str(workspace / f),
-            "arguments": [
-                "clang++",
-                "-std=c++17",
-                "-fsyntax-only",
-                *args,
-                str(workspace / f),
-            ],
-        }
-        for f, args in entries
-    ]
-    (workspace / "compile_commands.json").write_text(json.dumps(data))
 
 
 async def test_source_command_switch(client, tmp_path):
@@ -155,3 +129,54 @@ async def test_switch_rejects_non_includer(client, tmp_path):
     assert get_field(switch, "success") is False, (
         "Switching to a non-including host must be rejected"
     )
+
+
+async def test_occurrence_out_of_range(client, tmp_path):
+    """Pinning an occurrence beyond the include count must be rejected."""
+    (tmp_path / "list.def").write_text("X(alpha)\n")
+    (tmp_path / "main.cpp").write_text(
+        "#define X(name) int name;\n"
+        '#include "list.def"\n'
+        "#undef X\n"
+        "int main() { return alpha; }\n"
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    main_uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    def_uri, _ = client.open(tmp_path / "list.def")
+
+    switch = await client.switch_context(def_uri, main_uri, occurrence=5)
+    assert get_field(switch, "success") is False, (
+        "Out-of-range occurrence must be rejected"
+    )
+
+
+async def test_query_context_pagination(client, tmp_path):
+    """queryContext pages results: 12 distinct configs yield 10 + 2."""
+    (tmp_path / "common.h").write_text("inline int common() { return 1; }\n")
+    entries = []
+    for n in range(12):
+        name = f"s{n:02}.cpp"
+        (tmp_path / name).write_text(
+            f'#include "common.h"\nint f{n}() {{ return common() + FLAVOR; }}\n'
+        )
+        entries.append((name, [f"-DFLAVOR={n}"]))
+    write_entries(tmp_path, entries)
+    await client.initialize(tmp_path)
+
+    await client.open_and_wait(tmp_path / "s00.cpp")
+    common_uri, _ = client.open(tmp_path / "common.h")
+
+    first = await client.query_context(common_uri)
+    assert get_field(first, "total") == 12
+    assert len(get_field(first, "contexts", [])) == 10
+
+    second = await client.query_context(common_uri, offset=10)
+    assert get_field(second, "total") == 12
+    assert len(get_field(second, "contexts", [])) == 2
+
+    # The two pages must not overlap.
+    first_uris = {get_field(c, "uri") for c in get_field(first, "contexts", [])}
+    second_uris = {get_field(c, "uri") for c in get_field(second, "contexts", [])}
+    assert not (first_uris & second_uris)
