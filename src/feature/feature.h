@@ -292,8 +292,8 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding = Positio
     -> std::vector<protocol::DocumentLink>;
 
 /// Go-to-definition on an include directive: when `offset` falls on the
-/// argument of an #include in the interested file, the included file's
-/// location (at its start). Empty otherwise.
+/// argument of an #include or __has_include in the interested file, the
+/// resolved file's location (at its start). Empty otherwise.
 auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
     -> std::vector<protocol::Location>;
 

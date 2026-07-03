@@ -77,23 +77,29 @@ auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
     auto content = unit.interested_content();
     auto* lang_opts = &unit.lang_options();
 
-    for(const auto& include: directives_it->second.includes) {
-        if(!include.fid.isValid()) {
-            continue;
+    auto try_directive = [&](clang::SourceLocation loc, clang::FileID target) {
+        if(!locations.empty() || !target.isValid()) {
+            return;
         }
-        auto [fid, directive_offset] = unit.decompose_location(include.location);
+        auto [fid, directive_offset] = unit.decompose_location(loc);
         if(fid != interested || directive_offset >= content.size()) {
-            continue;
+            return;
         }
         auto range = find_directive_argument(content, directive_offset, lang_opts);
         if(!range || !range->contains(offset)) {
-            continue;
+            return;
         }
         locations.push_back(protocol::Location{
-            .uri = to_uri(unit.file_path(include.fid)),
+            .uri = to_uri(unit.file_path(target)),
             .range = protocol::Range{},
         });
-        break;
+    };
+
+    for(const auto& include: directives_it->second.includes) {
+        try_directive(include.location, include.fid);
+    }
+    for(const auto& has_include: directives_it->second.has_includes) {
+        try_directive(has_include.location, has_include.fid);
     }
     return locations;
 }

@@ -294,6 +294,8 @@ std::vector<protocol::Location>
     llvm::StringRef line(session.text.data() + bounds.start, bounds.end - bounds.start);
     auto cursor = *cursor_offset - bounds.start;
 
+    // Byte offsets and UTF-16 columns coincide here: directive lines are
+    // ASCII (module names and pp-tokens cannot contain non-ASCII).
     Lexer lexer(line);
     lexer.advance_if("export");
     if(!lexer.advance_if("import") && !lexer.advance_if("module"))

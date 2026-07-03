@@ -277,9 +277,34 @@ async def test_circular_module_dependency(client, workspace):
     )
 
 
+def to_locations(result):
+    if result is None:
+        return []
+    return list(result) if isinstance(result, (list, tuple)) else [result]
+
+
 @pytest.mark.workspace("modules/consumer_imports_module")
 async def test_import_definition(client, workspace):
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
-    result = await client.definition_at(uri, 0, 8)
-    locs = result if isinstance(result, (list, tuple)) else ([result] if result else [])
+    locs = to_locations(await client.definition_at(uri, 0, 8))
     assert any(loc.uri.endswith("math.cppm") for loc in locs), locs
+
+    # Cursor on the `import` keyword itself must not navigate to the module.
+    locs = to_locations(await client.definition_at(uri, 0, 2))
+    assert not any(loc.uri.endswith("math.cppm") for loc in locs), locs
+
+
+@pytest.mark.workspace("modules/module_implementation_unit")
+async def test_module_decl_definition(client, workspace):
+    # `module Greeter;` in the implementation unit navigates to the interface.
+    uri, _ = await client.open_and_wait(workspace / "greeter_impl.cpp")
+    locs = to_locations(await client.definition_at(uri, 0, 8))
+    assert any(loc.uri.endswith("greeter.cppm") for loc in locs), locs
+
+
+@pytest.mark.workspace("modules/dotted_module_name")
+async def test_dotted_import_definition(client, workspace):
+    # `import my.io;` on line 1 of app.cppm.
+    uri, _ = await client.open_and_wait(workspace / "app.cppm")
+    locs = to_locations(await client.definition_at(uri, 1, 9))
+    assert any(loc.uri.endswith("io.cppm") for loc in locs), locs

@@ -86,6 +86,8 @@ public:
     kota::task<> shutdown_and_cleanup();
 
     std::shared_ptr<Session> find_session(std::uint32_t path_id);
+    std::shared_ptr<Session> open_session(std::uint32_t path_id);
+    void close_session(std::uint32_t path_id, kota::ipc::JsonPeer& peer);
 
     /// The preamble include links of a session's active PCH, or nullptr.
     const std::vector<worker::FileLink>* find_preamble_links(const Session& session);
@@ -95,8 +97,6 @@ public:
     /// the PCH's preamble links, module names from the master's module map.
     std::vector<protocol::Location>
         resolve_directive_definition(Session& session, const protocol::Position& position);
-    std::shared_ptr<Session> open_session(std::uint32_t path_id);
-    void close_session(std::uint32_t path_id, kota::ipc::JsonPeer& peer);
 
     void on_file_saved(std::uint32_t path_id);
 
