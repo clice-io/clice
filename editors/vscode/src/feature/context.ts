@@ -192,6 +192,14 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
             );
         } else if (!switched?.success) {
             vscode.window.showWarningMessage("clice: failed to switch compilation context");
+        } else {
+            // The switch only marks the session dirty (pull-based server);
+            // fire a cheap feature request so diagnostics and inactive
+            // regions refresh without waiting for user interaction.
+            void vscode.commands.executeCommand(
+                "vscode.executeDocumentSymbolProvider",
+                vscode.Uri.parse(uri),
+            );
         }
         await refresh(vscode.window.activeTextEditor);
     }

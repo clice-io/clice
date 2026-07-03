@@ -30,8 +30,8 @@ async def test_source_command_switch(client, tmp_path):
     assert all(hashes.values()), (
         f"Source contexts must carry commandHash, got: {contexts}"
     )
-    plain_hash = next(h for l, h in hashes.items() if "-DEXPECTED" not in l)
-    defined_hash = next(h for l, h in hashes.items() if "-DEXPECTED" in l)
+    plain_hash = next(h for label, h in hashes.items() if "-DEXPECTED" not in label)
+    defined_hash = next(h for label, h in hashes.items() if "-DEXPECTED" in label)
 
     # Switch to the entry without the define: the #error must fire.
     switch = await client.switch_context(main_uri, main_uri, command_hash=plain_hash)
@@ -222,3 +222,89 @@ async def test_stale_epoch_rejected(client, tmp_path):
         shared_uri, main_uri, epoch=get_field(fresh, "epoch")
     )
     assert get_field(switch, "success") is True, f"Fresh epoch must work, got: {switch}"
+
+
+async def test_multi_config_host(client, tmp_path):
+    """A host built under several configurations provides one context per
+    CDB entry, switchable by command hash."""
+    (tmp_path / "render.h").write_text(
+        "#pragma once\n"
+        "#if defined(USE_VULKAN)\n"
+        'inline const char* backend() { return "vk"; }\n'
+        "#elif defined(USE_METAL)\n"
+        'inline const char* backend() { return "mt"; }\n'
+        "#endif\n"
+    )
+    (tmp_path / "host.cpp").write_text(
+        '#include "render.h"\nint main() { return backend()[0]; }\n'
+    )
+    write_entries(
+        tmp_path, [("host.cpp", ["-DUSE_VULKAN"]), ("host.cpp", ["-DUSE_METAL"])]
+    )
+    await client.initialize(tmp_path)
+
+    await client.open_and_wait(tmp_path / "host.cpp")
+    render_uri, _ = await client.open_and_wait(tmp_path / "render.h")
+
+    query = await client.query_context(render_uri)
+    assert get_field(query, "total") == 2, query
+    contexts = get_field(query, "contexts", [])
+    hashes = [get_field(c, "commandHash") for c in contexts]
+    assert all(hashes) and len(set(hashes)) == 2, contexts
+
+    metal_hash = next(
+        get_field(c, "commandHash")
+        for c in contexts
+        if "USE_METAL" in get_field(c, "label")
+    )
+    host_uri = client.path_to_uri(tmp_path / "host.cpp")
+    switch = await client.switch_context(render_uri, host_uri, command_hash=metal_hash)
+    assert get_field(switch, "success") is True, switch
+
+    await wait_for_recompile(client, render_uri)
+    assert_clean_compile(client, render_uri)
+    current = await client.current_context(render_uri)
+    ctx = get_field(current, "context")
+    assert get_field(ctx, "commandHash") == metal_hash, current
+
+
+async def test_saved_include_updates_hosts(client, tmp_path):
+    """Adding an #include and saving must immediately expose the new host
+    in queryContext: the include graph is rescanned on didSave."""
+    from lsprotocol.types import (
+        DidChangeTextDocumentParams,
+        DidSaveTextDocumentParams,
+        TextDocumentContentChangeWholeDocument,
+        VersionedTextDocumentIdentifier,
+    )
+
+    from tests.integration.utils import doc
+
+    (tmp_path / "lonely.h").write_text("inline int lonely() { return 1; }\n")
+    main_cpp = tmp_path / "main.cpp"
+    main_cpp.write_text("int main() { return 0; }\n")
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    main_uri, _ = await client.open_and_wait(main_cpp)
+    lonely_uri, _ = client.open(tmp_path / "lonely.h")
+
+    query = await client.query_context(lonely_uri)
+    assert get_field(query, "total") == 0, "No includers yet"
+
+    # Include the header and save.
+    new_text = '#include "lonely.h"\nint main() { return lonely(); }\n'
+    main_cpp.write_text(new_text)
+    client.text_document_did_change(
+        DidChangeTextDocumentParams(
+            text_document=VersionedTextDocumentIdentifier(uri=main_uri, version=2),
+            content_changes=[TextDocumentContentChangeWholeDocument(text=new_text)],
+        )
+    )
+    client.text_document_did_save(
+        DidSaveTextDocumentParams(text_document=doc(main_uri))
+    )
+
+    query = await client.query_context(lonely_uri)
+    assert get_field(query, "total") == 1, f"New host must appear after save: {query}"
+    assert "main.cpp" in get_field(get_field(query, "contexts")[0], "uri")

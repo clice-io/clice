@@ -45,11 +45,14 @@ struct DepsSnapshot {
     std::int64_t build_at = 0;
 };
 
+/// Sentinel for "no path": path pool ids start at 0, so 0 is a real file.
+constexpr inline std::uint32_t no_path_id = ~0u;
+
 /// Context for compiling a header file that lacks its own CDB entry.
 struct HeaderContext {
-    std::uint32_t host_path_id;   ///< Source file acting as host.
-    std::string preamble_path;    ///< Path to generated preamble file on disk.
-    std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
+    std::uint32_t host_path_id = no_path_id;  ///< Source file acting as host.
+    std::string preamble_path;                ///< Path to generated preamble file on disk.
+    std::uint64_t preamble_hash;              ///< Hash of preamble content for staleness.
 
     /// Path to the generated suffix file (content after the include
     /// position along the chain), appended to the header's buffer as one
@@ -59,6 +62,10 @@ struct HeaderContext {
     /// Which include of this header in its direct includer produced the
     /// preamble (0-based, in directive order).
     std::uint32_t occurrence = 0;
+
+    /// Canonical hash of the host CDB entry used (multi-configuration
+    /// hosts); empty = the first entry.
+    std::string host_command_hash;
 
     /// Include chain from host to the target's direct includer (excludes the
     /// target itself). The synthesized preamble embeds these files' content,
@@ -81,8 +88,12 @@ enum class HeaderMode : std::uint32_t {
 
 /// A user's context choice, persisted across sessions.
 struct SavedContext {
-    std::uint32_t host_path_id = 0;  ///< Header context host; 0 = none.
-    std::uint32_t occurrence = 0;
+    /// Header context host; no_path_id = none.
+    std::uint32_t host_path_id = no_path_id;
+
+    /// Pinned include occurrence; no value = automatic.
+    std::optional<std::uint32_t> occurrence;
+
     std::string command_hash;  ///< Pinned CDB entry; empty = none.
 };
 
@@ -219,7 +230,12 @@ struct Workspace {
     /// the same directory, then longer common path prefixes; ties break
     /// lexicographically so the choice is deterministic.
     llvm::SmallVector<std::uint32_t> rank_hosts(std::uint32_t header_path_id,
-                                                llvm::ArrayRef<std::uint32_t> hosts);
+                                                llvm::ArrayRef<std::uint32_t> hosts) const;
+
+    /// Re-resolve a saved file's direct include edges from its disk
+    /// content, so host lookups and context queries see includes the save
+    /// added or removed.
+    void rescan_includes(std::uint32_t path_id);
 
     /// Called when a file is saved to disk.  Cascades invalidation through
     /// compile_graph and clears affected PCM caches.

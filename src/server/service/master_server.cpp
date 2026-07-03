@@ -197,6 +197,10 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
             session->header_context->deps.build_at = 0;
             session->ast_dirty = true;
             session->trial_done = false;
+            // The chain change may have made the header self-contained
+            // (e.g. a dependency now provides the missing declarations);
+            // drop the persisted verdict so the trial can downgrade it.
+            workspace.header_modes.erase(session_id);
         }
     }
 

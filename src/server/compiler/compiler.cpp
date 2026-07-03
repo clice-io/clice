@@ -78,6 +78,22 @@ static bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagn
     return false;
 }
 
+/// Pick the host CDB entry matching the session's pinned command hash
+/// (multi-configuration hosts), defaulting to the first entry.
+static CompileCommand& pick_host_command(llvm::SmallVector<CompileCommand>& results,
+                                         const Session* session) {
+    if(session && session->active_context.has_value() &&
+       !session->active_context->command_hash.empty()) {
+        for(auto& candidate: results) {
+            if(canonical_command_hash(candidate.to_string_argv()) ==
+               session->active_context->command_hash) {
+                return candidate;
+            }
+        }
+    }
+    return results.front();
+}
+
 /// RAII completion of an in-flight PCH build registration: wakes waiters
 /// and clears the building marker on every exit path — crucially also when
 /// the coroutine is cancelled and its frame unwinds at a suspension point,
@@ -415,12 +431,12 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     // Self-containment routing: an Unknown or SelfContained header borrows
     // the host command without a prefix; NeedsContext synthesizes one.
     // run_compile() flips Unknown to NeedsContext when the trial compile's
-    // diagnostics indicate missing includer state. An explicit occurrence
-    // choice (> 0) only has meaning under includer-context semantics, so
-    // it forces synthesis regardless of the verdict.
-    bool synthesize =
-        workspace.header_mode(path, path_id) == HeaderMode::NeedsContext ||
-        (session && session->active_context.has_value() && session->active_context->occurrence > 0);
+    // diagnostics indicate missing includer state. An explicitly chosen
+    // occurrence — even #0 — only has meaning under includer-context
+    // semantics, so it forces synthesis regardless of the verdict.
+    bool synthesize = workspace.header_mode(path, path_id) == HeaderMode::NeedsContext ||
+                      (session && session->active_context.has_value() &&
+                       session->active_context->occurrence.has_value());
 
     // Use cached context if it is still valid; otherwise resolve. The cache
     // is dropped when an active context override points to a different host
@@ -431,7 +447,9 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
         bool override_mismatch =
             session->active_context.has_value() &&
             (session->header_context->host_path_id != session->active_context->host_path_id ||
-             session->header_context->occurrence != session->active_context->occurrence);
+             session->header_context->occurrence !=
+                 session->active_context->occurrence.value_or(0) ||
+             session->header_context->host_command_hash != session->active_context->command_hash);
         bool mode_mismatch = session->header_context->preamble_path.empty() == synthesize;
         if(override_mismatch || mode_mismatch ||
            deps_changed(workspace.path_pool, session->header_context->deps)) {
@@ -472,9 +490,8 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     auto host_results =
         workspace.cdb.lookup(host_path, {.remove = rule_remove, .append = rule_append});
 
-    workspace.toolchain.resolve_or_warn(host_results.front());
-
-    auto& host_cmd = host_results.front();
+    auto& host_cmd = pick_host_command(host_results, session);
+    workspace.toolchain.resolve_or_warn(host_cmd);
     directory = host_cmd.resolved.directory.str();
 
     // Replace source_file; inject -include <preamble> only when a prefix
@@ -551,6 +568,11 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
 
     // Self-contained route: borrow the host's command, no prefix needed.
     // The chain is kept so a didSave along it still invalidates the session.
+    std::string host_command_hash;
+    if(session && session->active_context.has_value()) {
+        host_command_hash = session->active_context->command_hash;
+    }
+
     if(!synthesize) {
         llvm::SmallVector<std::uint32_t> chain_ids(chain.begin(), chain.end() - 1);
         return HeaderContext{host_path_id,
@@ -558,6 +580,7 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
                              0,
                              "",
                              occurrence.value_or(0),
+                             std::move(host_command_hash),
                              std::move(chain_ids),
                              {}};
     }
@@ -573,10 +596,11 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
     if(host_results.empty()) {
         return std::nullopt;
     }
-    workspace.toolchain.resolve_or_warn(host_results.front());
+    auto& resolve_cmd = pick_host_command(host_results, session);
+    workspace.toolchain.resolve_or_warn(resolve_cmd);
 
-    auto argv = host_results.front().to_argv();
-    auto search_config = extract_search_config(argv, host_results.front().resolved.directory);
+    auto argv = resolve_cmd.to_argv();
+    auto search_config = extract_search_config(argv, resolve_cmd.resolved.directory);
     DirListingCache dir_cache;
     auto resolved_config = resolve_search_config(search_config, dir_cache);
 
@@ -731,6 +755,7 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
                          preamble_hash,
                          std::move(suffix_path),
                          occurrence.value_or(0),
+                         std::move(host_command_hash),
                          std::move(chain_ids),
                          std::move(deps)};
 }

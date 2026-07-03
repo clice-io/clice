@@ -16,9 +16,10 @@ struct InactiveScan {
     std::vector<std::uint32_t> regions;
 
     /// Conditional levels still open at the end of the scanned content,
-    /// outermost first; 1 = that level's current branch is inactive.
-    /// Preamble/PCH builds end mid-#if when the bound cuts inside a
-    /// block; the AST compile resumes from this stack.
+    /// outermost first. Bit 0: the level's current branch is inactive.
+    /// Bit 1: an earlier branch of the level was already taken (decides a
+    /// later #else). Preamble/PCH builds end mid-#if when the bound cuts
+    /// inside a block; the AST compile resumes from this stack.
     std::vector<std::uint8_t> open_stack;
 };
 

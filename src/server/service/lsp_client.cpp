@@ -203,9 +203,10 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         if(auto it = srv.workspace.saved_contexts.find(path_id);
            it != srv.workspace.saved_contexts.end()) {
             auto& saved = it->second;
-            if(saved.host_path_id != 0) {
-                session->active_context =
-                    Session::ActiveContext{saved.host_path_id, saved.occurrence};
+            if(saved.host_path_id != no_path_id) {
+                session->active_context = Session::ActiveContext{saved.host_path_id,
+                                                                 saved.occurrence,
+                                                                 saved.command_hash};
             } else if(!saved.command_hash.empty()) {
                 session->active_command = saved.command_hash;
             }
@@ -687,29 +688,44 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 if(!host_uri_opt)
                     continue;
 
-                auto cmds = ws.cdb.lookup(host_path);
-                if(dedup_hosts &&
-                   !seen_configs.insert(canonical_command_hash(cmds.front().to_string_argv()))
-                        .second)
-                    continue;
-
-                ext::ContextItem item;
-                item.label = llvm::sys::path::filename(host_path).str();
-                item.description = std::string(host_path);
-                item.uri = host_uri_opt->str();
-
-                // A guard-less header can be included several times by one
-                // host — each occurrence is a distinct context.
+                // A multi-configuration host contributes one context per
+                // CDB entry: each configuration compiles the header under
+                // different preprocessor state.
+                std::vector<std::string> host_append, host_remove;
+                ws.config.match_rules(host_path, host_append, host_remove);
+                auto cmds =
+                    ws.cdb.lookup(host_path, {.remove = host_remove, .append = host_append});
                 auto occurrences = count_occurrences(host_id, path_id);
-                if(occurrences > 1) {
-                    for(std::uint32_t n = 0; n < occurrences; ++n) {
-                        auto occ_item = item;
-                        occ_item.label = std::format("{} (#{})", item.label, n + 1);
-                        occ_item.occurrence = n;
-                        all_items.push_back(std::move(occ_item));
+
+                for(auto& cmd: cmds) {
+                    auto hash = canonical_command_hash(cmd.to_string_argv());
+                    if(dedup_hosts && !seen_configs.insert(hash).second)
+                        continue;
+
+                    ext::ContextItem item;
+                    item.label = llvm::sys::path::filename(host_path).str();
+                    if(cmds.size() > 1) {
+                        auto desc = flags_label(cmd);
+                        if(!desc.empty()) {
+                            item.label = std::format("{} [{}]", item.label, desc);
+                        }
+                        item.command_hash = hash;
                     }
-                } else {
-                    all_items.push_back(std::move(item));
+                    item.description = std::string(host_path);
+                    item.uri = host_uri_opt->str();
+
+                    // A guard-less header can be included several times by
+                    // one host — each occurrence is a distinct context.
+                    if(occurrences > 1) {
+                        for(std::uint32_t n = 0; n < occurrences; ++n) {
+                            auto occ_item = item;
+                            occ_item.label = std::format("{} (#{})", item.label, n + 1);
+                            occ_item.occurrence = n;
+                            all_items.push_back(std::move(occ_item));
+                        }
+                    } else {
+                        all_items.push_back(std::move(item));
+                    }
                 }
             }
 
@@ -717,7 +733,9 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             // even for unknown files, offering a bogus context that
             // switchContext would then reject.
             if(hosts.empty() && ws.cdb.has_entry(path)) {
-                auto entries = ws.cdb.lookup(path);
+                std::vector<std::string> rule_append, rule_remove;
+                ws.config.match_rules(path, rule_append, rule_remove);
+                auto entries = ws.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
                 auto uri_opt = lsp::URI::from_file_path(std::string(path));
                 for(std::size_t i = 0; uri_opt && i < entries.size(); ++i) {
                     auto& cmd = entries[i];
@@ -744,55 +762,60 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             co_return to_raw(result);
         });
 
-    peer.on_request("clice/currentContext",
-                    [this, flags_label](RequestContext& ctx,
-                                        const ext::CurrentContextParams& params) -> RawResult {
-                        auto& srv = this->server;
-                        auto path = uri_to_path(params.uri);
-                        auto path_id = srv.workspace.path_pool.intern(path);
+    peer.on_request(
+        "clice/currentContext",
+        [this, flags_label](RequestContext& ctx,
+                            const ext::CurrentContextParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto path = uri_to_path(params.uri);
+            auto path_id = srv.workspace.path_pool.intern(path);
 
-                        ext::CurrentContextResult result;
-                        auto session = srv.find_session(path_id);
-                        if(session && session->active_context) {
-                            auto& active = *session->active_context;
-                            auto ctx_path = srv.workspace.path_pool.resolve(active.host_path_id);
-                            auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
-                            if(ctx_uri_opt) {
-                                ext::ContextItem item;
-                                item.label = llvm::sys::path::filename(ctx_path).str();
-                                if(active.occurrence > 0) {
-                                    item.label =
-                                        std::format("{} (#{})", item.label, active.occurrence + 1);
-                                }
-                                item.description = std::string(ctx_path);
-                                item.uri = ctx_uri_opt->str();
-                                item.occurrence = active.occurrence;
-                                result.context = std::move(item);
+            ext::CurrentContextResult result;
+            auto session = srv.find_session(path_id);
+            if(session && session->active_context) {
+                auto& active = *session->active_context;
+                auto ctx_path = srv.workspace.path_pool.resolve(active.host_path_id);
+                auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
+                if(ctx_uri_opt) {
+                    ext::ContextItem item;
+                    item.label = llvm::sys::path::filename(ctx_path).str();
+                    if(active.occurrence.value_or(0) > 0) {
+                        item.label = std::format("{} (#{})", item.label, *active.occurrence + 1);
+                    }
+                    item.description = std::string(ctx_path);
+                    item.uri = ctx_uri_opt->str();
+                    item.occurrence = active.occurrence;
+                    if(!active.command_hash.empty()) {
+                        item.command_hash = active.command_hash;
+                    }
+                    result.context = std::move(item);
+                }
+            } else if(session && session->active_command) {
+                auto& ws = srv.workspace;
+                ext::ContextItem item;
+                item.uri = params.uri;
+                item.command_hash = *session->active_command;
+                item.label = std::format("config {}", session->active_command->substr(0, 8));
+                if(ws.cdb.has_entry(path)) {
+                    std::vector<std::string> rule_append, rule_remove;
+                    ws.config.match_rules(path, rule_append, rule_remove);
+                    for(auto& cmd:
+                        ws.cdb.lookup(path, {.remove = rule_remove, .append = rule_append})) {
+                        if(canonical_command_hash(cmd.to_string_argv()) ==
+                           *session->active_command) {
+                            auto desc = flags_label(cmd);
+                            if(!desc.empty()) {
+                                item.label = std::move(desc);
                             }
-                        } else if(session && session->active_command) {
-                            auto& ws = srv.workspace;
-                            ext::ContextItem item;
-                            item.uri = params.uri;
-                            item.command_hash = *session->active_command;
-                            item.label =
-                                std::format("config {}", session->active_command->substr(0, 8));
-                            if(ws.cdb.has_entry(path)) {
-                                for(auto& cmd: ws.cdb.lookup(path)) {
-                                    if(canonical_command_hash(cmd.to_string_argv()) ==
-                                       *session->active_command) {
-                                        auto desc = flags_label(cmd);
-                                        if(!desc.empty()) {
-                                            item.label = std::move(desc);
-                                        }
-                                        item.description = cmd.resolved.directory.str();
-                                        break;
-                                    }
-                                }
-                            }
-                            result.context = std::move(item);
+                            item.description = cmd.resolved.directory.str();
+                            break;
                         }
-                        co_return to_raw(result);
-                    });
+                    }
+                }
+                result.context = std::move(item);
+            }
+            co_return to_raw(result);
+        });
 
     peer.on_request(
         "clice/switchContext",
@@ -819,39 +842,52 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 co_return to_raw(result);
             }
 
-            if(params.command_hash.has_value()) {
-                // Pin one of the file's own CDB entries.
-                bool found = false;
-                if(ws.cdb.has_entry(path)) {
-                    for(auto& cmd: ws.cdb.lookup(path)) {
-                        if(canonical_command_hash(cmd.to_string_argv()) == *params.command_hash) {
-                            found = true;
-                            break;
-                        }
+            // Validate that `hash` names a real CDB entry of `entry_path`.
+            auto has_command = [&](llvm::StringRef entry_path, llvm::StringRef hash) {
+                if(!ws.cdb.has_entry(entry_path)) {
+                    return false;
+                }
+                std::vector<std::string> rule_append, rule_remove;
+                ws.config.match_rules(entry_path, rule_append, rule_remove);
+                for(auto& cmd:
+                    ws.cdb.lookup(entry_path, {.remove = rule_remove, .append = rule_append})) {
+                    if(canonical_command_hash(cmd.to_string_argv()) == hash) {
+                        return true;
                     }
                 }
-                if(!found) {
+                return false;
+            };
+
+            if(context_path_id == path_id && params.command_hash.has_value()) {
+                // Pin one of the file's own CDB entries.
+                if(!has_command(path, *params.command_hash)) {
                     co_return to_raw(result);
                 }
                 session->active_command = *params.command_hash;
                 session->active_context.reset();
             } else {
                 // Pin a host source for a header: it must have a real CDB
-                // entry and actually (transitively) include this header.
+                // entry, actually (transitively) include this header, and —
+                // for multi-configuration hosts — own the pinned entry.
                 if(!ws.cdb.has_entry(context_path)) {
                     co_return to_raw(result);
                 }
                 if(ws.dep_graph.find_include_chain(context_path_id, path_id).empty()) {
                     co_return to_raw(result);
                 }
-                auto occurrence = params.occurrence.value_or(0);
-                if(occurrence > 0) {
+                if(params.command_hash.has_value() &&
+                   !has_command(context_path, *params.command_hash)) {
+                    co_return to_raw(result);
+                }
+                if(params.occurrence.has_value() && *params.occurrence > 0) {
                     auto count = count_occurrences(context_path_id, path_id);
-                    if(count > 0 && occurrence >= count) {
+                    if(count > 0 && *params.occurrence >= count) {
                         co_return to_raw(result);
                     }
                 }
-                session->active_context = Session::ActiveContext{context_path_id, occurrence};
+                session->active_context = Session::ActiveContext{context_path_id,
+                                                                 params.occurrence,
+                                                                 params.command_hash.value_or("")};
                 session->active_command.reset();
             }
 

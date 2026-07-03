@@ -5,8 +5,10 @@
 #include <ranges>
 #include <tuple>
 
+#include "command/search_config.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
 #include "kota/codec/json/json.h"
@@ -28,7 +30,10 @@ bool Workspace::is_synthesized_artifact(llvm::StringRef path) const {
 }
 
 HeaderMode Workspace::header_mode(llvm::StringRef path, std::uint32_t path_id) const {
-    if(path.ends_with(".def") || path.ends_with(".inc")) {
+    // Keep in sync with the client's C++ fragment detection
+    // (editors/vscode/src/feature/context.ts).
+    if(path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
+       path.ends_with(".tpp") || path.ends_with(".ipp")) {
         return HeaderMode::NeedsContext;
     }
     if(auto it = header_modes.find(path_id); it != header_modes.end()) {
@@ -38,7 +43,7 @@ HeaderMode Workspace::header_mode(llvm::StringRef path, std::uint32_t path_id) c
 }
 
 llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path_id,
-                                                       llvm::ArrayRef<std::uint32_t> hosts) {
+                                                       llvm::ArrayRef<std::uint32_t> hosts) const {
     auto header_path = path_pool.resolve(header_path_id);
     auto header_stem = llvm::sys::path::stem(header_path);
     auto header_dir = llvm::sys::path::parent_path(header_path);
@@ -68,7 +73,59 @@ llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path
     return ranked;
 }
 
+void Workspace::rescan_includes(std::uint32_t path_id) {
+    auto path = path_pool.resolve(path_id);
+    llvm::SmallVector<std::uint32_t> ids;
+
+    if(auto buf = llvm::MemoryBuffer::getFile(path)) {
+        // Search paths come from the file's own command, or a host's for
+        // headers without a CDB entry; the synthesized default still
+        // resolves quote includes via the includer directory.
+        llvm::StringRef cmd_path = path;
+        if(!cdb.has_entry(path)) {
+            for(auto host: rank_hosts(path_id, dep_graph.find_host_sources(path_id))) {
+                auto host_path = path_pool.resolve(host);
+                if(cdb.has_entry(host_path)) {
+                    cmd_path = host_path;
+                    break;
+                }
+            }
+        }
+
+        std::vector<std::string> rule_append, rule_remove;
+        config.match_rules(cmd_path, rule_append, rule_remove);
+        auto cmds = cdb.lookup(cmd_path, {.remove = rule_remove, .append = rule_append});
+        toolchain.resolve_or_warn(cmds.front());
+        auto argv = cmds.front().to_argv();
+        auto search_config = extract_search_config(argv, cmds.front().resolved.directory);
+
+        DirListingCache dir_cache;
+        auto resolved_config = resolve_search_config(search_config, dir_cache);
+        auto dir = llvm::sys::path::parent_path(path);
+        auto entries = resolve_dir(dir, dir_cache);
+        for(auto& include: scan((*buf)->getBuffer()).includes) {
+            auto resolved = resolve_include(include.path,
+                                            include.is_angled,
+                                            entries,
+                                            dir,
+                                            include.is_include_next,
+                                            0,
+                                            resolved_config,
+                                            dir_cache);
+            if(resolved) {
+                ids.push_back(path_pool.intern(resolved->path));
+            }
+        }
+    }
+
+    dep_graph.reset_includes(path_id, std::move(ids));
+    dep_graph.build_reverse_map();
+}
+
 llvm::SmallVector<std::uint32_t> Workspace::on_file_saved(std::uint32_t path_id) {
+    // Contexts must see includes added/removed by this save.
+    rescan_includes(path_id);
+
     context_epoch += 1;
 
     llvm::SmallVector<std::uint32_t> dirtied;
@@ -160,6 +217,10 @@ struct CachePCHEntry {
     std::uint32_t bound;
     std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
+
+    // Preamble share of the inactive-region scan; consumed on PCH reuse.
+    std::vector<std::uint32_t> inactive_regions;
+    std::vector<std::uint8_t> open_conditionals;
 };
 
 struct CachePCMEntry {
@@ -242,6 +303,8 @@ void Workspace::load_cache() {
         st.path = *pch_path;
         st.bound = entry.bound;
         st.deps = load_deps(entry.build_at, entry.deps);
+        st.inactive_regions = entry.inactive_regions;
+        st.open_conditionals = entry.open_conditionals;
 
         LOG_DEBUG("Loaded cached PCH: {} -> {}", entry.key, *pch_path);
     }
@@ -277,7 +340,9 @@ void Workspace::load_cache() {
                 continue;
             saved.host_path_id = path_pool.intern(host);
         }
-        saved.occurrence = entry.occurrence;
+        if(entry.occurrence != ~0u) {
+            saved.occurrence = entry.occurrence;
+        }
         saved.command_hash = entry.command_hash;
         saved_contexts[path_pool.intern(file)] = std::move(saved);
     }
@@ -322,6 +387,8 @@ void Workspace::save_cache() {
         entry.key = e.getKey().str();
         entry.bound = st.bound;
         entry.build_at = st.deps.build_at;
+        entry.inactive_regions = st.inactive_regions;
+        entry.open_conditionals = st.open_conditionals;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
             entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }
@@ -362,8 +429,8 @@ void Workspace::save_cache() {
     for(auto& [path_id, saved]: saved_contexts) {
         CacheContextEntry entry;
         entry.file = intern(path_id);
-        entry.host = saved.host_path_id ? intern(saved.host_path_id) : ~0u;
-        entry.occurrence = saved.occurrence;
+        entry.host = saved.host_path_id != no_path_id ? intern(saved.host_path_id) : ~0u;
+        entry.occurrence = saved.occurrence.value_or(~0u);
         entry.command_hash = saved.command_hash;
         data.contexts.push_back(std::move(entry));
     }

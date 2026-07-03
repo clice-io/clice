@@ -103,8 +103,15 @@ struct Session {
     /// When set, overrides automatic header context resolution.
     struct ActiveContext {
         std::uint32_t host_path_id = 0;  ///< Host source file.
-        std::uint32_t occurrence = 0;    ///< Nth include of this header in
-                                         ///< its direct includer (0-based).
+
+        /// Nth include of this header in its direct includer (0-based).
+        /// An explicitly chosen occurrence — even #0 — forces prefix
+        /// synthesis; no value means automatic.
+        std::optional<std::uint32_t> occurrence;
+
+        /// Canonical hash pinning one of the host's CDB entries when the
+        /// host is built under several configurations; empty = first.
+        std::string command_hash;
     };
 
     std::optional<ActiveContext> active_context;

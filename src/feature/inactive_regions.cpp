@@ -51,13 +51,12 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
     };
 
     llvm::SmallVector<Level> stack;
-    for(auto inactive: open_stack) {
+    for(auto encoded: open_stack) {
         Level level;
-        if(inactive) {
+        if(encoded & 1) {
             level.inactive_begin = resume_offset;
-        } else {
-            level.taken = true;
         }
+        level.taken = (encoded & 2) != 0;
         stack.push_back(level);
     }
 
@@ -139,7 +138,11 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
     // Levels still open at the content bound: close their regions there
     // and report the stack so a follow-up scan can resume.
     for(auto& level: stack) {
-        result.open_stack.push_back(level.inactive_begin.has_value() ? 1 : 0);
+        std::uint8_t encoded = level.inactive_begin.has_value() ? 1 : 0;
+        if(level.taken) {
+            encoded |= 2;
+        }
+        result.open_stack.push_back(encoded);
         close_pending(level, end_offset);
     }
 
