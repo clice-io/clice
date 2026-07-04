@@ -66,20 +66,20 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         });
     });
 
-    using StringVec = std::vector<std::string>;
+    register_lifecycle();
+    register_document_sync();
+    register_language_features();
+    register_extensions();
+}
 
-    // Shared front half of every document-addressed handler: URI → path →
-    // interned path_id → open session (null when the document is not open).
-    auto resolve_uri = [this](const std::string& uri) {
-        struct Result {
-            std::string path;
-            std::uint32_t path_id;
-            std::shared_ptr<Session> session;
-        };
-        auto path = uri_to_path(uri);
-        auto path_id = this->server.workspace.path_pool.intern(path);
-        return Result{std::move(path), path_id, this->server.find_session(path_id)};
-    };
+LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
+    auto path = uri_to_path(uri);
+    auto path_id = this->server.workspace.path_pool.intern(path);
+    return ResolvedDoc{std::move(path), path_id, this->server.find_session(path_id)};
+}
+
+void LSPClient::register_lifecycle() {
+    using StringVec = std::vector<std::string>;
 
     peer.on_request([this](RequestContext& ctx, const protocol::InitializeParams& params)
                         -> RequestResult<protocol::InitializeParams> {
@@ -196,8 +196,10 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         LOG_INFO("Exit notification received");
         this->server.schedule_shutdown();
     });
+}
 
-    peer.on_notification([this, resolve_uri](const protocol::DidOpenTextDocumentParams& params) {
+void LSPClient::register_document_sync() {
+    peer.on_notification([this](const protocol::DidOpenTextDocumentParams& params) {
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Ready)
             return;
@@ -212,7 +214,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
     });
 
-    peer.on_notification([this, resolve_uri](const protocol::DidChangeTextDocumentParams& params) {
+    peer.on_notification([this](const protocol::DidChangeTextDocumentParams& params) {
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Ready)
             return;
@@ -229,7 +231,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                   session->generation);
     });
 
-    peer.on_notification([this, resolve_uri](const protocol::DidCloseTextDocumentParams& params) {
+    peer.on_notification([this](const protocol::DidCloseTextDocumentParams& params) {
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Ready)
             return;
@@ -238,7 +240,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         srv.close_session(path_id, this->peer);
     });
 
-    peer.on_notification([this, resolve_uri](const protocol::DidSaveTextDocumentParams& params) {
+    peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Ready)
             return;
@@ -248,22 +250,23 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
 
         LOG_DEBUG("didSave: {}", path);
     });
+}
 
-    peer.on_request(
-        [this, resolve_uri](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
-            auto& srv = this->server;
-            auto [path, path_id, session] =
-                resolve_uri(params.text_document_position_params.text_document.uri);
-            if(!session)
-                co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.compiler.forward_query(
-                worker::QueryKind::Hover,
-                session,
-                params.text_document_position_params.position);
-        });
+void LSPClient::register_language_features() {
+    peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
+        auto& srv = this->server;
+        auto [path, path_id, session] =
+            resolve_uri(params.text_document_position_params.text_document.uri);
+        if(!session)
+            co_return kota::outcome_error(document_not_open());
+        co_return co_await srv.compiler.forward_query(
+            worker::QueryKind::Hover,
+            session,
+            params.text_document_position_params.position);
+    });
 
-    peer.on_request([this, resolve_uri](RequestContext& ctx,
-                                        const protocol::SemanticTokensParams& params) -> RawResult {
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::SemanticTokensParams& params) -> RawResult {
         auto& srv = this->server;
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         if(!session)
@@ -271,29 +274,29 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         co_return co_await srv.compiler.forward_query(worker::QueryKind::SemanticTokens, session);
     });
 
-    peer.on_request([this, resolve_uri](RequestContext& ctx,
-                                        const protocol::InlayHintParams& params) -> RawResult {
-        auto& srv = this->server;
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-        if(!session)
-            co_return kota::outcome_error(document_not_open());
-        co_return co_await srv.compiler.forward_query(worker::QueryKind::InlayHints,
-                                                      session,
-                                                      {},
-                                                      params.range);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            if(!session)
+                co_return kota::outcome_error(document_not_open());
+            co_return co_await srv.compiler.forward_query(worker::QueryKind::InlayHints,
+                                                          session,
+                                                          {},
+                                                          params.range);
+        });
 
-    peer.on_request([this, resolve_uri](RequestContext& ctx,
-                                        const protocol::FoldingRangeParams& params) -> RawResult {
-        auto& srv = this->server;
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-        if(!session)
-            co_return kota::outcome_error(document_not_open());
-        co_return co_await srv.compiler.forward_query(worker::QueryKind::FoldingRange, session);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            if(!session)
+                co_return kota::outcome_error(document_not_open());
+            co_return co_await srv.compiler.forward_query(worker::QueryKind::FoldingRange, session);
+        });
 
-    peer.on_request([this, resolve_uri](RequestContext& ctx,
-                                        const protocol::DocumentSymbolParams& params) -> RawResult {
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentSymbolParams& params) -> RawResult {
         auto& srv = this->server;
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         if(!session)
@@ -301,69 +304,67 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         co_return co_await srv.compiler.forward_query(worker::QueryKind::DocumentSymbol, session);
     });
 
-    peer.on_request([this, resolve_uri](RequestContext& ctx,
-                                        const protocol::DocumentLinkParams& params) -> RawResult {
-        auto& srv = this->server;
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-        if(!session)
-            co_return kota::outcome_error(document_not_open());
-        auto result = co_await srv.compiler.forward_document_links(session);
-        if(!result.has_value())
-            co_return kota::outcome_error(std::move(result.error()));
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            if(!session)
+                co_return kota::outcome_error(document_not_open());
+            auto result = co_await srv.compiler.forward_document_links(session);
+            if(!result.has_value())
+                co_return kota::outcome_error(std::move(result.error()));
 
-        // The preamble is compiled into the PCH, so the worker's AST only
-        // covers the rest of the file — merge the preamble's links in front.
-        std::vector<protocol::DocumentLink> links;
-        auto append = [&](const feature::DocumentLink& link) {
-            protocol::DocumentLink out{.range = link.range};
-            out.target = link.target;
-            links.push_back(std::move(out));
-        };
-        // Skipped while dirty: a failed or superseded compile leaves
-        // the cached links describing the pre-edit preamble.
-        if(!session->ast_dirty) {
-            if(auto* pch_links = srv.find_preamble_links(*session)) {
-                std::ranges::for_each(*pch_links, append);
+            // The preamble is compiled into the PCH, so the worker's AST only
+            // covers the rest of the file — merge the preamble's links in front.
+            std::vector<protocol::DocumentLink> links;
+            auto append = [&](const feature::DocumentLink& link) {
+                protocol::DocumentLink out{.range = link.range};
+                out.target = link.target;
+                links.push_back(std::move(out));
+            };
+            // Skipped while dirty: a failed or superseded compile leaves
+            // the cached links describing the pre-edit preamble.
+            if(!session->ast_dirty) {
+                if(auto* pch_links = srv.find_preamble_links(*session)) {
+                    std::ranges::for_each(*pch_links, append);
+                }
             }
-        }
-        std::ranges::for_each(result.value(), append);
-        co_return to_raw(links);
-    });
+            std::ranges::for_each(result.value(), append);
+            co_return to_raw(links);
+        });
 
-    peer.on_request([this, resolve_uri](RequestContext& ctx,
-                                        const protocol::CodeActionParams& params) -> RawResult {
-        auto& srv = this->server;
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-        if(!session)
-            co_return kota::outcome_error(document_not_open());
-        co_return co_await srv.compiler.forward_query(worker::QueryKind::CodeAction, session);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            if(!session)
+                co_return kota::outcome_error(document_not_open());
+            co_return co_await srv.compiler.forward_query(worker::QueryKind::CodeAction, session);
+        });
 
-    auto lookup_at = [this, resolve_uri](const std::string& uri, const protocol::Position& pos) {
+    auto lookup_at = [this](const std::string& uri, const protocol::Position& pos) {
         auto [path, path_id, session] = resolve_uri(uri);
         return this->server.index_query.lookup_symbol(uri, path, pos, session.get());
     };
 
-    auto query_at = [this, resolve_uri](const std::string& uri,
-                                        const protocol::Position& pos,
-                                        RelationKind kind) -> std::vector<protocol::Location> {
+    auto query_at = [this](const std::string& uri,
+                           const protocol::Position& pos,
+                           RelationKind kind) -> std::vector<protocol::Location> {
         auto [path, path_id, session] = resolve_uri(uri);
         return this->server.index_query.query_relations(path, pos, kind, session.get());
     };
 
-    auto query_targets_at = [this,
-                             resolve_uri](const std::string& uri,
-                                          const protocol::Position& pos,
-                                          RelationKind kind) -> std::vector<protocol::Location> {
+    auto query_targets_at = [this](const std::string& uri,
+                                   const protocol::Position& pos,
+                                   RelationKind kind) -> std::vector<protocol::Location> {
         auto [path, path_id, session] = resolve_uri(uri);
         return this->server.index_query.query_symbol_targets(path, pos, kind, session.get());
     };
 
     auto resolve_item =
-        [this,
-         resolve_uri](const std::string& uri,
-                      const protocol::Range& range,
-                      const std::optional<protocol::LSPAny>& data) -> std::optional<SymbolInfo> {
+        [this](const std::string& uri,
+               const protocol::Range& range,
+               const std::optional<protocol::LSPAny>& data) -> std::optional<SymbolInfo> {
         auto [path, path_id, session] = resolve_uri(uri);
         return this->server.index_query.resolve_hierarchy_item(uri,
                                                                path,
@@ -372,9 +373,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                                                                session.get());
     };
 
-    peer.on_request([this, resolve_uri, query_at](
-                        RequestContext& ctx,
-                        const protocol::DefinitionParams& params) -> RawResult {
+    peer.on_request([this, query_at](RequestContext& ctx,
+                                     const protocol::DefinitionParams& params) -> RawResult {
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
 
@@ -477,8 +477,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             co_return to_raw(locations);
         });
 
-    peer.on_request([this, resolve_uri](RequestContext& ctx,
-                                        const protocol::CompletionParams& params) -> RawResult {
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::CompletionParams& params) -> RawResult {
         auto& srv = this->server;
         auto [path, path_id, session] =
             resolve_uri(params.text_document_position_params.text_document.uri);
@@ -491,24 +491,23 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         co_return std::move(result);
     });
 
-    peer.on_request([this, resolve_uri](RequestContext& ctx,
-                                        const protocol::SignatureHelpParams& params) -> RawResult {
-        auto& srv = this->server;
-        auto [path, path_id, session] =
-            resolve_uri(params.text_document_position_params.text_document.uri);
-        if(!session)
-            co_return kota::outcome_error(document_not_open());
-        auto pause = srv.background_indexer.scoped_pause();
-        auto result =
-            co_await srv.compiler.forward_build(worker::BuildKind::SignatureHelp,
-                                                params.text_document_position_params.position,
-                                                session);
-        co_return std::move(result);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto [path, path_id, session] =
+                resolve_uri(params.text_document_position_params.text_document.uri);
+            if(!session)
+                co_return kota::outcome_error(document_not_open());
+            auto pause = srv.background_indexer.scoped_pause();
+            auto result =
+                co_await srv.compiler.forward_build(worker::BuildKind::SignatureHelp,
+                                                    params.text_document_position_params.position,
+                                                    session);
+            co_return std::move(result);
+        });
 
     peer.on_request(
-        [this, resolve_uri](RequestContext& ctx,
-                            const protocol::DocumentFormattingParams& params) -> RawResult {
+        [this](RequestContext& ctx, const protocol::DocumentFormattingParams& params) -> RawResult {
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -517,16 +516,15 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             co_return co_await srv.compiler.forward_format(session);
         });
 
-    peer.on_request(
-        [this, resolve_uri](RequestContext& ctx,
-                            const protocol::DocumentRangeFormattingParams& params) -> RawResult {
-            auto& srv = this->server;
-            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-            if(!session)
-                co_return kota::outcome_error(document_not_open());
-            auto pause = srv.background_indexer.scoped_pause();
-            co_return co_await srv.compiler.forward_format(session, params.range);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentRangeFormattingParams& params) -> RawResult {
+        auto& srv = this->server;
+        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+        if(!session)
+            co_return kota::outcome_error(document_not_open());
+        auto pause = srv.background_indexer.scoped_pause();
+        co_return co_await srv.compiler.forward_format(session, params.range);
+    });
 
     peer.on_request(
         [this, lookup_at](RequestContext& ctx,
@@ -608,38 +606,37 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto results = this->server.index_query.search_symbols(params.query);
             co_return to_raw(results);
         });
+}
 
+void LSPClient::register_extensions() {
     // ── Compilation context helpers ─────────────────────────────────
 
-    peer.on_request("clice/queryContext",
-                    [this, resolve_uri](RequestContext& ctx,
-                                        const ext::QueryContextParams& params) -> RawResult {
-                        auto [path, path_id, session] = resolve_uri(params.uri);
-                        co_return to_raw(
-                            this->server.contexts.query_contexts(path, path_id, params));
-                    });
+    peer.on_request(
+        "clice/queryContext",
+        [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
+            auto [path, path_id, session] = resolve_uri(params.uri);
+            co_return to_raw(this->server.contexts.query_contexts(path, path_id, params));
+        });
 
-    peer.on_request("clice/currentContext",
-                    [this, resolve_uri](RequestContext& ctx,
-                                        const ext::CurrentContextParams& params) -> RawResult {
-                        auto [path, path_id, session] = resolve_uri(params.uri);
-                        co_return to_raw(
-                            this->server.contexts.current_context(path, session.get(), params));
-                    });
+    peer.on_request(
+        "clice/currentContext",
+        [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
+            auto [path, path_id, session] = resolve_uri(params.uri);
+            co_return to_raw(this->server.contexts.current_context(path, session.get(), params));
+        });
 
-    peer.on_request("clice/switchContext",
-                    [this, resolve_uri](RequestContext& ctx,
-                                        const ext::SwitchContextParams& params) -> RawResult {
-                        auto [path, path_id, session] = resolve_uri(params.uri);
-                        auto [context_path, context_path_id, context_session] =
-                            resolve_uri(params.context_uri);
-                        co_return to_raw(this->server.contexts.switch_context(path,
-                                                                              path_id,
-                                                                              session.get(),
-                                                                              context_path,
-                                                                              context_path_id,
-                                                                              params));
-                    });
+    peer.on_request(
+        "clice/switchContext",
+        [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
+            auto [path, path_id, session] = resolve_uri(params.uri);
+            auto [context_path, context_path_id, context_session] = resolve_uri(params.context_uri);
+            co_return to_raw(this->server.contexts.switch_context(path,
+                                                                  path_id,
+                                                                  session.get(),
+                                                                  context_path,
+                                                                  context_path_id,
+                                                                  params));
+        });
 }
 
 /// Publish clice.toml load problems as diagnostics, each on its own file's

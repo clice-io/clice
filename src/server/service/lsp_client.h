@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "support/signal.h"
 
@@ -23,6 +24,23 @@ public:
 
 private:
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
+
+    /// Shared front half of every document-addressed handler: URI → path →
+    /// interned path_id → open session (null when the document is not open).
+    struct ResolvedDoc {
+        std::string path;
+        std::uint32_t path_id;
+        std::shared_ptr<Session> session;
+    };
+
+    ResolvedDoc resolve_uri(const std::string& uri);
+
+    /// LSP handler registration, grouped by category. Each installs its
+    /// handlers on `peer`; all four are invoked once from the constructor.
+    void register_lifecycle();
+    void register_document_sync();
+    void register_language_features();
+    void register_extensions();
 
     /// Push clice.toml load problems as diagnostics on the config file URI.
     void publish_config_diagnostics();
