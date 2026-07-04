@@ -667,27 +667,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
     };
 
     // How many includes of `target_id` the direct includer along the
-    // host's chain contains. Spelling-based (no search-path resolution):
-    // multiple inclusions of one header always share a spelling, and the
-    // synthesis validates the real occurrence anyway.
     auto count_occurrences = [this](std::uint32_t host_id, std::uint32_t target_id) {
-        auto& ws = this->server.workspace;
-        auto chain = ws.dep_graph.find_include_chain(host_id, target_id);
-        if(chain.size() < 2)
-            return std::uint32_t(0);
-        auto includer_path = ws.path_pool.resolve(chain[chain.size() - 2]);
-        auto target_path = ws.path_pool.resolve(target_id);
-        auto buf = llvm::MemoryBuffer::getFile(includer_path);
-        if(!buf)
-            return std::uint32_t(0);
-        auto null_resolver =
-            [](llvm::StringRef, bool, bool, llvm::StringRef) -> std::optional<std::string> {
-            return std::nullopt;
-        };
-        return count_include_occurrences((*buf)->getBuffer(),
-                                         includer_path,
-                                         target_path,
-                                         null_resolver);
+        return this->server.workspace.count_occurrences(host_id, target_id);
     };
 
     peer.on_request(

@@ -21,6 +21,19 @@ static void append_line_marker(std::string& out, llvm::StringRef path) {
     out += "\"\n";
 }
 
+/// Emit `path` as a quoted include/marker operand, escaping backslashes
+/// and quotes so Windows paths survive string-literal parsing.
+static void append_quoted_path(std::string& out, llvm::StringRef path) {
+    out += '"';
+    for(char c: path) {
+        if(c == '\\' || c == '"') {
+            out += '\\';
+        }
+        out += c;
+    }
+    out += '"';
+}
+
 /// Collect all directives in `includes` that bring in `next_path`, in
 /// directive order. Prefers exact resolved-path matches; when resolution
 /// found nothing, falls back to filename matches — but only if all
@@ -123,9 +136,7 @@ static void emit_rewritten(std::string& out,
         if(*resolved[j] == target_path) {
             if(!self_snapshot_path.empty()) {
                 out += content.substr(pos, include.name_offset - pos);
-                out += '"';
-                out += self_snapshot_path;
-                out += '"';
+                append_quoted_path(out, self_snapshot_path);
                 pos = include.name_offset + include.name_length;
                 continue;
             }
@@ -145,9 +156,7 @@ static void emit_rewritten(std::string& out,
             continue;
         }
         out += content.substr(pos, include.name_offset - pos);
-        out += '"';
-        out += *resolved[j];
-        out += '"';
+        append_quoted_path(out, *resolved[j]);
         pos = include.name_offset + include.name_length;
     }
     out += content.substr(pos, to - pos);

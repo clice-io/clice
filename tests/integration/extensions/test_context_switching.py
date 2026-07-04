@@ -99,7 +99,9 @@ async def test_context_dedup_and_ranking(client, tmp_path):
     await client.initialize(tmp_path)
 
     await client.open_and_wait(tmp_path / "widget.cpp")
-    widget_uri, _ = client.open(tmp_path / "widget.h")
+    # Dedup requires a confirmed self-contained verdict, earned by the
+    # header's own trial compile — wait for it.
+    widget_uri, _ = await client.open_and_wait(tmp_path / "widget.h")
 
     query = await client.query_context(widget_uri)
     assert get_field(query, "total") == 1, (

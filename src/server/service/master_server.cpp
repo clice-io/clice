@@ -218,7 +218,15 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
             continue;
         }
         auto host_id = session->active_context->host_path_id;
-        if(workspace.dep_graph.find_include_chain(host_id, session_id).empty()) {
+        auto& occurrence = session->active_context->occurrence;
+        bool orphaned = workspace.dep_graph.find_include_chain(host_id, session_id).empty();
+        // A pinned occurrence can vanish while other inclusions of the
+        // header survive (the chain stays non-empty) — recount it.
+        if(!orphaned && occurrence.has_value()) {
+            auto count = workspace.count_occurrences(host_id, session_id);
+            orphaned = count > 0 && *occurrence >= count;
+        }
+        if(orphaned) {
             LOG_INFO("Dropping orphaned context choice for {}: host {} no longer includes it",
                      workspace.path_pool.resolve(session_id),
                      workspace.path_pool.resolve(host_id));

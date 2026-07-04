@@ -9,6 +9,7 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
+#include "syntax/preamble_synthesis.h"
 #include "syntax/scan.h"
 
 #include "kota/codec/json/json.h"
@@ -40,6 +41,27 @@ HeaderMode Workspace::header_mode(llvm::StringRef path, std::uint32_t path_id) c
         return it->second;
     }
     return HeaderMode::Unknown;
+}
+
+std::uint32_t Workspace::count_occurrences(std::uint32_t host_id, std::uint32_t target_id) const {
+    auto chain = dep_graph.find_include_chain(host_id, target_id);
+    if(chain.size() < 2) {
+        return 0;
+    }
+    auto includer_path = path_pool.resolve(chain[chain.size() - 2]);
+    auto target_path = path_pool.resolve(target_id);
+    auto buf = llvm::MemoryBuffer::getFile(includer_path);
+    if(!buf) {
+        return 0;
+    }
+    auto null_resolver =
+        [](llvm::StringRef, bool, bool, llvm::StringRef) -> std::optional<std::string> {
+        return std::nullopt;
+    };
+    return count_include_occurrences((*buf)->getBuffer(),
+                                     includer_path,
+                                     target_path,
+                                     null_resolver);
 }
 
 void Workspace::forget_self_contained(std::uint32_t path_id) {

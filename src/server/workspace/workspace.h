@@ -233,6 +233,12 @@ struct Workspace {
     /// NeedsContext) so the next compile re-runs the trial.
     void forget_self_contained(std::uint32_t path_id);
 
+    /// How many times the direct includer on host->target's chain includes
+    /// the target. Spelling-based (no search-path resolution): multiple
+    /// inclusions of one header always share a spelling, and synthesis
+    /// validates the real occurrence anyway.
+    std::uint32_t count_occurrences(std::uint32_t host_id, std::uint32_t target_id) const;
+
     /// Rank host source candidates for a header by relevance: a source
     /// with the header's stem (utils.h -> utils.cpp) wins, then sources in
     /// the same directory, then longer common path prefixes; ties break

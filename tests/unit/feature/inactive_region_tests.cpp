@@ -47,6 +47,42 @@ int dead();
     EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]), "int dead();\n");
 }
 
+TEST_CASE(IncludeGuardStaysActive) {
+    run(R"cpp(
+#ifndef GUARD_H
+int active();
+#endif
+)cpp");
+
+    EXPECT_EQ(scan.regions.size(), 0u);
+}
+
+TEST_CASE(IfndefDefinedMacro) {
+    run(R"cpp(
+#define TAKEN 1
+#ifndef TAKEN
+int dead();
+#endif
+)cpp");
+
+    ASSERT_EQ(scan.regions.size(), 2u);
+    auto content = unit->interested_content();
+    EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]), "int dead();\n");
+}
+
+TEST_CASE(IfdefUndefinedMacro) {
+    run(R"cpp(
+#ifdef MISSING
+int dead();
+#endif
+int b();
+)cpp");
+
+    ASSERT_EQ(scan.regions.size(), 2u);
+    auto content = unit->interested_content();
+    EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]), "int dead();\n");
+}
+
 };  // TEST_SUITE(inactive_regions)
 
 }  // namespace

@@ -98,18 +98,20 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
             this.emitter.fire();
             return;
         }
-        this.uri = editor.document.uri.toString();
+        const uri = editor.document.uri.toString();
+        this.uri = uri;
         this.loaded = [];
         this.total = 0;
         try {
             const [query, current] = await Promise.all([
-                this.client.sendRequest<QueryContextResult>("clice/queryContext", {
-                    uri: this.uri,
-                }),
-                this.client.sendRequest<CurrentContextResult>("clice/currentContext", {
-                    uri: this.uri,
-                }),
+                this.client.sendRequest<QueryContextResult>("clice/queryContext", { uri }),
+                this.client.sendRequest<CurrentContextResult>("clice/currentContext", { uri }),
             ]);
+            // A refresh for a previously active editor can finish after a
+            // newer one started; its results belong to the wrong document.
+            if (this.uri !== uri) {
+                return;
+            }
             this.loaded = query?.contexts ?? [];
             this.total = query?.total ?? this.loaded.length;
             this.epoch = query?.epoch ?? 0;
@@ -124,11 +126,15 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
         if (!this.uri || this.loaded.length >= this.total) {
             return;
         }
+        const uri = this.uri;
         try {
             const query = await this.client.sendRequest<QueryContextResult>("clice/queryContext", {
-                uri: this.uri,
+                uri,
                 offset: this.loaded.length,
             });
+            if (this.uri !== uri) {
+                return;
+            }
             this.loaded.push(...(query?.contexts ?? []));
             this.total = query?.total ?? this.loaded.length;
         } catch {
@@ -335,4 +341,8 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
         vscode.window.onDidChangeActiveTextEditor((editor) => void refresh(editor)),
     );
     void refresh(vscode.window.activeTextEditor);
+    // Documents opened before activation never fire onDidOpenTextDocument.
+    for (const document of vscode.workspace.textDocuments) {
+        void detectCxxFragment(document);
+    }
 }
