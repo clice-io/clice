@@ -6,6 +6,7 @@
 
 #include "server/compiler/compiler.h"
 #include "server/compiler/indexer.h"
+#include "server/context/context_resolver.h"
 #include "server/service/session.h"
 #include "server/worker/worker_pool.h"
 #include "server/workspace/config.h"
@@ -136,6 +137,7 @@ private:
     Workspace workspace;
     llvm::DenseMap<std::uint32_t, std::shared_ptr<Session>> sessions;
     WorkerPool pool;
+    ContextResolver contexts;
     Compiler compiler;
     Indexer indexer;
 

@@ -8,6 +8,7 @@
 
 #include "command/argument_parser.h"
 #include "semantic/symbol_kind.h"
+#include "server/context/context_resolver.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/serialize.h"
 #include "server/protocol/worker.h"
@@ -22,9 +23,7 @@
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
 #include "kota/meta/enum.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 
 namespace clice {
@@ -207,51 +206,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         session->text = params.text_document.text;
         session->line_starts = lsp::build_line_starts(session->text);
 
-        // Restore a context choice persisted from an earlier session. The
-        // CDB or include graph may have changed while the server was down —
-        // validate before adopting, since a stale active_context suppresses
-        // automatic host resolution and strands the file on the fallback
-        // command.
-        if(auto it = srv.workspace.saved_contexts.find(path_id);
-           it != srv.workspace.saved_contexts.end()) {
-            auto& ws = srv.workspace;
-            auto& saved = it->second;
-            auto entry_has_hash = [&ws](llvm::StringRef entry_path, llvm::StringRef hash) {
-                std::vector<std::string> rule_append, rule_remove;
-                ws.config.match_rules(entry_path, rule_append, rule_remove);
-                for(auto& cmd:
-                    ws.cdb.lookup(entry_path, {.remove = rule_remove, .append = rule_append})) {
-                    if(canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory) ==
-                       hash) {
-                        return true;
-                    }
-                }
-                return false;
-            };
-
-            bool valid = false;
-            if(saved.host_path_id != no_path_id) {
-                auto host_path = ws.path_pool.resolve(saved.host_path_id);
-                valid =
-                    ws.cdb.has_entry(host_path) &&
-                    !ws.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
-                    (saved.command_hash.empty() || entry_has_hash(host_path, saved.command_hash));
-                if(valid) {
-                    session->active_context = Session::ActiveContext{saved.host_path_id,
-                                                                     saved.occurrence,
-                                                                     saved.command_hash};
-                }
-            } else if(!saved.command_hash.empty()) {
-                valid = ws.cdb.has_entry(path) && entry_has_hash(path, saved.command_hash);
-                if(valid) {
-                    session->active_command = saved.command_hash;
-                }
-            }
-            if(!valid) {
-                LOG_INFO("didOpen: dropping stale saved context for {}", path);
-                srv.workspace.saved_contexts.erase(it);
-            }
-        }
+        // Restore a context choice persisted from an earlier session.
+        srv.contexts.restore_saved_context(*session);
 
         session->generation++;
 
@@ -677,294 +633,35 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
 
     // ── Compilation context helpers ─────────────────────────────────
 
-    // Human-readable summary of the distinguishing flags of a command.
-    auto flags_label = [](const CompileCommand& cmd) {
-        auto argv = cmd.to_argv();
-        std::string desc;
-        for(std::size_t j = 0; j < argv.size(); ++j) {
-            llvm::StringRef a(argv[j]);
-            if(a.starts_with("-D") || a.starts_with("-O") || a.starts_with("-std=") ||
-               a.starts_with("-g")) {
-                if(!desc.empty())
-                    desc += ' ';
-                desc += argv[j];
-                if((a == "-D" || a == "-O") && j + 1 < argv.size()) {
-                    desc += argv[++j];
-                }
-            }
-        }
-        return desc;
-    };
+    peer.on_request("clice/queryContext",
+                    [this, resolve_uri](RequestContext& ctx,
+                                        const ext::QueryContextParams& params) -> RawResult {
+                        auto [path, path_id, session] = resolve_uri(params.uri);
+                        co_return to_raw(
+                            this->server.contexts.query_contexts(path, path_id, params));
+                    });
 
-    // How many includes of `target_id` the direct includer along the
-    auto count_occurrences = [this](std::uint32_t host_id, std::uint32_t target_id) {
-        return this->server.workspace.count_occurrences(host_id, target_id);
-    };
+    peer.on_request("clice/currentContext",
+                    [this, resolve_uri](RequestContext& ctx,
+                                        const ext::CurrentContextParams& params) -> RawResult {
+                        auto [path, path_id, session] = resolve_uri(params.uri);
+                        co_return to_raw(
+                            this->server.contexts.current_context(path, session.get(), params));
+                    });
 
-    peer.on_request(
-        "clice/queryContext",
-        [this, resolve_uri, flags_label, count_occurrences](
-            RequestContext& ctx,
-            const ext::QueryContextParams& params) -> RawResult {
-            auto& srv = this->server;
-            auto& ws = srv.workspace;
-            auto [path, path_id, session] = resolve_uri(params.uri);
-            int offset_val = std::max(0, params.offset.value_or(0));
-            constexpr int page_size = 10;
-
-            ext::QueryContextResult result;
-            std::vector<ext::ContextItem> all_items;
-
-            // Contexts that would produce identical compilation results are
-            // collapsed: identical canonical flags mean an identical compile
-            // — but only for headers CONFIRMED self-contained. A header that
-            // needs includer context gets a different synthesized prefix per
-            // host, and an un-trialed header may turn out the same way, so
-            // every host stays a distinct context for both.
-            llvm::StringSet<> seen_configs;
-            bool dedup_hosts = ws.header_mode(path, path_id) == HeaderMode::SelfContained;
-
-            auto hosts = ws.dep_graph.find_host_sources(path_id);
-            for(auto host_id: ws.rank_hosts(path_id, hosts)) {
-                auto host_path = ws.path_pool.resolve(host_id);
-                if(!ws.cdb.has_entry(host_path))
-                    continue;
-                auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
-                if(!host_uri_opt)
-                    continue;
-
-                // A multi-configuration host contributes one context per
-                // CDB entry: each configuration compiles the header under
-                // different preprocessor state.
-                std::vector<std::string> host_append, host_remove;
-                ws.config.match_rules(host_path, host_append, host_remove);
-                auto cmds =
-                    ws.cdb.lookup(host_path, {.remove = host_remove, .append = host_append});
-                auto occurrences = count_occurrences(host_id, path_id);
-
-                for(auto& cmd: cmds) {
-                    auto hash =
-                        canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory);
-                    if(dedup_hosts && !seen_configs.insert(hash).second)
-                        continue;
-
-                    ext::ContextItem item;
-                    item.label = llvm::sys::path::filename(host_path).str();
-                    if(cmds.size() > 1) {
-                        auto desc = flags_label(cmd);
-                        if(!desc.empty()) {
-                            item.label = std::format("{} [{}]", item.label, desc);
-                        }
-                        item.command_hash = hash;
-                    }
-                    item.description = std::string(host_path);
-                    item.uri = host_uri_opt->str();
-
-                    // A guard-less header can be included several times by
-                    // one host — each occurrence is a distinct context.
-                    if(occurrences > 1) {
-                        for(std::uint32_t n = 0; n < occurrences; ++n) {
-                            auto occ_item = item;
-                            occ_item.label = std::format("{} (#{})", item.label, n + 1);
-                            occ_item.occurrence = n;
-                            all_items.push_back(std::move(occ_item));
-                        }
-                    } else {
-                        all_items.push_back(std::move(item));
-                    }
-                }
-            }
-
-            // Real entries only: lookup() would synthesize a default command
-            // even for unknown files, offering a bogus context that
-            // switchContext would then reject. Offered even when hosts
-            // exist, so a host override can be switched back to the file's
-            // own command.
-            if(ws.cdb.has_entry(path)) {
-                std::vector<std::string> rule_append, rule_remove;
-                ws.config.match_rules(path, rule_append, rule_remove);
-                auto entries = ws.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
-                auto uri_opt = lsp::URI::from_file_path(std::string(path));
-                for(std::size_t i = 0; uri_opt && i < entries.size(); ++i) {
-                    auto& cmd = entries[i];
-                    auto hash =
-                        canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory);
-                    if(!seen_configs.insert(hash).second)
-                        continue;
-
-                    auto desc = flags_label(cmd);
-                    ext::ContextItem item;
-                    item.label = desc.empty() ? std::format("config #{}", i) : desc;
-                    item.description = cmd.resolved.directory.str();
-                    item.uri = uri_opt->str();
-                    item.command_hash = std::move(hash);
-                    all_items.push_back(std::move(item));
-                }
-            }
-
-            result.epoch = ws.context_epoch;
-            result.total = static_cast<int>(all_items.size());
-            int end = std::min(offset_val + page_size, static_cast<int>(all_items.size()));
-            for(int i = offset_val; i < end; ++i) {
-                result.contexts.push_back(std::move(all_items[i]));
-            }
-            co_return to_raw(result);
-        });
-
-    peer.on_request(
-        "clice/currentContext",
-        [this, resolve_uri, flags_label](RequestContext& ctx,
-                                         const ext::CurrentContextParams& params) -> RawResult {
-            auto& srv = this->server;
-            auto [path, path_id, session] = resolve_uri(params.uri);
-
-            ext::CurrentContextResult result;
-            if(session && session->active_context) {
-                auto& active = *session->active_context;
-                auto ctx_path = srv.workspace.path_pool.resolve(active.host_path_id);
-                auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
-                if(ctx_uri_opt) {
-                    ext::ContextItem item;
-                    item.label = llvm::sys::path::filename(ctx_path).str();
-                    if(active.occurrence.value_or(0) > 0) {
-                        item.label = std::format("{} (#{})", item.label, *active.occurrence + 1);
-                    }
-                    item.description = std::string(ctx_path);
-                    item.uri = ctx_uri_opt->str();
-                    item.occurrence = active.occurrence;
-                    if(!active.command_hash.empty()) {
-                        item.command_hash = active.command_hash;
-                    }
-                    result.context = std::move(item);
-                }
-            } else if(session && session->active_command) {
-                auto& ws = srv.workspace;
-                ext::ContextItem item;
-                item.uri = params.uri;
-                item.command_hash = *session->active_command;
-                item.label = std::format("config {}", session->active_command->substr(0, 8));
-                if(ws.cdb.has_entry(path)) {
-                    std::vector<std::string> rule_append, rule_remove;
-                    ws.config.match_rules(path, rule_append, rule_remove);
-                    for(auto& cmd:
-                        ws.cdb.lookup(path, {.remove = rule_remove, .append = rule_append})) {
-                        if(canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory) ==
-                           *session->active_command) {
-                            auto desc = flags_label(cmd);
-                            if(!desc.empty()) {
-                                item.label = std::move(desc);
-                            }
-                            item.description = cmd.resolved.directory.str();
-                            break;
-                        }
-                    }
-                }
-                result.context = std::move(item);
-            }
-            co_return to_raw(result);
-        });
-
-    peer.on_request(
-        "clice/switchContext",
-        [this, resolve_uri, count_occurrences](
-            RequestContext& ctx,
-            const ext::SwitchContextParams& params) -> RawResult {
-            auto& srv = this->server;
-            auto& ws = srv.workspace;
-            auto [path, path_id, session] = resolve_uri(params.uri);
-            auto [context_path, context_path_id, context_session] = resolve_uri(params.context_uri);
-
-            ext::SwitchContextResult result;
-
-            // A choice made against an outdated listing may reference
-            // contexts that no longer exist — make the client re-query.
-            if(params.epoch.has_value() && *params.epoch != ws.context_epoch) {
-                result.stale = true;
-                co_return to_raw(result);
-            }
-
-            if(!session) {
-                co_return to_raw(result);
-            }
-
-            // Validate that `hash` names a real CDB entry of `entry_path`.
-            auto has_command = [&](llvm::StringRef entry_path, llvm::StringRef hash) {
-                if(!ws.cdb.has_entry(entry_path)) {
-                    return false;
-                }
-                std::vector<std::string> rule_append, rule_remove;
-                ws.config.match_rules(entry_path, rule_append, rule_remove);
-                for(auto& cmd:
-                    ws.cdb.lookup(entry_path, {.remove = rule_remove, .append = rule_append})) {
-                    if(canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory) ==
-                       hash) {
-                        return true;
-                    }
-                }
-                return false;
-            };
-
-            if(context_path_id == path_id && params.command_hash.has_value()) {
-                // Pin one of the file's own CDB entries.
-                if(!has_command(path, *params.command_hash)) {
-                    co_return to_raw(result);
-                }
-                session->active_command = *params.command_hash;
-                session->active_context.reset();
-            } else {
-                // Pin a host source for a header: it must have a real CDB
-                // entry, actually (transitively) include this header, and —
-                // for multi-configuration hosts — own the pinned entry.
-                if(!ws.cdb.has_entry(context_path)) {
-                    co_return to_raw(result);
-                }
-                if(ws.dep_graph.find_include_chain(context_path_id, path_id).empty()) {
-                    co_return to_raw(result);
-                }
-                if(params.command_hash.has_value() &&
-                   !has_command(context_path, *params.command_hash)) {
-                    co_return to_raw(result);
-                }
-                if(params.occurrence.has_value() && *params.occurrence > 0) {
-                    auto count = count_occurrences(context_path_id, path_id);
-                    if(count > 0 && *params.occurrence >= count) {
-                        co_return to_raw(result);
-                    }
-                }
-                session->active_context = Session::ActiveContext{context_path_id,
-                                                                 params.occurrence,
-                                                                 params.command_hash.value_or("")};
-                session->active_command.reset();
-            }
-
-            session->header_context.reset();
-            session->pch_ref.reset();
-            session->ast_deps.reset();
-            session->ast_dirty = true;
-            // The new context needs its own self-containment trial — a
-            // different host can change the macro environment.
-            session->trial_done = false;
-            ws.forget_self_contained(path_id);
-            // Invalidate any in-flight compile: without the bump it would
-            // clobber ast_dirty on completion and publish results for the
-            // old context, with nothing left for is_stale() to detect.
-            session->generation++;
-
-            // Persist the choice across sessions.
-            SavedContext saved;
-            if(session->active_context) {
-                saved.host_path_id = session->active_context->host_path_id;
-                saved.occurrence = session->active_context->occurrence;
-                saved.command_hash = session->active_context->command_hash;
-            } else if(session->active_command) {
-                saved.command_hash = *session->active_command;
-            }
-            ws.saved_contexts[path_id] = std::move(saved);
-            ws.save_cache();
-
-            result.success = true;
-            co_return to_raw(result);
-        });
+    peer.on_request("clice/switchContext",
+                    [this, resolve_uri](RequestContext& ctx,
+                                        const ext::SwitchContextParams& params) -> RawResult {
+                        auto [path, path_id, session] = resolve_uri(params.uri);
+                        auto [context_path, context_path_id, context_session] =
+                            resolve_uri(params.context_uri);
+                        co_return to_raw(this->server.contexts.switch_context(path,
+                                                                              path_id,
+                                                                              session.get(),
+                                                                              context_path,
+                                                                              context_path_id,
+                                                                              params));
+                    });
 }
 
 /// Publish clice.toml load problems as diagnostics, each on its own file's

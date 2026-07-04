@@ -32,7 +32,8 @@ namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
-    loop(loop), bg_tasks(loop), pool(loop), compiler(loop, workspace, pool),
+    loop(loop), bg_tasks(loop), pool(loop), contexts(workspace),
+    compiler(loop, workspace, contexts, pool),
     indexer(
         loop,
         workspace,

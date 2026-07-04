@@ -26,6 +26,8 @@ namespace clice {
 
 namespace protocol = kota::ipc::protocol;
 
+class ContextResolver;
+
 /// Convert a file:// URI to a local file path.
 std::string uri_to_path(const std::string& uri);
 
@@ -65,7 +67,10 @@ enum class CommandSource : std::uint8_t {
 ///   - Background indexing scheduling — handled by Indexer
 class Compiler {
 public:
-    Compiler(kota::event_loop& loop, Workspace& workspace, WorkerPool& pool);
+    Compiler(kota::event_loop& loop,
+             Workspace& workspace,
+             ContextResolver& contexts,
+             WorkerPool& pool);
 
     ~Compiler();
 
@@ -150,19 +155,9 @@ private:
 
     static void append_suffix_include(const Session& session, std::string& text);
 
-    std::optional<HeaderContext> resolve_header_context(std::uint32_t header_path_id,
-                                                        Session* session,
-                                                        bool synthesize);
-
-    bool fill_header_context_args(llvm::StringRef path,
-                                  std::uint32_t path_id,
-                                  std::string& directory,
-                                  std::vector<std::string>& arguments,
-                                  Session* session);
-
-private:
     kota::event_loop& loop;
     Workspace& workspace;
+    ContextResolver& contexts;
     WorkerPool& pool;
     kota::task_group<> compile_tasks{loop};
 };
