@@ -153,13 +153,21 @@ private:
     /// compile command was not an exact CDB match and the diagnostics contain
     /// file-not-found class errors, a file-top guidance diagnostic explaining
     /// the inferred command is merged into the same publish.
+    static void append_suffix_include(const Session& session, std::string& text);
+
+    void publish_inactive_regions(const std::string& uri,
+                                  const Session& session,
+                                  llvm::ArrayRef<std::uint32_t> regions);
+
     void publish_diagnostics(const std::string& uri,
                              int version,
                              const kota::codec::RawValue& diags,
-                             CommandSource source);
+                             CommandSource source,
+                             std::optional<std::uint32_t> line_limit = std::nullopt);
 
-    std::optional<HeaderFileContext> resolve_header_context(std::uint32_t header_path_id,
-                                                            Session* session);
+    std::optional<HeaderContext> resolve_header_context(std::uint32_t header_path_id,
+                                                        Session* session,
+                                                        bool synthesize);
 
     bool fill_header_context_args(llvm::StringRef path,
                                   std::uint32_t path_id,

@@ -6,6 +6,7 @@ on didSave to mark everything dirty.
 """
 
 import asyncio
+import os
 import shutil
 
 import pytest
@@ -448,3 +449,110 @@ async def test_flag_change_invalidates_pch(executable, tmp_path):
     )
     assert_no_anomaly(c2, tmp_path)
     await shutdown_client(c2)
+
+
+async def test_host_change_resynthesizes_preamble(client, tmp_path):
+    """When the host source stops providing a dependency, the header's
+    synthesized preamble must be rebuilt from the new disk state."""
+    (tmp_path / "types.h").write_text("#pragma once\nstruct Point { int x; int y; };\n")
+    (tmp_path / "utils.h").write_text("inline int get_x(Point p) { return p.x; }\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "types.h"\n#include "utils.h"\n'
+        "int main() { Point p{1, 2}; return get_x(p); }\n"
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    await client.open_and_wait(tmp_path / "main.cpp")
+
+    # utils.h has no CDB entry: compiled via automatic header context,
+    # with types.h provided by the synthesized preamble from main.cpp.
+    utils_uri, _ = await client.open_and_wait(tmp_path / "utils.h")
+    assert_clean_compile(client, utils_uri)
+
+    # Ensure mtime advances past filesystem granularity (1s on some FSes).
+    await asyncio.sleep(1.1)
+    (tmp_path / "main.cpp").write_text('#include "utils.h"\nint main() { return 0; }\n')
+
+    # No didSave: mtime-based chain snapshot must detect the change.
+    await wait_for_recompile(client, utils_uri)
+    assert_has_errors(
+        client, utils_uri, "Expected errors after host stopped providing types.h"
+    )
+
+
+async def test_intermediate_change_resynthesizes_preamble(client, tmp_path):
+    """Changing an intermediate file of the include chain (not the host)
+    must also invalidate the synthesized preamble."""
+    (tmp_path / "wrapper.h").write_text(
+        '#pragma once\n#define VALUE 42\n#include "target.h"\n'
+    )
+    (tmp_path / "target.h").write_text("inline int get() { return VALUE; }\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "wrapper.h"\nint main() { return get(); }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    await client.open_and_wait(tmp_path / "main.cpp")
+
+    # target.h compiles via chain main.cpp -> wrapper.h, which provides VALUE.
+    target_uri, _ = await client.open_and_wait(tmp_path / "target.h")
+    assert_clean_compile(client, target_uri)
+
+    # Rename the macro in the intermediate wrapper.h.
+    await asyncio.sleep(1.1)
+    (tmp_path / "wrapper.h").write_text(
+        '#pragma once\n#define OTHER 42\n#include "target.h"\n'
+    )
+
+    await wait_for_recompile(client, target_uri)
+    assert_has_errors(
+        client, target_uri, "Expected errors after intermediate header changed"
+    )
+
+
+async def test_saved_host_reinvalidates_header(client, tmp_path):
+    """didSave on a chain file must force preamble re-validation by content
+    even when the file's mtime is unchanged (the pull path is blind then)."""
+    (tmp_path / "types.h").write_text("#pragma once\nstruct Point { int x; int y; };\n")
+    (tmp_path / "utils.h").write_text("inline int get_x(Point p) { return p.x; }\n")
+    main_cpp = tmp_path / "main.cpp"
+    main_cpp.write_text(
+        '#include "types.h"\n#include "utils.h"\n'
+        "int main() { Point p{1, 2}; return get_x(p); }\n"
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    main_uri, _ = await client.open_and_wait(main_cpp)
+    utils_uri, _ = await client.open_and_wait(tmp_path / "utils.h")
+    assert_clean_compile(client, utils_uri)
+
+    # Rewrite main.cpp but restore its original mtime: the mtime-based
+    # Layer 1 check now cannot see the change, only the didSave push path
+    # (which zeroes build_at, forcing a content re-hash) can catch it.
+    stat = main_cpp.stat()
+    main_cpp.write_text('#include "utils.h"\nint main() { return 0; }\n')
+    os.utime(main_cpp, (stat.st_atime, stat.st_mtime))
+
+    client.text_document_did_save(
+        DidSaveTextDocumentParams(text_document=doc(main_uri))
+    )
+
+    await wait_for_recompile(client, utils_uri)
+    assert_has_errors(
+        client, utils_uri, "Expected errors after didSave with restored mtime"
+    )
+
+
+async def test_orphan_header_default_command(client, tmp_path):
+    """A header with no CDB entry and no including source falls back to the
+    synthesized default command and still compiles."""
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
+    (tmp_path / "orphan.h").write_text("inline int orphan_value() { return 7; }\n")
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    orphan_uri, _ = await client.open_and_wait(tmp_path / "orphan.h")
+    assert_clean_compile(client, orphan_uri)

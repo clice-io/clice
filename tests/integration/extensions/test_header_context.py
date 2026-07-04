@@ -17,13 +17,7 @@ from lsprotocol.types import (
     TextDocumentIdentifier,
 )
 
-from tests.integration.utils import doc
-
-
-def get_field(obj, key, default=None):
-    if isinstance(obj, dict):
-        return obj.get(key, default)
-    return getattr(obj, key, default)
+from tests.integration.utils import doc, get_field, write_entries
 
 
 @pytest.mark.workspace("header_context")
@@ -213,3 +207,37 @@ async def test_query_context_multiple_cdb_entries(client, workspace):
     # Each entry should have distinguishing flags in the label.
     assert any("CONFIG_A" in l for l in labels), f"Should find CONFIG_A, got: {labels}"
     assert any("CONFIG_B" in l for l in labels), f"Should find CONFIG_B, got: {labels}"
+
+
+async def test_switch_between_two_hosts(client, tmp_path):
+    """Switching a header between two hosts with different macro setups must
+    recompile it under the new host's preamble."""
+    (tmp_path / "shared.h").write_text("VALUE_TYPE get_value();\n")
+    (tmp_path / "a.cpp").write_text(
+        '#define VALUE_TYPE int\n#include "shared.h"\nint main() { return 0; }\n'
+    )
+    (tmp_path / "b.cpp").write_text(
+        '#define VALUE_TYPE float\n#include "shared.h"\nfloat f() { return 0; }\n'
+    )
+    write_entries(tmp_path, [("a.cpp", []), ("b.cpp", [])])
+    await client.initialize(tmp_path)
+
+    a_uri, _ = await client.open_and_wait(tmp_path / "a.cpp")
+    b_uri, _ = await client.open_and_wait(tmp_path / "b.cpp")
+    shared_uri, _ = client.open(tmp_path / "shared.h")
+
+    async def hover_get_value_contains(text):
+        hover = await client.hover_at(shared_uri, 0, 12)  # 'get_value'
+        assert hover is not None, "Hover on get_value should work"
+        return text in str(hover.contents)
+
+    # Host a.cpp: VALUE_TYPE is int.
+    switch = await client.switch_context(shared_uri, a_uri)
+    assert get_field(switch, "success") is True
+    assert await hover_get_value_contains("int"), "Expected int under host a.cpp"
+
+    # Host b.cpp: VALUE_TYPE is float. This exercises the cached-context
+    # invalidation branch (active context differs from cached host).
+    switch = await client.switch_context(shared_uri, b_uri)
+    assert get_field(switch, "success") is True
+    assert await hover_get_value_contains("float"), "Expected float under host b.cpp"

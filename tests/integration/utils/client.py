@@ -416,10 +416,15 @@ class CliceClient(BaseLanguageClient):
 
     # ── Extension protocol ───────────────────────────────────────────
 
-    async def query_context(self, uri: str, *, timeout: float = 30.0):
+    async def query_context(
+        self, uri: str, *, offset: int | None = None, timeout: float = 30.0
+    ):
         """Send clice/queryContext extension request."""
+        params = {"uri": uri}
+        if offset is not None:
+            params["offset"] = offset
         return await asyncio.wait_for(
-            self.protocol.send_request_async("clice/queryContext", {"uri": uri}),
+            self.protocol.send_request_async("clice/queryContext", params),
             timeout=timeout,
         )
 
@@ -431,12 +436,24 @@ class CliceClient(BaseLanguageClient):
         )
 
     async def switch_context(
-        self, uri: str, context_uri: str, *, timeout: float = 30.0
+        self,
+        uri: str,
+        context_uri: str,
+        *,
+        occurrence: int | None = None,
+        command_hash: str | None = None,
+        epoch: int | None = None,
+        timeout: float = 30.0,
     ):
         """Send clice/switchContext extension request."""
+        params = {"uri": uri, "contextUri": context_uri}
+        if occurrence is not None:
+            params["occurrence"] = occurrence
+        if command_hash is not None:
+            params["commandHash"] = command_hash
+        if epoch is not None:
+            params["epoch"] = epoch
         return await asyncio.wait_for(
-            self.protocol.send_request_async(
-                "clice/switchContext", {"uri": uri, "contextUri": context_uri}
-            ),
+            self.protocol.send_request_async("clice/switchContext", params),
             timeout=timeout,
         )

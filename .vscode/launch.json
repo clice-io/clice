@@ -31,7 +31,7 @@
         "CLICE_MODE": "pipe"
       },
       "outFiles": ["${workspaceFolder}/editors/vscode/dist/**/*.js"],
-      "preLaunchTask": "npm: watch vscode ext"
+      "preLaunchTask": "npm: compile vscode ext"
     },
     {
       "name": "VSCode Extension (socket)",
@@ -47,7 +47,7 @@
         "CLICE_MODE": "socket"
       },
       "outFiles": ["${workspaceFolder}/editors/vscode/dist/**/*.js"],
-      "preLaunchTask": "npm: watch vscode ext"
+      "preLaunchTask": "npm: compile vscode ext"
     },
     {
       "type": "lldb",

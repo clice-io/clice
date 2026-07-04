@@ -1,9 +1,15 @@
 #include "server/workspace/workspace.h"
 
+#include <algorithm>
 #include <chrono>
+#include <ranges>
+#include <tuple>
 
+#include "command/search_config.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
+#include "syntax/include_resolver.h"
+#include "syntax/preamble_synthesis.h"
 #include "syntax/scan.h"
 
 #include "kota/codec/json/json.h"
@@ -16,7 +22,151 @@
 
 namespace clice {
 
+bool Workspace::is_synthesized_artifact(llvm::StringRef path) const {
+    if(config.project.cache_dir.empty()) {
+        return false;
+    }
+    auto artifact_dir = path::join(config.project.cache_dir, "header_context");
+    return path.starts_with(artifact_dir);
+}
+
+HeaderMode Workspace::header_mode(llvm::StringRef path, std::uint32_t path_id) const {
+    // Keep in sync with the client's C++ fragment detection
+    // (editors/vscode/src/feature/context.ts).
+    if(path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
+       path.ends_with(".tpp") || path.ends_with(".ipp")) {
+        return HeaderMode::NeedsContext;
+    }
+    if(auto it = header_modes.find(path_id); it != header_modes.end()) {
+        return it->second;
+    }
+    return HeaderMode::Unknown;
+}
+
+std::uint32_t Workspace::count_occurrences(std::uint32_t host_id, std::uint32_t target_id) const {
+    auto chain = dep_graph.find_include_chain(host_id, target_id);
+    if(chain.size() < 2) {
+        return 0;
+    }
+    auto includer_path = path_pool.resolve(chain[chain.size() - 2]);
+    auto target_path = path_pool.resolve(target_id);
+    auto buf = llvm::MemoryBuffer::getFile(includer_path);
+    if(!buf) {
+        return 0;
+    }
+    auto null_resolver =
+        [](llvm::StringRef, bool, bool, llvm::StringRef) -> std::optional<std::string> {
+        return std::nullopt;
+    };
+    return count_include_occurrences((*buf)->getBuffer(),
+                                     includer_path,
+                                     target_path,
+                                     null_resolver);
+}
+
+void Workspace::forget_self_contained(std::uint32_t path_id) {
+    if(auto it = header_modes.find(path_id);
+       it != header_modes.end() && it->second == HeaderMode::SelfContained) {
+        header_modes.erase(it);
+    }
+}
+
+llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path_id,
+                                                       llvm::ArrayRef<std::uint32_t> hosts) const {
+    auto header_path = path_pool.resolve(header_path_id);
+    auto header_stem = llvm::sys::path::stem(header_path);
+    auto header_dir = llvm::sys::path::parent_path(header_path);
+
+    auto score = [&](std::uint32_t host_id) -> std::tuple<int, int, std::size_t> {
+        auto host_path = path_pool.resolve(host_id);
+        int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
+        int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
+        // Longer shared prefix means "closer" in the tree; negate for
+        // ascending sort.
+        std::size_t common = 0;
+        auto n = std::min(host_path.size(), header_path.size());
+        while(common < n && host_path[common] == header_path[common]) {
+            ++common;
+        }
+        return {stem_match, same_dir, n - common};
+    };
+
+    llvm::SmallVector<std::uint32_t> ranked(hosts.begin(), hosts.end());
+    std::ranges::sort(ranked, [&](std::uint32_t a, std::uint32_t b) {
+        auto sa = score(a), sb = score(b);
+        if(sa != sb) {
+            return sa < sb;
+        }
+        return path_pool.resolve(a) < path_pool.resolve(b);
+    });
+    return ranked;
+}
+
+void Workspace::rescan_includes(std::uint32_t path_id) {
+    auto path = path_pool.resolve(path_id);
+    dep_graph.clear_includes(path_id);
+
+    if(auto buf = llvm::MemoryBuffer::getFile(path)) {
+        // Search paths come from the file's own command, or a host's for
+        // headers without a CDB entry; the synthesized default still
+        // resolves quote includes via the includer directory.
+        llvm::StringRef cmd_path = path;
+        if(!cdb.has_entry(path)) {
+            for(auto host: rank_hosts(path_id, dep_graph.find_host_sources(path_id))) {
+                auto host_path = path_pool.resolve(host);
+                if(cdb.has_entry(host_path)) {
+                    cmd_path = host_path;
+                    break;
+                }
+            }
+        }
+
+        std::vector<std::string> rule_append, rule_remove;
+        config.match_rules(cmd_path, rule_append, rule_remove);
+        auto cmds = cdb.lookup(cmd_path, {.remove = rule_remove, .append = rule_append});
+
+        // Resolve under every configuration: an include may only be
+        // reachable through the -I set of a non-first CDB entry. The local
+        // index serves as config id — prior keys were just cleared and
+        // consumers read the union.
+        auto includes = scan((*buf)->getBuffer()).includes;
+        DirListingCache dir_cache;
+        auto dir = llvm::sys::path::parent_path(path);
+        for(std::uint32_t ci = 0; ci < cmds.size(); ++ci) {
+            auto& cmd = cmds[ci];
+            toolchain.resolve_or_warn(cmd);
+            auto argv = cmd.to_argv();
+            auto search_config = extract_search_config(argv, cmd.resolved.directory);
+            auto resolved_config = resolve_search_config(search_config, dir_cache);
+            auto entries = resolve_dir(dir, dir_cache);
+
+            llvm::SmallVector<std::uint32_t> ids;
+            for(auto& include: includes) {
+                auto resolved = resolve_include(include.path,
+                                                include.is_angled,
+                                                entries,
+                                                dir,
+                                                include.is_include_next,
+                                                0,
+                                                resolved_config,
+                                                dir_cache);
+                if(resolved) {
+                    ids.push_back(path_pool.intern(resolved->path));
+                }
+            }
+            dep_graph.set_includes(path_id, ci, std::move(ids));
+        }
+    }
+
+    dep_graph.build_reverse_map();
+}
+
 llvm::SmallVector<std::uint32_t> Workspace::on_file_saved(std::uint32_t path_id) {
+    // Contexts must see includes added/removed by this save.
+    rescan_includes(path_id);
+
+    context_epoch += 1;
+
     llvm::SmallVector<std::uint32_t> dirtied;
 
     // Re-scan the saved file for module declarations and update path_to_module.
@@ -45,7 +195,8 @@ void Workspace::on_file_closed(std::uint32_t path_id) {
     if(compile_graph && compile_graph->has_unit(path_id)) {
         compile_graph->update(path_id);
     }
-    pch_cache.erase(path_id);
+    // PCH entries are content-keyed and may be shared with other sessions;
+    // blob eviction is the CacheStore's job, so nothing to clean up here.
 }
 
 std::uint64_t hash_file(llvm::StringRef path) {
@@ -101,11 +252,14 @@ struct CacheDepEntry {
 };
 
 struct CachePCHEntry {
-    std::string key;            // CacheStore key in the "pch" namespace
-    std::uint32_t source_file;  // index into CacheData::paths
+    std::string key;  // CacheStore key in the "pch" namespace
     std::uint32_t bound;
     std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
+
+    // Preamble share of the inactive-region scan; consumed on PCH reuse.
+    std::vector<std::uint32_t> inactive_regions;
+    std::vector<std::uint8_t> open_conditionals;
 };
 
 struct CachePCMEntry {
@@ -116,10 +270,31 @@ struct CachePCMEntry {
     std::vector<CacheDepEntry> deps;
 };
 
+struct CacheModeEntry {
+    std::uint32_t file;          // index into CacheData::paths
+    std::uint32_t mode;          // HeaderMode
+    std::uint64_t content_hash;  // header contents the verdict was scored on
+};
+
+struct CacheContextEntry {
+    std::uint32_t file;  // index into CacheData::paths
+    std::uint32_t host;  // index into CacheData::paths; ~0u = none
+    std::uint32_t occurrence;
+    std::string command_hash;
+};
+
+struct CacheArtifactEntry {
+    std::uint32_t file;  // index into CacheData::paths
+    std::uint32_t host;  // index into CacheData::paths
+};
+
 struct CacheData {
     std::vector<std::string> paths;
     std::vector<CachePCHEntry> pch;
     std::vector<CachePCMEntry> pcm;
+    std::vector<CacheModeEntry> header_modes;
+    std::vector<CacheContextEntry> contexts;
+    std::vector<CacheArtifactEntry> artifacts;
 };
 
 }  // namespace
@@ -161,18 +336,17 @@ void Workspace::load_cache() {
 
     for(auto& entry: data.pch) {
         auto pch_path = store->lookup("pch", entry.key);
-        auto source = resolve(entry.source_file);
-        if(!pch_path || source.empty())
+        if(!pch_path)
             continue;
 
-        auto path_id = path_pool.intern(source);
-        auto& st = pch_cache[path_id];
+        auto& st = pch_cache[entry.key];
         st.path = *pch_path;
-        st.key = entry.key;
         st.bound = entry.bound;
         st.deps = load_deps(entry.build_at, entry.deps);
+        st.inactive_regions = entry.inactive_regions;
+        st.open_conditionals = entry.open_conditionals;
 
-        LOG_DEBUG("Loaded cached PCH: {} -> {}", source, *pch_path);
+        LOG_DEBUG("Loaded cached PCH: {} -> {}", entry.key, *pch_path);
     }
 
     for(auto& entry: data.pcm) {
@@ -188,9 +362,49 @@ void Workspace::load_cache() {
         LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, *pcm_path);
     }
 
-    LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries",
+    for(auto& entry: data.header_modes) {
+        auto file = resolve(entry.file);
+        if(file.empty() || static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
+            continue;
+        // The verdict is tied to the header's contents — a file edited
+        // while the server was down must re-earn its trial.
+        if(entry.content_hash != 0 && hash_file(file) != entry.content_hash)
+            continue;
+        auto id = path_pool.intern(file);
+        header_modes[id] = HeaderMode::NeedsContext;
+        header_mode_hashes[id] = entry.content_hash;
+    }
+
+    for(auto& entry: data.contexts) {
+        auto file = resolve(entry.file);
+        if(file.empty())
+            continue;
+        SavedContext saved;
+        if(entry.host != ~0u) {
+            auto host = resolve(entry.host);
+            if(host.empty())
+                continue;
+            saved.host_path_id = path_pool.intern(host);
+        }
+        if(entry.occurrence != ~0u) {
+            saved.occurrence = entry.occurrence;
+        }
+        saved.command_hash = entry.command_hash;
+        saved_contexts[path_pool.intern(file)] = std::move(saved);
+    }
+
+    for(auto& entry: data.artifacts) {
+        auto file = resolve(entry.file);
+        auto host = resolve(entry.host);
+        if(file.empty() || host.empty())
+            continue;
+        synthesized_hosts[file] = path_pool.intern(host);
+    }
+
+    LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries, {} context choices",
              pch_cache.size(),
-             pcm_cache.size());
+             pcm_cache.size(),
+             saved_contexts.size());
 }
 
 void Workspace::save_cache() {
@@ -210,15 +424,17 @@ void Workspace::save_cache() {
         return it->second;
     };
 
-    for(auto& [path_id, st]: pch_cache) {
+    for(auto& e: pch_cache) {
+        auto& st = e.second;
         if(st.path.empty())
             continue;
 
         CachePCHEntry entry;
-        entry.key = st.key;
-        entry.source_file = intern(path_id);
+        entry.key = e.getKey().str();
         entry.bound = st.bound;
         entry.build_at = st.deps.build_at;
+        entry.inactive_regions = st.inactive_regions;
+        entry.open_conditionals = st.open_conditionals;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
             entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }
@@ -239,6 +455,33 @@ void Workspace::save_cache() {
             entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }
         data.pcm.push_back(std::move(entry));
+    }
+
+    for(auto& [path_id, mode]: header_modes) {
+        if(mode != HeaderMode::NeedsContext)
+            continue;
+        auto hash_it = header_mode_hashes.find(path_id);
+        data.header_modes.push_back({intern(path_id),
+                                     static_cast<std::uint32_t>(mode),
+                                     hash_it != header_mode_hashes.end() ? hash_it->second : 0});
+    }
+
+    for(auto& entry: synthesized_hosts) {
+        auto [it, inserted] = index_map.try_emplace(entry.getKey().str(),
+                                                    static_cast<std::uint32_t>(data.paths.size()));
+        if(inserted) {
+            data.paths.push_back(entry.getKey().str());
+        }
+        data.artifacts.push_back({it->second, intern(entry.second)});
+    }
+
+    for(auto& [path_id, saved]: saved_contexts) {
+        CacheContextEntry entry;
+        entry.file = intern(path_id);
+        entry.host = saved.host_path_id != no_path_id ? intern(saved.host_path_id) : ~0u;
+        entry.occurrence = saved.occurrence.value_or(~0u);
+        entry.command_hash = saved.command_hash;
+        data.contexts.push_back(std::move(entry));
     }
 
     auto json_str = kota::codec::json::to_json(data);

@@ -322,7 +322,18 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     auto& w = workers[index];
     w.alive = false;
 
-    if(exit_signal != 0) {
+    // POSIX SIGHUP == 1 by value: Windows' <csignal> does not define the
+    // macro, and a worker can only receive it on POSIX anyway.
+    constexpr int sighup = 1;
+    if(exit_signal == SIGTERM || exit_signal == SIGINT || exit_signal == sighup) {
+        // Termination requested from outside — e.g. the editor tearing the
+        // whole process group down on a hard restart. The worker did not
+        // crash; don't alarm the user through the anomaly channel.
+        LOG_WARN("Worker {} terminated by signal {} (restarts: {})",
+                 w.name,
+                 exit_signal,
+                 w.restart_count);
+    } else if(exit_signal != 0) {
         LOG_ANOMALY(WorkerCrash,
                     "Worker {} killed by signal {} (restarts: {})",
                     w.name,

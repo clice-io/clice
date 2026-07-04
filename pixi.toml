@@ -217,14 +217,15 @@ python = ">=3.13"
 
 # Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]
-cmd = "python tests/prepare.py hello_world modules/hover_on_imported_symbol"
+cmd = "python tests/prepare.py hello_world modules/hover_on_imported_symbol header_context"
 
 # Requires nvim (stable) on PATH.
 [feature.editor.tasks.nvim-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
 nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/hello_world && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/modules/hover_on_imported_symbol
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/modules/hover_on_imported_symbol && \
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/header_context
 """
 depends-on = ["editor-prepare"]
 

@@ -1,6 +1,7 @@
 #include "server/compiler/compiler.h"
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <ranges>
 #include <string>
@@ -10,12 +11,14 @@
 #include "command/search_config.h"
 #include "compile/diagnostic.h"
 #include "index/tu_index.h"
+#include "server/protocol/extension.h"
 #include "server/protocol/worker.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
 #include "syntax/include_resolver.h"
+#include "syntax/preamble_synthesis.h"
 #include "syntax/scan.h"
 
 #include "kota/async/async.h"
@@ -52,19 +55,69 @@ static std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
     return std::format("{:016x}{:016x}", hash.high64, hash.low64);
 }
 
+/// Diagnostic codes that strictly indicate a missing includer context (as
+/// opposed to ordinary in-progress typing errors). Deliberately narrow:
+/// a false positive costs a pointless prefix synthesis, a false negative
+/// just leaves the header in trial mode.
+static bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics) {
+    constexpr static llvm::StringRef codes[] = {
+        "err_unknown_typename",
+        "err_undeclared_var_use",
+        "err_undeclared_var_use_suggest",
+        "err_pp_unterminated_conditional",
+    };
+    for(auto& diag: diagnostics) {
+        if(diag.severity != protocol::DiagnosticSeverity::Error || !diag.code.has_value()) {
+            continue;
+        }
+        auto* code = std::get_if<std::string>(&*diag.code);
+        if(code && llvm::is_contained(codes, *code)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Pick the host CDB entry matching the session's pinned command hash
+/// (multi-configuration hosts), defaulting to the first entry.
+///
+/// Published hashes are computed against host-path rules, while `results`
+/// may carry header-path rules — match by index through a host-rules
+/// lookup of the same entry set instead of hashing `results` directly.
+static CompileCommand& pick_host_command(Workspace& workspace,
+                                         llvm::StringRef host_path,
+                                         llvm::SmallVector<CompileCommand>& results,
+                                         const Session* session) {
+    if(session && session->active_context.has_value() &&
+       !session->active_context->command_hash.empty()) {
+        std::vector<std::string> host_append, host_remove;
+        workspace.config.match_rules(host_path, host_append, host_remove);
+        auto canonical =
+            workspace.cdb.lookup(host_path, {.remove = host_remove, .append = host_append});
+        for(std::size_t i = 0; i < canonical.size() && i < results.size(); ++i) {
+            if(canonical_command_hash(canonical[i].to_string_argv(),
+                                      canonical[i].resolved.directory) ==
+               session->active_context->command_hash) {
+                return results[i];
+            }
+        }
+    }
+    return results.front();
+}
+
 /// RAII completion of an in-flight PCH build registration: wakes waiters
 /// and clears the building marker on every exit path — crucially also when
 /// the coroutine is cancelled and its frame unwinds at a suspension point,
 /// which would otherwise leave waiters suspended on the event forever.
 struct BuildingGuard {
     Workspace& workspace;
-    std::uint32_t path_id;
+    llvm::StringRef key;
     std::shared_ptr<kota::event> completion;
 
     ~BuildingGuard() {
-        // Reset only our own registration: the entry may have been erased
-        // (didClose) and re-registered by a newer build in the meantime.
-        if(auto it = workspace.pch_cache.find(path_id);
+        // Reset only our own registration: the entry may have been
+        // re-registered by a newer build in the meantime.
+        if(auto it = workspace.pch_cache.find(key);
            it != workspace.pch_cache.end() && it->second.building == completion) {
             it->second.building.reset();
         }
@@ -301,10 +354,22 @@ CommandSource Compiler::fill_compile_args(llvm::StringRef path,
         std::vector<std::string> rule_append, rule_remove;
         workspace.config.match_rules(path, rule_append, rule_remove);
         auto results = workspace.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
-        workspace.toolchain.resolve_or_warn(results.front());
-        auto& cmd = results.front();
-        directory = cmd.resolved.directory.str();
-        arguments = cmd.to_string_argv();
+        auto* cmd = &results.front();
+        // Multi-config projects: honor the user's chosen CDB entry, matched
+        // by canonical command hash so the choice survives CDB reordering.
+        if(session && session->active_command.has_value()) {
+            for(auto& candidate: results) {
+                if(canonical_command_hash(candidate.to_string_argv(),
+                                          candidate.resolved.directory) ==
+                   *session->active_command) {
+                    cmd = &candidate;
+                    break;
+                }
+            }
+        }
+        workspace.toolchain.resolve_or_warn(*cmd);
+        directory = cmd->resolved.directory.str();
+        arguments = cmd->to_string_argv();
     };
 
     // 1. If the session has an active header context via switchContext,
@@ -349,20 +414,68 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
                                         std::string& directory,
                                         std::vector<std::string>& arguments,
                                         Session* session) {
-    // Use cached context if available; otherwise resolve.
-    // If an active context override exists, invalidate cache if it points to
-    // a different host so we re-resolve with the correct one.
-    const HeaderFileContext* ctx_ptr = nullptr;
+    // Opening one of our own synthesized files (prefix/suffix/snapshot):
+    // it is a fragment of the host TU it was synthesized for, so compile
+    // it with that host's command, treated as self-contained. It must not
+    // derive context from other synthesized state; without a recorded
+    // host (e.g. a stale artifact from a wiped cache), fall through to
+    // the default command.
+    if(workspace.is_synthesized_artifact(path)) {
+        auto it = workspace.synthesized_hosts.find(path);
+        if(it == workspace.synthesized_hosts.end()) {
+            return false;
+        }
+        auto host_path = workspace.path_pool.resolve(it->second);
+        if(!workspace.cdb.has_entry(host_path)) {
+            return false;
+        }
+        std::vector<std::string> rule_append, rule_remove;
+        workspace.config.match_rules(path, rule_append, rule_remove);
+        auto host_results =
+            workspace.cdb.lookup(host_path, {.remove = rule_remove, .append = rule_append});
+        workspace.toolchain.resolve_or_warn(host_results.front());
+        CompileCommand artifact_cmd = host_results.front();
+        artifact_cmd.source_file = workspace.path_pool.resolve(path_id).data();
+        directory = artifact_cmd.resolved.directory.str();
+        arguments = artifact_cmd.to_string_argv();
+        return true;
+    }
+
+    // Self-containment routing: an Unknown or SelfContained header borrows
+    // the host command without a prefix; NeedsContext synthesizes one.
+    // run_compile() flips Unknown to NeedsContext when the trial compile's
+    // diagnostics indicate missing includer state. An explicitly chosen
+    // occurrence — even #0 — only has meaning under includer-context
+    // semantics, so it forces synthesis regardless of the verdict.
+    bool synthesize = workspace.header_mode(path, path_id) == HeaderMode::NeedsContext ||
+                      (session && session->active_context.has_value() &&
+                       session->active_context->occurrence.has_value());
+
+    // Use cached context if it is still valid; otherwise resolve. The cache
+    // is dropped when an active context override points to a different host
+    // or include occurrence, when the routing mode changed, or when any
+    // chain file changed on disk (the synthesized preamble embeds their
+    // content, so it must be rebuilt).
     if(session && session->header_context.has_value()) {
-        if(session->active_context.has_value() &&
-           session->header_context->host_path_id != *session->active_context) {
+        bool override_mismatch =
+            session->active_context.has_value() &&
+            (session->header_context->host_path_id != session->active_context->host_path_id ||
+             session->header_context->occurrence !=
+                 session->active_context->occurrence.value_or(0) ||
+             session->header_context->host_command_hash != session->active_context->command_hash);
+        bool mode_mismatch = session->header_context->preamble_path.empty() == synthesize;
+        if(override_mismatch || mode_mismatch ||
+           deps_changed(workspace.path_pool, session->header_context->deps)) {
             session->header_context.reset();
-        } else {
-            ctx_ptr = &*session->header_context;
         }
     }
-    if(!ctx_ptr) {
-        auto resolved = resolve_header_context(path_id, session);
+
+    std::optional<HeaderContext> local_ctx;
+    const HeaderContext* ctx_ptr = nullptr;
+    if(session && session->header_context.has_value()) {
+        ctx_ptr = &*session->header_context;
+    } else {
+        auto resolved = resolve_header_context(path_id, session, synthesize);
         if(!resolved) {
             LOG_WARN("No CDB entry and no header context for {}", path);
             return false;
@@ -371,12 +484,9 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
             session->header_context = std::move(*resolved);
             ctx_ptr = &*session->header_context;
         } else {
-            // Background indexing path — no session to store on.
-            // Use a temporary (caller will use it immediately).
-            // Store in a local and return.
-            static thread_local std::optional<HeaderFileContext> tl_ctx;
-            tl_ctx = std::move(*resolved);
-            ctx_ptr = &*tl_ctx;
+            // Background indexing path — no session to cache on.
+            local_ctx = std::move(*resolved);
+            ctx_ptr = &*local_ctx;
         }
     }
 
@@ -393,20 +503,22 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     auto host_results =
         workspace.cdb.lookup(host_path, {.remove = rule_remove, .append = rule_append});
 
-    workspace.toolchain.resolve_or_warn(host_results.front());
-
-    auto& host_cmd = host_results.front();
+    auto& host_cmd = pick_host_command(workspace, host_path, host_results, session);
+    workspace.toolchain.resolve_or_warn(host_cmd);
     directory = host_cmd.resolved.directory.str();
 
-    // Replace source_file and inject -include preamble into flags directly.
+    // Replace source_file; inject -include <preamble> only when a prefix
+    // was synthesized (after "-cc1" for cc1, after the driver otherwise).
     CompileCommand header_cmd = host_cmd;
     header_cmd.source_file = workspace.path_pool.resolve(path_id).data();
 
-    // Inject -include <preamble> into flags: after "-cc1" for cc1, after driver otherwise.
-    std::size_t inject_pos = header_cmd.resolved.is_cc1 ? 2 : 1;
-    header_cmd.resolved.flags.insert(header_cmd.resolved.flags.begin() + inject_pos,
-                                     ctx_ptr->preamble_path.c_str());
-    header_cmd.resolved.flags.insert(header_cmd.resolved.flags.begin() + inject_pos, "-include");
+    if(!ctx_ptr->preamble_path.empty()) {
+        std::size_t inject_pos = header_cmd.resolved.is_cc1 ? 2 : 1;
+        header_cmd.resolved.flags.insert(header_cmd.resolved.flags.begin() + inject_pos,
+                                         ctx_ptr->preamble_path.c_str());
+        header_cmd.resolved.flags.insert(header_cmd.resolved.flags.begin() + inject_pos,
+                                         "-include");
+    }
 
     arguments = header_cmd.to_string_argv();
 
@@ -417,8 +529,9 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     return true;
 }
 
-std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t header_path_id,
-                                                                  Session* session) {
+std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t header_path_id,
+                                                              Session* session,
+                                                              bool synthesize) {
     // Find source files that transitively include this header.
     auto hosts = workspace.dep_graph.find_host_sources(header_path_id);
     if(hosts.empty()) {
@@ -426,25 +539,28 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
         return std::nullopt;
     }
 
-    // If there's an active context override, prefer that host.
+    // If there's an active context override, prefer that host (and its
+    // chosen include occurrence).
     std::uint32_t host_path_id = 0;
+    std::optional<std::uint32_t> occurrence;
     std::vector<std::uint32_t> chain;
     if(session && session->active_context.has_value()) {
-        auto preferred = *session->active_context;
+        auto preferred = session->active_context->host_path_id;
         auto preferred_path = workspace.path_pool.resolve(preferred);
         if(workspace.cdb.has_entry(preferred_path)) {
             auto c = workspace.dep_graph.find_include_chain(preferred, header_path_id);
             if(!c.empty()) {
                 host_path_id = preferred;
+                occurrence = session->active_context->occurrence;
                 chain = std::move(c);
             }
         }
     }
 
-    // Fall back to the first available host that has a real CDB entry —
+    // Fall back to the most relevant host that has a real CDB entry —
     // a host with a synthesized command would just be a fallback in disguise.
     if(chain.empty()) {
-        for(auto candidate: hosts) {
+        for(auto candidate: workspace.rank_hosts(header_path_id, hosts)) {
             auto candidate_path = workspace.path_pool.resolve(candidate);
             if(!workspace.cdb.has_entry(candidate_path))
                 continue;
@@ -463,77 +579,131 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
         return std::nullopt;
     }
 
-    // Build preamble text: for each file in the chain except the last (target),
-    // append all content up to (but not including) the line that includes the
-    // next file in the chain.
-    std::string preamble;
+    // Self-contained route: borrow the host's command, no prefix needed.
+    // The chain is kept so a didSave along it still invalidates the session.
+    std::string host_command_hash;
+    if(session && session->active_context.has_value()) {
+        host_command_hash = session->active_context->command_hash;
+    }
+
+    if(!synthesize) {
+        llvm::SmallVector<std::uint32_t> chain_ids(chain.begin(), chain.end() - 1);
+        return HeaderContext{host_path_id,
+                             "",
+                             0,
+                             "",
+                             occurrence.value_or(0),
+                             std::move(host_command_hash),
+                             std::move(chain_ids),
+                             {}};
+    }
+
+    // Include directives along the chain are resolved with the host's real
+    // search configuration, so same-named headers in different directories
+    // cannot be confused.
+    auto host_path = workspace.path_pool.resolve(host_path_id);
+    std::vector<std::string> rule_append, rule_remove;
+    workspace.config.match_rules(host_path, rule_append, rule_remove);
+    auto host_results =
+        workspace.cdb.lookup(host_path, {.remove = rule_remove, .append = rule_append});
+    if(host_results.empty()) {
+        return std::nullopt;
+    }
+    auto& resolve_cmd = pick_host_command(workspace, host_path, host_results, session);
+    workspace.toolchain.resolve_or_warn(resolve_cmd);
+
+    auto argv = resolve_cmd.to_argv();
+    auto search_config = extract_search_config(argv, resolve_cmd.resolved.directory);
+    DirListingCache dir_cache;
+    auto resolved_config = resolve_search_config(search_config, dir_cache);
+
+    auto resolver = [&](llvm::StringRef filename,
+                        bool is_angled,
+                        bool is_include_next,
+                        llvm::StringRef includer_dir) -> std::optional<std::string> {
+        auto entries = resolve_dir(includer_dir, dir_cache);
+        auto result = resolve_include(filename,
+                                      is_angled,
+                                      entries,
+                                      includer_dir,
+                                      is_include_next,
+                                      0,
+                                      resolved_config,
+                                      dir_cache);
+        if(!result) {
+            return std::nullopt;
+        }
+        // Normalize through the path pool: resolve_include builds native
+        // separators, but chain paths compared against it are pool-normalized.
+        return std::string(workspace.path_pool.resolve(workspace.path_pool.intern(result->path)));
+    };
+
+    // Read the chain files (all but the target) from disk. The synthesized
+    // preamble deliberately reflects disk state, never open-document buffers:
+    // open files must not be depended upon by other files. The staleness
+    // snapshot timestamp is taken before the reads so a concurrent write
+    // lands past build_at and triggers re-validation.
+    auto build_at = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::vector<std::string> chain_contents;
+    llvm::SmallVector<ChainEntry> chain_entries;
+    chain_contents.reserve(chain.size() - 1);
+    chain_entries.reserve(chain.size() - 1);
     for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
-        auto cur_id = chain[i];
-        auto next_id = chain[i + 1];
-
-        auto cur_path = workspace.path_pool.resolve(cur_id);
-        auto next_path = workspace.path_pool.resolve(next_id);
-        auto next_filename = llvm::sys::path::filename(next_path);
-
-        // Prefer in-memory document text over disk content.
-        std::string content;
+        auto cur_path = workspace.path_pool.resolve(chain[i]);
         auto buf = llvm::MemoryBuffer::getFile(cur_path);
         if(!buf) {
             LOG_WARN("resolve_header_context: cannot read {}", cur_path);
             return std::nullopt;
         }
-        content = (*buf)->getBuffer().str();
+        chain_contents.emplace_back((*buf)->getBuffer());
+        chain_entries.push_back({cur_path, chain_contents.back()});
+    }
 
-        // Scan line by line for the #include that brings in next_filename.
-        llvm::StringRef content_ref(content);
-        std::size_t line_start = 0;
-        std::size_t include_line_start = std::string::npos;
-        while(line_start <= content_ref.size()) {
-            auto newline_pos = content_ref.find('\n', line_start);
-            auto line_end =
-                (newline_pos == llvm::StringRef::npos) ? content_ref.size() : newline_pos;
-            auto line = content_ref.slice(line_start, line_end).trim();
-
-            if(line.starts_with("#include") || line.starts_with("# include")) {
-                // Extract the filename from the #include directive.
-                // Handles: #include "foo.h", #include <foo.h>, # include "foo.h"
-                auto quote_start = line.find_first_of("\"<");
-                auto quote_end = llvm::StringRef::npos;
-                if(quote_start != llvm::StringRef::npos) {
-                    char close = (line[quote_start] == '"') ? '"' : '>';
-                    quote_end = line.find(close, quote_start + 1);
-                }
-                if(quote_start != llvm::StringRef::npos && quote_end != llvm::StringRef::npos) {
-                    auto included = line.slice(quote_start + 1, quote_end);
-                    auto included_filename = llvm::sys::path::filename(included);
-                    if(included_filename == next_filename) {
-                        include_line_start = line_start;
-                        break;
-                    }
-                }
+    // Snapshot the header itself for other occurrences along the chain:
+    // its real path is remapped to the open buffer at compile time, so
+    // includes of it inside the prefix/suffix must point at a copy.
+    auto target_path = workspace.path_pool.resolve(chain.back());
+    std::string self_snapshot_path;
+    std::uint64_t target_hash = 0;
+    auto preamble_dir = path::join(workspace.config.project.cache_dir, "header_context");
+    if(auto target_buf = llvm::MemoryBuffer::getFile(target_path)) {
+        auto content = (*target_buf)->getBuffer();
+        target_hash = llvm::xxh3_64bits(content);
+        self_snapshot_path = path::join(preamble_dir, std::format("{:016x}.self.h", target_hash));
+        if(!llvm::sys::fs::exists(self_snapshot_path)) {
+            auto ec = llvm::sys::fs::create_directories(preamble_dir);
+            if(ec) {
+                LOG_WARN("resolve_header_context: cannot create dir {}: {}",
+                         preamble_dir,
+                         ec.message());
+                return std::nullopt;
             }
-
-            line_start =
-                (newline_pos == llvm::StringRef::npos) ? content_ref.size() + 1 : newline_pos + 1;
-        }
-
-        // Emit a #line marker then all content before the include line.
-        preamble += std::format("#line 1 \"{}\"\n", cur_path.str());
-        if(include_line_start != std::string::npos) {
-            preamble += content_ref.substr(0, include_line_start).str();
-        } else {
-            // No matching include line found — emit the whole file to be safe.
-            LOG_DEBUG("resolve_header_context: include line for {} not found in {}, emitting full",
-                      next_filename,
-                      cur_path);
-            preamble += content;
+            if(auto result = fs::write(self_snapshot_path, content); !result) {
+                LOG_WARN("resolve_header_context: cannot write snapshot {}: {}",
+                         self_snapshot_path,
+                         result.error().message());
+                return std::nullopt;
+            }
         }
     }
+
+    if(!self_snapshot_path.empty()) {
+        workspace.synthesized_hosts[self_snapshot_path] = host_path_id;
+    }
+
+    auto synthesized =
+        synthesize_context(chain_entries, target_path, resolver, occurrence, self_snapshot_path);
+    if(!synthesized) {
+        LOG_WARN("resolve_header_context: cannot match include chain for {} (host={})",
+                 target_path,
+                 host_path);
+        return std::nullopt;
+    }
+    auto& preamble = synthesized->prefix;
 
     // Hash the preamble and write to cache directory.
     auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(preamble));
     auto preamble_filename = std::format("{:016x}.h", preamble_hash);
-    auto preamble_dir = path::join(workspace.config.project.cache_dir, "header_context");
     auto preamble_path = path::join(preamble_dir, preamble_filename);
 
     if(!llvm::sys::fs::exists(preamble_path)) {
@@ -554,8 +724,53 @@ std::optional<HeaderFileContext> Compiler::resolve_header_context(std::uint32_t 
                  preamble_path,
                  header_path_id);
     }
+    workspace.synthesized_hosts[preamble_path] = host_path_id;
 
-    return HeaderFileContext{host_path_id, preamble_path, preamble_hash};
+    // The suffix restores everything after the include position (closing
+    // braces of enums/functions the fragment is embedded in). Injected by
+    // appending one #include line to the header's buffer at compile time.
+    std::string suffix_path;
+    if(!synthesized->suffix.empty()) {
+        auto suffix_hash = llvm::xxh3_64bits(llvm::StringRef(synthesized->suffix));
+        suffix_path = path::join(preamble_dir, std::format("{:016x}.suffix.h", suffix_hash));
+        if(!llvm::sys::fs::exists(suffix_path)) {
+            if(auto result = fs::write(suffix_path, synthesized->suffix); !result) {
+                LOG_WARN("resolve_header_context: cannot write suffix {}: {}",
+                         suffix_path,
+                         result.error().message());
+                return std::nullopt;
+            }
+        }
+        workspace.synthesized_hosts[suffix_path] = host_path_id;
+    }
+
+    // Snapshot the chain files for staleness detection: their content lives
+    // inside the synthesized preamble, so clang's own dependency tracking
+    // never sees them. Hash the buffers already read above — re-reading from
+    // disk could capture content newer than what the preamble embeds.
+    DepsSnapshot deps;
+    deps.build_at = build_at;
+    llvm::SmallVector<std::uint32_t> chain_ids(chain.begin(), chain.end() - 1);
+    deps.path_ids.assign(chain_ids.begin(), chain_ids.end());
+    deps.hashes.reserve(chain_contents.size() + 1);
+    for(auto& content: chain_contents) {
+        deps.hashes.push_back(llvm::xxh3_64bits(content));
+    }
+    if(!self_snapshot_path.empty()) {
+        // The self-snapshot mirrors the header's disk state; re-synthesize
+        // when it changes so other-occurrence expansions stay current.
+        deps.path_ids.push_back(chain.back());
+        deps.hashes.push_back(target_hash);
+    }
+
+    return HeaderContext{host_path_id,
+                         preamble_path,
+                         preamble_hash,
+                         std::move(suffix_path),
+                         occurrence.value_or(0),
+                         std::move(host_command_hash),
+                         std::move(chain_ids),
+                         std::move(deps)};
 }
 
 std::string uri_to_path(const std::string& uri) {
@@ -610,7 +825,8 @@ static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource sourc
 void Compiler::publish_diagnostics(const std::string& uri,
                                    int version,
                                    const kota::codec::RawValue& diagnostics_json,
-                                   CommandSource source) {
+                                   CommandSource source,
+                                   std::optional<std::uint32_t> line_limit) {
     if(!peer)
         return;
     std::vector<protocol::Diagnostic> diagnostics;
@@ -619,6 +835,15 @@ void Compiler::publish_diagnostics(const std::string& uri,
         if(!status) {
             LOG_WARN("Failed to deserialize diagnostics JSON for {}", uri);
         }
+    }
+
+    // Suffix injection appends an #include past the user's EOF; errors in
+    // host code after the include point remap onto those phantom lines.
+    // They describe the includer, not the document — drop them.
+    if(line_limit.has_value()) {
+        std::erase_if(diagnostics, [&](const protocol::Diagnostic& d) {
+            return d.range.start.line >= *line_limit;
+        });
     }
 
     // Guidance (and only when it can explain something): an exact CDB match
@@ -632,6 +857,57 @@ void Compiler::publish_diagnostics(const std::string& uri,
     params.version = version;
     params.diagnostics = std::move(diagnostics);
     peer->send_notification(params);
+}
+
+/// Append the header context's suffix as one trailing #include line: the
+/// suffix content (everything after the include position along the chain)
+/// lives in its own file so features never see it, while the token stream
+/// still closes any braces the fragment is embedded in. The single extra
+/// line sits past the editor's EOF and is invisible to the client.
+void Compiler::append_suffix_include(const Session& session, std::string& text) {
+    if(!session.header_context.has_value() || session.header_context->suffix_path.empty()) {
+        return;
+    }
+    if(!text.ends_with('\n')) {
+        text += '\n';
+    }
+    text += "#include \"";
+    // Escape like preamble_synthesis's line markers: Windows separators
+    // must survive the preprocessor's string literal parsing.
+    for(char c: session.header_context->suffix_path) {
+        if(c == '\\' || c == '"') {
+            text += '\\';
+        }
+        text += c;
+    }
+    text += "\"\n";
+}
+
+/// Push the file's preprocessor-inactive regions (clice/inactiveRegions).
+/// Sent after every compile so a context switch immediately re-dims the
+/// regions selected away by the new preprocessor state.
+void Compiler::publish_inactive_regions(const std::string& uri,
+                                        const Session& session,
+                                        llvm::ArrayRef<std::uint32_t> regions) {
+    if(!peer) {
+        return;
+    }
+    auto map = session.line_map();
+    ext::InactiveRegionsParams params;
+    params.uri = uri;
+    params.regions.reserve(regions.size() / 2);
+    for(std::size_t i = 0; i + 1 < regions.size(); i += 2) {
+        auto start = map.to_position(regions[i]);
+        auto end = map.to_position(regions[i + 1]);
+        if(!start || !end) {
+            continue;
+        }
+        protocol::Range range;
+        range.start = *start;
+        range.end = *end;
+        params.regions.push_back(range);
+    }
+    peer->send_notification("clice/inactiveRegions", params);
 }
 
 void Compiler::clear_diagnostics(const std::string& uri) {
@@ -650,12 +926,22 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto path = workspace.path_pool.resolve(path_id);
     auto& text = session.text;
     auto bound = compute_preamble_bound(text);
-    if(bound == 0) {
-        // No preamble directives — PCH would be empty. Clear any stale entry.
-        workspace.pch_cache.erase(path_id);
+    bool has_prefix =
+        session.header_context.has_value() && !session.header_context->preamble_path.empty();
+    if(bound == 0 && !has_prefix) {
+        // No preamble directives and no injected -include — PCH would be
+        // empty. Self-contained header contexts land here too: they borrow
+        // a command but inject nothing.
         session.pch_ref.reset();
         co_return true;
     }
+
+    // With a synthesized prefix, the PCH is worth building even at
+    // bound == 0: the -include'd preamble file is processed via the
+    // predefines buffer and lands in the PCH, so the (potentially huge)
+    // prefix is not re-parsed on every edit. The -include flag is part of
+    // the canonicalized arguments below, and the preamble file name is its
+    // content hash, so the key tracks prefix changes automatically.
 
     // Key the PCH by preamble text plus the frontend-relevant compile flags,
     // so files with the same preamble text but different flags (-D, -I, -std)
@@ -672,49 +958,61 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
                               preamble_text,
                               canonicalize(arguments, ArgsProfile::Frontend)});
 
-    // Reuse existing PCH if the key and deps haven't changed.  The store
-    // lookup refreshes the blob's LRU position and catches eviction.
+    // Reuse an existing PCH with the same content key — possibly built for
+    // a different file.  The store lookup refreshes the blob's LRU position
+    // and catches eviction.
     llvm::StringRef pch_miss = "no_entry";
-    if(auto it = workspace.pch_cache.find(path_id); it != workspace.pch_cache.end()) {
+    if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
         auto& st = it->second;
-        if(st.key != pch_key) {
-            pch_miss = "key_changed";
-        } else if(st.path.empty()) {
+        bool in_store = workspace.store && workspace.store->lookup("pch", pch_key);
+        if(st.path.empty()) {
             pch_miss = "incomplete_entry";
-        } else if(!(workspace.store && workspace.store->lookup("pch", pch_key))) {
+        } else if(!in_store) {
             pch_miss = "evicted";
         } else if(deps_changed(workspace.path_pool, st.deps)) {
             pch_miss = "deps_changed";
         } else {
-            st.bound = bound;
-            session.pch_ref = Session::PCHRef{path_id, pch_key, bound};
+            session.pch_ref = Session::PCHRef{pch_key, bound};
             LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, path);
             co_return true;
+        }
+        // Blob evicted by the store's LRU: drop the metadata too, or the
+        // content-keyed map grows for the server's lifetime.
+        if(!in_store && !st.building) {
+            workspace.pch_cache.erase(it);
         }
     }
     LOG_PERF("cache", "ns=pch event=miss reason={} key={} file={}", pch_miss, pch_key, path);
 
-    // Preamble incomplete (user still typing) — defer rebuild, reuse old PCH if available.
+    // Preamble incomplete (user still typing) — defer rebuild, keep using
+    // the session's previous PCH if it is still available.
     if(!is_preamble_complete(text, bound)) {
         LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
-        co_return workspace.pch_cache.count(path_id) && !workspace.pch_cache[path_id].path.empty();
+        if(session.pch_ref.has_value()) {
+            auto it = workspace.pch_cache.find(session.pch_ref->key);
+            co_return it != workspace.pch_cache.end() && !it->second.path.empty();
+        }
+        co_return false;
     }
 
-    // If another coroutine is already building PCH for this file, wait for it.
-    if(auto it = workspace.pch_cache.find(path_id);
+    // If another coroutine is already building a PCH with this key
+    // (same file, or another file with an identical preamble), wait for it.
+    if(auto it = workspace.pch_cache.find(pch_key);
        it != workspace.pch_cache.end() && it->second.building) {
         co_await it->second.building->wait();
-        if(auto it2 = workspace.pch_cache.find(path_id); it2 != workspace.pch_cache.end()) {
-            session.pch_ref = Session::PCHRef{path_id, it2->second.key, it2->second.bound};
+        if(auto it2 = workspace.pch_cache.find(pch_key);
+           it2 != workspace.pch_cache.end() && !it2->second.path.empty()) {
+            session.pch_ref = Session::PCHRef{pch_key, it2->second.bound};
+            co_return true;
         }
-        co_return workspace.pch_cache.count(path_id) && !workspace.pch_cache[path_id].path.empty();
+        co_return false;
     }
 
     // Register in-flight build so concurrent requests wait on us.  The
     // guard wakes them on every exit, including cancellation mid-await.
     auto completion = std::make_shared<kota::event>();
-    workspace.pch_cache[path_id].building = completion;
-    BuildingGuard guard{workspace, path_id, completion};
+    workspace.pch_cache[pch_key].building = completion;
+    BuildingGuard guard{workspace, pch_key, completion};
 
     if(!workspace.store) {
         LOG_WARN("PCH build skipped: cache store is unavailable");
@@ -760,14 +1058,15 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return false;
     }
 
-    auto& st = workspace.pch_cache[path_id];
+    auto& st = workspace.pch_cache[pch_key];
     st.path = committed.value().value();
     st.bound = bound;
-    st.key = pch_key;
     st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
     st.preamble_links = std::move(result.value().preamble_links);
+    st.inactive_regions = std::move(result.value().inactive_regions);
+    st.open_conditionals = std::move(result.value().open_conditionals);
 
-    session.pch_ref = Session::PCHRef{path_id, pch_key, bound};
+    session.pch_ref = Session::PCHRef{pch_key, bound};
 
     LOG_INFO("PCH built for {}: {}", path, st.path);
 
@@ -872,8 +1171,9 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
 
     // Build or reuse PCH.
     auto pch_ok = co_await ensure_pch(session, directory, arguments);
-    if(pch_ok) {
-        if(auto pch_it = workspace.pch_cache.find(path_id); pch_it != workspace.pch_cache.end()) {
+    if(pch_ok && session.pch_ref.has_value()) {
+        if(auto pch_it = workspace.pch_cache.find(session.pch_ref->key);
+           pch_it != workspace.pch_cache.end()) {
             pch = {pch_it->second.path, pch_it->second.bound};
         }
     }
@@ -889,9 +1189,15 @@ bool Compiler::is_stale(const Session& session) {
     if(session.ast_deps.has_value() && deps_changed(workspace.path_pool, *session.ast_deps))
         return true;
 
+    // Chain files of a header context are embedded in the synthesized
+    // preamble, invisible to ast_deps — check them explicitly.
+    if(session.header_context.has_value() &&
+       deps_changed(workspace.path_pool, session.header_context->deps))
+        return true;
+
     // Check PCH staleness via the session's pch_ref.
     if(session.pch_ref.has_value()) {
-        auto pch_it = workspace.pch_cache.find(session.pch_ref->path_id);
+        auto pch_it = workspace.pch_cache.find(session.pch_ref->key);
         if(pch_it != workspace.pch_cache.end() &&
            deps_changed(workspace.path_pool, pch_it->second.deps))
             return true;
@@ -929,76 +1235,152 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
-    worker::CompileParams params;
-    params.path = file_path;
-    params.version = session->version;
-    params.text = session->text;
-    auto source = fill_compile_args(file_path, params.directory, params.arguments, session.get());
+    // At most two rounds: a header with unknown self-containment compiles
+    // without a prefix first; if the diagnostics indicate missing includer
+    // context, the second round re-compiles with a synthesized prefix.
+    // The trial's diagnostics are never published.
+    for(int attempt = 0; attempt < 2; ++attempt) {
+        worker::CompileParams params;
+        params.path = file_path;
+        params.version = session->version;
+        params.text = session->text;
+        auto source =
+            fill_compile_args(file_path, params.directory, params.arguments, session.get());
 
-    bool deps_ok = co_await ensure_deps(*session,
-                                        params.directory,
-                                        params.arguments,
-                                        params.pch,
-                                        params.pcms,
-                                        pc->deps_scope.token());
-    pc->deps_done = true;
-    if(!deps_ok) {
-        LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
-        finish_compile();
-        co_return;
-    }
-
-    if(session->generation != gen) {
-        LOG_INFO("ensure_compiled: superseded before send ({} vs {}) for {}",
-                 session->generation,
-                 gen,
-                 uri_str);
-        finish_compile();
-        co_return;
-    }
-
-    auto result = co_await pool.send_stateful(pid, params);
-
-    if(session->generation != gen) {
-        LOG_INFO("ensure_compiled: generation mismatch ({} vs {}) for {}",
-                 session->generation,
-                 gen,
-                 uri_str);
-        finish_compile();
-        co_return;
-    }
-
-    if(!result.has_value()) {
-        if(worker::is_operational_error(result.error())) {
-            LOG_WARN("Compile did not complete for {}: {}", uri_str, result.error().message);
-        } else {
-            // The worker accepts arbitrary user code; a non-operational
-            // failure at this layer is IPC/worker breakage, never a
-            // user-code problem.
-            LOG_ANOMALY(CompileFail, "Compile failed for {}: {}", uri_str, result.error().message);
+        // The line the appended suffix #include lands on — anything at or
+        // past it is phantom text the user cannot see.
+        std::optional<std::uint32_t> suffix_line_limit;
+        if(session->header_context.has_value() && !session->header_context->suffix_path.empty()) {
+            auto newlines = std::ranges::count(params.text, '\n');
+            suffix_line_limit =
+                static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
         }
-        clear_diagnostics(uri_str);
+        append_suffix_include(*session, params.text);
+
+        bool deps_ok = co_await ensure_deps(*session,
+                                            params.directory,
+                                            params.arguments,
+                                            params.pch,
+                                            params.pcms,
+                                            pc->deps_scope.token());
+        pc->deps_done = true;
+        if(!deps_ok) {
+            LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
+            finish_compile();
+            co_return;
+        }
+
+        if(session->generation != gen) {
+            LOG_INFO("ensure_compiled: superseded before send ({} vs {}) for {}",
+                     session->generation,
+                     gen,
+                     uri_str);
+            finish_compile();
+            co_return;
+        }
+
+        // Seed the inactive-region scan with the conditional stack the
+        // PCH's preamble left open (a #if cut by the bound). Copy the state
+        // out: concurrent compiles can insert into pch_cache across the
+        // await below and rehash the map from under a held pointer.
+        std::vector<std::uint32_t> pch_inactive;
+        if(session->pch_ref.has_value()) {
+            if(auto it = workspace.pch_cache.find(session->pch_ref->key);
+               it != workspace.pch_cache.end()) {
+                pch_inactive = it->second.inactive_regions;
+                params.open_conditionals = it->second.open_conditionals;
+            }
+        }
+
+        auto result = co_await pool.send_stateful(pid, params);
+
+        if(session->generation != gen) {
+            LOG_INFO("ensure_compiled: generation mismatch ({} vs {}) for {}",
+                     session->generation,
+                     gen,
+                     uri_str);
+            finish_compile();
+            co_return;
+        }
+
+        if(!result.has_value()) {
+            if(worker::is_operational_error(result.error())) {
+                LOG_WARN("Compile did not complete for {}: {}", uri_str, result.error().message);
+            } else {
+                // The worker accepts arbitrary user code; a non-operational
+                // failure at this layer is IPC/worker breakage, never a
+                // user-code problem.
+                LOG_ANOMALY(CompileFail,
+                            "Compile failed for {}: {}",
+                            uri_str,
+                            result.error().message);
+            }
+            clear_diagnostics(uri_str);
+            finish_compile();
+            co_return;
+        }
+
+        // Self-containment trial verdict. Scored once per settled input
+        // state: trial_done is reset whenever compile inputs change for
+        // reasons other than buffer edits, so a dependency change re-runs
+        // the trial while ordinary typing never does. Only NeedsContext is
+        // persisted — SelfContained is recorded in memory alone (dependency
+        // changes erase it) so queryContext can dedup identical-flag hosts
+        // once the verdict is actually earned, never on a guess.
+        if(attempt == 0 && !session->trial_done && session->header_context.has_value() &&
+           session->header_context->preamble_path.empty() &&
+           workspace.header_mode(file_path, pid) == HeaderMode::Unknown) {
+            std::vector<protocol::Diagnostic> diagnostics;
+            if(!result.value().diagnostics.empty()) {
+                [[maybe_unused]] auto status =
+                    kota::codec::json::from_json(result.value().diagnostics.data, diagnostics);
+            }
+            session->trial_done = true;
+            workspace.header_modes[pid] = HeaderMode::SelfContained;
+
+            if(indicates_missing_context(diagnostics)) {
+                LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
+                workspace.header_modes[pid] = HeaderMode::NeedsContext;
+                workspace.header_mode_hashes[pid] = hash_file(file_path);
+                workspace.save_cache();
+                session->header_context.reset();
+                session->pch_ref.reset();
+                continue;
+            }
+        }
+
+        session->ast_dirty = false;
+        pc->succeeded = true;
+        record_deps(*session, result.value().deps);
+
+        if(!result.value().tu_index_data.empty()) {
+            auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
+            session->file_index = std::move(tu_index.main_file_index);
+            session->symbols = std::move(tu_index.symbols);
+        }
+
+        auto version = session->version;
         finish_compile();
+
+        LOG_PERF("request", "kind=Compile file={} total_ms={}", file_path, timer.ms());
+        publish_diagnostics(uri_str,
+                            version,
+                            result.value().diagnostics,
+                            source,
+                            suffix_line_limit);
+        // The preamble's share lives with the PCH; the compile result
+        // covers the content past the bound. Publish both.
+        auto inactive = std::move(pch_inactive);
+        inactive.insert(inactive.end(),
+                        result.value().inactive_regions.begin(),
+                        result.value().inactive_regions.end());
+        publish_inactive_regions(uri_str, *session, inactive);
+        if(on_indexing_needed)
+            on_indexing_needed();
         co_return;
     }
 
-    session->ast_dirty = false;
-    pc->succeeded = true;
-    record_deps(*session, result.value().deps);
-
-    if(!result.value().tu_index_data.empty()) {
-        auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
-        session->file_index = std::move(tu_index.main_file_index);
-        session->symbols = std::move(tu_index.symbols);
-    }
-
-    auto version = session->version;
     finish_compile();
-
-    LOG_PERF("request", "kind=Compile file={} total_ms={}", file_path, timer.ms());
-    publish_diagnostics(uri_str, version, result.value().diagnostics, source);
-    if(on_indexing_needed)
-        on_indexing_needed();
 }
 
 /// AST and diagnostics have been published to the client.
@@ -1038,7 +1420,10 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
         if(!is_stale(*session)) {
             co_return true;
         }
+        // Dependency change, not a buffer edit: re-run the trial too.
         session->ast_dirty = true;
+        session->trial_done = false;
+        workspace.forget_self_contained(path_id);
     }
 
     // If an up-to-date compile is already in flight, wait for it.
@@ -1188,6 +1573,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     wp.version = session->version;
     wp.text = session->text;
     fill_compile_args(path, wp.directory, wp.arguments, session.get());
+    append_suffix_include(*session, wp.text);
 
     ScopedTimer timer;
     if(!co_await ensure_deps(*session, wp.directory, wp.arguments, wp.pch, wp.pcms)) {

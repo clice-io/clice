@@ -25,6 +25,28 @@ int x = 1;
     EXPECT_TRUE(result.module_name.empty());
 }
 
+TEST_CASE(IncludeOffsets) {
+    llvm::StringRef content = R"(int x;
+#include <a.h>
+#include "b.h"
+)";
+    auto result = scan(content);
+
+    ASSERT_EQ(result.includes.size(), 2u);
+    EXPECT_EQ(result.includes[0].offset, static_cast<std::uint32_t>(content.find("#include <a")));
+    EXPECT_EQ(result.includes[1].offset,
+              static_cast<std::uint32_t>(content.find(R"(#include "b)")));
+}
+
+TEST_CASE(IndentedIncludeOffset) {
+    llvm::StringRef content = "  #  include <a.h>\n";
+    auto result = scan(content);
+
+    ASSERT_EQ(result.includes.size(), 1u);
+    // The offset points at the `#`, not the line start.
+    EXPECT_EQ(result.includes[0].offset, 2u);
+}
+
 TEST_CASE(ConditionalIncludes) {
     auto result = scan(R"(
 #include <always.h>

@@ -63,3 +63,35 @@ def did_change(client, uri: str, version: int, text: str) -> None:
             content_changes=[TextDocumentContentChangeWholeDocument(text=text)],
         )
     )
+
+
+def get_field(obj, key, default=None):
+    """Read a field from a dict or attribute-style LSP response object."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def write_entries(workspace, entries):
+    """Write a compile_commands.json with per-file extra arguments.
+
+    Args:
+        workspace: Root directory of the workspace.
+        entries: List of (file_name, extra_args) pairs; a file may appear
+            multiple times to model multi-configuration projects.
+    """
+    data = [
+        {
+            "directory": str(workspace),
+            "file": str(workspace / f),
+            "arguments": [
+                "clang++",
+                "-std=c++17",
+                "-fsyntax-only",
+                *args,
+                str(workspace / f),
+            ],
+        }
+        for f, args in entries
+    ]
+    (workspace / "compile_commands.json").write_text(json.dumps(data))

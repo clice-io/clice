@@ -29,23 +29,27 @@ private:
                        clang::PPCallbacks::ConditionValueKind value,
                        clang::SourceRange condition_range) {
         Condition::ConditionValue cond_value =
-            value == clang::PPCallbacks::CVK_False          ? Condition::None
+            value == clang::PPCallbacks::CVK_False          ? Condition::False
             : value == clang::PPCallbacks::CVK_True         ? Condition::True
             : value == clang::PPCallbacks::CVK_NotEvaluated ? Condition::Skipped
                                                             : Condition::None;
         add_condition(loc, kind, cond_value, condition_range);
     }
 
+    /// `negated` flips the recorded truth for #ifndef/#elifndef: the
+    /// stored value is the BRANCH truth (was it taken), not whether the
+    /// macro is defined — an include guard's first pass is active.
     void add_condition(clang::SourceLocation loc,
                        Condition::BranchKind kind,
                        const clang::Token& name,
-                       const clang::MacroDefinition& definition) {
-        if(auto def = definition.getMacroInfo()) {
+                       const clang::MacroDefinition& definition,
+                       bool negated = false) {
+        auto def = definition.getMacroInfo();
+        if(def) {
             add_macro(def, MacroRef::Ref, name.getLocation());
-            add_condition(loc, kind, Condition::True, name.getLocation());
-        } else {
-            add_condition(loc, kind, Condition::False, name.getLocation());
         }
+        bool taken = negated ? def == nullptr : def != nullptr;
+        add_condition(loc, kind, taken ? Condition::True : Condition::False, name.getLocation());
     }
 
     void add_macro(const clang::MacroInfo* def, MacroRef::Kind kind, clang::SourceLocation loc) {
@@ -232,14 +236,14 @@ public:
     void Ifndef(clang::SourceLocation loc,
                 const clang::Token& name,
                 const clang::MacroDefinition& definition) override {
-        add_condition(loc, Condition::Ifndef, name, definition);
+        add_condition(loc, Condition::Ifndef, name, definition, /*negated=*/true);
     }
 
     // Invoke when #elifndef is taken.
     void Elifndef(clang::SourceLocation loc,
                   const clang::Token& name,
                   const clang::MacroDefinition& definition) override {
-        add_condition(loc, Condition::Elifndef, name, definition);
+        add_condition(loc, Condition::Elifndef, name, definition, /*negated=*/true);
     }
 
     // Invoke when #elifndef is skipped.

@@ -68,7 +68,11 @@ ScanResult scan(llvm::StringRef content) {
                             bool angled = name.front() == '<';
                             ScanResult::IncludeInfo info;
                             info.path = std::string(name.substr(1, name.size() - 2));
+                            info.offset = dir.Tokens.front().Offset;
+                            info.name_offset = tok.Offset;
+                            info.name_length = tok.Length;
                             info.conditional = conditional_depth > 0;
+                            info.conditional_depth = static_cast<std::uint16_t>(conditional_depth);
                             info.is_angled = angled;
                             info.is_include_next = dir.Kind == dds::pp_include_next;
                             result.includes.push_back(std::move(info));

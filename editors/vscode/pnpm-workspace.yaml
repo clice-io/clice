@@ -1,3 +1,5 @@
-onlyBuiltDependencies:
-  - "@vscode/vsce-sign"
-  - keytar
+# vsce-sign (marketplace signing) and keytar (credential store) are vsce
+# transitive deps; their build scripts are not needed for local dev or CI.
+allowBuilds:
+  "@vscode/vsce-sign": false
+  keytar: false

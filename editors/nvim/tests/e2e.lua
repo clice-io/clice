@@ -45,6 +45,13 @@ local scenarios = {
         index_symbol = 'magic_number',
         definition_file = 'defs.cppm',
     },
+    header_context = {
+        file = 'utils.h',
+        symbol = 'distance(p',
+        index_symbol = 'calc',
+        -- no definition_file: cross-file definition into headers is a
+        -- known index gap.
+    },
 }
 
 local scenario = scenarios[vim.fs.basename(fixture_dir)]
@@ -149,21 +156,23 @@ if not hover or not hover.contents then
     fail 'hover returned no contents'
 end
 
-step 'definition'
-local definition = request('textDocument/definition', {
-    textDocument = text_document,
-    position = position,
-})
-if definition and definition.uri then
-    definition = { definition }
-end
-if not definition or #definition == 0 then
-    fail 'definition returned no locations'
-end
-local target = definition[1].uri or definition[1].targetUri
-local target_file = vim.fs.basename(vim.uri_to_fname(target))
-if target_file ~= scenario.definition_file then
-    fail('definition landed in ' .. target_file .. ', expected ' .. scenario.definition_file)
+if scenario.definition_file then
+    step 'definition'
+    local definition = request('textDocument/definition', {
+        textDocument = text_document,
+        position = position,
+    })
+    if definition and definition.uri then
+        definition = { definition }
+    end
+    if not definition or #definition == 0 then
+        fail 'definition returned no locations'
+    end
+    local target = definition[1].uri or definition[1].targetUri
+    local target_file = vim.fs.basename(vim.uri_to_fname(target))
+    if target_file ~= scenario.definition_file then
+        fail('definition landed in ' .. target_file .. ', expected ' .. scenario.definition_file)
+    end
 end
 
 step 'completion'

@@ -21,6 +21,7 @@
 #include "kota/ipc/lsp/uri.h"
 #include "kota/ipc/recording_transport.h"
 #include "kota/ipc/transport.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
@@ -167,21 +168,82 @@ void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& pee
 }
 
 void MasterServer::on_file_saved(std::uint32_t path_id) {
+    // The saved file's own self-containment may have changed; re-evaluate
+    // on its next compile.
+    workspace.header_modes.erase(path_id);
+    workspace.header_mode_hashes.erase(path_id);
+    if(auto session = find_session(path_id)) {
+        session->trial_done = false;
+    }
+
     auto dirtied = workspace.on_file_saved(path_id);
     for(auto dirty_id: dirtied) {
         auto session = find_session(dirty_id);
         if(session) {
             session->ast_dirty = true;
+            session->trial_done = false;
+            workspace.forget_self_contained(dirty_id);
         } else {
             indexer.enqueue(dirty_id);
         }
     }
 
-    for(auto& [path_id, session]: sessions) {
-        if(session->header_context && session->header_context->host_path_id == path_id) {
-            session->header_context.reset();
+    // Header sessions whose include chain contains the saved file must
+    // re-synthesize their preamble: it embeds the chain files' content, so
+    // neither the dependents cascade above nor clang's own dependency
+    // tracking catches this. Zeroing build_at forces deps_changed() to
+    // re-validate every chain file by content hash. Do NOT reset the
+    // context itself: an in-flight compile can clobber ast_dirty when it
+    // finishes, and the surviving snapshot is what lets is_stale() recover.
+    for(auto& [session_id, session]: sessions) {
+        if(session->header_context && llvm::is_contained(session->header_context->chain, path_id)) {
+            session->header_context->deps.build_at = 0;
             session->ast_dirty = true;
+            session->trial_done = false;
+            // The chain change may have made the header self-contained
+            // (e.g. a dependency now provides the missing declarations);
+            // drop the persisted verdict so the trial can downgrade it.
+            workspace.header_modes.erase(session_id);
+            workspace.header_mode_hashes.erase(session_id);
         }
+    }
+
+    // A save can remove the include edge a user's context choice depends
+    // on. A stale active_context suppresses automatic host resolution, so
+    // it would strand the header on the fallback command (or silently pin
+    // its command hash to a different host) — drop it instead. The include
+    // graph was already rescanned above.
+    bool dropped_saved = false;
+    for(auto& [session_id, session]: sessions) {
+        if(!session->active_context.has_value()) {
+            continue;
+        }
+        auto host_id = session->active_context->host_path_id;
+        auto& occurrence = session->active_context->occurrence;
+        bool orphaned = workspace.dep_graph.find_include_chain(host_id, session_id).empty();
+        // A pinned occurrence can vanish while other inclusions of the
+        // header survive (the chain stays non-empty) — recount it.
+        if(!orphaned && occurrence.has_value()) {
+            auto count = workspace.count_occurrences(host_id, session_id);
+            orphaned = count > 0 && *occurrence >= count;
+        }
+        if(orphaned) {
+            LOG_INFO("Dropping orphaned context choice for {}: host {} no longer includes it",
+                     workspace.path_pool.resolve(session_id),
+                     workspace.path_pool.resolve(host_id));
+            session->active_context.reset();
+            session->header_context.reset();
+            session->pch_ref.reset();
+            session->ast_dirty = true;
+            session->trial_done = false;
+            // Invalidate in-flight compiles so they cannot clobber the
+            // reset state when they finish (same as switchContext).
+            session->generation += 1;
+            dropped_saved |= workspace.saved_contexts.erase(session_id) > 0;
+        }
+    }
+    if(dropped_saved) {
+        workspace.save_cache();
     }
 
     indexer.schedule();
@@ -255,7 +317,7 @@ const std::vector<feature::DocumentLink>*
     MasterServer::find_preamble_links(const Session& session) {
     if(!session.pch_ref)
         return nullptr;
-    auto it = workspace.pch_cache.find(session.pch_ref->path_id);
+    auto it = workspace.pch_cache.find(session.pch_ref->key);
     if(it == workspace.pch_cache.end() || it->second.preamble_links.empty())
         return nullptr;
     return &it->second.preamble_links;

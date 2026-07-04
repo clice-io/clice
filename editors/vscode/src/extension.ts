@@ -9,6 +9,8 @@ import {
 } from "vscode-languageclient/node";
 import { getSetting } from "./setting";
 import { ensureServerBinary } from "./download";
+import { registerCompilationContext } from "./feature/context";
+import { registerInactiveRegions } from "./feature/inactive";
 
 let client: LanguageClient;
 
@@ -71,7 +73,11 @@ export async function activate(context: ExtensionContext) {
     }
 
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: "file", language: "cpp" }],
+        documentSelector: [
+            { scheme: "file", language: "cpp" },
+            { scheme: "file", language: "c" },
+            { scheme: "file", language: "cuda-cpp" },
+        ],
         outputChannel: channel,
         traceOutputChannel: verboseChannel,
         synchronize: {
@@ -84,6 +90,12 @@ export async function activate(context: ExtensionContext) {
     await registerCommands(client, context);
 
     await client.start();
+
+    registerCompilationContext(client, context);
+    registerInactiveRegions(client, context);
+
+    // Exposed for E2E tests to exercise custom requests directly.
+    return { client };
 }
 
 export function deactivate(): Thenable<void> | undefined {

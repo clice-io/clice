@@ -23,13 +23,14 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 2;
+constexpr inline std::uint32_t cache_format_version = 3;
 
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
 ///
@@ -45,24 +46,75 @@ struct DepsSnapshot {
     std::int64_t build_at = 0;
 };
 
+/// Sentinel for "no path": path pool ids start at 0, so 0 is a real file.
+constexpr inline std::uint32_t no_path_id = ~0u;
+
 /// Context for compiling a header file that lacks its own CDB entry.
-struct HeaderFileContext {
-    std::uint32_t host_path_id;   ///< Source file acting as host.
-    std::string preamble_path;    ///< Path to generated preamble file on disk.
-    std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
+struct HeaderContext {
+    std::uint32_t host_path_id = no_path_id;  ///< Source file acting as host.
+    std::string preamble_path;                ///< Path to generated preamble file on disk.
+    std::uint64_t preamble_hash;              ///< Hash of preamble content for staleness.
+
+    /// Path to the generated suffix file (content after the include
+    /// position along the chain), appended to the header's buffer as one
+    /// trailing #include line. Empty when the suffix is empty.
+    std::string suffix_path;
+
+    /// Which include of this header in its direct includer produced the
+    /// preamble (0-based, in directive order).
+    std::uint32_t occurrence = 0;
+
+    /// Canonical hash of the host CDB entry used (multi-configuration
+    /// hosts); empty = the first entry.
+    std::string host_command_hash;
+
+    /// Include chain from host to the target's direct includer (excludes the
+    /// target itself). The synthesized preamble embeds these files' content,
+    /// so clang never opens them — staleness must be tracked here.
+    llvm::SmallVector<std::uint32_t> chain;
+
+    /// Staleness snapshot over the chain files (mtime + content hash).
+    DepsSnapshot deps;
 };
 
-/// Cached PCH state.  Content-addressed by preamble text + frontend compile
-/// flags — shared across all files (open or on-disk) with the same key.
+/// Whether a header can compile on its own (given a borrowed command)
+/// or needs a synthesized prefix restoring the includer's preprocessor
+/// state. Determined by compiling self-contained first and falling back
+/// when the diagnostics indicate missing context.
+enum class HeaderMode : std::uint32_t {
+    Unknown = 0,
+    SelfContained = 1,
+    NeedsContext = 2,
+};
+
+/// A user's context choice, persisted across sessions.
+struct SavedContext {
+    /// Header context host; no_path_id = none.
+    std::uint32_t host_path_id = no_path_id;
+
+    /// Pinned include occurrence; no value = automatic.
+    std::optional<std::uint32_t> occurrence;
+
+    std::string command_hash;  ///< Pinned CDB entry; empty = none.
+};
+
+/// Cached PCH state.  Stored in Workspace.pch_cache keyed by the content
+/// key (hex of xxh3_128bits over preamble text + directories + canonical
+/// flags), so files with identical preambles share one PCH.
 struct PCHState {
     std::string path;
     std::uint32_t bound = 0;
-    /// CacheStore key: hex of xxh3_128bits(preamble text + canonical flags).
-    std::string key;
     DepsSnapshot deps;
     /// Include directives of the preamble, used for document links and
     /// go-to-definition on preamble include lines.
     std::vector<feature::DocumentLink> preamble_links;
+
+    /// Inactive regions within the preamble (flat offset pairs) and the
+    /// conditional stack still open at the bound — a #if cut by the bound
+    /// resumes in the AST compile's scan.
+    std::vector<std::uint32_t> inactive_regions;
+    std::vector<std::uint8_t> open_conditionals;
+
     std::shared_ptr<kota::event> building;
 };
 
@@ -120,10 +172,10 @@ struct Workspace {
     /// declarations change.
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
-    /// PCH cache, keyed by file path_id.  Hot-path mirror of CacheStore
-    /// state; blob paths come from the store.
-    /// TODO: re-key by content hash to enable cross-file sharing.
-    llvm::DenseMap<std::uint32_t, PCHState> pch_cache;
+    /// PCH cache, keyed by content key (preamble text + canonical flags),
+    /// so files with identical preambles share one PCH.  Hot-path mirror
+    /// of CacheStore state; blob paths come from the store.
+    llvm::StringMap<PCHState> pch_cache;
 
     /// PCM cache, keyed by module source path_id.
     llvm::DenseMap<std::uint32_t, PCMState> pcm_cache;
@@ -139,6 +191,68 @@ struct Workspace {
     /// path_id.  Contains symbol occurrences, relations, and stored content
     /// for position mapping.
     llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
+
+    /// Monotonic generation of context-affecting workspace state (include
+    /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext
+    /// stamps its results with it and clice/switchContext rejects requests
+    /// made against an older epoch, so a client can never apply a context
+    /// picked from a stale listing without noticing.
+    std::uint64_t context_epoch = 1;
+
+    /// Self-containment verdicts for headers, persisted in cache.json.
+    /// Reset when the header itself is saved.
+    llvm::DenseMap<std::uint32_t, HeaderMode> header_modes;
+
+    /// Content hash of the header at the time its NeedsContext verdict was
+    /// scored — persisted so a stale verdict is dropped on cache load.
+    llvm::DenseMap<std::uint32_t, std::uint64_t> header_mode_hashes;
+
+    /// User context choices (clice/switchContext), persisted in cache.json
+    /// and restored into the Session on didOpen.
+    llvm::DenseMap<std::uint32_t, SavedContext> saved_contexts;
+
+    /// Host source of each synthesized artifact (prefix/suffix/snapshot
+    /// file path -> host path_id), recorded at synthesis time and
+    /// persisted in cache.json. Opening an artifact compiles it with its
+    /// host's command — it is a fragment of that TU, and treated as
+    /// self-contained (an artifact needing context itself is out of scope).
+    llvm::StringMap<std::uint32_t> synthesized_hosts;
+
+    /// Whether `path` is one of our own synthesized context artifacts
+    /// (prefix/suffix/self-snapshot files under the cache directory). A
+    /// user can open these for debugging; they must never go through
+    /// header-context resolution themselves — a synthesized file deriving
+    /// context from other synthesized files would chain junk state.
+    bool is_synthesized_artifact(llvm::StringRef path) const;
+
+    /// Effective self-containment mode for a header. X-macro style
+    /// extensions are non-self-contained by construction; otherwise use
+    /// the persisted verdict. Only NeedsContext is ever persisted — a
+    /// "self-contained" impression is session-local and re-evaluated when
+    /// compile inputs change, so it can never go stale.
+    HeaderMode header_mode(llvm::StringRef path, std::uint32_t path_id) const;
+
+    /// Drop an in-memory SelfContained verdict (never a persisted
+    /// NeedsContext) so the next compile re-runs the trial.
+    void forget_self_contained(std::uint32_t path_id);
+
+    /// How many times the direct includer on host->target's chain includes
+    /// the target. Spelling-based (no search-path resolution): multiple
+    /// inclusions of one header always share a spelling, and synthesis
+    /// validates the real occurrence anyway.
+    std::uint32_t count_occurrences(std::uint32_t host_id, std::uint32_t target_id) const;
+
+    /// Rank host source candidates for a header by relevance: a source
+    /// with the header's stem (utils.h -> utils.cpp) wins, then sources in
+    /// the same directory, then longer common path prefixes; ties break
+    /// lexicographically so the choice is deterministic.
+    llvm::SmallVector<std::uint32_t> rank_hosts(std::uint32_t header_path_id,
+                                                llvm::ArrayRef<std::uint32_t> hosts) const;
+
+    /// Re-resolve a saved file's direct include edges from its disk
+    /// content, so host lookups and context queries see includes the save
+    /// added or removed.
+    void rescan_includes(std::uint32_t path_id);
 
     /// Called when a file is saved to disk.  Cascades invalidation through
     /// compile_graph and clears affected PCM caches.

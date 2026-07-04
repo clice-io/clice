@@ -26,7 +26,8 @@
   "activationEvents": [
     "onLanguage:c",
     "onLanguage:cpp",
-    "onLanguage:cuda-cpp"
+    "onLanguage:cuda-cpp",
+    "onStartupFinished"
   ],
   "contributes": {
     "configuration": {
@@ -66,6 +67,31 @@
       {
         "command": "clice.restart",
         "title": "Clice: Restart Language Server"
+      },
+      {
+        "command": "clice.switchContext",
+        "title": "Clice: Switch Compilation Context"
+      },
+      {
+        "command": "clice.showCurrentContext",
+        "title": "Clice: Show Current Compilation Context"
+      },
+      {
+        "command": "clice.queryContexts",
+        "title": "Clice: Query Compilation Contexts"
+      },
+      {
+        "command": "clice.refreshContexts",
+        "title": "Clice: Refresh Compilation Contexts",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "clice.applyContext",
+        "title": "Clice: Apply Compilation Context"
+      },
+      {
+        "command": "clice.loadMoreContexts",
+        "title": "Clice: Load More Compilation Contexts"
       }
     ],
     "semanticTokenTypes": [
@@ -139,7 +165,63 @@
         "description": "Angle brackets `<>`",
         "superType": "operator"
       }
-    ]
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "clice.contexts",
+          "name": "Compilation Contexts",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "clice.applyContext",
+          "when": "false"
+        },
+        {
+          "command": "clice.loadMoreContexts",
+          "when": "false"
+        },
+        {
+          "command": "clice.refreshContexts",
+          "when": "false"
+        },
+        {
+          "command": "clice.switchContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.showCurrentContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.queryContexts",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "clice.switchContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp",
+          "group": "clice@1"
+        },
+        {
+          "command": "clice.showCurrentContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp",
+          "group": "clice@2"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "clice.refreshContexts",
+          "when": "view == clice.contexts",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "main": "./dist/extension.js",
   "scripts": {
