@@ -156,7 +156,8 @@ private:
     void publish_diagnostics(const std::string& uri,
                              int version,
                              const kota::codec::RawValue& diags,
-                             CommandSource source);
+                             CommandSource source,
+                             std::optional<std::uint32_t> line_limit = std::nullopt);
 
     std::optional<HeaderContext> resolve_header_context(std::uint32_t header_path_id,
                                                         Session* session,

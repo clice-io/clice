@@ -229,6 +229,10 @@ struct Workspace {
     /// compile inputs change, so it can never go stale.
     HeaderMode header_mode(llvm::StringRef path, std::uint32_t path_id) const;
 
+    /// Drop an in-memory SelfContained verdict (never a persisted
+    /// NeedsContext) so the next compile re-runs the trial.
+    void forget_self_contained(std::uint32_t path_id);
+
     /// Rank host source candidates for a header by relevance: a source
     /// with the header's stem (utils.h -> utils.cpp) wins, then sources in
     /// the same directory, then longer common path prefixes; ties break

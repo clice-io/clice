@@ -825,7 +825,8 @@ static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource sourc
 void Compiler::publish_diagnostics(const std::string& uri,
                                    int version,
                                    const kota::codec::RawValue& diagnostics_json,
-                                   CommandSource source) {
+                                   CommandSource source,
+                                   std::optional<std::uint32_t> line_limit) {
     if(!peer)
         return;
     std::vector<protocol::Diagnostic> diagnostics;
@@ -834,6 +835,15 @@ void Compiler::publish_diagnostics(const std::string& uri,
         if(!status) {
             LOG_WARN("Failed to deserialize diagnostics JSON for {}", uri);
         }
+    }
+
+    // Suffix injection appends an #include past the user's EOF; errors in
+    // host code after the include point remap onto those phantom lines.
+    // They describe the includer, not the document — drop them.
+    if(line_limit.has_value()) {
+        std::erase_if(diagnostics, [&](const protocol::Diagnostic& d) {
+            return d.range.start.line >= *line_limit;
+        });
     }
 
     // Guidance (and only when it can explain something): an exact CDB match
@@ -862,7 +872,14 @@ void Compiler::append_suffix_include(const Session& session, std::string& text) 
         text += '\n';
     }
     text += "#include \"";
-    text += session.header_context->suffix_path;
+    // Escape like preamble_synthesis's line markers: Windows separators
+    // must survive the preprocessor's string literal parsing.
+    for(char c: session.header_context->suffix_path) {
+        if(c == '\\' || c == '"') {
+            text += '\\';
+        }
+        text += c;
+    }
     text += "\"\n";
 }
 
@@ -1229,6 +1246,15 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         params.text = session->text;
         auto source =
             fill_compile_args(file_path, params.directory, params.arguments, session.get());
+
+        // The line the appended suffix #include lands on — anything at or
+        // past it is phantom text the user cannot see.
+        std::optional<std::uint32_t> suffix_line_limit;
+        if(session->header_context.has_value() && !session->header_context->suffix_path.empty()) {
+            auto newlines = std::ranges::count(params.text, '\n');
+            suffix_line_limit =
+                static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
+        }
         append_suffix_include(*session, params.text);
 
         bool deps_ok = co_await ensure_deps(*session,
@@ -1298,8 +1324,9 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // state: trial_done is reset whenever compile inputs change for
         // reasons other than buffer edits, so a dependency change re-runs
         // the trial while ordinary typing never does. Only NeedsContext is
-        // persisted — "self-contained" stays a session-local impression
-        // that costs nothing to keep re-earning.
+        // persisted — SelfContained is recorded in memory alone (dependency
+        // changes erase it) so queryContext can dedup identical-flag hosts
+        // once the verdict is actually earned, never on a guess.
         if(attempt == 0 && !session->trial_done && session->header_context.has_value() &&
            session->header_context->preamble_path.empty() &&
            workspace.header_mode(file_path, pid) == HeaderMode::Unknown) {
@@ -1309,6 +1336,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                     kota::codec::json::from_json(result.value().diagnostics.data, diagnostics);
             }
             session->trial_done = true;
+            workspace.header_modes[pid] = HeaderMode::SelfContained;
 
             if(indicates_missing_context(diagnostics)) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
@@ -1335,7 +1363,11 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         finish_compile();
 
         LOG_PERF("request", "kind=Compile file={} total_ms={}", file_path, timer.ms());
-        publish_diagnostics(uri_str, version, result.value().diagnostics, source);
+        publish_diagnostics(uri_str,
+                            version,
+                            result.value().diagnostics,
+                            source,
+                            suffix_line_limit);
         // The preamble's share lives with the PCH; the compile result
         // covers the content past the bound. Publish both.
         auto inactive = std::move(pch_inactive);
@@ -1391,6 +1423,7 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
         // Dependency change, not a buffer edit: re-run the trial too.
         session->ast_dirty = true;
         session->trial_done = false;
+        workspace.forget_self_contained(path_id);
     }
 
     // If an up-to-date compile is already in flight, wait for it.

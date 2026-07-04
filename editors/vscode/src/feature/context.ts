@@ -167,8 +167,13 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
         }
     }
 
-    async function applyContext(picked: ContextItem, epoch?: number) {
-        const uri = tree.activeUri() ?? vscode.window.activeTextEditor?.document.uri.toString();
+    async function applyContext(picked: ContextItem, epoch?: number, targetUri?: string) {
+        // The QuickPick flow pins the document it queried for; switching
+        // editors while the pick is open must not retarget the request.
+        const uri =
+            targetUri ??
+            tree.activeUri() ??
+            vscode.window.activeTextEditor?.document.uri.toString();
         if (!uri) {
             return;
         }
@@ -258,7 +263,7 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
             if (chosen.loadMore) {
                 continue;
             }
-            await applyContext(chosen.context!, epoch);
+            await applyContext(chosen.context!, epoch, uri);
             return;
         }
     }

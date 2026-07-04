@@ -42,6 +42,13 @@ HeaderMode Workspace::header_mode(llvm::StringRef path, std::uint32_t path_id) c
     return HeaderMode::Unknown;
 }
 
+void Workspace::forget_self_contained(std::uint32_t path_id) {
+    if(auto it = header_modes.find(path_id);
+       it != header_modes.end() && it->second == HeaderMode::SelfContained) {
+        header_modes.erase(it);
+    }
+}
+
 llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path_id,
                                                        llvm::ArrayRef<std::uint32_t> hosts) const {
     auto header_path = path_pool.resolve(header_path_id);

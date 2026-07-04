@@ -706,11 +706,12 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
 
             // Contexts that would produce identical compilation results are
             // collapsed: identical canonical flags mean an identical compile
-            // — but only for headers compiled self-contained. A header that
-            // needs includer context gets a different synthesized prefix
-            // per host, so every host is a distinct context.
+            // — but only for headers CONFIRMED self-contained. A header that
+            // needs includer context gets a different synthesized prefix per
+            // host, and an un-trialed header may turn out the same way, so
+            // every host stays a distinct context for both.
             llvm::StringSet<> seen_configs;
-            bool dedup_hosts = ws.header_mode(path, path_id) != HeaderMode::NeedsContext;
+            bool dedup_hosts = ws.header_mode(path, path_id) == HeaderMode::SelfContained;
 
             auto hosts = ws.dep_graph.find_host_sources(path_id);
             for(auto host_id: ws.rank_hosts(path_id, hosts)) {
@@ -765,8 +766,10 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
 
             // Real entries only: lookup() would synthesize a default command
             // even for unknown files, offering a bogus context that
-            // switchContext would then reject.
-            if(hosts.empty() && ws.cdb.has_entry(path)) {
+            // switchContext would then reject. Offered even when hosts
+            // exist, so a host override can be switched back to the file's
+            // own command.
+            if(ws.cdb.has_entry(path)) {
                 std::vector<std::string> rule_append, rule_remove;
                 ws.config.match_rules(path, rule_append, rule_remove);
                 auto entries = ws.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
@@ -931,8 +934,10 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             session->pch_ref.reset();
             session->ast_deps.reset();
             session->ast_dirty = true;
-            // The new context needs its own self-containment trial.
+            // The new context needs its own self-containment trial — a
+            // different host can change the macro environment.
             session->trial_done = false;
+            ws.forget_self_contained(path_id);
             // Invalidate any in-flight compile: without the bump it would
             // clobber ast_dirty on completion and publish results for the
             // old context, with nothing left for is_stale() to detect.

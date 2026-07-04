@@ -181,6 +181,7 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
         if(session) {
             session->ast_dirty = true;
             session->trial_done = false;
+            workspace.forget_self_contained(dirty_id);
         } else {
             indexer.enqueue(dirty_id);
         }
@@ -204,6 +205,36 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
             workspace.header_modes.erase(session_id);
             workspace.header_mode_hashes.erase(session_id);
         }
+    }
+
+    // A save can remove the include edge a user's context choice depends
+    // on. A stale active_context suppresses automatic host resolution, so
+    // it would strand the header on the fallback command (or silently pin
+    // its command hash to a different host) — drop it instead. The include
+    // graph was already rescanned above.
+    bool dropped_saved = false;
+    for(auto& [session_id, session]: sessions) {
+        if(!session->active_context.has_value()) {
+            continue;
+        }
+        auto host_id = session->active_context->host_path_id;
+        if(workspace.dep_graph.find_include_chain(host_id, session_id).empty()) {
+            LOG_INFO("Dropping orphaned context choice for {}: host {} no longer includes it",
+                     workspace.path_pool.resolve(session_id),
+                     workspace.path_pool.resolve(host_id));
+            session->active_context.reset();
+            session->header_context.reset();
+            session->pch_ref.reset();
+            session->ast_dirty = true;
+            session->trial_done = false;
+            // Invalidate in-flight compiles so they cannot clobber the
+            // reset state when they finish (same as switchContext).
+            session->generation += 1;
+            dropped_saved |= workspace.saved_contexts.erase(session_id) > 0;
+        }
+    }
+    if(dropped_saved) {
+        workspace.save_cache();
     }
 
     indexer.schedule();

@@ -73,7 +73,11 @@ export async function activate(context: ExtensionContext) {
     }
 
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: "file", language: "cpp" }],
+        documentSelector: [
+            { scheme: "file", language: "cpp" },
+            { scheme: "file", language: "c" },
+            { scheme: "file", language: "cuda-cpp" },
+        ],
         outputChannel: channel,
         traceOutputChannel: verboseChannel,
         synchronize: {
