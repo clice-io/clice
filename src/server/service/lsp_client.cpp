@@ -137,7 +137,6 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         };
         caps.document_symbol_provider = true;
         caps.document_link_provider = protocol::DocumentLinkOptions{};
-        caps.code_action_provider = true;
         caps.folding_range_provider = true;
         caps.inlay_hint_provider = true;
         caps.call_hierarchy_provider = true;
