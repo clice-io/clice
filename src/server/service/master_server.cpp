@@ -113,6 +113,15 @@ void MasterServer::initialize() {
         }
     };
 
+    pool.on_evicted = [this](const std::string& path) {
+        auto it = workspace.path_pool.cache.find(path);
+        if(it == workspace.path_pool.cache.end()) {
+            LOG_WARN("Evicted path not in pool: {}", path);
+            return;
+        }
+        pool.remove_owner(it->second);
+    };
+
     compiler.on_indexing_needed = [this]() {
         indexer.schedule();
     };
@@ -146,7 +155,10 @@ void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& pee
 
     auto path = workspace.path_pool.resolve(path_id);
     workspace.on_file_closed(path_id);
+    // Route the eviction notification before dropping ownership:
+    // notify_stateful uses the owner table to find the worker.
     pool.notify_stateful(path_id, worker::EvictParams{std::string(path)});
+    pool.remove_owner(path_id);
 
     protocol::PublishDiagnosticsParams diag_params;
     auto uri = lsp::URI::from_file_path(std::string(path));

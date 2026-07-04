@@ -200,13 +200,6 @@ kota::task<> WorkerPool::stop() {
 std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
     auto it = owner.find(path_id);
     if(it != owner.end()) {
-        // Already assigned; touch LRU
-        auto lru_it = owner_lru_index.find(path_id);
-        if(lru_it != owner_lru_index.end()) {
-            owner_lru.erase(lru_it->second);
-        }
-        owner_lru.push_front(path_id);
-        owner_lru_index[path_id] = owner_lru.begin();
         return it->second;
     }
 
@@ -214,8 +207,6 @@ std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
     auto selected = pick_least_loaded();
     owner[path_id] = selected;
     stateful_workers[selected].owned_documents += 1;
-    owner_lru.push_front(path_id);
-    owner_lru_index[path_id] = owner_lru.begin();
     return selected;
 }
 
@@ -240,12 +231,6 @@ void WorkerPool::remove_owner(std::uint32_t path_id) {
     auto worker_idx = it->second;
     stateful_workers[worker_idx].owned_documents -= 1;
     owner.erase(it);
-
-    auto lru_it = owner_lru_index.find(path_id);
-    if(lru_it != owner_lru_index.end()) {
-        owner_lru.erase(lru_it->second);
-        owner_lru_index.erase(lru_it);
-    }
 }
 
 void WorkerPool::clear_owner(std::size_t worker_index) {

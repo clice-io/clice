@@ -95,7 +95,8 @@ public:
     std::function<void(const WorkerCrashInfo&)> on_crash;
 
     /// Callback invoked when a stateful worker sends an EvictedParams notification.
-    /// The master should translate the path to a path_id and call remove_owner().
+    /// The master translates the path to a path_id and calls remove_owner() so the
+    /// owner table shrinks together with the worker's document set.
     std::function<void(const std::string& path)> on_evicted;
 
 private:
@@ -130,10 +131,7 @@ private:
     llvm::SmallVector<WorkerProcess> stateful_workers;
 
     // Stateful routing: each open document (path_id) is pinned to one worker.
-    // LRU tracks access order so stale assignments can be evicted.
     llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
-    std::list<std::uint32_t> owner_lru;                // most-recent at front
-    llvm::DenseMap<std::uint32_t, std::list<std::uint32_t>::iterator> owner_lru_index;
 
     std::size_t assign_worker(std::uint32_t path_id);
     void clear_owner(std::size_t worker_index);

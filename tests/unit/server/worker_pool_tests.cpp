@@ -377,6 +377,28 @@ TEST_CASE(ClearOwner) {
     EXPECT_TRUE(f.has_owner(200));
 }
 
+TEST_CASE(RebalanceAfterClose) {
+    WorkerPoolFixture f;
+    f.add_stateful(true, 0);
+    f.add_stateful(true, 0);
+    f.assign_worker(100);
+    f.assign_worker(200);
+    f.assign_worker(300);
+    EXPECT_EQ(f.stateful_owned(0), 2u);
+    EXPECT_EQ(f.stateful_owned(1), 1u);
+
+    // Closing documents shrinks the owner table and load counts.
+    f.remove_owner(100);
+    f.remove_owner(300);
+    EXPECT_EQ(f.stateful_owned(0), 0u);
+    EXPECT_FALSE(f.has_owner(100));
+    EXPECT_FALSE(f.has_owner(300));
+
+    // New assignments go to the now least-loaded worker.
+    EXPECT_EQ(f.assign_worker(400), 0u);
+    EXPECT_EQ(f.stateful_owned(0), 1u);
+}
+
 };  // TEST_SUITE(WorkerPoolStateful)
 
 TEST_SUITE(WorkerPoolScheduling) {
