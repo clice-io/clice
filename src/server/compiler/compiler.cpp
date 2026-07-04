@@ -80,14 +80,25 @@ static bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagn
 
 /// Pick the host CDB entry matching the session's pinned command hash
 /// (multi-configuration hosts), defaulting to the first entry.
-static CompileCommand& pick_host_command(llvm::SmallVector<CompileCommand>& results,
+///
+/// Published hashes are computed against host-path rules, while `results`
+/// may carry header-path rules — match by index through a host-rules
+/// lookup of the same entry set instead of hashing `results` directly.
+static CompileCommand& pick_host_command(Workspace& workspace,
+                                         llvm::StringRef host_path,
+                                         llvm::SmallVector<CompileCommand>& results,
                                          const Session* session) {
     if(session && session->active_context.has_value() &&
        !session->active_context->command_hash.empty()) {
-        for(auto& candidate: results) {
-            if(canonical_command_hash(candidate.to_string_argv()) ==
+        std::vector<std::string> host_append, host_remove;
+        workspace.config.match_rules(host_path, host_append, host_remove);
+        auto canonical =
+            workspace.cdb.lookup(host_path, {.remove = host_remove, .append = host_append});
+        for(std::size_t i = 0; i < canonical.size() && i < results.size(); ++i) {
+            if(canonical_command_hash(canonical[i].to_string_argv(),
+                                      canonical[i].resolved.directory) ==
                session->active_context->command_hash) {
-                return candidate;
+                return results[i];
             }
         }
     }
@@ -348,7 +359,9 @@ CommandSource Compiler::fill_compile_args(llvm::StringRef path,
         // by canonical command hash so the choice survives CDB reordering.
         if(session && session->active_command.has_value()) {
             for(auto& candidate: results) {
-                if(canonical_command_hash(candidate.to_string_argv()) == *session->active_command) {
+                if(canonical_command_hash(candidate.to_string_argv(),
+                                          candidate.resolved.directory) ==
+                   *session->active_command) {
                     cmd = &candidate;
                     break;
                 }
@@ -490,7 +503,7 @@ bool Compiler::fill_header_context_args(llvm::StringRef path,
     auto host_results =
         workspace.cdb.lookup(host_path, {.remove = rule_remove, .append = rule_append});
 
-    auto& host_cmd = pick_host_command(host_results, session);
+    auto& host_cmd = pick_host_command(workspace, host_path, host_results, session);
     workspace.toolchain.resolve_or_warn(host_cmd);
     directory = host_cmd.resolved.directory.str();
 
@@ -596,7 +609,7 @@ std::optional<HeaderContext> Compiler::resolve_header_context(std::uint32_t head
     if(host_results.empty()) {
         return std::nullopt;
     }
-    auto& resolve_cmd = pick_host_command(host_results, session);
+    auto& resolve_cmd = pick_host_command(workspace, host_path, host_results, session);
     workspace.toolchain.resolve_or_warn(resolve_cmd);
 
     auto argv = resolve_cmd.to_argv();
@@ -1241,12 +1254,14 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         }
 
         // Seed the inactive-region scan with the conditional stack the
-        // PCH's preamble left open (a #if cut by the bound).
-        const PCHState* pch_state = nullptr;
+        // PCH's preamble left open (a #if cut by the bound). Copy the state
+        // out: concurrent compiles can insert into pch_cache across the
+        // await below and rehash the map from under a held pointer.
+        std::vector<std::uint32_t> pch_inactive;
         if(session->pch_ref.has_value()) {
             if(auto it = workspace.pch_cache.find(session->pch_ref->key);
                it != workspace.pch_cache.end()) {
-                pch_state = &it->second;
+                pch_inactive = it->second.inactive_regions;
                 params.open_conditionals = it->second.open_conditionals;
             }
         }
@@ -1298,6 +1313,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             if(indicates_missing_context(diagnostics)) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
                 workspace.header_modes[pid] = HeaderMode::NeedsContext;
+                workspace.header_mode_hashes[pid] = hash_file(file_path);
                 workspace.save_cache();
                 session->header_context.reset();
                 session->pch_ref.reset();
@@ -1322,7 +1338,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         publish_diagnostics(uri_str, version, result.value().diagnostics, source);
         // The preamble's share lives with the PCH; the compile result
         // covers the content past the bound. Publish both.
-        auto inactive = pch_state ? pch_state->inactive_regions : std::vector<std::uint32_t>{};
+        auto inactive = std::move(pch_inactive);
         inactive.insert(inactive.end(),
                         result.value().inactive_regions.begin(),
                         result.value().inactive_regions.end());

@@ -170,6 +170,7 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
     // The saved file's own self-containment may have changed; re-evaluate
     // on its next compile.
     workspace.header_modes.erase(path_id);
+    workspace.header_mode_hashes.erase(path_id);
     if(auto session = find_session(path_id)) {
         session->trial_done = false;
     }
@@ -201,6 +202,7 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
             // (e.g. a dependency now provides the missing declarations);
             // drop the persisted verdict so the trial can downgrade it.
             workspace.header_modes.erase(session_id);
+            workspace.header_mode_hashes.erase(session_id);
         }
     }
 

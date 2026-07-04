@@ -75,7 +75,7 @@ llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path
 
 void Workspace::rescan_includes(std::uint32_t path_id) {
     auto path = path_pool.resolve(path_id);
-    llvm::SmallVector<std::uint32_t> ids;
+    dep_graph.clear_includes(path_id);
 
     if(auto buf = llvm::MemoryBuffer::getFile(path)) {
         // Search paths come from the file's own command, or a host's for
@@ -95,30 +95,40 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
         std::vector<std::string> rule_append, rule_remove;
         config.match_rules(cmd_path, rule_append, rule_remove);
         auto cmds = cdb.lookup(cmd_path, {.remove = rule_remove, .append = rule_append});
-        toolchain.resolve_or_warn(cmds.front());
-        auto argv = cmds.front().to_argv();
-        auto search_config = extract_search_config(argv, cmds.front().resolved.directory);
 
+        // Resolve under every configuration: an include may only be
+        // reachable through the -I set of a non-first CDB entry. The local
+        // index serves as config id — prior keys were just cleared and
+        // consumers read the union.
+        auto includes = scan((*buf)->getBuffer()).includes;
         DirListingCache dir_cache;
-        auto resolved_config = resolve_search_config(search_config, dir_cache);
         auto dir = llvm::sys::path::parent_path(path);
-        auto entries = resolve_dir(dir, dir_cache);
-        for(auto& include: scan((*buf)->getBuffer()).includes) {
-            auto resolved = resolve_include(include.path,
-                                            include.is_angled,
-                                            entries,
-                                            dir,
-                                            include.is_include_next,
-                                            0,
-                                            resolved_config,
-                                            dir_cache);
-            if(resolved) {
-                ids.push_back(path_pool.intern(resolved->path));
+        for(std::uint32_t ci = 0; ci < cmds.size(); ++ci) {
+            auto& cmd = cmds[ci];
+            toolchain.resolve_or_warn(cmd);
+            auto argv = cmd.to_argv();
+            auto search_config = extract_search_config(argv, cmd.resolved.directory);
+            auto resolved_config = resolve_search_config(search_config, dir_cache);
+            auto entries = resolve_dir(dir, dir_cache);
+
+            llvm::SmallVector<std::uint32_t> ids;
+            for(auto& include: includes) {
+                auto resolved = resolve_include(include.path,
+                                                include.is_angled,
+                                                entries,
+                                                dir,
+                                                include.is_include_next,
+                                                0,
+                                                resolved_config,
+                                                dir_cache);
+                if(resolved) {
+                    ids.push_back(path_pool.intern(resolved->path));
+                }
             }
+            dep_graph.set_includes(path_id, ci, std::move(ids));
         }
     }
 
-    dep_graph.reset_includes(path_id, std::move(ids));
     dep_graph.build_reverse_map();
 }
 
@@ -232,8 +242,9 @@ struct CachePCMEntry {
 };
 
 struct CacheModeEntry {
-    std::uint32_t file;  // index into CacheData::paths
-    std::uint32_t mode;  // HeaderMode
+    std::uint32_t file;          // index into CacheData::paths
+    std::uint32_t mode;          // HeaderMode
+    std::uint64_t content_hash;  // header contents the verdict was scored on
 };
 
 struct CacheContextEntry {
@@ -326,7 +337,13 @@ void Workspace::load_cache() {
         auto file = resolve(entry.file);
         if(file.empty() || static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
             continue;
-        header_modes[path_pool.intern(file)] = HeaderMode::NeedsContext;
+        // The verdict is tied to the header's contents — a file edited
+        // while the server was down must re-earn its trial.
+        if(entry.content_hash != 0 && hash_file(file) != entry.content_hash)
+            continue;
+        auto id = path_pool.intern(file);
+        header_modes[id] = HeaderMode::NeedsContext;
+        header_mode_hashes[id] = entry.content_hash;
     }
 
     for(auto& entry: data.contexts) {
@@ -414,7 +431,10 @@ void Workspace::save_cache() {
     for(auto& [path_id, mode]: header_modes) {
         if(mode != HeaderMode::NeedsContext)
             continue;
-        data.header_modes.push_back({intern(path_id), static_cast<std::uint32_t>(mode)});
+        auto hash_it = header_mode_hashes.find(path_id);
+        data.header_modes.push_back({intern(path_id),
+                                     static_cast<std::uint32_t>(mode),
+                                     hash_it != header_mode_hashes.end() ? hash_it->second : 0});
     }
 
     for(auto& entry: synthesized_hosts) {

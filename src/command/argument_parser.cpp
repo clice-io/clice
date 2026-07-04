@@ -332,8 +332,12 @@ std::string canonicalize(llvm::ArrayRef<std::string> args, ArgsProfile profile) 
     return buf;
 }
 
-std::string canonical_command_hash(llvm::ArrayRef<std::string> args) {
+std::string canonical_command_hash(llvm::ArrayRef<std::string> args, llvm::StringRef directory) {
     auto canonical = canonicalize(args, ArgsProfile::Frontend);
+    // Identical argv can still mean different compiles when relative paths
+    // (-include config.h) resolve against different working directories.
+    canonical += '\0';
+    canonical += directory;
     auto hash = llvm::xxh3_64bits(llvm::StringRef(canonical));
     return std::format("{:016x}", hash);
 }

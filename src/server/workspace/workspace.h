@@ -200,6 +200,10 @@ struct Workspace {
     /// Reset when the header itself is saved.
     llvm::DenseMap<std::uint32_t, HeaderMode> header_modes;
 
+    /// Content hash of the header at the time its NeedsContext verdict was
+    /// scored — persisted so a stale verdict is dropped on cache load.
+    llvm::DenseMap<std::uint32_t, std::uint64_t> header_mode_hashes;
+
     /// User context choices (clice/switchContext), persisted in cache.json
     /// and restored into the Session on didOpen.
     llvm::DenseMap<std::uint32_t, SavedContext> saved_contexts;

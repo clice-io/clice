@@ -109,7 +109,7 @@ std::string canonicalize(llvm::ArrayRef<std::string> args, ArgsProfile profile);
 /// produce the same compilation result share one hash — used to dedupe
 /// contexts in clice/queryContext and to address a CDB entry in
 /// clice/switchContext.
-std::string canonical_command_hash(llvm::ArrayRef<std::string> args);
+std::string canonical_command_hash(llvm::ArrayRef<std::string> args, llvm::StringRef directory);
 
 /// Get the resource directory for clang builtin headers. Computed once
 /// from the current executable path using Driver::GetResourcesPath.

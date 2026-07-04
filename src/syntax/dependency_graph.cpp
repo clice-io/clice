@@ -99,8 +99,7 @@ std::size_t DependencyGraph::edge_count() const {
     return count;
 }
 
-void DependencyGraph::reset_includes(std::uint32_t path_id,
-                                     llvm::SmallVector<std::uint32_t> included_ids) {
+void DependencyGraph::clear_includes(std::uint32_t path_id) {
     llvm::SmallVector<IncludeKey> stale;
     for(auto& [key, ids]: includes) {
         if(key.path_id == path_id) {
@@ -110,7 +109,7 @@ void DependencyGraph::reset_includes(std::uint32_t path_id,
     for(auto& key: stale) {
         includes.erase(key);
     }
-    set_includes(path_id, 0, std::move(included_ids));
+    file_configs.erase(path_id);
 }
 
 void DependencyGraph::build_reverse_map() {

@@ -73,10 +73,9 @@ public:
     /// Get the union of includes across all configs for a file.
     llvm::SmallVector<std::uint32_t> get_all_includes(std::uint32_t path_id) const;
 
-    /// Replace every config's include list for a file with a single list.
-    /// Used by incremental didSave rescans, which do not recompute the
-    /// per-config separation; host lookups use the union anyway.
-    void reset_includes(std::uint32_t path_id, llvm::SmallVector<std::uint32_t> included_ids);
+    /// Erase every config's include list for a file. Incremental didSave
+    /// rescans clear first, then re-add one list per configuration.
+    void clear_includes(std::uint32_t path_id);
 
     /// Build the reverse include map from the forward includes.
     /// Must be called after all set_includes() calls are complete.

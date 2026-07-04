@@ -199,16 +199,49 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         session->text = params.text_document.text;
         session->line_starts = lsp::build_line_starts(session->text);
 
-        // Restore a context choice persisted from an earlier session.
+        // Restore a context choice persisted from an earlier session. The
+        // CDB or include graph may have changed while the server was down —
+        // validate before adopting, since a stale active_context suppresses
+        // automatic host resolution and strands the file on the fallback
+        // command.
         if(auto it = srv.workspace.saved_contexts.find(path_id);
            it != srv.workspace.saved_contexts.end()) {
+            auto& ws = srv.workspace;
             auto& saved = it->second;
+            auto entry_has_hash = [&ws](llvm::StringRef entry_path, llvm::StringRef hash) {
+                std::vector<std::string> rule_append, rule_remove;
+                ws.config.match_rules(entry_path, rule_append, rule_remove);
+                for(auto& cmd:
+                    ws.cdb.lookup(entry_path, {.remove = rule_remove, .append = rule_append})) {
+                    if(canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory) ==
+                       hash) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            bool valid = false;
             if(saved.host_path_id != no_path_id) {
-                session->active_context = Session::ActiveContext{saved.host_path_id,
-                                                                 saved.occurrence,
-                                                                 saved.command_hash};
+                auto host_path = ws.path_pool.resolve(saved.host_path_id);
+                valid =
+                    ws.cdb.has_entry(host_path) &&
+                    !ws.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
+                    (saved.command_hash.empty() || entry_has_hash(host_path, saved.command_hash));
+                if(valid) {
+                    session->active_context = Session::ActiveContext{saved.host_path_id,
+                                                                     saved.occurrence,
+                                                                     saved.command_hash};
+                }
             } else if(!saved.command_hash.empty()) {
-                session->active_command = saved.command_hash;
+                valid = ws.cdb.has_entry(path) && entry_has_hash(path, saved.command_hash);
+                if(valid) {
+                    session->active_command = saved.command_hash;
+                }
+            }
+            if(!valid) {
+                LOG_INFO("didOpen: dropping stale saved context for {}", path);
+                srv.workspace.saved_contexts.erase(it);
             }
         }
 
@@ -698,7 +731,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 auto occurrences = count_occurrences(host_id, path_id);
 
                 for(auto& cmd: cmds) {
-                    auto hash = canonical_command_hash(cmd.to_string_argv());
+                    auto hash =
+                        canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory);
                     if(dedup_hosts && !seen_configs.insert(hash).second)
                         continue;
 
@@ -739,7 +773,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 auto uri_opt = lsp::URI::from_file_path(std::string(path));
                 for(std::size_t i = 0; uri_opt && i < entries.size(); ++i) {
                     auto& cmd = entries[i];
-                    auto hash = canonical_command_hash(cmd.to_string_argv());
+                    auto hash =
+                        canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory);
                     if(!seen_configs.insert(hash).second)
                         continue;
 
@@ -801,7 +836,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                     ws.config.match_rules(path, rule_append, rule_remove);
                     for(auto& cmd:
                         ws.cdb.lookup(path, {.remove = rule_remove, .append = rule_append})) {
-                        if(canonical_command_hash(cmd.to_string_argv()) ==
+                        if(canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory) ==
                            *session->active_command) {
                             auto desc = flags_label(cmd);
                             if(!desc.empty()) {
@@ -851,7 +886,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 ws.config.match_rules(entry_path, rule_append, rule_remove);
                 for(auto& cmd:
                     ws.cdb.lookup(entry_path, {.remove = rule_remove, .append = rule_append})) {
-                    if(canonical_command_hash(cmd.to_string_argv()) == hash) {
+                    if(canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory) ==
+                       hash) {
                         return true;
                     }
                 }
@@ -895,6 +931,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             session->pch_ref.reset();
             session->ast_deps.reset();
             session->ast_dirty = true;
+            // The new context needs its own self-containment trial.
+            session->trial_done = false;
             // Invalidate any in-flight compile: without the bump it would
             // clobber ast_dirty on completion and publish results for the
             // old context, with nothing left for is_stale() to detect.
@@ -905,6 +943,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             if(session->active_context) {
                 saved.host_path_id = session->active_context->host_path_id;
                 saved.occurrence = session->active_context->occurrence;
+                saved.command_hash = session->active_context->command_hash;
             } else if(session->active_command) {
                 saved.command_hash = *session->active_command;
             }

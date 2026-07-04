@@ -26,7 +26,8 @@
   "activationEvents": [
     "onLanguage:c",
     "onLanguage:cpp",
-    "onLanguage:cuda-cpp"
+    "onLanguage:cuda-cpp",
+    "onStartupFinished"
   ],
   "contributes": {
     "configuration": {
