@@ -1,7 +1,7 @@
 """Integration tests for persistent PCH/PCM cache.
 
 Verifies that PCH/PCM artifacts are written to the unified cache store
-(.clice/cache/v1/{pch,pcm}/) with content-addressed filenames, survive
+(.clice/cache/v2/{pch,pcm}/) with content-addressed filenames, survive
 server restarts via cache.json, and are properly reused across sessions.
 """
 

@@ -220,6 +220,10 @@ auto CompilationUnitRef::token_spelling(clang::SourceLocation location) -> llvm:
     return llvm::StringRef(self->SM().getCharacterData(location), token_length(location));
 }
 
+bool CompilationUnitRef::is_named_module() {
+    return self->instance->getPreprocessor().isInNamedModule();
+}
+
 auto CompilationUnitRef::module_name() -> llvm::StringRef {
     return self->instance->getPreprocessor().getNamedModuleName();
 }

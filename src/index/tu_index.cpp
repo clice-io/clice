@@ -184,6 +184,9 @@ public:
         // The module declaration of this unit: Definition in the interface
         // unit, Reference in an implementation unit. The declaration has no
         // AST node or PP location, so locate the name with the lexer.
+        if(!unit.is_named_module()) {
+            return;
+        }
         auto module_name = unit.module_name();
         if(!module_name.empty()) {
             // interested_content() is the full, NUL-terminated buffer; the

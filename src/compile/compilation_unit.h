@@ -208,6 +208,11 @@ public:
     auto token_spelling(clang::SourceLocation location) -> llvm::StringRef;
 
     /// Get the C++20 named module name if any.
+    /// Whether this unit is a named module (interface or implementation).
+    /// Must be checked before module_name(): the preprocessor asserts on
+    /// name access for non-module units.
+    bool is_named_module();
+
     auto module_name() -> llvm::StringRef;
 
     /// Return whether this unit it module interface unit.
