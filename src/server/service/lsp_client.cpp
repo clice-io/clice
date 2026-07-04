@@ -345,7 +345,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             // The preamble is compiled into the PCH, so the worker's AST only
             // covers the rest of the file — merge the preamble's links in front.
             std::vector<protocol::DocumentLink> links;
-            auto append = [&](const worker::FileLink& link) {
+            auto append = [&](const feature::DocumentLink& link) {
                 protocol::DocumentLink out{.range = link.range};
                 out.target = link.target;
                 links.push_back(std::move(out));

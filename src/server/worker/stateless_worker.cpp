@@ -94,10 +94,10 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
         errors = collect_errors(unit);
 
     std::string tu_index_data;
-    std::vector<worker::FileLink> preamble_links;
+    std::vector<feature::DocumentLink> preamble_links;
     if(success) {
         tu_index_data = serialize_tu_index(unit);
-        preamble_links = to_file_links(feature::document_links(unit));
+        preamble_links = feature::document_links(unit);
     }
 
     // Destroy CompilationUnit to flush PCH to disk.

@@ -10,11 +10,11 @@
 
 #include "command/command.h"
 #include "command/toolchain.h"
+#include "feature/document_link.h"
 #include "index/merged_index.h"
 #include "index/project_index.h"
 #include "semantic/relation_kind.h"
 #include "server/compiler/compile_graph.h"
-#include "server/protocol/worker.h"
 #include "server/workspace/config.h"
 #include "support/cache_store.h"
 #include "support/path_pool.h"
@@ -29,7 +29,7 @@ namespace clice {
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 1;
+constexpr inline std::uint32_t cache_format_version = 2;
 
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
 ///
@@ -62,7 +62,7 @@ struct PCHState {
     DepsSnapshot deps;
     /// Include directives of the preamble, used for document links and
     /// go-to-definition on preamble include lines.
-    std::vector<worker::FileLink> preamble_links;
+    std::vector<feature::DocumentLink> preamble_links;
     std::shared_ptr<kota::event> building;
 };
 

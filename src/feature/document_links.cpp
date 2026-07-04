@@ -8,8 +8,8 @@
 namespace clice::feature {
 
 auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
-    -> std::vector<protocol::DocumentLink> {
-    std::vector<protocol::DocumentLink> links;
+    -> std::vector<DocumentLink> {
+    std::vector<DocumentLink> links;
 
     auto interested = unit.interested_file();
     auto directives_it = unit.directives().find(interested);
@@ -32,9 +32,7 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
         auto protocol_range = to_range(map, *range);
         if(!protocol_range)
             return;
-        protocol::DocumentLink link{.range = *protocol_range};
-        link.target = target.str();
-        links.push_back(std::move(link));
+        links.push_back(DocumentLink{.range = *protocol_range, .target = target.str()});
     };
 
     for(const auto& include: directives.includes) {

@@ -14,20 +14,6 @@
 
 namespace clice {
 
-/// Flatten feature document links into wire-safe FileLinks (drops links
-/// without a resolved target).
-inline std::vector<worker::FileLink>
-    to_file_links(std::vector<kota::ipc::protocol::DocumentLink> links) {
-    std::vector<worker::FileLink> result;
-    result.reserve(links.size());
-    for(auto& link: links) {
-        if(link.target) {
-            result.push_back({link.range, std::move(*link.target)});
-        }
-    }
-    return result;
-}
-
 /// Fill CompilationParams directory and arguments from worker request fields.
 inline void fill_args(CompilationParams& cp,
                       const std::string& directory,

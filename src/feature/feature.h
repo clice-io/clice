@@ -7,6 +7,7 @@
 
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
+#include "feature/document_link.h"
 #include "semantic/symbol_kind.h"
 #include "support/anomaly.h"
 #include "support/markup.h"
@@ -289,7 +290,7 @@ auto inlay_hints(CompilationUnitRef unit,
                  PositionEncoding encoding) -> std::vector<protocol::InlayHint>;
 
 auto document_links(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
-    -> std::vector<protocol::DocumentLink>;
+    -> std::vector<DocumentLink>;
 
 /// Go-to-definition on an include directive: when `offset` falls on the
 /// argument of an #include or __has_include in the interested file, the

@@ -210,10 +210,9 @@ void StatefulWorker::register_handlers() {
                         -> RequestResult<worker::DocumentLinkParams> {
         co_return co_await with_ast_or(
             params.path,
-            std::vector<worker::FileLink>{},
+            std::vector<feature::DocumentLink>{},
             [&](DocumentEntry& doc) {
-                return to_file_links(
-                    feature::document_links(doc.unit, feature::PositionEncoding::UTF16));
+                return feature::document_links(doc.unit, feature::PositionEncoding::UTF16);
             });
     });
 

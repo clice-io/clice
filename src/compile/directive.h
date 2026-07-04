@@ -121,6 +121,10 @@ struct Import {
     /// The name of imported module.
     std::string name;
 
+    /// Resolved full module name (includes the enclosing module for
+    /// partition imports); empty when clang could not resolve the module.
+    std::string full_name;
+
     /// The location of import keyword, may comes from macro expansion.
     clang::SourceLocation location;
 

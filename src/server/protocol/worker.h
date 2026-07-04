@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "feature/document_link.h"
 #include "syntax/token.h"
 
 #include "kota/codec/json/json.h"
@@ -124,15 +125,6 @@ struct BuildParams {
     LocalSourceRange format_range;         ///< Format (default = full document)
 };
 
-/// A resolved link in a source file: the argument range of an include (or
-/// similar) directive and the absolute path of its target. Deliberately a
-/// plain struct — protocol::DocumentLink carries optional/LSPAny fields that
-/// the bincode codec cannot represent.
-struct FileLink {
-    protocol::Range range;
-    std::string target;
-};
-
 /// Unified result for stateless build tasks.
 /// For Completion/SignatureHelp, the result JSON is in `result_json`.
 /// For BuildPCH/BuildPCM/Index, structured fields are used.
@@ -147,7 +139,7 @@ struct BuildResult {
     std::string tu_index_data;
     /// Include directives of the PCH preamble. Structured so the master can
     /// serve both document links and go-to-definition on preamble lines.
-    std::vector<FileLink> preamble_links;
+    std::vector<clice::feature::DocumentLink> preamble_links;
     kota::codec::RawValue result_json;  ///< Completion/SignatureHelp result
 };
 
@@ -189,7 +181,7 @@ struct RequestTraits<clice::worker::QueryParams> {
 
 template <>
 struct RequestTraits<clice::worker::DocumentLinkParams> {
-    using Result = std::vector<clice::worker::FileLink>;
+    using Result = std::vector<clice::feature::DocumentLink>;
     constexpr inline static std::string_view method = "clice/worker/documentLink";
 };
 

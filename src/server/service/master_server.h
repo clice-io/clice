@@ -90,11 +90,12 @@ public:
     void close_session(std::uint32_t path_id, kota::ipc::JsonPeer& peer);
 
     /// The preamble include links of a session's active PCH, or nullptr.
-    const std::vector<worker::FileLink>* find_preamble_links(const Session& session);
+    const std::vector<feature::DocumentLink>* find_preamble_links(const Session& session);
 
-    /// Resolve go-to-definition on an include directive or module name that
-    /// the worker AST cannot see: preamble include lines are answered from
-    /// the PCH's preamble links, module names from the master's module map.
+    /// Resolve go-to-definition on a preamble include line that the worker
+    /// AST cannot see: the include is compiled into the PCH, so the target
+    /// is answered from the PCH's cached preamble links. Module names go
+    /// through the ordinary index pipeline, not this path.
     std::vector<protocol::Location>
         resolve_directive_definition(Session& session, const protocol::Position& position);
 

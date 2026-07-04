@@ -2,6 +2,7 @@
 
 #include "compile/implement.h"
 
+#include "clang/Basic/Module.h"
 #include "clang/Lex/MacroArgs.h"
 #include "clang/Lex/MacroInfo.h"
 #include "clang/Lex/Preprocessor.h"
@@ -143,14 +144,18 @@ public:
 
     void moduleImport(clang::SourceLocation import_location,
                       clang::ModuleIdPath names,
-                      const clang::Module*) override {
+                      const clang::Module* M) override {
         auto fid = unit.file_id(unit.expansion_location(import_location));
         auto& import = unit->directives[fid].imports.emplace_back();
         import.location = import_location;
         for(auto name: names) {
+            if(!import.name.empty())
+                import.name += '.';
             import.name += name.getIdentifierInfo()->getName();
             import.name_locations.emplace_back(name.getLoc());
         }
+
+        import.full_name = M ? M->getFullModuleName() : import.name;
     }
 
     void HasInclude(clang::SourceLocation location,

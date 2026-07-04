@@ -13,7 +13,6 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
-#include "syntax/lexer.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
@@ -252,7 +251,8 @@ void MasterServer::open_cache_store() {
     bg_tasks.spawn(cache_checkpoint_task());
 }
 
-const std::vector<worker::FileLink>* MasterServer::find_preamble_links(const Session& session) {
+const std::vector<feature::DocumentLink>*
+    MasterServer::find_preamble_links(const Session& session) {
     if(!session.pch_ref)
         return nullptr;
     auto it = workspace.pch_cache.find(session.pch_ref->path_id);
@@ -283,58 +283,6 @@ std::vector<protocol::Location>
         }
     }
 
-    // Module names: `import a.b;` / `[export] module a.b;`. The module map
-    // lives in the master, so this works in any region of the file.
-    auto map = session.line_map();
-    auto line_begin = map.to_offset(protocol::Position{position.line, 0});
-    auto cursor_offset = map.to_offset(position);
-    if(!line_begin || !cursor_offset)
-        return locations;
-    auto bounds = map.line_bounds(*line_begin);
-    // Copied, not a view: clang's raw lexer asserts a NUL-terminated buffer.
-    std::string line(session.text, bounds.start, bounds.end - bounds.start);
-    auto cursor = *cursor_offset - bounds.start;
-
-    // Byte offsets and UTF-16 columns coincide here: directive lines are
-    // ASCII (module names and pp-tokens cannot contain non-ASCII).
-    Lexer lexer(line);
-    lexer.advance_if("export");
-    if(!lexer.advance_if("import") && !lexer.advance_if("module"))
-        return locations;
-
-    auto is_identifier = [](const Token& token) {
-        return token.is_identifier();
-    };
-    auto name_token = lexer.advance_if(is_identifier);
-    if(!name_token)
-        return locations;
-
-    std::string name(name_token->text(line));
-    auto name_begin = name_token->range.begin;
-    auto name_end = name_token->range.end;
-    while(true) {
-        auto sep = lexer.advance_if([](const Token& token) {
-            return token.kind == clang::tok::period || token.kind == clang::tok::colon;
-        });
-        if(!sep)
-            break;
-        auto part = lexer.advance_if(is_identifier);
-        if(!part)
-            break;
-        name += sep->kind == clang::tok::colon ? ':' : '.';
-        name += part->text(line);
-        name_end = part->range.end;
-    }
-
-    if(cursor < name_begin || cursor > name_end)
-        return locations;
-
-    for(auto path_id: workspace.dep_graph.lookup_module(name)) {
-        locations.push_back(protocol::Location{
-            .uri = feature::to_uri(workspace.path_pool.resolve(path_id)),
-            .range = protocol::Range{},
-        });
-    }
     return locations;
 }
 

@@ -6,8 +6,10 @@
 #include "index/serialization.h"
 #include "semantic/ast_utility.h"
 #include "semantic/semantic_visitor.h"
+#include "syntax/lexer.h"
 
 #include "llvm/Support/SHA256.h"
+#include "llvm/Support/xxhash.h"
 #include "clang/AST/DeclCXX.h"
 
 namespace clice::index {
@@ -123,8 +125,137 @@ public:
         index.relations[symbol_id.hash].emplace_back(relation);
     }
 
+    /// Byte width of the spelled module name in the source: from the first
+    /// segment's offset to the end of the last segment.
+    std::uint32_t spelled_width(const Import& import) {
+        auto [first_fid, first_offset] = unit.decompose_location(import.name_locations.front());
+        auto last_loc = import.name_locations.back();
+        auto [last_fid, last_offset] = unit.decompose_location(last_loc);
+        auto last_len = static_cast<std::uint32_t>(unit.token_spelling(last_loc).size());
+        return (last_offset + last_len) - first_offset;
+    }
+
+    /// Module names are indexed like macro names: an occurrence plus a
+    /// Definition/Reference relation keyed by a hash of the full module
+    /// name, so navigation flows through the ordinary index pipeline.
+    void index_modules() {
+        auto emit = [&](llvm::StringRef name,
+                        clang::FileID fid,
+                        LocalSourceRange range,
+                        RelationKind kind) {
+            if(name.empty())
+                return;
+            if(interested_only && fid != unit.interested_file())
+                return;
+            llvm::SmallString<64> usr("@module@");
+            usr += name;
+            auto hash = llvm::xxh3_64bits(usr);
+
+            auto& index = result.file_indices[fid];
+            index.occurrences.emplace_back(range, hash);
+            index.relations[hash].emplace_back(Relation{
+                .kind = kind,
+                .range = range,
+                .target_symbol = 0,
+            });
+
+            auto& symbol = result.symbols[hash];
+            if(symbol.name.empty()) {
+                symbol.name = name.str();
+                symbol.kind = SymbolKind::Module;
+                symbol.scope = SymbolScope::External;
+            }
+        };
+
+        // Import sites: Reference relations at the spelled module name.
+        for(auto& [fid, directive]: unit.directives()) {
+            for(auto& import: directive.imports) {
+                if(import.name_locations.empty())
+                    continue;
+                auto [loc_fid, offset] = unit.decompose_location(import.name_locations.front());
+                llvm::StringRef name = import.full_name.empty() ? import.name : import.full_name;
+                emit(name,
+                     loc_fid,
+                     LocalSourceRange{offset, offset + spelled_width(import)},
+                     RelationKind::Reference);
+            }
+        }
+
+        // The module declaration of this unit: Definition in the interface
+        // unit, Reference in an implementation unit. The declaration has no
+        // AST node or PP location, so locate the name with the lexer.
+        auto module_name = unit.module_name();
+        if(!module_name.empty()) {
+            // interested_content() is the full, NUL-terminated buffer; the
+            // lexer token ranges are offsets into it, i.e. file offsets.
+            llvm::StringRef content = unit.interested_content();
+            Lexer lexer(content);
+
+            auto is_identifier = [](const Token& token) {
+                return token.is_identifier();
+            };
+
+            bool found = false;
+            std::uint32_t name_begin = 0;
+            std::uint32_t name_end = 0;
+
+            // Whether the previous token was `export` at the start of a line,
+            // so a following `module` still introduces the declaration.
+            bool after_export = false;
+
+            while(true) {
+                auto token = lexer.advance();
+                if(token.is_eof())
+                    break;
+
+                // The `module` declaration keyword either starts the line or
+                // follows an `export` that starts the line (`export module M;`).
+                bool at_decl_start = token.is_at_start_of_line || after_export;
+                after_export = token.is_at_start_of_line && token.is_identifier() &&
+                               token.text(content) == "export";
+
+                // Only interested in a `module` keyword whose next token is an
+                // identifier (the name). This skips `module;` (global module
+                // fragment, next is `;`) and `module :private;` (next is `:`).
+                if(!at_decl_start || !token.is_identifier() || token.text(content) != "module")
+                    continue;
+
+                auto next = lexer.next();
+                if(!next.is_identifier())
+                    continue;
+
+                auto first = lexer.advance_if(is_identifier);
+                name_begin = first->range.begin;
+                name_end = first->range.end;
+                while(true) {
+                    auto sep = lexer.advance_if([](const Token& token) {
+                        return token.kind == clang::tok::period || token.kind == clang::tok::colon;
+                    });
+                    if(!sep)
+                        break;
+                    auto part = lexer.advance_if(is_identifier);
+                    if(!part)
+                        break;
+                    name_end = part->range.end;
+                }
+                found = true;
+                break;
+            }
+
+            if(found) {
+                emit(module_name,
+                     unit.interested_file(),
+                     LocalSourceRange{name_begin, name_end},
+                     unit.is_module_interface_unit() ? RelationKind::Definition
+                                                     : RelationKind::Reference);
+            }
+        }
+    }
+
     void build() {
         run();
+
+        index_modules();
 
         for(auto& [fid, index]: result.file_indices) {
             for(auto& [symbol_id, relations]: index.relations) {

@@ -1141,7 +1141,7 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     co_return std::move(result.value());
 }
 
-kota::task<std::vector<worker::FileLink>, kota::ipc::Error>
+kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     Compiler::forward_document_links(std::shared_ptr<Session> session) {
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
@@ -1149,10 +1149,10 @@ kota::task<std::vector<worker::FileLink>, kota::ipc::Error>
 
     ScopedTimer timer;
     if(!co_await ensure_compiled(session)) {
-        co_return std::vector<worker::FileLink>{};
+        co_return std::vector<feature::DocumentLink>{};
     }
     if(session->generation != gen) {
-        co_return std::vector<worker::FileLink>{};
+        co_return std::vector<feature::DocumentLink>{};
     }
     auto wait_ms = timer.ms();
 
