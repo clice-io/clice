@@ -350,8 +350,12 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 out.target = link.target;
                 links.push_back(std::move(out));
             };
-            if(auto* pch_links = srv.find_preamble_links(*session)) {
-                std::ranges::for_each(*pch_links, append);
+            // Skipped while dirty: a failed or superseded compile leaves
+            // the cached links describing the pre-edit preamble.
+            if(!session->ast_dirty) {
+                if(auto* pch_links = srv.find_preamble_links(*session)) {
+                    std::ranges::for_each(*pch_links, append);
+                }
             }
             std::ranges::for_each(result.value(), append);
             co_return to_raw(links);
@@ -447,14 +451,18 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             co_return std::move(raw.value());
         }
 
-        // The forward compiled a dirty buffer: the session index and the
-        // preamble links are fresh now, so unsaved imports and preamble
-        // includes resolve on this retry instead of returning empty.
-        if(auto retry = query_at(uri, pos, RelationKind::Definition); !retry.empty()) {
-            co_return to_raw(retry);
-        }
-        if(auto directive = srv.resolve_directive_definition(*session, pos); !directive.empty()) {
-            co_return to_raw(directive);
+        // The forward compiled a dirty buffer: retry against the refreshed
+        // session index and preamble links, but only when the compile
+        // actually completed — a failed or superseded compile leaves
+        // ast_dirty set and the caches stale.
+        if(!session->ast_dirty) {
+            if(auto retry = query_at(uri, pos, RelationKind::Definition); !retry.empty()) {
+                co_return to_raw(retry);
+            }
+            if(auto directive = srv.resolve_directive_definition(*session, pos);
+               !directive.empty()) {
+                co_return to_raw(directive);
+            }
         }
         co_return std::move(raw);
     });

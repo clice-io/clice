@@ -5,6 +5,7 @@
 #include <string>
 
 #include "support/anomaly.h"
+#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/async/io/system.h"
@@ -333,6 +334,24 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
                     w.name,
                     exit_code,
                     w.restart_count);
+    }
+
+    // Relay the tail of the dead worker's own log into the master log:
+    // its final assert message and crash backtrace live there, and CI can
+    // only see the master's output.
+    if(!log_dir.empty()) {
+        auto log_path = path::join(log_dir, w.name + ".log");
+        if(auto content = fs::read(log_path)) {
+            llvm::StringRef tail(*content);
+            constexpr std::size_t max_tail = 4096;
+            if(tail.size() > max_tail) {
+                tail = tail.take_back(max_tail);
+                if(auto nl = tail.find('\n'); nl != llvm::StringRef::npos) {
+                    tail = tail.drop_front(nl + 1);
+                }
+            }
+            LOG_ERROR("Last output of crashed worker {}:\n{}", w.name, tail);
+        }
     }
 
     WorkerCrashInfo info;
