@@ -65,26 +65,41 @@ private:
     /// Subscription to background-index progress; disconnects on destruction.
     Signal<>::Connection progress_conn;
 
-    /// Progress-token lifecycle, split into three orthogonal facts so the
+    /// Progress-token lifecycle, split into orthogonal facts so the
     /// asynchronous create() handshake can reconcile against rounds that
     /// begin or end while it is in flight. At most one create() is ever
-    /// outstanding, and index_progress is never replaced while a handshake
+    /// outstanding, and the reporter is never replaced while a handshake
     /// coroutine is awaiting on it.
+    ///
+    /// Held behind a shared_ptr because the handshake runs as a detached
+    /// task on the event loop: the task captures this state (never the
+    /// LSPClient), so a connection torn down mid-handshake cannot leave the
+    /// task dereferencing a destroyed client — it observes `abandoned` and
+    /// stops.
+    struct IndexProgressState {
+        /// A create() handshake is awaiting the client's acknowledgement.
+        bool create_inflight = false;
 
-    /// A create() handshake is awaiting the client's acknowledgement.
-    bool progress_create_inflight = false;
+        /// begin() has been announced on the token; reports may flow.
+        bool token_active = false;
 
-    /// begin() has been announced on the token; reports may flow.
-    bool progress_token_active = false;
+        /// An indexing round is running (Begin seen, End not yet).
+        bool round_active = false;
 
-    /// An indexing round is running (Begin seen, End not yet).
-    bool progress_round_active = false;
+        /// The owning LSPClient was destroyed; the handshake must not
+        /// announce the token or touch the peer.
+        bool abandoned = false;
 
-    /// Total file count captured when the round began, for the begin message.
-    std::uint32_t progress_total = 0;
+        /// Total file count captured when the round began, for the begin
+        /// message.
+        std::uint32_t total = 0;
 
-    /// The active work-done progress token, held across begin/report/end.
-    std::optional<kota::ipc::lsp::ProgressReporter<kota::ipc::JsonPeer>> index_progress;
+        /// The active work-done progress token, held across
+        /// begin/report/end.
+        std::optional<kota::ipc::lsp::ProgressReporter<kota::ipc::JsonPeer>> reporter;
+    };
+
+    std::shared_ptr<IndexProgressState> index_progress = std::make_shared<IndexProgressState>();
 };
 
 }  // namespace clice

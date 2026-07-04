@@ -656,10 +656,11 @@ void LSPClient::push_output(const Session& session) {
 void LSPClient::report_index_progress() {
     const auto& p = server.background_indexer.progress();
     using Stage = BackgroundIndexer::Progress::Stage;
+    auto& st = *index_progress;
     switch(p.stage) {
         case Stage::Begin: {
-            progress_round_active = true;
-            progress_total = static_cast<std::uint32_t>(p.total);
+            st.round_active = true;
+            st.total = static_cast<std::uint32_t>(p.total);
             // Register a fresh work-done token; once the client acknowledges
             // it, announce the round. This is the create()+begin() handshake
             // the indexer used to run inline, now driven from the transport so
@@ -669,44 +670,48 @@ void LSPClient::report_index_progress() {
             // increments than before. If a previous round's handshake is still
             // in flight, the token is reused: its continuation reconciles
             // against the current round below, so at most one create() is ever
-            // outstanding and index_progress is never replaced mid-await.
-            if(progress_create_inflight || progress_token_active) {
+            // outstanding and the reporter is never replaced mid-await.
+            if(st.create_inflight || st.token_active) {
                 break;
             }
-            index_progress.emplace(peer,
-                                   protocol::ProgressToken(std::string("clice/backgroundIndex")));
-            progress_create_inflight = true;
-            server.loop.schedule([this]() -> kota::task<> {
+            st.reporter.emplace(peer,
+                                protocol::ProgressToken(std::string("clice/backgroundIndex")));
+            st.create_inflight = true;
+            // Captureless lambda with the state as a parameter: parameters
+            // are copied into the coroutine frame, while captures would live
+            // in the closure temporary that dies with this statement.
+            server.loop.schedule([](std::shared_ptr<IndexProgressState> state) -> kota::task<> {
                 // Timeout prevents the handshake from hanging when the client
                 // never responds.
                 auto create_result =
-                    co_await index_progress->create({.timeout = std::chrono::milliseconds(3000)});
-                progress_create_inflight = false;
-                // The round may have ended while the handshake was in flight —
-                // drop the token without announcing it.
-                if(create_result.has_error() || !progress_round_active) {
-                    index_progress.reset();
+                    co_await state->reporter->create({.timeout = std::chrono::milliseconds(3000)});
+                state->create_inflight = false;
+                // The round may have ended — or the whole connection may have
+                // been torn down — while the handshake was in flight; drop the
+                // token without announcing it.
+                if(state->abandoned || create_result.has_error() || !state->round_active) {
+                    state->reporter.reset();
                     co_return;
                 }
-                index_progress->begin("Indexing", std::format("0/{} files", progress_total), 0);
-                progress_token_active = true;
-            }());
+                state->reporter->begin("Indexing", std::format("0/{} files", state->total), 0);
+                state->token_active = true;
+            }(index_progress));
             break;
         }
         case Stage::Report: {
-            if(progress_token_active) {
+            if(st.token_active) {
                 auto pct =
                     p.total > 0 ? static_cast<std::uint32_t>(p.completed * 100 / p.total) : 100;
-                index_progress->report(std::format("{}/{} files", p.completed, p.total), pct);
+                st.reporter->report(std::format("{}/{} files", p.completed, p.total), pct);
             }
             break;
         }
         case Stage::End: {
-            progress_round_active = false;
-            if(progress_token_active) {
-                index_progress->end(std::format("Indexed {} files", p.dispatched));
-                index_progress.reset();
-                progress_token_active = false;
+            st.round_active = false;
+            if(st.token_active) {
+                st.reporter->end(std::format("Indexed {} files", p.dispatched));
+                st.reporter.reset();
+                st.token_active = false;
             }
             // With a handshake still in flight, its continuation sees the
             // round is gone and drops the token.
@@ -717,6 +722,9 @@ void LSPClient::report_index_progress() {
 
 LSPClient::~LSPClient() {
     logging::set_notify_hook(nullptr);
+    // A progress handshake may still be awaiting the client; it holds this
+    // state alive and checks the flag before touching the peer.
+    index_progress->abandoned = true;
 }
 
 }  // namespace clice
