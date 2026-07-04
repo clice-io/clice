@@ -429,9 +429,14 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             }
         }
 
-        auto result = query_at(uri, pos, RelationKind::Definition);
-        if(!result.empty()) {
-            co_return to_raw(result);
+        // Dirty sessions also skip the eager index query: resolve_cursor
+        // would fall back to the stale merged shard and could return a
+        // non-empty hit for pre-edit content, bypassing the compile below.
+        if(!session || !session->ast_dirty) {
+            auto result = query_at(uri, pos, RelationKind::Definition);
+            if(!result.empty()) {
+                co_return to_raw(result);
+            }
         }
 
         if(!session)
