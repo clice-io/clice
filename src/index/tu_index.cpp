@@ -153,11 +153,18 @@ public:
 
             auto& index = result.file_indices[fid];
             index.occurrences.emplace_back(range, hash);
-            index.relations[hash].emplace_back(Relation{
+            Relation relation{
                 .kind = kind,
                 .range = range,
                 .target_symbol = 0,
-            });
+            };
+            // Decl/def consumers read the definition range out of
+            // target_symbol; without it, module symbols would report their
+            // definition as missing.
+            if(kind.isDeclOrDef()) {
+                relation.set_definition_range(range);
+            }
+            index.relations[hash].emplace_back(relation);
 
             auto& symbol = result.symbols[hash];
             if(symbol.name.empty()) {
@@ -228,6 +235,8 @@ public:
                     continue;
 
                 auto first = lexer.advance_if(is_identifier);
+                if(!first)
+                    continue;
                 name_begin = first->range.begin;
                 name_end = first->range.end;
                 while(true) {

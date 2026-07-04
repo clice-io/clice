@@ -418,10 +418,11 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto path_id = srv.workspace.path_pool.intern(path);
         auto session = srv.find_session(path_id);
 
-        // Include directives and module names first: they have no symbol
-        // occurrence in the index, and preamble directives are invisible to
-        // the worker's AST.
-        if(session) {
+        // Preamble include lines first: they have no symbol occurrence in
+        // the index and are invisible to the worker's AST. Dirty sessions
+        // skip this — the cached links may describe the pre-edit preamble —
+        // and retry below once the worker compile refreshed the PCH.
+        if(session && !session->ast_dirty) {
             if(auto directive = srv.resolve_directive_definition(*session, pos);
                !directive.empty()) {
                 co_return to_raw(directive);
@@ -435,9 +436,22 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
 
         if(!session)
             co_return kota::outcome_error(document_not_open());
-        co_return co_await srv.compiler.forward_query(worker::QueryKind::GoToDefinition,
-                                                      session,
-                                                      pos);
+        auto raw =
+            co_await srv.compiler.forward_query(worker::QueryKind::GoToDefinition, session, pos);
+        if(raw.has_value() && raw.value().data != "[]" && raw.value().data != "null") {
+            co_return std::move(raw.value());
+        }
+
+        // The forward compiled a dirty buffer: the session index and the
+        // preamble links are fresh now, so unsaved imports and preamble
+        // includes resolve on this retry instead of returning empty.
+        if(auto retry = query_at(uri, pos, RelationKind::Definition); !retry.empty()) {
+            co_return to_raw(retry);
+        }
+        if(auto directive = srv.resolve_directive_definition(*session, pos); !directive.empty()) {
+            co_return to_raw(directive);
+        }
+        co_return std::move(raw);
     });
 
     // The navigation handlers below are index-only: closed documents are
