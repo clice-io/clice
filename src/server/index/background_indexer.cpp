@@ -437,6 +437,9 @@ kota::task<> BackgroundIndexer::run_background_indexing() {
     LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
     co_await workers.join();
 
+    // Skipped files bump `completed` without a Report emit; refresh the
+    // materialized count so a subscriber waking up on End reads the truth.
+    progress_data.completed = completed;
     progress_data.stage = Progress::Stage::End;
     progress_data.dispatched = dispatched;
     on_progress_changed.emit();

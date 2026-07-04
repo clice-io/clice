@@ -680,6 +680,11 @@ void LSPClient::report_index_progress() {
             // Captureless lambda with the state as a parameter: parameters
             // are copied into the coroutine frame, while captures would live
             // in the closure temporary that dies with this statement.
+            // TODO: an in-flight create() still races connection teardown —
+            // the reporter references the peer while awaiting. This matches
+            // the pre-refactor risk (the reporter captured the peer inside
+            // the indexer coroutine); a real fix needs a cancellation handle
+            // tied to the peer's lifetime.
             server.loop.schedule([](std::shared_ptr<IndexProgressState> state) -> kota::task<> {
                 // Timeout prevents the handshake from hanging when the client
                 // never responds.
