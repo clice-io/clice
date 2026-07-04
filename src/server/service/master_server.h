@@ -73,11 +73,9 @@ enum class ServerLifecycle : std::uint8_t {
 /// the worker pool, compilation engine, index query, and background indexer.
 ///
 /// Does NOT own any transport or peer.  Protocol-specific handler registration
-/// is done by LSPClient and AgentClient, which access private members directly.
+/// is done by LSPClient and AgentClient, which drive the server through its
+/// public members; the composition itself lives entirely here.
 class MasterServer {
-    friend class LSPClient;
-    friend class AgentClient;
-
 public:
     MasterServer(kota::event_loop& loop, std::string self_path);
     ~MasterServer();
@@ -116,9 +114,32 @@ public:
     /// non-map orchestration (pool eviction, diagnostics, indexing) on top.
     SessionStore sessions;
 
-private:
-    kota::event shutdown_event;
+    /// The composed services that make up the server, declared (and thus
+    /// constructed) in dependency order. Transports and features drive the
+    /// server through these directly; the wiring between them lives in wire().
+    kota::event_loop& loop;
+    Workspace workspace;
+    WorkerPool pool;
+    ContextResolver contexts;
+    Compiler compiler;
+    IndexQuery index_query;
+    BackgroundIndexer background_indexer;
 
+    /// Lifecycle state, advanced by the LSP initialize/shutdown handlers.
+    ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
+
+    /// Initialization parameters captured from the LSP initialize request (or
+    /// serve-mode options), consumed when loading the workspace and publishing
+    /// config diagnostics.
+    std::string workspace_root;
+    std::string init_options_json;
+    /// Problems found while loading clice.toml during initialize(), kept so
+    /// LSPClient can publish them as diagnostics on the config file's URI.
+    std::vector<ConfigIssue> config_issues;
+    /// Path of the config file that was found (empty when none).
+    std::string config_path;
+
+private:
     /// The server's wiring diagram: every domain→domain callback hook
     /// (pool crash/eviction, indexing scheduling, ...) is assigned here
     /// and nowhere else, so the composition root shows all cross-component
@@ -136,30 +157,14 @@ private:
     /// times survive crashes (the store itself is passive by design).
     kota::task<> cache_checkpoint_task();
 
-    kota::event_loop& loop;
+    kota::event shutdown_event;
 
     /// Server-owned background tasks (cache checkpoint); cancelled and
     /// joined in shutdown_and_cleanup().
     kota::task_group<> bg_tasks;
 
-    Workspace workspace;
-    WorkerPool pool;
-    ContextResolver contexts;
-    Compiler compiler;
-    IndexQuery index_query;
-    BackgroundIndexer background_indexer;
-
-    ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
     std::string self_path;
-    std::string workspace_root;
     std::string session_log_dir;
-    std::string init_options_json;
-
-    /// Problems found while loading clice.toml during initialize(), kept so
-    /// LSPClient can publish them as diagnostics on the config file's URI.
-    std::vector<ConfigIssue> config_issues;
-    /// Path of the config file that was found (empty when none).
-    std::string config_path;
 };
 
 int run_serve_mode(const ServerOptions& opts, const char* self_path);
