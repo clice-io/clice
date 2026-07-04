@@ -6,11 +6,9 @@
 #include <vector>
 
 #include "compile/compilation.h"
+#include "server/protocol/serialize.h"
 #include "server/protocol/worker.h"
 #include "support/timer.h"
-
-#include "kota/codec/json/json.h"
-#include "kota/ipc/codec/json.h"
 
 namespace clice {
 
@@ -22,13 +20,6 @@ inline void fill_args(CompilationParams& cp,
     for(auto& arg: arguments) {
         cp.arguments.push_back(arg.c_str());
     }
-}
-
-/// Serialize a value to JSON RawValue using LSP config.
-template <typename T>
-inline kota::codec::RawValue to_raw(const T& value) {
-    auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(value);
-    return kota::codec::RawValue{json ? std::move(*json) : "null"};
 }
 
 }  // namespace clice

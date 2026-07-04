@@ -161,7 +161,7 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
     dep_graph.build_reverse_map();
 }
 
-llvm::SmallVector<std::uint32_t> Workspace::on_file_saved(std::uint32_t path_id) {
+llvm::SmallVector<std::uint32_t> Workspace::rescan_after_save(std::uint32_t path_id) {
     // Contexts must see includes added/removed by this save.
     rescan_includes(path_id);
 

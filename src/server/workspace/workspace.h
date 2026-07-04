@@ -144,7 +144,7 @@ struct PCMState {
 /// Workspace is NEVER modified by unsaved buffer content.  The only mutation
 /// paths are:
 ///   - Initialization  (load_workspace at startup)
-///   - didSave         (on_file_saved: rescan disk, cascade invalidation)
+///   - didSave         (rescan_after_save: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
 struct Workspace {
     Config config;
@@ -254,10 +254,10 @@ struct Workspace {
     /// added or removed.
     void rescan_includes(std::uint32_t path_id);
 
-    /// Called when a file is saved to disk.  Cascades invalidation through
-    /// compile_graph and clears affected PCM caches.
+    /// Rescan a file after it was saved to disk.  Cascades invalidation
+    /// through compile_graph and clears affected PCM caches.
     /// Returns path_ids of all files dirtied by the cascade.
-    llvm::SmallVector<std::uint32_t> on_file_saved(std::uint32_t path_id);
+    llvm::SmallVector<std::uint32_t> rescan_after_save(std::uint32_t path_id);
 
     /// Called when a file is closed.  Notifies compile_graph if this file
     /// is a module unit so dependents can be re-evaluated on next compile.

@@ -188,7 +188,7 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
         session->trial_done = false;
     }
 
-    auto dirtied = workspace.on_file_saved(path_id);
+    auto dirtied = workspace.rescan_after_save(path_id);
     for(auto dirty_id: dirtied) {
         auto session = find_session(dirty_id);
         if(session) {

@@ -1,6 +1,7 @@
 #include "server/service/agent_client.h"
 
 #include <algorithm>
+#include <expected>
 #include <format>
 #include <ranges>
 #include <string>
@@ -183,6 +184,21 @@ static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolPara
     }
 
     return {};
+}
+
+/// Resolve a locator and require a unique match: no candidate is "symbol not
+/// found", several candidates ask the client to disambiguate via symbolId.
+static std::expected<ResolvedSymbol, kota::ipc::Error>
+    resolve_unique(const agentic::ReadSymbolParams& loc, Workspace& workspace, Indexer& indexer) {
+    auto candidates = resolve_locator(loc, workspace, indexer);
+    if(candidates.empty())
+        return std::unexpected(kota::ipc::Error{"symbol not found"});
+    if(candidates.size() > 1) {
+        return std::unexpected(
+            kota::ipc::Error{std::format("ambiguous: {} candidates, use symbolId to disambiguate",
+                                         candidates.size())});
+    }
+    return std::move(candidates[0]);
 }
 
 static std::uint64_t extract_symbol_id(const std::optional<protocol::LSPAny>& data) {
@@ -449,16 +465,11 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const ReadSymbolParams& params) -> RequestResult<ReadSymbolParams> {
-            auto candidates = resolve_locator(params, srv.workspace, srv.indexer);
-            if(candidates.empty())
-                co_return kota::outcome_error(kota::ipc::Error{"symbol not found"});
-            if(candidates.size() > 1) {
-                co_return kota::outcome_error(kota::ipc::Error{
-                    std::format("ambiguous: {} candidates, use symbolId to disambiguate",
-                                candidates.size())});
-            }
+            auto resolved = resolve_unique(params, srv.workspace, srv.indexer);
+            if(!resolved)
+                co_return kota::outcome_error(std::move(resolved.error()));
 
-            auto& rs = candidates[0];
+            auto& rs = *resolved;
             auto def_text = srv.indexer.get_definition_text(rs.hash);
             if(!def_text)
                 co_return kota::outcome_error(kota::ipc::Error{"definition not found"});
@@ -568,19 +579,14 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const DefinitionParams& params) -> RequestResult<DefinitionParams> {
-            auto candidates = resolve_locator(
+            auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.workspace,
                 srv.indexer);
-            if(candidates.empty())
-                co_return kota::outcome_error(kota::ipc::Error{"symbol not found"});
-            if(candidates.size() > 1) {
-                co_return kota::outcome_error(kota::ipc::Error{
-                    std::format("ambiguous: {} candidates, use symbolId to disambiguate",
-                                candidates.size())});
-            }
+            if(!resolved)
+                co_return kota::outcome_error(std::move(resolved.error()));
 
-            auto& rs = candidates[0];
+            auto& rs = *resolved;
 
             DefinitionResult result;
             result.name = rs.name;
@@ -601,19 +607,14 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const ReferencesParams& params) -> RequestResult<ReferencesParams> {
-            auto candidates = resolve_locator(
+            auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.workspace,
                 srv.indexer);
-            if(candidates.empty())
-                co_return kota::outcome_error(kota::ipc::Error{"symbol not found"});
-            if(candidates.size() > 1) {
-                co_return kota::outcome_error(kota::ipc::Error{
-                    std::format("ambiguous: {} candidates, use symbolId to disambiguate",
-                                candidates.size())});
-            }
+            if(!resolved)
+                co_return kota::outcome_error(std::move(resolved.error()));
 
-            auto& rs = candidates[0];
+            auto& rs = *resolved;
 
             ReferencesResult result;
             result.name = rs.name;
@@ -643,19 +644,14 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const CallGraphParams& params) -> RequestResult<CallGraphParams> {
-            auto candidates = resolve_locator(
+            auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.workspace,
                 srv.indexer);
-            if(candidates.empty())
-                co_return kota::outcome_error(kota::ipc::Error{"symbol not found"});
-            if(candidates.size() > 1) {
-                co_return kota::outcome_error(kota::ipc::Error{
-                    std::format("ambiguous: {} candidates, use symbolId to disambiguate",
-                                candidates.size())});
-            }
+            if(!resolved)
+                co_return kota::outcome_error(std::move(resolved.error()));
 
-            auto& rs = candidates[0];
+            auto& rs = *resolved;
             auto direction = params.direction.value_or("both");
 
             CallGraphResult result;
@@ -711,19 +707,14 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     peer.on_request(
         [&srv](RequestContext&,
                const TypeHierarchyParams& params) -> RequestResult<TypeHierarchyParams> {
-            auto candidates = resolve_locator(
+            auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.workspace,
                 srv.indexer);
-            if(candidates.empty())
-                co_return kota::outcome_error(kota::ipc::Error{"symbol not found"});
-            if(candidates.size() > 1) {
-                co_return kota::outcome_error(kota::ipc::Error{
-                    std::format("ambiguous: {} candidates, use symbolId to disambiguate",
-                                candidates.size())});
-            }
+            if(!resolved)
+                co_return kota::outcome_error(std::move(resolved.error()));
 
-            auto& rs = candidates[0];
+            auto& rs = *resolved;
             auto direction = params.direction.value_or("both");
 
             TypeHierarchyResult result;
