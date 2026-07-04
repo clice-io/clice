@@ -822,41 +822,32 @@ static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource sourc
     return diagnostic;
 }
 
-void Compiler::publish_diagnostics(const std::string& uri,
-                                   int version,
-                                   const kota::codec::RawValue& diagnostics_json,
-                                   CommandSource source,
-                                   std::optional<std::uint32_t> line_limit) {
-    if(!peer)
-        return;
+std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output) {
     std::vector<protocol::Diagnostic> diagnostics;
-    if(!diagnostics_json.empty()) {
-        auto status = kota::codec::json::from_json(diagnostics_json.data, diagnostics);
+    if(!output.diagnostics.empty()) {
+        auto status = kota::codec::json::from_json(output.diagnostics.data, diagnostics);
         if(!status) {
-            LOG_WARN("Failed to deserialize diagnostics JSON for {}", uri);
+            LOG_WARN("Failed to deserialize diagnostics JSON");
         }
     }
 
     // Suffix injection appends an #include past the user's EOF; errors in
     // host code after the include point remap onto those phantom lines.
     // They describe the includer, not the document — drop them.
-    if(line_limit.has_value()) {
+    if(output.line_limit.has_value()) {
         std::erase_if(diagnostics, [&](const protocol::Diagnostic& d) {
-            return d.range.start.line >= *line_limit;
+            return d.range.start.line >= *output.line_limit;
         });
     }
 
     // Guidance (and only when it can explain something): an exact CDB match
     // never gets the note, and neither does a guessed command that worked.
-    if(source != CommandSource::CDBExact && std::ranges::any_of(diagnostics, is_file_not_found)) {
-        diagnostics.insert(diagnostics.begin(), make_inferred_command_diagnostic(source));
+    if(output.source != CommandSource::CDBExact &&
+       std::ranges::any_of(diagnostics, is_file_not_found)) {
+        diagnostics.insert(diagnostics.begin(), make_inferred_command_diagnostic(output.source));
     }
 
-    protocol::PublishDiagnosticsParams params;
-    params.uri = uri;
-    params.version = version;
-    params.diagnostics = std::move(diagnostics);
-    peer->send_notification(params);
+    return diagnostics;
 }
 
 /// Append the header context's suffix as one trailing #include line: the
@@ -883,19 +874,15 @@ void Compiler::append_suffix_include(const Session& session, std::string& text) 
     text += "\"\n";
 }
 
-/// Push the file's preprocessor-inactive regions (clice/inactiveRegions).
-/// Sent after every compile so a context switch immediately re-dims the
-/// regions selected away by the new preprocessor state.
-void Compiler::publish_inactive_regions(const std::string& uri,
-                                        const Session& session,
-                                        llvm::ArrayRef<std::uint32_t> regions) {
-    if(!peer) {
-        return;
+std::vector<protocol::Range> format_inactive_regions(const Session& session,
+                                                     const CompileOutput& output) {
+    std::vector<protocol::Range> result;
+    if(!output.inactive_regions.has_value()) {
+        return result;
     }
+    auto& regions = *output.inactive_regions;
     auto map = session.line_map();
-    ext::InactiveRegionsParams params;
-    params.uri = uri;
-    params.regions.reserve(regions.size() / 2);
+    result.reserve(regions.size() / 2);
     for(std::size_t i = 0; i + 1 < regions.size(); i += 2) {
         auto start = map.to_position(regions[i]);
         auto end = map.to_position(regions[i + 1]);
@@ -905,18 +892,9 @@ void Compiler::publish_inactive_regions(const std::string& uri,
         protocol::Range range;
         range.start = *start;
         range.end = *end;
-        params.regions.push_back(range);
+        result.push_back(range);
     }
-    peer->send_notification("clice/inactiveRegions", params);
-}
-
-void Compiler::clear_diagnostics(const std::string& uri) {
-    if(!peer)
-        return;
-    protocol::PublishDiagnosticsParams params;
-    params.uri = uri;
-    params.diagnostics = {};
-    peer->send_notification(params);
+    return result;
 }
 
 kota::task<bool> Compiler::ensure_pch(Session& session,
@@ -1315,7 +1293,16 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                             uri_str,
                             result.error().message);
             }
-            clear_diagnostics(uri_str);
+            // Clear path: empty diagnostics without a version, and no
+            // inactive-regions update.
+            session->output = CompileOutput{
+                .version = std::nullopt,
+                .source = source,
+                .diagnostics = {},
+                .line_limit = suffix_line_limit,
+                .inactive_regions = std::nullopt,
+            };
+            on_output.emit(session);
             finish_compile();
             co_return;
         }
@@ -1363,18 +1350,20 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         finish_compile();
 
         LOG_PERF("request", "kind=Compile file={} total_ms={}", file_path, timer.ms());
-        publish_diagnostics(uri_str,
-                            version,
-                            result.value().diagnostics,
-                            source,
-                            suffix_line_limit);
         // The preamble's share lives with the PCH; the compile result
         // covers the content past the bound. Publish both.
         auto inactive = std::move(pch_inactive);
         inactive.insert(inactive.end(),
                         result.value().inactive_regions.begin(),
                         result.value().inactive_regions.end());
-        publish_inactive_regions(uri_str, *session, inactive);
+        session->output = CompileOutput{
+            .version = version,
+            .source = source,
+            .diagnostics = std::move(result.value().diagnostics),
+            .line_limit = suffix_line_limit,
+            .inactive_regions = std::move(inactive),
+        };
+        on_output.emit(session);
         if(on_indexing_needed)
             on_indexing_needed();
         co_return;

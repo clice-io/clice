@@ -49,12 +49,15 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
 }
 
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
-    server.compiler.set_peer(&peer);
+    output_conn = server.compiler.on_output.connect(
+        [this](const std::shared_ptr<Session>& session) { push_output(*session); });
     server.indexer.set_peer(&peer);
 
     // The notify hook is process-wide and forwards anomaly/guidance messages
     // as window/logMessage notifications. It captures the peer, so it must
     // live exactly as long as this LSPClient (cleared in the destructor).
+    // TODO: materialize these messages into server state and deliver them
+    // through a typed signal instead of a process-wide hook.
     logging::set_notify_hook([&peer](logging::NotifyLevel level, std::string_view message) {
         peer.send_notification(protocol::LogMessageParams{
             static_cast<protocol::MessageType>(level),
@@ -1013,9 +1016,36 @@ void LSPClient::publish_config_diagnostics() {
     }
 }
 
+void LSPClient::push_output(const Session& session) {
+    if(!session.output.has_value()) {
+        return;
+    }
+    auto& output = *session.output;
+
+    auto file_path = std::string(server.workspace.path_pool.resolve(session.path_id));
+    auto uri = lsp::URI::from_file_path(file_path);
+    std::string uri_str = uri.has_value() ? uri->str() : file_path;
+
+    protocol::PublishDiagnosticsParams params;
+    params.uri = uri_str;
+    params.version = output.version;
+    params.diagnostics = format_diagnostics(output);
+    peer.send_notification(params);
+
+    // The clear path carries no inactive-regions update; a successful
+    // compile always pushes the current regions (even when empty) so a
+    // context switch immediately re-dims the regions selected away by
+    // the new preprocessor state.
+    if(output.inactive_regions.has_value()) {
+        ext::InactiveRegionsParams regions;
+        regions.uri = uri_str;
+        regions.regions = format_inactive_regions(session, output);
+        peer.send_notification("clice/inactiveRegions", regions);
+    }
+}
+
 LSPClient::~LSPClient() {
     logging::set_notify_hook(nullptr);
-    server.compiler.set_peer(nullptr);
     server.indexer.set_peer(nullptr);
 }
 

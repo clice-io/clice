@@ -109,6 +109,14 @@ public:
 
 private:
     kota::event shutdown_event;
+
+    /// The server's wiring diagram: every domain→domain callback hook
+    /// (pool crash/eviction, indexing scheduling, ...) is assigned here
+    /// and nowhere else, so the composition root shows all cross-component
+    /// plumbing in one place. domain→transport communication does not go
+    /// through here — it uses Signal members that transports subscribe to.
+    void wire();
+
     void load_workspace();
 
     /// Open the CacheStore under cache_dir and register the blob

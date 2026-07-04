@@ -11,13 +11,13 @@
 #include "server/service/session.h"
 #include "server/worker/worker_pool.h"
 #include "server/workspace/workspace.h"
+#include "support/signal.h"
 #include "syntax/completion.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
 #include "kota/ipc/lsp/protocol.h"
-#include "kota/ipc/peer.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -32,7 +32,7 @@ std::string uri_to_path(const std::string& uri);
 /// Where the compile command for a file came from. Anything other than
 /// CDBExact means the command was guessed to some degree, which is why
 /// diagnostics produced with it may deserve a guidance note (see
-/// Compiler::publish_diagnostics).
+/// format_diagnostics).
 enum class CommandSource : std::uint8_t {
     /// Direct compilation database entry for the file.
     CDBExact,
@@ -66,10 +66,6 @@ enum class CommandSource : std::uint8_t {
 class Compiler {
 public:
     Compiler(kota::event_loop& loop, Workspace& workspace, WorkerPool& pool);
-
-    void set_peer(kota::ipc::JsonPeer* p) {
-        peer = p;
-    }
 
     ~Compiler();
 
@@ -121,8 +117,11 @@ public:
     RawResult handle_completion(const protocol::Position& position,
                                 std::shared_ptr<Session> session);
 
-    /// Send an empty diagnostics notification to clear stale markers in the editor.
-    void clear_diagnostics(const std::string& uri);
+    /// Emitted after a compile round materializes its publishable products
+    /// into the session's `output` field (both success and the failure/
+    /// clear path). Subscribers read the output from the session; with no
+    /// subscriber connected the output simply stays there.
+    Signal<std::shared_ptr<Session>> on_output;
 
     /// Callback invoked when indexing should be scheduled.
     std::function<void()> on_indexing_needed;
@@ -149,21 +148,7 @@ private:
     bool is_stale(const Session& session);
     void record_deps(Session& session, llvm::ArrayRef<std::string> deps);
 
-    /// Deserialize worker-produced diagnostics and publish them. When the
-    /// compile command was not an exact CDB match and the diagnostics contain
-    /// file-not-found class errors, a file-top guidance diagnostic explaining
-    /// the inferred command is merged into the same publish.
     static void append_suffix_include(const Session& session, std::string& text);
-
-    void publish_inactive_regions(const std::string& uri,
-                                  const Session& session,
-                                  llvm::ArrayRef<std::uint32_t> regions);
-
-    void publish_diagnostics(const std::string& uri,
-                             int version,
-                             const kota::codec::RawValue& diags,
-                             CommandSource source,
-                             std::optional<std::uint32_t> line_limit = std::nullopt);
 
     std::optional<HeaderContext> resolve_header_context(std::uint32_t header_path_id,
                                                         Session* session,
@@ -177,10 +162,22 @@ private:
 
 private:
     kota::event_loop& loop;
-    kota::ipc::JsonPeer* peer = nullptr;
     Workspace& workspace;
     WorkerPool& pool;
     kota::task_group<> compile_tasks{loop};
 };
+
+/// Format a materialized compile output into publishable diagnostics:
+/// deserialize the worker's raw diagnostics, drop phantom suffix-include
+/// lines, and — when the compile command was not an exact CDB match and
+/// the diagnostics contain file-not-found class errors — merge a file-top
+/// guidance diagnostic explaining the inferred command. Formatting is
+/// compile semantics; sending the result is the transport's job.
+std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output);
+
+/// Convert a compile output's inactive-region byte offsets into LSP ranges
+/// using the session's line map.
+std::vector<protocol::Range> format_inactive_regions(const Session& session,
+                                                     const CompileOutput& output);
 
 }  // namespace clice

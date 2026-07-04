@@ -104,6 +104,12 @@ void MasterServer::initialize() {
 
     lifecycle = ServerLifecycle::Ready;
 
+    wire();
+
+    load_workspace();
+}
+
+void MasterServer::wire() {
     pool.on_crash = [this](const WorkerCrashInfo& info) {
         if(!info.stateful)
             return;
@@ -125,8 +131,6 @@ void MasterServer::initialize() {
     compiler.on_indexing_needed = [this]() {
         indexer.schedule();
     };
-
-    load_workspace();
 }
 
 void MasterServer::initialize(llvm::StringRef root) {

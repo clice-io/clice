@@ -10,10 +10,40 @@
 #include "server/workspace/workspace.h"
 
 #include "kota/async/async.h"
+#include "kota/codec/visit/common.h"
 #include "kota/ipc/lsp/position.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace clice {
+
+/// Defined in server/compiler/compiler.h — Compiler reports where the
+/// compile command came from; Session only stores the verdict.
+enum class CommandSource : std::uint8_t;
+
+/// The publishable products of the most recent compilation (materialized
+/// whole-document feature results). The data lives here; the compiler's
+/// on_output signal only wakes the push path up — a missed signal is
+/// harmless, and with no transport connected the output simply stays put.
+struct CompileOutput {
+    /// Document version the compile ran against; empty on the clear path
+    /// (a failed compile publishes empty diagnostics without a version).
+    std::optional<int> version;
+
+    /// How the compile command was obtained; the push path merges a
+    /// guidance diagnostic when the command was guessed.
+    CommandSource source;
+
+    /// Worker-produced raw diagnostics (unformatted); empty on failure.
+    kota::codec::RawValue diagnostics;
+
+    /// First phantom line introduced by suffix include injection —
+    /// diagnostics at or past it describe text the user cannot see.
+    std::optional<std::uint32_t> line_limit;
+
+    /// Final inactive regions (PCH preamble + AST merged, byte offsets).
+    /// Empty optional on failure: no inactive-regions notification is due.
+    std::optional<std::vector<std::uint32_t>> inactive_regions;
+};
 
 /// An editing session for a single file opened in the editor.
 ///
@@ -130,6 +160,10 @@ struct Session {
     /// Symbol table from the latest compilation, mapping symbol hashes to
     /// names and kinds.
     std::optional<index::SymbolTable> symbols;
+
+    /// Publishable products of the latest compilation, kept for the
+    /// transport push path (see CompileOutput).
+    std::optional<CompileOutput> output;
 };
 
 }  // namespace clice
