@@ -118,51 +118,6 @@ TEST_CASE(CompileThenHover) {
     ASSERT_TRUE(test_done);
 }
 
-TEST_CASE(DocumentUpdate) {
-    TempDir tmp;
-    tmp.touch("update_test.cpp", "int x = 1;\n");
-    auto src = tmp.path("update_test.cpp");
-
-    WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
-
-    bool test_done = false;
-
-    w.run([&]() -> kota::task<> {
-        // Compile first
-        worker::CompileParams cp;
-        cp.path = src;
-        cp.version = 1;
-        cp.text = "int x = 1;\n";
-        cp.directory = "/tmp";
-        cp.arguments = make_args(src);
-
-        auto r1 = co_await w.peer->send_request(cp);
-        CO_ASSERT_TRUE(r1.has_value());
-
-        // Send document update notification (marks doc dirty, text comes
-        // with next Compile request).
-        worker::DocumentUpdateParams up;
-        up.path = src;
-        up.version = 2;
-        w.peer->send_notification(up);
-
-        // After update, hover still returns stale AST results (not null).
-        worker::QueryParams hp;
-        hp.kind = worker::QueryKind::Hover;
-        hp.path = src;
-        hp.offset = 4;
-
-        auto hover_result = co_await w.peer->send_request(hp);
-        EXPECT_TRUE(hover_result.has_value());
-
-        test_done = true;
-        w.peer->close_output();
-    });
-
-    ASSERT_TRUE(test_done);
-}
-
 TEST_CASE(CodeActionReturnsEmpty) {
     WorkerHandle w;
     ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));

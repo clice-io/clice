@@ -165,11 +165,6 @@ struct DocumentLinkParams {
     std::string path;
 };
 
-struct DocumentUpdateParams {
-    std::string path;
-    int version;
-};
-
 struct EvictParams {
     std::string path;
 };
@@ -204,11 +199,6 @@ template <>
 struct RequestTraits<clice::worker::BuildParams> {
     using Result = clice::worker::BuildResult;
     constexpr inline static std::string_view method = "clice/worker/build";
-};
-
-template <>
-struct NotificationTraits<clice::worker::DocumentUpdateParams> {
-    constexpr inline static std::string_view method = "clice/worker/documentUpdate";
 };
 
 template <>

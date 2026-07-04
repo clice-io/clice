@@ -292,11 +292,6 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                   path,
                   session->version,
                   session->generation);
-
-        worker::DocumentUpdateParams update;
-        update.path = path;
-        update.version = session->version;
-        srv.pool.notify_stateful(path_id, update);
     });
 
     peer.on_notification([this](const protocol::DidCloseTextDocumentParams& params) {

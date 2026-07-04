@@ -1,6 +1,5 @@
 #include "server/worker/stateful_worker.h"
 
-#include <atomic>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -32,7 +31,6 @@ struct DocumentEntry {
     std::string text;
     bool has_ast = false;
     CompilationUnit unit{nullptr};
-    std::atomic<bool> dirty{false};
 
     // Signaled when the first compilation completes (has_ast becomes true).
     // Feature handlers co_await this before accessing the AST.
@@ -169,7 +167,6 @@ void StatefulWorker::register_handlers() {
 
             doc->unit = compile(cp);
             doc->has_ast = true;
-            doc->dirty.store(false, std::memory_order_release);
 
             worker::CompileResult result;
             result.version = doc->version;
@@ -217,24 +214,6 @@ void StatefulWorker::register_handlers() {
             [&](DocumentEntry& doc) {
                 return feature::document_links(doc.unit, feature::PositionEncoding::UTF16);
             });
-    });
-
-    // === DocumentUpdate ===
-    // Only mark the document dirty — do NOT update doc.text or doc.version
-    // here.  The kota::queue compilation work may be reading doc.text on the
-    // thread pool concurrently, so writing it from the event loop would be
-    // a data race.  The next Compile request will bring the correct text
-    // and update it inside the strand lock.
-    peer.on_notification([this](const worker::DocumentUpdateParams& params) {
-        LOG_TRACE("DocumentUpdate: path={}, version={}", params.path, params.version);
-
-        auto it = documents.find(params.path);
-        if(it == documents.end()) {
-            LOG_TRACE("DocumentUpdate ignored (not tracked): path={}", params.path);
-            return;
-        }
-
-        it->second->dirty.store(true, std::memory_order_release);
     });
 
     // === Evict ===
