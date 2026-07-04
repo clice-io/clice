@@ -6,6 +6,7 @@
 
 #include "server/compiler/compiler.h"
 #include "server/context/context_resolver.h"
+#include "server/feature/feature_router.h"
 #include "server/index/background_indexer.h"
 #include "server/index/query.h"
 #include "server/session/session.h"
@@ -90,16 +91,6 @@ public:
     std::shared_ptr<Session> open_session(std::uint32_t path_id);
     void close_session(std::uint32_t path_id, kota::ipc::JsonPeer& peer);
 
-    /// The preamble include links of a session's active PCH, or nullptr.
-    const std::vector<feature::DocumentLink>* find_preamble_links(const Session& session);
-
-    /// Resolve go-to-definition on a preamble include line that the worker
-    /// AST cannot see: the include is compiled into the PCH, so the target
-    /// is answered from the PCH's cached preamble links. Module names go
-    /// through the ordinary index pipeline, not this path.
-    std::vector<protocol::Location>
-        resolve_directive_definition(Session& session, const protocol::Position& position);
-
     void on_file_saved(std::uint32_t path_id);
 
     void schedule_shutdown();
@@ -124,6 +115,7 @@ public:
     Compiler compiler;
     IndexQuery index_query;
     BackgroundIndexer background_indexer;
+    FeatureRouter features;
 
     /// Lifecycle state, advanced by the LSP initialize/shutdown handlers.
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;

@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "feature/feature.h"
 #include "server/protocol/worker.h"
 #include "server/service/agent_client.h"
 #include "server/service/lsp_client.h"
@@ -34,7 +33,7 @@ namespace protocol = kota::ipc::protocol;
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
     index_query(workspace, sessions), background_indexer(loop, workspace, pool, compiler, sessions),
-    bg_tasks(loop), self_path(std::move(self_path)) {}
+    features(compiler, index_query, workspace), bg_tasks(loop), self_path(std::move(self_path)) {}
 
 MasterServer::~MasterServer() = default;
 
@@ -300,41 +299,6 @@ void MasterServer::open_cache_store() {
 
     workspace.load_cache();
     bg_tasks.spawn(cache_checkpoint_task());
-}
-
-const std::vector<feature::DocumentLink>*
-    MasterServer::find_preamble_links(const Session& session) {
-    if(!session.pch_ref)
-        return nullptr;
-    auto it = workspace.pch_cache.find(session.pch_ref->key);
-    if(it == workspace.pch_cache.end() || it->second.preamble_links.empty())
-        return nullptr;
-    return &it->second.preamble_links;
-}
-
-std::vector<protocol::Location>
-    MasterServer::resolve_directive_definition(Session& session,
-                                               const protocol::Position& position) {
-    std::vector<protocol::Location> locations;
-
-    // Preamble include lines: compiled into the PCH, invisible to the
-    // worker's AST — the PCH's cached links carry the targets.
-    if(auto* links = find_preamble_links(session)) {
-        for(auto& link: *links) {
-            if(link.range.start.line != position.line)
-                continue;
-            if(position.character < link.range.start.character ||
-               position.character > link.range.end.character)
-                continue;
-            locations.push_back(protocol::Location{
-                .uri = feature::to_uri(link.target),
-                .range = protocol::Range{},
-            });
-            return locations;
-        }
-    }
-
-    return locations;
 }
 
 void MasterServer::load_workspace() {

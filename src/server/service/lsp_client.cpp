@@ -306,31 +306,13 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
-            auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            auto result = co_await srv.compiler.forward_document_links(session);
-            if(!result.has_value())
-                co_return kota::outcome_error(std::move(result.error()));
-
-            // The preamble is compiled into the PCH, so the worker's AST only
-            // covers the rest of the file — merge the preamble's links in front.
-            std::vector<protocol::DocumentLink> links;
-            auto append = [&](const feature::DocumentLink& link) {
-                protocol::DocumentLink out{.range = link.range};
-                out.target = link.target;
-                links.push_back(std::move(out));
-            };
-            // Skipped while dirty: a failed or superseded compile leaves
-            // the cached links describing the pre-edit preamble.
-            if(!session->ast_dirty) {
-                if(auto* pch_links = srv.find_preamble_links(*session)) {
-                    std::ranges::for_each(*pch_links, append);
-                }
-            }
-            std::ranges::for_each(result.value(), append);
-            co_return to_raw(links);
+            auto links = co_await this->server.features.document_links(session);
+            if(!links.has_value())
+                co_return kota::outcome_error(std::move(links.error()));
+            co_return to_raw(links.value());
         });
 
     peer.on_request(
@@ -373,58 +355,13 @@ void LSPClient::register_language_features() {
                                                                session.get());
     };
 
-    peer.on_request([this, query_at](RequestContext& ctx,
-                                     const protocol::DefinitionParams& params) -> RawResult {
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
-
-        auto& srv = this->server;
-        auto [path, path_id, session] = resolve_uri(uri);
-
-        // Preamble include lines first: they have no symbol occurrence in
-        // the index and are invisible to the worker's AST. Dirty sessions
-        // skip this — the cached links may describe the pre-edit preamble —
-        // and retry below once the worker compile refreshed the PCH.
-        if(session && !session->ast_dirty) {
-            if(auto directive = srv.resolve_directive_definition(*session, pos);
-               !directive.empty()) {
-                co_return to_raw(directive);
-            }
-        }
-
-        // Dirty sessions also skip the eager index query: resolve_cursor
-        // would fall back to the stale merged shard and could return a
-        // non-empty hit for pre-edit content, bypassing the compile below.
-        if(!session || !session->ast_dirty) {
-            auto result = query_at(uri, pos, RelationKind::Definition);
-            if(!result.empty()) {
-                co_return to_raw(result);
-            }
-        }
-
-        if(!session)
-            co_return kota::outcome_error(document_not_open());
-        auto raw =
-            co_await srv.compiler.forward_query(worker::QueryKind::GoToDefinition, session, pos);
-        if(raw.has_value() && raw.value().data != "[]" && raw.value().data != "null") {
-            co_return std::move(raw.value());
-        }
-
-        // The forward compiled a dirty buffer: retry against the refreshed
-        // session index and preamble links, but only when the compile
-        // actually completed — a failed or superseded compile leaves
-        // ast_dirty set and the caches stale.
-        if(!session->ast_dirty) {
-            if(auto retry = query_at(uri, pos, RelationKind::Definition); !retry.empty()) {
-                co_return to_raw(retry);
-            }
-            if(auto directive = srv.resolve_directive_definition(*session, pos);
-               !directive.empty()) {
-                co_return to_raw(directive);
-            }
-        }
-        co_return std::move(raw);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
+            auto& uri = params.text_document_position_params.text_document.uri;
+            auto& pos = params.text_document_position_params.position;
+            auto [path, path_id, session] = resolve_uri(uri);
+            co_return co_await this->server.features.definition(session, path, pos);
+        });
 
     // The navigation handlers below are index-only: closed documents are
     // fully serveable from the index, and an empty result is a real answer,
