@@ -2,19 +2,16 @@
 
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "semantic/relation_kind.h"
 #include "semantic/symbol_kind.h"
+#include "server/protocol/agentic.h"
 #include "server/workspace/workspace.h"
 
-#include "kota/async/async.h"
-#include "kota/ipc/codec/json.h"
 #include "kota/ipc/lsp/position.h"
-#include "kota/ipc/lsp/progress.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -27,8 +24,7 @@ namespace protocol = kota::ipc::protocol;
 namespace lsp = kota::ipc::lsp;
 
 struct Session;
-class Compiler;
-class WorkerPool;
+struct SessionStore;
 
 /// Information about a symbol at a given position.
 struct SymbolInfo {
@@ -39,91 +35,37 @@ struct SymbolInfo {
     protocol::Range range;
 };
 
-/// Index query layer and background indexing scheduler.
+/// A symbol resolved from an agentic locator (symbol id, name, or path+line).
+struct ResolvedSymbol {
+    index::SymbolHash hash = 0;
+    std::string name;
+    SymbolKind kind;
+    std::string file;
+    int line = 0;
+};
+
+/// Read-only index query layer.
 ///
-/// Indexer holds no index data of its own.  All persistent data lives in
+/// IndexQuery holds no index data of its own.  All persistent data lives in
 /// Workspace (disk-derived ProjectIndex + MergedIndex shards) and per-file
 /// data lives in Session (file index from unsaved buffers).
 ///
 /// Responsibilities:
 ///   - Cross-file navigation queries (definition, references, hierarchy)
 ///   - Symbol search (workspace/symbol)
-///   - Background indexing scheduling (enqueue → idle timer → worker dispatch)
-///   - Merging TUIndex results into Workspace's ProjectIndex
 ///
 /// NOT responsible for:
 ///   - Compilation — handled by Compiler
+///   - Background indexing — handled by BackgroundIndexer
 ///   - Document lifecycle — handled by MasterServer
-class Indexer {
+class IndexQuery {
 public:
     /// Visitor for iterating open Sessions.  Returns false to stop early.
     using SessionVisitor =
         std::function<bool(std::uint32_t server_path_id, const Session& session)>;
 
-    Indexer(kota::event_loop& loop,
-            Workspace& workspace,
-            WorkerPool& pool,
-            Compiler& compiler,
-            std::function<bool(std::uint32_t)> is_open = {},
-            std::function<void(SessionVisitor)> each_session = {}) :
-        loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), compiler(compiler),
-        is_open(std::move(is_open)), each_session(std::move(each_session)) {}
-
-    /// Set the LSP peer for progress reporting.  Must be called before
-    /// schedule() if progress notifications are desired.
-    void set_peer(kota::ipc::JsonPeer* p) {
-        peer = p;
-    }
-
-    /// Temporarily pause background indexing to give priority to user
-    /// requests.  Indexing tasks already dispatched to workers continue,
-    /// but no new tasks will be sent until resume_indexing() is called.
-    void pause_indexing();
-
-    /// Resume background indexing after a pause.
-    void resume_indexing();
-
-    /// RAII guard that pauses indexing for its lifetime.
-    struct [[nodiscard]] ScopedPause {
-        Indexer& indexer;
-
-        explicit ScopedPause(Indexer& idx) : indexer(idx) {
-            indexer.pause_indexing();
-        }
-
-        ~ScopedPause() {
-            indexer.resume_indexing();
-        }
-
-        ScopedPause(const ScopedPause&) = delete;
-        ScopedPause& operator=(const ScopedPause&) = delete;
-    };
-
-    ScopedPause scoped_pause() {
-        return ScopedPause{*this};
-    }
-
-    /// Add a file to the background indexing queue.
-    void enqueue(std::uint32_t server_path_id);
-
-    /// Schedule background indexing (respects idle timeout and dedup).
-    void schedule();
-
-    /// Merge a TUIndex result into Workspace's ProjectIndex and MergedIndex shards.
-    void merge(const void* tu_index_data, std::size_t size);
-
-    /// Save Workspace's ProjectIndex and MergedIndex shards to the cache
-    /// store ("index" namespace, Persistent policy).  Serialization runs
-    /// on the event loop; each blob's commit (fsync + rename) is offloaded
-    /// to the kota thread pool.
-    kota::task<> save();
-
-    /// Load Workspace's ProjectIndex and MergedIndex shards from the cache
-    /// store, sweeping orphaned shard blobs.
-    void load();
-
-    /// Check whether a file needs re-indexing (stale or missing shard).
-    bool need_update(llvm::StringRef file_path);
+    IndexQuery(Workspace& workspace, const SessionStore& sessions) :
+        workspace(workspace), sessions(sessions) {}
 
     /// Query relations (Definition, Reference, etc.) for a symbol at cursor.
     /// @param session  Active Session for this file, or nullptr to use MergedIndex only.
@@ -198,41 +140,25 @@ public:
     /// Collect references (or definitions) with context lines from stored content.
     std::vector<ReferenceWithContext> collect_references(index::SymbolHash hash, RelationKind kind);
 
-    /// Cancel background indexing and wait for all tasks to settle.
-    kota::task<> stop();
+    /// Resolve an agentic locator to the set of matching symbols, by symbol
+    /// id, by name, or by path+line — the three strategies the agentic
+    /// read/definition/references tools share.
+    std::vector<ResolvedSymbol> locate_symbols(const agentic::ReadSymbolParams& loc);
 
-    /// Iterate all open Sessions via the callback set at construction.
-    void foreach_session(SessionVisitor visitor) const {
-        if(each_session)
-            each_session(std::move(visitor));
-    }
+    /// Iterate all open Sessions with valid, up-to-date file indices.
+    void visit_sessions(SessionVisitor visitor) const;
 
     /// Invoke a callback with the Session for a specific server-level path_id.
     /// The callback is not invoked if no Session exists for that path_id.
     template <typename Fn>
     void with_session(std::uint32_t server_path_id, Fn&& fn) const {
-        foreach_session([&](std::uint32_t id, const Session& session) -> bool {
+        visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
             if(id == server_path_id) {
                 fn(session);
                 return false;
             }
             return true;
         });
-    }
-
-    /// Whether background indexing is currently idle (no active or queued work).
-    bool is_idle() const {
-        return !indexing_active && index_queue_pos >= index_queue.size();
-    }
-
-    /// Number of files remaining in the indexing queue.
-    std::size_t pending_files() const {
-        return index_queue_pos < index_queue.size() ? index_queue.size() - index_queue_pos : 0;
-    }
-
-    /// Total files that were enqueued in the current (or last) indexing round.
-    std::size_t total_queued() const {
-        return index_queue.size();
     }
 
     /// Convert internal SymbolKind to LSP SymbolKind.
@@ -269,50 +195,31 @@ private:
     /// Resolve a symbol hash into a SymbolInfo with definition location.
     std::optional<SymbolInfo> resolve_symbol(index::SymbolHash hash);
 
-    /// Check whether a project-level path_id has an active Session.
-    bool is_proj_path_open(std::uint32_t proj_path_id) const {
-        if(!is_open)
-            return false;
+    /// Translate a project-index path_id to the server path_id for the same
+    /// file, or nullopt if the file is not in the server path pool.
+    std::optional<std::uint32_t> to_server_id(std::uint32_t proj_path_id) const {
         auto path = workspace.project_index.path_pool.path(proj_path_id);
         auto it = workspace.path_pool.cache.find(path);
         if(it == workspace.path_pool.cache.end())
-            return false;
-        return is_open(it->second);
+            return std::nullopt;
+        return it->second;
     }
 
-private:
-    kota::event_loop& loop;
-    kota::task_group<> bg_tasks;
+    /// Translate a server path_id to the project-index path_id for the same
+    /// file, or nullopt if the file is not in the project-index path pool.
+    std::optional<std::uint32_t> to_proj_id(std::uint32_t server_path_id) const {
+        auto path = workspace.path_pool.resolve(server_path_id);
+        auto it = workspace.project_index.path_pool.find(path);
+        if(it == workspace.project_index.path_pool.cache.end())
+            return std::nullopt;
+        return it->second;
+    }
+
+    /// Check whether a project-level path_id has an active Session.
+    bool is_proj_path_open(std::uint32_t proj_path_id) const;
+
     Workspace& workspace;
-    WorkerPool& pool;
-    Compiler& compiler;
-
-    /// Checks if a server-level path_id has an open Session.
-    std::function<bool(std::uint32_t)> is_open;
-
-    /// Iterates all open Sessions with valid file indices.
-    std::function<void(SessionVisitor)> each_session;
-
-    /// LSP peer for progress reporting (optional, not owned).
-    kota::ipc::JsonPeer* peer = nullptr;
-
-    /// Background indexing queue and scheduling state.  pending_ids mirrors
-    /// the un-consumed tail of index_queue so enqueue can dedupe; the queue
-    /// is compacted once a round has fully drained.
-    std::vector<std::uint32_t> index_queue;
-    llvm::DenseSet<std::uint32_t> pending_ids;
-    std::size_t index_queue_pos = 0;
-    bool indexing_active = false;
-    bool indexing_scheduled = false;
-    std::shared_ptr<kota::timer> index_idle_timer;
-
-    /// Pause/resume: when paused, new index tasks wait on this event.
-    /// Uses a counter so nested pause/resume pairs work correctly.
-    std::size_t pause_depth = 0;
-    kota::event resume_event{true};
-
-    kota::task<> run_background_indexing();
-    kota::task<> index_one(std::uint32_t server_path_id, std::size_t index, std::size_t total);
+    const SessionStore& sessions;
 };
 
 }  // namespace clice

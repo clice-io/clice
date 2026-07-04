@@ -1,6 +1,7 @@
 #include "server/service/lsp_client.h"
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <string>
 #include <type_traits>
@@ -50,7 +51,8 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
     output_conn = server.compiler.on_output.connect(
         [this](const std::shared_ptr<Session>& session) { push_output(*session); });
-    server.indexer.set_peer(&peer);
+    progress_conn = server.background_indexer.on_progress_changed.connect(
+        [this]() { report_index_progress(); });
 
     // The notify hook is process-wide and forwards anomaly/guidance messages
     // as window/logMessage notifications. It captures the peer, so it must
@@ -202,14 +204,10 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
 
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         session = srv.open_session(path_id);
-        session->version = params.text_document.version;
-        session->text = params.text_document.text;
-        session->line_starts = lsp::build_line_starts(session->text);
+        srv.sessions.apply_open(*session, params.text_document.text, params.text_document.version);
 
         // Restore a context choice persisted from an earlier session.
         srv.contexts.restore_saved_context(*session);
-
-        session->generation++;
 
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
     });
@@ -223,31 +221,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         if(!session)
             return;
 
-        session->version = params.text_document.version;
-
-        for(auto& change: params.content_changes) {
-            std::visit(
-                [&](auto& c) {
-                    using T = std::remove_cvref_t<decltype(c)>;
-                    if constexpr(std::is_same_v<T,
-                                                protocol::TextDocumentContentChangeWholeDocument>) {
-                        session->text = c.text;
-                    } else {
-                        auto& range = c.range;
-                        auto map = session->line_map();
-                        auto start = map.to_offset(range.start);
-                        auto end = map.to_offset(range.end);
-                        if(start && end && *start <= *end) {
-                            session->text.replace(*start, *end - *start, c.text);
-                        }
-                    }
-                    session->line_starts = lsp::build_line_starts(session->text);
-                },
-                change);
-        }
-
-        session->generation++;
-        session->ast_dirty = true;
+        srv.sessions.apply_change(*session, params.content_changes, params.text_document.version);
 
         LOG_DEBUG("didChange: path={} version={} gen={}",
                   path,
@@ -367,14 +341,14 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
 
     auto lookup_at = [this, resolve_uri](const std::string& uri, const protocol::Position& pos) {
         auto [path, path_id, session] = resolve_uri(uri);
-        return this->server.indexer.lookup_symbol(uri, path, pos, session.get());
+        return this->server.index_query.lookup_symbol(uri, path, pos, session.get());
     };
 
     auto query_at = [this, resolve_uri](const std::string& uri,
                                         const protocol::Position& pos,
                                         RelationKind kind) -> std::vector<protocol::Location> {
         auto [path, path_id, session] = resolve_uri(uri);
-        return this->server.indexer.query_relations(path, pos, kind, session.get());
+        return this->server.index_query.query_relations(path, pos, kind, session.get());
     };
 
     auto query_targets_at = [this,
@@ -382,7 +356,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                                           const protocol::Position& pos,
                                           RelationKind kind) -> std::vector<protocol::Location> {
         auto [path, path_id, session] = resolve_uri(uri);
-        return this->server.indexer.query_symbol_targets(path, pos, kind, session.get());
+        return this->server.index_query.query_symbol_targets(path, pos, kind, session.get());
     };
 
     auto resolve_item =
@@ -391,7 +365,11 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                       const protocol::Range& range,
                       const std::optional<protocol::LSPAny>& data) -> std::optional<SymbolInfo> {
         auto [path, path_id, session] = resolve_uri(uri);
-        return this->server.indexer.resolve_hierarchy_item(uri, path, range, data, session.get());
+        return this->server.index_query.resolve_hierarchy_item(uri,
+                                                               path,
+                                                               range,
+                                                               data,
+                                                               session.get());
     };
 
     peer.on_request([this, resolve_uri, query_at](
@@ -506,7 +484,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             resolve_uri(params.text_document_position_params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
-        auto pause = srv.indexer.scoped_pause();
+        auto pause = srv.background_indexer.scoped_pause();
         auto result =
             co_await srv.compiler.handle_completion(params.text_document_position_params.position,
                                                     session);
@@ -520,7 +498,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             resolve_uri(params.text_document_position_params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
-        auto pause = srv.indexer.scoped_pause();
+        auto pause = srv.background_indexer.scoped_pause();
         auto result =
             co_await srv.compiler.forward_build(worker::BuildKind::SignatureHelp,
                                                 params.text_document_position_params.position,
@@ -535,7 +513,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            auto pause = srv.indexer.scoped_pause();
+            auto pause = srv.background_indexer.scoped_pause();
             co_return co_await srv.compiler.forward_format(session);
         });
 
@@ -546,7 +524,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            auto pause = srv.indexer.scoped_pause();
+            auto pause = srv.background_indexer.scoped_pause();
             co_return co_await srv.compiler.forward_format(session, params.range);
         });
 
@@ -563,7 +541,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 co_return serde_raw{"null"};
 
             std::vector<protocol::CallHierarchyItem> items;
-            items.push_back(Indexer::build_call_hierarchy_item(*info));
+            items.push_back(IndexQuery::build_call_hierarchy_item(*info));
             co_return to_raw(items);
         });
 
@@ -573,7 +551,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return kota::outcome_error(item_not_resolved("call hierarchy"));
-        auto results = this->server.indexer.find_incoming_calls(info->hash);
+        auto results = this->server.index_query.find_incoming_calls(info->hash);
         co_return to_raw(results);
     });
 
@@ -583,7 +561,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
         if(!info)
             co_return kota::outcome_error(item_not_resolved("call hierarchy"));
-        auto results = this->server.indexer.find_outgoing_calls(info->hash);
+        auto results = this->server.index_query.find_outgoing_calls(info->hash);
         co_return to_raw(results);
     });
 
@@ -601,7 +579,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
                 co_return serde_raw{"null"};
 
             std::vector<protocol::TypeHierarchyItem> items;
-            items.push_back(Indexer::build_type_hierarchy_item(*info));
+            items.push_back(IndexQuery::build_type_hierarchy_item(*info));
             co_return to_raw(items);
         });
 
@@ -611,7 +589,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
             if(!info)
                 co_return kota::outcome_error(item_not_resolved("type hierarchy"));
-            auto results = this->server.indexer.find_supertypes(info->hash);
+            auto results = this->server.index_query.find_supertypes(info->hash);
             co_return to_raw(results);
         });
 
@@ -621,13 +599,13 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
             auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
             if(!info)
                 co_return kota::outcome_error(item_not_resolved("type hierarchy"));
-            auto results = this->server.indexer.find_subtypes(info->hash);
+            auto results = this->server.index_query.find_subtypes(info->hash);
             co_return to_raw(results);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::WorkspaceSymbolParams& params) -> RawResult {
-            auto results = this->server.indexer.search_symbols(params.query);
+            auto results = this->server.index_query.search_symbols(params.query);
             co_return to_raw(results);
         });
 
@@ -741,9 +719,70 @@ void LSPClient::push_output(const Session& session) {
     }
 }
 
+void LSPClient::report_index_progress() {
+    const auto& p = server.background_indexer.progress();
+    using Stage = BackgroundIndexer::Progress::Stage;
+    switch(p.stage) {
+        case Stage::Begin: {
+            progress_round_active = true;
+            progress_total = static_cast<std::uint32_t>(p.total);
+            // Register a fresh work-done token; once the client acknowledges
+            // it, announce the round. This is the create()+begin() handshake
+            // the indexer used to run inline, now driven from the transport so
+            // the indexer no longer needs a peer. The dispatch it once gated on
+            // proceeds independently; reports before the token is announced are
+            // dropped, so the first sub-second of a round may report fewer
+            // increments than before. If a previous round's handshake is still
+            // in flight, the token is reused: its continuation reconciles
+            // against the current round below, so at most one create() is ever
+            // outstanding and index_progress is never replaced mid-await.
+            if(progress_create_inflight || progress_token_active) {
+                break;
+            }
+            index_progress.emplace(peer,
+                                   protocol::ProgressToken(std::string("clice/backgroundIndex")));
+            progress_create_inflight = true;
+            server.loop.schedule([this]() -> kota::task<> {
+                // Timeout prevents the handshake from hanging when the client
+                // never responds.
+                auto create_result =
+                    co_await index_progress->create({.timeout = std::chrono::milliseconds(3000)});
+                progress_create_inflight = false;
+                // The round may have ended while the handshake was in flight —
+                // drop the token without announcing it.
+                if(create_result.has_error() || !progress_round_active) {
+                    index_progress.reset();
+                    co_return;
+                }
+                index_progress->begin("Indexing", std::format("0/{} files", progress_total), 0);
+                progress_token_active = true;
+            }());
+            break;
+        }
+        case Stage::Report: {
+            if(progress_token_active) {
+                auto pct =
+                    p.total > 0 ? static_cast<std::uint32_t>(p.completed * 100 / p.total) : 100;
+                index_progress->report(std::format("{}/{} files", p.completed, p.total), pct);
+            }
+            break;
+        }
+        case Stage::End: {
+            progress_round_active = false;
+            if(progress_token_active) {
+                index_progress->end(std::format("Indexed {} files", p.dispatched));
+                index_progress.reset();
+                progress_token_active = false;
+            }
+            // With a handshake still in flight, its continuation sees the
+            // round is gone and drops the token.
+            break;
+        }
+    }
+}
+
 LSPClient::~LSPClient() {
     logging::set_notify_hook(nullptr);
-    server.indexer.set_peer(nullptr);
 }
 
 }  // namespace clice

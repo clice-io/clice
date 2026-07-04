@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "command/command.h"
-#include "server/service/session.h"
+#include "server/session/session.h"
 #include "server/worker/worker_pool.h"
 #include "server/workspace/workspace.h"
 #include "support/signal.h"
@@ -63,8 +63,8 @@ enum class CommandSource : std::uint8_t {
 ///
 /// NOT responsible for:
 ///   - Document lifecycle (didOpen/didChange/didClose) — handled by MasterServer
-///   - Index queries — handled by Indexer
-///   - Background indexing scheduling — handled by Indexer
+///   - Index queries — handled by IndexQuery
+///   - Background indexing scheduling — handled by BackgroundIndexer
 class Compiler {
 public:
     Compiler(kota::event_loop& loop,

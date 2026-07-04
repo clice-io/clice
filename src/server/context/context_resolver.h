@@ -7,7 +7,7 @@
 
 #include "command/command.h"
 #include "server/protocol/extension.h"
-#include "server/service/session.h"
+#include "server/session/session.h"
 #include "server/workspace/workspace.h"
 
 #include "llvm/ADT/ArrayRef.h"

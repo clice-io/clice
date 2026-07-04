@@ -1,287 +1,51 @@
-#include "server/compiler/indexer.h"
+#include "server/index/query.h"
 
 #include <algorithm>
-#include <cassert>
+#include <bit>
 #include <string>
 #include <variant>
 #include <vector>
 
 #include "index/tu_index.h"
 #include "server/compiler/compiler.h"
-#include "server/protocol/worker.h"
-#include "server/service/session.h"
-#include "server/worker/worker_pool.h"
+#include "server/session/session.h"
+#include "server/session/session_store.h"
 #include "support/filesystem.h"
-#include "support/logging.h"
-#include "support/timer.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
 namespace lsp = kota::ipc::lsp;
 
-void Indexer::merge(const void* tu_index_data, std::size_t size) {
-    auto tu_index = index::TUIndex::from(tu_index_data);
-    if(tu_index.graph.paths.empty()) {
-        LOG_WARN("Ignoring TUIndex with empty path graph");
-        return;
-    }
-    auto file_ids_map = workspace.project_index.merge(tu_index);
-    auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
-
-    // Collect non-External symbols referenced in a FileIndex.  Each file's
-    // MergedIndex shard stores exactly the local symbols its occurrences
-    // reference, so lookup is a single shard check — no scanning.
-    auto collect_local_symbols = [&](const index::FileIndex& file_idx) {
-        index::SymbolTable result;
-        for(auto& occ: file_idx.occurrences) {
-            auto it = tu_index.symbols.find(occ.target);
-            if(it != tu_index.symbols.end() && it->second.scope != index::SymbolScope::External) {
-                result.try_emplace(occ.target, it->second);
-            }
+void IndexQuery::visit_sessions(SessionVisitor visitor) const {
+    sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
+        // FIXME: when ast_dirty, consider awaiting recompilation
+        // instead of silently falling back to MergedIndex.
+        if(session.file_index && session.symbols && !session.ast_dirty) {
+            return visitor(path_id, session);
         }
-        return result;
-    };
-
-    auto merge_file_index = [&](std::uint32_t tu_path_id, index::FileIndex& file_idx) {
-        auto global_path_id = file_ids_map[tu_path_id];
-        auto& shard = workspace.merged_indices[global_path_id];
-
-        if(tu_path_id == main_tu_path_id) {
-            std::vector<index::IncludeLocation> include_locs;
-            for(auto& loc: tu_index.graph.locations) {
-                index::IncludeLocation remapped = loc;
-                remapped.path_id = file_ids_map[loc.path_id];
-                include_locs.push_back(remapped);
-            }
-            auto file_path = workspace.project_index.path_pool.path(global_path_id);
-            llvm::StringRef file_content;
-            std::string file_content_storage;
-            auto buf = llvm::MemoryBuffer::getFile(file_path);
-            if(buf) {
-                file_content_storage = (*buf)->getBuffer().str();
-                file_content = file_content_storage;
-            }
-            shard.merge(global_path_id,
-                        tu_index.built_at,
-                        std::move(include_locs),
-                        file_idx,
-                        file_content);
-            shard.merge_symbols(collect_local_symbols(file_idx));
-        } else {
-            std::optional<std::uint32_t> include_id;
-            for(std::uint32_t i = 0; i < tu_index.graph.locations.size(); ++i) {
-                if(tu_index.graph.locations[i].path_id == tu_path_id) {
-                    include_id = i;
-                    break;
-                }
-            }
-            if(!include_id) {
-                LOG_WARN("Skip merge for path {}: include location not found", global_path_id);
-                return;
-            }
-            auto header_path = workspace.project_index.path_pool.path(global_path_id);
-            llvm::StringRef header_content;
-            std::string header_content_storage;
-            auto header_buf = llvm::MemoryBuffer::getFile(header_path);
-            if(header_buf) {
-                header_content_storage = (*header_buf)->getBuffer().str();
-                header_content = header_content_storage;
-            }
-            shard.merge(global_path_id, *include_id, file_idx, header_content);
-            shard.merge_symbols(collect_local_symbols(file_idx));
-        }
-    };
-
-    for(auto& [tu_path_id, file_idx]: tu_index.path_file_indices) {
-        merge_file_index(tu_path_id, file_idx);
-    }
-    merge_file_index(main_tu_path_id, tu_index.main_file_index);
-
-    auto external_count = std::ranges::count_if(tu_index.symbols, [](auto& kv) {
-        return kv.second.scope == index::SymbolScope::External;
-    });
-    LOG_INFO("Merged TUIndex: {} paths, {} symbols ({} external), {} merged_shards",
-             tu_index.graph.paths.size(),
-             tu_index.symbols.size(),
-             external_count,
-             workspace.merged_indices.size());
-}
-
-/// Begin a two-phase store write and serialize the blob to its tmp path.
-/// Returns the entry to commit, or nullopt if serialization failed.
-static std::optional<CacheStore::PendingEntry>
-    serialize_blob(CacheStore& store,
-                   llvm::StringRef key,
-                   llvm::function_ref<void(llvm::raw_ostream&)> serialize) {
-    auto pending = store.begin_store("index", key);
-    std::error_code ec;
-    llvm::raw_fd_ostream os(pending.tmp_path, ec);
-    if(ec) {
-        LOG_WARN("Failed to write index blob {}: {}", key, ec.message());
-        store.abort(pending);
-        return std::nullopt;
-    }
-    serialize(os);
-    os.flush();
-    // A truncated blob (disk full) must never be committed: the index
-    // namespace is Persistent, so it would be served forever.
-    if(os.has_error()) {
-        LOG_WARN("Failed to write index blob {}: {}", key, os.error().message());
-        os.clear_error();
-        store.abort(pending);
-        return std::nullopt;
-    }
-    return pending;
-}
-
-kota::task<> Indexer::save() {
-    if(!workspace.store)
-        co_return;
-    auto& store = *workspace.store;
-    ScopedTimer timer;
-
-    // Phase 1, synchronous: serialize the ProjectIndex and every dirty
-    // shard to tmp files.  No suspension point in between, so the batch is
-    // a consistent snapshot even if a merge runs before the commits below
-    // are done.  Shards are only published together with the ProjectIndex
-    // they were built against: pairing new shards with an old project blob
-    // (or vice versa) would serve a mixed snapshot after restart.
-    auto project_pending = serialize_blob(store, "project", [&](llvm::raw_ostream& os) {
-        workspace.project_index.serialize(os);
-    });
-    if(!project_pending) {
-        LOG_WARN("Skipping index save: ProjectIndex serialization failed");
-        co_return;
-    }
-    LOG_INFO("Saved ProjectIndex ({} symbols)", workspace.project_index.symbols.size());
-
-    llvm::SmallVector<CacheStore::PendingEntry> shards;
-    std::size_t total = workspace.merged_indices.size();
-    for(auto& [path_id, shard]: workspace.merged_indices) {
-        if(!shard.need_rewrite())
-            continue;
-        if(auto pending = serialize_blob(store,
-                                         std::to_string(path_id),
-                                         [&](llvm::raw_ostream& os) { shard.serialize(os); })) {
-            shards.push_back(std::move(*pending));
-        }
-    }
-    LOG_INFO("Saved {} MergedIndex shards (of {} total)", shards.size(), total);
-
-    // Phase 2: commit each blob (fsync + atomic rename) on the kota thread
-    // pool, keeping the heavy IO off the event loop.  The project blob goes
-    // first; if it cannot be published, drop the shards of this snapshot.
-    auto committed =
-        co_await kota::queue([&] { return store.commit(std::move(*project_pending)); });
-    if(!committed.has_value() || !committed.value().has_value()) {
-        LOG_WARN("Failed to commit ProjectIndex blob, dropping {} shard blobs", shards.size());
-        for(auto& pending: shards) {
-            store.abort(pending);
-        }
-        co_return;
-    }
-
-    // FIXME: shard commits are strictly sequential (one co_await per shard).
-    // For large projects this adds ~N×2ms of round-trip overhead.  Consider
-    // batching commits or dispatching them in parallel on the thread pool.
-    for(auto& pending: shards) {
-        auto key = pending.key;
-        auto result = co_await kota::queue([&] { return store.commit(std::move(pending)); });
-        if(!result.has_value() || !result.value().has_value()) {
-            LOG_WARN("Failed to commit index blob {}", key);
-        }
-    }
-
-    LOG_PERF("index",
-             "phase=save shards={} total={} elapsed_ms={}",
-             shards.size(),
-             total,
-             timer.ms());
-}
-
-void Indexer::load() {
-    if(!workspace.store)
-        return;
-    ScopedTimer timer;
-
-    bool has_project = false;
-    auto project_path = workspace.store->lookup("index", "project");
-    if(project_path) {
-        auto buf = llvm::MemoryBuffer::getFile(*project_path);
-        if(!buf) {
-            // Transient read failure — don't load shards (useless without
-            // the project index), but don't destroy them either.
-            LOG_WARN("Failed to read ProjectIndex blob: {}", buf.getError().message());
-            return;
-        }
-        workspace.project_index = index::ProjectIndex::from((*buf)->getBufferStart());
-        has_project = true;
-        LOG_INFO("Loaded ProjectIndex: {} symbols", workspace.project_index.symbols.size());
-    }
-
-    // Load shards; sweep blobs that no longer correspond to anything —
-    // unparseable keys, or all shards when the project index itself is
-    // gone (Persistent namespace cleanup is the caller's mark-and-sweep).
-    llvm::SmallVector<std::string> orphans;
-    workspace.store->for_each_key("index", [&](llvm::StringRef key) {
-        if(key == "project")
-            return;
-
-        std::uint32_t path_id = 0;
-        if(key.getAsInteger(10, path_id) || !has_project) {
-            orphans.push_back(key.str());
-            return;
-        }
-
-        auto shard_path = workspace.store->lookup("index", key);
-        if(shard_path) {
-            workspace.merged_indices[path_id] = index::MergedIndex::load(*shard_path);
-        }
-    });
-
-    for(auto& key: orphans) {
-        workspace.store->invalidate("index", key);
-    }
-
-    if(!workspace.merged_indices.empty()) {
-        LOG_INFO("Loaded {} MergedIndex shards", workspace.merged_indices.size());
-    }
-    LOG_PERF("startup",
-             "phase=index_load symbols={} shards={} elapsed_ms={}",
-             workspace.project_index.symbols.size(),
-             workspace.merged_indices.size(),
-             timer.ms());
-}
-
-bool Indexer::need_update(llvm::StringRef file_path) {
-    auto cache_it = workspace.project_index.path_pool.find(file_path);
-    if(cache_it == workspace.project_index.path_pool.cache.end())
         return true;
-
-    auto merged_it = workspace.merged_indices.find(cache_it->second);
-    if(merged_it == workspace.merged_indices.end())
-        return true;
-
-    llvm::SmallVector<llvm::StringRef> path_mapping;
-    for(auto& p: workspace.project_index.path_pool.paths) {
-        path_mapping.push_back(p);
-    }
-    return merged_it->second.need_update(path_mapping);
+    });
 }
 
-bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const {
+bool IndexQuery::is_proj_path_open(std::uint32_t proj_path_id) const {
+    auto server_id = to_server_id(proj_path_id);
+    if(!server_id)
+        return false;
+    return sessions.find(*server_id) != nullptr;
+}
+
+bool IndexQuery::find_symbol_info(index::SymbolHash hash,
+                                  std::string& name,
+                                  SymbolKind& kind) const {
     // Check open sessions first (has all symbols for unsaved buffers).
     bool found = false;
-    foreach_session([&](std::uint32_t, const Session& session) -> bool {
+    visit_sessions([&](std::uint32_t, const Session& session) -> bool {
         if(!session.symbols)
             return true;
         auto it = session.symbols->find(hash);
@@ -314,9 +78,9 @@ bool Indexer::find_symbol_info(index::SymbolHash hash, std::string& name, Symbol
     return false;
 }
 
-Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
-                                           const protocol::Position& position,
-                                           Session* session) {
+IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
+                                                 const protocol::Position& position,
+                                                 Session* session) {
     // FIXME: when ast_dirty, we fall back to MergedIndex which may be staler.
     // Consider awaiting the pending recompilation to serve fresher results.
     if(session && session->file_index && !session->ast_dirty) {
@@ -365,10 +129,10 @@ Indexer::CursorHit Indexer::resolve_cursor(llvm::StringRef path,
     return hit;
 }
 
-std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
-                                                         const protocol::Position& position,
-                                                         RelationKind kind,
-                                                         Session* session) {
+std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path,
+                                                            const protocol::Position& position,
+                                                            RelationKind kind,
+                                                            Session* session) {
     auto hit = resolve_cursor(path, position, session);
     if(hit.hash == 0)
         return {};
@@ -399,7 +163,7 @@ std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
         }
     }
 
-    foreach_session([&](std::uint32_t id, const Session& session) -> bool {
+    visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
             return true;
@@ -415,10 +179,10 @@ std::vector<protocol::Location> Indexer::query_relations(llvm::StringRef path,
     return locations;
 }
 
-std::vector<protocol::Location> Indexer::query_symbol_targets(llvm::StringRef path,
-                                                              const protocol::Position& position,
-                                                              RelationKind kind,
-                                                              Session* session) {
+std::vector<protocol::Location> IndexQuery::query_symbol_targets(llvm::StringRef path,
+                                                                 const protocol::Position& position,
+                                                                 RelationKind kind,
+                                                                 Session* session) {
     auto hit = resolve_cursor(path, position, session);
     if(hit.hash == 0)
         return {};
@@ -435,10 +199,10 @@ std::vector<protocol::Location> Indexer::query_symbol_targets(llvm::StringRef pa
     return locations;
 }
 
-std::optional<SymbolInfo> Indexer::lookup_symbol(const std::string& uri,
-                                                 llvm::StringRef path,
-                                                 const protocol::Position& position,
-                                                 Session* session) {
+std::optional<SymbolInfo> IndexQuery::lookup_symbol(const std::string& uri,
+                                                    llvm::StringRef path,
+                                                    const protocol::Position& position,
+                                                    Session* session) {
     auto hit = resolve_cursor(path, position, session);
     if(hit.hash == 0)
         return std::nullopt;
@@ -451,9 +215,9 @@ std::optional<SymbolInfo> Indexer::lookup_symbol(const std::string& uri,
     return SymbolInfo{hit.hash, std::move(name), sym_kind, uri, hit.range};
 }
 
-std::optional<protocol::Location> Indexer::find_definition_location(index::SymbolHash hash) {
+std::optional<protocol::Location> IndexQuery::find_definition_location(index::SymbolHash hash) {
     std::optional<protocol::Location> session_result;
-    foreach_session([&](std::uint32_t id, const Session& session) -> bool {
+    visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
             return true;
@@ -505,11 +269,11 @@ std::optional<protocol::Location> Indexer::find_definition_location(index::Symbo
 }
 
 std::optional<SymbolInfo>
-    Indexer::resolve_hierarchy_item(const std::string& uri,
-                                    llvm::StringRef path,
-                                    const protocol::Range& range,
-                                    const std::optional<protocol::LSPAny>& data,
-                                    Session* session) {
+    IndexQuery::resolve_hierarchy_item(const std::string& uri,
+                                       llvm::StringRef path,
+                                       const protocol::Range& range,
+                                       const std::optional<protocol::LSPAny>& data,
+                                       Session* session) {
     if(data) {
         if(auto* int_val = std::get_if<std::int64_t>(&*data)) {
             auto hash = static_cast<index::SymbolHash>(*int_val);
@@ -523,7 +287,7 @@ std::optional<SymbolInfo>
     return lookup_symbol(uri, path, range.start, session);
 }
 
-void Indexer::collect_grouped_relations(
+void IndexQuery::collect_grouped_relations(
     index::SymbolHash hash,
     RelationKind kind,
     llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>>& target_ranges) {
@@ -547,7 +311,7 @@ void Indexer::collect_grouped_relations(
             });
         }
     }
-    foreach_session([&](std::uint32_t, const Session& session) -> bool {
+    visit_sessions([&](std::uint32_t, const Session& session) -> bool {
         auto map = session.line_map();
         session.file_index->lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end))
@@ -558,9 +322,9 @@ void Indexer::collect_grouped_relations(
     });
 }
 
-void Indexer::collect_unique_targets(index::SymbolHash hash,
-                                     RelationKind kind,
-                                     llvm::SmallVectorImpl<index::SymbolHash>& targets) {
+void IndexQuery::collect_unique_targets(index::SymbolHash hash,
+                                        RelationKind kind,
+                                        llvm::SmallVectorImpl<index::SymbolHash>& targets) {
     llvm::DenseSet<index::SymbolHash> seen;
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
@@ -578,7 +342,7 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
             });
         }
     }
-    foreach_session([&](std::uint32_t, const Session& session) -> bool {
+    visit_sessions([&](std::uint32_t, const Session& session) -> bool {
         auto rel_it = session.file_index->relations.find(hash);
         if(rel_it == session.file_index->relations.end())
             return true;
@@ -595,7 +359,7 @@ void Indexer::collect_unique_targets(index::SymbolHash hash,
 
 /// Resolve a symbol hash into a SymbolInfo with definition location.
 /// Returns nullopt if the symbol or its definition cannot be found.
-std::optional<SymbolInfo> Indexer::resolve_symbol(index::SymbolHash hash) {
+std::optional<SymbolInfo> IndexQuery::resolve_symbol(index::SymbolHash hash) {
     std::string name;
     SymbolKind kind;
     if(!find_symbol_info(hash, name, kind))
@@ -621,9 +385,9 @@ static std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
     return content.slice(line_start, line_end).str();
 }
 
-std::optional<Indexer::DefinitionText> Indexer::get_definition_text(index::SymbolHash hash) {
+std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index::SymbolHash hash) {
     std::optional<DefinitionText> session_result;
-    foreach_session([&](std::uint32_t id, const Session& session) -> bool {
+    visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
         auto map = session.line_map();
         session.file_index->lookup(hash, RelationKind::Definition, [&](const index::Relation& rel) {
             auto def_range = std::bit_cast<LocalSourceRange>(rel.target_symbol);
@@ -687,8 +451,8 @@ std::optional<Indexer::DefinitionText> Indexer::get_definition_text(index::Symbo
     return std::nullopt;
 }
 
-std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::SymbolHash hash,
-                                                                       RelationKind kind) {
+std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(index::SymbolHash hash,
+                                                                             RelationKind kind) {
     std::vector<ReferenceWithContext> results;
 
     auto sym_it = workspace.project_index.symbols.find(hash);
@@ -721,7 +485,7 @@ std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::Sy
         }
     }
 
-    foreach_session([&](std::uint32_t id, const Session& session) -> bool {
+    visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
         auto map = session.line_map();
         auto file_path = workspace.path_pool.resolve(id);
         session.file_index->lookup(hash, kind, [&](const index::Relation& rel) {
@@ -742,7 +506,7 @@ std::vector<Indexer::ReferenceWithContext> Indexer::collect_references(index::Sy
 }
 
 std::vector<protocol::CallHierarchyIncomingCall>
-    Indexer::find_incoming_calls(index::SymbolHash hash) {
+    IndexQuery::find_incoming_calls(index::SymbolHash hash) {
     llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> caller_ranges;
     collect_grouped_relations(hash, RelationKind::Caller, caller_ranges);
 
@@ -757,7 +521,7 @@ std::vector<protocol::CallHierarchyIncomingCall>
 }
 
 std::vector<protocol::CallHierarchyOutgoingCall>
-    Indexer::find_outgoing_calls(index::SymbolHash hash) {
+    IndexQuery::find_outgoing_calls(index::SymbolHash hash) {
     llvm::DenseMap<index::SymbolHash, std::vector<protocol::Range>> callee_ranges;
     collect_grouped_relations(hash, RelationKind::Callee, callee_ranges);
 
@@ -771,7 +535,7 @@ std::vector<protocol::CallHierarchyOutgoingCall>
     return results;
 }
 
-std::vector<protocol::TypeHierarchyItem> Indexer::find_supertypes(index::SymbolHash hash) {
+std::vector<protocol::TypeHierarchyItem> IndexQuery::find_supertypes(index::SymbolHash hash) {
     llvm::SmallVector<index::SymbolHash> base_hashes;
     collect_unique_targets(hash, RelationKind::Base, base_hashes);
 
@@ -785,7 +549,7 @@ std::vector<protocol::TypeHierarchyItem> Indexer::find_supertypes(index::SymbolH
     return results;
 }
 
-std::vector<protocol::TypeHierarchyItem> Indexer::find_subtypes(index::SymbolHash hash) {
+std::vector<protocol::TypeHierarchyItem> IndexQuery::find_subtypes(index::SymbolHash hash) {
     llvm::SmallVector<index::SymbolHash> derived_hashes;
     collect_unique_targets(hash, RelationKind::Derived, derived_hashes);
 
@@ -799,8 +563,8 @@ std::vector<protocol::TypeHierarchyItem> Indexer::find_subtypes(index::SymbolHas
     return results;
 }
 
-std::vector<protocol::SymbolInformation> Indexer::search_symbols(llvm::StringRef query,
-                                                                 std::size_t max_results) {
+std::vector<protocol::SymbolInformation> IndexQuery::search_symbols(llvm::StringRef query,
+                                                                    std::size_t max_results) {
     std::string query_lower = query.lower();
 
     auto is_indexable_kind = [](SymbolKind sk) {
@@ -842,7 +606,7 @@ std::vector<protocol::SymbolInformation> Indexer::search_symbols(llvm::StringRef
         seen.insert(hash);
     }
 
-    foreach_session([&](std::uint32_t, const Session& session) -> bool {
+    visit_sessions([&](std::uint32_t, const Session& session) -> bool {
         if(results.size() >= max_results)
             return false;
         for(auto& [hash, symbol]: *session.symbols) {
@@ -870,7 +634,150 @@ std::vector<protocol::SymbolInformation> Indexer::search_symbols(llvm::StringRef
     return results;
 }
 
-protocol::SymbolKind Indexer::to_lsp_symbol_kind(SymbolKind kind) {
+std::vector<ResolvedSymbol> IndexQuery::locate_symbols(const agentic::ReadSymbolParams& loc) {
+    if(loc.symbol_id.has_value() && *loc.symbol_id != 0) {
+        auto hash = static_cast<index::SymbolHash>(*loc.symbol_id);
+        std::string name;
+        SymbolKind kind;
+        if(!find_symbol_info(hash, name, kind))
+            return {};
+        auto def_loc = find_definition_location(hash);
+        if(!def_loc)
+            return {};
+        auto file = uri_to_path(def_loc->uri);
+        int line_num = static_cast<int>(def_loc->range.start.line) + 1;
+        return {
+            {hash, std::move(name), kind, std::move(file), line_num}
+        };
+    }
+
+    if(loc.name.has_value() && !loc.name->empty()) {
+        std::string query_lower = llvm::StringRef(*loc.name).lower();
+        std::vector<ResolvedSymbol> candidates;
+        std::vector<ResolvedSymbol> exact_matches;
+        llvm::DenseSet<index::SymbolHash> seen;
+
+        auto try_symbol = [&](index::SymbolHash hash, const index::Symbol& symbol) {
+            if(symbol.name.empty())
+                return;
+            if(llvm::StringRef(symbol.name).lower().find(query_lower) == std::string::npos)
+                return;
+            auto def_loc = find_definition_location(hash);
+            if(!def_loc)
+                return;
+            if(!seen.insert(hash).second)
+                return;
+
+            auto file = uri_to_path(def_loc->uri);
+            int line_num = static_cast<int>(def_loc->range.start.line) + 1;
+
+            if(loc.path.has_value() && !loc.path->empty()) {
+                llvm::StringRef wanted(*loc.path);
+                bool basename_only = wanted.find_last_of("/\\") == llvm::StringRef::npos;
+                if(basename_only) {
+                    if(llvm::sys::path::filename(file) != wanted)
+                        return;
+                } else if(!llvm::StringRef(file).ends_with(wanted)) {
+                    return;
+                }
+            }
+
+            bool is_exact = llvm::StringRef(symbol.name).lower() == query_lower ||
+                            llvm::StringRef(symbol.name).ends_with("::" + *loc.name);
+
+            ResolvedSymbol rs{hash, symbol.name, symbol.kind, std::move(file), line_num};
+            if(is_exact)
+                exact_matches.push_back(std::move(rs));
+            else
+                candidates.push_back(std::move(rs));
+        };
+
+        for(auto& [hash, symbol]: workspace.project_index.symbols)
+            try_symbol(hash, symbol);
+        visit_sessions([&](std::uint32_t, const Session& session) -> bool {
+            for(auto& [hash, symbol]: *session.symbols)
+                try_symbol(hash, symbol);
+            return true;
+        });
+
+        if(!exact_matches.empty())
+            return exact_matches;
+        return candidates;
+    }
+
+    if(loc.path.has_value() && loc.line.has_value()) {
+        auto path_str = *loc.path;
+        auto target_line = static_cast<protocol::uinteger>(*loc.line - 1);
+
+        auto pool_it = workspace.path_pool.cache.find(path_str);
+        auto server_id = pool_it != workspace.path_pool.cache.end() ? pool_it->second : ~0u;
+        if(server_id != ~0u) {
+            std::vector<ResolvedSymbol> session_result;
+            with_session(server_id, [&](const Session& session) {
+                auto map = session.line_map();
+                for(auto& [hash, rels]: session.file_index->relations) {
+                    for(auto& rel: rels) {
+                        if(rel.kind.value() != RelationKind::Definition)
+                            continue;
+                        auto start = map.to_position(rel.range.begin);
+                        if(start && start->line == target_line) {
+                            std::string name;
+                            SymbolKind kind;
+                            if(!find_symbol_info(hash, name, kind))
+                                continue;
+                            if(kind == SymbolKind::Parameter || kind == SymbolKind::Label)
+                                continue;
+                            session_result.push_back(
+                                {hash, std::move(name), kind, path_str, *loc.line});
+                        }
+                    }
+                }
+            });
+            if(!session_result.empty())
+                return session_result;
+        }
+
+        auto it = workspace.project_index.path_pool.find(path_str);
+        if(it == workspace.project_index.path_pool.cache.end())
+            return {};
+
+        auto proj_id = it->second;
+        auto shard_it = workspace.merged_indices.find(proj_id);
+        if(shard_it == workspace.merged_indices.end())
+            return {};
+
+        auto& merged_index = shard_it->second;
+        auto ls = merged_index.line_starts();
+        if(ls.empty())
+            return {};
+        lsp::LineMap map(merged_index.content(), ls);
+
+        for(auto& [hash, symbol]: workspace.project_index.symbols) {
+            if(!symbol.reference_files.contains(proj_id))
+                continue;
+            bool found = false;
+            merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+                // FIXME: unchecked optional dereference
+                auto range = map.to_range(r.range.begin, r.range.end);
+                if(range && range->start.line == target_line) {
+                    found = true;
+                    return false;
+                }
+                return true;
+            });
+            if(found)
+                return {
+                    {hash, symbol.name, symbol.kind, path_str, *loc.line}
+                };
+        }
+
+        return {};
+    }
+
+    return {};
+}
+
+protocol::SymbolKind IndexQuery::to_lsp_symbol_kind(SymbolKind kind) {
     switch(kind) {
         case SymbolKind::Namespace: return protocol::SymbolKind::Namespace;
         case SymbolKind::Class: return protocol::SymbolKind::Class;
@@ -892,7 +799,7 @@ protocol::SymbolKind Indexer::to_lsp_symbol_kind(SymbolKind kind) {
     }
 }
 
-protocol::CallHierarchyItem Indexer::build_call_hierarchy_item(const SymbolInfo& info) {
+protocol::CallHierarchyItem IndexQuery::build_call_hierarchy_item(const SymbolInfo& info) {
     protocol::CallHierarchyItem item;
     item.name = info.name;
     item.kind = to_lsp_symbol_kind(info.kind);
@@ -903,7 +810,7 @@ protocol::CallHierarchyItem Indexer::build_call_hierarchy_item(const SymbolInfo&
     return item;
 }
 
-protocol::TypeHierarchyItem Indexer::build_type_hierarchy_item(const SymbolInfo& info) {
+protocol::TypeHierarchyItem IndexQuery::build_type_hierarchy_item(const SymbolInfo& info) {
     protocol::TypeHierarchyItem item;
     item.name = info.name;
     item.kind = to_lsp_symbol_kind(info.kind);
@@ -912,201 +819,6 @@ protocol::TypeHierarchyItem Indexer::build_type_hierarchy_item(const SymbolInfo&
     item.selection_range = info.range;
     item.data = protocol::LSPAny(static_cast<std::int64_t>(info.hash));
     return item;
-}
-
-void Indexer::enqueue(std::uint32_t server_path_id) {
-    // Already queued and not yet consumed — a second entry would only be
-    // skipped by need_update later; drop it here.
-    if(!pending_ids.insert(server_path_id).second)
-        return;
-    index_queue.push_back(server_path_id);
-}
-
-void Indexer::pause_indexing() {
-    ++pause_depth;
-    if(pause_depth == 1) {
-        resume_event.reset();
-        LOG_DEBUG("Background indexing paused");
-    }
-}
-
-void Indexer::resume_indexing() {
-    if(pause_depth > 0)
-        --pause_depth;
-    if(pause_depth == 0) {
-        resume_event.set();
-        LOG_DEBUG("Background indexing resumed");
-    }
-}
-
-kota::task<> Indexer::stop() {
-    bg_tasks.cancel();
-    co_await bg_tasks.join();
-}
-
-void Indexer::schedule() {
-    if(!*workspace.config.project.enable_indexing || indexing_active || indexing_scheduled)
-        return;
-    indexing_scheduled = true;
-
-    if(!index_idle_timer) {
-        index_idle_timer = std::make_shared<kota::timer>(kota::timer::create(loop));
-    }
-    index_idle_timer->start(std::chrono::milliseconds(*workspace.config.project.idle_timeout_ms));
-
-    if(!bg_tasks.spawn(run_background_indexing())) {
-        indexing_scheduled = false;
-        LOG_WARN("Failed to spawn background indexing task (task group stopped)");
-    }
-}
-
-kota::task<> Indexer::index_one(std::uint32_t server_path_id,
-                                std::size_t index,
-                                std::size_t total) {
-    auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
-
-    if(is_open && is_open(server_path_id))
-        co_return;
-
-    if(!need_update(file_path))
-        co_return;
-
-    // For module interface units, compile their PCM (and transitive deps)
-    // first so the stateless worker has the artifacts it needs.
-    if(workspace.compile_graph && workspace.path_to_module.contains(server_path_id)) {
-        co_await workspace.compile_graph->compile(server_path_id);
-    }
-
-    worker::BuildParams params;
-    params.kind = worker::BuildKind::Index;
-    params.file = file_path;
-    // Bulk background indexing sticks to real commands; synthesized fallback
-    // commands would fill the index with guesses.
-    if(compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr) ==
-       CommandSource::Fallback)
-        co_return;
-
-    workspace.fill_pcm_deps(params.pcms);
-
-    LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
-
-    ScopedTimer timer;
-    auto result = co_await pool.send_stateless(params);
-    if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
-        auto index_ms = timer.ms();
-        ScopedTimer merge_timer;
-        merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
-        LOG_PERF("index",
-                 "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
-                 index,
-                 total,
-                 file_path,
-                 result.value().tu_index_data.size(),
-                 index_ms,
-                 merge_timer.ms());
-    } else if(result.has_value() && !result.value().success) {
-        LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, result.value().error);
-    } else if(result.has_value() && result.value().tu_index_data.empty()) {
-        LOG_WARN("[{}/{}] Index returned empty TUIndex for {}", index, total, file_path);
-    } else {
-        LOG_WARN("[{}/{}] Index IPC error for {}: {}",
-                 index,
-                 total,
-                 file_path,
-                 result.error().message);
-    }
-}
-
-kota::task<> Indexer::run_background_indexing() {
-    if(index_idle_timer) {
-        co_await index_idle_timer->wait();
-    }
-    indexing_scheduled = false;
-
-    if(index_queue_pos >= index_queue.size()) {
-        LOG_DEBUG("Background indexing: queue exhausted");
-        co_return;
-    }
-
-    indexing_active = true;
-    LOG_DEBUG("Background indexing: starting, {} files queued",
-              index_queue.size() - index_queue_pos);
-
-    std::stable_partition(
-        index_queue.begin() + index_queue_pos,
-        index_queue.end(),
-        [this](std::uint32_t id) { return workspace.path_to_module.contains(id); });
-
-    auto total = index_queue.size() - index_queue_pos;
-    std::size_t dispatched = 0;
-    std::size_t completed = 0;
-
-    std::optional<lsp::ProgressReporter<kota::ipc::JsonPeer>> progress;
-    if(peer) {
-        progress.emplace(*peer, protocol::ProgressToken(std::string("clice/backgroundIndex")));
-        // Timeout prevents indexing from hanging when the client never responds.
-        auto create_result =
-            co_await progress->create({.timeout = std::chrono::milliseconds(3000)});
-        if(!create_result.has_error()) {
-            progress->begin("Indexing", std::format("0/{} files", total), 0);
-        } else {
-            progress.reset();
-        }
-    }
-
-    // Timed after the progress handshake so a slow client's create() wait
-    // (up to 3s) does not inflate the reported indexing duration.
-    ScopedTimer timer;
-    kota::task_group<> workers(loop);
-
-    while(index_queue_pos < index_queue.size()) {
-        if(pause_depth > 0)
-            co_await resume_event.wait();
-
-        auto server_path_id = index_queue[index_queue_pos++];
-        pending_ids.erase(server_path_id);
-        auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
-        if((is_open && is_open(server_path_id)) || !need_update(file_path)) {
-            ++completed;
-            continue;
-        }
-
-        ++dispatched;
-        workers.spawn([&, server_path_id, n = dispatched]() -> kota::task<> {
-            co_await index_one(server_path_id, n, total);
-            ++completed;
-            if(progress) {
-                auto pct = total > 0 ? static_cast<std::uint32_t>(completed * 100 / total) : 100;
-                progress->report(std::format("{}/{} files", completed, total), pct);
-            }
-        }());
-    }
-
-    LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
-    co_await workers.join();
-
-    if(progress) {
-        progress->end(std::format("Indexed {} files", dispatched));
-    }
-
-    indexing_active = false;
-
-    // Safe point to compact: no dispatch loop holds an index into the queue.
-    // Files enqueued while we awaited the workers keep the queue alive for
-    // the next scheduled round.
-    if(index_queue_pos >= index_queue.size()) {
-        assert(pending_ids.empty() && "drained queue must have no pending ids");
-        index_queue.clear();
-        index_queue_pos = 0;
-    }
-
-    LOG_PERF("index",
-             "phase=run dispatched={} skipped={} total={} elapsed_ms={}",
-             dispatched,
-             total - dispatched,
-             total,
-             timer.ms());
-    co_await save();
 }
 
 }  // namespace clice

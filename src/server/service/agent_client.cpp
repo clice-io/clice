@@ -33,164 +33,11 @@ static std::string_view symbol_kind_name(SymbolKind kind) {
     return "Unknown";
 }
 
-struct ResolvedSymbol {
-    index::SymbolHash hash = 0;
-    std::string name;
-    SymbolKind kind;
-    std::string file;
-    int line = 0;
-};
-
-static std::vector<ResolvedSymbol> resolve_locator(const agentic::ReadSymbolParams& loc,
-                                                   Workspace& workspace,
-                                                   Indexer& indexer) {
-    if(loc.symbol_id.has_value() && *loc.symbol_id != 0) {
-        auto hash = static_cast<index::SymbolHash>(*loc.symbol_id);
-        std::string name;
-        SymbolKind kind;
-        if(!indexer.find_symbol_info(hash, name, kind))
-            return {};
-        auto def_loc = indexer.find_definition_location(hash);
-        if(!def_loc)
-            return {};
-        auto file = uri_to_path(def_loc->uri);
-        int line_num = static_cast<int>(def_loc->range.start.line) + 1;
-        return {
-            {hash, std::move(name), kind, std::move(file), line_num}
-        };
-    }
-
-    if(loc.name.has_value() && !loc.name->empty()) {
-        std::string query_lower = llvm::StringRef(*loc.name).lower();
-        std::vector<ResolvedSymbol> candidates;
-        std::vector<ResolvedSymbol> exact_matches;
-        llvm::DenseSet<index::SymbolHash> seen;
-
-        auto try_symbol = [&](index::SymbolHash hash, const index::Symbol& symbol) {
-            if(symbol.name.empty())
-                return;
-            if(llvm::StringRef(symbol.name).lower().find(query_lower) == std::string::npos)
-                return;
-            auto def_loc = indexer.find_definition_location(hash);
-            if(!def_loc)
-                return;
-            if(!seen.insert(hash).second)
-                return;
-
-            auto file = uri_to_path(def_loc->uri);
-            int line_num = static_cast<int>(def_loc->range.start.line) + 1;
-
-            if(loc.path.has_value() && !loc.path->empty()) {
-                llvm::StringRef wanted(*loc.path);
-                bool basename_only = wanted.find_last_of("/\\") == llvm::StringRef::npos;
-                if(basename_only) {
-                    if(llvm::sys::path::filename(file) != wanted)
-                        return;
-                } else if(!llvm::StringRef(file).ends_with(wanted)) {
-                    return;
-                }
-            }
-
-            bool is_exact = llvm::StringRef(symbol.name).lower() == query_lower ||
-                            llvm::StringRef(symbol.name).ends_with("::" + *loc.name);
-
-            ResolvedSymbol rs{hash, symbol.name, symbol.kind, std::move(file), line_num};
-            if(is_exact)
-                exact_matches.push_back(std::move(rs));
-            else
-                candidates.push_back(std::move(rs));
-        };
-
-        for(auto& [hash, symbol]: workspace.project_index.symbols)
-            try_symbol(hash, symbol);
-        indexer.foreach_session([&](std::uint32_t, const Session& session) -> bool {
-            for(auto& [hash, symbol]: *session.symbols)
-                try_symbol(hash, symbol);
-            return true;
-        });
-
-        if(!exact_matches.empty())
-            return exact_matches;
-        return candidates;
-    }
-
-    if(loc.path.has_value() && loc.line.has_value()) {
-        auto path_str = *loc.path;
-        auto target_line = static_cast<protocol::uinteger>(*loc.line - 1);
-
-        auto pool_it = workspace.path_pool.cache.find(path_str);
-        auto server_id = pool_it != workspace.path_pool.cache.end() ? pool_it->second : ~0u;
-        if(server_id != ~0u) {
-            std::vector<ResolvedSymbol> session_result;
-            indexer.with_session(server_id, [&](const Session& session) {
-                auto map = session.line_map();
-                for(auto& [hash, rels]: session.file_index->relations) {
-                    for(auto& rel: rels) {
-                        if(rel.kind.value() != RelationKind::Definition)
-                            continue;
-                        auto start = map.to_position(rel.range.begin);
-                        if(start && start->line == target_line) {
-                            std::string name;
-                            SymbolKind kind;
-                            if(!indexer.find_symbol_info(hash, name, kind))
-                                continue;
-                            if(kind == SymbolKind::Parameter || kind == SymbolKind::Label)
-                                continue;
-                            session_result.push_back(
-                                {hash, std::move(name), kind, path_str, *loc.line});
-                        }
-                    }
-                }
-            });
-            if(!session_result.empty())
-                return session_result;
-        }
-
-        auto it = workspace.project_index.path_pool.find(path_str);
-        if(it == workspace.project_index.path_pool.cache.end())
-            return {};
-
-        auto proj_id = it->second;
-        auto shard_it = workspace.merged_indices.find(proj_id);
-        if(shard_it == workspace.merged_indices.end())
-            return {};
-
-        auto& merged_index = shard_it->second;
-        auto ls = merged_index.line_starts();
-        if(ls.empty())
-            return {};
-        lsp::LineMap map(merged_index.content(), ls);
-
-        for(auto& [hash, symbol]: workspace.project_index.symbols) {
-            if(!symbol.reference_files.contains(proj_id))
-                continue;
-            bool found = false;
-            merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
-                // FIXME: unchecked optional dereference
-                auto range = map.to_range(r.range.begin, r.range.end);
-                if(range && range->start.line == target_line) {
-                    found = true;
-                    return false;
-                }
-                return true;
-            });
-            if(found)
-                return {
-                    {hash, symbol.name, symbol.kind, path_str, *loc.line}
-                };
-        }
-
-        return {};
-    }
-
-    return {};
-}
-
 /// Resolve a locator and require a unique match: no candidate is "symbol not
 /// found", several candidates ask the client to disambiguate via symbolId.
 static std::expected<ResolvedSymbol, kota::ipc::Error>
-    resolve_unique(const agentic::ReadSymbolParams& loc, Workspace& workspace, Indexer& indexer) {
-    auto candidates = resolve_locator(loc, workspace, indexer);
+    resolve_unique(const agentic::ReadSymbolParams& loc, IndexQuery& index_query) {
+    auto candidates = index_query.locate_symbols(loc);
     if(candidates.empty())
         return std::unexpected(kota::ipc::Error{"symbol not found"});
     if(candidates.size() > 1) {
@@ -437,7 +284,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 if(std::ranges::find(filter, kind_name) == filter.end())
                     return;
             }
-            auto def_loc = srv.indexer.find_definition_location(hash);
+            auto def_loc = srv.index_query.find_definition_location(hash);
             if(!def_loc)
                 return;
             if(!seen.insert(hash).second)
@@ -454,7 +301,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
         for(auto& [hash, symbol]: srv.workspace.project_index.symbols)
             try_symbol(hash, symbol);
-        srv.indexer.foreach_session([&](std::uint32_t, const Session& session) -> bool {
+        srv.index_query.visit_sessions([&](std::uint32_t, const Session& session) -> bool {
             for(auto& [hash, symbol]: *session.symbols)
                 try_symbol(hash, symbol);
             return true;
@@ -465,12 +312,12 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const ReadSymbolParams& params) -> RequestResult<ReadSymbolParams> {
-            auto resolved = resolve_unique(params, srv.workspace, srv.indexer);
+            auto resolved = resolve_unique(params, srv.index_query);
             if(!resolved)
                 co_return kota::outcome_error(std::move(resolved.error()));
 
             auto& rs = *resolved;
-            auto def_text = srv.indexer.get_definition_text(rs.hash);
+            auto def_text = srv.index_query.get_definition_text(rs.hash);
             if(!def_text)
                 co_return kota::outcome_error(kota::ipc::Error{"definition not found"});
 
@@ -506,7 +353,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 co_return result;
             auto server_id = pool_it->second;
             bool found_session = false;
-            srv.indexer.with_session(server_id, [&](const Session& session) {
+            srv.index_query.with_session(server_id, [&](const Session& session) {
                 found_session = true;
                 for(auto& [hash, rels]: session.file_index->relations) {
                     for(auto& rel: rels) {
@@ -514,7 +361,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                             continue;
                         std::string name;
                         SymbolKind kind;
-                        if(!srv.indexer.find_symbol_info(hash, name, kind))
+                        if(!srv.index_query.find_symbol_info(hash, name, kind))
                             continue;
                         if(!is_document_level(kind))
                             continue;
@@ -581,8 +428,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         [&srv](RequestContext&, const DefinitionParams& params) -> RequestResult<DefinitionParams> {
             auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
-                srv.workspace,
-                srv.indexer);
+                srv.index_query);
             if(!resolved)
                 co_return kota::outcome_error(std::move(resolved.error()));
 
@@ -593,7 +439,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             result.kind = std::string(symbol_kind_name(rs.kind));
             result.symbol_id = rs.hash;
 
-            if(auto def_text = srv.indexer.get_definition_text(rs.hash)) {
+            if(auto def_text = srv.index_query.get_definition_text(rs.hash)) {
                 result.definition = LocationEntry{
                     .file = std::move(def_text->file),
                     .start_line = def_text->start_line,
@@ -605,49 +451,47 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             co_return result;
         });
 
-    peer.on_request(
-        [&srv](RequestContext&, const ReferencesParams& params) -> RequestResult<ReferencesParams> {
-            auto resolved = resolve_unique(
-                ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
-                srv.workspace,
-                srv.indexer);
-            if(!resolved)
-                co_return kota::outcome_error(std::move(resolved.error()));
+    peer.on_request([&srv](RequestContext&,
+                           const ReferencesParams& params) -> RequestResult<ReferencesParams> {
+        auto resolved = resolve_unique(
+            ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
+            srv.index_query);
+        if(!resolved)
+            co_return kota::outcome_error(std::move(resolved.error()));
 
-            auto& rs = *resolved;
+        auto& rs = *resolved;
 
-            ReferencesResult result;
-            result.name = rs.name;
-            result.kind = std::string(symbol_kind_name(rs.kind));
-            result.symbol_id = rs.hash;
+        ReferencesResult result;
+        result.name = rs.name;
+        result.kind = std::string(symbol_kind_name(rs.kind));
+        result.symbol_id = rs.hash;
 
-            for(auto& ref: srv.indexer.collect_references(rs.hash, RelationKind::Reference)) {
+        for(auto& ref: srv.index_query.collect_references(rs.hash, RelationKind::Reference)) {
+            result.references.push_back(ReferenceEntry{
+                .file = std::move(ref.file),
+                .line = ref.line,
+                .context = std::move(ref.context),
+            });
+        }
+        if(params.include_declaration.value_or(false)) {
+            for(auto& ref: srv.index_query.collect_references(rs.hash, RelationKind::Definition)) {
                 result.references.push_back(ReferenceEntry{
                     .file = std::move(ref.file),
                     .line = ref.line,
                     .context = std::move(ref.context),
                 });
             }
-            if(params.include_declaration.value_or(false)) {
-                for(auto& ref: srv.indexer.collect_references(rs.hash, RelationKind::Definition)) {
-                    result.references.push_back(ReferenceEntry{
-                        .file = std::move(ref.file),
-                        .line = ref.line,
-                        .context = std::move(ref.context),
-                    });
-                }
-            }
+        }
 
-            result.total = static_cast<int>(result.references.size());
-            co_return result;
-        });
+        result.total = static_cast<int>(result.references.size());
+        co_return result;
+    });
 
     peer.on_request(
         [&srv](RequestContext&, const CallGraphParams& params) -> RequestResult<CallGraphParams> {
             auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
-                srv.workspace,
-                srv.indexer);
+                srv.index_query);
             if(!resolved)
                 co_return kota::outcome_error(std::move(resolved.error()));
 
@@ -668,13 +512,13 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     return "Function";
                 std::string name;
                 SymbolKind kind;
-                if(srv.indexer.find_symbol_info(sym_id, name, kind))
+                if(srv.index_query.find_symbol_info(sym_id, name, kind))
                     return std::string(symbol_kind_name(kind));
                 return "Function";
             };
 
             if(direction == "callers" || direction == "both") {
-                auto incoming = srv.indexer.find_incoming_calls(rs.hash);
+                auto incoming = srv.index_query.find_incoming_calls(rs.hash);
                 for(auto& call: incoming) {
                     auto sid = extract_symbol_id(call.from.data);
                     result.callers.push_back(CallGraphEntry{
@@ -688,7 +532,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             }
 
             if(direction == "callees" || direction == "both") {
-                auto outgoing = srv.indexer.find_outgoing_calls(rs.hash);
+                auto outgoing = srv.index_query.find_outgoing_calls(rs.hash);
                 for(auto& call: outgoing) {
                     auto sid = extract_symbol_id(call.to.data);
                     result.callees.push_back(CallGraphEntry{
@@ -709,8 +553,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                const TypeHierarchyParams& params) -> RequestResult<TypeHierarchyParams> {
             auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
-                srv.workspace,
-                srv.indexer);
+                srv.index_query);
             if(!resolved)
                 co_return kota::outcome_error(std::move(resolved.error()));
 
@@ -731,13 +574,13 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     return "Class";
                 std::string name;
                 SymbolKind kind;
-                if(srv.indexer.find_symbol_info(sym_id, name, kind))
+                if(srv.index_query.find_symbol_info(sym_id, name, kind))
                     return std::string(symbol_kind_name(kind));
                 return "Class";
             };
 
             if(direction == "supertypes" || direction == "both") {
-                for(auto& item: srv.indexer.find_supertypes(rs.hash)) {
+                for(auto& item: srv.index_query.find_supertypes(rs.hash)) {
                     auto sid = extract_symbol_id(item.data);
                     result.supertypes.push_back(TypeHierarchyEntry{
                         .name = item.name,
@@ -750,7 +593,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             }
 
             if(direction == "subtypes" || direction == "both") {
-                for(auto& item: srv.indexer.find_subtypes(rs.hash)) {
+                for(auto& item: srv.index_query.find_subtypes(rs.hash)) {
                     auto sid = extract_symbol_id(item.data);
                     result.subtypes.push_back(TypeHierarchyEntry{
                         .name = item.name,
@@ -767,9 +610,9 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request([&srv](RequestContext&, const StatusParams&) -> RequestResult<StatusParams> {
         StatusResult result;
-        result.idle = srv.indexer.is_idle();
-        result.pending = static_cast<int>(srv.indexer.pending_files());
-        result.total = static_cast<int>(srv.indexer.total_queued());
+        result.idle = srv.background_indexer.is_idle();
+        result.pending = static_cast<int>(srv.background_indexer.pending_files());
+        result.total = static_cast<int>(srv.background_indexer.total_queued());
         result.indexed = std::max(0, result.total - result.pending);
         co_return result;
     });

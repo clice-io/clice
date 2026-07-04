@@ -33,24 +33,9 @@ namespace protocol = kota::ipc::protocol;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), bg_tasks(loop), pool(loop), contexts(workspace),
-    compiler(loop, workspace, contexts, pool),
-    indexer(
-        loop,
-        workspace,
-        pool,
-        compiler,
-        [this](uint32_t server_path_id) { return sessions.contains(server_path_id); },
-        [this](Indexer::SessionVisitor visitor) {
-            for(auto& [path_id, session]: sessions) {
-                // FIXME: when ast_dirty, consider awaiting recompilation
-                // instead of silently falling back to MergedIndex.
-                if(session && session->file_index && session->symbols && !session->ast_dirty) {
-                    if(!visitor(path_id, *session))
-                        break;
-                }
-            }
-        }),
-    self_path(std::move(self_path)) {}
+    compiler(loop, workspace, contexts, pool), index_query(workspace, sessions),
+    background_indexer(loop, workspace, pool, compiler, sessions), self_path(std::move(self_path)) {
+}
 
 MasterServer::~MasterServer() = default;
 
@@ -115,8 +100,8 @@ void MasterServer::wire() {
         if(!info.stateful)
             return;
         for(auto path_id: info.lost_documents) {
-            if(auto it = sessions.find(path_id); it != sessions.end())
-                it->second->ast_dirty = true;
+            if(auto session = sessions.find(path_id))
+                session->ast_dirty = true;
         }
     };
 
@@ -130,7 +115,7 @@ void MasterServer::wire() {
     };
 
     compiler.on_indexing_needed = [this]() {
-        indexer.schedule();
+        background_indexer.schedule();
     };
 }
 
@@ -140,19 +125,11 @@ void MasterServer::initialize(llvm::StringRef root) {
 }
 
 std::shared_ptr<Session> MasterServer::find_session(std::uint32_t path_id) {
-    auto it = sessions.find(path_id);
-    return it != sessions.end() ? it->second : nullptr;
+    return sessions.find(path_id);
 }
 
 std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
-    auto it = sessions.find(path_id);
-    if(it != sessions.end()) {
-        it->second->generation++;
-    }
-    auto session = std::make_shared<Session>();
-    session->path_id = path_id;
-    sessions[path_id] = session;
-    return session;
+    return sessions.open(path_id);
 }
 
 void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& peer) {
@@ -172,14 +149,10 @@ void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& pee
     diag_params.diagnostics = {};
     peer.send_notification(diag_params);
 
-    auto it = sessions.find(path_id);
-    if(it != sessions.end()) {
-        it->second->generation++;
-        sessions.erase(it);
-    }
+    sessions.close(path_id);
 
-    indexer.enqueue(path_id);
-    indexer.schedule();
+    background_indexer.enqueue(path_id);
+    background_indexer.schedule();
 
     LOG_DEBUG("didClose: {}", path);
 }
@@ -201,7 +174,7 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
             session->trial_done = false;
             workspace.forget_self_contained(dirty_id);
         } else {
-            indexer.enqueue(dirty_id);
+            background_indexer.enqueue(dirty_id);
         }
     }
 
@@ -212,7 +185,7 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
     // re-validate every chain file by content hash. Do NOT reset the
     // context itself: an in-flight compile can clobber ast_dirty when it
     // finishes, and the surviving snapshot is what lets is_stale() recover.
-    for(auto& [session_id, session]: sessions) {
+    for(auto& [session_id, session]: sessions.sessions) {
         if(session->header_context && llvm::is_contained(session->header_context->chain, path_id)) {
             session->header_context->deps.build_at = 0;
             session->ast_dirty = true;
@@ -231,7 +204,7 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
     // its command hash to a different host) — drop it instead. The include
     // graph was already rescanned above.
     bool dropped_saved = false;
-    for(auto& [session_id, session]: sessions) {
+    for(auto& [session_id, session]: sessions.sessions) {
         if(!session->active_context.has_value()) {
             continue;
         }
@@ -263,7 +236,7 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
         workspace.save_cache();
     }
 
-    indexer.schedule();
+    background_indexer.schedule();
 }
 
 void MasterServer::schedule_shutdown() {
@@ -278,8 +251,8 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     co_await bg_tasks.join();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await kota::when_all(indexer.stop(), compiler.stop());
-    co_await indexer.save();
+    co_await kota::when_all(background_indexer.stop(), compiler.stop());
+    co_await background_indexer.save();
     workspace.save_cache();
     co_await pool.stop();
     if(workspace.store) {
@@ -460,15 +433,15 @@ void MasterServer::load_workspace() {
              report.elapsed_ms);
 
     workspace.build_module_map();
-    indexer.load();
+    background_indexer.load();
 
     if(*cfg.enable_indexing) {
         for(auto& entry: workspace.cdb.get_entries()) {
             auto file = workspace.cdb.resolve_path(entry.file);
             auto server_id = workspace.path_pool.intern(file);
-            indexer.enqueue(server_id);
+            background_indexer.enqueue(server_id);
         }
-        indexer.schedule();
+        background_indexer.schedule();
     }
 
     compiler.init_compile_graph();

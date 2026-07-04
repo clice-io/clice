@@ -5,9 +5,11 @@
 #include <vector>
 
 #include "server/compiler/compiler.h"
-#include "server/compiler/indexer.h"
 #include "server/context/context_resolver.h"
-#include "server/service/session.h"
+#include "server/index/background_indexer.h"
+#include "server/index/query.h"
+#include "server/session/session.h"
+#include "server/session/session_store.h"
 #include "server/worker/worker_pool.h"
 #include "server/workspace/config.h"
 #include "server/workspace/workspace.h"
@@ -68,7 +70,7 @@ enum class ServerLifecycle : std::uint8_t {
 };
 
 /// Core server state — owns the two-layer state model (Workspace + Sessions),
-/// the worker pool, compilation engine, and indexer.
+/// the worker pool, compilation engine, index query, and background indexer.
 ///
 /// Does NOT own any transport or peer.  Protocol-specific handler registration
 /// is done by LSPClient and AgentClient, which access private members directly.
@@ -108,6 +110,12 @@ public:
         return shutdown_event;
     }
 
+    /// The table of open documents and the buffer-sync logic. Public so
+    /// transports and features can reach open sessions directly (e.g.
+    /// sessions.find(path_id)); MasterServer's open/close methods layer the
+    /// non-map orchestration (pool eviction, diagnostics, indexing) on top.
+    SessionStore sessions;
+
 private:
     kota::event shutdown_event;
 
@@ -135,11 +143,11 @@ private:
     kota::task_group<> bg_tasks;
 
     Workspace workspace;
-    llvm::DenseMap<std::uint32_t, std::shared_ptr<Session>> sessions;
     WorkerPool pool;
     ContextResolver contexts;
     Compiler compiler;
-    Indexer indexer;
+    IndexQuery index_query;
+    BackgroundIndexer background_indexer;
 
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
     std::string self_path;
