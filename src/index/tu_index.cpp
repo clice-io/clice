@@ -125,16 +125,6 @@ public:
         index.relations[symbol_id.hash].emplace_back(relation);
     }
 
-    /// Byte width of the spelled module name in the source: from the first
-    /// segment's offset to the end of the last segment.
-    std::uint32_t spelled_width(const Import& import) {
-        auto [first_fid, first_offset] = unit.decompose_location(import.name_locations.front());
-        auto last_loc = import.name_locations.back();
-        auto [last_fid, last_offset] = unit.decompose_location(last_loc);
-        auto last_len = static_cast<std::uint32_t>(unit.token_spelling(last_loc).size());
-        return (last_offset + last_len) - first_offset;
-    }
-
     /// Module names are indexed like macro names: an occurrence plus a
     /// Definition/Reference relation keyed by a hash of the full module
     /// name, so navigation flows through the ordinary index pipeline.
@@ -174,17 +164,18 @@ public:
             }
         };
 
-        // Import sites: Reference relations at the spelled module name.
+        // Import sites: Reference relations at the spelled module name. The
+        // expansion range keeps macro-spelled names (`import MOD;`) anchored
+        // at the import site instead of the macro definition.
         for(auto& [fid, directive]: unit.directives()) {
             for(auto& import: directive.imports) {
                 if(import.name_locations.empty())
                     continue;
-                auto [loc_fid, offset] = unit.decompose_location(import.name_locations.front());
+                auto [loc_fid, range] = unit.decompose_expansion_range(
+                    clang::SourceRange(import.name_locations.front(),
+                                       import.name_locations.back()));
                 llvm::StringRef name = import.full_name.empty() ? import.name : import.full_name;
-                emit(name,
-                     loc_fid,
-                     LocalSourceRange{offset, offset + spelled_width(import)},
-                     RelationKind::Reference);
+                emit(name, loc_fid, range, RelationKind::Reference);
             }
         }
 

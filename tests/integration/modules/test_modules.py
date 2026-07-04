@@ -321,3 +321,13 @@ async def test_partition_import_definition(client, workspace):
     # the enclosing module.
     locs = to_locations(await client.definition_at(uri, 1, 15))
     assert any(loc.uri.endswith("part_a.cppm") for loc in locs), locs
+
+
+@pytest.mark.workspace("modules/macro_import")
+async def test_macro_import_definition(client, workspace):
+    # `import MATH_MODULE;` where the name comes from a macro: the index
+    # anchors the occurrence at the expansion site.
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    assert await wait_for_index(client, uri, "Math"), "Index not ready"
+    locs = to_locations(await client.definition_at(uri, 1, 9))
+    assert any(loc.uri.endswith("math.cppm") for loc in locs), locs
