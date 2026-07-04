@@ -17,6 +17,7 @@
 #include "kota/ipc/lsp/progress.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -295,8 +296,11 @@ private:
     /// LSP peer for progress reporting (optional, not owned).
     kota::ipc::JsonPeer* peer = nullptr;
 
-    /// Background indexing queue and scheduling state.
+    /// Background indexing queue and scheduling state.  pending_ids mirrors
+    /// the un-consumed tail of index_queue so enqueue can dedupe; the queue
+    /// is compacted once a round has fully drained.
     std::vector<std::uint32_t> index_queue;
+    llvm::DenseSet<std::uint32_t> pending_ids;
     std::size_t index_queue_pos = 0;
     bool indexing_active = false;
     bool indexing_scheduled = false;

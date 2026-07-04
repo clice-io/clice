@@ -1,6 +1,7 @@
 #include "server/compiler/indexer.h"
 
 #include <algorithm>
+#include <cassert>
 #include <string>
 #include <variant>
 #include <vector>
@@ -914,6 +915,10 @@ protocol::TypeHierarchyItem Indexer::build_type_hierarchy_item(const SymbolInfo&
 }
 
 void Indexer::enqueue(std::uint32_t server_path_id) {
+    // Already queued and not yet consumed — a second entry would only be
+    // skipped by need_update later; drop it here.
+    if(!pending_ids.insert(server_path_id).second)
+        return;
     index_queue.push_back(server_path_id);
 }
 
@@ -1059,6 +1064,7 @@ kota::task<> Indexer::run_background_indexing() {
             co_await resume_event.wait();
 
         auto server_path_id = index_queue[index_queue_pos++];
+        pending_ids.erase(server_path_id);
         auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
         if((is_open && is_open(server_path_id)) || !need_update(file_path)) {
             ++completed;
@@ -1084,6 +1090,16 @@ kota::task<> Indexer::run_background_indexing() {
     }
 
     indexing_active = false;
+
+    // Safe point to compact: no dispatch loop holds an index into the queue.
+    // Files enqueued while we awaited the workers keep the queue alive for
+    // the next scheduled round.
+    if(index_queue_pos >= index_queue.size()) {
+        assert(pending_ids.empty() && "drained queue must have no pending ids");
+        index_queue.clear();
+        index_queue_pos = 0;
+    }
+
     LOG_PERF("index",
              "phase=run dispatched={} skipped={} total={} elapsed_ms={}",
              dispatched,
