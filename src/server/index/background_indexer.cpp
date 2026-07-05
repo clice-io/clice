@@ -31,6 +31,9 @@ void BackgroundIndexer::merge(const void* tu_index_data, std::size_t size) {
         return;
     }
     auto file_ids_map = workspace.project_index.merge(tu_index);
+    // Extend the proj<->server path-id cache for any path this merge added
+    // that the server already knows; the rest is backfilled lazily on query.
+    workspace.project_index.link_server_paths(workspace.path_pool, file_ids_map);
     auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
 
     // Collect non-External symbols referenced in a FileIndex.  Each file's

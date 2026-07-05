@@ -5,7 +5,9 @@
 #include <vector>
 
 #include "index/tu_index.h"
+#include "support/path_pool.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
@@ -79,6 +81,40 @@ struct ProjectIndex {
     llvm::DenseMap<std::uint32_t, std::uint32_t> indices;
 
     SymbolTable symbols;
+
+    /// Bidirectional cache between this index's path ids and the server-wide
+    /// clice::PathPool's path ids for the same file.  Purely a query
+    /// accelerator for translating ids across the two pools without a string
+    /// round-trip.  Never serialized: server ids are per-session, so a fresh
+    /// ProjectIndex (including one restored by from()) starts with an empty
+    /// mapping and it is rebuilt as paths are linked again.  Kept in sync by
+    /// link_server_paths() after each merge and lazily backfilled by
+    /// IndexQuery on a miss (a path may enter one pool before the other).
+    llvm::DenseMap<std::uint32_t, std::uint32_t> proj_to_server;
+    llvm::DenseMap<std::uint32_t, std::uint32_t> server_to_proj;
+
+    /// Record a proj_id <-> server_id correspondence in both directions.
+    void link_server_path(this ProjectIndex& self, std::uint32_t proj_id, std::uint32_t server_id) {
+        self.proj_to_server[proj_id] = server_id;
+        self.server_to_proj[server_id] = proj_id;
+    }
+
+    /// Extend the path-id mapping for the given project path ids, linking each
+    /// to the server pool's id for the same file when the server already knows
+    /// it.  Paths the server has not interned yet are skipped and left for
+    /// IndexQuery to backfill lazily on first use.  Called after a merge so
+    /// newly interned paths get mapped as soon as both pools know them.
+    void link_server_paths(this ProjectIndex& self,
+                           const clice::PathPool& server_pool,
+                           llvm::ArrayRef<std::uint32_t> proj_ids) {
+        for(auto proj_id: proj_ids) {
+            if(self.proj_to_server.contains(proj_id))
+                continue;
+            auto it = server_pool.cache.find(self.path_pool.path(proj_id));
+            if(it != server_pool.cache.end())
+                self.link_server_path(proj_id, it->second);
+        }
+    }
 
     llvm::SmallVector<std::uint32_t> merge(this ProjectIndex& self, TUIndex& index);
 

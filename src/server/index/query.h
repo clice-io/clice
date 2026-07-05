@@ -197,21 +197,37 @@ private:
 
     /// Translate a project-index path_id to the server path_id for the same
     /// file, or nullopt if the file is not in the server path pool.
+    ///
+    /// Backed by ProjectIndex's proj<->server path-id cache; on a cache miss
+    /// it falls back to the string round-trip through the two pools and
+    /// records the result, so subsequent lookups are a plain map hit.
     std::optional<std::uint32_t> to_server_id(std::uint32_t proj_path_id) const {
-        auto path = workspace.project_index.path_pool.path(proj_path_id);
-        auto it = workspace.path_pool.cache.find(path);
+        auto& proj_index = workspace.project_index;
+        if(auto hit = proj_index.proj_to_server.find(proj_path_id);
+           hit != proj_index.proj_to_server.end())
+            return hit->second;
+        auto it = workspace.path_pool.cache.find(proj_index.path_pool.path(proj_path_id));
         if(it == workspace.path_pool.cache.end())
             return std::nullopt;
+        proj_index.link_server_path(proj_path_id, it->second);
         return it->second;
     }
 
     /// Translate a server path_id to the project-index path_id for the same
     /// file, or nullopt if the file is not in the project-index path pool.
+    ///
+    /// Backed by ProjectIndex's proj<->server path-id cache; on a cache miss
+    /// it falls back to the string round-trip through the two pools and
+    /// records the result, so subsequent lookups are a plain map hit.
     std::optional<std::uint32_t> to_proj_id(std::uint32_t server_path_id) const {
-        auto path = workspace.path_pool.resolve(server_path_id);
-        auto it = workspace.project_index.path_pool.find(path);
-        if(it == workspace.project_index.path_pool.cache.end())
+        auto& proj_index = workspace.project_index;
+        if(auto hit = proj_index.server_to_proj.find(server_path_id);
+           hit != proj_index.server_to_proj.end())
+            return hit->second;
+        auto it = proj_index.path_pool.find(workspace.path_pool.resolve(server_path_id));
+        if(it == proj_index.path_pool.cache.end())
             return std::nullopt;
+        proj_index.link_server_path(it->second, server_path_id);
         return it->second;
     }
 
