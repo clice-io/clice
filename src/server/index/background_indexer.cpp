@@ -61,14 +61,17 @@ void BackgroundIndexer::merge(const void* tu_index_data, std::size_t size) {
                 deps.push_back({tu_index.graph.paths[loc.path_id], loc.line, loc.include});
             }
             auto file_path = workspace.path_pool.resolve(global_path_id);
-            llvm::StringRef file_content;
-            std::string file_content_storage;
             auto buf = llvm::MemoryBuffer::getFile(file_path);
-            if(buf) {
-                file_content_storage = (*buf)->getBuffer().str();
-                file_content = file_content_storage;
+            if(!buf) {
+                // Overwriting the shard's stored content with nothing would
+                // silently break every position mapping for this TU; keep the
+                // old snapshot, the staleness check re-enqueues it later.
+                LOG_WARN("Skip merge for {}: cannot read content: {}",
+                         file_path,
+                         buf.getError().message());
+                return;
             }
-            shard.merge(main_tu_path, tu_index.built_at, deps, file_idx, file_content);
+            shard.merge(main_tu_path, tu_index.built_at, deps, file_idx, (*buf)->getBuffer());
             shard.merge_symbols(collect_local_symbols(file_idx));
         } else {
             std::optional<std::uint32_t> include_id;
@@ -101,6 +104,20 @@ void BackgroundIndexer::merge(const void* tu_index_data, std::size_t size) {
         merge_file_index(tu_path_id, file_idx);
     }
     merge_file_index(main_tu_path_id, tu_index.main_file_index);
+
+    // A file dropped from this TU (a removed transitive include) is no
+    // longer merged above, but its shard may still hold this TU's previous
+    // contribution — sweep it, or references under the dropped include keep
+    // being served as if the edge still existed.
+    llvm::DenseSet<std::uint32_t> touched(file_ids_map.begin(), file_ids_map.end());
+    for(auto& [path_id, shard]: workspace.merged_indices) {
+        if(touched.contains(path_id)) {
+            continue;
+        }
+        if(shard.has_contribution(main_tu_path)) {
+            shard.remove(main_tu_path);
+        }
+    }
 
     auto external_count = std::ranges::count_if(tu_index.symbols, [](auto& kv) {
         return kv.second.scope == index::SymbolScope::External;

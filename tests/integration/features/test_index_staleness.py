@@ -48,12 +48,14 @@ async def test_touch_header_no_reindex(executable, tmp_path):
     (tmp_path / "header.h").write_text(HEADER)
 
     # Session 2: restart re-enqueues every TU and runs the staleness check.
-    # Snapshot the shards before its indexing round, wait until the round
+    # Snapshot the shards BEFORE starting the session — startup indexing is
+    # already running when make_client returns, so a later snapshot could
+    # race a (buggy) reindex and pass vacuously. Wait until the round
     # completes (save() rewrites the project blob), then re-snapshot: the
     # storm filter must skip the closed TU, leaving its shard untouched.
-    c2 = await make_client(executable, tmp_path)
     before = shard_mtimes(tmp_path)
     project_before = project_mtime(tmp_path)
+    c2 = await make_client(executable, tmp_path)
     # save() rewrites the project blob unconditionally each round (see
     # BackgroundIndexer::save), so its mtime moving proves the round ran.
     assert await poll(lambda: project_mtime(tmp_path) != project_before), (

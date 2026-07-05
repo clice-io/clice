@@ -100,6 +100,28 @@ TEST_CASE(ValidateDropsStaleChoice) {
     ASSERT_FALSE(resolver.saved_contexts.contains(main_file));
 }
 
+TEST_CASE(InvalidateDropsBorrowed) {
+    Workspace workspace;
+    ContextResolver resolver(workspace);
+    auto borrowed = workspace.path_pool.intern("/proj/borrowed.h");
+    auto synthesized = workspace.path_pool.intern("/proj/synthesized.h");
+
+    // A self-contained borrow tracks no chain deps: zeroing its baseline
+    // could never force re-validation, so invalidation drops it outright.
+    resolver.header_contexts[borrowed] = HeaderContext{};
+    resolver.invalidate_header_deps(borrowed);
+    ASSERT_FALSE(resolver.header_contexts.contains(borrowed));
+
+    // A synthesized context re-validates its chain by content hash.
+    auto& context = resolver.header_contexts[synthesized];
+    context.deps.path_ids = {borrowed};
+    context.deps.hashes = {7};
+    context.deps.build_at = 123;
+    resolver.invalidate_header_deps(synthesized);
+    ASSERT_TRUE(resolver.header_contexts.contains(synthesized));
+    ASSERT_EQ(resolver.header_contexts[synthesized].deps.build_at, 0);
+}
+
 };  // TEST_SUITE(ContextResolver)
 
 }  // namespace

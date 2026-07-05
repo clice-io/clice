@@ -132,8 +132,11 @@ std::optional<ProjectIndex> ProjectIndex::from(const void* data,
 
     if(root->symbols()) {
         for(auto entry: *root->symbols()) {
-            auto& symbol = loaded.symbols[entry->symbol_id()];
             auto* fb_symbol = entry->symbol();
+            if(!fb_symbol) {
+                continue;
+            }
+            auto& symbol = loaded.symbols[entry->symbol_id()];
             if(auto* name = fb_symbol->name()) {
                 symbol.name = name->str();
             }

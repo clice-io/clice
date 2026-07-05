@@ -1,3 +1,5 @@
+#include <filesystem>
+
 #include "schema_generated.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
@@ -354,26 +356,67 @@ TEST_CASE(RemergePreservesOtherTus) {
     ASSERT_TRUE(found);
 }
 
-TEST_CASE(RemovedBitmapRoundTrip) {
+TEST_CASE(CompactionDropsMasked) {
     build_index(R"(
-            int foo() { return 42; }
+            int $(target)foo() { return 42; }
         )");
 
-    // Merge as compilation context.
+    // Merge as compilation context, then remove: the rows are masked.
     index::MergedIndex merged;
     merged.merge("tu0", tu_index.built_at, {}, tu_index.main_file_index, {});
-
-    // Remove to populate the removed bitmap.
     merged.remove("tu0");
 
-    // Serialize.
     llvm::SmallString<4096> buf;
     llvm::raw_svector_ostream os(buf);
     merged.serialize(os);
 
-    // Deserialize and compare.
+    // Serialized shards are served through buffer-only lookups that never
+    // consult the removed bitmap — masked rows must not reach disk at all.
     auto restored = index::MergedIndex(buf);
-    ASSERT_TRUE(merged == restored);
+    auto offset = point("target");
+    bool found = false;
+    restored.lookup(offset, [&](const index::Occurrence&) {
+        found = true;
+        return false;
+    });
+    ASSERT_FALSE(found);
+}
+
+TEST_CASE(HasContributionTracking) {
+    add_file("header.h", R"(
+            #pragma once
+            inline int shared() { return 1; }
+        )");
+    add_main("main.cpp", R"(
+            #include "header.h"
+            int use() { return shared(); }
+        )");
+    ASSERT_TRUE(compile());
+    tu_index = index::TUIndex::build(*unit);
+
+    auto header_fid = unit->file_id("header.h");
+    auto& header_idx = tu_index.file_indices[header_fid];
+    auto include_id = tu_index.graph.include_location_id(header_fid);
+
+    index::MergedIndex merged;
+    merged.merge("tu0", include_id, header_idx, {});
+    merged.merge("tu1", include_id, header_idx, {});
+
+    ASSERT_TRUE(merged.has_contribution("tu0"));
+    ASSERT_TRUE(merged.has_contribution("tu1"));
+    ASSERT_FALSE(merged.has_contribution("tu2"));
+
+    // The buffer path must answer without deserializing the shard.
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    merged.serialize(os);
+    auto restored = index::MergedIndex(buf);
+    ASSERT_TRUE(restored.has_contribution("tu0"));
+    ASSERT_FALSE(restored.has_contribution("tu2"));
+
+    merged.remove("tu0");
+    ASSERT_FALSE(merged.has_contribution("tu0"));
+    ASSERT_TRUE(merged.has_contribution("tu1"));
 }
 
 TEST_CASE(LookupFiltersRemoved) {
@@ -527,15 +570,24 @@ TEST_CASE(LocalSymbolSerialization) {
     }
 }
 
-// build_at=1ms is far below any real file mtime, so staleness always reaches
-// the Layer 2 content-hash check — exactly the branch these tests exercise.
+// The dep is backdated an hour so the merge (build_at = one minute ago)
+// records its baseline hash; a later write bumps the mtime past build_at,
+// so staleness reaches the Layer 2 content-hash check — exactly the branch
+// these tests exercise. A dep newer than build_at gets no baseline at all
+// (its content may postdate the indexed snapshot).
 index::MergedIndex build_ctx_shard(llvm::StringRef dep_path) {
+    namespace stdfs = std::filesystem;
+    stdfs::last_write_time(dep_path.str(),
+                           stdfs::file_time_type::clock::now() - std::chrono::hours(1));
+    auto build_at = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch() - std::chrono::minutes(1));
+
     index::MergedIndex merged;
     index::FileIndex file_idx;
     index::DepLocation deps[] = {
         {.path = dep_path, .line = 1}
     };
-    merged.merge("tu0", std::chrono::milliseconds(1), deps, file_idx, "");
+    merged.merge("tu0", build_at, deps, file_idx, "");
     return merged;
 }
 

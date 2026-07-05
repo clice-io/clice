@@ -115,9 +115,19 @@ public:
     /// Zero the header context's dependency baseline so the next use
     /// re-validates every chain file by content hash. The context itself is
     /// kept: an in-flight compile can clobber ast_dirty when it finishes,
-    /// and the surviving snapshot is what lets is_stale() recover.
+    /// and the surviving snapshot is what lets is_stale() recover. A
+    /// self-contained borrow tracks no chain deps, so zeroing its baseline
+    /// could never force anything — drop it instead and let the next use
+    /// re-resolve against the updated include graph (cheap: no synthesis
+    /// on that route).
     void invalidate_header_deps(std::uint32_t path_id) {
-        if(auto* context = header_context(path_id)) {
+        auto* context = header_context(path_id);
+        if(!context) {
+            return;
+        }
+        if(context->deps.path_ids.empty()) {
+            drop_header_context(path_id);
+        } else {
             context->deps.build_at = 0;
         }
     }

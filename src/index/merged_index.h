@@ -75,6 +75,11 @@ public:
     /// shards, the file itself for compilation shards).
     void remove(this Self& self, llvm::StringRef context_path);
 
+    /// Whether this shard holds a contribution keyed by `context_path`.
+    /// Cheap on serialized shards: scans the small context tables without
+    /// deserializing the shard.
+    bool has_contribution(this const Self& self, llvm::StringRef context_path);
+
     /// Get the stored source content for position mapping.
     llvm::StringRef content(this const Self& self);
 

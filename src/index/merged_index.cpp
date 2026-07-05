@@ -416,10 +416,26 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
 
     llvm::SmallVector<char, 1024> buffer;
 
-    auto canonical_cache = transform(index->canonical_cache, [&](auto&& value) {
-        auto&& [hash, canonical_id] = value;
-        return binary::CreateCacheEntry(builder, CreateString(builder, hash), canonical_id);
-    });
+    // Compaction: rows whose every canonical was released are masked at
+    // runtime by the removed bitmap, but the serialized shard is served
+    // through buffer-only lookups that never consult it — so masked state
+    // must not reach disk at all. Dead rows are dropped, live bitmaps are
+    // written pre-subtracted, dead cache entries go with them (a later
+    // re-merge of identical content mints a fresh canonical), and the
+    // persisted removed bitmap is always empty.
+    auto& removed = index->removed;
+    auto live = [&](const roaring::Roaring& bitmap) {
+        return removed.isEmpty() ? bitmap : bitmap - removed;
+    };
+
+    llvm::SmallVector<fbs::Offset<binary::CacheEntry>> canonical_cache;
+    for(auto& [hash, canonical_id]: index->canonical_cache) {
+        if(removed.contains(canonical_id)) {
+            continue;
+        }
+        canonical_cache.push_back(
+            binary::CreateCacheEntry(builder, CreateString(builder, hash.str()), canonical_id));
+    }
 
     auto header_contexts = transform(index->header_contexts, [&](auto&& value) {
         auto& [path_id, context] = value;
@@ -443,17 +459,23 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
     });
 
     llvm::SmallVector<const Occurrence*> occurrence_keys;
+    llvm::SmallVector<fbs::Offset<binary::OccurrenceEntry>> occurrences;
     occurrence_keys.reserve(index->occurrences.size());
-    auto occurrences = transform(index->occurrences, [&](auto&& value) {
-        auto&& [occurrence, bitmap] = value;
+    occurrences.reserve(index->occurrences.size());
+    for(auto& [occurrence, bitmap]: index->occurrences) {
+        auto masked = live(bitmap);
+        if(masked.isEmpty()) {
+            continue;
+        }
         buffer.clear();
-        buffer.resize_for_overwrite(bitmap.getSizeInBytes(false));
-        bitmap.write(buffer.data(), false);
+        buffer.resize_for_overwrite(masked.getSizeInBytes(false));
+        masked.write(buffer.data(), false);
         occurrence_keys.emplace_back(&occurrence);
-        return binary::CreateOccurrenceEntry(builder,
-                                             safe_cast<binary::Occurrence>(&occurrence),
-                                             CreateVector(builder, buffer));
-    });
+        occurrences.push_back(
+            binary::CreateOccurrenceEntry(builder,
+                                          safe_cast<binary::Occurrence>(&occurrence),
+                                          CreateVector(builder, buffer)));
+    }
     std::ranges::sort(std::views::zip(occurrence_keys, occurrences), [](auto lhs, auto rhs) {
         const auto& lo = *std::get<0>(lhs);
         const auto& ro = *std::get<0>(rhs);
@@ -462,34 +484,38 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
     });
 
     llvm::SmallVector<std::uint64_t> relation_keys;
+    llvm::SmallVector<fbs::Offset<binary::SymbolRelationsEntry>> relations;
     relation_keys.reserve(index->relations.size());
-    auto relations = transform(index->relations, [&](auto&& value) {
-        auto&& [symbol_id, symbol_relations] = value;
-        auto relations = transform(symbol_relations, [&](auto&& value) {
-            auto&& [relation, bitmap] = value;
+    relations.reserve(index->relations.size());
+    for(auto& [symbol_id, symbol_relations]: index->relations) {
+        llvm::SmallVector<fbs::Offset<binary::RelationEntry>> entries;
+        for(auto& [relation, bitmap]: symbol_relations) {
+            auto masked = live(bitmap);
+            if(masked.isEmpty()) {
+                continue;
+            }
             buffer.clear();
-            buffer.resize_for_overwrite(bitmap.getSizeInBytes(false));
-            bitmap.write(buffer.data(), false);
-            return binary::CreateRelationEntry(builder,
-                                               safe_cast<binary::Relation>(&relation),
-                                               CreateVector(builder, buffer));
-        });
+            buffer.resize_for_overwrite(masked.getSizeInBytes(false));
+            masked.write(buffer.data(), false);
+            entries.push_back(binary::CreateRelationEntry(builder,
+                                                          safe_cast<binary::Relation>(&relation),
+                                                          CreateVector(builder, buffer)));
+        }
+        if(entries.empty()) {
+            continue;
+        }
         relation_keys.emplace_back(symbol_id);
-        return binary::CreateSymbolRelationsEntry(builder,
-                                                  symbol_id,
-                                                  CreateVector(builder, relations));
-    });
+        relations.push_back(
+            binary::CreateSymbolRelationsEntry(builder, symbol_id, CreateVector(builder, entries)));
+    }
     std::ranges::sort(std::views::zip(relation_keys, relations), {}, [](auto e) {
         return std::get<0>(e);
     });
 
-    // Serialize removed bitmap.
+    // Post-compaction nothing on disk is masked; the persisted removed
+    // bitmap is always empty.
     buffer.clear();
-    if(!index->removed.isEmpty()) {
-        buffer.resize_for_overwrite(index->removed.getSizeInBytes(false));
-        index->removed.write(buffer.data(), false);
-    }
-    auto removed = CreateVector(builder, buffer);
+    auto removed_offset = CreateVector(builder, buffer);
 
     auto content_offset = CreateString(builder, index->content);
     auto line_starts_offset = builder.CreateVector(index->line_starts);
@@ -519,7 +545,7 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                                   CreateVector(builder, compilation_contexts),
                                                   CreateVector(builder, occurrences),
                                                   CreateVector(builder, relations),
-                                                  removed,
+                                                  removed_offset,
                                                   content_offset,
                                                   line_starts_offset,
                                                   CreateVector(builder, symbols),
@@ -714,6 +740,54 @@ bool MergedIndex::need_update(this const Self& self) {
     return true;
 }
 
+bool MergedIndex::has_contribution(this const Self& self, llvm::StringRef context_path) {
+    // Match the path table's normalization so Windows separators compare.
+    llvm::SmallString<256> normalized;
+    if(context_path.contains('\\')) {
+        normalized = context_path;
+        std::replace(normalized.begin(), normalized.end(), '\\', '/');
+        context_path = normalized;
+    }
+
+    if(self.impl) {
+        auto it = self.impl->paths.find(context_path);
+        if(it == self.impl->paths.cache.end()) {
+            return false;
+        }
+        return self.impl->header_contexts.contains(it->second) ||
+               self.impl->compilation_contexts.contains(it->second);
+    }
+
+    if(self.buffer) {
+        auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
+        if(!root->paths()) {
+            return false;
+        }
+        std::optional<std::uint32_t> local;
+        for(std::uint32_t i = 0; i < root->paths()->size(); ++i) {
+            if(llvm::StringRef(root->paths()->Get(i)->string_view()) == context_path) {
+                local = i;
+                break;
+            }
+        }
+        if(!local) {
+            return false;
+        }
+        for(auto entry: *root->header_contexts()) {
+            if(entry->path_id() == *local) {
+                return true;
+            }
+        }
+        for(auto entry: *root->compilation_contexts()) {
+            if(entry->path_id() == *local) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 void MergedIndex::remove(this Self& self, llvm::StringRef context_path) {
     self.load_in_memory();
     auto& index = *self.impl;
@@ -810,7 +884,21 @@ void MergedIndex::merge(this Self& self,
     for(auto& dep: deps) {
         auto local_id = self.impl->paths.path_id(dep.path);
         include_locations.push_back({local_id, dep.line, dep.include_id});
-        if(seen.insert(local_id).second) {
+        if(!seen.insert(local_id).second) {
+            continue;
+        }
+        // A dep modified after the indexed snapshot was built must not
+        // contribute a baseline: hashing it now would bless content the
+        // rows were never built from, hiding the edit forever. With no
+        // stored hash the staleness check stays conservative and the TU
+        // simply reindexes once more.
+        fs::file_status status;
+        if(auto err = fs::status(dep.path, status)) {
+            continue;
+        }
+        auto mtime = std::chrono::duration_cast<std::chrono::milliseconds>(
+            status.getLastModificationTime().time_since_epoch());
+        if(mtime <= build_at) {
             dep_hashes.emplace_back(local_id, hash_file(dep.path));
         }
     }
