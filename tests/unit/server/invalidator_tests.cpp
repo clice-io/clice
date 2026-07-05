@@ -1,5 +1,5 @@
-#include "test/test.h"
 #include "test/temp_dir.h"
+#include "test/test.h"
 #include "server/compiler/compile_graph.h"
 #include "server/context/context_resolver.h"
 #include "server/workspace/invalidator.h"
@@ -15,6 +15,23 @@ TEST_CASE(EmptyBatchNoEffects) {
     Invalidator invalidator(workspace, store);
 
     auto dirty = invalidator.apply({});
+
+    ASSERT_TRUE(dirty.empty());
+}
+
+TEST_CASE(NoOpEventsNoEffects) {
+    Workspace workspace;
+    SessionStore store;
+    auto file = workspace.path_pool.intern("/proj/a.cpp");
+    store.open(file);
+
+    Invalidator invalidator(workspace, store);
+    // Buffer sync stays in SessionStore and context switching in
+    // ContextResolver; these events must produce no effects of their own.
+    FileEvent events[] = {FileEvent::buffer_opened(file),
+                          FileEvent::buffer_edited(file),
+                          FileEvent::context_changed(file)};
+    auto dirty = invalidator.apply(events);
 
     ASSERT_TRUE(dirty.empty());
 }
@@ -41,7 +58,7 @@ TEST_CASE(SaveResetsTrialOnly) {
     ASSERT_TRUE(dirty.reschedule_indexing);
 }
 
-TEST_CASE(ModuleCascadeSplitsOpenClosed) {
+TEST_CASE(CascadeSplitsOpenClosed) {
     kota::event_loop loop;
     Workspace workspace;
     SessionStore store;
@@ -83,7 +100,7 @@ TEST_CASE(ModuleCascadeSplitsOpenClosed) {
     loop.run();
 }
 
-TEST_CASE(ChainInvalidationHitAndMiss) {
+TEST_CASE(ChainHitAndMiss) {
     Workspace workspace;
     SessionStore store;
     auto saved = workspace.path_pool.intern("/proj/inner.h");
@@ -109,6 +126,39 @@ TEST_CASE(ChainInvalidationHitAndMiss) {
     ASSERT_EQ(dirty.force_revalidate, llvm::SmallVector<std::uint32_t>{hit});
     ASSERT_FALSE(workspace.header_modes.contains(hit));
     ASSERT_FALSE(workspace.header_mode_hashes.contains(hit));
+}
+
+TEST_CASE(CloseEnqueuesReindex) {
+    Workspace workspace;
+    SessionStore store;
+    auto closed = workspace.path_pool.intern("/proj/a.cpp");
+
+    Invalidator invalidator(workspace, store);
+    auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
+
+    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{closed});
+    ASSERT_TRUE(dirty.reschedule_indexing);
+    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
+}
+
+TEST_CASE(CrashMarksLostDirty) {
+    Workspace workspace;
+    SessionStore store;
+    auto first = workspace.path_pool.intern("/proj/a.cpp");
+    auto second = workspace.path_pool.intern("/proj/b.cpp");
+    store.open(first);
+    store.open(second);
+
+    Invalidator invalidator(workspace, store);
+    std::uint32_t lost[] = {first, second};
+    auto dirty = invalidator.apply(FileEvent::worker_crashed(lost));
+
+    llvm::SmallVector<std::uint32_t> expected{first, second};
+    llvm::sort(expected);
+    ASSERT_EQ(dirty.mark_lost, expected);
+    // A crash loses build products, not compile inputs: no trial reset.
+    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
+    ASSERT_TRUE(dirty.reset_trial.empty());
 }
 
 TEST_CASE(BatchSavesDeduplicate) {
@@ -155,6 +205,7 @@ TEST_CASE(RemovedEdgeDropsChoice) {
 
     auto session = store.open(header);
     session->active_context = Session::ActiveContext{host, std::nullopt, ""};
+    session->header_context.emplace();
     session->trial_done = true;
     workspace.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
     auto generation = session->generation;

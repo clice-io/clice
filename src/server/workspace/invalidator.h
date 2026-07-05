@@ -74,9 +74,13 @@ struct FileEvent {
 /// these; MasterServer::dispatch() executes them against the mutable
 /// services (sessions, context resolver, background indexer).
 struct DirtySet {
-    /// Recompile needed: ast_dirty + trial_done=false + forget the cached
-    /// self-containment verdict.
+    /// Compile inputs changed: ast_dirty + trial_done=false + forget the
+    /// cached self-containment verdict.
     llvm::SmallVector<std::uint32_t> mark_ast_dirty;
+    /// Built AST lost (worker crash) but compile inputs did not change:
+    /// recompile only, without re-running the header trial or touching the
+    /// self-containment verdict.
+    llvm::SmallVector<std::uint32_t> mark_lost;
     /// Re-run the header trial only (trial_done=false); the AST itself is
     /// not stale.
     llvm::SmallVector<std::uint32_t> reset_trial;
@@ -96,8 +100,9 @@ struct DirtySet {
     bool reschedule_indexing = false;
 
     bool empty() const {
-        return mark_ast_dirty.empty() && reset_trial.empty() && force_revalidate.empty() &&
-               enqueue_reindex.empty() && !recheck_contexts && !save_cache && !reschedule_indexing;
+        return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
+               force_revalidate.empty() && enqueue_reindex.empty() && !recheck_contexts &&
+               !save_cache && !reschedule_indexing;
     }
 };
 

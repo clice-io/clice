@@ -98,10 +98,7 @@ void MasterServer::wire() {
     pool.on_crash = [this](const WorkerCrashInfo& info) {
         if(!info.stateful)
             return;
-        for(auto path_id: info.lost_documents) {
-            if(auto session = sessions.find(path_id))
-                session->ast_dirty = true;
-        }
+        dispatch(FileEvent::worker_crashed(info.lost_documents));
     };
 
     pool.on_evicted = [this](const std::string& path) {
@@ -135,7 +132,6 @@ void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& pee
     namespace protocol = kota::ipc::protocol;
 
     auto path = workspace.path_pool.resolve(path_id);
-    workspace.on_file_closed(path_id);
     // Route the eviction notification before dropping ownership:
     // notify_stateful uses the owner table to find the worker.
     pool.notify_stateful(path_id, worker::EvictParams{std::string(path)});
@@ -150,8 +146,7 @@ void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& pee
 
     sessions.close(path_id);
 
-    background_indexer.enqueue(path_id);
-    background_indexer.schedule();
+    dispatch(FileEvent::buffer_closed(path_id));
 
     LOG_DEBUG("didClose: {}", path);
 }
@@ -171,6 +166,12 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
             session->trial_done = false;
         }
         workspace.forget_self_contained(path_id);
+    }
+
+    for(auto path_id: dirty.mark_lost) {
+        if(auto session = sessions.find(path_id)) {
+            session->ast_dirty = true;
+        }
     }
 
     // Header sessions whose synthesized preamble embeds changed chain

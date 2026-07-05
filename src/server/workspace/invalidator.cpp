@@ -87,6 +87,12 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 break;
             }
             case FileEvent::Kind::BufferClosed: {
+                // Disk is the truth again: update the module graph and hand
+                // the file back to the background indexer, whose shard now
+                // supersedes the dropped session's index.
+                workspace.on_file_closed(event.path_id);
+                dirty.enqueue_reindex.push_back(event.path_id);
+                dirty.reschedule_indexing = true;
                 break;
             }
             case FileEvent::Kind::DiskChanged: {
@@ -99,15 +105,26 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 break;
             }
             case FileEvent::Kind::ContextChanged: {
+                // Context validation, persistence and session reset happen in
+                // ContextResolver::switch_context, which already lives in the
+                // right module; this case is a hook for future cross-file
+                // policy.
                 break;
             }
             case FileEvent::Kind::WorkerCrashed: {
+                // The worker's ASTs are gone; every document it owned must
+                // recompile. Compile inputs did not change, so trial state
+                // and self-containment verdicts stay untouched.
+                for(auto path_id: event.paths) {
+                    dirty.mark_lost.push_back(path_id);
+                }
                 break;
             }
         }
     }
 
     dedup(dirty.mark_ast_dirty);
+    dedup(dirty.mark_lost);
     dedup(dirty.reset_trial);
     dedup(dirty.force_revalidate);
     dedup(dirty.enqueue_reindex);

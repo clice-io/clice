@@ -203,6 +203,8 @@ void LSPClient::register_document_sync() {
         // Restore a context choice persisted from an earlier session.
         srv.contexts.restore_saved_context(*session);
 
+        srv.dispatch(FileEvent::buffer_opened(path_id));
+
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
     });
 
@@ -216,6 +218,8 @@ void LSPClient::register_document_sync() {
             return;
 
         srv.sessions.apply_change(*session, params.content_changes, params.text_document.version);
+
+        srv.dispatch(FileEvent::buffer_edited(path_id));
 
         LOG_DEBUG("didChange: path={} version={} gen={}",
                   path,
@@ -474,12 +478,14 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             auto [path, path_id, session] = resolve_uri(params.uri);
             auto [context_path, context_path_id, context_session] = resolve_uri(params.context_uri);
-            co_return to_raw(this->server.contexts.switch_context(path,
-                                                                  path_id,
-                                                                  session.get(),
-                                                                  context_path,
-                                                                  context_path_id,
-                                                                  params));
+            auto result = this->server.contexts.switch_context(path,
+                                                               path_id,
+                                                               session.get(),
+                                                               context_path,
+                                                               context_path_id,
+                                                               params);
+            this->server.dispatch(FileEvent::context_changed(path_id));
+            co_return to_raw(result);
         });
 }
 
