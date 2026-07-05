@@ -13,6 +13,7 @@
 #include "server/session/session_store.h"
 #include "server/worker/worker_pool.h"
 #include "server/workspace/config.h"
+#include "server/workspace/invalidator.h"
 #include "server/workspace/workspace.h"
 
 #include "kota/async/async.h"
@@ -93,6 +94,11 @@ public:
 
     void on_file_saved(std::uint32_t path_id);
 
+    /// The single entry point for file events: fold the batch through the
+    /// Invalidator, then execute the resulting effects against the mutable
+    /// services (sessions, context resolver, background indexer).
+    void dispatch(llvm::ArrayRef<FileEvent> events);
+
     void schedule_shutdown();
 
     kota::event& get_shutdown_event() {
@@ -116,6 +122,7 @@ public:
     IndexQuery index_query;
     BackgroundIndexer background_indexer;
     FeatureRouter features;
+    Invalidator invalidator;
 
     /// Lifecycle state, advanced by the LSP initialize/shutdown handlers.
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;

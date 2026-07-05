@@ -33,8 +33,8 @@ namespace protocol = kota::ipc::protocol;
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
     index_query(workspace, sessions), background_indexer(loop, workspace, pool, contexts, sessions),
-    features(compiler, index_query, workspace, contexts, background_indexer), bg_tasks(loop),
-    self_path(std::move(self_path)) {}
+    features(compiler, index_query, workspace, contexts, background_indexer),
+    invalidator(workspace, sessions), bg_tasks(loop), self_path(std::move(self_path)) {}
 
 MasterServer::~MasterServer() = default;
 
@@ -236,6 +236,50 @@ void MasterServer::on_file_saved(std::uint32_t path_id) {
     }
 
     background_indexer.schedule();
+}
+
+void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
+    auto dirty = invalidator.apply(events);
+
+    for(auto path_id: dirty.reset_trial) {
+        if(auto session = sessions.find(path_id)) {
+            session->trial_done = false;
+        }
+    }
+
+    for(auto path_id: dirty.mark_ast_dirty) {
+        if(auto session = sessions.find(path_id)) {
+            session->ast_dirty = true;
+            session->trial_done = false;
+        }
+        workspace.forget_self_contained(path_id);
+    }
+
+    // Header sessions whose synthesized preamble embeds changed chain
+    // content: zeroing build_at forces deps_changed() to re-validate every
+    // chain file by content hash. Do NOT reset the context itself: an
+    // in-flight compile can clobber ast_dirty when it finishes, and the
+    // surviving snapshot is what lets is_stale() recover.
+    for(auto path_id: dirty.force_revalidate) {
+        auto session = sessions.find(path_id);
+        if(session && session->header_context) {
+            session->header_context->deps.build_at = 0;
+            session->ast_dirty = true;
+            session->trial_done = false;
+        }
+    }
+
+    for(auto path_id: dirty.enqueue_reindex) {
+        background_indexer.enqueue(path_id);
+    }
+
+    if(dirty.save_cache) {
+        workspace.save_cache();
+    }
+
+    if(dirty.reschedule_indexing) {
+        background_indexer.schedule();
+    }
 }
 
 void MasterServer::schedule_shutdown() {
