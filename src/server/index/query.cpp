@@ -33,11 +33,8 @@ void IndexQuery::visit_sessions(SessionVisitor visitor) const {
     });
 }
 
-bool IndexQuery::is_proj_path_open(std::uint32_t proj_path_id) const {
-    auto server_id = to_server_id(proj_path_id);
-    if(!server_id)
-        return false;
-    return sessions.find(*server_id) != nullptr;
+bool IndexQuery::is_path_open(std::uint32_t path_id) const {
+    return sessions.find(path_id) != nullptr;
 }
 
 bool IndexQuery::find_symbol_info(index::SymbolHash hash,
@@ -103,10 +100,10 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
     // Fallback to MergedIndex. Position -> offset uses the session text when
     // one exists (open but not yet compiled); for closed files the shard's
     // own stored content provides the mapping.
-    auto proj_it = workspace.project_index.path_pool.find(path);
-    if(proj_it == workspace.project_index.path_pool.cache.end())
+    auto path_id = workspace.path_pool.find(path);
+    if(!path_id)
         return {};
-    auto shard_it = workspace.merged_indices.find(proj_it->second);
+    auto shard_it = workspace.merged_indices.find(*path_id);
     if(shard_it == workspace.merged_indices.end())
         return {};
 
@@ -142,12 +139,12 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     auto sym_it = workspace.project_index.symbols.find(hit.hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_proj_path_open(file_id))
+            if(is_path_open(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
                 continue;
-            auto uri = lsp::URI::from_file_path(workspace.project_index.path_pool.path(file_id));
+            auto uri = lsp::URI::from_file_path(workspace.path_pool.resolve(file_id));
             if(!uri)
                 continue;
             auto& merged_index = shard_it->second;
@@ -240,12 +237,12 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
         return std::nullopt;
 
     for(auto file_id: sym_it->second.reference_files) {
-        if(is_proj_path_open(file_id))
+        if(is_path_open(file_id))
             continue;
         auto shard_it = workspace.merged_indices.find(file_id);
         if(shard_it == workspace.merged_indices.end())
             continue;
-        auto uri = lsp::URI::from_file_path(workspace.project_index.path_pool.path(file_id));
+        auto uri = lsp::URI::from_file_path(workspace.path_pool.resolve(file_id));
         if(!uri)
             continue;
         auto& merged_index = shard_it->second;
@@ -294,7 +291,7 @@ void IndexQuery::collect_grouped_relations(
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_proj_path_open(file_id))
+            if(is_path_open(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -329,7 +326,7 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_proj_path_open(file_id))
+            if(is_path_open(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -415,7 +412,7 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
         return std::nullopt;
 
     for(auto file_id: sym_it->second.reference_files) {
-        if(is_proj_path_open(file_id))
+        if(is_path_open(file_id))
             continue;
         auto shard_it = workspace.merged_indices.find(file_id);
         if(shard_it == workspace.merged_indices.end())
@@ -436,7 +433,7 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
             if(!range)
                 return true;
             result = DefinitionText{
-                .file = workspace.project_index.path_pool.path(file_id).str(),
+                .file = workspace.path_pool.resolve(file_id).str(),
                 .start_line = static_cast<int>(range->start.line) + 1,
                 .end_line = static_cast<int>(range->end.line) + 1,
                 .text =
@@ -458,7 +455,7 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_proj_path_open(file_id))
+            if(is_path_open(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -469,7 +466,7 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
                 continue;
             auto content = merged_index.content();
             lsp::LineMap map(content, ls);
-            auto file_path = workspace.project_index.path_pool.path(file_id);
+            auto file_path = workspace.path_pool.resolve(file_id);
 
             merged_index.lookup(hash, kind, [&](const index::Relation& r) {
                 auto pos = map.to_position(r.range.begin);
@@ -737,12 +734,11 @@ std::vector<ResolvedSymbol> IndexQuery::locate_symbols(const agentic::ReadSymbol
                 return session_result;
         }
 
-        auto it = workspace.project_index.path_pool.find(path_str);
-        if(it == workspace.project_index.path_pool.cache.end())
+        auto path_id = workspace.path_pool.find(path_str);
+        if(!path_id)
             return {};
 
-        auto proj_id = it->second;
-        auto shard_it = workspace.merged_indices.find(proj_id);
+        auto shard_it = workspace.merged_indices.find(*path_id);
         if(shard_it == workspace.merged_indices.end())
             return {};
 
@@ -753,7 +749,7 @@ std::vector<ResolvedSymbol> IndexQuery::locate_symbols(const agentic::ReadSymbol
         lsp::LineMap map(merged_index.content(), ls);
 
         for(auto& [hash, symbol]: workspace.project_index.symbols) {
-            if(!symbol.reference_files.contains(proj_id))
+            if(!symbol.reference_files.contains(*path_id))
                 continue;
             bool found = false;
             merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {

@@ -107,6 +107,12 @@ table MergedIndex {
 max_canonical_id:
     uint;
 
+// Shard-local path table: every path id inside this shard (dependency
+// locations, dependency hashes, context keys) indexes into it. Shards are
+// fully self-contained — runtime pool ids are per-session and never persist.
+paths:
+    [string];
+
 canonical_cache:
     [CacheEntry];
 
@@ -169,23 +175,21 @@ main_file_index:
     TUFileIndexEntry;
 }
 
-table PathEntry {
-path:
-    string;
-id:
-    uint;
-}
-
-struct PathMapEntry {
-    source : uint;
-    index : uint;
-}
-
+// The blob's path table is compact: only paths referenced by the symbol
+// bitmaps or the shard list are written (garbage paths are collected at
+// save time), and every id in the blob is an index into it. Runtime pool
+// ids are per-session and never persist.
 table ProjectIndex {
 paths:
-    [PathEntry];
-indices:
-    [PathMapEntry];
+    [string];
 symbols:
     [SymbolEntry];
+
+// Path-table indices of the files owning a MergedIndex shard blob; the
+// loader fetches exactly these (keyed by path hash) and sweeps the rest.
+shards:
+    [uint];
+
+format_version:
+    uint;
 }

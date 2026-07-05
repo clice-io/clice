@@ -13,6 +13,14 @@
 
 namespace clice::index {
 
+/// A dependency of a compilation context: where it was included and the
+/// file's path, interned into the shard's own path table on merge.
+struct DepLocation {
+    llvm::StringRef path;
+    std::uint32_t line = 0;
+    std::uint32_t include_id = 0;
+};
+
 class MergedIndex {
 private:
     struct Impl;
@@ -55,15 +63,17 @@ public:
                 RelationKind kind,
                 llvm::function_ref<bool(const Relation&)> callback);
 
-    /// Whether this index needs rebuilding.
-    bool need_update(this const Self& self, llvm::ArrayRef<llvm::StringRef> path_mapping);
+    /// Whether this index needs rebuilding. Dependency paths come from the
+    /// shard's own path table; shards are fully self-contained.
+    bool need_update(this const Self& self);
 
     bool need_rewrite() {
         return impl != nullptr;
     }
 
-    /// Remove the index of specific path id.
-    void remove(this Self& self, std::uint32_t path_id);
+    /// Remove the contribution keyed by `context_path` (a TU for header
+    /// shards, the file itself for compilation shards).
+    void remove(this Self& self, llvm::StringRef context_path);
 
     /// Get the stored source content for position mapping.
     llvm::StringRef content(this const Self& self);
@@ -77,25 +87,21 @@ public:
     /// Add symbols to this shard's local symbol table (idempotent by hash).
     void merge_symbols(this Self& self, const SymbolTable& symbols);
 
-    /// Merge the index with given compilation context.
-    ///
-    /// `path_mapping` resolves the dependency path ids referenced by
-    /// `include_locations` to real paths so a content hash can be captured for
-    /// each distinct dependency; when empty, no hashes are stored and staleness
-    /// detection falls back to mtime only.
+    /// Merge the index with given compilation context, keyed by `tu_path`.
+    /// Dependency paths are interned into the shard's own table and a content
+    /// hash is captured per distinct dependency for the staleness check.
     void merge(this Self& self,
-               std::uint32_t path_id,
+               llvm::StringRef tu_path,
                std::chrono::milliseconds build_at,
-               std::vector<IncludeLocation> include_locations,
+               llvm::ArrayRef<DepLocation> deps,
                FileIndex& index,
-               llvm::StringRef content,
-               llvm::ArrayRef<llvm::StringRef> path_mapping = {});
+               llvm::StringRef content);
 
-    /// Merge the index with given header context. @param path_id is the
+    /// Merge the index with given header context. @param tu_path is the
     /// including TU: a later merge with the same TU replaces that TU's
     /// previous contribution, other TUs' contributions are untouched.
     void merge(this Self& self,
-               std::uint32_t path_id,
+               llvm::StringRef tu_path,
                std::uint32_t include_id,
                FileIndex& index,
                llvm::StringRef content);

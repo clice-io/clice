@@ -10,6 +10,7 @@ namespace {
 TEST_SUITE(IndexQuery, Tester) {
 
 index::ProjectIndex project_index;
+clice::PathPool pool;
 llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
 
 /// Build TUIndex from code and merge into ProjectIndex + MergedIndex shards.
@@ -19,22 +20,21 @@ void build_and_merge(llvm::StringRef code,
     ASSERT_TRUE(compile());
 
     auto tu_index = index::TUIndex::build(*unit);
-    auto file_ids_map = project_index.merge(tu_index);
+    auto file_ids_map = project_index.merge(tu_index, pool);
 
     // Merge main file index as compilation context.
     auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
     auto main_global_id = file_ids_map[main_tu_path_id];
+    llvm::StringRef main_tu_path = tu_index.graph.paths[main_tu_path_id];
 
-    std::vector<index::IncludeLocation> include_locs;
+    llvm::SmallVector<index::DepLocation> deps;
     for(auto& loc: tu_index.graph.locations) {
-        index::IncludeLocation remapped = loc;
-        remapped.path_id = file_ids_map[loc.path_id];
-        include_locs.push_back(remapped);
+        deps.push_back({tu_index.graph.paths[loc.path_id], loc.line, loc.include});
     }
 
-    merged_indices[main_global_id].merge(main_global_id,
+    merged_indices[main_global_id].merge(main_tu_path,
                                          tu_index.built_at,
-                                         std::move(include_locs),
+                                         deps,
                                          tu_index.main_file_index,
                                          {});
 
@@ -43,13 +43,14 @@ void build_and_merge(llvm::StringRef code,
         auto tu_pid = tu_index.graph.path_id(fid);
         auto global_pid = file_ids_map[tu_pid];
         auto include_id = tu_index.graph.include_location_id(fid);
-        merged_indices[global_pid].merge(global_pid, include_id, file_idx, {});
+        merged_indices[global_pid].merge(main_tu_path, include_id, file_idx, {});
     }
 }
 
 /// Reset index state between test cases.
 void reset() {
     project_index = index::ProjectIndex();
+    pool = clice::PathPool();
     merged_indices.clear();
     clear();
 }
@@ -322,21 +323,20 @@ TEST_CASE(CrossFileQuery) {
     ASSERT_TRUE(compile());
 
     auto tu_index = index::TUIndex::build(*unit);
-    auto file_ids_map = project_index.merge(tu_index);
+    auto file_ids_map = project_index.merge(tu_index, pool);
 
     // Merge main file.
     auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
     auto main_global_id = file_ids_map[main_tu_path_id];
 
-    std::vector<index::IncludeLocation> include_locs;
+    llvm::StringRef main_tu_path = tu_index.graph.paths[main_tu_path_id];
+    llvm::SmallVector<index::DepLocation> deps;
     for(auto& loc: tu_index.graph.locations) {
-        index::IncludeLocation remapped = loc;
-        remapped.path_id = file_ids_map[loc.path_id];
-        include_locs.push_back(remapped);
+        deps.push_back({tu_index.graph.paths[loc.path_id], loc.line, loc.include});
     }
-    merged_indices[main_global_id].merge(main_global_id,
+    merged_indices[main_global_id].merge(main_tu_path,
                                          tu_index.built_at,
-                                         std::move(include_locs),
+                                         deps,
                                          tu_index.main_file_index,
                                          {});
 
@@ -345,7 +345,7 @@ TEST_CASE(CrossFileQuery) {
         auto tu_pid = tu_index.graph.path_id(fid);
         auto global_pid = file_ids_map[tu_pid];
         auto include_id = tu_index.graph.include_location_id(fid);
-        merged_indices[global_pid].merge(global_pid, include_id, file_idx, {});
+        merged_indices[global_pid].merge(main_tu_path, include_id, file_idx, {});
     }
 
     // Query: from usage in main.cpp, find the symbol via merged index.

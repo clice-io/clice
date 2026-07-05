@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <optional>
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
@@ -46,6 +47,21 @@ struct PathPool {
     llvm::StringRef resolve(std::uint32_t id) const {
         assert(id < paths.size());
         return paths[id];
+    }
+
+    /// Look up a path without interning it, normalizing backslashes first.
+    std::optional<std::uint32_t> find(llvm::StringRef path) const {
+        llvm::SmallString<256> normalized;
+        if(path.contains('\\')) {
+            normalized = path;
+            std::replace(normalized.begin(), normalized.end(), '\\', '/');
+            path = normalized;
+        }
+        auto it = cache.find(path);
+        if(it == cache.end()) {
+            return std::nullopt;
+        }
+        return it->second;
     }
 };
 

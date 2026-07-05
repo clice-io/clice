@@ -25,10 +25,11 @@ TEST_CASE(MergeSingleTU) {
                                 tu));
 
     index::ProjectIndex project;
-    auto file_ids_map = project.merge(tu);
+    clice::PathPool pool;
+    auto file_ids_map = project.merge(tu, pool);
 
-    // Path pool should have entries for the TU's files.
-    ASSERT_FALSE(project.path_pool.paths.empty());
+    // The shared pool should have entries for the TU's files.
+    ASSERT_FALSE(pool.paths.empty());
 
     // Symbols from the TU should be merged into the project.
     ASSERT_FALSE(project.symbols.empty());
@@ -55,8 +56,9 @@ TEST_CASE(MergeMultipleTUs) {
                                 tu2));
 
     index::ProjectIndex project;
-    project.merge(tu1);
-    project.merge(tu2);
+    clice::PathPool pool;
+    project.merge(tu1, pool);
+    project.merge(tu2, pool);
 
     // All symbols from both TUs should be present.
     for(auto& [hash, symbol]: tu1.symbols) {
@@ -92,8 +94,9 @@ TEST_CASE(MergeDuplicateSymbol) {
     auto tu_b = index::TUIndex::build(*unit);
 
     index::ProjectIndex project;
-    project.merge(tu_a);
-    project.merge(tu_b);
+    clice::PathPool pool;
+    project.merge(tu_a, pool);
+    project.merge(tu_b, pool);
 
     // Find the shared_func symbol hash from TU A's symbol table.
     index::SymbolHash shared_hash = 0;
@@ -122,18 +125,20 @@ TEST_CASE(SerializationRoundTrip) {
                                 tu));
 
     index::ProjectIndex project;
-    project.merge(tu);
+    clice::PathPool pool;
+    project.merge(tu, pool);
 
     // Serialize.
     llvm::SmallString<4096> buf;
     llvm::raw_svector_ostream os(buf);
-    project.serialize(os);
+    project.serialize(os, pool, {});
 
-    // Deserialize.
-    auto restored = index::ProjectIndex::from(buf.data());
-
-    // Path pools should match.
-    ASSERT_EQ(project.path_pool.paths.size(), restored.path_pool.paths.size());
+    // Deserialize into a fresh pool, as a new session would.
+    clice::PathPool fresh;
+    llvm::SmallVector<std::uint32_t> shards;
+    auto loaded = index::ProjectIndex::from(buf.data(), buf.size(), fresh, shards);
+    ASSERT_TRUE(loaded.has_value());
+    auto& restored = *loaded;
 
     // Symbol tables should have same size.
     ASSERT_EQ(project.symbols.size(), restored.symbols.size());
@@ -154,14 +159,15 @@ TEST_CASE(FileIdsMapCorrectness) {
                                 tu));
 
     index::ProjectIndex project;
-    auto file_ids_map = project.merge(tu);
+    clice::PathPool pool;
+    auto file_ids_map = project.merge(tu, pool);
 
     // file_ids_map should have same size as TU's include graph paths.
     ASSERT_EQ(file_ids_map.size(), tu.graph.paths.size());
 
-    // Each mapped ID should be valid in the project path pool.
+    // Each mapped ID should be valid in the shared pool.
     for(auto mapped_id: file_ids_map) {
-        ASSERT_TRUE(mapped_id < project.path_pool.paths.size());
+        ASSERT_TRUE(mapped_id < pool.paths.size());
     }
 }
 
@@ -174,7 +180,8 @@ TEST_CASE(NameSurvivesRoundTrip) {
                                 tu));
 
     index::ProjectIndex project;
-    project.merge(tu);
+    clice::PathPool pool;
+    project.merge(tu, pool);
 
     // Verify names are populated after merge.
     bool found_var = false;
@@ -191,8 +198,12 @@ TEST_CASE(NameSurvivesRoundTrip) {
     // Serialize and deserialize.
     llvm::SmallString<4096> buf;
     llvm::raw_svector_ostream os(buf);
-    project.serialize(os);
-    auto restored = index::ProjectIndex::from(buf.data());
+    project.serialize(os, pool, {});
+    clice::PathPool fresh;
+    llvm::SmallVector<std::uint32_t> shards;
+    auto loaded = index::ProjectIndex::from(buf.data(), buf.size(), fresh, shards);
+    ASSERT_TRUE(loaded.has_value());
+    auto& restored = *loaded;
 
     // Verify names survive round-trip.
     for(auto& [hash, symbol]: project.symbols) {
@@ -212,7 +223,8 @@ TEST_CASE(LocalSymbolsExcluded) {
                                 tu));
 
     index::ProjectIndex project;
-    project.merge(tu);
+    clice::PathPool pool;
+    project.merge(tu, pool);
 
     // global (External) should be in ProjectIndex.
     bool found_global = false;
@@ -241,12 +253,17 @@ TEST_CASE(ScopeRoundTrip) {
                                 tu));
 
     index::ProjectIndex project;
-    project.merge(tu);
+    clice::PathPool pool;
+    project.merge(tu, pool);
 
     llvm::SmallString<4096> buf;
     llvm::raw_svector_ostream os(buf);
-    project.serialize(os);
-    auto restored = index::ProjectIndex::from(buf.data());
+    project.serialize(os, pool, {});
+    clice::PathPool fresh;
+    llvm::SmallVector<std::uint32_t> shards;
+    auto loaded = index::ProjectIndex::from(buf.data(), buf.size(), fresh, shards);
+    ASSERT_TRUE(loaded.has_value());
+    auto& restored = *loaded;
 
     for(auto& [hash, symbol]: project.symbols) {
         ASSERT_TRUE(restored.symbols.contains(hash));

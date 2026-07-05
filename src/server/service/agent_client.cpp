@@ -90,14 +90,12 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(file_path.empty())
                 continue;
 
-            auto proj_it = ws.project_index.path_pool.find(file_path);
-            if(proj_it != ws.project_index.path_pool.cache.end()) {
-                if(!seen.insert(proj_it->second).second)
-                    continue;
-            }
+            auto path_id = ws.path_pool.intern(file_path);
+            if(!seen.insert(path_id).second)
+                continue;
 
             std::string kind_str;
-            auto mod_it = ws.path_to_module.find(ws.path_pool.intern(file_path));
+            auto mod_it = ws.path_to_module.find(path_id);
             if(mod_it != ws.path_to_module.end()) {
                 kind_str = "module";
             } else {
@@ -123,7 +121,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             for(auto& [path_id, shard]: ws.merged_indices) {
                 if(seen.contains(path_id))
                     continue;
-                auto path_str = ws.project_index.path_pool.path(path_id);
+                auto path_str = ws.path_pool.resolve(path_id);
                 auto ext = llvm::sys::path::extension(path_str);
                 if(ext == ".h" || ext == ".hpp" || ext == ".hxx" || ext == ".hh") {
                     seen.insert(path_id);
@@ -382,12 +380,11 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(found_session)
                 co_return result;
 
-            auto it = srv.workspace.project_index.path_pool.find(params.path);
-            if(it == srv.workspace.project_index.path_pool.cache.end())
+            auto path_id = srv.workspace.path_pool.find(params.path);
+            if(!path_id)
                 co_return result;
 
-            auto proj_id = it->second;
-            auto shard_it = srv.workspace.merged_indices.find(proj_id);
+            auto shard_it = srv.workspace.merged_indices.find(*path_id);
             if(shard_it == srv.workspace.merged_indices.end())
                 co_return result;
 
@@ -402,7 +399,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     continue;
                 if(!is_document_level(symbol.kind))
                     continue;
-                if(!symbol.reference_files.contains(proj_id))
+                if(!symbol.reference_files.contains(*path_id))
                     continue;
 
                 merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {

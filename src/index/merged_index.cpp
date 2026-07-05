@@ -3,6 +3,7 @@
 #include <ranges>
 #include <tuple>
 
+#include "index/path_pool.h"
 #include "index/serialization.h"
 #include "support/filesystem.h"
 
@@ -166,6 +167,11 @@ struct CompilationContext {
 };
 
 struct MergedIndex::Impl {
+    /// Shard-local path table: every path id stored in this shard indexes
+    /// into it, so shards are self-contained across sessions (runtime pool
+    /// ids never persist).
+    PathPool paths;
+
     /// The content of corresponding source file.
     std::string content;
 
@@ -278,6 +284,12 @@ void MergedIndex::load_in_memory(this Self& self) {
     auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
 
     index.max_canonical_id = root->max_canonical_id();
+
+    if(root->paths()) {
+        for(auto path: *root->paths()) {
+            index.paths.path_id(path->string_view());
+        }
+    }
 
     for(auto entry: *root->canonical_cache()) {
         index.canonical_cache.try_emplace(entry->sha256()->string_view(), entry->canonical_id());
@@ -496,8 +508,12 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                                               static_cast<uint8_t>(symbol.scope)));
     });
 
+    auto paths = transform(index->paths.paths,
+                           [&](llvm::StringRef path) { return CreateString(builder, path); });
+
     auto merged_index = binary::CreateMergedIndex(builder,
                                                   index->max_canonical_id,
+                                                  CreateVector(builder, paths),
                                                   CreateVector(builder, canonical_cache),
                                                   CreateVector(builder, header_contexts),
                                                   CreateVector(builder, compilation_contexts),
@@ -627,13 +643,14 @@ void MergedIndex::lookup(this const Self& self,
     }
 }
 
-bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::StringRef> path_mapping) {
+bool MergedIndex::need_update(this const Self& self) {
     if(self.impl) {
         if(self.impl->compilation_contexts.empty()) {
             return true;
         }
 
         auto& context = self.impl->compilation_contexts.begin()->getSecond();
+        auto& paths = self.impl->paths.paths;
 
         llvm::DenseMap<std::uint32_t, std::uint64_t> hashes;
         for(auto& dep: context.dep_hashes) {
@@ -645,12 +662,12 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
             if(!deps.insert(location.path_id).second) {
                 continue;
             }
-            // A dep the mapping does not cover cannot be validated: rebuild.
-            if(location.path_id >= path_mapping.size()) {
+            // A dep the table does not cover cannot be validated: rebuild.
+            if(location.path_id >= paths.size()) {
                 return true;
             }
             auto it = hashes.find(location.path_id);
-            if(dep_stale(path_mapping[location.path_id],
+            if(dep_stale(paths[location.path_id],
                          context.build_at,
                          it != hashes.end() ? std::optional(it->second) : std::nullopt)) {
                 return true;
@@ -665,6 +682,7 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
         }
 
         auto context = *index->compilation_contexts()->begin();
+        auto* paths = index->paths();
 
         llvm::DenseMap<std::uint32_t, std::uint64_t> hashes;
         if(context->dep_hashes()) {
@@ -678,12 +696,12 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
             if(!deps.insert(location->path_id()).second) {
                 continue;
             }
-            // A dep the mapping does not cover cannot be validated: rebuild.
-            if(location->path_id() >= path_mapping.size()) {
+            // A dep the table does not cover cannot be validated: rebuild.
+            if(!paths || location->path_id() >= paths->size()) {
                 return true;
             }
             auto it = hashes.find(location->path_id());
-            if(dep_stale(path_mapping[location->path_id()],
+            if(dep_stale(paths->Get(location->path_id())->string_view(),
                          context->build_at(),
                          it != hashes.end() ? std::optional(it->second) : std::nullopt)) {
                 return true;
@@ -696,9 +714,15 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
     return true;
 }
 
-void MergedIndex::remove(this Self& self, std::uint32_t path_id) {
+void MergedIndex::remove(this Self& self, llvm::StringRef context_path) {
     self.load_in_memory();
     auto& index = *self.impl;
+
+    auto path_it = index.paths.find(context_path);
+    if(path_it == index.paths.cache.end()) {
+        return;
+    }
+    auto path_id = path_it->second;
 
     // Handle header context removal.
     auto hc_it = index.header_contexts.find(path_id);
@@ -762,34 +786,36 @@ void MergedIndex::merge_symbols(this Self& self, const SymbolTable& symbols) {
 }
 
 void MergedIndex::merge(this Self& self,
-                        std::uint32_t path_id,
+                        llvm::StringRef tu_path,
                         std::chrono::milliseconds build_at,
-                        std::vector<IncludeLocation> include_locations,
+                        llvm::ArrayRef<DepLocation> deps,
                         FileIndex& index,
-                        llvm::StringRef content,
-                        llvm::ArrayRef<llvm::StringRef> path_mapping) {
+                        llvm::StringRef content) {
     self.load_in_memory();
     self.impl->content = content.str();
     self.impl->line_starts = kota::ipc::lsp::build_line_starts(self.impl->content);
 
-    // Capture a content hash for each distinct dependency so a later staleness
-    // check can tell a real edit apart from a mere touch (mtime bumped, bytes
-    // unchanged). Only re-hashing at check time can prove that, so the baseline
-    // is recorded here.
+    // Intern the dependencies into the shard's own path table, and capture a
+    // content hash for each distinct one so a later staleness check can tell
+    // a real edit apart from a mere touch (mtime bumped, bytes unchanged).
+    // Only re-hashing at check time can prove that, so the baseline is
+    // recorded here.
     // TODO: this re-reads every dependency on the event-loop thread even
     // though the indexer worker already read them; if it shows up on large
     // cold-start profiles, have the worker ship the hashes in the TUIndex.
+    std::vector<IncludeLocation> include_locations;
     llvm::SmallVector<DepHash> dep_hashes;
     llvm::DenseSet<std::uint32_t> seen;
-    for(auto& location: include_locations) {
-        if(location.path_id >= path_mapping.size()) {
-            continue;
-        }
-        if(seen.insert(location.path_id).second) {
-            dep_hashes.emplace_back(location.path_id, hash_file(path_mapping[location.path_id]));
+    include_locations.reserve(deps.size());
+    for(auto& dep: deps) {
+        auto local_id = self.impl->paths.path_id(dep.path);
+        include_locations.push_back({local_id, dep.line, dep.include_id});
+        if(seen.insert(local_id).second) {
+            dep_hashes.emplace_back(local_id, hash_file(dep.path));
         }
     }
 
+    auto path_id = self.impl->paths.path_id(tu_path);
     self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
         // A reindex of the same TU replaces its previous contribution:
         // without the release, the old canonical's occurrences and relations
@@ -808,11 +834,12 @@ void MergedIndex::merge(this Self& self,
 }
 
 void MergedIndex::merge(this Self& self,
-                        std::uint32_t path_id,
+                        llvm::StringRef tu_path,
                         std::uint32_t include_id,
                         FileIndex& index,
                         llvm::StringRef content) {
     self.load_in_memory();
+    auto path_id = self.impl->paths.path_id(tu_path);
     // The stored content is the position-mapping truth for this file; a
     // reindex after an edit must refresh it, not just fill it once.
     if(!content.empty() && self.impl->content != content) {
