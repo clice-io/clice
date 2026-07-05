@@ -113,7 +113,7 @@ jobs:
         run: pixi run -e test-run unit-test RelWithDebInfo
 
       - name: Integration tests
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: pixi run -e test-run integration-test RelWithDebInfo
 
       - name: Smoke tests

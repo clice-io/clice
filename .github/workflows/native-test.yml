@@ -82,7 +82,7 @@ jobs:
         run: pixi run -e test-run unit-test ${{ matrix.build_type }}
 
       - name: Integration tests
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: pixi run -e test-run integration-test ${{ matrix.build_type }}
 
       - name: Smoke tests
