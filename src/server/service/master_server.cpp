@@ -8,6 +8,7 @@
 #include "server/protocol/worker.h"
 #include "server/service/agent_client.h"
 #include "server/service/lsp_client.h"
+#include "server/workspace/file_tracker.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -92,6 +93,41 @@ void MasterServer::initialize() {
     wire();
 
     load_workspace();
+
+    if(!workspace_root.empty()) {
+        // Construct after the workspace load so the tracker's baseline CDB
+        // stamp matches the database that was just loaded.
+        tracker = std::make_unique<FileTracker>(workspace, sessions, workspace_root);
+        auto& tracker_cfg = workspace.config.tracker;
+        if(*tracker_cfg.cdb_poll_seconds > 0) {
+            bg_tasks.spawn(cdb_poll_task());
+        }
+        if(*tracker_cfg.workspace_poll_seconds > 0) {
+            bg_tasks.spawn(workspace_poll_task());
+        }
+    }
+}
+
+kota::task<> MasterServer::cdb_poll_task() {
+    auto interval = std::chrono::seconds(*workspace.config.tracker.cdb_poll_seconds);
+    while(true) {
+        co_await kota::sleep(interval);
+        auto events = tracker->tick_cdb();
+        if(!events.empty()) {
+            dispatch(events);
+        }
+    }
+}
+
+kota::task<> MasterServer::workspace_poll_task() {
+    auto interval = std::chrono::seconds(*workspace.config.tracker.workspace_poll_seconds);
+    while(true) {
+        co_await kota::sleep(interval);
+        auto events = co_await tracker->tick_workspace();
+        if(!events.empty()) {
+            dispatch(events);
+        }
+    }
 }
 
 void MasterServer::wire() {
@@ -193,6 +229,10 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         background_indexer.enqueue(path_id);
     }
 
+    if(dirty.ensure_compile_graph && !workspace.compile_graph) {
+        compiler.init_compile_graph();
+    }
+
     bool save = dirty.save_cache;
     if(dirty.recheck_contexts) {
         save |= contexts.drop_orphaned_choices(sessions);
@@ -278,48 +318,15 @@ void MasterServer::load_workspace() {
 
     open_cache_store();
 
-    std::string cdb_path;
-    for(auto& configured: cfg.compile_commands_paths) {
-        if(llvm::sys::fs::is_directory(configured)) {
-            auto candidate = path::join(configured, "compile_commands.json");
-            if(llvm::sys::fs::exists(candidate)) {
-                cdb_path = std::move(candidate);
-                break;
-            }
-        } else if(llvm::sys::fs::exists(configured)) {
-            cdb_path = configured;
-            break;
-        } else {
-            LOG_WARN("Configured compile_commands_path not found: {}", configured);
-        }
-    }
-
-    if(cdb_path.empty()) {
-        auto try_candidate = [&](llvm::StringRef dir) -> bool {
-            auto candidate = path::join(dir, "compile_commands.json");
-            if(llvm::sys::fs::exists(candidate)) {
-                cdb_path = std::move(candidate);
-                return true;
-            }
-            return false;
-        };
-
-        if(!try_candidate(workspace_root)) {
-            std::error_code ec;
-            for(llvm::sys::fs::directory_iterator it(workspace_root, ec), end; it != end && !ec;
-                it.increment(ec)) {
-                if(it->type() == llvm::sys::fs::file_type::directory_file) {
-                    if(try_candidate(it->path()))
-                        break;
-                }
-            }
-        }
-    }
-
+    auto cdb_path = discover_compile_commands(workspace.config, workspace_root);
     if(cdb_path.empty()) {
         LOG_GUIDANCE(
             "No compile_commands.json found in workspace {}. Compile commands will be " "guessed; see https://clice.io/en/guide/quick-start for setup.",
             workspace_root);
+        // Persisted index shards are CDB-independent; load them so a
+        // database generated later (picked up by the CDB poll) starts from
+        // the previous session's index.
+        background_indexer.load();
         return;
     }
 

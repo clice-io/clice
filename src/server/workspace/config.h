@@ -42,6 +42,16 @@ struct ProjectConfig {
     defaulted<std::uint64_t> worker_memory_limit = {};
 };
 
+/// Corresponds to the `[tracker]` section in clice.toml: the stat-polling
+/// file tracker's intervals. 0 disables the loop (integration tests drive
+/// ticks through the clice/internal/poll hook instead).
+struct TrackerConfig {
+    /// Compilation database poll interval in seconds (default 3).
+    std::optional<std::uint32_t> cdb_poll_seconds;
+    /// Workspace file sweep interval in seconds (default 30).
+    std::optional<std::uint32_t> workspace_poll_seconds;
+};
+
 struct CompiledRule {
     std::vector<GlobPattern> patterns;
     std::vector<std::string> append;
@@ -71,6 +81,8 @@ struct ConfigIssue {
 /// or passed via LSP initializationOptions.
 struct Config {
     defaulted<ProjectConfig> project;
+
+    defaulted<TrackerConfig> tracker;
 
     defaulted<std::vector<ConfigRule>> rules;
 

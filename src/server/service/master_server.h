@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,8 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
+
+class FileTracker;
 
 namespace deco = kota::deco;
 
@@ -85,7 +88,6 @@ public:
     void initialize();
     void initialize(llvm::StringRef root);
 
-    // TODO: add periodic stat-based file watching
     kota::task<> shutdown_and_cleanup();
 
     std::shared_ptr<Session> find_session(std::uint32_t path_id);
@@ -122,6 +124,12 @@ public:
     FeatureRouter features;
     Invalidator invalidator;
 
+    /// Stat-polling discovery of CDB and on-disk file changes. Created by
+    /// initialize() once the workspace is loaded (null before that and in
+    /// workspace-less sessions); its polling loops run in bg_tasks, and the
+    /// clice/internal/poll test hook drives ticks directly.
+    std::unique_ptr<FileTracker> tracker;
+
     /// Lifecycle state, advanced by the LSP initialize/shutdown handlers.
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;
 
@@ -153,6 +161,12 @@ private:
     /// Periodically checkpoint the cache store manifest so last-accessed
     /// times survive crashes (the store itself is passive by design).
     kota::task<> cache_checkpoint_task();
+
+    /// The file tracker's polling loops: each tick hands the tracker's
+    /// event batch to dispatch(). Spawned by initialize() when the
+    /// configured interval is non-zero.
+    kota::task<> cdb_poll_task();
+    kota::task<> workspace_poll_task();
 
     kota::event shutdown_event;
 

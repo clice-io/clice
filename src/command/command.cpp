@@ -198,8 +198,6 @@ object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(llvm::Str
 }
 
 std::size_t CompilationDatabase::load(llvm::StringRef path) {
-    entries.clear();
-
     simdjson::padded_string json_buf;
     if(auto error = simdjson::padded_string::load(std::string(path)).get(json_buf)) {
         LOG_ERROR("Failed to read compilation database from {}: {}",
@@ -223,6 +221,11 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
                   path);
         return 0;
     }
+
+    // Parse into a local vector and only swap it in once the array parsed:
+    // a half-written or corrupt file must leave the loaded entries intact so
+    // reload_and_diff() reports no change instead of dropping every file.
+    std::vector<CompilationEntry> new_entries;
 
     std::size_t index = 0;
     for(auto element: arr) {
@@ -291,7 +294,7 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
                 auto info = save_compilation_info(file_ref, dir_ref, args);
                 assert(info && "save_compilation_info must succeed with non-empty args");
                 auto path_id = paths.intern(file_ref);
-                entries.push_back({path_id, info});
+                new_entries.push_back({path_id, info});
             }
         } else {
             std::string_view cmd_sv;
@@ -311,16 +314,74 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
                 continue;
             }
             auto path_id = paths.intern(file_ref);
-            entries.push_back({path_id, info});
+            new_entries.push_back({path_id, info});
         }
 
         ++index;
     }
 
     // Sort by file path_id for binary search.
-    ranges::sort(entries, {}, &CompilationEntry::file);
+    ranges::sort(new_entries, {}, &CompilationEntry::file);
 
+    entries = std::move(new_entries);
     return entries.size();
+}
+
+llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 1>>
+    CompilationDatabase::command_hash_snapshot() const {
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 1>> snapshot;
+
+    for(auto& entry: entries) {
+        // The file-independent argv (driver + canonical flags + per-file
+        // -I/-D patch). The source file stays out: entries under one path_id
+        // share it, so it carries no signal for this comparison.
+        std::vector<std::string> args;
+        args.reserve(entry.info->canonical->arguments.size() + entry.info->patch.size());
+        for(const char* arg: entry.info->canonical->arguments) {
+            args.emplace_back(arg);
+        }
+        for(const char* arg: entry.info->patch) {
+            args.emplace_back(arg);
+        }
+        snapshot[entry.file].emplace_back(canonical_command_hash(args, entry.info->directory));
+    }
+
+    // A file's entries have no inherent order, so sort each list to make the
+    // comparison in reload_and_diff() order-independent.
+    for(auto& bucket: snapshot) {
+        ranges::sort(bucket.second);
+    }
+
+    return snapshot;
+}
+
+CDBDiff CompilationDatabase::reload_and_diff(llvm::StringRef path) {
+    auto before = command_hash_snapshot();
+    load(path);
+    auto after = command_hash_snapshot();
+
+    CDBDiff diff;
+
+    for(auto& bucket: after) {
+        auto it = before.find(bucket.first);
+        if(it == before.end()) {
+            diff.added.push_back(bucket.first);
+        } else if(it->second != bucket.second) {
+            diff.changed.push_back(bucket.first);
+        }
+    }
+
+    for(auto& bucket: before) {
+        if(after.find(bucket.first) == after.end()) {
+            diff.removed.push_back(bucket.first);
+        }
+    }
+
+    ranges::sort(diff.added);
+    ranges::sort(diff.removed);
+    ranges::sort(diff.changed);
+
+    return diff;
 }
 
 CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,

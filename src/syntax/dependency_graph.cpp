@@ -83,6 +83,20 @@ llvm::SmallVector<std::uint32_t> DependencyGraph::get_all_includes(std::uint32_t
     return result;
 }
 
+llvm::SmallVector<std::uint32_t> DependencyGraph::all_files() const {
+    llvm::SmallVector<std::uint32_t> files;
+    files.reserve(file_configs.size() + reverse_includes_.size());
+    for(auto& [path_id, configs]: file_configs) {
+        files.push_back(path_id);
+    }
+    for(auto& [path_id, includers]: reverse_includes_) {
+        files.push_back(path_id);
+    }
+    llvm::sort(files);
+    files.erase(llvm::unique(files), files.end());
+    return files;
+}
+
 std::size_t DependencyGraph::file_count() const {
     return file_configs.size();
 }

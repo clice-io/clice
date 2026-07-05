@@ -74,6 +74,12 @@ void Config::apply_defaults(llvm::StringRef workspace_root) {
     if(p.worker_memory_limit == 0)
         p.worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB
 
+    auto& t = tracker;
+    if(!t.cdb_poll_seconds)
+        t.cdb_poll_seconds = 3;
+    if(!t.workspace_poll_seconds)
+        t.workspace_poll_seconds = 30;
+
     if(p.cache_dir.empty() && !workspace_root.empty()) {
         p.cache_dir = resolve_xdg_cache_dir(workspace_root);
         if(p.cache_dir.empty())

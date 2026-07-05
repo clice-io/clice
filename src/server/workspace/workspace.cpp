@@ -180,6 +180,48 @@ void Workspace::on_file_closed(std::uint32_t path_id) {
     // blob eviction is the CacheStore's job, so nothing to clean up here.
 }
 
+std::string discover_compile_commands(const Config& config, llvm::StringRef workspace_root) {
+    for(auto& configured: config.project.compile_commands_paths) {
+        if(llvm::sys::fs::is_directory(configured)) {
+            auto candidate = path::join(configured, "compile_commands.json");
+            if(llvm::sys::fs::exists(candidate)) {
+                return candidate;
+            }
+        } else if(llvm::sys::fs::exists(configured)) {
+            return configured;
+        } else {
+            LOG_DEBUG("Configured compile_commands_path not found: {}", configured);
+        }
+    }
+
+    if(workspace_root.empty()) {
+        return {};
+    }
+
+    auto try_candidate = [](llvm::StringRef dir) -> std::string {
+        auto candidate = path::join(dir, "compile_commands.json");
+        if(llvm::sys::fs::exists(candidate)) {
+            return candidate;
+        }
+        return {};
+    };
+
+    if(auto found = try_candidate(workspace_root); !found.empty()) {
+        return found;
+    }
+
+    std::error_code ec;
+    for(llvm::sys::fs::directory_iterator it(workspace_root, ec), end; it != end && !ec;
+        it.increment(ec)) {
+        if(it->type() == llvm::sys::fs::file_type::directory_file) {
+            if(auto found = try_candidate(it->path()); !found.empty()) {
+                return found;
+            }
+        }
+    }
+    return {};
+}
+
 std::uint64_t hash_file(llvm::StringRef path) {
     auto buf = llvm::MemoryBuffer::getFile(path);
     if(!buf)

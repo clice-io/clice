@@ -95,6 +95,11 @@ public:
     std::vector<std::uint32_t> find_include_chain(std::uint32_t host_path_id,
                                                   std::uint32_t target_path_id) const;
 
+    /// Every file the graph knows: files with include entries plus files
+    /// that only appear as include targets. Sorted so callers scan in a
+    /// deterministic order. Requires build_reverse_map() to be current.
+    llvm::SmallVector<std::uint32_t> all_files() const;
+
     /// Number of files with include entries.
     std::size_t file_count() const;
 

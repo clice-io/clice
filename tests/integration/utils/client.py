@@ -111,6 +111,12 @@ class CliceClient(BaseLanguageClient):
         project = dict(initialization_options.get("project", {}))
         project.setdefault("cache_dir", str(workspace / ".clice"))
         initialization_options["project"] = project
+        # Disable the stat-polling loops: tests drive ticks deterministically
+        # through the clice/internal/poll hook instead.
+        tracker = dict(initialization_options.get("tracker", {}))
+        tracker.setdefault("cdb_poll_seconds", 0)
+        tracker.setdefault("workspace_poll_seconds", 0)
+        initialization_options["tracker"] = tracker
 
         params = InitializeParams(
             capabilities=ClientCapabilities(),
@@ -455,5 +461,13 @@ class CliceClient(BaseLanguageClient):
             params["epoch"] = epoch
         return await asyncio.wait_for(
             self.protocol.send_request_async("clice/switchContext", params),
+            timeout=timeout,
+        )
+
+    async def poll(self, loop: str, *, timeout: float = 60.0):
+        """Send clice/internal/poll (test hook): run one tracker tick and
+        apply its effects synchronously. `loop` is "cdb" or "workspace"."""
+        return await asyncio.wait_for(
+            self.protocol.send_request_async("clice/internal/poll", {"loop": loop}),
             timeout=timeout,
         )

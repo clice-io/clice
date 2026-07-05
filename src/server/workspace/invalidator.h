@@ -28,21 +28,38 @@ struct FileEvent {
         BufferSaved,
         /// didClose dropped the buffer; disk is the truth again.
         BufferClosed,
-        /// The file changed on disk behind the server's back. No producer
-        /// yet — reserved for the disk poller / cache validation side.
+        /// The file's content changed on disk behind the server's back
+        /// (emitted by the FileTracker's workspace poll).
         DiskChanged,
-        /// The file disappeared from disk. No producer yet (see DiskChanged).
+        /// The file disappeared from disk (see DiskChanged).
         DiskRemoved,
+        /// The compilation database was reloaded; `cdb` lists the files
+        /// whose entries were added, removed or changed.
+        CDBChanged,
         /// clice/switchContext changed the file's active header context.
         ContextChanged,
         /// A stateful worker crashed; `paths` lists the documents it owned.
         WorkerCrashed,
     };
 
+    /// CDBChanged payload: the reload's per-file delta, as master path-pool
+    /// ids. `changed` means the file kept an entry but its command differs.
+    struct CDBDelta {
+        llvm::SmallVector<std::uint32_t, 0> added;
+        llvm::SmallVector<std::uint32_t, 0> removed;
+        llvm::SmallVector<std::uint32_t, 0> changed;
+
+        bool empty() const {
+            return added.empty() && removed.empty() && changed.empty();
+        }
+    };
+
     Kind kind;
     std::uint32_t path_id = no_path_id;
     /// WorkerCrashed only: the crashed worker's lost documents.
     llvm::SmallVector<std::uint32_t> paths;
+    /// CDBChanged only: the reload delta.
+    CDBDelta cdb;
 
     static FileEvent buffer_opened(std::uint32_t path_id) {
         return {Kind::BufferOpened, path_id};
@@ -58,6 +75,20 @@ struct FileEvent {
 
     static FileEvent buffer_closed(std::uint32_t path_id) {
         return {Kind::BufferClosed, path_id};
+    }
+
+    static FileEvent disk_changed(std::uint32_t path_id) {
+        return {Kind::DiskChanged, path_id};
+    }
+
+    static FileEvent disk_removed(std::uint32_t path_id) {
+        return {Kind::DiskRemoved, path_id};
+    }
+
+    static FileEvent cdb_changed(CDBDelta delta) {
+        FileEvent event{Kind::CDBChanged};
+        event.cdb = std::move(delta);
+        return event;
     }
 
     static FileEvent context_changed(std::uint32_t path_id) {
@@ -103,11 +134,15 @@ struct DirtySet {
     bool save_cache = false;
     /// Kick the background indexer's scheduler.
     bool reschedule_indexing = false;
+    /// A CDB reload may have introduced the first C++20 modules; create the
+    /// compile graph if it does not exist yet. Executed by the dispatcher,
+    /// which owns the Compiler.
+    bool ensure_compile_graph = false;
 
     bool empty() const {
         return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
                reset_header_mode.empty() && force_revalidate.empty() && enqueue_reindex.empty() &&
-               !recheck_contexts && !save_cache && !reschedule_indexing;
+               !recheck_contexts && !save_cache && !reschedule_indexing && !ensure_compile_graph;
     }
 };
 
@@ -143,6 +178,18 @@ public:
     DirtySet apply(llvm::ArrayRef<FileEvent> events);
 
 private:
+    /// The invalidation cascade for "this file's on-disk content is new":
+    /// rescan the file's disk state, then split every affected file into
+    /// open (recompile) and closed (reindex). Shared by BufferSaved (disk
+    /// now holds the buffer) and DiskChanged on closed files (disk changed
+    /// behind the server's back), and used verbatim — the two differ only
+    /// in what the caller adds around it.
+    void cascade_disk_content_change(std::uint32_t path_id, DirtySet& dirty);
+
+    /// Cascade a module unit's compile-graph invalidation (PCM caches,
+    /// dependent module units), splitting dirtied units open/closed.
+    void cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty);
+
     Workspace& workspace;
     const SessionStore& store;
     const ContextResolver& contexts;

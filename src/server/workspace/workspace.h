@@ -251,6 +251,12 @@ struct Workspace {
     void cancel_all();
 };
 
+/// Find the workspace's compile_commands.json: the configured paths first
+/// (a directory means <dir>/compile_commands.json), then the workspace root,
+/// then its direct subdirectories. Returns the empty string when none
+/// exists yet — the file tracker keeps looking on its CDB poll.
+std::string discover_compile_commands(const Config& config, llvm::StringRef workspace_root);
+
 /// Hash a file's content using xxh3_64bits. Returns 0 on read failure.
 std::uint64_t hash_file(llvm::StringRef path);
 

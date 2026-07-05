@@ -14,6 +14,7 @@
 #include "server/protocol/extension.h"
 #include "server/protocol/serialize.h"
 #include "server/service/master_server.h"
+#include "server/workspace/file_tracker.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -487,6 +488,37 @@ void LSPClient::register_extensions() {
                                                                params);
             this->server.dispatch(FileEvent::context_changed(path_id));
             co_return to_raw(result);
+        });
+
+    // ── Test hook ───────────────────────────────────────────────────
+
+    // Runs one file-tracker tick synchronously (see ext::PollParams).
+    // Test-only and not a stable API; the CDB tick runs with force=true,
+    // so the polling loop's two-tick settling debounce does not apply here.
+    peer.on_request(
+        "clice/internal/poll",
+        [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
+            auto& srv = this->server;
+            if(!srv.tracker) {
+                co_return kota::outcome_error(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                                                               "No workspace is loaded"});
+            }
+
+            llvm::SmallVector<FileEvent> events;
+            if(params.loop == "cdb") {
+                events = srv.tracker->tick_cdb(/*force=*/true);
+            } else if(params.loop == "workspace") {
+                events = co_await srv.tracker->tick_workspace();
+            } else {
+                co_return kota::outcome_error(
+                    kota::ipc::Error{protocol::ErrorCode::InvalidParams,
+                                     R"(loop must be "cdb" or "workspace")"});
+            }
+
+            if(!events.empty()) {
+                srv.dispatch(events);
+            }
+            co_return to_raw(ext::PollResult{static_cast<std::uint32_t>(events.size())});
         });
 }
 

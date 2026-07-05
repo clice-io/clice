@@ -162,6 +162,23 @@ struct DenseMapInfo<clice::CompilationInfo> {
 
 namespace clice {
 
+/// Per-file delta of a compilation database reload. Path ids are this
+/// database's own pool ids (stable across reloads).
+struct CDBDiff {
+    /// Files present only after the reload (gained their first entry).
+    llvm::SmallVector<std::uint32_t> added;
+
+    /// Files present only before the reload (lost all their entries).
+    llvm::SmallVector<std::uint32_t> removed;
+
+    /// Files present on both sides whose set of command hashes differs.
+    llvm::SmallVector<std::uint32_t> changed;
+
+    bool empty() const {
+        return added.empty() && removed.empty() && changed.empty();
+    }
+};
+
 class CompilationDatabase {
 public:
     CompilationDatabase();
@@ -174,9 +191,29 @@ public:
 
 public:
     /// Load (or reload) the compilation database from the given file.
-    /// Full reload: old entries are replaced, but string pool and canonical
-    /// commands survive. Returns the number of entries loaded.
+    /// On success old entries are replaced, but the string pool and canonical
+    /// commands survive (path ids stay stable across reloads).
+    ///
+    /// Parsing is atomic at the top level: if the file cannot be read, is not
+    /// valid JSON, or has a root that is not an array, the previously loaded
+    /// entries are kept and 0 is returned. Individual malformed entries are
+    /// still skipped as before. Returns the number of entries loaded.
     std::size_t load(llvm::StringRef path);
+
+    /// Reload the database from `path` and report the per-file delta against
+    /// the previously loaded entries. Path ids in the result are this
+    /// database's own pool ids (stable across reloads).
+    ///
+    /// Entry identity is the canonical command hash (Frontend profile), the
+    /// same identity the rest of the system uses to pin a CDB entry (e.g.
+    /// clice/switchContext). A change confined to codegen-only flags (-g,
+    /// -fPIC, -flto, ...) is therefore not reported as `changed` — this is
+    /// deliberate. (Optimization level -O* is semantic, not codegen-only: it
+    /// defines __OPTIMIZE__, so changing it does count.)
+    ///
+    /// If `path` cannot be read or does not hold a JSON array, load() keeps
+    /// the old entries and the returned diff is empty.
+    CDBDiff reload_and_diff(llvm::StringRef path);
 
     /// Lookup the compile commands for a file. A file may have multiple
     /// compilation commands (e.g. different build configurations); all are returned.
@@ -252,6 +289,11 @@ private:
     object_ptr<CompilationInfo> save_compilation_info(llvm::StringRef file,
                                                       llvm::StringRef directory,
                                                       llvm::StringRef command);
+
+    /// Map each file's path_id to the sorted canonical command hashes of its
+    /// entries (a file may own several entries with different flags). Used by
+    /// reload_and_diff() to compare the database before and after a reload.
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 1>> command_hash_snapshot() const;
 
     /// The memory pool which holds all elements of compilation database.
     /// Heap-allocated so its address is stable across moves.

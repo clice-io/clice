@@ -81,4 +81,19 @@ struct InactiveRegionsParams {
     std::vector<kota::ipc::protocol::Range> regions;
 };
 
+/// clice/internal/poll — TEST-ONLY, not a stable API. Synchronously runs
+/// one file-tracker tick (stat → diff → events → dispatch → effects) and
+/// responds only once the effects are applied, so integration tests can
+/// disable the polling loops and get "change disk → poll → assert"
+/// determinism with zero sleeps. Absent from capabilities and user docs.
+struct PollParams {
+    /// Which loop to tick: "cdb" or "workspace".
+    std::string loop;
+};
+
+struct PollResult {
+    /// Number of file events the tick produced and dispatched.
+    std::uint32_t events = 0;
+};
+
 }  // namespace clice::ext

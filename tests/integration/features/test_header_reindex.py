@@ -82,3 +82,34 @@ async def test_header_save_reindexes_dependents(client, tmp_path):
         "closed TU was not reindexed after the header save"
     )
     assert closed_uri not in await reference_uris(client, header_uri, 1, 11)
+
+
+async def test_divergent_save_follows_disk(client, tmp_path):
+    (tmp_path / "header.h").write_text(HEADER_V1, newline="\n")
+    (tmp_path / "closed.cpp").write_text(CLOSED_TU, newline="\n")
+    write_cdb(tmp_path, ["closed.cpp"])
+    await client.initialize(tmp_path)
+
+    header_uri = (tmp_path / "header.h").as_uri()
+    closed_uri = (tmp_path / "closed.cpp").as_uri()
+    await client.open_and_wait(tmp_path / "header.h")
+
+    assert await wait_for_reference(client, header_uri, 1, 11, closed_uri), (
+        "initial index never produced the closed TU's alpha reference"
+    )
+
+    # A save hook rewrote the file as the save landed: the disk holds V2
+    # while the buffer still holds V1 and no didChange is ever sent.
+    # (alpha/beta keep their positions across versions, so buffer-resolved
+    # lookups on the open header stay valid.)
+    await asyncio.sleep(MTIME_GRANULARITY)
+    (tmp_path / "header.h").write_text(HEADER_V2, newline="\n")
+    client.text_document_did_save(
+        DidSaveTextDocumentParams(text_document=TextDocumentIdentifier(uri=header_uri))
+    )
+
+    # Dependents must follow the disk truth, not the pre-save state.
+    assert await wait_for_reference(client, header_uri, 2, 11, closed_uri), (
+        "closed TU was not reindexed against the hook-rewritten disk"
+    )
+    assert closed_uri not in await reference_uris(client, header_uri, 1, 11)
