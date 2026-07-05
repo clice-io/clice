@@ -105,8 +105,7 @@ std::uint64_t hash_file(llvm::StringRef path) {
 /// touch, not a real edit.
 bool dep_stale(llvm::StringRef path,
                std::uint64_t build_at,
-               std::uint64_t stored_hash,
-               bool has_stored_hash) {
+               std::optional<std::uint64_t> stored_hash) {
     fs::file_status status;
     if(auto err = fs::status(path, status)) {
         return true;
@@ -120,7 +119,7 @@ bool dep_stale(llvm::StringRef path,
 
     // mtime moved: without a baseline hash we cannot prove the content is
     // unchanged, so fall back to the conservative rebuild.
-    if(!has_stored_hash) {
+    if(!stored_hash) {
         return true;
     }
     // A matching hash means the file was only touched, not edited. We do NOT
@@ -129,7 +128,7 @@ bool dep_stale(llvm::StringRef path,
     // the whole shard just to skip a rebuild. So a touched-but-unchanged file is
     // re-hashed on every check until a real edit forces a genuine reindex — a
     // cheap single read, far cheaper than a needless full reindex.
-    return hash_file(path) != stored_hash;
+    return hash_file(path) != *stored_hash;
 }
 
 }  // namespace
@@ -646,11 +645,14 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
             if(!deps.insert(location.path_id).second) {
                 continue;
             }
+            // A dep the mapping does not cover cannot be validated: rebuild.
+            if(location.path_id >= path_mapping.size()) {
+                return true;
+            }
             auto it = hashes.find(location.path_id);
             if(dep_stale(path_mapping[location.path_id],
                          context.build_at,
-                         it != hashes.end() ? it->second : 0,
-                         it != hashes.end())) {
+                         it != hashes.end() ? std::optional(it->second) : std::nullopt)) {
                 return true;
             }
         }
@@ -676,11 +678,14 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
             if(!deps.insert(location->path_id()).second) {
                 continue;
             }
+            // A dep the mapping does not cover cannot be validated: rebuild.
+            if(location->path_id() >= path_mapping.size()) {
+                return true;
+            }
             auto it = hashes.find(location->path_id());
             if(dep_stale(path_mapping[location->path_id()],
                          context->build_at(),
-                         it != hashes.end() ? it->second : 0,
-                         it != hashes.end())) {
+                         it != hashes.end() ? std::optional(it->second) : std::nullopt)) {
                 return true;
             }
         }
@@ -771,6 +776,9 @@ void MergedIndex::merge(this Self& self,
     // check can tell a real edit apart from a mere touch (mtime bumped, bytes
     // unchanged). Only re-hashing at check time can prove that, so the baseline
     // is recorded here.
+    // TODO: this re-reads every dependency on the event-loop thread even
+    // though the indexer worker already read them; if it shows up on large
+    // cold-start profiles, have the worker ship the hashes in the TUIndex.
     llvm::SmallVector<DepHash> dep_hashes;
     llvm::DenseSet<std::uint32_t> seen;
     for(auto& location: include_locations) {
