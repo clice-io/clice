@@ -68,7 +68,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                const CompileCommandParams& params) -> RequestResult<CompileCommandParams> {
             std::string directory;
             std::vector<std::string> arguments;
-            srv.compiler.fill_compile_args(params.path, directory, arguments);
+            srv.contexts.resolve_command(params.path, directory, arguments);
 
             co_return CompileCommandResult{
                 .file = params.path,

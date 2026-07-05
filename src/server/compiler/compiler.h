@@ -12,7 +12,6 @@
 #include "server/worker/worker_pool.h"
 #include "server/workspace/workspace.h"
 #include "support/signal.h"
-#include "syntax/completion.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
@@ -30,23 +29,6 @@ class ContextResolver;
 
 /// Convert a file:// URI to a local file path.
 std::string uri_to_path(const std::string& uri);
-
-/// Where the compile command for a file came from. Anything other than
-/// CDBExact means the command was guessed to some degree, which is why
-/// diagnostics produced with it may deserve a guidance note (see
-/// format_diagnostics).
-enum class CommandSource : std::uint8_t {
-    /// Direct compilation database entry for the file.
-    CDBExact,
-    /// Header compiled in the context of a host source found through the
-    /// include graph (automatic or via clice/switchContext).
-    IncludeGraph,
-    /// Reserved for command transfer heuristics (e.g. nearest CDB entry);
-    /// no producer yet.
-    Inferred,
-    /// Synthesized default command — no CDB entry and no usable host source.
-    Fallback,
-};
 
 /// Compilation service — drives worker processes to build ASTs, PCHs, and PCMs.
 ///
@@ -75,16 +57,6 @@ public:
     ~Compiler();
 
     void init_compile_graph();
-
-    /// Fill compile arguments for a file and report where they came from.
-    /// Tries, in order: CDB entry, header context through the include graph,
-    /// and finally a synthesized fallback command — so it always succeeds.
-    /// Emits a per-file decision log (tiers tried, tier hit, command hash).
-    /// @param session  If non-null, used for header context resolution on open files.
-    CommandSource fill_compile_args(llvm::StringRef path,
-                                    std::string& directory,
-                                    std::vector<std::string>& arguments,
-                                    Session* session = nullptr);
 
     /// Compile an open file's AST if dirty.  On success, updates session's
     /// file_index, pch_ref, ast_deps, and publishes diagnostics.
@@ -117,11 +89,6 @@ public:
     RawResult forward_format(std::shared_ptr<Session> session,
                              std::optional<protocol::Range> range = {});
 
-    /// Handle completion requests.  Detects preamble context (include/import)
-    /// and serves those locally; delegates code completion to a stateless worker.
-    RawResult handle_completion(const protocol::Position& position,
-                                std::shared_ptr<Session> session);
-
     /// Emitted after a compile round materializes its publishable products
     /// into the session's `output` field (both success and the failure/
     /// clear path). Subscribers read the output from the session; with no
@@ -153,26 +120,11 @@ private:
     bool is_stale(const Session& session);
     void record_deps(Session& session, llvm::ArrayRef<std::string> deps);
 
-    static void append_suffix_include(const Session& session, std::string& text);
-
     kota::event_loop& loop;
     Workspace& workspace;
     ContextResolver& contexts;
     WorkerPool& pool;
     kota::task_group<> compile_tasks{loop};
 };
-
-/// Format a materialized compile output into publishable diagnostics:
-/// deserialize the worker's raw diagnostics, drop phantom suffix-include
-/// lines, and — when the compile command was not an exact CDB match and
-/// the diagnostics contain file-not-found class errors — merge a file-top
-/// guidance diagnostic explaining the inferred command. Formatting is
-/// compile semantics; sending the result is the transport's job.
-std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output);
-
-/// Convert a compile output's inactive-region byte offsets into LSP ranges
-/// using the session's line map.
-std::vector<protocol::Range> format_inactive_regions(const Session& session,
-                                                     const CompileOutput& output);
 
 }  // namespace clice

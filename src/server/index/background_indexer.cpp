@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "index/tu_index.h"
-#include "server/compiler/compiler.h"
+#include "server/context/context_resolver.h"
 #include "server/protocol/worker.h"
 #include "server/session/session_store.h"
 #include "server/worker/worker_pool.h"
@@ -342,7 +342,7 @@ kota::task<> BackgroundIndexer::index_one(std::uint32_t server_path_id,
     params.file = file_path;
     // Bulk background indexing sticks to real commands; synthesized fallback
     // commands would fill the index with guesses.
-    if(compiler.fill_compile_args(file_path, params.directory, params.arguments, nullptr) ==
+    if(contexts.resolve_command(file_path, params.directory, params.arguments, nullptr) ==
        CommandSource::Fallback)
         co_return;
 

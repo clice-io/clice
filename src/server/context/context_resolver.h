@@ -16,6 +16,31 @@
 
 namespace clice {
 
+namespace protocol = kota::ipc::protocol;
+
+/// Where the compile command for a file came from. Anything other than
+/// CDBExact means the command was guessed to some degree, which is why
+/// diagnostics produced with it may deserve a guidance note (see
+/// format_diagnostics).
+enum class CommandSource : std::uint8_t {
+    /// Direct compilation database entry for the file.
+    CDBExact,
+    /// Header compiled in the context of a host source found through the
+    /// include graph (automatic or via clice/switchContext).
+    IncludeGraph,
+    /// Reserved for command transfer heuristics (e.g. nearest CDB entry);
+    /// no producer yet.
+    Inferred,
+    /// Synthesized default command — no CDB entry and no usable host source.
+    Fallback,
+};
+
+/// Diagnostic codes that strictly indicate a missing includer context (as
+/// opposed to ordinary in-progress typing errors). Deliberately narrow:
+/// a false positive costs a pointless prefix synthesis, a false negative
+/// just leaves the header in trial mode.
+bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics);
+
 /// Domain logic for compilation contexts of header files.
 ///
 /// A header without its own compilation database entry borrows a host
@@ -32,6 +57,23 @@ namespace clice {
 class ContextResolver {
 public:
     explicit ContextResolver(Workspace& workspace) : workspace(workspace) {}
+
+    /// Fill compile arguments for a file and report where they came from.
+    /// Tries, in order: CDB entry, header context through the include graph,
+    /// and finally a synthesized fallback command — so it always succeeds.
+    /// Emits a per-file decision log (tiers tried, tier hit, command hash).
+    /// @param session  If non-null, used for header context resolution on open files.
+    CommandSource resolve_command(llvm::StringRef path,
+                                  std::string& directory,
+                                  std::vector<std::string>& arguments,
+                                  Session* session = nullptr);
+
+    /// Append the header context's suffix as one trailing #include line: the
+    /// suffix content (everything after the include position along the chain)
+    /// lives in its own file so features never see it, while the token stream
+    /// still closes any braces the fragment is embedded in. The single extra
+    /// line sits past the editor's EOF and is invisible to the client.
+    void append_suffix_include(const Session& session, std::string& text);
 
     /// Fill compile arguments for a header from a host source's command found
     /// through the include graph, synthesizing a preamble prefix/suffix when

@@ -14,7 +14,7 @@
 
 namespace clice {
 
-class Compiler;
+class ContextResolver;
 class WorkerPool;
 struct SessionStore;
 
@@ -38,9 +38,9 @@ public:
     BackgroundIndexer(kota::event_loop& loop,
                       Workspace& workspace,
                       WorkerPool& pool,
-                      Compiler& compiler,
+                      ContextResolver& contexts,
                       const SessionStore& sessions) :
-        loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), compiler(compiler),
+        loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts),
         sessions(sessions) {}
 
     /// Temporarily pause background indexing to give priority to user
@@ -135,7 +135,7 @@ private:
     kota::task_group<> bg_tasks;
     Workspace& workspace;
     WorkerPool& pool;
-    Compiler& compiler;
+    ContextResolver& contexts;
 
     /// Open documents, read-only. A file with an open Session is skipped by
     /// background indexing (its buffer index is authoritative).

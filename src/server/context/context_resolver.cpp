@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "command/argument_parser.h"
 #include "command/search_config.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -14,6 +15,7 @@
 #include "syntax/preamble_synthesis.h"
 
 #include "kota/ipc/lsp/uri.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -23,6 +25,45 @@
 namespace clice {
 
 namespace lsp = kota::ipc::lsp;
+
+bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics) {
+    constexpr static llvm::StringRef codes[] = {
+        "err_unknown_typename",
+        "err_undeclared_var_use",
+        "err_undeclared_var_use_suggest",
+        "err_pp_unterminated_conditional",
+    };
+    for(auto& diag: diagnostics) {
+        if(diag.severity != protocol::DiagnosticSeverity::Error || !diag.code.has_value()) {
+            continue;
+        }
+        auto* code = std::get_if<std::string>(&*diag.code);
+        if(code && llvm::is_contained(codes, *code)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Per-file command selection decision log: which tiers were tried, which one
+/// was hit, and a hash of the final command for correlating later failures.
+static void log_command_decision(llvm::StringRef path,
+                                 llvm::ArrayRef<llvm::StringRef> tried,
+                                 CommandSource source,
+                                 llvm::ArrayRef<std::string> arguments) {
+    if(logging::options.level > logging::Level::info)
+        return;
+    std::string joined;
+    for(auto& arg: arguments) {
+        joined += arg;
+        joined += '\0';
+    }
+    LOG_INFO("compile_args: file={} tried=[{}] source={} args_hash={:016x}",
+             path,
+             llvm::join(tried, ","),
+             source,
+             llvm::xxh3_64bits(llvm::StringRef(joined)));
+}
 
 /// Pick the host CDB entry matching the session's pinned command hash
 /// (multi-configuration hosts), defaulting to the first entry.
@@ -183,11 +224,99 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
 
     arguments = header_cmd.to_string_argv();
 
-    LOG_INFO("fill_compile_args: header context for {} (host={}, preamble={})",
+    LOG_INFO("resolve_command: header context for {} (host={}, preamble={})",
              path,
              host_path,
              ctx_ptr->preamble_path);
     return true;
+}
+
+CommandSource ContextResolver::resolve_command(llvm::StringRef path,
+                                               std::string& directory,
+                                               std::vector<std::string>& arguments,
+                                               Session* session) {
+    auto path_id = workspace.path_pool.intern(path);
+    llvm::SmallVector<llvm::StringRef, 3> tried;
+
+    // Fill from the CDB layer with config rules applied (append/remove flags
+    // based on file patterns). Also used for tier 4: lookup() synthesizes a
+    // default command for files without an entry.
+    auto fill_from_cdb = [&] {
+        std::vector<std::string> rule_append, rule_remove;
+        workspace.config.match_rules(path, rule_append, rule_remove);
+        auto results = workspace.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
+        auto* cmd = &results.front();
+        // Multi-config projects: honor the user's chosen CDB entry, matched
+        // by canonical command hash so the choice survives CDB reordering.
+        if(session && session->active_command.has_value()) {
+            for(auto& candidate: results) {
+                if(canonical_command_hash(candidate.to_string_argv(),
+                                          candidate.resolved.directory) ==
+                   *session->active_command) {
+                    cmd = &candidate;
+                    break;
+                }
+            }
+        }
+        workspace.toolchain.resolve_or_warn(*cmd);
+        directory = cmd->resolved.directory.str();
+        arguments = cmd->to_string_argv();
+    };
+
+    // 1. If the session has an active header context via switchContext,
+    //    use the host source's CDB entry with file path replaced and preamble injected.
+    if(session && session->active_context.has_value()) {
+        tried.push_back("switch_context");
+        if(fill_header_context_args(path, path_id, directory, arguments, session)) {
+            log_command_decision(path, tried, CommandSource::IncludeGraph, arguments);
+            return CommandSource::IncludeGraph;
+        }
+    }
+
+    // 2. Real CDB entry for the file itself (lookup() synthesizes a command
+    //    for unknown files, so a non-empty result alone proves nothing).
+    tried.push_back("cdb");
+    if(workspace.cdb.has_entry(path)) {
+        fill_from_cdb();
+        log_command_decision(path, tried, CommandSource::CDBExact, arguments);
+        return CommandSource::CDBExact;
+    }
+
+    // 3. No CDB entry — try automatic header context resolution.
+    if(!(session && session->active_context.has_value())) {
+        tried.push_back("include_graph");
+        if(fill_header_context_args(path, path_id, directory, arguments, session)) {
+            log_command_decision(path, tried, CommandSource::IncludeGraph, arguments);
+            return CommandSource::IncludeGraph;
+        }
+    }
+
+    // 4. Nothing matched — use the default command the CDB layer synthesizes
+    //    for unknown files, so the file still compiles and produces
+    //    diagnostics instead of failing silently.
+    tried.push_back("fallback");
+    fill_from_cdb();
+    log_command_decision(path, tried, CommandSource::Fallback, arguments);
+    return CommandSource::Fallback;
+}
+
+void ContextResolver::append_suffix_include(const Session& session, std::string& text) {
+    if(!session.header_context.has_value() || session.header_context->suffix_path.empty()) {
+        return;
+    }
+    if(!text.ends_with('\n')) {
+        text += '\n';
+    }
+    text += "#include \"";
+    // Escape like preamble_synthesis's line markers: Windows separators
+    // must survive the preprocessor's string literal parsing.
+    for(char c: session.header_context->suffix_path) {
+        if(c == '\\' || c == '"') {
+            text += '\\';
+        }
+        text += c;
+    }
+    text += "\"\n";
 }
 
 std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32_t header_path_id,

@@ -8,8 +8,6 @@
 #include <utility>
 
 #include "command/argument_parser.h"
-#include "command/search_config.h"
-#include "compile/diagnostic.h"
 #include "index/tu_index.h"
 #include "server/context/context_resolver.h"
 #include "server/protocol/extension.h"
@@ -18,7 +16,6 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
-#include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
 #include "kota/async/async.h"
@@ -52,29 +49,6 @@ static std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
     }
     auto hash = llvm::xxh3_128bits(llvm::arrayRefFromStringRef(input));
     return std::format("{:016x}{:016x}", hash.high64, hash.low64);
-}
-
-/// Diagnostic codes that strictly indicate a missing includer context (as
-/// opposed to ordinary in-progress typing errors). Deliberately narrow:
-/// a false positive costs a pointless prefix synthesis, a false negative
-/// just leaves the header in trial mode.
-static bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics) {
-    constexpr static llvm::StringRef codes[] = {
-        "err_unknown_typename",
-        "err_undeclared_var_use",
-        "err_undeclared_var_use_suggest",
-        "err_pp_unterminated_conditional",
-    };
-    for(auto& diag: diagnostics) {
-        if(diag.severity != protocol::DiagnosticSeverity::Error || !diag.code.has_value()) {
-            continue;
-        }
-        auto* code = std::get_if<std::string>(&*diag.code);
-        if(code && llvm::is_contained(codes, *code)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 /// RAII completion of an in-flight PCH build registration: wakes waiters
@@ -126,8 +100,6 @@ static lsp::LineMap::Offset clamped_offset(const lsp::LineMap& map,
     }
     return map.line_bounds(starts[position.line]).end;
 }
-
-/// Detect whether the cursor is inside a preamble directive (include/import).
 
 Compiler::Compiler(kota::event_loop& loop,
                    Workspace& workspace,
@@ -200,7 +172,7 @@ void Compiler::init_compile_graph() {
         worker::BuildParams bp;
         bp.kind = worker::BuildKind::BuildPCM;
         bp.file = file_path;
-        fill_compile_args(file_path, bp.directory, bp.arguments);
+        contexts.resolve_command(file_path, bp.directory, bp.arguments);
 
         if(!workspace.store) {
             LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", mod_it->second);
@@ -295,95 +267,6 @@ void Compiler::init_compile_graph() {
     LOG_INFO("CompileGraph initialized with {} module(s)", workspace.path_to_module.size());
 }
 
-/// Per-file command selection decision log: which tiers were tried, which one
-/// was hit, and a hash of the final command for correlating later failures.
-static void log_command_decision(llvm::StringRef path,
-                                 llvm::ArrayRef<llvm::StringRef> tried,
-                                 CommandSource source,
-                                 llvm::ArrayRef<std::string> arguments) {
-    if(logging::options.level > logging::Level::info)
-        return;
-    std::string joined;
-    for(auto& arg: arguments) {
-        joined += arg;
-        joined += '\0';
-    }
-    LOG_INFO("compile_args: file={} tried=[{}] source={} args_hash={:016x}",
-             path,
-             llvm::join(tried, ","),
-             source,
-             llvm::xxh3_64bits(llvm::StringRef(joined)));
-}
-
-CommandSource Compiler::fill_compile_args(llvm::StringRef path,
-                                          std::string& directory,
-                                          std::vector<std::string>& arguments,
-                                          Session* session) {
-    auto path_id = workspace.path_pool.intern(path);
-    llvm::SmallVector<llvm::StringRef, 3> tried;
-
-    // Fill from the CDB layer with config rules applied (append/remove flags
-    // based on file patterns). Also used for tier 4: lookup() synthesizes a
-    // default command for files without an entry.
-    auto fill_from_cdb = [&] {
-        std::vector<std::string> rule_append, rule_remove;
-        workspace.config.match_rules(path, rule_append, rule_remove);
-        auto results = workspace.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
-        auto* cmd = &results.front();
-        // Multi-config projects: honor the user's chosen CDB entry, matched
-        // by canonical command hash so the choice survives CDB reordering.
-        if(session && session->active_command.has_value()) {
-            for(auto& candidate: results) {
-                if(canonical_command_hash(candidate.to_string_argv(),
-                                          candidate.resolved.directory) ==
-                   *session->active_command) {
-                    cmd = &candidate;
-                    break;
-                }
-            }
-        }
-        workspace.toolchain.resolve_or_warn(*cmd);
-        directory = cmd->resolved.directory.str();
-        arguments = cmd->to_string_argv();
-    };
-
-    // 1. If the session has an active header context via switchContext,
-    //    use the host source's CDB entry with file path replaced and preamble injected.
-    if(session && session->active_context.has_value()) {
-        tried.push_back("switch_context");
-        if(contexts.fill_header_context_args(path, path_id, directory, arguments, session)) {
-            log_command_decision(path, tried, CommandSource::IncludeGraph, arguments);
-            return CommandSource::IncludeGraph;
-        }
-    }
-
-    // 2. Real CDB entry for the file itself (lookup() synthesizes a command
-    //    for unknown files, so a non-empty result alone proves nothing).
-    tried.push_back("cdb");
-    if(workspace.cdb.has_entry(path)) {
-        fill_from_cdb();
-        log_command_decision(path, tried, CommandSource::CDBExact, arguments);
-        return CommandSource::CDBExact;
-    }
-
-    // 3. No CDB entry — try automatic header context resolution.
-    if(!(session && session->active_context.has_value())) {
-        tried.push_back("include_graph");
-        if(contexts.fill_header_context_args(path, path_id, directory, arguments, session)) {
-            log_command_decision(path, tried, CommandSource::IncludeGraph, arguments);
-            return CommandSource::IncludeGraph;
-        }
-    }
-
-    // 4. Nothing matched — use the default command the CDB layer synthesizes
-    //    for unknown files, so the file still compiles and produces
-    //    diagnostics instead of failing silently.
-    tried.push_back("fallback");
-    fill_from_cdb();
-    log_command_decision(path, tried, CommandSource::Fallback, arguments);
-    return CommandSource::Fallback;
-}
-
 std::string uri_to_path(const std::string& uri) {
     auto parsed = lsp::URI::parse(uri);
     if(parsed.has_value()) {
@@ -393,119 +276,6 @@ std::string uri_to_path(const std::string& uri) {
         }
     }
     return uri;
-}
-
-/// Clang diagnostics indicating that an input file could not be found —
-/// the symptom of a guessed compile command missing include paths.
-static bool is_file_not_found(const protocol::Diagnostic& diagnostic) {
-    if(!diagnostic.code.has_value())
-        return false;
-    auto* code = std::get_if<protocol::string>(&*diagnostic.code);
-    return code && (*code == "err_pp_file_not_found" || *code == "err_pp_error_opening_file" ||
-                    *code == "err_module_not_found");
-}
-
-/// File-top warning explaining that diagnostics were produced with a guessed
-/// compile command, pointing at the compilation database documentation.
-static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource source) {
-    DiagnosticID id{
-        .value = 0,
-        .level = DiagnosticLevel::Warning,
-        .source = DiagnosticSource::Clice,
-        .name = "inferred-compile-command",
-    };
-
-    protocol::Diagnostic diagnostic;
-    diagnostic.range = protocol::Range{
-        .start = protocol::Position{.line = 0, .character = 0},
-        .end = protocol::Position{.line = 0, .character = 0},
-    };
-    diagnostic.severity = protocol::DiagnosticSeverity::Warning;
-    diagnostic.code = id.name.str();
-    if(auto uri = id.diagnostic_document_uri()) {
-        diagnostic.code_description = protocol::CodeDescription{.href = std::move(*uri)};
-    }
-    diagnostic.source = "clice";
-    diagnostic.message = std::format(
-        "No compilation database entry for this file (compile command was {}), so some includes " "may not be found. Configure compile_commands.json for accurate diagnostics.",
-        source == CommandSource::Fallback ? "synthesized from defaults"
-                                          : "inferred from an including file");
-    return diagnostic;
-}
-
-std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output) {
-    std::vector<protocol::Diagnostic> diagnostics;
-    if(!output.diagnostics.empty()) {
-        auto status = kota::codec::json::from_json(output.diagnostics.data, diagnostics);
-        if(!status) {
-            LOG_WARN("Failed to deserialize diagnostics JSON");
-        }
-    }
-
-    // Suffix injection appends an #include past the user's EOF; errors in
-    // host code after the include point remap onto those phantom lines.
-    // They describe the includer, not the document — drop them.
-    if(output.line_limit.has_value()) {
-        std::erase_if(diagnostics, [&](const protocol::Diagnostic& d) {
-            return d.range.start.line >= *output.line_limit;
-        });
-    }
-
-    // Guidance (and only when it can explain something): an exact CDB match
-    // never gets the note, and neither does a guessed command that worked.
-    if(output.source != CommandSource::CDBExact &&
-       std::ranges::any_of(diagnostics, is_file_not_found)) {
-        diagnostics.insert(diagnostics.begin(), make_inferred_command_diagnostic(output.source));
-    }
-
-    return diagnostics;
-}
-
-/// Append the header context's suffix as one trailing #include line: the
-/// suffix content (everything after the include position along the chain)
-/// lives in its own file so features never see it, while the token stream
-/// still closes any braces the fragment is embedded in. The single extra
-/// line sits past the editor's EOF and is invisible to the client.
-void Compiler::append_suffix_include(const Session& session, std::string& text) {
-    if(!session.header_context.has_value() || session.header_context->suffix_path.empty()) {
-        return;
-    }
-    if(!text.ends_with('\n')) {
-        text += '\n';
-    }
-    text += "#include \"";
-    // Escape like preamble_synthesis's line markers: Windows separators
-    // must survive the preprocessor's string literal parsing.
-    for(char c: session.header_context->suffix_path) {
-        if(c == '\\' || c == '"') {
-            text += '\\';
-        }
-        text += c;
-    }
-    text += "\"\n";
-}
-
-std::vector<protocol::Range> format_inactive_regions(const Session& session,
-                                                     const CompileOutput& output) {
-    std::vector<protocol::Range> result;
-    if(!output.inactive_regions.has_value()) {
-        return result;
-    }
-    auto& regions = *output.inactive_regions;
-    auto map = session.line_map();
-    result.reserve(regions.size() / 2);
-    for(std::size_t i = 0; i + 1 < regions.size(); i += 2) {
-        auto start = map.to_position(regions[i]);
-        auto end = map.to_position(regions[i + 1]);
-        if(!start || !end) {
-            continue;
-        }
-        protocol::Range range;
-        range.start = *start;
-        range.end = *end;
-        result.push_back(range);
-    }
-    return result;
 }
 
 kota::task<bool> Compiler::ensure_pch(Session& session,
@@ -834,7 +604,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         params.version = session->version;
         params.text = session->text;
         auto source =
-            fill_compile_args(file_path, params.directory, params.arguments, session.get());
+            contexts.resolve_command(file_path, params.directory, params.arguments, session.get());
 
         // The line the appended suffix #include lands on — anything at or
         // past it is phantom text the user cannot see.
@@ -844,7 +614,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             suffix_line_limit =
                 static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
         }
-        append_suffix_include(*session, params.text);
+        contexts.append_suffix_include(*session, params.text);
 
         bool deps_ok = co_await ensure_deps(*session,
                                             params.directory,
@@ -1172,8 +942,8 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     wp.file = path;
     wp.version = session->version;
     wp.text = session->text;
-    fill_compile_args(path, wp.directory, wp.arguments, session.get());
-    append_suffix_include(*session, wp.text);
+    contexts.resolve_command(path, wp.directory, wp.arguments, session.get());
+    contexts.append_suffix_include(*session, wp.text);
 
     ScopedTimer timer;
     if(!co_await ensure_deps(*session, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
@@ -1238,63 +1008,6 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     }
     LOG_PERF("request", "kind=Format file={} total_ms={}", path, timer.ms());
     co_return std::move(result.value().result_json);
-}
-
-Compiler::RawResult Compiler::handle_completion(const protocol::Position& position,
-                                                std::shared_ptr<Session> session) {
-    auto path_id = session->path_id;
-    auto path = std::string(workspace.path_pool.resolve(path_id));
-
-    auto map = session->line_map();
-    auto offset = map.to_offset(position);
-    if(offset) {
-        auto pctx = detect_completion_context(session->text, *offset);
-        if(pctx.kind == CompletionContext::IncludeQuoted ||
-           pctx.kind == CompletionContext::IncludeAngled) {
-            std::string directory;
-            std::vector<std::string> arguments;
-            fill_compile_args(path, directory, arguments);
-
-            std::vector<const char*> args_ptrs;
-            args_ptrs.reserve(arguments.size());
-            for(auto& arg: arguments)
-                args_ptrs.push_back(arg.c_str());
-
-            auto search_config = extract_search_config(args_ptrs, directory);
-            DirListingCache dir_cache;
-            auto resolved = resolve_search_config(search_config, dir_cache);
-            bool angled = (pctx.kind == CompletionContext::IncludeAngled);
-            auto candidates = complete_include_path(resolved, pctx.prefix, angled, dir_cache);
-
-            std::vector<protocol::CompletionItem> items;
-            items.reserve(candidates.size());
-            for(auto& c: candidates) {
-                protocol::CompletionItem item;
-                item.label = c.is_directory ? c.name + "/" : c.name;
-                item.kind = protocol::CompletionItemKind::File;
-                items.push_back(std::move(item));
-            }
-            auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(items);
-            co_return serde_raw{json ? std::move(*json) : "[]"};
-        }
-        if(pctx.kind == CompletionContext::Import) {
-            auto module_names = complete_module_import(workspace.path_to_module, pctx.prefix);
-
-            std::vector<protocol::CompletionItem> items;
-            items.reserve(module_names.size());
-            for(auto& name: module_names) {
-                protocol::CompletionItem item;
-                item.label = name;
-                item.kind = protocol::CompletionItemKind::Module;
-                item.insert_text = name + ";";
-                items.push_back(std::move(item));
-            }
-            auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(items);
-            co_return serde_raw{json ? std::move(*json) : "[]"};
-        }
-    }
-
-    co_return co_await forward_build(worker::BuildKind::Completion, position, std::move(session));
 }
 
 }  // namespace clice

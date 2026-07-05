@@ -32,8 +32,9 @@ namespace protocol = kota::ipc::protocol;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
-    index_query(workspace, sessions), background_indexer(loop, workspace, pool, compiler, sessions),
-    features(compiler, index_query, workspace), bg_tasks(loop), self_path(std::move(self_path)) {}
+    index_query(workspace, sessions), background_indexer(loop, workspace, pool, contexts, sessions),
+    features(compiler, index_query, workspace, contexts, background_indexer), bg_tasks(loop),
+    self_path(std::move(self_path)) {}
 
 MasterServer::~MasterServer() = default;
 

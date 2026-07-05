@@ -16,6 +16,8 @@
 namespace clice {
 
 class Compiler;
+class ContextResolver;
+class BackgroundIndexer;
 
 namespace protocol = kota::ipc::protocol;
 
@@ -43,8 +45,15 @@ namespace protocol = kota::ipc::protocol;
 /// or gate results themselves.
 class FeatureRouter {
 public:
-    FeatureRouter(Compiler& compiler, IndexQuery& index_query, Workspace& workspace) :
-        compiler(compiler), index_query(index_query), workspace(workspace) {}
+    FeatureRouter(Compiler& compiler,
+                  IndexQuery& index_query,
+                  Workspace& workspace,
+                  ContextResolver& contexts,
+                  BackgroundIndexer& background_indexer) :
+        compiler(compiler), index_query(index_query), workspace(workspace), contexts(contexts),
+        background_indexer(background_indexer) {}
+
+    using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
     /// Full document-link result for a session: the worker's main-file links
     /// merged behind the PCH's cached preamble links.
@@ -55,9 +64,79 @@ public:
     /// targets, the index, and the worker's AST, with an index/directive
     /// retry after the forward's compile refreshes a dirty session.
     /// @param session may be null (document not open).
-    kota::task<kota::codec::RawValue, kota::ipc::Error> definition(std::shared_ptr<Session> session,
-                                                                   llvm::StringRef path,
-                                                                   const protocol::Position& pos);
+    RawResult definition(std::shared_ptr<Session> session,
+                         llvm::StringRef path,
+                         const protocol::Position& pos);
+
+    /// Single-source features routed through the router as a matter of
+    /// discipline, not necessity. Each currently forwards to exactly one
+    /// provider (the worker's AST, a stateless build, or the index), so most
+    /// are one-line delegations. They live here as reserved tenants: the
+    /// router is where a feature's answer is assembled once it draws on more
+    /// than one source, and these are the designated hooks for a future
+    /// read-only provider strategy (e.g. serving closed files from the index).
+    /// They are NOT dead code to be inlined back into the transports.
+    RawResult hover(std::shared_ptr<Session> session, const protocol::Position& position);
+    RawResult semantic_tokens(std::shared_ptr<Session> session);
+    RawResult inlay_hints(std::shared_ptr<Session> session, const protocol::Range& range);
+    RawResult folding_range(std::shared_ptr<Session> session);
+    RawResult document_symbol(std::shared_ptr<Session> session);
+    RawResult code_action(std::shared_ptr<Session> session);
+
+    /// Code completion. Serves preamble contexts (include/import) locally from
+    /// the include graph and module map; delegates ordinary code completion to
+    /// a stateless worker. Pauses background indexing for the request's span.
+    RawResult completion(std::shared_ptr<Session> session, const protocol::Position& position);
+
+    /// Signature help, forwarded to a stateless build. Pauses background
+    /// indexing for the request's span.
+    RawResult signature_help(std::shared_ptr<Session> session, const protocol::Position& position);
+
+    /// Whole-document and range formatting, forwarded to a stateless worker.
+    /// Pause background indexing for the request's span.
+    RawResult formatting(std::shared_ptr<Session> session);
+    RawResult range_formatting(std::shared_ptr<Session> session, const protocol::Range& range);
+
+    /// Index navigation queries. Closed documents are fully serveable from the
+    /// index and an empty result is a real answer (returned as []). @param
+    /// session may be null (document not open) — the index is queried anyway.
+    RawResult references(std::shared_ptr<Session> session,
+                         llvm::StringRef path,
+                         const protocol::Position& position,
+                         bool include_declaration);
+    RawResult declaration(std::shared_ptr<Session> session,
+                          llvm::StringRef path,
+                          const protocol::Position& position);
+    RawResult type_definition(std::shared_ptr<Session> session,
+                              llvm::StringRef path,
+                              const protocol::Position& position);
+    RawResult implementation(std::shared_ptr<Session> session,
+                             llvm::StringRef path,
+                             const protocol::Position& position);
+
+    RawResult call_hierarchy_prepare(std::shared_ptr<Session> session,
+                                     const std::string& uri,
+                                     llvm::StringRef path,
+                                     const protocol::Position& position);
+    RawResult call_hierarchy_incoming(std::shared_ptr<Session> session,
+                                      llvm::StringRef path,
+                                      const protocol::CallHierarchyItem& item);
+    RawResult call_hierarchy_outgoing(std::shared_ptr<Session> session,
+                                      llvm::StringRef path,
+                                      const protocol::CallHierarchyItem& item);
+
+    RawResult type_hierarchy_prepare(std::shared_ptr<Session> session,
+                                     const std::string& uri,
+                                     llvm::StringRef path,
+                                     const protocol::Position& position);
+    RawResult type_hierarchy_supertypes(std::shared_ptr<Session> session,
+                                        llvm::StringRef path,
+                                        const protocol::TypeHierarchyItem& item);
+    RawResult type_hierarchy_subtypes(std::shared_ptr<Session> session,
+                                      llvm::StringRef path,
+                                      const protocol::TypeHierarchyItem& item);
+
+    RawResult workspace_symbol(llvm::StringRef query);
 
 private:
     /// The preamble include links of a session's active PCH, or nullptr.
@@ -73,6 +152,8 @@ private:
     Compiler& compiler;
     IndexQuery& index_query;
     Workspace& workspace;
+    ContextResolver& contexts;
+    BackgroundIndexer& background_indexer;
 };
 
 }  // namespace clice

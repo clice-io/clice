@@ -10,9 +10,9 @@
 #include "command/argument_parser.h"
 #include "semantic/symbol_kind.h"
 #include "server/context/context_resolver.h"
+#include "server/feature/format.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/serialize.h"
-#include "server/protocol/worker.h"
 #include "server/service/master_server.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
@@ -34,18 +34,10 @@ namespace lsp = kota::ipc::lsp;
 namespace refl = kota::meta;
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::JsonPeer::RequestContext;
-using serde_raw = kota::codec::RawValue;
 
 /// Error response for feature requests on files with no open session.
 static kota::ipc::Error document_not_open() {
     return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams, "Document not open"};
-}
-
-/// Error response when a call/type hierarchy item cannot be resolved back to
-/// an indexed symbol.
-static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
-    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                            std::format("Failed to resolve {} item", kind)};
 }
 
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
@@ -259,20 +251,18 @@ void LSPClient::register_language_features() {
             resolve_uri(params.text_document_position_params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
-        co_return co_await srv.compiler.forward_query(
-            worker::QueryKind::Hover,
-            session,
-            params.text_document_position_params.position);
+        co_return co_await srv.features.hover(session,
+                                              params.text_document_position_params.position);
     });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::SemanticTokensParams& params) -> RawResult {
-        auto& srv = this->server;
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-        if(!session)
-            co_return kota::outcome_error(document_not_open());
-        co_return co_await srv.compiler.forward_query(worker::QueryKind::SemanticTokens, session);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            if(!session)
+                co_return kota::outcome_error(document_not_open());
+            co_return co_await srv.features.semantic_tokens(session);
+        });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
@@ -280,10 +270,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.compiler.forward_query(worker::QueryKind::InlayHints,
-                                                          session,
-                                                          {},
-                                                          params.range);
+            co_return co_await srv.features.inlay_hints(session, params.range);
         });
 
     peer.on_request(
@@ -292,17 +279,17 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.compiler.forward_query(worker::QueryKind::FoldingRange, session);
+            co_return co_await srv.features.folding_range(session);
         });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::DocumentSymbolParams& params) -> RawResult {
-        auto& srv = this->server;
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-        if(!session)
-            co_return kota::outcome_error(document_not_open());
-        co_return co_await srv.compiler.forward_query(worker::QueryKind::DocumentSymbol, session);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
+            auto& srv = this->server;
+            auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+            if(!session)
+                co_return kota::outcome_error(document_not_open());
+            co_return co_await srv.features.document_symbol(session);
+        });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
@@ -321,39 +308,8 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.compiler.forward_query(worker::QueryKind::CodeAction, session);
+            co_return co_await srv.features.code_action(session);
         });
-
-    auto lookup_at = [this](const std::string& uri, const protocol::Position& pos) {
-        auto [path, path_id, session] = resolve_uri(uri);
-        return this->server.index_query.lookup_symbol(uri, path, pos, session.get());
-    };
-
-    auto query_at = [this](const std::string& uri,
-                           const protocol::Position& pos,
-                           RelationKind kind) -> std::vector<protocol::Location> {
-        auto [path, path_id, session] = resolve_uri(uri);
-        return this->server.index_query.query_relations(path, pos, kind, session.get());
-    };
-
-    auto query_targets_at = [this](const std::string& uri,
-                                   const protocol::Position& pos,
-                                   RelationKind kind) -> std::vector<protocol::Location> {
-        auto [path, path_id, session] = resolve_uri(uri);
-        return this->server.index_query.query_symbol_targets(path, pos, kind, session.get());
-    };
-
-    auto resolve_item =
-        [this](const std::string& uri,
-               const protocol::Range& range,
-               const std::optional<protocol::LSPAny>& data) -> std::optional<SymbolInfo> {
-        auto [path, path_id, session] = resolve_uri(uri);
-        return this->server.index_query.resolve_hierarchy_item(uri,
-                                                               path,
-                                                               range,
-                                                               data,
-                                                               session.get());
-    };
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
@@ -367,51 +323,38 @@ void LSPClient::register_language_features() {
     // fully serveable from the index, and an empty result is a real answer,
     // returned as [] — never an error.
     peer.on_request(
-        [query_at](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
+        [this](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
-
-            auto locations = query_at(uri, pos, RelationKind::Reference);
-
-            if(params.context.include_declaration) {
-                for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-                    auto extra = query_at(uri, pos, kind);
-                    locations.insert(locations.end(),
-                                     std::make_move_iterator(extra.begin()),
-                                     std::make_move_iterator(extra.end()));
-                }
-            }
-
-            co_return to_raw(locations);
+            auto [path, path_id, session] = resolve_uri(uri);
+            co_return co_await this->server.features.references(session,
+                                                                path,
+                                                                pos,
+                                                                params.context.include_declaration);
         });
 
-    peer.on_request([query_targets_at](RequestContext& ctx,
-                                       const protocol::TypeDefinitionParams& params) -> RawResult {
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
-        co_return to_raw(query_targets_at(uri, pos, RelationKind::TypeDefinition));
-    });
-
-    peer.on_request([query_targets_at](RequestContext& ctx,
-                                       const protocol::ImplementationParams& params) -> RawResult {
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
-        co_return to_raw(query_targets_at(uri, pos, RelationKind::Implementation));
-    });
-
-    // Declarations plus the definition: symbols defined inline have no
-    // separate Declaration relation, and navigating to the definition is
-    // what every client expects in that case.
     peer.on_request(
-        [query_at](RequestContext& ctx, const protocol::DeclarationParams& params) -> RawResult {
+        [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
-            auto locations = query_at(uri, pos, RelationKind::Declaration);
-            auto defs = query_at(uri, pos, RelationKind::Definition);
-            locations.insert(locations.end(),
-                             std::make_move_iterator(defs.begin()),
-                             std::make_move_iterator(defs.end()));
-            co_return to_raw(locations);
+            auto [path, path_id, session] = resolve_uri(uri);
+            co_return co_await this->server.features.type_definition(session, path, pos);
+        });
+
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::ImplementationParams& params) -> RawResult {
+            auto& uri = params.text_document_position_params.text_document.uri;
+            auto& pos = params.text_document_position_params.position;
+            auto [path, path_id, session] = resolve_uri(uri);
+            co_return co_await this->server.features.implementation(session, path, pos);
+        });
+
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DeclarationParams& params) -> RawResult {
+            auto& uri = params.text_document_position_params.text_document.uri;
+            auto& pos = params.text_document_position_params.position;
+            auto [path, path_id, session] = resolve_uri(uri);
+            co_return co_await this->server.features.declaration(session, path, pos);
         });
 
     peer.on_request([this](RequestContext& ctx,
@@ -421,11 +364,8 @@ void LSPClient::register_language_features() {
             resolve_uri(params.text_document_position_params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
-        auto pause = srv.background_indexer.scoped_pause();
-        auto result =
-            co_await srv.compiler.handle_completion(params.text_document_position_params.position,
-                                                    session);
-        co_return std::move(result);
+        co_return co_await srv.features.completion(session,
+                                                   params.text_document_position_params.position);
     });
 
     peer.on_request(
@@ -435,12 +375,9 @@ void LSPClient::register_language_features() {
                 resolve_uri(params.text_document_position_params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            auto pause = srv.background_indexer.scoped_pause();
-            auto result =
-                co_await srv.compiler.forward_build(worker::BuildKind::SignatureHelp,
-                                                    params.text_document_position_params.position,
-                                                    session);
-            co_return std::move(result);
+            co_return co_await srv.features.signature_help(
+                session,
+                params.text_document_position_params.position);
         });
 
     peer.on_request(
@@ -449,8 +386,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            auto pause = srv.background_indexer.scoped_pause();
-            co_return co_await srv.compiler.forward_format(session);
+            co_return co_await srv.features.formatting(session);
         });
 
     peer.on_request([this](RequestContext& ctx,
@@ -459,89 +395,60 @@ void LSPClient::register_language_features() {
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
-        auto pause = srv.background_indexer.scoped_pause();
-        co_return co_await srv.compiler.forward_format(session, params.range);
+        co_return co_await srv.features.range_formatting(session, params.range);
     });
 
-    peer.on_request(
-        [this, lookup_at](RequestContext& ctx,
-                          const protocol::CallHierarchyPrepareParams& params) -> RawResult {
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
-
-            auto info = lookup_at(uri, pos);
-            if(!info)
-                co_return serde_raw{"null"};
-            if(!(info->kind == SymbolKind::Function || info->kind == SymbolKind::Method))
-                co_return serde_raw{"null"};
-
-            std::vector<protocol::CallHierarchyItem> items;
-            items.push_back(IndexQuery::build_call_hierarchy_item(*info));
-            co_return to_raw(items);
-        });
-
-    peer.on_request([this, resolve_item](
-                        RequestContext& ctx,
-                        const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
-        auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
-        if(!info)
-            co_return kota::outcome_error(item_not_resolved("call hierarchy"));
-        auto results = this->server.index_query.find_incoming_calls(info->hash);
-        co_return to_raw(results);
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::CallHierarchyPrepareParams& params) -> RawResult {
+        auto& uri = params.text_document_position_params.text_document.uri;
+        auto& pos = params.text_document_position_params.position;
+        auto [path, path_id, session] = resolve_uri(uri);
+        co_return co_await this->server.features.call_hierarchy_prepare(session, uri, path, pos);
     });
 
-    peer.on_request([this, resolve_item](
-                        RequestContext& ctx,
-                        const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
-        auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
-        if(!info)
-            co_return kota::outcome_error(item_not_resolved("call hierarchy"));
-        auto results = this->server.index_query.find_outgoing_calls(info->hash);
-        co_return to_raw(results);
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
+        auto [path, path_id, session] = resolve_uri(params.item.uri);
+        co_return co_await this->server.features.call_hierarchy_incoming(session,
+                                                                         path,
+                                                                         params.item);
     });
 
-    peer.on_request(
-        [this, lookup_at](RequestContext& ctx,
-                          const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
+        auto [path, path_id, session] = resolve_uri(params.item.uri);
+        co_return co_await this->server.features.call_hierarchy_outgoing(session,
+                                                                         path,
+                                                                         params.item);
+    });
 
-            auto info = lookup_at(uri, pos);
-            if(!info)
-                co_return serde_raw{"null"};
-            if(!(info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
-                 info->kind == SymbolKind::Enum || info->kind == SymbolKind::Union))
-                co_return serde_raw{"null"};
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
+        auto& uri = params.text_document_position_params.text_document.uri;
+        auto& pos = params.text_document_position_params.position;
+        auto [path, path_id, session] = resolve_uri(uri);
+        co_return co_await this->server.features.type_hierarchy_prepare(session, uri, path, pos);
+    });
 
-            std::vector<protocol::TypeHierarchyItem> items;
-            items.push_back(IndexQuery::build_type_hierarchy_item(*info));
-            co_return to_raw(items);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
+        auto [path, path_id, session] = resolve_uri(params.item.uri);
+        co_return co_await this->server.features.type_hierarchy_supertypes(session,
+                                                                           path,
+                                                                           params.item);
+    });
 
-    peer.on_request(
-        [this, resolve_item](RequestContext& ctx,
-                             const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
-            auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
-            if(!info)
-                co_return kota::outcome_error(item_not_resolved("type hierarchy"));
-            auto results = this->server.index_query.find_supertypes(info->hash);
-            co_return to_raw(results);
-        });
-
-    peer.on_request(
-        [this, resolve_item](RequestContext& ctx,
-                             const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
-            auto info = resolve_item(params.item.uri, params.item.range, params.item.data);
-            if(!info)
-                co_return kota::outcome_error(item_not_resolved("type hierarchy"));
-            auto results = this->server.index_query.find_subtypes(info->hash);
-            co_return to_raw(results);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
+        auto [path, path_id, session] = resolve_uri(params.item.uri);
+        co_return co_await this->server.features.type_hierarchy_subtypes(session,
+                                                                         path,
+                                                                         params.item);
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::WorkspaceSymbolParams& params) -> RawResult {
-            auto results = this->server.index_query.search_symbols(params.query);
-            co_return to_raw(results);
+            co_return co_await this->server.features.workspace_symbol(params.query);
         });
 }
 
