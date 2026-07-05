@@ -1,85 +1,164 @@
-#include <cstdint>
-#include <ranges>
-#include <type_traits>
+#pragma once
 
-#include "schema_generated.h"
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "index/path_pool.h"
+#include "semantic/relation_kind.h"
+#include "semantic/symbol_kind.h"
 #include "support/bitmap.h"
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
+#include "kota/codec/fbs/fbs.h"
 
 namespace clice::index {
 
-namespace fbs = flatbuffers;
-
-/// On-disk MergedIndex shard schema version. Bump this whenever `schema.fbs`
-/// changes the shard layout so that `MergedIndex::load` silently discards any
-/// shard carrying a different value — including version-less shards written by
-/// older builds, which read back the field's default of 0.
-constexpr inline std::uint32_t index_format_version = 1;
-
-namespace {
-
-template <typename Range>
-concept sequence_range = std::ranges::input_range<Range> &&
-                         !requires { typename Range::key_type; } && requires(const Range& r) {
-                             r.data();
-                             r.size();
-                         };
-
-template <typename T>
-using Offsets = llvm::SmallVector<fbs::Offset<T>, 0>;
-
-template <typename U, typename V>
-const U* safe_cast(const V* v) {
-    static_assert(sizeof(U) == sizeof(V), "size mismatch");
-    static_assert(alignof(U) == alignof(V), "alignment mismatch");
-    static_assert(std::is_trivially_copyable_v<U> && std::is_trivially_copyable_v<V>,
-                  "requires trivially copyable");
-    /// If aliasing issues arise, prefer copying into a temporary SmallVector<U>.
-    return reinterpret_cast<const U*>(v);
-}
-
-auto CreateString(fbs::FlatBufferBuilder& builder, llvm::StringRef string) {
-    return builder.CreateString(string.data(), string.size());
-}
-
-template <sequence_range Range>
-auto CreateVector(fbs::FlatBufferBuilder& builder, const Range& range) {
-    return builder.CreateVector(range.data(), range.size());
-}
-
-auto CreateVector(fbs::FlatBufferBuilder& builder, const llvm::SmallVector<char, 1024>& range) {
-    return builder.CreateVector(reinterpret_cast<const std::uint8_t*>(range.data()), range.size());
-}
-
-template <typename U, sequence_range Range>
-auto CreateStructVector(fbs::FlatBufferBuilder& builder, const Range& range) {
-    using V = std::ranges::range_value_t<Range>;
-    (void)sizeof(V);
-    return builder.CreateVectorOfStructs(safe_cast<U>(range.data()), range.size());
-}
-
-template <typename Range, typename Functor>
-auto transform(const Range& range, const Functor& functor) {
-    using V = std::ranges::range_value_t<Range>;
-    using R = std::invoke_result_t<Functor, V>;
-
-    llvm::SmallVector<R, 0> result;
-    result.resize_for_overwrite(std::ranges::size(range));
-
-    auto i = 0;
-    for(auto&& v: range) {
-        result[i] = functor(v);
-        i += 1;
-    }
-    return result;
-}
-
-Bitmap read_bitmap(const fbs::Vector<uint8_t>* buffer) {
-    return Bitmap::read(reinterpret_cast<const char*>(buffer->data()), false);
-}
-
-}  // namespace
+/// On-disk index blob schema version. The wire layout is derived from the
+/// reflected in-memory types, so bump this whenever their serialized fields
+/// change; loaders silently discard blobs carrying a different value (flatc
+/// era blobs are already rejected by the kotatsu buffer identifier).
+constexpr inline std::uint32_t index_format_version = 2;
 
 }  // namespace clice::index
+
+/// Type-level codec adapters bridging clice's non-reflectable leaf types onto
+/// kotatsu's visitor framework. They are keyed on the value type only, so they
+/// apply wherever the type appears — as a struct field, a map key/value or a
+/// sequence element — and the declared wire_type drives both the FlatBuffers
+/// vector layout and verify_flatbuffer's schema walk.
+namespace kota::codec {
+
+template <typename Vis, typename Config>
+struct serialize_visit<Vis, clice::RelationKind, Config> {
+    using wire_type = std::uint32_t;
+
+    static bool visit(Vis& vis, const clice::RelationKind& kind) {
+        return encode_value<Config>(vis, kind.value());
+    }
+};
+
+template <typename Vis, typename Config>
+struct deserialize_visit<Vis, clice::RelationKind, Config> {
+    static bool visit(Vis& vis, clice::RelationKind& out) {
+        std::uint32_t value = 0;
+        if(!decode_value<Config>(vis, value)) {
+            return false;
+        }
+        out = clice::RelationKind(static_cast<clice::RelationKind::Kind>(value));
+        return true;
+    }
+};
+
+template <typename Vis, typename Config>
+struct serialize_visit<Vis, clice::SymbolKind, Config> {
+    using wire_type = std::uint8_t;
+
+    static bool visit(Vis& vis, const clice::SymbolKind& kind) {
+        return encode_value<Config>(vis, kind.value());
+    }
+};
+
+template <typename Vis, typename Config>
+struct deserialize_visit<Vis, clice::SymbolKind, Config> {
+    static bool visit(Vis& vis, clice::SymbolKind& out) {
+        std::uint8_t value = 0;
+        if(!decode_value<Config>(vis, value)) {
+            return false;
+        }
+        out = clice::SymbolKind(static_cast<clice::SymbolKind::Kind>(value));
+        return true;
+    }
+};
+
+/// Roaring bitmaps travel as their non-portable serialized bytes, matching the
+/// `write(..., false)` format the flatc-era schema used. An empty bitmap is
+/// written as an empty byte vector.
+template <typename Vis, typename Config>
+struct serialize_visit<Vis, roaring::Roaring, Config> {
+    using wire_type = std::vector<std::byte>;
+
+    static bool visit(Vis& vis, const roaring::Roaring& bitmap) {
+        std::vector<std::byte> bytes;
+        if(!bitmap.isEmpty()) {
+            bytes.resize(bitmap.getSizeInBytes(false));
+            bitmap.write(reinterpret_cast<char*>(bytes.data()), false);
+        }
+        return encode_value<Config>(vis, bytes);
+    }
+};
+
+template <typename Vis, typename Config>
+struct deserialize_visit<Vis, roaring::Roaring, Config> {
+    static bool visit(Vis& vis, roaring::Roaring& out) {
+        std::vector<std::byte> bytes;
+        if(!decode_value<Config>(vis, bytes)) {
+            return false;
+        }
+        if(bytes.empty()) {
+            out = roaring::Roaring();
+        } else {
+            out = roaring::Roaring::read(reinterpret_cast<const char*>(bytes.data()), false);
+        }
+        return true;
+    }
+};
+
+template <typename Vis, typename Config>
+struct serialize_visit<Vis, std::chrono::milliseconds, Config> {
+    using wire_type = std::int64_t;
+
+    static bool visit(Vis& vis, const std::chrono::milliseconds& value) {
+        return encode_value<Config>(vis, static_cast<std::int64_t>(value.count()));
+    }
+};
+
+template <typename Vis, typename Config>
+struct deserialize_visit<Vis, std::chrono::milliseconds, Config> {
+    static bool visit(Vis& vis, std::chrono::milliseconds& out) {
+        std::int64_t ticks = 0;
+        if(!decode_value<Config>(vis, ticks)) {
+            return false;
+        }
+        out = std::chrono::milliseconds(ticks);
+        return true;
+    }
+};
+
+/// A PathPool travels as its path table (a vector of strings, in id order);
+/// decoding re-interns every entry so the cache and ids are rebuilt.
+template <typename Vis, typename Config>
+struct serialize_visit<Vis, clice::index::PathPool, Config> {
+    using wire_type = std::vector<std::string>;
+
+    static bool visit(Vis& vis, const clice::index::PathPool& pool) {
+        std::vector<std::string_view> paths;
+        paths.reserve(pool.paths.size());
+        for(auto path: pool.paths) {
+            paths.emplace_back(path.data(), path.size());
+        }
+        return encode_value<Config>(vis, paths);
+    }
+};
+
+template <typename Vis, typename Config>
+struct deserialize_visit<Vis, clice::index::PathPool, Config> {
+    static bool visit(Vis& vis, clice::index::PathPool& out) {
+        std::vector<std::string> paths;
+        if(!decode_value<Config>(vis, paths)) {
+            return false;
+        }
+        out.paths.clear();
+        out.cache.clear();
+        for(const auto& path: paths) {
+            if(!path.empty()) {
+                out.path_id(path);
+            }
+        }
+        return true;
+    }
+};
+
+}  // namespace kota::codec

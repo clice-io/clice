@@ -1,10 +1,10 @@
 #include <filesystem>
 
-#include "schema_generated.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
 #include "index/merged_index.h"
+#include "index/serialization.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -24,6 +24,30 @@ void build_index(llvm::StringRef code,
     tu_index = index::TUIndex::build(*unit);
 };
 
+/// File index of `fid` after build(): main lives in main_file_index, every
+/// other file is keyed by its path id.
+index::FileIndex& file_index_of(index::TUIndex& index, clang::FileID fid) {
+    if(fid == unit->interested_file()) {
+        return index.main_file_index;
+    }
+    return index.path_file_indices[index.graph.path_id(fid)];
+}
+
+/// Visit every non-main (include_id, FileIndex) pair of a built TU.
+template <typename Callback>
+void for_each_header_index(index::TUIndex& index, Callback&& callback) {
+    for(auto& [fid, include_id]: index.graph.file_table) {
+        if(fid == unit->interested_file()) {
+            continue;
+        }
+        auto it = index.path_file_indices.find(index.graph.path_id(fid));
+        if(it == index.path_file_indices.end()) {
+            continue;
+        }
+        callback(fid, include_id, it->second);
+    }
+}
+
 void EXPECT_SELECT(llvm::StringRef pos,
                    llvm::StringRef expect_range,
                    llvm::StringRef file = "",
@@ -32,7 +56,7 @@ void EXPECT_SELECT(llvm::StringRef pos,
     auto expected = range(expect_range, file);
 
     auto fid = file.empty() ? unit->interested_file() : unit->file_id(file);
-    auto& index = tu_index.file_indices[fid];
+    auto& index = file_index_of(tu_index, fid);
 
     auto it =
         std::ranges::lower_bound(index.occurrences, offset, {}, [](index::Occurrence& occurrence) {
@@ -58,10 +82,10 @@ TEST_CASE(Serialization) {
 
     llvm::StringMap<index::MergedIndex> merged_indices;
     auto& graph = tu_index.graph;
-    for(auto& [fid, index]: tu_index.file_indices) {
+    for_each_header_index(tu_index, [&](clang::FileID fid, std::uint32_t include_id, auto& index) {
         llvm::StringRef path = graph.paths[graph.path_id(fid)];
-        merged_indices[path].merge("tu0", graph.include_location_id(fid), index, {});
-    }
+        merged_indices[path].merge("tu0", include_id, index, {});
+    });
 
     for(auto& [path, merged]: merged_indices) {
         llvm::SmallString<1024> s;
@@ -153,12 +177,12 @@ TEST_CASE(MultipleMergesDedup) {
 
     // Merge header indices from both TUs into same MergedIndex.
     index::MergedIndex merged_header;
-    for(auto& [fid, file_index]: tu_a.file_indices) {
-        merged_header.merge("tu0", tu_a.graph.include_location_id(fid), file_index, {});
-    }
-    for(auto& [fid, file_index]: tu_b.file_indices) {
-        merged_header.merge("tu1", tu_b.graph.include_location_id(fid), file_index, {});
-    }
+    for_each_header_index(tu_a, [&](clang::FileID, std::uint32_t include_id, auto& file_index) {
+        merged_header.merge("tu0", include_id, file_index, {});
+    });
+    for_each_header_index(tu_b, [&](clang::FileID, std::uint32_t include_id, auto& file_index) {
+        merged_header.merge("tu1", include_id, file_index, {});
+    });
 
     // Serialize and deserialize to verify dedup survives round-trip.
     llvm::SmallString<4096> buf;
@@ -253,9 +277,9 @@ TEST_CASE(RemoveHeaderContext) {
 
     // Merge header index as header context.
     index::MergedIndex merged_header;
-    for(auto& [fid, file_index]: tu_index.file_indices) {
-        merged_header.merge("tu0", tu_index.graph.include_location_id(fid), file_index, {});
-    }
+    for_each_header_index(tu_index, [&](clang::FileID, std::uint32_t include_id, auto& file_index) {
+        merged_header.merge("tu0", include_id, file_index, {});
+    });
 
     // Remove should not crash.
     merged_header.remove("tu0");
@@ -279,7 +303,7 @@ TEST_CASE(RemergeReplacesContribution) {
     tu_index = index::TUIndex::build(*unit);
 
     auto header_fid = unit->file_id("header.h");
-    auto& header_idx = tu_index.file_indices[header_fid];
+    auto& header_idx = file_index_of(tu_index, header_fid);
     auto include_id = tu_index.graph.include_location_id(header_fid);
 
     // The symbol defined in the header: its Definition relation exists only
@@ -329,7 +353,7 @@ TEST_CASE(RemergePreservesOtherTus) {
     tu_index = index::TUIndex::build(*unit);
 
     auto header_fid = unit->file_id("header.h");
-    auto& header_idx = tu_index.file_indices[header_fid];
+    auto& header_idx = file_index_of(tu_index, header_fid);
     auto include_id = tu_index.graph.include_location_id(header_fid);
 
     index::SymbolHash defined{};
@@ -395,7 +419,7 @@ TEST_CASE(HasContributionTracking) {
     tu_index = index::TUIndex::build(*unit);
 
     auto header_fid = unit->file_id("header.h");
-    auto& header_idx = tu_index.file_indices[header_fid];
+    auto& header_idx = file_index_of(tu_index, header_fid);
     auto include_id = tu_index.graph.include_location_id(header_fid);
 
     index::MergedIndex merged;
@@ -637,39 +661,36 @@ TEST_CASE(OldShardDiscarded) {
         ASSERT_TRUE(index::MergedIndex::load(path).content() == "valid-shard");
     }
 
-    // A version-less (format_version=0) shard from an older build is silently
-    // discarded — load returns an empty index, as if nothing were on disk.
+    // A shard carrying a stale format_version is silently discarded — load
+    // returns an empty index, as if nothing were on disk. The stale shard is
+    // forged from a struct mirroring the shard layout's leading fields.
     {
-        namespace binary = clice::index::binary;
-        flatbuffers::FlatBufferBuilder builder;
-        auto content = builder.CreateString("stale-shard");
-        auto paths = builder.CreateVector<flatbuffers::Offset<flatbuffers::String>>({});
-        auto cache = builder.CreateVector<flatbuffers::Offset<binary::CacheEntry>>({});
-        auto headers = builder.CreateVector<flatbuffers::Offset<binary::HeaderContextEntry>>({});
-        auto compilations =
-            builder.CreateVector<flatbuffers::Offset<binary::CompilationContextEntry>>({});
-        auto occurrences = builder.CreateVector<flatbuffers::Offset<binary::OccurrenceEntry>>({});
-        auto relations =
-            builder.CreateVector<flatbuffers::Offset<binary::SymbolRelationsEntry>>({});
-        auto root = binary::CreateMergedIndex(builder,
-                                              0,
-                                              paths,
-                                              cache,
-                                              headers,
-                                              compilations,
-                                              occurrences,
-                                              relations,
-                                              0,
-                                              content,
-                                              0,
-                                              0,
-                                              /*format_version=*/0);
-        builder.Finish(root);
+        struct StaleShard {
+            std::uint32_t format_version = 0;
+            std::vector<std::string> paths;
+            std::string content = "stale-shard";
+        };
+
+        auto encoded = kota::codec::fbs::to_flatbuffer(StaleShard{});
+        ASSERT_TRUE(encoded.has_value());
 
         auto path = dir.path("stale.idx");
         std::error_code ec;
         llvm::raw_fd_ostream os(path, ec);
-        os.write(reinterpret_cast<const char*>(builder.GetBufferPointer()), builder.GetSize());
+        os.write(reinterpret_cast<const char*>(encoded->data()), encoded->size());
+        os.flush();
+
+        auto loaded = index::MergedIndex::load(path);
+        ASSERT_TRUE(loaded.content().empty());
+        ASSERT_TRUE(loaded.need_update());
+    }
+
+    // Garbage bytes are rejected by the deep verifier.
+    {
+        auto path = dir.path("garbage.idx");
+        std::error_code ec;
+        llvm::raw_fd_ostream os(path, ec);
+        os << "EVTOnot-a-flatbuffer-at-all-just-some-garbage-bytes";
         os.flush();
 
         auto loaded = index::MergedIndex::load(path);

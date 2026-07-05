@@ -80,7 +80,6 @@ struct DenseMapInfo<clice::index::Relation> {
 namespace clice::index {
 
 /// (path_id, content_hash) captured for one dependency at index-build time.
-/// Layout must mirror `binary::DepHash` so `safe_cast` can alias it.
 struct DepHash {
     std::uint32_t path_id;
     std::uint64_t content_hash;
@@ -167,6 +166,10 @@ struct CompilationContext {
 };
 
 struct MergedIndex::Impl {
+    /// On-disk schema version, serialized first so loaders can reject
+    /// incompatible shards before touching anything else.
+    std::uint32_t format_version = index_format_version;
+
     /// Shard-local path table: every path id stored in this shard indexes
     /// into it, so shards are self-contained across sessions (runtime pool
     /// ids never persist).
@@ -195,8 +198,9 @@ struct MergedIndex::Impl {
     /// The max canonical id we have allocated.
     std::uint32_t max_canonical_id = 0;
 
-    /// The reference count of each canonical id.
-    std::vector<std::uint32_t> canonical_ref_counts;
+    /// The reference count of each canonical id. Derived state: rebuilt from
+    /// the contexts on load, never serialized.
+    kota::meta::skip<std::vector<std::uint32_t>> canonical_ref_counts;
 
     /// The canonical id set of removed index.
     roaring::Roaring removed;
@@ -210,8 +214,9 @@ struct MergedIndex::Impl {
     /// Symbols local to this file (FileLocal) or TU (TULocal).
     SymbolTable symbols;
 
-    /// Sorted occurrences cache for fast lookup.
-    std::vector<Occurrence> occurrences_cache;
+    /// Sorted occurrences cache for fast lookup. Derived state, never
+    /// serialized.
+    kota::meta::skip<std::vector<Occurrence>> occurrences_cache;
 
     /// Drop one reference to a canonical index; the last reference masks its
     /// occurrences and relations via the removed bitmap. A later re-merge of
@@ -253,8 +258,67 @@ struct MergedIndex::Impl {
         self.max_canonical_id += 1;
     }
 
+    /// Vacuum state masked by the removed bitmap so the reflected object can
+    /// be serialized as-is: rows whose every canonical was released are
+    /// dropped, live bitmaps are pre-subtracted, dead cache entries go with
+    /// them (a later re-merge of identical content mints a fresh canonical),
+    /// and the removed bitmap ends up empty. This matches exactly what a
+    /// load of the compacted bytes would reconstruct.
+    void compact(this Impl& self) {
+        self.occurrences_cache.clear();
+
+        auto& removed = self.removed;
+        if(removed.isEmpty()) {
+            return;
+        }
+
+        llvm::SmallVector<llvm::SmallString<64>> dead_hashes;
+        for(auto& entry: self.canonical_cache) {
+            if(removed.contains(entry.second)) {
+                dead_hashes.emplace_back(entry.first());
+            }
+        }
+        for(auto& hash: dead_hashes) {
+            self.canonical_cache.erase(hash);
+        }
+
+        llvm::DenseMap<Occurrence, roaring::Roaring> live_occurrences;
+        for(auto& [occurrence, bitmap]: self.occurrences) {
+            auto masked = bitmap - removed;
+            if(!masked.isEmpty()) {
+                live_occurrences.try_emplace(occurrence, std::move(masked));
+            }
+        }
+        self.occurrences = std::move(live_occurrences);
+
+        llvm::DenseMap<SymbolHash, llvm::DenseMap<Relation, roaring::Roaring>> live_relations;
+        for(auto& [symbol_id, symbol_relations]: self.relations) {
+            llvm::DenseMap<Relation, roaring::Roaring> live;
+            for(auto& [relation, bitmap]: symbol_relations) {
+                auto masked = bitmap - removed;
+                if(!masked.isEmpty()) {
+                    live.try_emplace(relation, std::move(masked));
+                }
+            }
+            if(!live.empty()) {
+                live_relations.try_emplace(symbol_id, std::move(live));
+            }
+        }
+        self.relations = std::move(live_relations);
+
+        removed = roaring::Roaring();
+    }
+
     friend bool operator==(const Impl&, const Impl&) = default;
 };
+
+namespace {
+
+std::span<const std::byte> buffer_bytes(const llvm::MemoryBuffer& buffer) {
+    return {reinterpret_cast<const std::byte*>(buffer.getBufferStart()), buffer.getBufferSize()};
+}
+
+}  // namespace
 
 MergedIndex::MergedIndex(std::unique_ptr<llvm::MemoryBuffer> buffer, std::unique_ptr<Impl> impl) :
     buffer(std::move(buffer)), impl(std::move(impl)) {}
@@ -281,95 +345,34 @@ void MergedIndex::load_in_memory(this Self& self) {
     }
 
     auto& index = *self.impl;
-    auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
 
-    index.max_canonical_id = root->max_canonical_id();
-
-    if(root->paths()) {
-        for(auto path: *root->paths()) {
-            index.paths.path_id(path->string_view());
-        }
+    if(auto result = kota::codec::fbs::from_flatbuffer(buffer_bytes(*self.buffer), index);
+       !result) {
+        index = Impl();
+        self.buffer.reset();
+        return;
     }
 
-    for(auto entry: *root->canonical_cache()) {
-        index.canonical_cache.try_emplace(entry->sha256()->string_view(), entry->canonical_id());
-    }
-
+    // Rebuild the derived reference counts from the decoded contexts. Ids are
+    // bounds-checked: the verifier guarantees structure, not semantics, so a
+    // corrupted-but-well-formed shard must not index out of range.
     index.canonical_ref_counts.resize(index.max_canonical_id, 0);
-
-    for(auto entry: *root->header_contexts()) {
-        HeaderContext context;
-        auto path = entry->path_id();
-        context.version = entry->version();
-        for(auto include: *entry->includes()) {
-            index.canonical_ref_counts[include->canonical_id()] += 1;
-            context.includes.emplace_back(*safe_cast<IncludeContext>(include));
+    auto count_ref = [&](std::uint32_t canonical_id) {
+        if(canonical_id < index.canonical_ref_counts.size()) {
+            index.canonical_ref_counts[canonical_id] += 1;
         }
-        index.header_contexts.try_emplace(path, std::move(context));
-    }
-
-    for(auto entry: *root->compilation_contexts()) {
-        CompilationContext context;
-        auto path = entry->path_id();
-        context.version = entry->version();
-        context.canonical_id = entry->canonical_id();
-        context.build_at = entry->build_at();
-        for(auto include: *entry->include_locations()) {
-            context.include_locations.emplace_back(*safe_cast<IncludeLocation>(include));
-        }
-        if(entry->dep_hashes()) {
-            for(auto dep: *entry->dep_hashes()) {
-                context.dep_hashes.emplace_back(*safe_cast<DepHash>(dep));
-            }
-        }
-        index.compilation_contexts.try_emplace(path, std::move(context));
-    }
-
-    // Count ref counts from compilation contexts.
-    for(auto entry: *root->compilation_contexts()) {
-        index.canonical_ref_counts[entry->canonical_id()] += 1;
-    }
-
-    // Deserialize removed bitmap.
-    if(root->removed() && root->removed()->size() > 0) {
-        index.removed = read_bitmap(root->removed());
-    }
-
-    for(auto entry: *root->occurrences()) {
-        index.occurrences.try_emplace(*safe_cast<Occurrence>(entry->occurrence()),
-                                      read_bitmap(entry->context()));
-    }
-
-    for(auto entry: *root->relations()) {
-        auto& relations = index.relations[entry->symbol()];
-        for(auto relation_entry: *entry->relations()) {
-            relations.try_emplace(*safe_cast<Relation>(relation_entry->relation()),
-                                  read_bitmap(relation_entry->context()));
+    };
+    for(auto& [_, context]: index.header_contexts) {
+        for(auto& include: context.includes) {
+            count_ref(include.canonical_id);
         }
     }
-
-    if(root->content()) {
-        index.content = root->content()->str();
+    for(auto& [_, context]: index.compilation_contexts) {
+        count_ref(context.canonical_id);
     }
 
-    if(root->line_starts() && root->line_starts()->size() > 0) {
-        auto* ls = root->line_starts();
-        index.line_starts.assign(ls->begin(), ls->end());
-    } else if(!index.content.empty()) {
+    if(index.line_starts.empty() && !index.content.empty()) {
         index.line_starts = kota::ipc::lsp::build_line_starts(index.content);
-    }
-
-    if(root->symbols()) {
-        for(auto entry: *root->symbols()) {
-            auto& symbol = index.symbols[entry->symbol_id()];
-            if(auto* s = entry->symbol()) {
-                if(s->name())
-                    symbol.name = s->name()->str();
-                symbol.kind = SymbolKind(static_cast<std::uint8_t>(s->kind()));
-                symbol.scope = static_cast<SymbolScope>(s->scope());
-                symbol.reference_files = read_bitmap(s->refs());
-            }
-        }
     }
 
     self.buffer.reset();
@@ -382,25 +385,24 @@ MergedIndex MergedIndex::load(llvm::StringRef path) {
     }
 
     // A stale cache directory from an older build must never crash the server
-    // or be misread. Verify the blob is a structurally valid flatbuffer, then
-    // discard any shard whose format version differs (including version-less
-    // shards, which report 0). A discarded shard is treated as "not on disk"
-    // and the background indexer rebuilds it.
-    auto data = reinterpret_cast<const std::uint8_t*>((*buffer)->getBufferStart());
-    fbs::Verifier verifier(data, (*buffer)->getBufferSize());
-    if(!verifier.VerifyBuffer<binary::MergedIndex>(nullptr)) {
+    // or be misread. Deep-verify the blob against the reflected shard schema
+    // (flatc-era blobs already fail the kotatsu buffer identifier check),
+    // then discard any shard whose format version differs. A discarded shard
+    // is treated as "not on disk" and the background indexer rebuilds it.
+    auto bytes = buffer_bytes(**buffer);
+    if(!kota::codec::fbs::verify_flatbuffer<Impl>(bytes)) {
         return MergedIndex();
     }
 
-    auto root = fbs::GetRoot<binary::MergedIndex>((*buffer)->getBufferStart());
-    if(root->format_version() != index_format_version) {
+    auto root = kota::codec::fbs::table_view<Impl>::from_bytes(bytes);
+    if(root[&Impl::format_version] != index_format_version) {
         return MergedIndex();
     }
 
     return MergedIndex(std::move(*buffer), nullptr);
 }
 
-void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
+void MergedIndex::serialize(this Self& self, llvm::raw_ostream& out) {
     if(self.buffer) {
         out.write(self.buffer->getBufferStart(), self.buffer->getBufferSize());
         return;
@@ -410,149 +412,20 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
         return;
     }
 
-    auto& index = self.impl;
+    // The serialized shard is served through buffer-only lookups that never
+    // consult the removed bitmap, so masked state must not reach disk.
+    // Compacting in place produces exactly the state a reload of the written
+    // bytes would reconstruct, after which the reflected object encodes
+    // as-is. Map entries are written sorted by their keys' ordering, which
+    // the lazy lookups binary-search.
+    self.impl->compact();
 
-    fbs::FlatBufferBuilder builder(1024);
-
-    llvm::SmallVector<char, 1024> buffer;
-
-    // Compaction: rows whose every canonical was released are masked at
-    // runtime by the removed bitmap, but the serialized shard is served
-    // through buffer-only lookups that never consult it — so masked state
-    // must not reach disk at all. Dead rows are dropped, live bitmaps are
-    // written pre-subtracted, dead cache entries go with them (a later
-    // re-merge of identical content mints a fresh canonical), and the
-    // persisted removed bitmap is always empty.
-    auto& removed = index->removed;
-    auto live = [&](const roaring::Roaring& bitmap) {
-        return removed.isEmpty() ? bitmap : bitmap - removed;
-    };
-
-    llvm::SmallVector<fbs::Offset<binary::CacheEntry>> canonical_cache;
-    for(auto& [hash, canonical_id]: index->canonical_cache) {
-        if(removed.contains(canonical_id)) {
-            continue;
-        }
-        canonical_cache.push_back(
-            binary::CreateCacheEntry(builder, CreateString(builder, hash.str()), canonical_id));
+    auto encoded = kota::codec::fbs::to_flatbuffer(*self.impl);
+    assert(encoded && "MergedIndex flatbuffer serialization failed");
+    if(!encoded) {
+        return;
     }
-
-    auto header_contexts = transform(index->header_contexts, [&](auto&& value) {
-        auto& [path_id, context] = value;
-        return binary::CreateHeaderContextEntry(
-            builder,
-            path_id,
-            context.version,
-            CreateStructVector<binary::IncludeContext>(builder, context.includes));
-    });
-
-    auto compilation_contexts = transform(index->compilation_contexts, [&](auto&& value) {
-        auto& [path_id, context] = value;
-        return binary::CreateCompilationContextEntry(
-            builder,
-            path_id,
-            context.version,
-            context.canonical_id,
-            context.build_at,
-            CreateStructVector<binary::IncludeLocation>(builder, context.include_locations),
-            CreateStructVector<binary::DepHash>(builder, context.dep_hashes));
-    });
-
-    llvm::SmallVector<const Occurrence*> occurrence_keys;
-    llvm::SmallVector<fbs::Offset<binary::OccurrenceEntry>> occurrences;
-    occurrence_keys.reserve(index->occurrences.size());
-    occurrences.reserve(index->occurrences.size());
-    for(auto& [occurrence, bitmap]: index->occurrences) {
-        auto masked = live(bitmap);
-        if(masked.isEmpty()) {
-            continue;
-        }
-        buffer.clear();
-        buffer.resize_for_overwrite(masked.getSizeInBytes(false));
-        masked.write(buffer.data(), false);
-        occurrence_keys.emplace_back(&occurrence);
-        occurrences.push_back(
-            binary::CreateOccurrenceEntry(builder,
-                                          safe_cast<binary::Occurrence>(&occurrence),
-                                          CreateVector(builder, buffer)));
-    }
-    std::ranges::sort(std::views::zip(occurrence_keys, occurrences), [](auto lhs, auto rhs) {
-        const auto& lo = *std::get<0>(lhs);
-        const auto& ro = *std::get<0>(rhs);
-        return std::tuple(lo.range.begin, lo.range.end, lo.target) <
-               std::tuple(ro.range.begin, ro.range.end, ro.target);
-    });
-
-    llvm::SmallVector<std::uint64_t> relation_keys;
-    llvm::SmallVector<fbs::Offset<binary::SymbolRelationsEntry>> relations;
-    relation_keys.reserve(index->relations.size());
-    relations.reserve(index->relations.size());
-    for(auto& [symbol_id, symbol_relations]: index->relations) {
-        llvm::SmallVector<fbs::Offset<binary::RelationEntry>> entries;
-        for(auto& [relation, bitmap]: symbol_relations) {
-            auto masked = live(bitmap);
-            if(masked.isEmpty()) {
-                continue;
-            }
-            buffer.clear();
-            buffer.resize_for_overwrite(masked.getSizeInBytes(false));
-            masked.write(buffer.data(), false);
-            entries.push_back(binary::CreateRelationEntry(builder,
-                                                          safe_cast<binary::Relation>(&relation),
-                                                          CreateVector(builder, buffer)));
-        }
-        if(entries.empty()) {
-            continue;
-        }
-        relation_keys.emplace_back(symbol_id);
-        relations.push_back(
-            binary::CreateSymbolRelationsEntry(builder, symbol_id, CreateVector(builder, entries)));
-    }
-    std::ranges::sort(std::views::zip(relation_keys, relations), {}, [](auto e) {
-        return std::get<0>(e);
-    });
-
-    // Post-compaction nothing on disk is masked; the persisted removed
-    // bitmap is always empty.
-    buffer.clear();
-    auto removed_offset = CreateVector(builder, buffer);
-
-    auto content_offset = CreateString(builder, index->content);
-    auto line_starts_offset = builder.CreateVector(index->line_starts);
-
-    auto symbols = transform(index->symbols, [&](auto&& value) {
-        auto& [symbol_id, symbol] = value;
-        buffer.clear();
-        buffer.resize_for_overwrite(symbol.reference_files.getSizeInBytes(false));
-        symbol.reference_files.write(buffer.data(), false);
-        return binary::CreateSymbolEntry(builder,
-                                         symbol_id,
-                                         binary::CreateSymbol(builder,
-                                                              CreateString(builder, symbol.name),
-                                                              symbol.kind.value(),
-                                                              CreateVector(builder, buffer),
-                                                              static_cast<uint8_t>(symbol.scope)));
-    });
-
-    auto paths = transform(index->paths.paths,
-                           [&](llvm::StringRef path) { return CreateString(builder, path); });
-
-    auto merged_index = binary::CreateMergedIndex(builder,
-                                                  index->max_canonical_id,
-                                                  CreateVector(builder, paths),
-                                                  CreateVector(builder, canonical_cache),
-                                                  CreateVector(builder, header_contexts),
-                                                  CreateVector(builder, compilation_contexts),
-                                                  CreateVector(builder, occurrences),
-                                                  CreateVector(builder, relations),
-                                                  removed_offset,
-                                                  content_offset,
-                                                  line_starts_offset,
-                                                  CreateVector(builder, symbols),
-                                                  index_format_version);
-    builder.Finish(merged_index);
-
-    out.write(safe_cast<char>(builder.GetBufferPointer()), builder.GetSize());
+    out.write(reinterpret_cast<const char*>(encoded->data()), encoded->size());
 }
 
 void MergedIndex::lookup(this const Self& self,
@@ -600,25 +473,30 @@ void MergedIndex::lookup(this const Self& self,
             break;
         }
     } else if(self.buffer) {
-        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
-        auto& occurrences = *index->occurrences();
+        auto root = kota::codec::fbs::table_view<Impl>::from_bytes(buffer_bytes(*self.buffer));
+        auto occurrences = root[&Impl::occurrences];
 
-        auto it = std::ranges::lower_bound(occurrences, offset, {}, [](auto o) {
-            return o->occurrence()->range().end();
-        });
-
-        while(it != occurrences.end()) {
-            auto o = safe_cast<Occurrence>(it->occurrence());
-            if(o->range.contains(offset)) {
-                if(!callback(*o)) {
-                    break;
-                }
-
-                it++;
-                continue;
+        // Entries are sorted by Occurrence's (begin, end, target) ordering;
+        // mirror the in-memory lower_bound on range.end.
+        std::size_t lo = 0;
+        std::size_t hi = occurrences.size();
+        while(lo < hi) {
+            auto mid = lo + (hi - lo) / 2;
+            if(occurrences.at(mid).get<0>().range.end < offset) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
             }
+        }
 
-            break;
+        for(std::size_t i = lo; i < occurrences.size(); ++i) {
+            auto occurrence = occurrences.at(i).get<0>();
+            if(!occurrence.range.contains(offset)) {
+                break;
+            }
+            if(!callback(occurrence)) {
+                break;
+            }
         }
     }
 }
@@ -650,18 +528,23 @@ void MergedIndex::lookup(this const Self& self,
             }
         }
     } else if(self.buffer) {
-        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
-        auto& entries = *index->relations();
-
-        auto it = std::ranges::lower_bound(entries, symbol, {}, [](auto e) { return e->symbol(); });
-        if(it == entries.end() || it->symbol() != symbol) [[unlikely]] {
+        auto root = kota::codec::fbs::table_view<Impl>::from_bytes(buffer_bytes(*self.buffer));
+        auto entry = root[&Impl::relations].find(symbol);
+        if(!entry) [[unlikely]] {
             return;
         }
 
-        for(auto entry: *it->relations()) {
-            auto r = safe_cast<Relation>(entry->relation());
-            if(r->kind & kind) {
-                if(!callback(*r)) {
+        auto relations = entry->get<1>();
+        for(std::size_t i = 0; i < relations.size(); ++i) {
+            auto view = relations.at(i).get<0>();
+            Relation relation{
+                .kind = RelationKind(static_cast<RelationKind::Kind>(view[&Relation::kind])),
+                .padding = view[&Relation::padding],
+                .range = view[&Relation::range],
+                .target_symbol = view[&Relation::target_symbol],
+            };
+            if(relation.kind & kind) {
+                if(!callback(relation)) {
                     break;
                 }
             }
@@ -702,33 +585,37 @@ bool MergedIndex::need_update(this const Self& self) {
 
         return false;
     } else if(self.buffer) {
-        auto index = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
-        if(index->compilation_contexts()->empty()) {
+        auto root = kota::codec::fbs::table_view<Impl>::from_bytes(buffer_bytes(*self.buffer));
+        auto contexts = root[&Impl::compilation_contexts];
+        if(contexts.empty()) {
             return true;
         }
 
-        auto context = *index->compilation_contexts()->begin();
-        auto* paths = index->paths();
+        auto context = contexts.at(0).get<1>();
+        auto paths = root[&Impl::paths];
 
         llvm::DenseMap<std::uint32_t, std::uint64_t> hashes;
-        if(context->dep_hashes()) {
-            for(auto dep: *context->dep_hashes()) {
-                hashes.try_emplace(dep->path_id(), dep->content_hash());
-            }
+        auto dep_hashes = context[&CompilationContext::dep_hashes];
+        for(std::size_t i = 0; i < dep_hashes.size(); ++i) {
+            auto dep = dep_hashes.at(i);
+            hashes.try_emplace(dep.path_id, dep.content_hash);
         }
 
+        auto build_at = context[&CompilationContext::build_at];
+        auto locations = context[&CompilationContext::include_locations];
         llvm::DenseSet<std::uint32_t> deps;
-        for(auto location: *context->include_locations()) {
-            if(!deps.insert(location->path_id()).second) {
+        for(std::size_t i = 0; i < locations.size(); ++i) {
+            auto location = locations.at(i);
+            if(!deps.insert(location.path_id).second) {
                 continue;
             }
             // A dep the table does not cover cannot be validated: rebuild.
-            if(!paths || location->path_id() >= paths->size()) {
+            if(location.path_id >= paths.size()) {
                 return true;
             }
-            auto it = hashes.find(location->path_id());
-            if(dep_stale(paths->Get(location->path_id())->string_view(),
-                         context->build_at(),
+            auto it = hashes.find(location.path_id);
+            if(dep_stale(llvm::StringRef(paths.at(location.path_id)),
+                         build_at,
                          it != hashes.end() ? std::optional(it->second) : std::nullopt)) {
                 return true;
             }
@@ -759,13 +646,11 @@ bool MergedIndex::has_contribution(this const Self& self, llvm::StringRef contex
     }
 
     if(self.buffer) {
-        auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
-        if(!root->paths()) {
-            return false;
-        }
+        auto root = kota::codec::fbs::table_view<Impl>::from_bytes(buffer_bytes(*self.buffer));
+        auto paths = root[&Impl::paths];
         std::optional<std::uint32_t> local;
-        for(std::uint32_t i = 0; i < root->paths()->size(); ++i) {
-            if(llvm::StringRef(root->paths()->Get(i)->string_view()) == context_path) {
+        for(std::uint32_t i = 0; i < paths.size(); ++i) {
+            if(llvm::StringRef(paths.at(i)) == context_path) {
                 local = i;
                 break;
             }
@@ -773,16 +658,8 @@ bool MergedIndex::has_contribution(this const Self& self, llvm::StringRef contex
         if(!local) {
             return false;
         }
-        for(auto entry: *root->header_contexts()) {
-            if(entry->path_id() == *local) {
-                return true;
-            }
-        }
-        for(auto entry: *root->compilation_contexts()) {
-            if(entry->path_id() == *local) {
-                return true;
-            }
-        }
+        return root[&Impl::header_contexts].contains(*local) ||
+               root[&Impl::compilation_contexts].contains(*local);
     }
 
     return false;
@@ -830,18 +707,12 @@ bool MergedIndex::find_symbol(this const Self& self,
             return true;
         }
     } else if(self.buffer) {
-        auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
-        if(root->symbols()) {
-            for(auto entry: *root->symbols()) {
-                if(entry->symbol_id() == hash) {
-                    if(auto* s = entry->symbol()) {
-                        if(s->name())
-                            name = s->name()->str();
-                        kind = SymbolKind(static_cast<std::uint8_t>(s->kind()));
-                    }
-                    return true;
-                }
-            }
+        auto root = kota::codec::fbs::table_view<Impl>::from_bytes(buffer_bytes(*self.buffer));
+        if(auto entry = root[&Impl::symbols].find(hash)) {
+            auto symbol = entry->get<1>();
+            name = std::string(symbol[&Symbol::name]);
+            kind = SymbolKind(static_cast<SymbolKind::Kind>(symbol[&Symbol::kind]));
+            return true;
         }
     }
     return false;
@@ -954,10 +825,9 @@ llvm::StringRef MergedIndex::content(this const Self& self) {
     if(self.impl) {
         return self.impl->content;
     } else if(self.buffer) {
-        auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
-        if(root->content()) {
-            return root->content()->string_view();
-        }
+        auto root = kota::codec::fbs::table_view<Impl>::from_bytes(buffer_bytes(*self.buffer));
+        auto content = root[&Impl::content];
+        return llvm::StringRef(content.data(), content.size());
     }
     return {};
 }
@@ -966,9 +836,10 @@ std::span<const std::uint32_t> MergedIndex::line_starts(this const Self& self) {
     if(self.impl) {
         return self.impl->line_starts;
     } else if(self.buffer) {
-        auto root = fbs::GetRoot<binary::MergedIndex>(self.buffer->getBufferStart());
-        if(root->line_starts() && root->line_starts()->size() > 0) {
-            return {root->line_starts()->data(), root->line_starts()->size()};
+        auto root = kota::codec::fbs::table_view<Impl>::from_bytes(buffer_bytes(*self.buffer));
+        auto line_starts = root[&Impl::line_starts];
+        if(auto* vector = line_starts.raw(); vector != nullptr && vector->size() > 0) {
+            return {vector->data(), vector->size()};
         }
     }
     return {};

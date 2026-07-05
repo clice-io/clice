@@ -27,7 +27,7 @@
 namespace clice {
 
 void BackgroundIndexer::merge(const void* tu_index_data, std::size_t size) {
-    auto tu_index = index::TUIndex::from(tu_index_data);
+    auto tu_index = index::TUIndex::from(tu_index_data, size);
     if(tu_index.graph.paths.empty()) {
         LOG_WARN("Ignoring TUIndex with empty path graph");
         return;

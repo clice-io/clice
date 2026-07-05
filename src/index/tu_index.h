@@ -50,6 +50,9 @@ struct Relation {
     constexpr auto definition_range() {
         return std::bit_cast<LocalSourceRange>(target_symbol);
     }
+
+    /// Ordering defines the serialized wire order of relation maps.
+    friend constexpr auto operator<=>(const Relation&, const Relation&) = default;
 };
 
 struct Occurrence {
@@ -60,6 +63,10 @@ struct Occurrence {
     SymbolHash target;
 
     friend bool operator==(const Occurrence&, const Occurrence&) = default;
+
+    /// (begin, end, target) ordering — the serialized wire order of occurrence
+    /// maps, which the lazy buffer lookup binary-searches.
+    friend constexpr auto operator<=>(const Occurrence&, const Occurrence&) = default;
 };
 
 struct FileIndex {
@@ -100,10 +107,13 @@ struct TUIndex {
 
     SymbolTable symbols;
 
-    llvm::DenseMap<clang::FileID, FileIndex> file_indices;
+    /// Scratch space for the builder, keyed by FileID. build() drains it into
+    /// path_file_indices, and FileIDs are meaningless across processes, so the
+    /// field never serializes.
+    kota::meta::skip<llvm::DenseMap<clang::FileID, FileIndex>> file_indices;
 
-    /// File indices keyed by path_id, populated by from() for deserialized data.
-    /// When built from AST, this is empty and file_indices (keyed by FileID) is used.
+    /// File indices keyed by path_id — the canonical form after build() or
+    /// from(); this is what gets serialized.
     llvm::DenseMap<std::uint32_t, FileIndex> path_file_indices;
 
     FileIndex main_file_index;
@@ -112,7 +122,7 @@ struct TUIndex {
 
     void serialize(llvm::raw_ostream& os) const;
 
-    static TUIndex from(const void* data);
+    static TUIndex from(const void* data, std::size_t size);
 };
 
 }  // namespace clice::index

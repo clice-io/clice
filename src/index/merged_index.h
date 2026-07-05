@@ -49,8 +49,9 @@ public:
     /// Load merged index from disk
     static MergedIndex load(llvm::StringRef path);
 
-    /// Serialize it to binary format.
-    void serialize(this const Self& self, llvm::raw_ostream& out);
+    /// Serialize it to binary format. Compacts removed-masked state in place
+    /// first, so the written bytes and the runtime object stay equivalent.
+    void serialize(this Self& self, llvm::raw_ostream& out);
 
     /// Lookup the occurrence in corresponding offset.
     void lookup(this const Self& self,
