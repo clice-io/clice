@@ -350,3 +350,52 @@ async def test_reopen_reuses_preamble(client, tmp_path):
 
     after = {p.name: p.stat().st_mtime_ns for p in artifact_dir.iterdir()}
     assert after == snapshot, "reopen must reuse the preamble, not re-synthesize"
+
+
+async def test_chain_change_resynthesizes(client, tmp_path):
+    """Reopening a header after its chain file changed on disk must NOT
+    reuse the stale preamble — the chain content is embedded in it."""
+    (tmp_path / "list.def").write_text("X(alpha)\nX(beta)\n")
+    (tmp_path / "main.cpp").write_text(
+        "#define X(name) int name = 1;\n"
+        '#include "list.def"\n'
+        "#undef X\n"
+        "#define X(name) void get_##name();\n"
+        '#include "list.def"\n'
+        "#undef X\n"
+        "int main() { return alpha; }\n"
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    main_uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    def_uri, _ = await client.open_and_wait(tmp_path / "list.def")
+
+    switch = await client.switch_context(def_uri, main_uri, occurrence=1)
+    assert get_field(switch, "success") is True
+    await wait_for_recompile(client, def_uri)
+
+    artifact_dir = tmp_path / ".clice" / "header_context"
+    snapshot = {p.name: p.stat().st_mtime_ns for p in artifact_dir.iterdir()}
+    assert snapshot, "expected synthesized preamble artifacts"
+
+    client.close(def_uri)
+    await asyncio.sleep(MTIME_GRANULARITY)
+    # The chain file (the includer) changes on disk while the header is
+    # closed: the embedded preamble content is now stale.
+    (tmp_path / "main.cpp").write_text(
+        "#define X(name) int name = 2;\n"
+        '#include "list.def"\n'
+        "#undef X\n"
+        "#define X(name) void get_##name();\n"
+        '#include "list.def"\n'
+        "#undef X\n"
+        "int main() { return alpha; }\n"
+    )
+
+    def_uri, _ = await client.open_and_wait(tmp_path / "list.def")
+    current = await client.current_context(def_uri)
+    assert get_field(get_field(current, "context"), "occurrence") == 1
+
+    after = {p.name: p.stat().st_mtime_ns for p in artifact_dir.iterdir()}
+    assert after != snapshot, "stale preamble must be re-synthesized"

@@ -88,7 +88,11 @@ public:
     /// Entries outlive their sessions: closing a header keeps its
     /// synthesized preamble, so reopening reuses it instead of
     /// re-synthesizing. Entries are re-validated at use (deps_changed) and
-    /// invalidated by saves along their include chain.
+    /// invalidated by saves along their include chain. An automatic (not
+    /// user-chosen) host sticks until such an invalidation — reuse
+    /// deliberately wins over re-ranking hosts on reopen.
+    /// TODO: entries for headers never reopened accumulate for the server's
+    /// lifetime; add eviction if observation shows it matters.
     llvm::DenseMap<std::uint32_t, HeaderContext> header_contexts;
 
     /// The file's resolved header context, or nullptr.

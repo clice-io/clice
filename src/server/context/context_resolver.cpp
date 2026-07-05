@@ -266,7 +266,8 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     // or include occurrence, when the routing mode changed, or when any
     // chain file changed on disk (the synthesized preamble embeds their
     // content, so it must be rebuilt). Only editor-facing compiles consult
-    // the cache; background indexing resolves fresh, as before.
+    // the cache; background indexing must stay independent of per-editor
+    // context state, so it resolves fresh every time.
     if(session) {
         if(auto* cached = header_context(path_id)) {
             bool override_mismatch =
@@ -292,7 +293,8 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
         if(session) {
             ctx_ptr = &(header_contexts[path_id] = std::move(*resolved));
         } else {
-            // Background indexing path — resolve fresh, cache nothing.
+            // Background indexing stays independent of per-editor context
+            // state: resolve fresh, cache nothing.
             local_ctx = std::move(*resolved);
             ctx_ptr = &*local_ctx;
         }
