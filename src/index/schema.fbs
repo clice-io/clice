@@ -91,7 +91,7 @@ name:
 kind:
     ubyte;
 refs:
-    [ubyte];
+    [ubyte] (required);
 scope:
     ubyte;
 }
@@ -111,22 +111,22 @@ max_canonical_id:
 // locations, dependency hashes, context keys) indexes into it. Shards are
 // fully self-contained — runtime pool ids are per-session and never persist.
 paths:
-    [string];
+    [string] (required);
 
 canonical_cache:
-    [CacheEntry];
+    [CacheEntry] (required);
 
 header_contexts:
-    [HeaderContextEntry];
+    [HeaderContextEntry] (required);
 
 compilation_contexts:
-    [CompilationContextEntry];
+    [CompilationContextEntry] (required);
 
 occurrences:
-    [OccurrenceEntry];
+    [OccurrenceEntry] (required);
 
 relations:
-    [SymbolRelationsEntry];
+    [SymbolRelationsEntry] (required);
 
 removed:
     [ubyte];
@@ -181,14 +181,14 @@ main_file_index:
 // ids are per-session and never persist.
 table ProjectIndex {
 paths:
-    [string];
+    [string] (required);
 symbols:
-    [SymbolEntry];
+    [SymbolEntry] (required);
 
 // Path-table indices of the files owning a MergedIndex shard blob; the
 // loader fetches exactly these (keyed by path hash) and sweeps the rest.
 shards:
-    [uint];
+    [uint] (required);
 
 format_version:
     uint;

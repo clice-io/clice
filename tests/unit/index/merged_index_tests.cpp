@@ -640,21 +640,30 @@ TEST_CASE(OldShardDiscarded) {
     // A version-less (format_version=0) shard from an older build is silently
     // discarded — load returns an empty index, as if nothing were on disk.
     {
+        namespace binary = clice::index::binary;
         flatbuffers::FlatBufferBuilder builder;
         auto content = builder.CreateString("stale-shard");
-        auto root = clice::index::binary::CreateMergedIndex(builder,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            content,
-                                                            0,
-                                                            0,
-                                                            /*format_version=*/0);
+        auto paths = builder.CreateVector<flatbuffers::Offset<flatbuffers::String>>({});
+        auto cache = builder.CreateVector<flatbuffers::Offset<binary::CacheEntry>>({});
+        auto headers = builder.CreateVector<flatbuffers::Offset<binary::HeaderContextEntry>>({});
+        auto compilations =
+            builder.CreateVector<flatbuffers::Offset<binary::CompilationContextEntry>>({});
+        auto occurrences = builder.CreateVector<flatbuffers::Offset<binary::OccurrenceEntry>>({});
+        auto relations =
+            builder.CreateVector<flatbuffers::Offset<binary::SymbolRelationsEntry>>({});
+        auto root = binary::CreateMergedIndex(builder,
+                                              0,
+                                              paths,
+                                              cache,
+                                              headers,
+                                              compilations,
+                                              occurrences,
+                                              relations,
+                                              0,
+                                              content,
+                                              0,
+                                              0,
+                                              /*format_version=*/0);
         builder.Finish(root);
 
         auto path = dir.path("stale.idx");

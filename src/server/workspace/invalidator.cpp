@@ -105,6 +105,12 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // missing declarations); drop the persisted verdict so
                     // the trial can downgrade it.
                     dirty.reset_header_mode.push_back(header_id);
+                    // Contexts outlive their sessions: a closed header's
+                    // shard rows were indexed under the old chain and only a
+                    // background reindex can refresh them.
+                    if(!store.find(header_id)) {
+                        dirty.enqueue_reindex.push_back(header_id);
+                    }
                 }
 
                 // A save can remove the include edge a user's context choice

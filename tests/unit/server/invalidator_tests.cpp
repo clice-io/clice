@@ -109,21 +109,27 @@ TEST_CASE(ChainHitAndMiss) {
     auto hit = workspace.path_pool.intern("/proj/hit.h");
     auto miss = workspace.path_pool.intern("/proj/miss.h");
 
+    auto closed = workspace.path_pool.intern("/proj/closed.h");
     store.open(hit);
     store.open(miss);
 
     ContextResolver resolver(workspace);
     resolver.header_contexts[hit].chain = {saved};
     resolver.header_contexts[miss].chain = {other};
+    resolver.header_contexts[closed].chain = {saved};
     Invalidator invalidator(workspace, store, resolver);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
 
-    // Only the session whose synthesized preamble embeds the saved file
-    // re-validates; its persisted verdict drops so the trial can downgrade.
-    ASSERT_EQ(dirty.force_revalidate, llvm::SmallVector<std::uint32_t>{hit});
-    llvm::SmallVector<std::uint32_t> reset{saved, hit};
+    // Every context embedding the saved file re-validates and drops its
+    // verdict; a closed one additionally reindexes in the background — its
+    // shard rows were built under the old chain.
+    llvm::SmallVector<std::uint32_t> revalidated{hit, closed};
+    llvm::sort(revalidated);
+    ASSERT_EQ(dirty.force_revalidate, revalidated);
+    llvm::SmallVector<std::uint32_t> reset{saved, hit, closed};
     llvm::sort(reset);
     ASSERT_EQ(dirty.reset_header_mode, reset);
+    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{closed});
 }
 
 TEST_CASE(SaveMarksDependents) {

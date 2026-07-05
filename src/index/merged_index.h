@@ -71,6 +71,12 @@ public:
         return impl != nullptr;
     }
 
+    /// Whether this index holds any data (a rejected or missing blob loads
+    /// as an empty index).
+    bool loaded() const {
+        return buffer != nullptr || impl != nullptr;
+    }
+
     /// Remove the contribution keyed by `context_path` (a TU for header
     /// shards, the file itself for compilation shards).
     void remove(this Self& self, llvm::StringRef context_path);
