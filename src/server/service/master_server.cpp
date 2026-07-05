@@ -34,7 +34,7 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
     index_query(workspace, sessions), background_indexer(loop, workspace, pool, contexts, sessions),
     features(compiler, index_query, workspace, contexts, background_indexer),
-    invalidator(workspace, sessions), bg_tasks(loop), self_path(std::move(self_path)) {}
+    invalidator(workspace, sessions, contexts), bg_tasks(loop), self_path(std::move(self_path)) {}
 
 MasterServer::~MasterServer() = default;
 
@@ -160,12 +160,16 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         }
     }
 
+    for(auto path_id: dirty.reset_header_mode) {
+        contexts.reset_header_mode(path_id);
+    }
+
     for(auto path_id: dirty.mark_ast_dirty) {
         if(auto session = sessions.find(path_id)) {
             session->ast_dirty = true;
             session->trial_done = false;
         }
-        workspace.forget_self_contained(path_id);
+        contexts.forget_self_contained(path_id);
     }
 
     for(auto path_id: dirty.mark_lost) {
@@ -174,15 +178,12 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         }
     }
 
-    // Header sessions whose synthesized preamble embeds changed chain
-    // content: zeroing build_at forces deps_changed() to re-validate every
-    // chain file by content hash. Do NOT reset the context itself: an
-    // in-flight compile can clobber ast_dirty when it finishes, and the
-    // surviving snapshot is what lets is_stale() recover.
+    // Headers whose synthesized preamble embeds changed chain content:
+    // zeroing build_at forces deps_changed() to re-validate every chain
+    // file by content hash; open sessions also recompile and re-trial.
     for(auto path_id: dirty.force_revalidate) {
-        auto session = sessions.find(path_id);
-        if(session && session->header_context) {
-            session->header_context->deps.build_at = 0;
+        contexts.invalidate_header_deps(path_id);
+        if(auto session = sessions.find(path_id)) {
             session->ast_dirty = true;
             session->trial_done = false;
         }
@@ -197,7 +198,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         save |= contexts.drop_orphaned_choices(sessions);
     }
     if(save) {
-        workspace.save_cache();
+        workspace.save_cache(contexts);
     }
 
     if(dirty.reschedule_indexing) {
@@ -219,7 +220,7 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     // snapshot below covers everything that actually completed.
     co_await kota::when_all(background_indexer.stop(), compiler.stop());
     co_await background_indexer.save();
-    workspace.save_cache();
+    workspace.save_cache(contexts);
     co_await pool.stop();
     if(workspace.store) {
         workspace.store->shutdown();
@@ -265,7 +266,7 @@ void MasterServer::open_cache_store() {
     workspace.store.emplace(std::move(*store));
     LOG_INFO("Cache store: {}", workspace.store->base_dir());
 
-    workspace.load_cache();
+    workspace.load_cache(contexts);
     bg_tasks.spawn(cache_checkpoint_task());
 }
 

@@ -16,8 +16,8 @@
 
 namespace clice {
 
-/// Defined in server/compiler/compiler.h — Compiler reports where the
-/// compile command came from; Session only stores the verdict.
+/// Defined in server/context/context_resolver.h — the resolver reports where
+/// the compile command came from; Session only stores the verdict.
 enum class CommandSource : std::uint8_t;
 
 /// The publishable products of the most recent compilation (materialized
@@ -124,32 +124,6 @@ struct Session {
     /// verdict re-evaluates on dependency changes but ordinary typing
     /// errors never trigger a pointless prefix synthesis.
     bool trial_done = false;
-
-    /// Compilation context for header files that lack their own CDB entry.
-    /// Stores the host source file and synthesized preamble for this header.
-    std::optional<HeaderContext> header_context;
-
-    /// User-selected header context override (via clice/switchContext).
-    /// When set, overrides automatic header context resolution.
-    struct ActiveContext {
-        std::uint32_t host_path_id = 0;  ///< Host source file.
-
-        /// Nth include of this header in its direct includer (0-based).
-        /// An explicitly chosen occurrence — even #0 — forces prefix
-        /// synthesis; no value means automatic.
-        std::optional<std::uint32_t> occurrence;
-
-        /// Canonical hash pinning one of the host's CDB entries when the
-        /// host is built under several configurations; empty = first.
-        std::string command_hash;
-    };
-
-    std::optional<ActiveContext> active_context;
-
-    /// User-selected CDB entry for source files with multiple compile
-    /// commands (via clice/switchContext). Stores the canonical frontend
-    /// flags hash identifying the chosen entry.
-    std::optional<std::string> active_command;
 
     /// Symbol index built from the latest compilation of this file's buffer.
     /// Used for queries (hover, goto, references) on this file.

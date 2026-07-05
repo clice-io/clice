@@ -5,9 +5,11 @@ include-occurrence contexts for guard-less headers, context deduplication
 by canonical flags, host ranking, and switch validation.
 """
 
+import asyncio
+
 from tests.integration.utils import get_field, write_cdb, write_entries
 from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
-from tests.integration.utils.wait import wait_for_recompile
+from tests.integration.utils.wait import MTIME_GRANULARITY, wait_for_recompile
 
 
 async def test_source_command_switch(client, tmp_path):
@@ -310,3 +312,41 @@ async def test_saved_include_updates_hosts(client, tmp_path):
     query = await client.query_context(lonely_uri)
     assert get_field(query, "total") == 1, f"New host must appear after save: {query}"
     assert "main.cpp" in get_field(get_field(query, "contexts")[0], "uri")
+
+
+async def test_reopen_reuses_preamble(client, tmp_path):
+    """Closing and reopening a header keeps its context choice and reuses
+    the synthesized preamble instead of re-synthesizing it."""
+    (tmp_path / "list.def").write_text("X(alpha)\nX(beta)\n")
+    (tmp_path / "main.cpp").write_text(
+        "#define X(name) int name = 1;\n"
+        '#include "list.def"\n'
+        "#undef X\n"
+        "#define X(name) void get_##name();\n"
+        '#include "list.def"\n'
+        "#undef X\n"
+        "int main() { return alpha; }\n"
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    main_uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    def_uri, _ = await client.open_and_wait(tmp_path / "list.def")
+
+    switch = await client.switch_context(def_uri, main_uri, occurrence=1)
+    assert get_field(switch, "success") is True
+    await wait_for_recompile(client, def_uri)
+
+    artifact_dir = tmp_path / ".clice" / "header_context"
+    snapshot = {p.name: p.stat().st_mtime_ns for p in artifact_dir.iterdir()}
+    assert snapshot, "expected synthesized preamble artifacts"
+
+    client.close(def_uri)
+    await asyncio.sleep(MTIME_GRANULARITY)
+
+    def_uri, _ = await client.open_and_wait(tmp_path / "list.def")
+    current = await client.current_context(def_uri)
+    assert get_field(get_field(current, "context"), "occurrence") == 1
+
+    after = {p.name: p.stat().st_mtime_ns for p in artifact_dir.iterdir()}
+    assert after == snapshot, "reopen must reuse the preamble, not re-synthesize"

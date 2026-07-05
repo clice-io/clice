@@ -253,7 +253,7 @@ void Compiler::init_compile_graph() {
         LOG_INFO("Built PCM for module {}: {}", mod_it->second, pcm_path);
 
         // Persist cache metadata after successful build.
-        workspace.save_cache();
+        workspace.save_cache(contexts);
 
         // Signal that new index data is available for background merge.
         if(on_indexing_needed)
@@ -285,8 +285,8 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto path = workspace.path_pool.resolve(path_id);
     auto& text = session.text;
     auto bound = compute_preamble_bound(text);
-    bool has_prefix =
-        session.header_context.has_value() && !session.header_context->preamble_path.empty();
+    auto* header_context = contexts.header_context(path_id);
+    bool has_prefix = header_context && !header_context->preamble_path.empty();
     if(bound == 0 && !has_prefix) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts land here too: they borrow
@@ -430,7 +430,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     LOG_INFO("PCH built for {}: {}", path, st.path);
 
     // Persist cache metadata after successful build.
-    workspace.save_cache();
+    workspace.save_cache(contexts);
 
     co_return true;
 }
@@ -550,8 +550,8 @@ bool Compiler::is_stale(const Session& session) {
 
     // Chain files of a header context are embedded in the synthesized
     // preamble, invisible to ast_deps — check them explicitly.
-    if(session.header_context.has_value() &&
-       deps_changed(workspace.path_pool, session.header_context->deps))
+    if(auto* header_context = contexts.header_context(session.path_id);
+       header_context && deps_changed(workspace.path_pool, header_context->deps))
         return true;
 
     // Check PCH staleness via the session's pch_ref.
@@ -609,7 +609,8 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // The line the appended suffix #include lands on — anything at or
         // past it is phantom text the user cannot see.
         std::optional<std::uint32_t> suffix_line_limit;
-        if(session->header_context.has_value() && !session->header_context->suffix_path.empty()) {
+        auto* header_context = contexts.header_context(session->path_id);
+        if(header_context && !header_context->suffix_path.empty()) {
             auto newlines = std::ranges::count(params.text, '\n');
             suffix_line_limit =
                 static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
@@ -695,23 +696,23 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // persisted — SelfContained is recorded in memory alone (dependency
         // changes erase it) so queryContext can dedup identical-flag hosts
         // once the verdict is actually earned, never on a guess.
-        if(attempt == 0 && !session->trial_done && session->header_context.has_value() &&
-           session->header_context->preamble_path.empty() &&
-           workspace.header_mode(file_path, pid) == HeaderMode::Unknown) {
+        auto* trial_context = contexts.header_context(pid);
+        if(attempt == 0 && !session->trial_done && trial_context &&
+           trial_context->preamble_path.empty() &&
+           contexts.header_mode(file_path, pid) == HeaderMode::Unknown) {
             std::vector<protocol::Diagnostic> diagnostics;
             if(!result.value().diagnostics.empty()) {
                 [[maybe_unused]] auto status =
                     kota::codec::json::from_json(result.value().diagnostics.data, diagnostics);
             }
             session->trial_done = true;
-            workspace.header_modes[pid] = HeaderMode::SelfContained;
+            contexts.record_header_mode(pid, HeaderMode::SelfContained);
 
             if(indicates_missing_context(diagnostics)) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
-                workspace.header_modes[pid] = HeaderMode::NeedsContext;
-                workspace.header_mode_hashes[pid] = hash_file(file_path);
-                workspace.save_cache();
-                session->header_context.reset();
+                contexts.record_header_mode(pid, HeaderMode::NeedsContext, hash_file(file_path));
+                workspace.save_cache(contexts);
+                contexts.drop_header_context(pid);
                 session->pch_ref.reset();
                 continue;
             }
@@ -793,7 +794,7 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
         // Dependency change, not a buffer edit: re-run the trial too.
         session->ast_dirty = true;
         session->trial_done = false;
-        workspace.forget_self_contained(path_id);
+        contexts.forget_self_contained(path_id);
     }
 
     // If an up-to-date compile is already in flight, wait for it.

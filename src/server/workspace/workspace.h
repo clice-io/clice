@@ -28,6 +28,8 @@
 
 namespace clice {
 
+class ContextResolver;
+
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
 constexpr inline std::uint32_t cache_format_version = 3;
@@ -199,42 +201,12 @@ struct Workspace {
     /// picked from a stale listing without noticing.
     std::uint64_t context_epoch = 1;
 
-    /// Self-containment verdicts for headers, persisted in cache.json.
-    /// Reset when the header itself is saved.
-    llvm::DenseMap<std::uint32_t, HeaderMode> header_modes;
-
-    /// Content hash of the header at the time its NeedsContext verdict was
-    /// scored — persisted so a stale verdict is dropped on cache load.
-    llvm::DenseMap<std::uint32_t, std::uint64_t> header_mode_hashes;
-
-    /// User context choices (clice/switchContext), persisted in cache.json
-    /// and restored into the Session on didOpen.
-    llvm::DenseMap<std::uint32_t, SavedContext> saved_contexts;
-
-    /// Host source of each synthesized artifact (prefix/suffix/snapshot
-    /// file path -> host path_id), recorded at synthesis time and
-    /// persisted in cache.json. Opening an artifact compiles it with its
-    /// host's command — it is a fragment of that TU, and treated as
-    /// self-contained (an artifact needing context itself is out of scope).
-    llvm::StringMap<std::uint32_t> synthesized_hosts;
-
     /// Whether `path` is one of our own synthesized context artifacts
     /// (prefix/suffix/self-snapshot files under the cache directory). A
     /// user can open these for debugging; they must never go through
     /// header-context resolution themselves — a synthesized file deriving
     /// context from other synthesized files would chain junk state.
     bool is_synthesized_artifact(llvm::StringRef path) const;
-
-    /// Effective self-containment mode for a header. X-macro style
-    /// extensions are non-self-contained by construction; otherwise use
-    /// the persisted verdict. Only NeedsContext is ever persisted — a
-    /// "self-contained" impression is session-local and re-evaluated when
-    /// compile inputs change, so it can never go stale.
-    HeaderMode header_mode(llvm::StringRef path, std::uint32_t path_id) const;
-
-    /// Drop an in-memory SelfContained verdict (never a persisted
-    /// NeedsContext) so the next compile re-runs the trial.
-    void forget_self_contained(std::uint32_t path_id);
 
     /// How many times the direct includer on host->target's chain includes
     /// the target. Spelling-based (no search-path resolution): multiple
@@ -263,11 +235,13 @@ struct Workspace {
     /// is a module unit so dependents can be re-evaluated on next compile.
     void on_file_closed(std::uint32_t path_id);
 
-    /// Load PCH/PCM validity metadata from cache.json (under the store's
-    /// versioned root); entries whose blob is gone from the store are dropped.
-    void load_cache();
-    /// Save PCH/PCM validity metadata to cache.json.
-    void save_cache();
+    /// Load PCH/PCM validity metadata plus the context resolver's slices
+    /// from cache.json (under the store's versioned root); entries whose
+    /// blob is gone from the store are dropped.
+    void load_cache(ContextResolver& contexts);
+    /// Save PCH/PCM validity metadata plus the context resolver's slices
+    /// to cache.json.
+    void save_cache(const ContextResolver& contexts);
     /// Build path_to_module reverse mapping from dep_graph.
     void build_module_map();
     /// Fill PCM paths for all built modules, excluding exclude_path_id.

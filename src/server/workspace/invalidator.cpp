@@ -16,8 +16,11 @@ static std::optional<std::string> read_from_disk(llvm::StringRef path) {
     return std::string((*buffer)->getBuffer());
 }
 
-Invalidator::Invalidator(Workspace& workspace, const SessionStore& store, ReadFile read_file) :
-    workspace(workspace), store(store),
+Invalidator::Invalidator(Workspace& workspace,
+                         const SessionStore& store,
+                         const ContextResolver& contexts,
+                         ReadFile read_file) :
+    workspace(workspace), store(store), contexts(contexts),
     read_file(read_file ? std::move(read_file) : ReadFile(read_from_disk)) {}
 
 /// Batch effects may name the same file twice (two saves in one batch);
@@ -47,8 +50,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
 
                 // The saved file's own self-containment may have changed;
                 // re-evaluate on its next compile.
-                workspace.header_modes.erase(path_id);
-                workspace.header_mode_hashes.erase(path_id);
+                dirty.reset_header_mode.push_back(path_id);
                 dirty.reset_trial.push_back(path_id);
 
                 // Root TUs transitively including the saved file, snapshotted
@@ -91,21 +93,18 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 split_dependents(old_dependents);
                 split_dependents(workspace.dep_graph.find_host_sources(path_id));
 
-                // Header sessions whose include chain contains the saved file
-                // must re-synthesize their preamble: it embeds the chain
-                // files' content, so neither the dependents cascade above nor
-                // clang's own dependency tracking catches this.
-                for(auto& [session_id, session]: store.sessions) {
-                    if(session->header_context &&
-                       llvm::is_contained(session->header_context->chain, path_id)) {
-                        dirty.force_revalidate.push_back(session_id);
-                        // The chain change may have made the header
-                        // self-contained (e.g. a dependency now provides the
-                        // missing declarations); drop the persisted verdict
-                        // so the trial can downgrade it.
-                        workspace.header_modes.erase(session_id);
-                        workspace.header_mode_hashes.erase(session_id);
-                    }
+                // Headers whose resolved context embeds the saved file
+                // through its include chain must re-synthesize their
+                // preamble: it copies the chain files' content, so neither
+                // the dependents cascade above nor clang's own dependency
+                // tracking catches this.
+                for(auto header_id: contexts.chain_dependents(path_id)) {
+                    dirty.force_revalidate.push_back(header_id);
+                    // The chain change may have made the header
+                    // self-contained (e.g. a dependency now provides the
+                    // missing declarations); drop the persisted verdict so
+                    // the trial can downgrade it.
+                    dirty.reset_header_mode.push_back(header_id);
                 }
 
                 // A save can remove the include edge a user's context choice
@@ -154,6 +153,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     dedup(dirty.mark_ast_dirty);
     dedup(dirty.mark_lost);
     dedup(dirty.reset_trial);
+    dedup(dirty.reset_header_mode);
     dedup(dirty.force_revalidate);
     dedup(dirty.enqueue_reindex);
     return dirty;

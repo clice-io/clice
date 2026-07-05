@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "server/context/context_resolver.h"
 #include "server/session/session_store.h"
 #include "server/workspace/workspace.h"
 
@@ -84,6 +85,10 @@ struct DirtySet {
     /// Re-run the header trial only (trial_done=false); the AST itself is
     /// not stale.
     llvm::SmallVector<std::uint32_t> reset_trial;
+    /// The header's content (or its preamble chain) changed: drop its
+    /// persisted self-containment verdict so the next compile re-earns it.
+    /// Executed by the context resolver, which owns the verdicts.
+    llvm::SmallVector<std::uint32_t> reset_header_mode;
     /// Header sessions whose synthesized preamble embeds changed content:
     /// zero deps.build_at so every chain file is re-validated by hash, plus
     /// the mark_ast_dirty treatment.
@@ -101,8 +106,8 @@ struct DirtySet {
 
     bool empty() const {
         return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
-               force_revalidate.empty() && enqueue_reindex.empty() && !recheck_contexts &&
-               !save_cache && !reschedule_indexing;
+               reset_header_mode.empty() && force_revalidate.empty() && enqueue_reindex.empty() &&
+               !recheck_contexts && !save_cache && !reschedule_indexing;
     }
 };
 
@@ -110,12 +115,13 @@ struct DirtySet {
 /// derived-state invalidation.
 ///
 /// Ownership charter:
-///   - reads the session store, never mutates it;
+///   - reads the session store and the context resolver, never mutates them;
 ///   - directly updates the derived graphs Workspace owns (include graph,
-///     module map, header modes, ...);
-///   - anything touching Sessions, the index queue, or cache persistence is
-///     returned as a DirtySet effect and executed by the dispatcher, so the
-///     engine stays testable with just a Workspace and a SessionStore.
+///     module map, ...);
+///   - anything touching Sessions, context-domain state (verdicts, choices,
+///     header contexts), the index queue, or cache persistence is returned
+///     as a DirtySet effect and executed by the dispatcher, so the engine
+///     stays testable with plain data structures.
 ///
 /// The engine is told about every event, but the buffer-change mechanics of
 /// BufferOpened/BufferEdited (text, version, ast_dirty, generation) are the
@@ -128,7 +134,10 @@ public:
     /// through it. Reserved for the Disk* events' content validation.
     using ReadFile = std::function<std::optional<std::string>(llvm::StringRef path)>;
 
-    Invalidator(Workspace& workspace, const SessionStore& store, ReadFile read_file = {});
+    Invalidator(Workspace& workspace,
+                const SessionStore& store,
+                const ContextResolver& contexts,
+                ReadFile read_file = {});
 
     /// Fold a batch of events into one deduplicated effect set.
     DirtySet apply(llvm::ArrayRef<FileEvent> events);
@@ -136,6 +145,7 @@ public:
 private:
     Workspace& workspace;
     const SessionStore& store;
+    const ContextResolver& contexts;
     ReadFile read_file;
 };
 

@@ -6,6 +6,7 @@
 #include <tuple>
 
 #include "command/search_config.h"
+#include "server/context/context_resolver.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
@@ -30,19 +31,6 @@ bool Workspace::is_synthesized_artifact(llvm::StringRef path) const {
     return path.starts_with(artifact_dir);
 }
 
-HeaderMode Workspace::header_mode(llvm::StringRef path, std::uint32_t path_id) const {
-    // Keep in sync with the client's C++ fragment detection
-    // (editors/vscode/src/feature/context.ts).
-    if(path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
-       path.ends_with(".tpp") || path.ends_with(".ipp")) {
-        return HeaderMode::NeedsContext;
-    }
-    if(auto it = header_modes.find(path_id); it != header_modes.end()) {
-        return it->second;
-    }
-    return HeaderMode::Unknown;
-}
-
 std::uint32_t Workspace::count_occurrences(std::uint32_t host_id, std::uint32_t target_id) const {
     auto chain = dep_graph.find_include_chain(host_id, target_id);
     if(chain.size() < 2) {
@@ -62,13 +50,6 @@ std::uint32_t Workspace::count_occurrences(std::uint32_t host_id, std::uint32_t 
                                      includer_path,
                                      target_path,
                                      null_resolver);
-}
-
-void Workspace::forget_self_contained(std::uint32_t path_id) {
-    if(auto it = header_modes.find(path_id);
-       it != header_modes.end() && it->second == HeaderMode::SelfContained) {
-        header_modes.erase(it);
-    }
 }
 
 llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path_id,
@@ -270,24 +251,6 @@ struct CachePCMEntry {
     std::vector<CacheDepEntry> deps;
 };
 
-struct CacheModeEntry {
-    std::uint32_t file;          // index into CacheData::paths
-    std::uint32_t mode;          // HeaderMode
-    std::uint64_t content_hash;  // header contents the verdict was scored on
-};
-
-struct CacheContextEntry {
-    std::uint32_t file;  // index into CacheData::paths
-    std::uint32_t host;  // index into CacheData::paths; ~0u = none
-    std::uint32_t occurrence;
-    std::string command_hash;
-};
-
-struct CacheArtifactEntry {
-    std::uint32_t file;  // index into CacheData::paths
-    std::uint32_t host;  // index into CacheData::paths
-};
-
 struct CacheData {
     std::vector<std::string> paths;
     std::vector<CachePCHEntry> pch;
@@ -299,7 +262,7 @@ struct CacheData {
 
 }  // namespace
 
-void Workspace::load_cache() {
+void Workspace::load_cache(ContextResolver& contexts) {
     if(!store)
         return;
 
@@ -362,52 +325,15 @@ void Workspace::load_cache() {
         LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, *pcm_path);
     }
 
-    for(auto& entry: data.header_modes) {
-        auto file = resolve(entry.file);
-        if(file.empty() || static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
-            continue;
-        // The verdict is tied to the header's contents — a file edited
-        // while the server was down must re-earn its trial.
-        if(entry.content_hash != 0 && hash_file(file) != entry.content_hash)
-            continue;
-        auto id = path_pool.intern(file);
-        header_modes[id] = HeaderMode::NeedsContext;
-        header_mode_hashes[id] = entry.content_hash;
-    }
-
-    for(auto& entry: data.contexts) {
-        auto file = resolve(entry.file);
-        if(file.empty())
-            continue;
-        SavedContext saved;
-        if(entry.host != ~0u) {
-            auto host = resolve(entry.host);
-            if(host.empty())
-                continue;
-            saved.host_path_id = path_pool.intern(host);
-        }
-        if(entry.occurrence != ~0u) {
-            saved.occurrence = entry.occurrence;
-        }
-        saved.command_hash = entry.command_hash;
-        saved_contexts[path_pool.intern(file)] = std::move(saved);
-    }
-
-    for(auto& entry: data.artifacts) {
-        auto file = resolve(entry.file);
-        auto host = resolve(entry.host);
-        if(file.empty() || host.empty())
-            continue;
-        synthesized_hosts[file] = path_pool.intern(host);
-    }
+    contexts.load_cache_slices(data.header_modes, data.contexts, data.artifacts, resolve);
 
     LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries, {} context choices",
              pch_cache.size(),
              pcm_cache.size(),
-             saved_contexts.size());
+             contexts.saved_contexts.size());
 }
 
-void Workspace::save_cache() {
+void Workspace::save_cache(const ContextResolver& contexts) {
     if(!store)
         return;
 
@@ -457,32 +383,19 @@ void Workspace::save_cache() {
         data.pcm.push_back(std::move(entry));
     }
 
-    for(auto& [path_id, mode]: header_modes) {
-        if(mode != HeaderMode::NeedsContext)
-            continue;
-        auto hash_it = header_mode_hashes.find(path_id);
-        data.header_modes.push_back({intern(path_id),
-                                     static_cast<std::uint32_t>(mode),
-                                     hash_it != header_mode_hashes.end() ? hash_it->second : 0});
-    }
-
-    for(auto& entry: synthesized_hosts) {
-        auto [it, inserted] = index_map.try_emplace(entry.getKey().str(),
-                                                    static_cast<std::uint32_t>(data.paths.size()));
+    auto intern_path = [&](llvm::StringRef path) -> std::uint32_t {
+        auto [it, inserted] =
+            index_map.try_emplace(path.str(), static_cast<std::uint32_t>(data.paths.size()));
         if(inserted) {
-            data.paths.push_back(entry.getKey().str());
+            data.paths.push_back(path.str());
         }
-        data.artifacts.push_back({it->second, intern(entry.second)});
-    }
-
-    for(auto& [path_id, saved]: saved_contexts) {
-        CacheContextEntry entry;
-        entry.file = intern(path_id);
-        entry.host = saved.host_path_id != no_path_id ? intern(saved.host_path_id) : ~0u;
-        entry.occurrence = saved.occurrence.value_or(~0u);
-        entry.command_hash = saved.command_hash;
-        data.contexts.push_back(std::move(entry));
-    }
+        return it->second;
+    };
+    contexts.dump_cache_slices(data.header_modes,
+                               data.contexts,
+                               data.artifacts,
+                               intern,
+                               intern_path);
 
     auto json_str = kota::codec::json::to_json(data);
     if(!json_str) {
