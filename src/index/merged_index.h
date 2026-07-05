@@ -78,14 +78,22 @@ public:
     void merge_symbols(this Self& self, const SymbolTable& symbols);
 
     /// Merge the index with given compilation context.
+    ///
+    /// `path_mapping` resolves the dependency path ids referenced by
+    /// `include_locations` to real paths so a content hash can be captured for
+    /// each distinct dependency; when empty, no hashes are stored and staleness
+    /// detection falls back to mtime only.
     void merge(this Self& self,
                std::uint32_t path_id,
                std::chrono::milliseconds build_at,
                std::vector<IncludeLocation> include_locations,
                FileIndex& index,
-               llvm::StringRef content);
+               llvm::StringRef content,
+               llvm::ArrayRef<llvm::StringRef> path_mapping = {});
 
-    /// Merge the index with given header context.
+    /// Merge the index with given header context. @param path_id is the
+    /// including TU: a later merge with the same TU replaces that TU's
+    /// previous contribution, other TUs' contributions are untouched.
     void merge(this Self& self,
                std::uint32_t path_id,
                std::uint32_t include_id,

@@ -44,6 +44,11 @@ struct IncludeLocation {
     include_id : uint;
 }
 
+struct DepHash {
+    path_id : uint;
+    content_hash : ulong;
+}
+
 table CompilationContextEntry {
 path_id:
     uint;
@@ -55,6 +60,8 @@ build_at:
     ulong;
 include_locations:
     [IncludeLocation];
+dep_hashes:
+    [DepHash];
 }
 
 table OccurrenceEntry {
@@ -126,6 +133,9 @@ line_starts:
 
 symbols:
     [SymbolEntry];
+
+format_version:
+    uint;
 }
 
 table TUFileRelationsEntry {

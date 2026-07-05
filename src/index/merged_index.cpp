@@ -9,6 +9,7 @@
 #include "kota/ipc/lsp/position.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_os_ostream.h"
+#include "llvm/Support/xxhash.h"
 
 namespace llvm {
 
@@ -77,6 +78,62 @@ struct DenseMapInfo<clice::index::Relation> {
 
 namespace clice::index {
 
+/// (path_id, content_hash) captured for one dependency at index-build time.
+/// Layout must mirror `binary::DepHash` so `safe_cast` can alias it.
+struct DepHash {
+    std::uint32_t path_id;
+    std::uint64_t content_hash;
+
+    friend bool operator==(const DepHash&, const DepHash&) = default;
+};
+
+namespace {
+
+/// Hash a file's content with the same scheme the server layer uses for its
+/// dependency snapshots (`workspace::hash_file`). Returns 0 on read failure.
+std::uint64_t hash_file(llvm::StringRef path) {
+    auto buffer = llvm::MemoryBuffer::getFile(path);
+    if(!buffer) {
+        return 0;
+    }
+    return llvm::xxh3_64bits((*buffer)->getBuffer());
+}
+
+/// Two-layer staleness test for a single dependency, mirroring the server's
+/// `deps_changed`: Layer 1 trusts an unchanged mtime (no file read); Layer 2
+/// re-hashes a file whose mtime moved and treats a matching hash as a mere
+/// touch, not a real edit.
+bool dep_stale(llvm::StringRef path,
+               std::uint64_t build_at,
+               std::uint64_t stored_hash,
+               bool has_stored_hash) {
+    fs::file_status status;
+    if(auto err = fs::status(path, status)) {
+        return true;
+    }
+
+    auto mtime = std::chrono::duration_cast<std::chrono::milliseconds>(
+        status.getLastModificationTime().time_since_epoch());
+    if(mtime.count() <= static_cast<std::int64_t>(build_at)) {
+        return false;
+    }
+
+    // mtime moved: without a baseline hash we cannot prove the content is
+    // unchanged, so fall back to the conservative rebuild.
+    if(!has_stored_hash) {
+        return true;
+    }
+    // A matching hash means the file was only touched, not edited. We do NOT
+    // refresh the stored mtime baseline on a match: the baseline lives inside
+    // the immutable serialized shard, and updating it would mean re-serializing
+    // the whole shard just to skip a rebuild. So a touched-but-unchanged file is
+    // re-hashed on every check until a real edit forces a genuine reindex — a
+    // cheap single read, far cheaper than a needless full reindex.
+    return hash_file(path) != stored_hash;
+}
+
+}  // namespace
+
 struct IncludeContext {
     std::uint32_t include_id;
 
@@ -101,6 +158,10 @@ struct CompilationContext {
     std::uint64_t build_at;
 
     std::vector<IncludeLocation> include_locations;
+
+    /// Content hash of each distinct dependency (first-seen order), used by
+    /// the Layer 2 staleness check to distinguish a real edit from a touch.
+    llvm::SmallVector<DepHash> dep_hashes;
 
     friend bool operator==(const CompilationContext&, const CompilationContext&) = default;
 };
@@ -146,6 +207,17 @@ struct MergedIndex::Impl {
 
     /// Sorted occurrences cache for fast lookup.
     std::vector<Occurrence> occurrences_cache;
+
+    /// Drop one reference to a canonical index; the last reference masks its
+    /// occurrences and relations via the removed bitmap. A later re-merge of
+    /// identical content resurrects the id instead of re-adding rows.
+    void release_canonical(this Impl& self, std::uint32_t canonical_id) {
+        auto& ref_count = self.canonical_ref_counts[canonical_id];
+        ref_count -= 1;
+        if(ref_count == 0) {
+            self.removed.add(canonical_id);
+        }
+    }
 
     void merge(this Impl& self, std::uint32_t path_id, FileIndex& index, auto&& add_context) {
         auto hash = index.hash();
@@ -234,6 +306,11 @@ void MergedIndex::load_in_memory(this Self& self) {
         for(auto include: *entry->include_locations()) {
             context.include_locations.emplace_back(*safe_cast<IncludeLocation>(include));
         }
+        if(entry->dep_hashes()) {
+            for(auto dep: *entry->dep_hashes()) {
+                context.dep_hashes.emplace_back(*safe_cast<DepHash>(dep));
+            }
+        }
         index.compilation_contexts.try_emplace(path, std::move(context));
     }
 
@@ -292,6 +369,23 @@ MergedIndex MergedIndex::load(llvm::StringRef path) {
     if(!buffer) {
         return MergedIndex();
     }
+
+    // A stale cache directory from an older build must never crash the server
+    // or be misread. Verify the blob is a structurally valid flatbuffer, then
+    // discard any shard whose format version differs (including version-less
+    // shards, which report 0). A discarded shard is treated as "not on disk"
+    // and the background indexer rebuilds it.
+    auto data = reinterpret_cast<const std::uint8_t*>((*buffer)->getBufferStart());
+    fbs::Verifier verifier(data, (*buffer)->getBufferSize());
+    if(!verifier.VerifyBuffer<binary::MergedIndex>(nullptr)) {
+        return MergedIndex();
+    }
+
+    auto root = fbs::GetRoot<binary::MergedIndex>((*buffer)->getBufferStart());
+    if(root->format_version() != index_format_version) {
+        return MergedIndex();
+    }
+
     return MergedIndex(std::move(*buffer), nullptr);
 }
 
@@ -333,7 +427,8 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
             context.version,
             context.canonical_id,
             context.build_at,
-            CreateStructVector<binary::IncludeLocation>(builder, context.include_locations));
+            CreateStructVector<binary::IncludeLocation>(builder, context.include_locations),
+            CreateStructVector<binary::DepHash>(builder, context.dep_hashes));
     });
 
     llvm::SmallVector<const Occurrence*> occurrence_keys;
@@ -412,7 +507,8 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
                                                   removed,
                                                   content_offset,
                                                   line_starts_offset,
-                                                  CreateVector(builder, symbols));
+                                                  CreateVector(builder, symbols),
+                                                  index_format_version);
     builder.Finish(merged_index);
 
     out.write(safe_cast<char>(builder.GetBufferPointer()), builder.GetSize());
@@ -540,20 +636,22 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
 
         auto& context = self.impl->compilation_contexts.begin()->getSecond();
 
+        llvm::DenseMap<std::uint32_t, std::uint64_t> hashes;
+        for(auto& dep: context.dep_hashes) {
+            hashes.try_emplace(dep.path_id, dep.content_hash);
+        }
+
         llvm::DenseSet<std::uint32_t> deps;
         for(auto& location: context.include_locations) {
-            auto [_, success] = deps.insert(location.path_id);
-            if(success) {
-                fs::file_status status;
-                if(auto err = fs::status(path_mapping[location.path_id], status)) {
-                    return true;
-                }
-
-                auto time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    status.getLastModificationTime().time_since_epoch());
-                if(time.count() > context.build_at) {
-                    return true;
-                }
+            if(!deps.insert(location.path_id).second) {
+                continue;
+            }
+            auto it = hashes.find(location.path_id);
+            if(dep_stale(path_mapping[location.path_id],
+                         context.build_at,
+                         it != hashes.end() ? it->second : 0,
+                         it != hashes.end())) {
+                return true;
             }
         }
 
@@ -566,20 +664,24 @@ bool MergedIndex::need_update(this const Self& self, llvm::ArrayRef<llvm::String
 
         auto context = *index->compilation_contexts()->begin();
 
+        llvm::DenseMap<std::uint32_t, std::uint64_t> hashes;
+        if(context->dep_hashes()) {
+            for(auto dep: *context->dep_hashes()) {
+                hashes.try_emplace(dep->path_id(), dep->content_hash());
+            }
+        }
+
         llvm::DenseSet<std::uint32_t> deps;
         for(auto location: *context->include_locations()) {
-            auto [_, success] = deps.insert(location->path_id());
-            if(success) {
-                fs::file_status status;
-                if(auto err = fs::status(path_mapping[location->path_id()], status)) {
-                    return true;
-                }
-
-                auto time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    status.getLastModificationTime().time_since_epoch());
-                if(time.count() > context->build_at()) {
-                    return true;
-                }
+            if(!deps.insert(location->path_id()).second) {
+                continue;
+            }
+            auto it = hashes.find(location->path_id());
+            if(dep_stale(path_mapping[location->path_id()],
+                         context->build_at(),
+                         it != hashes.end() ? it->second : 0,
+                         it != hashes.end())) {
+                return true;
             }
         }
 
@@ -597,11 +699,7 @@ void MergedIndex::remove(this Self& self, std::uint32_t path_id) {
     auto hc_it = index.header_contexts.find(path_id);
     if(hc_it != index.header_contexts.end()) {
         for(auto& [_, canonical_id]: hc_it->second.includes) {
-            auto& ref_counts = index.canonical_ref_counts[canonical_id];
-            ref_counts -= 1;
-            if(ref_counts == 0) {
-                index.removed.add(canonical_id);
-            }
+            index.release_canonical(canonical_id);
         }
         index.header_contexts.erase(hc_it);
     }
@@ -609,12 +707,7 @@ void MergedIndex::remove(this Self& self, std::uint32_t path_id) {
     // Handle compilation context removal.
     auto cc_it = index.compilation_contexts.find(path_id);
     if(cc_it != index.compilation_contexts.end()) {
-        auto canonical_id = cc_it->second.canonical_id;
-        auto& ref_counts = index.canonical_ref_counts[canonical_id];
-        ref_counts -= 1;
-        if(ref_counts == 0) {
-            index.removed.add(canonical_id);
-        }
+        index.release_canonical(cc_it->second.canonical_id);
         index.compilation_contexts.erase(cc_it);
     }
 
@@ -668,15 +761,40 @@ void MergedIndex::merge(this Self& self,
                         std::chrono::milliseconds build_at,
                         std::vector<IncludeLocation> include_locations,
                         FileIndex& index,
-                        llvm::StringRef content) {
+                        llvm::StringRef content,
+                        llvm::ArrayRef<llvm::StringRef> path_mapping) {
     self.load_in_memory();
     self.impl->content = content.str();
     self.impl->line_starts = kota::ipc::lsp::build_line_starts(self.impl->content);
+
+    // Capture a content hash for each distinct dependency so a later staleness
+    // check can tell a real edit apart from a mere touch (mtime bumped, bytes
+    // unchanged). Only re-hashing at check time can prove that, so the baseline
+    // is recorded here.
+    llvm::SmallVector<DepHash> dep_hashes;
+    llvm::DenseSet<std::uint32_t> seen;
+    for(auto& location: include_locations) {
+        if(location.path_id >= path_mapping.size()) {
+            continue;
+        }
+        if(seen.insert(location.path_id).second) {
+            dep_hashes.emplace_back(location.path_id, hash_file(path_mapping[location.path_id]));
+        }
+    }
+
     self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
-        auto& context = self.compilation_contexts[path_id];
+        // A reindex of the same TU replaces its previous contribution:
+        // without the release, the old canonical's occurrences and relations
+        // stay live and queries serve pre-edit state alongside the new one.
+        auto [it, inserted] = self.compilation_contexts.try_emplace(path_id);
+        if(!inserted) {
+            self.release_canonical(it->second.canonical_id);
+        }
+        auto& context = it->second;
         context.canonical_id = canonical_id;
         context.build_at = build_at.count();
         context.include_locations = std::move(include_locations);
+        context.dep_hashes = std::move(dep_hashes);
     });
     self.impl->occurrences_cache.clear();
 }
@@ -687,13 +805,24 @@ void MergedIndex::merge(this Self& self,
                         FileIndex& index,
                         llvm::StringRef content) {
     self.load_in_memory();
-    if(self.impl->content.empty() && !content.empty()) {
+    // The stored content is the position-mapping truth for this file; a
+    // reindex after an edit must refresh it, not just fill it once.
+    if(!content.empty() && self.impl->content != content) {
         self.impl->content = content.str();
         self.impl->line_starts = kota::ipc::lsp::build_line_starts(self.impl->content);
     }
     self.impl->merge(path_id, index, [&](Impl& self, std::uint32_t canonical_id) {
-        auto& context = self.header_contexts[path_id];
-        context.includes.emplace_back(include_id, canonical_id);
+        // Keyed by the including TU: a reindex of that TU replaces its
+        // previous contribution to this file wholesale, while contributions
+        // from other TUs stay untouched.
+        auto [it, inserted] = self.header_contexts.try_emplace(path_id);
+        if(!inserted) {
+            for(auto& [_, old_canonical]: it->second.includes) {
+                self.release_canonical(old_canonical);
+            }
+            it->second.includes.clear();
+        }
+        it->second.includes.emplace_back(include_id, canonical_id);
     });
     self.impl->occurrences_cache.clear();
 }

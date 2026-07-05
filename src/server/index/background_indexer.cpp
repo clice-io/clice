@@ -66,11 +66,15 @@ void BackgroundIndexer::merge(const void* tu_index_data, std::size_t size) {
                 file_content_storage = (*buf)->getBuffer().str();
                 file_content = file_content_storage;
             }
+            llvm::SmallVector<llvm::StringRef> path_mapping(
+                workspace.project_index.path_pool.paths.begin(),
+                workspace.project_index.path_pool.paths.end());
             shard.merge(global_path_id,
                         tu_index.built_at,
                         std::move(include_locs),
                         file_idx,
-                        file_content);
+                        file_content,
+                        path_mapping);
             shard.merge_symbols(collect_local_symbols(file_idx));
         } else {
             std::optional<std::uint32_t> include_id;
@@ -92,7 +96,9 @@ void BackgroundIndexer::merge(const void* tu_index_data, std::size_t size) {
                 header_content_storage = (*header_buf)->getBuffer().str();
                 header_content = header_content_storage;
             }
-            shard.merge(global_path_id, *include_id, file_idx, header_content);
+            // Keyed by the including TU so a reindex of that TU replaces its
+            // prior contribution to this header's shard.
+            shard.merge(file_ids_map[main_tu_path_id], *include_id, file_idx, header_content);
             shard.merge_symbols(collect_local_symbols(file_idx));
         }
     };

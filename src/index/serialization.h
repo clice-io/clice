@@ -12,6 +12,12 @@ namespace clice::index {
 
 namespace fbs = flatbuffers;
 
+/// On-disk MergedIndex shard schema version. Bump this whenever `schema.fbs`
+/// changes the shard layout so that `MergedIndex::load` silently discards any
+/// shard carrying a different value — including version-less shards written by
+/// older builds, which read back the field's default of 0.
+constexpr inline std::uint32_t index_format_version = 1;
+
 namespace {
 
 template <typename Range>
