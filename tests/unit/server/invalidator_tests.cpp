@@ -128,6 +128,64 @@ TEST_CASE(ChainHitAndMiss) {
     ASSERT_FALSE(workspace.header_mode_hashes.contains(hit));
 }
 
+TEST_CASE(SaveMarksDependents) {
+    Workspace workspace;
+    SessionStore store;
+    auto header = workspace.path_pool.intern("/proj/h.h");
+    auto open_tu = workspace.path_pool.intern("/proj/a.cpp");
+    auto closed_tu = workspace.path_pool.intern("/proj/b.cpp");
+    workspace.dep_graph.set_includes(open_tu, 0, {header});
+    workspace.dep_graph.set_includes(closed_tu, 0, {header});
+    workspace.dep_graph.build_reverse_map();
+    store.open(open_tu);
+
+    Invalidator invalidator(workspace, store);
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+
+    // Open dependents recompile, closed ones reindex; the old/new dependent
+    // snapshots overlap fully here, so this also proves the dedup.
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
+    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{closed_tu});
+}
+
+TEST_CASE(TransitiveDependentsEnqueue) {
+    Workspace workspace;
+    SessionStore store;
+    auto header = workspace.path_pool.intern("/proj/h.h");
+    auto middle = workspace.path_pool.intern("/proj/g.h");
+    auto root = workspace.path_pool.intern("/proj/c.cpp");
+    workspace.dep_graph.set_includes(middle, 0, {header});
+    workspace.dep_graph.set_includes(root, 0, {middle});
+    workspace.dep_graph.build_reverse_map();
+
+    Invalidator invalidator(workspace, store);
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+
+    // Only root TUs own index shards; the intermediate header is not one.
+    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{root});
+    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
+}
+
+TEST_CASE(StaleReverseMapUnion) {
+    Workspace workspace;
+    SessionStore store;
+    auto header = workspace.path_pool.intern("/proj/h.h");
+    auto known = workspace.path_pool.intern("/proj/a.cpp");
+    auto unmapped = workspace.path_pool.intern("/proj/b.cpp");
+    workspace.dep_graph.set_includes(known, 0, {header});
+    workspace.dep_graph.build_reverse_map();
+    // Edge added without rebuilding the reverse map: visible only after the
+    // save's rescan rebuilds it. Both snapshots must contribute.
+    workspace.dep_graph.set_includes(unmapped, 0, {header});
+
+    Invalidator invalidator(workspace, store);
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+
+    llvm::SmallVector<std::uint32_t> expected{known, unmapped};
+    llvm::sort(expected);
+    ASSERT_EQ(dirty.enqueue_reindex, expected);
+}
+
 TEST_CASE(CloseEnqueuesReindex) {
     Workspace workspace;
     SessionStore store;

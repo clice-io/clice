@@ -51,6 +51,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 workspace.header_mode_hashes.erase(path_id);
                 dirty.reset_trial.push_back(path_id);
 
+                // Root TUs transitively including the saved file, snapshotted
+                // before the rescan rewrites the include graph. A save only
+                // rewrites the saved file's own outgoing edges, so this set
+                // normally equals the post-rescan one — the pre-rescan
+                // snapshot is a cheap safety net for a reverse map that was
+                // stale at save time.
+                auto old_dependents = workspace.dep_graph.find_host_sources(path_id);
+
                 // Rescan disk state (include edges, module declaration,
                 // compile-graph cascade, PCM caches); the cascade names the
                 // module units whose build products went stale.
@@ -62,6 +70,26 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         dirty.enqueue_reindex.push_back(dirty_id);
                     }
                 }
+
+                // The saved content is a compile input of every TU that
+                // transitively includes it: open dependents recompile, closed
+                // ones reindex so cross-file references stop serving the
+                // pre-save state. Enqueueing is O(1) per TU and deliberately
+                // uncapped — the index's content-hash staleness check filters
+                // TUs whose dependencies did not actually change, and the
+                // idle/priority scheduling throttles the rest.
+                // TODO: observe on large projects before adding debouncing.
+                auto split_dependents = [&](llvm::ArrayRef<std::uint32_t> roots) {
+                    for(auto root: roots) {
+                        if(store.find(root)) {
+                            dirty.mark_ast_dirty.push_back(root);
+                        } else {
+                            dirty.enqueue_reindex.push_back(root);
+                        }
+                    }
+                };
+                split_dependents(old_dependents);
+                split_dependents(workspace.dep_graph.find_host_sources(path_id));
 
                 // Header sessions whose include chain contains the saved file
                 // must re-synthesize their preamble: it embeds the chain
