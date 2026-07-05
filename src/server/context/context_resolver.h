@@ -16,6 +16,8 @@
 
 namespace clice {
 
+struct SessionStore;
+
 namespace protocol = kota::ipc::protocol;
 
 /// Where the compile command for a file came from. Anything other than
@@ -89,6 +91,14 @@ public:
     /// session, validating it against the current CDB and include graph and
     /// dropping it when stale.
     void restore_saved_context(Session& session);
+
+    /// Drop active context choices whose include edge no longer exists. A
+    /// stale choice suppresses automatic host resolution, so it would strand
+    /// the header on the fallback command (or silently pin its command hash
+    /// to a different host). Expects the include graph to be current (the
+    /// caller rescans on save). Returns whether any persisted choice was
+    /// removed, i.e. whether the cache snapshot needs saving.
+    bool drop_orphaned_choices(SessionStore& sessions);
 
     /// clice/queryContext: list the compilation contexts (host sources and
     /// the file's own CDB configurations) available for a file, paginated.

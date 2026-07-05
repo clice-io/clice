@@ -43,6 +43,47 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 break;
             }
             case FileEvent::Kind::BufferSaved: {
+                auto path_id = event.path_id;
+
+                // The saved file's own self-containment may have changed;
+                // re-evaluate on its next compile.
+                workspace.header_modes.erase(path_id);
+                workspace.header_mode_hashes.erase(path_id);
+                dirty.reset_trial.push_back(path_id);
+
+                // Rescan disk state (include edges, module declaration,
+                // compile-graph cascade, PCM caches); the cascade names the
+                // module units whose build products went stale.
+                auto dirtied = workspace.rescan_after_save(path_id);
+                for(auto dirty_id: dirtied) {
+                    if(store.find(dirty_id)) {
+                        dirty.mark_ast_dirty.push_back(dirty_id);
+                    } else {
+                        dirty.enqueue_reindex.push_back(dirty_id);
+                    }
+                }
+
+                // Header sessions whose include chain contains the saved file
+                // must re-synthesize their preamble: it embeds the chain
+                // files' content, so neither the dependents cascade above nor
+                // clang's own dependency tracking catches this.
+                for(auto& [session_id, session]: store.sessions) {
+                    if(session->header_context &&
+                       llvm::is_contained(session->header_context->chain, path_id)) {
+                        dirty.force_revalidate.push_back(session_id);
+                        // The chain change may have made the header
+                        // self-contained (e.g. a dependency now provides the
+                        // missing declarations); drop the persisted verdict
+                        // so the trial can downgrade it.
+                        workspace.header_modes.erase(session_id);
+                        workspace.header_mode_hashes.erase(session_id);
+                    }
+                }
+
+                // A save can remove the include edge a user's context choice
+                // depends on; the include graph was already rescanned above.
+                dirty.recheck_contexts = true;
+                dirty.reschedule_indexing = true;
                 break;
             }
             case FileEvent::Kind::BufferClosed: {

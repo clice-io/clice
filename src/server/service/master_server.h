@@ -92,8 +92,6 @@ public:
     std::shared_ptr<Session> open_session(std::uint32_t path_id);
     void close_session(std::uint32_t path_id, kota::ipc::JsonPeer& peer);
 
-    void on_file_saved(std::uint32_t path_id);
-
     /// The single entry point for file events: fold the batch through the
     /// Invalidator, then execute the resulting effects against the mutable
     /// services (sessions, context resolver, background indexer).

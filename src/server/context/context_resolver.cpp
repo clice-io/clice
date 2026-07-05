@@ -9,6 +9,7 @@
 
 #include "command/argument_parser.h"
 #include "command/search_config.h"
+#include "server/session/session_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
@@ -609,6 +610,39 @@ void ContextResolver::restore_saved_context(Session& session) {
             workspace.saved_contexts.erase(it);
         }
     }
+}
+
+bool ContextResolver::drop_orphaned_choices(SessionStore& sessions) {
+    bool dropped_saved = false;
+    for(auto& [session_id, session]: sessions.sessions) {
+        if(!session->active_context.has_value()) {
+            continue;
+        }
+        auto host_id = session->active_context->host_path_id;
+        auto& occurrence = session->active_context->occurrence;
+        bool orphaned = workspace.dep_graph.find_include_chain(host_id, session_id).empty();
+        // A pinned occurrence can vanish while other inclusions of the
+        // header survive (the chain stays non-empty) — recount it.
+        if(!orphaned && occurrence.has_value()) {
+            auto count = workspace.count_occurrences(host_id, session_id);
+            orphaned = count > 0 && *occurrence >= count;
+        }
+        if(orphaned) {
+            LOG_INFO("Dropping orphaned context choice for {}: host {} no longer includes it",
+                     workspace.path_pool.resolve(session_id),
+                     workspace.path_pool.resolve(host_id));
+            session->active_context.reset();
+            session->header_context.reset();
+            session->pch_ref.reset();
+            session->ast_dirty = true;
+            session->trial_done = false;
+            // Invalidate in-flight compiles so they cannot clobber the
+            // reset state when they finish (same as switchContext).
+            session->generation += 1;
+            dropped_saved |= workspace.saved_contexts.erase(session_id) > 0;
+        }
+    }
+    return dropped_saved;
 }
 
 ext::QueryContextResult ContextResolver::query_contexts(llvm::StringRef path,
