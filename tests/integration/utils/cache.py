@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 # Versioned root of the unified cache store; bump together with
-# cache_format_version in src/server/workspace/workspace.h.
+# cache_format_version in src/server/state/workspace.h.
 CACHE_ROOT = Path(".clice") / "cache" / "v3"
 
 

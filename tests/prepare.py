@@ -22,7 +22,7 @@ from tests.cdb import generate_cdb, generate_test_data_cdbs  # noqa: E402
 def xdg_cache_dir(workspace: Path) -> Path | None:
     """Return the XDG cache directory clice would use for *workspace*.
 
-    Mirrors resolvexdg_cache_dir() in src/server/workspace/config.cpp:
+    Mirrors resolvexdg_cache_dir() in src/server/state/config.cpp:
     $XDG_CACHE_HOME/clice/<xxh3_64 hash>  or  ~/.cache/clice/<hash>.
     We approximate xxh3_64 with the same 16-hex-digit format.
     """

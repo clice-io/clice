@@ -1,4 +1,4 @@
-#include "server/service/lsp_client.h"
+#include "server/transport/lsp_client.h"
 
 #include <algorithm>
 #include <chrono>
@@ -9,12 +9,12 @@
 
 #include "command/argument_parser.h"
 #include "semantic/symbol_kind.h"
-#include "server/context/context_resolver.h"
-#include "server/feature/format.h"
+#include "server/compiler/context_resolver.h"
+#include "server/service/format.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/serialize.h"
-#include "server/service/master_server.h"
-#include "server/workspace/file_tracker.h"
+#include "server/transport/master_server.h"
+#include "server/state/file_tracker.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"

@@ -1,4 +1,4 @@
-#include "server/index/background_indexer.h"
+#include "server/compiler/background_indexer.h"
 
 #include <algorithm>
 #include <cassert>
@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "index/tu_index.h"
-#include "server/context/context_resolver.h"
+#include "server/compiler/context_resolver.h"
 #include "server/protocol/worker.h"
-#include "server/session/session_store.h"
+#include "server/state/session_store.h"
 #include "server/worker/worker_pool.h"
 #include "support/filesystem.h"
 #include "support/logging.h"

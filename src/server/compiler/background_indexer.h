@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-#include "server/workspace/workspace.h"
+#include "server/state/workspace.h"
 #include "support/signal.h"
 
 #include "kota/async/async.h"

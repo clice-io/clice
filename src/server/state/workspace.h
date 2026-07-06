@@ -15,7 +15,7 @@
 #include "index/project_index.h"
 #include "semantic/relation_kind.h"
 #include "server/compiler/compile_graph.h"
-#include "server/workspace/config.h"
+#include "server/state/config.h"
 #include "support/cache_store.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"

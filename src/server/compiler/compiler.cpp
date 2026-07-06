@@ -9,7 +9,7 @@
 
 #include "command/argument_parser.h"
 #include "index/tu_index.h"
-#include "server/context/context_resolver.h"
+#include "server/compiler/context_resolver.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/worker.h"
 #include "support/anomaly.h"

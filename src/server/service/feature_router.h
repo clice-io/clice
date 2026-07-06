@@ -4,9 +4,9 @@
 #include <vector>
 
 #include "feature/feature.h"
-#include "server/index/query.h"
-#include "server/session/session.h"
-#include "server/workspace/workspace.h"
+#include "server/service/query.h"
+#include "server/state/session.h"
+#include "server/state/workspace.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"

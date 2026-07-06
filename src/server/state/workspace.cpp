@@ -1,4 +1,4 @@
-#include "server/workspace/workspace.h"
+#include "server/state/workspace.h"
 
 #include <algorithm>
 #include <chrono>
@@ -6,7 +6,7 @@
 #include <tuple>
 
 #include "command/search_config.h"
-#include "server/context/context_resolver.h"
+#include "server/compiler/context_resolver.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"

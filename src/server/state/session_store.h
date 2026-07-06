@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "server/session/session.h"
+#include "server/state/session.h"
 
 #include "kota/ipc/lsp/protocol.h"
 #include "llvm/ADT/ArrayRef.h"

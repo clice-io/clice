@@ -1,4 +1,4 @@
-#include "server/index/query.h"
+#include "server/service/query.h"
 
 #include <algorithm>
 #include <bit>
@@ -8,8 +8,8 @@
 
 #include "index/tu_index.h"
 #include "server/compiler/compiler.h"
-#include "server/session/session.h"
-#include "server/session/session_store.h"
+#include "server/state/session.h"
+#include "server/state/session_store.h"
 #include "support/filesystem.h"
 
 #include "kota/ipc/lsp/position.h"

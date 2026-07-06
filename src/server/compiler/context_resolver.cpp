@@ -1,4 +1,4 @@
-#include "server/context/context_resolver.h"
+#include "server/compiler/context_resolver.h"
 
 #include <algorithm>
 #include <chrono>
@@ -9,7 +9,7 @@
 
 #include "command/argument_parser.h"
 #include "command/search_config.h"
-#include "server/session/session_store.h"
+#include "server/state/session_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"

@@ -5,9 +5,9 @@
 #include <optional>
 #include <string>
 
-#include "server/context/context_resolver.h"
-#include "server/session/session_store.h"
-#include "server/workspace/workspace.h"
+#include "server/compiler/context_resolver.h"
+#include "server/state/session_store.h"
+#include "server/state/workspace.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"

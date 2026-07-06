@@ -1,4 +1,4 @@
-#include "server/workspace/invalidator.h"
+#include "server/state/invalidator.h"
 
 #include <utility>
 

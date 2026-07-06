@@ -2,8 +2,8 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
-#include "server/context/context_resolver.h"
-#include "server/session/session_store.h"
+#include "server/compiler/context_resolver.h"
+#include "server/state/session_store.h"
 
 namespace clice::testing {
 namespace {

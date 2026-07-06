@@ -1,4 +1,4 @@
-#include "server/feature/feature_router.h"
+#include "server/service/feature_router.h"
 
 #include <algorithm>
 #include <format>
@@ -12,8 +12,8 @@
 #include "semantic/relation_kind.h"
 #include "semantic/symbol_kind.h"
 #include "server/compiler/compiler.h"
-#include "server/context/context_resolver.h"
-#include "server/index/background_indexer.h"
+#include "server/compiler/context_resolver.h"
+#include "server/compiler/background_indexer.h"
 #include "server/protocol/serialize.h"
 #include "server/protocol/worker.h"
 #include "syntax/completion.h"

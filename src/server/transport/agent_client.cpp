@@ -1,4 +1,4 @@
-#include "server/service/agent_client.h"
+#include "server/transport/agent_client.h"
 
 #include <algorithm>
 #include <expected>
@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "server/protocol/agentic.h"
-#include "server/service/master_server.h"
+#include "server/transport/master_server.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 

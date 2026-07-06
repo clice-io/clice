@@ -2,8 +2,8 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "server/compiler/compile_graph.h"
-#include "server/context/context_resolver.h"
-#include "server/workspace/invalidator.h"
+#include "server/compiler/context_resolver.h"
+#include "server/state/invalidator.h"
 
 namespace clice::testing {
 namespace {

@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "index/tu_index.h"
-#include "server/workspace/workspace.h"
+#include "server/state/workspace.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/visit/common.h"
@@ -16,7 +16,7 @@
 
 namespace clice {
 
-/// Defined in server/context/context_resolver.h — the resolver reports where
+/// Defined in server/compiler/context_resolver.h — the resolver reports where
 /// the compile command came from; Session only stores the verdict.
 enum class CommandSource : std::uint8_t;
 

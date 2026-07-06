@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "command/command.h"
-#include "server/session/session.h"
+#include "server/state/session.h"
 #include "server/worker/worker_pool.h"
-#include "server/workspace/workspace.h"
+#include "server/state/workspace.h"
 #include "support/signal.h"
 
 #include "kota/async/async.h"

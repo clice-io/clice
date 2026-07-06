@@ -1,4 +1,4 @@
-#include "server/feature/format.h"
+#include "server/service/format.h"
 
 #include <algorithm>
 #include <format>
@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "compile/diagnostic.h"
-#include "server/context/context_resolver.h"
+#include "server/compiler/context_resolver.h"
 #include "support/logging.h"
 
 #include "kota/codec/json/json.h"

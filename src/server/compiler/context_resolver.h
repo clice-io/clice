@@ -6,10 +6,10 @@
 #include <vector>
 
 #include "command/command.h"
-#include "server/context/context_cache.h"
+#include "server/compiler/context_cache.h"
 #include "server/protocol/extension.h"
-#include "server/session/session.h"
-#include "server/workspace/workspace.h"
+#include "server/state/session.h"
+#include "server/state/workspace.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"

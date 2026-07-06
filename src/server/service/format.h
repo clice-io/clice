@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "server/session/session.h"
+#include "server/state/session.h"
 
 #include "kota/ipc/lsp/protocol.h"
 

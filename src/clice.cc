@@ -4,8 +4,8 @@
 #include <sstream>
 #include <string>
 
-#include "server/service/agentic.h"
-#include "server/service/master_server.h"
+#include "server/transport/agentic.h"
+#include "server/transport/master_server.h"
 #include "server/worker/stateful_worker.h"
 #include "server/worker/stateless_worker.h"
 #include "support/logging.h"
