@@ -24,11 +24,13 @@ async def test_open_before_initialize(request, executable, workspace):
     await c.start_io(str(executable), "serve")
     try:
         # didOpen racing ahead of the handshake is accepted; the session
-        # must be fully usable once the server becomes ready.
+        # must be fully usable once the server becomes ready. Register the
+        # waiter before the handshake so a push emitted during it cannot
+        # be missed.
         uri, _ = c.open(workspace / "main.cpp")
+        event = c.wait_for_diagnostics(uri)
         await c.initialize(workspace)
 
-        event = c.wait_for_diagnostics(uri)
         hover = await c.hover_at(uri, 2, 4)
         assert hover is not None and hover.contents is not None
         await asyncio.wait_for(event.wait(), timeout=60.0)
@@ -52,6 +54,10 @@ async def test_close_before_initialize(request, executable, workspace):
         assert uri not in c.diagnostics
         with pytest.raises(Exception, match="Document not open"):
             await c.hover_at(uri, 0, 0)
+        # The file closed before ready went through the reindex queue; a
+        # normal open/compile cycle must still work afterwards.
+        uri, _ = await c.open_and_wait(workspace / "main.cpp")
+        assert get_errors(c.diagnostics[uri]) == []
     finally:
         await shutdown_client(c)
     check_no_anomaly(request, c)

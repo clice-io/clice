@@ -289,7 +289,12 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         workspace.save_cache(contexts);
     }
 
-    if(dirty.reschedule_indexing) {
+    // Not before the server is ready: document-sync events are accepted
+    // early (a pre-ready didClose lands here), but the scheduler reads
+    // configuration that initialize() has not applied yet. The reindex
+    // queue filled above is kept — the post-ready workspace load kicks the
+    // scheduler.
+    if(dirty.reschedule_indexing && lifecycle == ServerLifecycle::Ready) {
         indexer.schedule();
     }
 }
