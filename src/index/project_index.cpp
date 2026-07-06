@@ -72,22 +72,15 @@ void ProjectIndex::serialize(this const ProjectIndex& self,
         persisted.shards.push_back(to_local(shard));
     }
 
-    auto encoded = kota::codec::fbs::to_flatbuffer(persisted);
-    assert(encoded && "ProjectIndex flatbuffer serialization failed");
-    if(!encoded) {
-        return;
-    }
-    os.write(reinterpret_cast<const char*>(encoded->data()), encoded->size());
+    write_flatbuffer(os, persisted);
 }
 
 std::optional<ProjectIndex> ProjectIndex::from(const void* data,
                                                std::size_t size,
                                                clice::PathPool& pool,
                                                llvm::SmallVectorImpl<std::uint32_t>& shards) {
-    std::span<const std::uint8_t> bytes(static_cast<const std::uint8_t*>(data), size);
-
     ProjectIndex loaded;
-    if(auto result = kota::codec::fbs::from_flatbuffer(bytes, loaded); !result) {
+    if(!read_flatbuffer(data, size, loaded)) {
         return std::nullopt;
     }
     if(loaded.format_version != index_format_version) {

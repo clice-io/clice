@@ -274,34 +274,15 @@ public:
 
         auto finalize = [&](std::uint32_t path_id, FileIndex& index) {
             for(auto& [symbol_id, relations]: index.relations) {
-                std::ranges::sort(relations, [](const Relation& lhs, const Relation& rhs) {
-                    return std::tuple(lhs.kind.value(),
-                                      lhs.range.begin,
-                                      lhs.range.end,
-                                      lhs.target_symbol) < std::tuple(rhs.kind.value(),
-                                                                      rhs.range.begin,
-                                                                      rhs.range.end,
-                                                                      rhs.target_symbol);
-                });
-                auto range =
-                    std::ranges::unique(relations, [](const Relation& lhs, const Relation& rhs) {
-                        return lhs.kind == rhs.kind && lhs.range == rhs.range &&
-                               lhs.target_symbol == rhs.target_symbol;
-                    });
-                relations.erase(range.begin(), range.end());
+                std::ranges::sort(relations);
+                auto dup = std::ranges::unique(relations);
+                relations.erase(dup.begin(), dup.end());
                 result.symbols[symbol_id].reference_files.add(path_id);
             }
 
-            std::ranges::sort(index.occurrences, [](const Occurrence& lhs, const Occurrence& rhs) {
-                return std::tuple(lhs.range.begin, lhs.range.end, lhs.target) <
-                       std::tuple(rhs.range.begin, rhs.range.end, rhs.target);
-            });
-            auto range =
-                std::ranges::unique(index.occurrences,
-                                    [](const Occurrence& lhs, const Occurrence& rhs) {
-                                        return lhs.range == rhs.range && lhs.target == rhs.target;
-                                    });
-            index.occurrences.erase(range.begin(), range.end());
+            std::ranges::sort(index.occurrences);
+            auto dup = std::ranges::unique(index.occurrences);
+            index.occurrences.erase(dup.begin(), dup.end());
         };
 
         for(auto& [path_id, index]: result.path_file_indices) {
@@ -317,8 +298,9 @@ private:
 
 }  // namespace
 
-void FileIndex::lookup(std::uint32_t offset,
-                       llvm::function_ref<bool(const Occurrence&)> callback) const {
+void lookup_occurrences(std::span<const Occurrence> occurrences,
+                        std::uint32_t offset,
+                        llvm::function_ref<bool(const Occurrence&)> callback) {
     auto it = std::ranges::lower_bound(occurrences, offset, {}, [](const Occurrence& o) {
         return o.range.end;
     });
@@ -327,6 +309,11 @@ void FileIndex::lookup(std::uint32_t offset,
             return;
         ++it;
     }
+}
+
+void FileIndex::lookup(std::uint32_t offset,
+                       llvm::function_ref<bool(const Occurrence&)> callback) const {
+    lookup_occurrences(occurrences, offset, callback);
 }
 
 void FileIndex::lookup(SymbolHash symbol,
@@ -383,22 +370,12 @@ TUIndex TUIndex::build(CompilationUnitRef unit, bool interested_only) {
 }
 
 void TUIndex::serialize(llvm::raw_ostream& os) const {
-    auto encoded = kota::codec::fbs::to_flatbuffer(*this);
-    assert(encoded && "TUIndex flatbuffer serialization failed");
-    if(!encoded) {
-        return;
-    }
-    os.write(reinterpret_cast<const char*>(encoded->data()), encoded->size());
+    write_flatbuffer(os, *this);
 }
 
 TUIndex TUIndex::from(const void* data, std::size_t size) {
     TUIndex index;
-    if(data == nullptr || size == 0) {
-        return index;
-    }
-
-    std::span<const std::uint8_t> bytes(static_cast<const std::uint8_t*>(data), size);
-    if(auto result = kota::codec::fbs::from_flatbuffer(bytes, index); !result) {
+    if(!read_flatbuffer(data, size, index)) {
         return TUIndex();
     }
     return index;

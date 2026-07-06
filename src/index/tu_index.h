@@ -4,6 +4,7 @@
 #include <bit>
 #include <chrono>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -68,6 +69,13 @@ struct Occurrence {
     /// maps, which the lazy buffer lookup binary-searches.
     friend constexpr auto operator<=>(const Occurrence&, const Occurrence&) = default;
 };
+
+/// Visit every occurrence whose range contains `offset` in a sequence sorted
+/// by Occurrence's (begin, end, target) ordering; stops early when the
+/// callback returns false.
+void lookup_occurrences(std::span<const Occurrence> occurrences,
+                        std::uint32_t offset,
+                        llvm::function_ref<bool(const Occurrence&)> callback);
 
 struct FileIndex {
     llvm::DenseMap<SymbolHash, std::vector<Relation>> relations;

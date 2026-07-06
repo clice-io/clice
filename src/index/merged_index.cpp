@@ -346,8 +346,7 @@ void MergedIndex::load_in_memory(this Self& self) {
 
     auto& index = *self.impl;
 
-    if(auto result = kota::codec::fbs::from_flatbuffer(buffer_bytes(*self.buffer), index);
-       !result) {
+    if(!read_flatbuffer(self.buffer->getBufferStart(), self.buffer->getBufferSize(), index)) {
         index = Impl();
         self.buffer.reset();
         return;
@@ -419,13 +418,7 @@ void MergedIndex::serialize(this Self& self, llvm::raw_ostream& out) {
     // as-is. Map entries are written sorted by their keys' ordering, which
     // the lazy lookups binary-search.
     self.impl->compact();
-
-    auto encoded = kota::codec::fbs::to_flatbuffer(*self.impl);
-    assert(encoded && "MergedIndex flatbuffer serialization failed");
-    if(!encoded) {
-        return;
-    }
-    out.write(reinterpret_cast<const char*>(encoded->data()), encoded->size());
+    write_flatbuffer(out, *self.impl);
 }
 
 void MergedIndex::lookup(this const Self& self,
@@ -438,40 +431,20 @@ void MergedIndex::lookup(this const Self& self,
             for(auto& [o, _]: index.occurrences) {
                 occurrences.emplace_back(o);
             }
-            std::ranges::sort(occurrences, [](const Occurrence& lhs, const Occurrence& rhs) {
-                return std::tuple(lhs.range.begin, lhs.range.end, lhs.target) <
-                       std::tuple(rhs.range.begin, rhs.range.end, rhs.target);
-            });
+            std::ranges::sort(occurrences);
         }
 
-        auto it = std::ranges::lower_bound(occurrences, offset, {}, [](index::Occurrence& o) {
-            return o.range.end;
-        });
-
-        while(it != occurrences.end()) {
-            if(it->range.contains(offset)) {
-                // Skip occurrences whose canonical_ids are all removed.
-                if(!index.removed.isEmpty()) {
-                    auto bitmap_it = index.occurrences.find(*it);
-                    if(bitmap_it != index.occurrences.end()) {
-                        auto remaining = bitmap_it->second - index.removed;
-                        if(remaining.isEmpty()) {
-                            it++;
-                            continue;
-                        }
-                    }
+        lookup_occurrences(occurrences, offset, [&](const Occurrence& occurrence) {
+            // Skip occurrences whose canonical_ids are all removed.
+            if(!index.removed.isEmpty()) {
+                auto bitmap_it = index.occurrences.find(occurrence);
+                if(bitmap_it != index.occurrences.end() &&
+                   (bitmap_it->second - index.removed).isEmpty()) {
+                    return true;
                 }
-
-                if(!callback(*it)) {
-                    break;
-                }
-
-                it++;
-                continue;
             }
-
-            break;
-        }
+            return callback(occurrence);
+        });
     } else if(self.buffer) {
         auto root = kota::codec::fbs::table_view<Impl>::from_bytes(buffer_bytes(*self.buffer));
         auto occurrences = root[&Impl::occurrences];

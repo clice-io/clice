@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cassert>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -14,32 +16,50 @@
 #include "support/bitmap.h"
 
 #include "kota/codec/fbs/fbs.h"
+#include "llvm/Support/raw_ostream.h"
 
-/// Type-level codec adapters bridging clice's non-reflectable leaf types onto
-/// kotatsu's visitor framework. They are keyed on the value type only, so they
-/// apply wherever the type appears — as a struct field, a map key/value or a
-/// sequence element — and the declared wire_type drives both the FlatBuffers
-/// vector layout and verify_flatbuffer's schema walk.
+namespace clice::index {
+
+/// Encode a reflected object and write the blob to `os`.
+template <typename T>
+void write_flatbuffer(llvm::raw_ostream& os, const T& value) {
+    auto encoded = kota::codec::fbs::to_flatbuffer(value);
+    assert(encoded && "flatbuffer serialization failed");
+    if(encoded) {
+        os.write(reinterpret_cast<const char*>(encoded->data()), encoded->size());
+    }
+}
+
+/// Deep-verify and decode a blob into `out`; false on any malformed input.
+template <typename T>
+bool read_flatbuffer(const void* data, std::size_t size, T& out) {
+    if(data == nullptr || size == 0) {
+        return false;
+    }
+    std::span<const std::uint8_t> bytes(static_cast<const std::uint8_t*>(data), size);
+    return static_cast<bool>(kota::codec::fbs::from_flatbuffer(bytes, out));
+}
+
+}  // namespace clice::index
+
+/// Value-mode codec adapters bridging clice's non-reflectable leaf types onto
+/// kotatsu's visitor framework. Each specialization declares the on-wire
+/// layout (wire_type) plus the two conversions, and applies wherever the type
+/// appears — struct field, map key/value or sequence element. The wire_type
+/// also drives the FlatBuffers vector layout and verify_flatbuffer's schema
+/// walk.
 namespace kota::codec {
 
 template <typename Vis, typename Config>
 struct serialize_visit<Vis, clice::RelationKind, Config> {
     using wire_type = std::uint32_t;
 
-    static bool visit(Vis& vis, const clice::RelationKind& kind) {
-        return encode_value<Config>(vis, kind.value());
+    static wire_type to_wire(clice::RelationKind kind) {
+        return kind.value();
     }
-};
 
-template <typename Vis, typename Config>
-struct deserialize_visit<Vis, clice::RelationKind, Config> {
-    static bool visit(Vis& vis, clice::RelationKind& out) {
-        std::uint32_t value = 0;
-        if(!decode_value<Config>(vis, value)) {
-            return false;
-        }
-        out = clice::RelationKind(static_cast<clice::RelationKind::Kind>(value));
-        return true;
+    static clice::RelationKind from_wire(wire_type value) {
+        return clice::RelationKind(static_cast<clice::RelationKind::Kind>(value));
     }
 };
 
@@ -47,20 +67,25 @@ template <typename Vis, typename Config>
 struct serialize_visit<Vis, clice::SymbolKind, Config> {
     using wire_type = std::uint8_t;
 
-    static bool visit(Vis& vis, const clice::SymbolKind& kind) {
-        return encode_value<Config>(vis, kind.value());
+    static wire_type to_wire(clice::SymbolKind kind) {
+        return kind.value();
+    }
+
+    static clice::SymbolKind from_wire(wire_type value) {
+        return clice::SymbolKind(static_cast<clice::SymbolKind::Kind>(value));
     }
 };
 
 template <typename Vis, typename Config>
-struct deserialize_visit<Vis, clice::SymbolKind, Config> {
-    static bool visit(Vis& vis, clice::SymbolKind& out) {
-        std::uint8_t value = 0;
-        if(!decode_value<Config>(vis, value)) {
-            return false;
-        }
-        out = clice::SymbolKind(static_cast<clice::SymbolKind::Kind>(value));
-        return true;
+struct serialize_visit<Vis, std::chrono::milliseconds, Config> {
+    using wire_type = std::int64_t;
+
+    static wire_type to_wire(std::chrono::milliseconds value) {
+        return value.count();
+    }
+
+    static std::chrono::milliseconds from_wire(wire_type ticks) {
+        return std::chrono::milliseconds(ticks);
     }
 };
 
@@ -71,50 +96,20 @@ template <typename Vis, typename Config>
 struct serialize_visit<Vis, roaring::Roaring, Config> {
     using wire_type = std::vector<std::byte>;
 
-    static bool visit(Vis& vis, const roaring::Roaring& bitmap) {
+    static wire_type to_wire(const roaring::Roaring& bitmap) {
         std::vector<std::byte> bytes;
         if(!bitmap.isEmpty()) {
             bytes.resize(bitmap.getSizeInBytes(false));
             bitmap.write(reinterpret_cast<char*>(bytes.data()), false);
         }
-        return encode_value<Config>(vis, bytes);
+        return bytes;
     }
-};
 
-template <typename Vis, typename Config>
-struct deserialize_visit<Vis, roaring::Roaring, Config> {
-    static bool visit(Vis& vis, roaring::Roaring& out) {
-        std::vector<std::byte> bytes;
-        if(!decode_value<Config>(vis, bytes)) {
-            return false;
-        }
+    static roaring::Roaring from_wire(const wire_type& bytes) {
         if(bytes.empty()) {
-            out = roaring::Roaring();
-        } else {
-            out = roaring::Roaring::read(reinterpret_cast<const char*>(bytes.data()), false);
+            return roaring::Roaring();
         }
-        return true;
-    }
-};
-
-template <typename Vis, typename Config>
-struct serialize_visit<Vis, std::chrono::milliseconds, Config> {
-    using wire_type = std::int64_t;
-
-    static bool visit(Vis& vis, const std::chrono::milliseconds& value) {
-        return encode_value<Config>(vis, static_cast<std::int64_t>(value.count()));
-    }
-};
-
-template <typename Vis, typename Config>
-struct deserialize_visit<Vis, std::chrono::milliseconds, Config> {
-    static bool visit(Vis& vis, std::chrono::milliseconds& out) {
-        std::int64_t ticks = 0;
-        if(!decode_value<Config>(vis, ticks)) {
-            return false;
-        }
-        out = std::chrono::milliseconds(ticks);
-        return true;
+        return roaring::Roaring::read(reinterpret_cast<const char*>(bytes.data()), false);
     }
 };
 
@@ -124,31 +119,23 @@ template <typename Vis, typename Config>
 struct serialize_visit<Vis, clice::index::PathPool, Config> {
     using wire_type = std::vector<std::string>;
 
-    static bool visit(Vis& vis, const clice::index::PathPool& pool) {
+    static std::vector<std::string_view> to_wire(const clice::index::PathPool& pool) {
         std::vector<std::string_view> paths;
         paths.reserve(pool.paths.size());
         for(auto path: pool.paths) {
             paths.emplace_back(path.data(), path.size());
         }
-        return encode_value<Config>(vis, paths);
+        return paths;
     }
-};
 
-template <typename Vis, typename Config>
-struct deserialize_visit<Vis, clice::index::PathPool, Config> {
-    static bool visit(Vis& vis, clice::index::PathPool& out) {
-        std::vector<std::string> paths;
-        if(!decode_value<Config>(vis, paths)) {
-            return false;
-        }
-        out.paths.clear();
-        out.cache.clear();
+    static clice::index::PathPool from_wire(const wire_type& paths) {
+        clice::index::PathPool pool;
         for(const auto& path: paths) {
             if(!path.empty()) {
-                out.path_id(path);
+                pool.path_id(path);
             }
         }
-        return true;
+        return pool;
     }
 };
 
