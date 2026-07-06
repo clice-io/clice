@@ -607,9 +607,9 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request([&srv](RequestContext&, const StatusParams&) -> RequestResult<StatusParams> {
         StatusResult result;
-        result.idle = srv.background_indexer.is_idle();
-        result.pending = static_cast<int>(srv.background_indexer.pending_files());
-        result.total = static_cast<int>(srv.background_indexer.total_queued());
+        result.idle = srv.indexer.is_idle();
+        result.pending = static_cast<int>(srv.indexer.pending_files());
+        result.total = static_cast<int>(srv.indexer.total_queued());
         result.indexed = std::max(0, result.total - result.pending);
         co_return result;
     });

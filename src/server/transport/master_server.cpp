@@ -6,9 +6,9 @@
 #include <vector>
 
 #include "server/protocol/worker.h"
+#include "server/state/file_tracker.h"
 #include "server/transport/agent_client.h"
 #include "server/transport/lsp_client.h"
-#include "server/state/file_tracker.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -33,8 +33,8 @@ namespace protocol = kota::ipc::protocol;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
-    index_query(workspace, sessions), background_indexer(loop, workspace, pool, contexts, sessions),
-    features(compiler, index_query, workspace, contexts, background_indexer),
+    index_query(workspace, sessions), indexer(loop, workspace, pool, contexts, sessions),
+    features(compiler, index_query, workspace, contexts, indexer),
     invalidator(workspace, sessions, contexts), bg_tasks(loop), self_path(std::move(self_path)) {}
 
 MasterServer::~MasterServer() = default;
@@ -147,7 +147,7 @@ void MasterServer::wire() {
     };
 
     compiler.on_indexing_needed = [this]() {
-        background_indexer.schedule();
+        indexer.schedule();
     };
 }
 
@@ -238,7 +238,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     for(auto path_id: dirty.enqueue_reindex) {
-        background_indexer.enqueue(path_id);
+        indexer.enqueue(path_id);
     }
 
     if(dirty.ensure_compile_graph && !workspace.compile_graph) {
@@ -254,7 +254,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     if(dirty.reschedule_indexing) {
-        background_indexer.schedule();
+        indexer.schedule();
     }
 }
 
@@ -270,8 +270,8 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     co_await bg_tasks.join();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await kota::when_all(background_indexer.stop(), compiler.stop());
-    co_await background_indexer.save();
+    co_await kota::when_all(indexer.stop(), compiler.stop());
+    co_await indexer.save();
     workspace.save_cache(contexts);
     co_await pool.stop();
     if(workspace.store) {
@@ -338,7 +338,7 @@ void MasterServer::load_workspace() {
         // Persisted index shards are CDB-independent; load them so a
         // database generated later (picked up by the CDB poll) starts from
         // the previous session's index.
-        background_indexer.load();
+        indexer.load();
         return;
     }
 
@@ -384,15 +384,15 @@ void MasterServer::load_workspace() {
              report.elapsed_ms);
 
     workspace.build_module_map();
-    background_indexer.load();
+    indexer.load();
 
     if(*cfg.enable_indexing) {
         for(auto& entry: workspace.cdb.get_entries()) {
             auto file = workspace.cdb.resolve_path(entry.file);
             auto server_id = workspace.path_pool.intern(file);
-            background_indexer.enqueue(server_id);
+            indexer.enqueue(server_id);
         }
-        background_indexer.schedule();
+        indexer.schedule();
     }
 
     compiler.init_compile_graph();

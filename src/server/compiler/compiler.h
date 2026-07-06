@@ -9,8 +9,8 @@
 
 #include "command/command.h"
 #include "server/state/session.h"
-#include "server/worker/worker_pool.h"
 #include "server/state/workspace.h"
+#include "server/worker/worker_pool.h"
 #include "support/signal.h"
 
 #include "kota/async/async.h"
@@ -46,7 +46,7 @@ std::string uri_to_path(const std::string& uri);
 /// NOT responsible for:
 ///   - Document lifecycle (didOpen/didChange/didClose) — handled by MasterServer
 ///   - Index queries — handled by IndexQuery
-///   - Background indexing scheduling — handled by BackgroundIndexer
+///   - Background indexing scheduling — handled by Indexer
 class Compiler {
 public:
     Compiler(kota::event_loop& loop,

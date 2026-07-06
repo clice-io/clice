@@ -13,7 +13,7 @@
 #include "semantic/symbol_kind.h"
 #include "server/compiler/compiler.h"
 #include "server/compiler/context_resolver.h"
-#include "server/compiler/background_indexer.h"
+#include "server/compiler/indexer.h"
 #include "server/protocol/serialize.h"
 #include "server/protocol/worker.h"
 #include "syntax/completion.h"
@@ -174,7 +174,7 @@ FeatureRouter::RawResult FeatureRouter::code_action(std::shared_ptr<Session> ses
 
 FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> session,
                                                    const protocol::Position& position) {
-    auto pause = background_indexer.scoped_pause();
+    auto pause = indexer.scoped_pause();
 
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
@@ -235,18 +235,18 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
 
 FeatureRouter::RawResult FeatureRouter::signature_help(std::shared_ptr<Session> session,
                                                        const protocol::Position& position) {
-    auto pause = background_indexer.scoped_pause();
+    auto pause = indexer.scoped_pause();
     co_return co_await compiler.forward_build(worker::BuildKind::SignatureHelp, position, session);
 }
 
 FeatureRouter::RawResult FeatureRouter::formatting(std::shared_ptr<Session> session) {
-    auto pause = background_indexer.scoped_pause();
+    auto pause = indexer.scoped_pause();
     co_return co_await compiler.forward_format(session);
 }
 
 FeatureRouter::RawResult FeatureRouter::range_formatting(std::shared_ptr<Session> session,
                                                          const protocol::Range& range) {
-    auto pause = background_indexer.scoped_pause();
+    auto pause = indexer.scoped_pause();
     co_return co_await compiler.forward_format(session, range);
 }
 

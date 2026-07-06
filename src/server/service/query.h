@@ -56,7 +56,7 @@ struct ResolvedSymbol {
 ///
 /// NOT responsible for:
 ///   - Compilation — handled by Compiler
-///   - Background indexing — handled by BackgroundIndexer
+///   - Background indexing — handled by Indexer
 ///   - Document lifecycle — handled by MasterServer
 class IndexQuery {
 public:

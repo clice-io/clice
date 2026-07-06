@@ -1,4 +1,4 @@
-#include "server/compiler/background_indexer.h"
+#include "server/compiler/indexer.h"
 
 #include <algorithm>
 #include <cassert>
@@ -26,7 +26,7 @@
 
 namespace clice {
 
-void BackgroundIndexer::merge(const void* tu_index_data, std::size_t size) {
+void Indexer::merge(const void* tu_index_data, std::size_t size) {
     auto tu_index = index::TUIndex::from(tu_index_data);
     if(tu_index.graph.paths.empty()) {
         LOG_WARN("Ignoring TUIndex with empty path graph");
@@ -173,7 +173,7 @@ static std::optional<CacheStore::PendingEntry>
     return pending;
 }
 
-kota::task<> BackgroundIndexer::save() {
+kota::task<> Indexer::save() {
     if(!workspace.store)
         co_return;
     auto& store = *workspace.store;
@@ -247,7 +247,7 @@ kota::task<> BackgroundIndexer::save() {
              timer.ms());
 }
 
-void BackgroundIndexer::load() {
+void Indexer::load() {
     if(!workspace.store)
         return;
     ScopedTimer timer;
@@ -324,7 +324,7 @@ void BackgroundIndexer::load() {
              timer.ms());
 }
 
-bool BackgroundIndexer::need_update(llvm::StringRef file_path) {
+bool Indexer::need_update(llvm::StringRef file_path) {
     auto merged_it = workspace.merged_indices.find(workspace.path_pool.intern(file_path));
     if(merged_it == workspace.merged_indices.end())
         return true;
@@ -332,7 +332,7 @@ bool BackgroundIndexer::need_update(llvm::StringRef file_path) {
     return merged_it->second.need_update();
 }
 
-void BackgroundIndexer::enqueue(std::uint32_t server_path_id) {
+void Indexer::enqueue(std::uint32_t server_path_id) {
     // Already queued and not yet consumed — a second entry would only be
     // skipped by need_update later; drop it here.
     if(!pending_ids.insert(server_path_id).second)
@@ -340,7 +340,7 @@ void BackgroundIndexer::enqueue(std::uint32_t server_path_id) {
     index_queue.push_back(server_path_id);
 }
 
-void BackgroundIndexer::pause_indexing() {
+void Indexer::pause_indexing() {
     ++pause_depth;
     if(pause_depth == 1) {
         resume_event.reset();
@@ -348,7 +348,7 @@ void BackgroundIndexer::pause_indexing() {
     }
 }
 
-void BackgroundIndexer::resume_indexing() {
+void Indexer::resume_indexing() {
     if(pause_depth > 0)
         --pause_depth;
     if(pause_depth == 0) {
@@ -357,12 +357,12 @@ void BackgroundIndexer::resume_indexing() {
     }
 }
 
-kota::task<> BackgroundIndexer::stop() {
+kota::task<> Indexer::stop() {
     bg_tasks.cancel();
     co_await bg_tasks.join();
 }
 
-void BackgroundIndexer::schedule() {
+void Indexer::schedule() {
     if(!*workspace.config.project.enable_indexing || indexing_active || indexing_scheduled)
         return;
     indexing_scheduled = true;
@@ -378,9 +378,9 @@ void BackgroundIndexer::schedule() {
     }
 }
 
-kota::task<> BackgroundIndexer::index_one(std::uint32_t server_path_id,
-                                          std::size_t index,
-                                          std::size_t total) {
+kota::task<> Indexer::index_one(std::uint32_t server_path_id,
+                                std::size_t index,
+                                std::size_t total) {
     auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
 
     if(sessions.find(server_path_id) != nullptr)
@@ -435,7 +435,7 @@ kota::task<> BackgroundIndexer::index_one(std::uint32_t server_path_id,
     }
 }
 
-kota::task<> BackgroundIndexer::run_background_indexing() {
+kota::task<> Indexer::run_background_indexing() {
     if(index_idle_timer) {
         co_await index_idle_timer->wait();
     }

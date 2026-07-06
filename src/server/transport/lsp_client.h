@@ -52,7 +52,7 @@ private:
 
     /// React to a background-indexing progress change: drive the LSP
     /// work-done progress token through its begin/report/end lifecycle,
-    /// reading the counts from the BackgroundIndexer. Invoked by the
+    /// reading the counts from the Indexer. Invoked by the
     /// background indexer's on_progress_changed signal.
     void report_index_progress();
 

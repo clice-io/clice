@@ -57,7 +57,7 @@ async def test_touch_header_no_reindex(executable, tmp_path):
     project_before = project_mtime(tmp_path)
     c2 = await make_client(executable, tmp_path)
     # save() rewrites the project blob unconditionally each round (see
-    # BackgroundIndexer::save), so its mtime moving proves the round ran.
+    # Indexer::save), so its mtime moving proves the round ran.
     assert await poll(lambda: project_mtime(tmp_path) != project_before), (
         "indexing round never ran in session 2"
     )

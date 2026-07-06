@@ -20,7 +20,7 @@ struct SessionStore;
 
 /// Background indexing scheduler.
 ///
-/// BackgroundIndexer owns the indexing queue and drives disk files through
+/// Indexer owns the indexing queue and drives disk files through
 /// the stateless workers, merging each TUIndex result into Workspace's
 /// ProjectIndex and MergedIndex shards.  It holds no index data of its own.
 ///
@@ -33,13 +33,13 @@ struct SessionStore;
 ///   - Index queries — handled by IndexQuery
 ///   - Compilation — handled by Compiler
 ///   - Document lifecycle — handled by MasterServer
-class BackgroundIndexer {
+class Indexer {
 public:
-    BackgroundIndexer(kota::event_loop& loop,
-                      Workspace& workspace,
-                      WorkerPool& pool,
-                      ContextResolver& contexts,
-                      const SessionStore& sessions) :
+    Indexer(kota::event_loop& loop,
+            Workspace& workspace,
+            WorkerPool& pool,
+            ContextResolver& contexts,
+            const SessionStore& sessions) :
         loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts),
         sessions(sessions) {}
 
@@ -53,9 +53,9 @@ public:
 
     /// RAII guard that pauses indexing for its lifetime.
     struct [[nodiscard]] ScopedPause {
-        BackgroundIndexer& indexer;
+        Indexer& indexer;
 
-        explicit ScopedPause(BackgroundIndexer& idx) : indexer(idx) {
+        explicit ScopedPause(Indexer& idx) : indexer(idx) {
             indexer.pause_indexing();
         }
 

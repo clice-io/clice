@@ -17,7 +17,7 @@ namespace clice {
 
 class Compiler;
 class ContextResolver;
-class BackgroundIndexer;
+class Indexer;
 
 namespace protocol = kota::ipc::protocol;
 
@@ -49,9 +49,9 @@ public:
                   IndexQuery& index_query,
                   Workspace& workspace,
                   ContextResolver& contexts,
-                  BackgroundIndexer& background_indexer) :
+                  Indexer& indexer) :
         compiler(compiler), index_query(index_query), workspace(workspace), contexts(contexts),
-        background_indexer(background_indexer) {}
+        indexer(indexer) {}
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
@@ -153,7 +153,7 @@ private:
     IndexQuery& index_query;
     Workspace& workspace;
     ContextResolver& contexts;
-    BackgroundIndexer& background_indexer;
+    Indexer& indexer;
 };
 
 }  // namespace clice

@@ -7,15 +7,15 @@
 
 #include "server/compiler/compiler.h"
 #include "server/compiler/context_resolver.h"
+#include "server/compiler/indexer.h"
 #include "server/service/feature_router.h"
-#include "server/compiler/background_indexer.h"
 #include "server/service/query.h"
-#include "server/state/session.h"
-#include "server/state/session_store.h"
-#include "server/worker/worker_pool.h"
 #include "server/state/config.h"
 #include "server/state/invalidator.h"
+#include "server/state/session.h"
+#include "server/state/session_store.h"
 #include "server/state/workspace.h"
+#include "server/worker/worker_pool.h"
 
 #include "kota/async/async.h"
 #include "kota/deco/deco.h"
@@ -120,7 +120,7 @@ public:
     ContextResolver contexts;
     Compiler compiler;
     IndexQuery index_query;
-    BackgroundIndexer background_indexer;
+    Indexer indexer;
     FeatureRouter features;
     Invalidator invalidator;
 

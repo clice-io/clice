@@ -10,11 +10,11 @@
 #include "command/argument_parser.h"
 #include "semantic/symbol_kind.h"
 #include "server/compiler/context_resolver.h"
-#include "server/service/format.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/serialize.h"
-#include "server/transport/master_server.h"
+#include "server/service/format.h"
 #include "server/state/file_tracker.h"
+#include "server/transport/master_server.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -44,8 +44,8 @@ static kota::ipc::Error document_not_open() {
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
     output_conn = server.compiler.on_output.connect(
         [this](const std::shared_ptr<Session>& session) { push_output(*session); });
-    progress_conn = server.background_indexer.on_progress_changed.connect(
-        [this]() { report_index_progress(); });
+    progress_conn =
+        server.indexer.on_progress_changed.connect([this]() { report_index_progress(); });
 
     // The notify hook is process-wide and forwards anomaly/guidance messages
     // as window/logMessage notifications. It captures the peer, so it must
@@ -600,8 +600,8 @@ void LSPClient::push_output(const Session& session) {
 }
 
 void LSPClient::report_index_progress() {
-    const auto& p = server.background_indexer.progress();
-    using Stage = BackgroundIndexer::Progress::Stage;
+    const auto& p = server.indexer.progress();
+    using Stage = Indexer::Progress::Stage;
     auto& st = *index_progress;
     switch(p.stage) {
         case Stage::Begin: {
