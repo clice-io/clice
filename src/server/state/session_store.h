@@ -21,9 +21,10 @@ namespace protocol = kota::ipc::protocol;
 /// this store hands out.
 ///
 /// Future work: this store does not yet detect buffer desync (client and
-/// server drifting out of sync), warn on non-monotonic document versions, or
-/// bound the number of concurrently open sessions. Those safeguards are left
-/// for later.
+/// server drifting out of sync) or bound the number of concurrently open
+/// sessions. Those safeguards are left for later. Non-monotonic document
+/// versions are warned about at the transport edge, where the protocol
+/// context lives.
 struct SessionStore {
     llvm::DenseMap<std::uint32_t, std::shared_ptr<Session>> sessions;
 

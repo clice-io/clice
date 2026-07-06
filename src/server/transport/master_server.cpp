@@ -31,13 +31,34 @@ namespace clice {
 namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
+/// Bound on the notify backlog. Only messages that fire before a client
+/// attaches accumulate here (a handful of startup guidance reports in
+/// practice); the cap is a safety net, not a working-set size.
+constexpr static std::size_t notify_log_limit = 128;
+
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
     index_query(workspace, sessions), indexer(loop, workspace, pool, contexts, sessions),
     features(compiler, index_query, workspace, contexts, indexer),
-    invalidator(workspace, sessions, contexts), bg_tasks(loop), self_path(std::move(self_path)) {}
+    invalidator(workspace, sessions, contexts), bg_tasks(loop), self_path(std::move(self_path)) {
+    // The notify hook is process-wide because the logging layer cannot
+    // depend on the server; the composition root owns it for the server's
+    // lifetime and turns reports into state (notify_log) plus a typed
+    // signal. Master-side reports only ever fire on the event-loop thread
+    // (see support/anomaly.h), so no synchronization is needed here.
+    logging::set_notify_hook([this](logging::NotifyLevel level, std::string_view message) {
+        if(notify_log.size() < notify_log_limit) {
+            notify_log.push_back(NotifyMessage{level, std::string(message)});
+            on_notify.emit(notify_log.back());
+        } else {
+            on_notify.emit(NotifyMessage{level, std::string(message)});
+        }
+    });
+}
 
-MasterServer::~MasterServer() = default;
+MasterServer::~MasterServer() {
+    logging::set_notify_hook(nullptr);
+}
 
 void MasterServer::initialize() {
     config_issues.clear();
@@ -93,6 +114,15 @@ void MasterServer::initialize() {
     wire();
 
     load_workspace();
+
+    // Documents opened before the server became ready were validated
+    // against an empty resolver; re-check their persisted context choices
+    // now that the workspace cache is loaded.
+    for(auto& [path_id, session]: sessions.sessions) {
+        if(session) {
+            contexts.validate_saved_context(*session);
+        }
+    }
 
     if(!workspace_root.empty()) {
         // Construct after the workspace load so the tracker's baseline CDB
@@ -490,10 +520,6 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             return 1;
         }
 
-        // Pre-initialize for standalone (no-editor) use; LSP initialize will be rejected.
-        if(!ws.empty())
-            server.initialize(ws);
-
         std::unique_ptr<kota::ipc::Transport> final_transport = std::move(*transport);
         if(!record.empty()) {
             final_transport =
@@ -521,7 +547,15 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                          kota::ipc::JsonPeer& peer,
                          std::list<Connection>& connections,
                          kota::tcp::acceptor acceptor,
-                         bool has_acceptor) -> kota::task<> {
+                         bool has_acceptor,
+                         std::string workspace) -> kota::task<> {
+            // Pre-initialize for standalone (no-editor) use; LSP initialize
+            // will be rejected. Runs inside the loop — before the peer
+            // reads its first message — because initialize() spawns
+            // background tasks that need the running loop context.
+            if(!workspace.empty()) {
+                server.initialize(workspace);
+            }
             if(has_acceptor) {
                 co_await kota::when_any(
                     peer.run(),
@@ -531,7 +565,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                 co_await kota::when_any(peer.run(), server.get_shutdown_event().wait());
             }
             co_await server.shutdown_and_cleanup();
-        }(server, lsp_peer, connections, std::move(agent_acceptor), has_agent_acceptor));
+        }(server, lsp_peer, connections, std::move(agent_acceptor), has_agent_acceptor, ws));
         loop.run();
         return 0;
     }
@@ -543,20 +577,23 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             return 1;
         }
 
-        if(!ws.empty())
-            server.initialize(ws);
-
         bool register_lsp = ws.empty();
         LOG_INFO("Listening on {}:{} ...", host, port);
         loop.schedule([](MasterServer& server,
                          kota::tcp::acceptor acceptor,
                          bool register_lsp,
-                         std::list<Connection>& connections) -> kota::task<> {
+                         std::list<Connection>& connections,
+                         std::string workspace) -> kota::task<> {
+            // See the pipe-mode comment: pre-initialization must run
+            // inside the loop.
+            if(!workspace.empty()) {
+                server.initialize(workspace);
+            }
             co_await kota::when_any(
                 accept_connections(server, std::move(acceptor), register_lsp, connections),
                 server.get_shutdown_event().wait());
             co_await server.shutdown_and_cleanup();
-        }(server, std::move(*acceptor), register_lsp, connections));
+        }(server, std::move(*acceptor), register_lsp, connections, ws));
         loop.run();
         return 0;
     }

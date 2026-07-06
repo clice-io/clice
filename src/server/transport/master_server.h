@@ -16,6 +16,8 @@
 #include "server/state/session_store.h"
 #include "server/state/workspace.h"
 #include "server/worker/worker_pool.h"
+#include "support/anomaly.h"
+#include "support/signal.h"
 
 #include "kota/async/async.h"
 #include "kota/deco/deco.h"
@@ -74,6 +76,14 @@ enum class ServerLifecycle : std::uint8_t {
     Exited,
 };
 
+/// A guidance or anomaly message materialized for transport delivery.
+/// The log file is the durable record; this copy exists so a client that
+/// attaches after the message fired can still be shown it.
+struct NotifyMessage {
+    logging::NotifyLevel level;
+    std::string text;
+};
+
 /// Core server state — owns the two-layer state model (Workspace + Sessions),
 /// the worker pool, compilation engine, index query, and background indexer.
 ///
@@ -129,6 +139,18 @@ public:
     /// workspace-less sessions); its polling loops run in bg_tasks, and the
     /// clice/internal/poll test hook drives ticks directly.
     std::unique_ptr<FileTracker> tracker;
+
+    /// Announces a guidance/anomaly message (window/logMessage material).
+    /// The constructor owns the process-wide logging notify hook for the
+    /// server's lifetime and forwards every report here; transports
+    /// subscribe instead of touching the hook themselves. The argument is
+    /// only valid during the emission — subscribers forward it immediately.
+    Signal<const NotifyMessage&> on_notify;
+
+    /// Messages retained for clients that attach late (bounded; once full,
+    /// live delivery via on_notify continues but the overflow is not
+    /// retained — the log file is the durable record).
+    std::vector<NotifyMessage> notify_log;
 
     /// Lifecycle state, advanced by the LSP initialize/shutdown handlers.
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;

@@ -76,12 +76,13 @@ enum class NotifyLevel : std::uint8_t {
     Warning = 2,
 };
 
-/// Process-wide hook that pushes anomaly/guidance messages to the LSP client.
-/// The master sets it once a client peer is available; workers never set it.
+/// Process-wide hook observing anomaly/guidance messages. The master's
+/// composition root (MasterServer) owns it for the server's lifetime and
+/// materializes messages for transport delivery; workers never set it.
 /// Hook registration is internally synchronized, so reporting from any
 /// thread is safe — but the hook itself is invoked from the reporting
 /// thread, so what it DOES must be safe there (the master's hook touches
-/// the peer and is only ever invoked from the event-loop thread).
+/// event-loop state and is only ever invoked from the event-loop thread).
 void set_notify_hook(std::function<void(NotifyLevel, std::string_view)> hook);
 
 /// Replace the debug trap so unit tests can observe anomalies (in any build
