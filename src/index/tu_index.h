@@ -107,13 +107,8 @@ struct TUIndex {
 
     SymbolTable symbols;
 
-    /// Scratch space for the builder, keyed by FileID. build() drains it into
-    /// path_file_indices, and FileIDs are meaningless across processes, so the
-    /// field never serializes.
-    kota::meta::skip<llvm::DenseMap<clang::FileID, FileIndex>> file_indices;
-
-    /// File indices keyed by path_id — the canonical form after build() or
-    /// from(); this is what gets serialized.
+    /// Per-file indexes keyed by path id (files of the same path merge into
+    /// one entry); the main file lives in main_file_index instead.
     llvm::DenseMap<std::uint32_t, FileIndex> path_file_indices;
 
     FileIndex main_file_index;

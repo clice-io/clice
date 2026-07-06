@@ -2,7 +2,10 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
+#include "index/shared.h"
 #include "index/tu_index.h"
 #include "support/path_pool.h"
 
@@ -20,8 +23,25 @@ namespace clice::index {
 /// self-contained path table (which is also the garbage collection: paths no
 /// longer referenced by any symbol or shard are simply not written), and
 /// loading interns the table back into the running pool.
+///
+/// The struct is its own serialization root: format_version / paths / shards
+/// belong to the on-disk form, whose bitmaps index the embedded path table.
+/// On the live instance they stay empty and bitmaps hold pool ids.
 struct ProjectIndex {
+    /// On-disk schema version, serialized first so loaders can reject
+    /// incompatible blobs before touching anything else.
+    std::uint32_t format_version = index_format_version;
+
+    /// Compact self-contained path table the persisted bitmaps index into.
+    /// Empty at runtime.
+    std::vector<std::string> paths;
+
     SymbolTable symbols;
+
+    /// Blob-local ids of the files owning a MergedIndex shard, persisted so
+    /// the loader knows what to fetch. Empty at runtime — the live manifest
+    /// lives in workspace.merged_indices.
+    std::vector<std::uint32_t> shards;
 
     /// Merge a TU's external symbols, interning the TU's paths into `pool`.
     /// Returns the TU-local id → pool id mapping for the TU's path graph.

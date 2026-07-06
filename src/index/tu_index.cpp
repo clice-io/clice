@@ -34,6 +34,16 @@ public:
         result.graph = IncludeGraph::from(unit);
     }
 
+    /// Per-file index for `fid`: the interested file accumulates into
+    /// main_file_index, every other file into its path-id slot (several
+    /// FileIDs of one path merge into the same entry).
+    FileIndex& index_of(clang::FileID fid) {
+        if(fid == unit.interested_file()) {
+            return result.main_file_index;
+        }
+        return result.path_file_indices[result.graph.path_id(fid)];
+    }
+
     void handleDeclOccurrence(const clang::NamedDecl* decl,
                               RelationKind kind,
                               clang::SourceLocation location) {
@@ -54,7 +64,7 @@ public:
         }
 
         auto [fid, range] = unit.decompose_range(location);
-        auto& index = result.file_indices[fid];
+        auto& index = index_of(fid);
 
         auto symbol_id = unit.getSymbolID(decl);
         auto [it, success] = result.symbols.try_emplace(symbol_id.hash);
@@ -76,7 +86,7 @@ public:
         }
 
         auto [fid, range] = unit.decompose_range(location);
-        auto& index = result.file_indices[fid];
+        auto& index = index_of(fid);
 
         auto symbol_id = unit.getSymbolID(def);
         index.occurrences.emplace_back(range, symbol_id.hash);
@@ -122,7 +132,7 @@ public:
             std::unreachable();
         }
 
-        auto& index = result.file_indices[fid];
+        auto& index = index_of(fid);
         auto symbol_id = unit.getSymbolID(ast::normalize(decl));
         index.relations[symbol_id.hash].emplace_back(relation);
     }
@@ -143,7 +153,7 @@ public:
             usr += name;
             auto hash = llvm::xxh3_64bits(usr);
 
-            auto& index = result.file_indices[fid];
+            auto& index = index_of(fid);
             index.occurrences.emplace_back(range, hash);
             Relation relation{
                 .kind = kind,
@@ -262,7 +272,7 @@ public:
 
         index_modules();
 
-        for(auto& [fid, index]: result.file_indices) {
+        auto finalize = [&](std::uint32_t path_id, FileIndex& index) {
             for(auto& [symbol_id, relations]: index.relations) {
                 std::ranges::sort(relations, [](const Relation& lhs, const Relation& rhs) {
                     return std::tuple(lhs.kind.value(),
@@ -279,7 +289,7 @@ public:
                                lhs.target_symbol == rhs.target_symbol;
                     });
                 relations.erase(range.begin(), range.end());
-                result.symbols[symbol_id].reference_files.add(result.graph.path_id(fid));
+                result.symbols[symbol_id].reference_files.add(path_id);
             }
 
             std::ranges::sort(index.occurrences, [](const Occurrence& lhs, const Occurrence& rhs) {
@@ -292,22 +302,13 @@ public:
                                         return lhs.range == rhs.range && lhs.target == rhs.target;
                                     });
             index.occurrences.erase(range.begin(), range.end());
+        };
 
-            if(fid == unit.interested_file()) {
-                result.main_file_index = std::move(index);
-            }
+        for(auto& [path_id, index]: result.path_file_indices) {
+            finalize(path_id, index);
         }
-
-        result.file_indices.erase(unit.interested_file());
-
-        // Drain the FileID-keyed scratch map into the canonical path-id-keyed
-        // form; FileIDs never leave the producing compilation. A path included
-        // under several FileIDs keeps one entry, matching the last-wins
-        // behavior of the old deserializer.
-        for(auto& [fid, index]: result.file_indices) {
-            result.path_file_indices[result.graph.path_id(fid)] = std::move(index);
-        }
-        result.file_indices.clear();
+        /// Main file is the last path in graph.paths (convention from IncludeGraph).
+        finalize(static_cast<std::uint32_t>(result.graph.paths.size() - 1), result.main_file_index);
     }
 
 private:

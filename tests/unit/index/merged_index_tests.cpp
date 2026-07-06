@@ -24,28 +24,13 @@ void build_index(llvm::StringRef code,
     tu_index = index::TUIndex::build(*unit);
 };
 
-/// File index of `fid` after build(): main lives in main_file_index, every
-/// other file is keyed by its path id.
+/// File index of `fid`: the main file lives in main_file_index, every other
+/// file is keyed by its path id.
 index::FileIndex& file_index_of(index::TUIndex& index, clang::FileID fid) {
     if(fid == unit->interested_file()) {
         return index.main_file_index;
     }
     return index.path_file_indices[index.graph.path_id(fid)];
-}
-
-/// Visit every non-main (include_id, FileIndex) pair of a built TU.
-template <typename Callback>
-void for_each_header_index(index::TUIndex& index, Callback&& callback) {
-    for(auto& [fid, include_id]: index.graph.file_table) {
-        if(fid == unit->interested_file()) {
-            continue;
-        }
-        auto it = index.path_file_indices.find(index.graph.path_id(fid));
-        if(it == index.path_file_indices.end()) {
-            continue;
-        }
-        callback(fid, include_id, it->second);
-    }
 }
 
 void EXPECT_SELECT(llvm::StringRef pos,
@@ -82,10 +67,11 @@ TEST_CASE(Serialization) {
 
     llvm::StringMap<index::MergedIndex> merged_indices;
     auto& graph = tu_index.graph;
-    for_each_header_index(tu_index, [&](clang::FileID fid, std::uint32_t include_id, auto& index) {
-        llvm::StringRef path = graph.paths[graph.path_id(fid)];
-        merged_indices[path].merge("tu0", include_id, index, {});
-    });
+    for(auto& [path_id, index]: tu_index.path_file_indices) {
+        auto include_id = graph.first_include_of(path_id);
+        ASSERT_TRUE(include_id.has_value());
+        merged_indices[graph.paths[path_id]].merge("tu0", *include_id, index, {});
+    }
 
     for(auto& [path, merged]: merged_indices) {
         llvm::SmallString<1024> s;
@@ -177,12 +163,12 @@ TEST_CASE(MultipleMergesDedup) {
 
     // Merge header indices from both TUs into same MergedIndex.
     index::MergedIndex merged_header;
-    for_each_header_index(tu_a, [&](clang::FileID, std::uint32_t include_id, auto& file_index) {
-        merged_header.merge("tu0", include_id, file_index, {});
-    });
-    for_each_header_index(tu_b, [&](clang::FileID, std::uint32_t include_id, auto& file_index) {
-        merged_header.merge("tu1", include_id, file_index, {});
-    });
+    for(auto& [path_id, file_index]: tu_a.path_file_indices) {
+        merged_header.merge("tu0", *tu_a.graph.first_include_of(path_id), file_index, {});
+    }
+    for(auto& [path_id, file_index]: tu_b.path_file_indices) {
+        merged_header.merge("tu1", *tu_b.graph.first_include_of(path_id), file_index, {});
+    }
 
     // Serialize and deserialize to verify dedup survives round-trip.
     llvm::SmallString<4096> buf;
@@ -277,9 +263,9 @@ TEST_CASE(RemoveHeaderContext) {
 
     // Merge header index as header context.
     index::MergedIndex merged_header;
-    for_each_header_index(tu_index, [&](clang::FileID, std::uint32_t include_id, auto& file_index) {
-        merged_header.merge("tu0", include_id, file_index, {});
-    });
+    for(auto& [path_id, file_index]: tu_index.path_file_indices) {
+        merged_header.merge("tu0", *tu_index.graph.first_include_of(path_id), file_index, {});
+    }
 
     // Remove should not crash.
     merged_header.remove("tu0");

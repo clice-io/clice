@@ -8,21 +8,12 @@
 #include <vector>
 
 #include "index/path_pool.h"
+#include "index/shared.h"
 #include "semantic/relation_kind.h"
 #include "semantic/symbol_kind.h"
 #include "support/bitmap.h"
 
 #include "kota/codec/fbs/fbs.h"
-
-namespace clice::index {
-
-/// On-disk index blob schema version. The wire layout is derived from the
-/// reflected in-memory types, so bump this whenever their serialized fields
-/// change; loaders silently discard blobs carrying a different value (flatc
-/// era blobs are already rejected by the kotatsu buffer identifier).
-constexpr inline std::uint32_t index_format_version = 2;
-
-}  // namespace clice::index
 
 /// Type-level codec adapters bridging clice's non-reflectable leaf types onto
 /// kotatsu's visitor framework. They are keyed on the value type only, so they

@@ -39,17 +39,11 @@ void build_and_merge(llvm::StringRef code,
                                          {});
 
     // Merge header file indices.
-    for(auto& [fid, include_id]: tu_index.graph.file_table) {
-        if(fid == unit->interested_file()) {
-            continue;
-        }
-        auto tu_pid = tu_index.graph.path_id(fid);
-        auto it = tu_index.path_file_indices.find(tu_pid);
-        if(it == tu_index.path_file_indices.end()) {
-            continue;
-        }
+    for(auto& [tu_pid, file_idx]: tu_index.path_file_indices) {
+        auto include_id = tu_index.graph.first_include_of(tu_pid);
+        ASSERT_TRUE(include_id.has_value());
         auto global_pid = file_ids_map[tu_pid];
-        merged_indices[global_pid].merge(main_tu_path, include_id, it->second, {});
+        merged_indices[global_pid].merge(main_tu_path, *include_id, file_idx, {});
     }
 }
 
@@ -347,17 +341,11 @@ TEST_CASE(CrossFileQuery) {
                                          {});
 
     // Merge header file indices.
-    for(auto& [fid, include_id]: tu_index.graph.file_table) {
-        if(fid == unit->interested_file()) {
-            continue;
-        }
-        auto tu_pid = tu_index.graph.path_id(fid);
-        auto it = tu_index.path_file_indices.find(tu_pid);
-        if(it == tu_index.path_file_indices.end()) {
-            continue;
-        }
+    for(auto& [tu_pid, file_idx]: tu_index.path_file_indices) {
+        auto include_id = tu_index.graph.first_include_of(tu_pid);
+        ASSERT_TRUE(include_id.has_value());
         auto global_pid = file_ids_map[tu_pid];
-        merged_indices[global_pid].merge(main_tu_path, include_id, it->second, {});
+        merged_indices[global_pid].merge(main_tu_path, *include_id, file_idx, {});
     }
 
     // Query: from usage in main.cpp, find the symbol via merged index.
