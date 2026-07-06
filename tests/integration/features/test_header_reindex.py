@@ -11,7 +11,11 @@ from lsprotocol.types import (
 )
 
 from tests.integration.utils import write_cdb
-from tests.integration.utils.wait import MTIME_GRANULARITY
+from tests.integration.utils.wait import (
+    MTIME_GRANULARITY,
+    reference_uris,
+    wait_for_reference,
+)
 
 HEADER_V1 = """\
 #define TARGET alpha
@@ -28,19 +32,6 @@ inline int beta() { return 2; }
 """
 
 CLOSED_TU = '#include "header.h"\nint use_target() { return TARGET(); }\n'
-
-
-async def reference_uris(client, uri, line, character):
-    refs = await client.references_at(uri, line, character, include_declaration=False)
-    return [ref.uri for ref in (refs or [])]
-
-
-async def wait_for_reference(client, uri, line, character, expected_uri, timeout=30):
-    for _ in range(timeout):
-        if expected_uri in await reference_uris(client, uri, line, character):
-            return True
-        await asyncio.sleep(1)
-    return False
 
 
 async def test_header_save_reindexes_dependents(client, tmp_path):

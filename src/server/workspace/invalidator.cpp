@@ -116,6 +116,10 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
 DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     DirtySet dirty;
 
+    // DiskRemoved defers its reverse-map rebuild here so a batch of
+    // removals pays for one rebuild, not one per file.
+    bool rebuild_reverse_map = false;
+
     for(auto& event: events) {
         switch(event.kind) {
             case FileEvent::Kind::BufferOpened: {
@@ -181,16 +185,37 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
             case FileEvent::Kind::DiskRemoved: {
                 auto path_id = event.path_id;
+                // Dependents compile against a now-missing include: open
+                // ones recompile (the missing-file diagnostic is the truth),
+                // closed ones reindex — nothing else would ever queue them.
+                // Snapshot before the scrub below rewrites the graph.
+                for(auto root: workspace.dep_graph.find_host_sources(path_id)) {
+                    if(store.find(root)) {
+                        dirty.mark_ast_dirty.push_back(root);
+                    } else {
+                        dirty.enqueue_reindex.push_back(root);
+                    }
+                }
+                // A removed module unit takes its PCM with it: importers'
+                // build products went stale, and it stops providing its
+                // module name.
+                cascade_compile_graph(path_id, dirty);
+                workspace.path_to_module.erase(path_id);
                 // Scrub the includer role: the file's outgoing edges vanished
                 // with it, so it stops being a host-source candidate.
                 // Incoming edges stay — includers' text still names it, and
-                // their own rescan owns those edges.
+                // their own rescan owns those edges. The reverse-map rebuild
+                // is deferred to the end of the batch: a mass deletion (git
+                // checkout) would otherwise rebuild it once per file, and
+                // within-batch cascades tolerate a stale reverse map by
+                // design (they union the pre/post snapshots).
                 workspace.dep_graph.clear_includes(path_id);
-                workspace.dep_graph.build_reverse_map();
+                rebuild_reverse_map = true;
                 workspace.context_epoch += 1;
                 // Contexts hosted by (or chained through) the removed file
                 // are cleaned by the resolver's orphan pass.
                 dirty.recheck_contexts = true;
+                dirty.reschedule_indexing = true;
                 // Index shards are deliberately kept: the last-known content
                 // still serves navigation.
                 // TODO: sweep orphaned shards of files that stay deleted.
@@ -210,6 +235,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // retained anywhere: the cache's contract requires clearing
                 // it on every CDB change, and CDB changes are the only
                 // rescan trigger, so a persistent cache would never be warm.
+                // TODO: this scan runs synchronously on the event loop (same
+                // cost as the startup scan); if it shows up on large
+                // projects, move it off the dispatch path.
                 workspace.dep_graph = DependencyGraph();
                 scan_dependency_graph(workspace.cdb,
                                       workspace.toolchain,
@@ -245,9 +273,31 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     if(store.find(path_id)) {
                         dirty.mark_ast_dirty.push_back(path_id);
                     } else {
+                        // The shard was indexed under the old command, and
+                        // the indexer's freshness gate validates content
+                        // only — a flag change looks fresh to it. Evict the
+                        // shard so the queued reindex is not filtered out.
+                        workspace.merged_indices.erase(path_id);
                         dirty.enqueue_reindex.push_back(path_id);
                     }
                     cascade_compile_graph(path_id, dirty);
+
+                    // Headers borrowing this entry through their resolved
+                    // context compile with its flags; content validation
+                    // cannot see the change there either. Drop the context
+                    // so the next use re-resolves against the new command.
+                    for(auto& [header_id, context]: contexts.header_contexts) {
+                        if(context.host_path_id != path_id) {
+                            continue;
+                        }
+                        dirty.drop_context.push_back(header_id);
+                        if(store.find(header_id)) {
+                            dirty.mark_ast_dirty.push_back(header_id);
+                        } else {
+                            workspace.merged_indices.erase(header_id);
+                            dirty.enqueue_reindex.push_back(header_id);
+                        }
+                    }
                 }
 
                 for(auto path_id: delta.removed) {
@@ -261,6 +311,12 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
 
                 // The first CDB of the session may have introduced C++20
                 // modules; the compile graph is otherwise created at startup.
+                // TODO: a reload that adds a brand-new module unit to an
+                // already existing graph is not registered (update() only
+                // touches known units) — importers resolved before it
+                // existed keep their stale dependency lists until restart.
+                // Rebuilding the graph mid-session needs coordination with
+                // in-flight compiles.
                 if(!workspace.compile_graph) {
                     dirty.ensure_compile_graph = true;
                 }
@@ -288,12 +344,17 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
         }
     }
 
+    if(rebuild_reverse_map) {
+        workspace.dep_graph.build_reverse_map();
+    }
+
     dedup(dirty.mark_ast_dirty);
     dedup(dirty.mark_lost);
     dedup(dirty.reset_trial);
     dedup(dirty.reset_header_mode);
     dedup(dirty.force_revalidate);
     dedup(dirty.enqueue_reindex);
+    dedup(dirty.drop_context);
     return dirty;
 }
 

@@ -42,16 +42,20 @@ public:
     /// has stayed stable for two consecutive ticks, reloads the CDB and
     /// emits one CDBChanged event carrying the reload's diff.
     ///
-    /// `force` skips the two-tick settling debounce (the half-written-file
-    /// guard); the test hook uses it so a single poll request applies a
-    /// change deterministically.
+    /// `force` reloads unconditionally: it skips both the (size, mtime)
+    /// stamp gate — which could hide a same-size rewrite landing within
+    /// mtime granularity — and the two-tick settling debounce (the
+    /// half-written-file guard). The test hook uses it so a single poll
+    /// request applies a change deterministically; a spurious forced
+    /// reload just yields an empty diff.
     llvm::SmallVector<FileEvent> tick_cdb(bool force = false);
 
     /// One workspace sweep. Stats every file the dependency graph knows,
     /// skipping open buffers; a (mtime, size) suspect is confirmed by
     /// content hash before DiskChanged is emitted, so touch-only changes
     /// (mtime bump, identical bytes) stay silent. A stat failure on a
-    /// known file emits DiskRemoved once.
+    /// known file emits DiskRemoved once; a transient content-read failure
+    /// emits nothing and is retried on the next tick.
     ///
     /// Files seen for the first time only seed the baseline and emit
     /// nothing — the first sweep after startup is silent by construction
@@ -99,6 +103,10 @@ private:
 
     /// Workspace sweep baseline.
     llvm::DenseMap<std::uint32_t, FileState> baseline;
+
+    /// True while a sweep is in flight (it suspends between batches);
+    /// concurrent ticks are skipped instead of racing on the baseline.
+    bool sweeping = false;
 };
 
 }  // namespace clice

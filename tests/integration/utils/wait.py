@@ -59,3 +59,20 @@ async def wait_for_index(
             return True
         await asyncio.sleep(1)
     return False
+
+
+async def reference_uris(client, uri: str, line: int, character: int) -> list[str]:
+    """URIs of the references at a position (declaration excluded)."""
+    refs = await client.references_at(uri, line, character, include_declaration=False)
+    return [ref.uri for ref in (refs or [])]
+
+
+async def wait_for_reference(
+    client, uri: str, line: int, character: int, expected_uri: str, timeout: int = 30
+) -> bool:
+    """Poll references at a position until expected_uri shows up."""
+    for _ in range(timeout):
+        if expected_uri in await reference_uris(client, uri, line, character):
+            return True
+        await asyncio.sleep(1)
+    return False

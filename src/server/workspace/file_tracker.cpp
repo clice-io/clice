@@ -8,6 +8,7 @@
 #include "support/timer.h"
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
 
@@ -56,12 +57,11 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
     }
 
     auto current = stat_cdb();
-    if(current == applied) {
-        has_pending = false;
-        return {};
-    }
-
     if(!force) {
+        if(current == applied) {
+            has_pending = false;
+            return {};
+        }
         // Generators rewrite the file in place; only act once the stamp
         // has been stable for two consecutive ticks (half-write guard).
         if(!has_pending || !(pending == current)) {
@@ -70,12 +70,18 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
             return {};
         }
     }
+    // A forced tick reloads unconditionally — the stamp gate would make a
+    // same-size rewrite within mtime granularity invisible to the test
+    // hook, and a spurious reload just yields an empty diff.
     has_pending = false;
 
     if(!current.exists) {
         // Deleted — usually mid-regeneration. Keep serving the loaded
-        // entries; the rewrite lands as the next observed change.
+        // entries; the rewrite lands as the next observed change. Forget
+        // the path too: if the database reappears somewhere else among the
+        // configured locations, discovery must run again.
         applied = current;
+        cdb_path.clear();
         return {};
     }
 
@@ -111,6 +117,15 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
 kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     constexpr std::size_t batch_size = 500;
 
+    if(sweeping) {
+        // The poll hook can land while the live loop is suspended between
+        // batches; two interleaved sweeps would race on the baseline. The
+        // running sweep already covers this request.
+        co_return llvm::SmallVector<FileEvent>{};
+    }
+    sweeping = true;
+    auto guard = llvm::make_scope_exit([this] { sweeping = false; });
+
     ScopedTimer timer;
     auto files = workspace.dep_graph.all_files();
 
@@ -144,6 +159,10 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                 // Open buffers are the truth and didSave owns their disk
                 // sync; drop the baseline so the file re-seeds silently
                 // once it closes (BufferClosed already reindexes it).
+                // TODO: a disk change landing while the file is open (git
+                // checkout on an open header, closed without saving) is
+                // forgotten by this reset — dependents are not cascaded.
+                // Desync hardening owns that case.
                 baseline.erase(path_id);
                 continue;
             }
@@ -161,6 +180,12 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                     state.size = status.getSize();
                     state.mtime_ns = to_nanoseconds(status.getLastModificationTime());
                     state.hash = hash_file(path);
+                    if(state.hash == 0) {
+                        // Read failure (hash_file's sentinel): don't seed a
+                        // baseline that would later compare as a change.
+                        // Retry next tick.
+                        continue;
+                    }
                 }
                 baseline.try_emplace(path_id, state);
                 continue;
@@ -185,6 +210,14 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
             // The stamp moved: only a confirmed content change counts, so
             // touches and checkouts of identical bytes stay silent.
             auto hash = hash_file(path);
+            if(hash == 0) {
+                // The file stats fine but cannot be read right now (e.g. an
+                // antivirus scanner briefly holding a fresh file on Windows).
+                // No signal either way — leave the baseline untouched so the
+                // still-different stamp retries this check next tick, and
+                // emit nothing: a failed read must never count as a change.
+                continue;
+            }
             bool content_changed = state.missing || hash != state.hash;
             state = FileState{.size = size, .mtime_ns = mtime_ns, .hash = hash};
             if(content_changed) {

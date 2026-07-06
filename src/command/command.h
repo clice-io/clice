@@ -197,7 +197,10 @@ public:
     /// Parsing is atomic at the top level: if the file cannot be read, is not
     /// valid JSON, or has a root that is not an array, the previously loaded
     /// entries are kept and 0 is returned. Individual malformed entries are
-    /// still skipped as before. Returns the number of entries loaded.
+    /// still skipped as before — which means a file truncated mid-array
+    /// loads as a partial set; the poll-side settle debounce is what guards
+    /// against reading half-written files. Returns the number of entries
+    /// loaded.
     std::size_t load(llvm::StringRef path);
 
     /// Reload the database from `path` and report the per-file delta against

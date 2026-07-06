@@ -1,18 +1,20 @@
-"""File tracker: CDB reload and disk-change discovery via clice/internal/poll.
-
-The polling loops are disabled in tests (intervals 0); each test drives one
-deterministic tick through the poll hook. The first workspace tick only
-seeds the stat baseline, so tests poll once before mutating the disk.
-"""
+"""File tracker: each test drives deterministic ticks through the
+clice/internal/poll hook (loops disabled). The first workspace tick only
+seeds the stat baseline, so tests poll once before mutating the disk."""
 
 import asyncio
 
 from tests.integration.utils import write_cdb
-from tests.integration.utils.assertions import assert_has_errors, assert_no_errors
+from tests.integration.utils.assertions import (
+    assert_has_errors,
+    assert_no_errors,
+    get_errors,
+)
 from tests.integration.utils.wait import (
     MTIME_GRANULARITY,
     wait_for_index,
     wait_for_recompile,
+    wait_for_reference,
 )
 from tests.integration.utils.workspace import get_field
 
@@ -38,21 +40,17 @@ inline int beta() { return 2; }
 """
 
 
+GATED_LIB = """\
+#ifdef FEATURE
+int feature_on() { return 1; }
+#else
+int feature_off() { return 0; }
+#endif
+"""
+
+
 async def events_of(client, loop):
     return get_field(await client.poll(loop), "events")
-
-
-async def reference_uris(client, uri, line, character):
-    refs = await client.references_at(uri, line, character, include_declaration=False)
-    return [ref.uri for ref in (refs or [])]
-
-
-async def wait_for_reference(client, uri, line, character, expected_uri, timeout=30):
-    for _ in range(timeout):
-        if expected_uri in await reference_uris(client, uri, line, character):
-            return True
-        await asyncio.sleep(1)
-    return False
 
 
 async def test_cdb_flag_change_recompiles(client, tmp_path):
@@ -191,10 +189,40 @@ async def test_cdb_polling_loop_live(client, tmp_path):
     assert_has_errors(client, main_uri)
 
     write_cdb(tmp_path, ["main.cpp"], extra_args=["-DFEATURE"])
-    # No hook: the 1s poll loop needs two stable ticks (settle debounce).
-    await asyncio.sleep(6)
-
-    await wait_for_recompile(client, main_uri)
+    # No hook: the 1s poll loop needs two stable ticks (settle debounce),
+    # so poll for the errors to clear instead of trusting one fixed sleep.
+    # Until the reload lands the hover fast-paths on a clean AST and no
+    # diagnostics arrive — that round just times out and retries.
+    for _ in range(30):
+        await asyncio.sleep(1)
+        try:
+            await wait_for_recompile(client, main_uri, timeout=3.0)
+        except TimeoutError:
+            continue
+        if not get_errors(client.diagnostics.get(main_uri, [])):
+            break
     assert_no_errors(
         client, main_uri, "the polling loop must reload the CDB on its own"
+    )
+
+
+async def test_cdb_flag_change_reindexes_closed(client, tmp_path):
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n", newline="\n")
+    (tmp_path / "lib.cpp").write_text(GATED_LIB, newline="\n")
+    write_cdb(tmp_path, ["main.cpp", "lib.cpp"])
+    await client.initialize(tmp_path)
+
+    main_uri = (tmp_path / "main.cpp").as_uri()
+    await client.open_and_wait(tmp_path / "main.cpp")
+    assert await wait_for_index(client, main_uri, "feature_off"), (
+        "closed file was never indexed initially"
+    )
+
+    # Only lib.cpp's flags change; its bytes do not. Content-based staleness
+    # cannot see this — the CDB delta must force the reindex.
+    write_cdb(tmp_path, ["main.cpp", "lib.cpp"], extra_args=["-DFEATURE"])
+    assert await events_of(client, "cdb") == 1
+
+    assert await wait_for_index(client, main_uri, "feature_on"), (
+        "closed file was not reindexed after its flags changed"
     )

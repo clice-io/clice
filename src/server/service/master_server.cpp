@@ -225,6 +225,14 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         }
     }
 
+    // The header's borrowed compile command changed: its resolved context
+    // (and synthesized preamble) describes flags that no longer exist, so
+    // the next use must re-resolve. Session dirtying arrives in the same
+    // DirtySet via mark_ast_dirty.
+    for(auto path_id: dirty.drop_context) {
+        contexts.drop_header_context(path_id);
+    }
+
     for(auto path_id: dirty.enqueue_reindex) {
         background_indexer.enqueue(path_id);
     }

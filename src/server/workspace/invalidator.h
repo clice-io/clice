@@ -127,6 +127,12 @@ struct DirtySet {
     /// Closed files whose index entries went stale: enqueue for background
     /// reindexing.
     llvm::SmallVector<std::uint32_t> enqueue_reindex;
+    /// Headers whose resolved context borrows a compile command that no
+    /// longer exists in that form (the host's CDB entry changed): drop the
+    /// context so the next use re-resolves. Content validation cannot see
+    /// a flag change, so neither force_revalidate nor the deps snapshot
+    /// covers this. Executed by the context resolver.
+    llvm::SmallVector<std::uint32_t> drop_context;
     /// Include edges changed: context choices may now be orphaned; run the
     /// context resolver's orphan cleanup.
     bool recheck_contexts = false;
@@ -142,7 +148,8 @@ struct DirtySet {
     bool empty() const {
         return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
                reset_header_mode.empty() && force_revalidate.empty() && enqueue_reindex.empty() &&
-               !recheck_contexts && !save_cache && !reschedule_indexing && !ensure_compile_graph;
+               drop_context.empty() && !recheck_contexts && !save_cache && !reschedule_indexing &&
+               !ensure_compile_graph;
     }
 };
 
@@ -166,7 +173,8 @@ class Invalidator {
 public:
     /// Read a file's current on-disk content, or nullopt if unreadable.
     /// Defaults to the real filesystem; unit tests inject file content
-    /// through it. Reserved for the Disk* events' content validation.
+    /// through it. Used by BufferSaved to detect a save hook or formatter
+    /// rewriting the file as it lands (disk ahead of the buffer).
     using ReadFile = std::function<std::optional<std::string>(llvm::StringRef path)>;
 
     Invalidator(Workspace& workspace,

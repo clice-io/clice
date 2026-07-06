@@ -85,6 +85,34 @@ TEST_CASE(CDBTickDiscoversLate) {
     ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<std::uint32_t>{main_id});
 }
 
+TEST_CASE(CDBTickDeleteRecreate) {
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+
+    Workspace workspace;
+    SessionStore store;
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+
+    // Deletion (mid-regeneration): keep serving the loaded entries.
+    fs::remove_all(tmp.path("compile_commands.json"));
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+
+    // The rewrite lands as a normal change once the file is back.
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-DFOO"}}
+    }));
+    auto events = tracker.tick_cdb(/*force=*/true);
+    ASSERT_EQ(events.size(), 1u);
+    auto main_id = workspace.path_pool.intern(tmp.path("main.cpp"));
+    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<std::uint32_t>{main_id});
+}
+
 TEST_CASE(WorkspaceTickStateMachine) {
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
@@ -104,9 +132,12 @@ TEST_CASE(WorkspaceTickStateMachine) {
         auto seeded = co_await tracker.tick_workspace();
         EXPECT_TRUE(seeded.empty());
 
-        // Content change is confirmed by hash and reported once.
+        // Content change is confirmed by hash and reported once. The new
+        // content has a different LENGTH on purpose: back-to-back writes
+        // can land within one mtime tick (observed on Windows CI), and only
+        // the size change keeps the (mtime, size) fast path deterministic.
         // (ASSERT_* expands to `return` and cannot be used in coroutines.)
-        tmp.touch("header.h", R"(int x = 2;)");
+        tmp.touch("header.h", R"(int x = 2222;)");
         auto changed = co_await tracker.tick_workspace();
         EXPECT_EQ(changed.size(), 1u);
         if(changed.size() == 1) {
@@ -114,8 +145,8 @@ TEST_CASE(WorkspaceTickStateMachine) {
             EXPECT_EQ(changed[0].path_id, header);
         }
 
-        // Touch: mtime bumps, identical bytes — silent.
-        tmp.touch("header.h", R"(int x = 2;)");
+        // Touch: mtime may bump, identical bytes — silent either way.
+        tmp.touch("header.h", R"(int x = 2222;)");
         auto touched = co_await tracker.tick_workspace();
         EXPECT_TRUE(touched.empty());
 

@@ -396,6 +396,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     auto open_id = workspace.path_pool.intern(tmp.path("a.cpp"));
     auto closed_id = workspace.path_pool.intern(tmp.path("b.cpp"));
     store.open(open_id);
+    workspace.merged_indices[open_id];
+    workspace.merged_indices[closed_id];
 
     ContextResolver resolver(workspace);
     Invalidator invalidator(workspace, store, resolver);
@@ -407,6 +409,128 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     // pull-side cache keys (canonical flags) miss on their own.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_id});
     ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{closed_id});
+    ASSERT_TRUE(dirty.recheck_contexts);
+
+    // The closed file's shard was built under the old command and looks
+    // fresh to content-only validation: it must be evicted so the queued
+    // reindex is not filtered out. The open file's shard stays (its next
+    // compile owns the refresh).
+    ASSERT_EQ(workspace.merged_indices.count(closed_id), 0u);
+    ASSERT_EQ(workspace.merged_indices.count(open_id), 1u);
+}
+
+TEST_CASE(CDBAddedOpenMarksDirty) {
+    Workspace workspace;
+    SessionStore store;
+    auto file = workspace.path_pool.intern("/proj/a.cpp");
+    store.open(file);
+
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+    FileEvent::CDBDelta delta;
+    delta.added = {file};
+    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
+
+    // The open file gained its first real entry: drop the guessed command
+    // it was compiled with instead of queueing a background reindex.
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{file});
+    ASSERT_TRUE(dirty.enqueue_reindex.empty());
+}
+
+TEST_CASE(CDBChangedDropsHostedContext) {
+    Workspace workspace;
+    SessionStore store;
+    auto host = workspace.path_pool.intern("/proj/host.cpp");
+    auto open_header = workspace.path_pool.intern("/proj/open.h");
+    auto closed_header = workspace.path_pool.intern("/proj/closed.h");
+    auto other_header = workspace.path_pool.intern("/proj/other.h");
+    store.open(open_header);
+    workspace.merged_indices[closed_header];
+
+    ContextResolver resolver(workspace);
+    resolver.header_contexts[open_header].host_path_id = host;
+    resolver.header_contexts[closed_header].host_path_id = host;
+    resolver.header_contexts[other_header].host_path_id = no_path_id;
+    Invalidator invalidator(workspace, store, resolver);
+    FileEvent::CDBDelta delta;
+    delta.changed = {host};
+    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
+
+    // Headers borrowing the changed entry re-resolve their context; the
+    // open one recompiles, the closed one loses its stale shard and
+    // reindexes. Unrelated contexts are untouched.
+    llvm::SmallVector<std::uint32_t> dropped{open_header, closed_header};
+    llvm::sort(dropped);
+    ASSERT_EQ(dirty.drop_context, dropped);
+    ASSERT_TRUE(llvm::is_contained(dirty.mark_ast_dirty, open_header));
+    ASSERT_TRUE(llvm::is_contained(dirty.enqueue_reindex, closed_header));
+    ASSERT_EQ(workspace.merged_indices.count(closed_header), 0u);
+}
+
+TEST_CASE(CDBChangedCascadesModule) {
+    kota::event_loop loop;
+    Workspace workspace;
+    SessionStore store;
+    auto mod = workspace.path_pool.intern("/proj/m.cppm");
+    auto open_user = workspace.path_pool.intern("/proj/open_user.cppm");
+    auto closed_user = workspace.path_pool.intern("/proj/closed_user.cppm");
+
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> deps;
+    deps[open_user] = {mod};
+    deps[closed_user] = {mod};
+    workspace.compile_graph = std::make_unique<CompileGraph>(
+        loop,
+        [](std::uint32_t) -> kota::task<bool> { co_return true; },
+        [deps = std::move(deps)](std::uint32_t id) -> llvm::SmallVector<std::uint32_t> {
+            auto it = deps.find(id);
+            return it != deps.end() ? it->second : llvm::SmallVector<std::uint32_t>{};
+        });
+
+    store.open(open_user);
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+
+    auto body = [&]() -> kota::task<> {
+        co_await workspace.compile_graph->compile(open_user);
+        co_await workspace.compile_graph->compile(closed_user);
+
+        FileEvent::CDBDelta delta;
+        delta.changed = {mod};
+        auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
+
+        // A module unit's flag change cascades through the compile graph
+        // exactly like a content change: importers' PCMs went stale.
+        EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
+        llvm::SmallVector<std::uint32_t> reindexed{mod, closed_user};
+        llvm::sort(reindexed);
+        EXPECT_EQ(dirty.enqueue_reindex, reindexed);
+
+        co_await workspace.compile_graph->shutdown();
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+}
+
+TEST_CASE(DiskRemovedReindexesIncluders) {
+    Workspace workspace;
+    SessionStore store;
+    auto header = workspace.path_pool.intern("/proj/h.h");
+    auto open_tu = workspace.path_pool.intern("/proj/a.cpp");
+    auto closed_tu = workspace.path_pool.intern("/proj/b.cpp");
+    workspace.dep_graph.set_includes(open_tu, 0, {header});
+    workspace.dep_graph.set_includes(closed_tu, 0, {header});
+    workspace.dep_graph.build_reverse_map();
+    store.open(open_tu);
+
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+    auto dirty = invalidator.apply(FileEvent::disk_removed(header));
+
+    // Dependents now compile against a missing include: open ones
+    // recompile, closed ones reindex.
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
+    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{closed_tu});
     ASSERT_TRUE(dirty.recheck_contexts);
 }
 

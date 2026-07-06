@@ -222,9 +222,12 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
         return 0;
     }
 
-    // Parse into a local vector and only swap it in once the array parsed:
-    // a half-written or corrupt file must leave the loaded entries intact so
-    // reload_and_diff() reports no change instead of dropping every file.
+    // Parse into a local vector and only swap it in at the end: a file that
+    // fails to read or parse at the top level leaves the loaded entries
+    // intact, so reload_and_diff() reports no change instead of dropping
+    // every file. A file truncated mid-array is NOT caught here (the
+    // entries before the cut still swap in) — the CDB poll's two-tick
+    // settle debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
 
     std::size_t index = 0;
