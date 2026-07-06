@@ -167,6 +167,11 @@ void Compiler::init_compile_graph() {
         if(mod_it == workspace.path_to_module.end())
             co_return false;
 
+        // Copy out of the map before any suspension below: while a PCM build
+        // is awaited, a concurrent didSave can insert into (or erase from)
+        // path_to_module, rehashing the DenseMap and invalidating mod_it.
+        auto module_name = mod_it->second;
+
         auto file_path = std::string(workspace.path_pool.resolve(path_id));
 
         worker::BuildParams bp;
@@ -175,13 +180,13 @@ void Compiler::init_compile_graph() {
         contexts.resolve_command(file_path, bp.directory, bp.arguments);
 
         if(!workspace.store) {
-            LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", mod_it->second);
+            LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", module_name);
             co_return false;
         }
 
         // Deterministic content-addressed PCM key over the source path and
         // the frontend-relevant subset of the compile flags.
-        auto safe_module_name = mod_it->second;
+        auto safe_module_name = module_name;
         std::ranges::replace(safe_module_name, ':', '-');
         auto pcm_key = std::format("{}-{}",
                                    safe_module_name,
@@ -201,7 +206,7 @@ void Compiler::init_compile_graph() {
                 pcm_miss = "deps_changed";
             } else {
                 workspace.pcm_paths[path_id] = pcm_it->second.path;
-                LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, mod_it->second);
+                LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
                 co_return true;
             }
         }
@@ -209,9 +214,9 @@ void Compiler::init_compile_graph() {
                  "ns=pcm event=miss reason={} key={} module={}",
                  pcm_miss,
                  pcm_key,
-                 mod_it->second);
+                 module_name);
 
-        bp.module_name = mod_it->second;
+        bp.module_name = module_name;
         auto pending = workspace.store->begin_store("pcm", pcm_key);
         bp.output_path = pending.tmp_path;
 
@@ -225,12 +230,12 @@ void Compiler::init_compile_graph() {
             workspace.store->abort(pending);
             if(expected_build_failure(result)) {
                 LOG_WARN("BuildPCM failed for module {}: {}",
-                         mod_it->second,
+                         module_name,
                          build_failure_message(result));
             } else {
                 LOG_ANOMALY(PCMBuildFail,
                             "PCM build failed for module {}: {}",
-                            mod_it->second,
+                            module_name,
                             build_failure_message(result));
             }
             co_return false;
@@ -240,7 +245,7 @@ void Compiler::init_compile_graph() {
         auto committed =
             co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
         if(!committed.has_value() || !committed.value().has_value()) {
-            LOG_WARN("Failed to commit PCM for module {}", mod_it->second);
+            LOG_WARN("Failed to commit PCM for module {}", module_name);
             co_return false;
         }
 
@@ -250,7 +255,7 @@ void Compiler::init_compile_graph() {
             pcm_path,
             pcm_key,
             capture_deps_snapshot(workspace.path_pool, result.value().deps)};
-        LOG_INFO("Built PCM for module {}: {}", mod_it->second, pcm_path);
+        LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
 
         // Persist cache metadata after successful build.
         workspace.save_cache(contexts);
@@ -503,21 +508,27 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
         for(auto& mod_name: scan_result.modules) {
             if(mod_name.empty())
                 continue;
+            // Finish the map lookup before suspending: compile_deps below
+            // awaits, and a concurrent didSave can mutate path_to_module,
+            // invalidating any iterator/reference held across the suspension.
             bool found = false;
+            std::uint32_t module_pid = 0;
             for(auto& [pid, name]: workspace.path_to_module) {
                 if(name == mod_name) {
-                    // If PCM not already built, try to build it.
-                    if(workspace.pcm_paths.find(pid) == workspace.pcm_paths.end()) {
-                        if(workspace.compile_graph && workspace.compile_graph->has_unit(pid)) {
-                            co_await compile_deps(pid);
-                        }
-                    }
+                    module_pid = pid;
                     found = true;
                     break;
                 }
             }
             if(!found) {
                 LOG_DEBUG("Buffer imports unknown module '{}', skipping", mod_name);
+                continue;
+            }
+            // If PCM not already built, try to build it.
+            if(workspace.pcm_paths.find(module_pid) == workspace.pcm_paths.end()) {
+                if(workspace.compile_graph && workspace.compile_graph->has_unit(module_pid)) {
+                    co_await compile_deps(module_pid);
+                }
             }
         }
     }
