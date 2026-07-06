@@ -41,6 +41,12 @@ static kota::ipc::Error document_not_open() {
     return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams, "Document not open"};
 }
 
+/// True once the server has begun shutting down; document-sync
+/// notifications arriving past this point are dropped.
+static bool past_shutdown(ServerLifecycle lifecycle) {
+    return lifecycle == ServerLifecycle::ShuttingDown || lifecycle == ServerLifecycle::Exited;
+}
+
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
     output_conn = server.compiler.on_output.connect(
         [this](const std::shared_ptr<Session>& session) { push_output(*session); });
@@ -48,23 +54,27 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         server.indexer.on_progress_changed.connect([this]() { report_index_progress(); });
 
     // Guidance/anomaly messages travel as window/logMessage, which the LSP
-    // spec allows before the initialize handshake — deliver the backlog a
-    // headless server accumulated, then subscribe for live messages.
-    auto forward_notify = [&peer](const NotifyMessage& message) {
-        peer.send_notification(protocol::LogMessageParams{
-            static_cast<protocol::MessageType>(message.level),
-            message.text,
-        });
-    };
-    for(const auto& message: server.notify_log) {
-        forward_notify(message);
-    }
-    notify_conn = server.on_notify.connect(forward_notify);
+    // spec allows before the initialize handshake — drain what a headless
+    // server accumulated, then drain again on every wake-up.
+    forward_notify_messages();
+    notify_conn = server.on_notify.connect([this]() { forward_notify_messages(); });
 
     register_lifecycle();
     register_document_sync();
     register_language_features();
     register_extensions();
+}
+
+void LSPClient::forward_notify_messages() {
+    auto first_seq = server.notify_seq - server.notify_log.size();
+    for(auto seq = std::max(notify_cursor, first_seq); seq < server.notify_seq; ++seq) {
+        auto& message = server.notify_log[static_cast<std::size_t>(seq - first_seq)];
+        peer.send_notification(protocol::LogMessageParams{
+            static_cast<protocol::MessageType>(message.level),
+            message.text,
+        });
+    }
+    notify_cursor = server.notify_seq;
 }
 
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
@@ -208,17 +218,13 @@ void LSPClient::register_lifecycle() {
     });
 }
 
-/// True once the server has begun shutting down; document-sync
-/// notifications arriving past this point are dropped.
-static bool past_shutdown(ServerLifecycle lifecycle) {
-    return lifecycle == ServerLifecycle::ShuttingDown || lifecycle == ServerLifecycle::Exited;
-}
-
 void LSPClient::register_document_sync() {
     peer.on_notification([this](const protocol::DidOpenTextDocumentParams& params) {
         auto& srv = this->server;
         if(past_shutdown(srv.lifecycle))
             return;
+
+        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
 
         // A didOpen racing ahead of the initialize handshake is a client
         // protocol violation, but sessions are plain state with no worker
@@ -227,10 +233,9 @@ void LSPClient::register_document_sync() {
         // an operational worker-unavailable error and leaves the session
         // dirty, so the first post-ready request recompiles it.
         if(srv.lifecycle != ServerLifecycle::Ready) {
-            LOG_WARN("didOpen before the server is ready, accepting: {}", params.text_document.uri);
+            LOG_WARN("didOpen before the server is ready, accepting: {}", path);
         }
 
-        auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         session = srv.open_session(path_id);
         srv.sessions.apply_open(*session, params.text_document.text, params.text_document.version);
 
@@ -280,9 +285,11 @@ void LSPClient::register_document_sync() {
 
         // Accepted before the server is ready for the same reason didOpen
         // is: a session opened during the handshake window must not stay
-        // open forever when the editor already closed it.
+        // open forever when the editor already closed it. The diagnostics
+        // clear is suppressed until the handshake completes — nothing was
+        // pushed, and publishDiagnostics may not flow yet.
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-        srv.close_session(path_id, this->peer);
+        srv.close_session(path_id, client_ready ? &this->peer : nullptr);
     });
 
     peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {

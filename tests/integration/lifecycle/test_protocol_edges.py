@@ -39,6 +39,25 @@ async def test_open_before_initialize(request, executable, workspace):
 
 
 @pytest.mark.workspace("hello_world")
+async def test_close_before_initialize(request, executable, workspace):
+    c = CliceClient()
+    await c.start_io(str(executable), "serve")
+    try:
+        uri, _ = c.open(workspace / "main.cpp")
+        c.close(uri)
+        await c.initialize(workspace)
+        # The pre-handshake close must not push a diagnostics clear (an
+        # ungated one would be on the wire before the initialize response),
+        # and the closed session must not be replayed.
+        assert uri not in c.diagnostics
+        with pytest.raises(Exception, match="Document not open"):
+            await c.hover_at(uri, 0, 0)
+    finally:
+        await shutdown_client(c)
+    check_no_anomaly(request, c)
+
+
+@pytest.mark.workspace("hello_world")
 async def test_change_without_open(client, workspace):
     uri = (workspace / "main.cpp").as_uri()
     # No didOpen baseline: the edit must be dropped.
@@ -76,6 +95,9 @@ async def test_replay_after_late_handshake(request, executable, tmp_path):
         uri, _ = c.open(ws / "main.cpp")
         hover = await c.hover_at(uri, 0, 4)
         assert hover is not None
+        # Non-vacuous: an ungated push is emitted during the compile the
+        # hover awaits, so it would be on the wire before the hover
+        # response and recorded by the time the hover future resolves.
         assert uri not in c.diagnostics
 
         # A pre-initialized server rejects the initialize request; the
@@ -97,21 +119,22 @@ async def test_replay_after_late_handshake(request, executable, tmp_path):
     check_no_anomaly(request, c)
 
 
-async def test_startup_guidance_replayed(request, executable, tmp_path):
+async def test_startup_guidance_delivered(request, executable, tmp_path):
     ws = tmp_path
     write_source(ws, "main.cpp", "int x = 1;\n")
     (ws / "clice.toml").write_text(TEST_TOML)
     # No compile_commands.json: the headless workspace load emits guidance
-    # before any client is attached; attaching must deliver the backlog.
+    # without waiting for any handshake; the client must still receive it
+    # (drained from the server's notify log).
     c = CliceClient()
     await c.start_io(str(executable), "serve", f"--workspace={ws}")
     try:
-        for _ in range(100):
+        for _ in range(300):
             if any("compile_commands.json" in m for m in guidance_messages(c)):
                 break
             await asyncio.sleep(0.1)
         else:
-            pytest.fail("startup guidance was not replayed to the late client")
+            pytest.fail("startup guidance never reached the client")
     finally:
         c.workspace = ws
         await shutdown_client(c)

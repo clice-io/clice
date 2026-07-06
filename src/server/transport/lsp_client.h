@@ -15,7 +15,6 @@
 namespace clice {
 
 class MasterServer;
-struct NotifyMessage;
 struct Session;
 
 class LSPClient {
@@ -59,6 +58,12 @@ private:
     /// background indexer's on_progress_changed signal.
     void report_index_progress();
 
+    /// Send every not-yet-forwarded notify-log message as
+    /// window/logMessage, advancing notify_cursor. Invoked once from the
+    /// constructor (a headless server may have accumulated messages) and
+    /// then by the server's on_notify signal.
+    void forward_notify_messages();
+
     MasterServer& server;
     kota::ipc::JsonPeer& peer;
 
@@ -75,9 +80,13 @@ private:
     /// Subscription to background-index progress; disconnects on destruction.
     Signal<>::Connection progress_conn;
 
-    /// Subscription to guidance/anomaly messages; disconnects on
+    /// Subscription to guidance/anomaly message wake-ups; disconnects on
     /// destruction.
-    Signal<const NotifyMessage&>::Connection notify_conn;
+    Signal<>::Connection notify_conn;
+
+    /// Sequence number of the next notify-log message to forward (see
+    /// MasterServer::notify_seq).
+    std::uint64_t notify_cursor = 0;
 
     /// Progress-token lifecycle, split into orthogonal facts so the
     /// asynchronous create() handshake can reconcile against rounds that

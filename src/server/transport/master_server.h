@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -102,7 +103,11 @@ public:
 
     std::shared_ptr<Session> find_session(std::uint32_t path_id);
     std::shared_ptr<Session> open_session(std::uint32_t path_id);
-    void close_session(std::uint32_t path_id, kota::ipc::JsonPeer& peer);
+
+    /// Close the session and clear its published diagnostics on `peer`.
+    /// Pass null when no handshake-complete client is attached: nothing was
+    /// ever pushed, so there is nothing to clear.
+    void close_session(std::uint32_t path_id, kota::ipc::JsonPeer* peer);
 
     /// The single entry point for file events: fold the batch through the
     /// Invalidator, then execute the resulting effects against the mutable
@@ -140,17 +145,22 @@ public:
     /// clice/internal/poll test hook drives ticks directly.
     std::unique_ptr<FileTracker> tracker;
 
-    /// Announces a guidance/anomaly message (window/logMessage material).
-    /// The constructor owns the process-wide logging notify hook for the
-    /// server's lifetime and forwards every report here; transports
-    /// subscribe instead of touching the hook themselves. The argument is
-    /// only valid during the emission — subscribers forward it immediately.
-    Signal<const NotifyMessage&> on_notify;
+    /// Wakes subscribers after a new message landed in notify_log. Pure
+    /// wake-up per the Signal contract: subscribers keep a sequence cursor
+    /// and read the messages from the log, so a late subscriber (or a
+    /// missed signal) simply catches up on its next drain. The constructor
+    /// owns the process-wide logging notify hook for the server's lifetime
+    /// and forwards every report here; transports subscribe instead of
+    /// touching the hook themselves.
+    Signal<> on_notify;
 
-    /// Messages retained for clients that attach late (bounded; once full,
-    /// live delivery via on_notify continues but the overflow is not
-    /// retained — the log file is the durable record).
-    std::vector<NotifyMessage> notify_log;
+    /// Recent guidance/anomaly messages (window/logMessage material),
+    /// bounded by dropping the oldest. notify_seq numbers the next message,
+    /// so notify_seq - notify_log.size() is the oldest retained sequence; a
+    /// subscriber lagging further behind than the retention window loses
+    /// the evicted messages (the log file keeps the durable record).
+    std::deque<NotifyMessage> notify_log;
+    std::uint64_t notify_seq = 0;
 
     /// Lifecycle state, advanced by the LSP initialize/shutdown handlers.
     ServerLifecycle lifecycle = ServerLifecycle::Uninitialized;

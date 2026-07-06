@@ -31,9 +31,10 @@ namespace clice {
 namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
-/// Bound on the notify backlog. Only messages that fire before a client
-/// attaches accumulate here (a handful of startup guidance reports in
-/// practice); the cap is a safety net, not a working-set size.
+/// Retention bound of the notify log. Subscribers drain promptly, so only
+/// messages that fire before any client attaches accumulate (a handful of
+/// startup guidance reports in practice); the cap is a safety net, not a
+/// working-set size.
 constexpr static std::size_t notify_log_limit = 128;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
@@ -43,16 +44,16 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     invalidator(workspace, sessions, contexts), bg_tasks(loop), self_path(std::move(self_path)) {
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
-    // lifetime and turns reports into state (notify_log) plus a typed
+    // lifetime and turns reports into state (notify_log) plus a wake-up
     // signal. Master-side reports only ever fire on the event-loop thread
     // (see support/anomaly.h), so no synchronization is needed here.
     logging::set_notify_hook([this](logging::NotifyLevel level, std::string_view message) {
-        if(notify_log.size() < notify_log_limit) {
-            notify_log.push_back(NotifyMessage{level, std::string(message)});
-            on_notify.emit(notify_log.back());
-        } else {
-            on_notify.emit(NotifyMessage{level, std::string(message)});
+        notify_log.push_back(NotifyMessage{level, std::string(message)});
+        if(notify_log.size() > notify_log_limit) {
+            notify_log.pop_front();
         }
+        notify_seq += 1;
+        on_notify.emit();
     });
 }
 
@@ -194,7 +195,7 @@ std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
     return sessions.open(path_id);
 }
 
-void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& peer) {
+void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer* peer) {
     namespace protocol = kota::ipc::protocol;
 
     auto path = workspace.path_pool.resolve(path_id);
@@ -203,12 +204,17 @@ void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer& pee
     pool.notify_stateful(path_id, worker::EvictParams{std::string(path)});
     pool.remove_owner(path_id);
 
-    protocol::PublishDiagnosticsParams diag_params;
-    auto uri = lsp::URI::from_file_path(std::string(path));
-    if(uri)
-        diag_params.uri = uri->str();
-    diag_params.diagnostics = {};
-    peer.send_notification(diag_params);
+    // Null before the client's handshake completed: nothing was ever
+    // pushed, so there are no diagnostics to clear (and the LSP spec
+    // forbids publishDiagnostics before the initialize response).
+    if(peer) {
+        protocol::PublishDiagnosticsParams diag_params;
+        auto uri = lsp::URI::from_file_path(std::string(path));
+        if(uri)
+            diag_params.uri = uri->str();
+        diag_params.diagnostics = {};
+        peer->send_notification(diag_params);
+    }
 
     sessions.close(path_id);
 
