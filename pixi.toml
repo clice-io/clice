@@ -43,7 +43,6 @@ lld = "==20.1.8"
 llvm-tools = "==20.1.8"
 clang-tools = "==20.1.8"
 compiler-rt = "==20.1.8"
-flatbuffers = "==25.9.23"
 
 [feature.build.target.win-64.dependencies]
 sccache = "*"

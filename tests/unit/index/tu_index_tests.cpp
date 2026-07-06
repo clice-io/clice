@@ -30,8 +30,9 @@ void build_index(llvm::StringRef code,
 auto select(llvm::StringRef pos, llvm::StringRef file = "") -> std::vector<index::Occurrence> {
     auto offset = point(pos, file);
     auto fid = file.empty() ? unit->interested_file() : unit->file_id(file);
-    auto& index =
-        fid == unit->interested_file() ? tu_index.main_file_index : tu_index.file_indices[fid];
+    auto& index = fid == unit->interested_file()
+                      ? tu_index.main_file_index
+                      : tu_index.path_file_indices[tu_index.graph.path_id(fid)];
 
     auto it =
         std::ranges::lower_bound(index.occurrences, offset, {}, [](index::Occurrence& occurrence) {
@@ -80,8 +81,9 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
     /// dump(expected));
 
     auto fid = file.empty() ? unit->interested_file() : unit->file_id(file);
-    auto& index =
-        fid == unit->interested_file() ? tu_index.main_file_index : tu_index.file_indices[fid];
+    auto& index = fid == unit->interested_file()
+                      ? tu_index.main_file_index
+                      : tu_index.path_file_indices[tu_index.graph.path_id(fid)];
 
     auto it = index.relations.find(occurrences.front().target);
     ASSERT_TRUE(it != index.relations.end());
@@ -301,7 +303,7 @@ TEST_CASE(BaseAndDerived) {
     };
 
     collect_kinds(tu_index.main_file_index);
-    for(auto& [fid, idx]: tu_index.file_indices) {
+    for(auto& [pid, idx]: tu_index.path_file_indices) {
         collect_kinds(idx);
     }
 
@@ -395,7 +397,7 @@ TEST_CASE(OverrideRelation) {
     };
 
     check_relations(tu_index.main_file_index);
-    for(auto& [fid, idx]: tu_index.file_indices) {
+    for(auto& [pid, idx]: tu_index.path_file_indices) {
         check_relations(idx);
     }
 
@@ -450,7 +452,7 @@ TEST_CASE(CrossFileHeaderIndex) {
     tu_index = index::TUIndex::build(*unit);
 
     // The header should have its own FileIndex (separate from main).
-    ASSERT_TRUE(tu_index.file_indices.size() >= 1U);
+    ASSERT_TRUE(tu_index.path_file_indices.size() >= 1U);
 
     // The main file should have a reference to helper.
     auto& main_index = tu_index.main_file_index;
@@ -471,7 +473,7 @@ TEST_CASE(CrossFileHeaderIndex) {
 
     // The helper's declaration should be in the header FileIndex.
     bool found_in_header = false;
-    for(auto& [fid, file_index]: tu_index.file_indices) {
+    for(auto& [pid, file_index]: tu_index.path_file_indices) {
         for(auto& [sym, rels]: file_index.relations) {
             if(sym == helper_hash) {
                 found_in_header = true;

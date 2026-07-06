@@ -71,6 +71,12 @@ constexpr bool operator==(RelationKind lhs, RelationKind rhs) {
     return lhs.value() == rhs.value();
 }
 
+/// Ordering by raw kind value; lets Relation default its own operator<=> so
+/// serialized relation maps have a deterministic, binary-searchable order.
+constexpr auto operator<=>(RelationKind lhs, RelationKind rhs) {
+    return lhs.value() <=> rhs.value();
+}
+
 constexpr bool operator&(RelationKind lhs, RelationKind rhs) {
     return lhs.value() == rhs.value();
 }

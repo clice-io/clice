@@ -27,7 +27,7 @@
 namespace clice {
 
 void BackgroundIndexer::merge(const void* tu_index_data, std::size_t size) {
-    auto tu_index = index::TUIndex::from(tu_index_data);
+    auto tu_index = index::TUIndex::from(tu_index_data, size);
     if(tu_index.graph.paths.empty()) {
         LOG_WARN("Ignoring TUIndex with empty path graph");
         return;
@@ -84,13 +84,7 @@ void BackgroundIndexer::merge(const void* tu_index_data, std::size_t size) {
             shard.merge_symbols(collect_local_symbols(file_idx));
             touched.insert(global_path_id);
         } else {
-            std::optional<std::uint32_t> include_id;
-            for(std::uint32_t i = 0; i < tu_index.graph.locations.size(); ++i) {
-                if(tu_index.graph.locations[i].path_id == tu_path_id) {
-                    include_id = i;
-                    break;
-                }
-            }
+            auto include_id = tu_index.graph.first_include_of(tu_path_id);
             if(!include_id) {
                 LOG_WARN("Skip merge for path {}: include location not found", global_path_id);
                 return;

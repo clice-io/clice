@@ -723,7 +723,8 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         record_deps(*session, result.value().deps);
 
         if(!result.value().tu_index_data.empty()) {
-            auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
+            auto tu_index = index::TUIndex::from(result.value().tu_index_data.data(),
+                                                 result.value().tu_index_data.size());
             session->file_index = std::move(tu_index.main_file_index);
             session->symbols = std::move(tu_index.symbols);
         }

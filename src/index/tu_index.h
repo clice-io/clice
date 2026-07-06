@@ -4,6 +4,7 @@
 #include <bit>
 #include <chrono>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,9 @@ struct Relation {
     constexpr auto definition_range() {
         return std::bit_cast<LocalSourceRange>(target_symbol);
     }
+
+    /// Ordering defines the serialized wire order of relation maps.
+    friend constexpr auto operator<=>(const Relation&, const Relation&) = default;
 };
 
 struct Occurrence {
@@ -60,7 +64,18 @@ struct Occurrence {
     SymbolHash target;
 
     friend bool operator==(const Occurrence&, const Occurrence&) = default;
+
+    /// (begin, end, target) ordering — the serialized wire order of occurrence
+    /// maps, which the lazy buffer lookup binary-searches.
+    friend constexpr auto operator<=>(const Occurrence&, const Occurrence&) = default;
 };
+
+/// Visit every occurrence whose range contains `offset` in a sequence sorted
+/// by Occurrence's (begin, end, target) ordering; stops early when the
+/// callback returns false.
+void lookup_occurrences(std::span<const Occurrence> occurrences,
+                        std::uint32_t offset,
+                        llvm::function_ref<bool(const Occurrence&)> callback);
 
 struct FileIndex {
     llvm::DenseMap<SymbolHash, std::vector<Relation>> relations;
@@ -100,10 +115,8 @@ struct TUIndex {
 
     SymbolTable symbols;
 
-    llvm::DenseMap<clang::FileID, FileIndex> file_indices;
-
-    /// File indices keyed by path_id, populated by from() for deserialized data.
-    /// When built from AST, this is empty and file_indices (keyed by FileID) is used.
+    /// Per-file indexes keyed by path id (files of the same path merge into
+    /// one entry); the main file lives in main_file_index instead.
     llvm::DenseMap<std::uint32_t, FileIndex> path_file_indices;
 
     FileIndex main_file_index;
@@ -112,7 +125,7 @@ struct TUIndex {
 
     void serialize(llvm::raw_ostream& os) const;
 
-    static TUIndex from(const void* data);
+    static TUIndex from(const void* data, std::size_t size);
 };
 
 }  // namespace clice::index
