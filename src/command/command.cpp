@@ -197,13 +197,13 @@ object_ptr<CompilationInfo> CompilationDatabase::save_compilation_info(llvm::Str
     return save_compilation_info(file, directory, arguments);
 }
 
-std::size_t CompilationDatabase::load(llvm::StringRef path) {
+std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
     simdjson::padded_string json_buf;
     if(auto error = simdjson::padded_string::load(std::string(path)).get(json_buf)) {
         LOG_ERROR("Failed to read compilation database from {}: {}",
                   path,
                   simdjson::error_message(error));
-        return 0;
+        return std::nullopt;
     }
 
     simdjson::ondemand::parser json_parser;
@@ -212,14 +212,14 @@ std::size_t CompilationDatabase::load(llvm::StringRef path) {
         LOG_ERROR("Failed to parse compilation database from {}: {}",
                   path,
                   simdjson::error_message(error));
-        return 0;
+        return std::nullopt;
     }
 
     simdjson::ondemand::array arr;
     if(auto error = doc.get_array().get(arr)) {
         LOG_ERROR("Invalid compilation database format in {}: root element must be an array.",
                   path);
-        return 0;
+        return std::nullopt;
     }
 
     // Parse into a local vector and only swap it in at the end: a file that
@@ -358,9 +358,14 @@ llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 1>>
     return snapshot;
 }
 
-CDBDiff CompilationDatabase::reload_and_diff(llvm::StringRef path) {
+std::optional<CDBDiff> CompilationDatabase::reload_and_diff(llvm::StringRef path) {
     auto before = command_hash_snapshot();
-    load(path);
+    if(!load(path)) {
+        // Unreadable or unparsable (e.g. still locked by the generator):
+        // the old entries were kept, and the caller must not treat this as
+        // "no change" — it has to retry.
+        return std::nullopt;
+    }
     auto after = command_hash_snapshot();
 
     CDBDiff diff;

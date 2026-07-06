@@ -48,10 +48,10 @@ TEST_CASE(AddedEntry) {
     });
     auto diff = cdb.reload_and_diff(cdb_path);
 
-    ASSERT_EQ(diff.added.size(), 1U);
-    EXPECT_EQ(diff.added[0], id_of(cdb, tmp, "b.cpp"));
-    EXPECT_TRUE(diff.removed.empty());
-    EXPECT_TRUE(diff.changed.empty());
+    ASSERT_EQ(diff->added.size(), 1U);
+    EXPECT_EQ(diff->added[0], id_of(cdb, tmp, "b.cpp"));
+    EXPECT_TRUE(diff->removed.empty());
+    EXPECT_TRUE(diff->changed.empty());
 };
 
 TEST_CASE(RemovedEntry) {
@@ -72,10 +72,10 @@ TEST_CASE(RemovedEntry) {
     });
     auto diff = cdb.reload_and_diff(cdb_path);
 
-    ASSERT_EQ(diff.removed.size(), 1U);
-    EXPECT_EQ(diff.removed[0], id_of(cdb, tmp, "b.cpp"));
-    EXPECT_TRUE(diff.added.empty());
-    EXPECT_TRUE(diff.changed.empty());
+    ASSERT_EQ(diff->removed.size(), 1U);
+    EXPECT_EQ(diff->removed[0], id_of(cdb, tmp, "b.cpp"));
+    EXPECT_TRUE(diff->added.empty());
+    EXPECT_TRUE(diff->changed.empty());
 };
 
 TEST_CASE(ChangedFlag) {
@@ -95,10 +95,10 @@ TEST_CASE(ChangedFlag) {
     });
     auto diff = cdb.reload_and_diff(cdb_path);
 
-    ASSERT_EQ(diff.changed.size(), 1U);
-    EXPECT_EQ(diff.changed[0], id_of(cdb, tmp, "a.cpp"));
-    EXPECT_TRUE(diff.added.empty());
-    EXPECT_TRUE(diff.removed.empty());
+    ASSERT_EQ(diff->changed.size(), 1U);
+    EXPECT_EQ(diff->changed[0], id_of(cdb, tmp, "a.cpp"));
+    EXPECT_TRUE(diff->added.empty());
+    EXPECT_TRUE(diff->removed.empty());
 };
 
 TEST_CASE(IdenticalReload) {
@@ -114,7 +114,7 @@ TEST_CASE(IdenticalReload) {
     cdb.load(cdb_path);
 
     auto diff = cdb.reload_and_diff(cdb_path);
-    EXPECT_TRUE(diff.empty());
+    EXPECT_TRUE(diff->empty());
 };
 
 TEST_CASE(ReorderNoDiff) {
@@ -140,7 +140,7 @@ TEST_CASE(ReorderNoDiff) {
     });
     auto diff = cdb.reload_and_diff(cdb_path);
 
-    EXPECT_TRUE(diff.empty());
+    EXPECT_TRUE(diff->empty());
 };
 
 TEST_CASE(CodegenChangeIgnored) {
@@ -164,7 +164,7 @@ TEST_CASE(CodegenChangeIgnored) {
     });
     auto diff = cdb.reload_and_diff(cdb_path);
 
-    EXPECT_TRUE(diff.empty());
+    EXPECT_TRUE(diff->empty());
 };
 
 TEST_CASE(OptLevelIsSemantic) {
@@ -186,10 +186,10 @@ TEST_CASE(OptLevelIsSemantic) {
     });
     auto diff = cdb.reload_and_diff(cdb_path);
 
-    ASSERT_EQ(diff.changed.size(), 1U);
-    EXPECT_EQ(diff.changed[0], id_of(cdb, tmp, "a.cpp"));
-    EXPECT_TRUE(diff.added.empty());
-    EXPECT_TRUE(diff.removed.empty());
+    ASSERT_EQ(diff->changed.size(), 1U);
+    EXPECT_EQ(diff->changed[0], id_of(cdb, tmp, "a.cpp"));
+    EXPECT_TRUE(diff->added.empty());
+    EXPECT_TRUE(diff->removed.empty());
 };
 
 TEST_CASE(MultiEntryOneChanged) {
@@ -212,10 +212,10 @@ TEST_CASE(MultiEntryOneChanged) {
     });
     auto diff = cdb.reload_and_diff(cdb_path);
 
-    ASSERT_EQ(diff.changed.size(), 1U);
-    EXPECT_EQ(diff.changed[0], id_of(cdb, tmp, "a.cpp"));
-    EXPECT_TRUE(diff.added.empty());
-    EXPECT_TRUE(diff.removed.empty());
+    ASSERT_EQ(diff->changed.size(), 1U);
+    EXPECT_EQ(diff->changed[0], id_of(cdb, tmp, "a.cpp"));
+    EXPECT_TRUE(diff->added.empty());
+    EXPECT_TRUE(diff->removed.empty());
 };
 
 TEST_CASE(FirstLoadAllAdded) {
@@ -231,16 +231,16 @@ TEST_CASE(FirstLoadAllAdded) {
     });
     auto diff = cdb.reload_and_diff(cdb_path);
 
-    ASSERT_EQ(diff.added.size(), 2U);
-    EXPECT_TRUE(contains(diff.added, id_of(cdb, tmp, "a.cpp")));
-    EXPECT_TRUE(contains(diff.added, id_of(cdb, tmp, "b.cpp")));
-    EXPECT_TRUE(diff.removed.empty());
-    EXPECT_TRUE(diff.changed.empty());
+    ASSERT_EQ(diff->added.size(), 2U);
+    EXPECT_TRUE(contains(diff->added, id_of(cdb, tmp, "a.cpp")));
+    EXPECT_TRUE(contains(diff->added, id_of(cdb, tmp, "b.cpp")));
+    EXPECT_TRUE(diff->removed.empty());
+    EXPECT_TRUE(diff->changed.empty());
 };
 
 TEST_CASE(CorruptKeepsEntries) {
     // A half-written / corrupt CDB must leave the loaded entries intact and
-    // produce an empty diff instead of removing every file.
+    // signal failure so the caller retries instead of seeing "no change".
     TempDir tmp;
     CompilationDatabase cdb;
     auto cdb_path = tmp.path("compile_commands.json");
@@ -255,12 +255,32 @@ TEST_CASE(CorruptKeepsEntries) {
     tmp.touch("compile_commands.json", "<<< corrupted compile_commands.json >>>");
     auto diff = cdb.reload_and_diff(cdb_path);
 
-    EXPECT_TRUE(diff.empty());
+    ASSERT_FALSE(diff.has_value());
     EXPECT_TRUE(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
 
     auto results = cdb.lookup(path::join(tmp.root.str(), "a.cpp"), {.inject_resource_dir = false});
     ASSERT_EQ(results.size(), 1U);
     EXPECT_TRUE(llvm::StringRef(print_argv(results.front().to_argv())).contains("-std=c++20"));
+};
+
+TEST_CASE(MissingFileFails) {
+    // An unreadable file (deleted, or still locked by the generator) is a
+    // failure, not an empty database: entries survive and the caller retries.
+    TempDir tmp;
+    CompilationDatabase cdb;
+    auto cdb_path = tmp.path("compile_commands.json");
+
+    write_json(tmp,
+               {
+                   {tmp.root.str(), "a.cpp", {}}
+    });
+    cdb.load(cdb_path);
+    fs::remove_all(cdb_path);
+
+    auto diff = cdb.reload_and_diff(cdb_path);
+
+    ASSERT_FALSE(diff.has_value());
+    EXPECT_TRUE(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
 };
 
 };  // TEST_SUITE(ReloadDiff)

@@ -678,6 +678,18 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
                          std::move(deps)};
 }
 
+bool ContextResolver::entry_has_hash(llvm::StringRef entry_path, llvm::StringRef hash) const {
+    std::vector<std::string> rule_append, rule_remove;
+    workspace.config.match_rules(entry_path, rule_append, rule_remove);
+    for(auto& cmd:
+        workspace.cdb.lookup(entry_path, {.remove = rule_remove, .append = rule_append})) {
+        if(canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory) == hash) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void ContextResolver::validate_saved_context(Session& session) {
     auto path_id = session.path_id;
     auto path = workspace.path_pool.resolve(path_id);
@@ -689,17 +701,6 @@ void ContextResolver::validate_saved_context(Session& session) {
     if(auto it = saved_contexts.find(path_id); it != saved_contexts.end()) {
         auto& ws = workspace;
         auto& saved = it->second;
-        auto entry_has_hash = [&ws](llvm::StringRef entry_path, llvm::StringRef hash) {
-            std::vector<std::string> rule_append, rule_remove;
-            ws.config.match_rules(entry_path, rule_append, rule_remove);
-            for(auto& cmd:
-                ws.cdb.lookup(entry_path, {.remove = rule_remove, .append = rule_append})) {
-                if(canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory) == hash) {
-                    return true;
-                }
-            }
-            return false;
-        };
 
         bool valid = false;
         if(saved.host_path_id != no_path_id) {
@@ -721,22 +722,34 @@ bool ContextResolver::drop_orphaned_choices(SessionStore& sessions) {
     bool dropped_saved = false;
     for(auto& [session_id, session]: sessions.sessions) {
         auto it = saved_contexts.find(session_id);
-        if(it == saved_contexts.end() || it->second.host_path_id == no_path_id) {
+        if(it == saved_contexts.end()) {
             continue;
         }
-        auto host_id = it->second.host_path_id;
-        auto& occurrence = it->second.occurrence;
-        bool orphaned = workspace.dep_graph.find_include_chain(host_id, session_id).empty();
-        // A pinned occurrence can vanish while other inclusions of the
-        // header survive (the chain stays non-empty) — recount it.
-        if(!orphaned && occurrence.has_value()) {
-            auto count = workspace.count_occurrences(host_id, session_id);
-            orphaned = count > 0 && *occurrence >= count;
+        auto& saved = it->second;
+        auto host_id = saved.host_path_id;
+        auto& occurrence = saved.occurrence;
+        bool orphaned = false;
+        if(host_id != no_path_id) {
+            orphaned = workspace.dep_graph.find_include_chain(host_id, session_id).empty();
+            // A pinned occurrence can vanish while other inclusions of the
+            // header survive (the chain stays non-empty) — recount it.
+            if(!orphaned && occurrence.has_value()) {
+                auto count = workspace.count_occurrences(host_id, session_id);
+                orphaned = count > 0 && *occurrence >= count;
+            }
+            // The pinned host command itself can vanish (a CDB reload
+            // changed the entry's flags): same validation didOpen applies.
+            if(!orphaned && !saved.command_hash.empty()) {
+                orphaned =
+                    !entry_has_hash(workspace.path_pool.resolve(host_id), saved.command_hash);
+            }
+        } else if(!saved.command_hash.empty()) {
+            // Own-entry pin: the pinned command must still exist in the CDB.
+            orphaned = !entry_has_hash(workspace.path_pool.resolve(session_id), saved.command_hash);
         }
         if(orphaned) {
-            LOG_INFO("Dropping orphaned context choice for {}: host {} no longer includes it",
-                     workspace.path_pool.resolve(session_id),
-                     workspace.path_pool.resolve(host_id));
+            LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
+                     workspace.path_pool.resolve(session_id));
             drop_header_context(session_id);
             session->pch_ref.reset();
             session->ast_dirty = true;

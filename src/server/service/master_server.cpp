@@ -204,6 +204,9 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         if(auto session = sessions.find(path_id)) {
             session->ast_dirty = true;
             session->trial_done = false;
+            // Invalidate in-flight compiles so they cannot clobber the
+            // reset state when they finish (same as switchContext).
+            session->generation += 1;
         }
         contexts.forget_self_contained(path_id);
     }
@@ -222,6 +225,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         if(auto session = sessions.find(path_id)) {
             session->ast_dirty = true;
             session->trial_done = false;
+            session->generation += 1;
         }
     }
 
@@ -339,7 +343,7 @@ void MasterServer::load_workspace() {
     }
 
     ScopedTimer cdb_timer;
-    auto count = workspace.cdb.load(cdb_path);
+    auto count = workspace.cdb.load(cdb_path).value_or(0);
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
     LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", count, cdb_timer.ms());
 

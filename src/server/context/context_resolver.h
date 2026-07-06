@@ -246,6 +246,11 @@ private:
                                                         Session* session,
                                                         bool synthesize);
 
+    /// Whether the CDB still holds an entry for `entry_path` whose canonical
+    /// command hash equals `hash` — the validity test for a pinned context
+    /// choice, shared by didOpen validation and the runtime orphan pass.
+    bool entry_has_hash(llvm::StringRef entry_path, llvm::StringRef hash) const;
+
     /// The file's context choice, or nullptr. Gated on an open session:
     /// user choices steer editor-facing compiles, never background indexing
     /// (which passes no session).

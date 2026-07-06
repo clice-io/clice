@@ -254,38 +254,42 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 workspace.build_module_map();
                 workspace.context_epoch += 1;
 
-                for(auto path_id: delta.added) {
-                    // An open file gaining its first real entry must drop
-                    // the guessed command it was compiled with.
+                // Every delta entry needs the same treatment — the compile
+                // command is an input that content-based staleness cannot
+                // see, whether it appeared, changed or vanished. PCH/PCM
+                // keys embed the canonical flags, so pull-side caches miss
+                // naturally.
+                auto invalidate_entry = [&](std::uint32_t path_id, bool keep_shard) {
                     if(store.find(path_id)) {
+                        // The next compile re-resolves the command (added:
+                        // first real entry replaces the guessed one;
+                        // changed: new flags; removed: fall back).
                         dirty.mark_ast_dirty.push_back(path_id);
-                    } else {
-                        dirty.enqueue_reindex.push_back(path_id);
-                    }
-                }
-
-                for(auto path_id: delta.changed) {
-                    // Flags changed, content did not: the file itself
-                    // recompiles (open) or reindexes (closed). PCH/PCM keys
-                    // embed the canonical flags, so pull-side caches miss
-                    // naturally; a changed module unit additionally cascades
-                    // through the compile graph like a save does.
-                    if(store.find(path_id)) {
-                        dirty.mark_ast_dirty.push_back(path_id);
-                    } else {
+                    } else if(!keep_shard) {
                         // The shard was indexed under the old command, and
                         // the indexer's freshness gate validates content
-                        // only — a flag change looks fresh to it. Evict the
-                        // shard so the queued reindex is not filtered out.
+                        // only: evict the shard so the queued reindex is
+                        // not filtered out as fresh.
+                        // TODO: a background index task already in flight
+                        // can merge its old-command result back after this
+                        // eviction; closing that window needs an index
+                        // generation guard in the indexer.
                         workspace.merged_indices.erase(path_id);
                         dirty.enqueue_reindex.push_back(path_id);
                     }
+
+                    // A module unit's command change invalidates importers'
+                    // PCMs (no-op for files the compile graph doesn't know).
                     cascade_compile_graph(path_id, dirty);
 
-                    // Headers borrowing this entry through their resolved
-                    // context compile with its flags; content validation
-                    // cannot see the change there either. Drop the context
-                    // so the next use re-resolves against the new command.
+                    // The file's own resolved header context was built on a
+                    // command that no longer exists in that form (a header
+                    // gaining its first exact entry included), and so was
+                    // every header context hosted by this file. Drop them
+                    // so the next use re-resolves.
+                    if(contexts.header_context(path_id)) {
+                        dirty.drop_context.push_back(path_id);
+                    }
                     for(auto& [header_id, context]: contexts.header_contexts) {
                         if(context.host_path_id != path_id) {
                             continue;
@@ -298,15 +302,21 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                             dirty.enqueue_reindex.push_back(header_id);
                         }
                     }
-                }
+                };
 
+                for(auto path_id: delta.added) {
+                    invalidate_entry(path_id, /*keep_shard=*/false);
+                }
+                for(auto path_id: delta.changed) {
+                    invalidate_entry(path_id, /*keep_shard=*/false);
+                }
                 for(auto path_id: delta.removed) {
-                    // Same conservative semantics as DiskRemoved: the graph
-                    // rebuild above already dropped the file's source role
-                    // (it may survive as a header of remaining sources), and
-                    // the orphan recheck below cleans choices through it.
-                    // Its index shard is kept.
-                    cascade_compile_graph(path_id, dirty);
+                    // A removed entry keeps its shard: the last-known
+                    // content still serves navigation, same conservative
+                    // semantics as DiskRemoved. The graph rebuild above
+                    // already dropped the file's source role, and the
+                    // orphan recheck cleans choices through it.
+                    invalidate_entry(path_id, /*keep_shard=*/true);
                 }
 
                 // The first CDB of the session may have introduced C++20

@@ -459,7 +459,7 @@ std::size_t load_json(CompilationDatabase& database, llvm::StringRef json) {
             return 0;
         out << json;
     }
-    auto count = database.load(*path);
+    auto count = database.load(*path).value_or(0);
     llvm::sys::fs::remove(*path);
     return count;
 }

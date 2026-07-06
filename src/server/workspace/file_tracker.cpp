@@ -86,13 +86,19 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
     }
 
     auto diff = workspace.cdb.reload_and_diff(cdb_path);
+    if(!diff) {
+        // Stats fine but unreadable right now (e.g. still locked by the
+        // generator). Leave `applied` alone: the stamp stays different, so
+        // the reload is retried on a later tick instead of being lost.
+        return {};
+    }
     applied = current;
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
              cdb_path,
-             diff.added.size(),
-             diff.removed.size(),
-             diff.changed.size());
-    if(diff.empty()) {
+             diff->added.size(),
+             diff->removed.size(),
+             diff->changed.size());
+    if(diff->empty()) {
         return {};
     }
 
@@ -105,9 +111,9 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
             out.push_back(workspace.path_pool.intern(workspace.cdb.resolve_path(id)));
         }
     };
-    convert(diff.added, delta.added);
-    convert(diff.removed, delta.removed);
-    convert(diff.changed, delta.changed);
+    convert(diff->added, delta.added);
+    convert(diff->removed, delta.removed);
+    convert(diff->changed, delta.changed);
 
     llvm::SmallVector<FileEvent> events;
     events.push_back(FileEvent::cdb_changed(std::move(delta)));
@@ -127,6 +133,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     auto guard = llvm::make_scope_exit([this] { sweeping = false; });
 
     ScopedTimer timer;
+    auto epoch = workspace.context_epoch;
     auto files = workspace.dep_graph.all_files();
 
     // Files that left the graph (e.g. a CDB reload rebuilt it) stop being
@@ -225,6 +232,19 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                 changed += 1;
             }
         }
+    }
+
+    // A CDB reload can rebuild the include graph while this sweep is
+    // suspended between batches. Events for files the new graph no longer
+    // tracks must not dispatch — their rescan cascade would reintroduce
+    // edges for files that stopped being sources. Dropping them is safe:
+    // their baseline entries are pruned on the next sweep.
+    if(workspace.context_epoch != epoch && !events.empty()) {
+        auto current = workspace.dep_graph.all_files();
+        llvm::DenseSet<std::uint32_t> still_known(current.begin(), current.end());
+        llvm::erase_if(events, [&](const FileEvent& event) {
+            return !still_known.contains(event.path_id);
+        });
     }
 
     LOG_PERF("tracker",

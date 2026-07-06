@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -194,14 +195,14 @@ public:
     /// On success old entries are replaced, but the string pool and canonical
     /// commands survive (path ids stay stable across reloads).
     ///
-    /// Parsing is atomic at the top level: if the file cannot be read, is not
-    /// valid JSON, or has a root that is not an array, the previously loaded
-    /// entries are kept and 0 is returned. Individual malformed entries are
-    /// still skipped as before — which means a file truncated mid-array
-    /// loads as a partial set; the poll-side settle debounce is what guards
-    /// against reading half-written files. Returns the number of entries
-    /// loaded.
-    std::size_t load(llvm::StringRef path);
+    /// Parsing is atomic at the top level: if the file cannot be read, is
+    /// not valid JSON, or has a root that is not an array, the previously
+    /// loaded entries are kept and nullopt is returned. Individual
+    /// malformed entries are still skipped as before — which means a file
+    /// truncated mid-array loads as a partial set; the poll-side settle
+    /// debounce is what guards against reading half-written files. On
+    /// success returns the number of entries loaded.
+    std::optional<std::size_t> load(llvm::StringRef path);
 
     /// Reload the database from `path` and report the per-file delta against
     /// the previously loaded entries. Path ids in the result are this
@@ -215,8 +216,9 @@ public:
     /// defines __OPTIMIZE__, so changing it does count.)
     ///
     /// If `path` cannot be read or does not hold a JSON array, load() keeps
-    /// the old entries and the returned diff is empty.
-    CDBDiff reload_and_diff(llvm::StringRef path);
+    /// the old entries and nullopt is returned — the caller must retry
+    /// rather than treat the failure as "no change".
+    std::optional<CDBDiff> reload_and_diff(llvm::StringRef path);
 
     /// Lookup the compile commands for a file. A file may have multiple
     /// compilation commands (e.g. different build configurations); all are returned.
