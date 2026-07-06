@@ -111,9 +111,15 @@ public:
 private:
     kota::task<> run_compile(std::shared_ptr<Session> session);
 
+    /// @param launch_generation  The caller's generation snapshot from the
+    ///               moment its round took off, NOT one taken on entry: a
+    ///               round superseded during the dependency phase would
+    ///               otherwise re-snapshot the new generation here and slip
+    ///               its stale pch_ref past the post-await guards.
     /// @param scope  When set, cancels the module-dependency wait if this
     ///               compile round is superseded by a newer one.
     kota::task<bool> ensure_deps(Session& session,
+                                 std::uint64_t launch_generation,
                                  const std::string& directory,
                                  const std::vector<std::string>& arguments,
                                  std::pair<std::string, uint32_t>& pch,
@@ -121,6 +127,7 @@ private:
                                  std::optional<kota::cancellation_token> scope = {});
 
     kota::task<bool> ensure_pch(Session& session,
+                                std::uint64_t launch_generation,
                                 const std::string& directory,
                                 const std::vector<std::string>& arguments);
 
