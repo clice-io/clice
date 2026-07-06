@@ -29,11 +29,9 @@ TEST_CASE(NoOpEventsNoEffects) {
 
     ContextResolver resolver(workspace);
     Invalidator invalidator(workspace, store, resolver);
-    // Buffer sync stays in SessionStore and context switching in
-    // ContextResolver; these events must produce no effects of their own.
-    FileEvent events[] = {FileEvent::buffer_opened(file),
-                          FileEvent::buffer_edited(file),
-                          FileEvent::context_changed(file)};
+    // Buffer sync stays in SessionStore (exempt from the pipeline); these
+    // events must produce no effects of their own.
+    FileEvent events[] = {FileEvent::buffer_opened(file), FileEvent::buffer_edited(file)};
     auto dirty = invalidator.apply(events);
 
     ASSERT_TRUE(dirty.empty());
@@ -229,6 +227,22 @@ TEST_CASE(CrashMarksLostDirty) {
     llvm::sort(expected);
     ASSERT_EQ(dirty.mark_lost, expected);
     // A crash loses build products, not compile inputs: no trial reset.
+    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
+    ASSERT_TRUE(dirty.reset_trial.empty());
+}
+
+TEST_CASE(EvictionMarksLost) {
+    Workspace workspace;
+    SessionStore store;
+    auto file = workspace.path_pool.intern("/proj/a.cpp");
+    store.open(file);
+
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+    auto dirty = invalidator.apply(FileEvent::document_evicted(file));
+
+    // Same loss as a crash, scoped to one document.
+    ASSERT_EQ(dirty.mark_lost, llvm::SmallVector<std::uint32_t>{file});
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
     ASSERT_TRUE(dirty.reset_trial.empty());
 }

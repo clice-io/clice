@@ -293,9 +293,10 @@ void LSPClient::register_document_sync() {
         // is: a session opened during the handshake window must not stay
         // open forever when the editor already closed it. The diagnostics
         // clear is suppressed until the handshake completes — nothing was
-        // pushed, and publishDiagnostics may not flow yet.
+        // pushed, and publishDiagnostics may not flow yet (push_output
+        // drops the clear while !client_ready).
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
-        srv.close_session(path_id, client_ready ? &this->peer : nullptr);
+        srv.close_session(path_id);
     });
 
     peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {
@@ -544,13 +545,15 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
             auto [path, path_id, session] = resolve_uri(params.uri);
             auto [context_path, context_path_id, context_session] = resolve_uri(params.context_uri);
+            // The session reset lives inside switch_context (single owner,
+            // synchronous, no cross-file cascade — exempt from the event
+            // pipeline; see the Invalidator charter).
             auto result = this->server.contexts.switch_context(path,
                                                                path_id,
                                                                session.get(),
                                                                context_path,
                                                                context_path_id,
                                                                params);
-            this->server.dispatch(FileEvent::context_changed(path_id));
             co_return to_raw(result);
         });
 

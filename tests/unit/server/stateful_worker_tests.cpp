@@ -416,6 +416,59 @@ TEST_CASE(EvictNotification) {
     ASSERT_TRUE(test_done);
 }
 
+TEST_CASE(LowLimitDrivesEviction) {
+    TempDir tmp;
+    std::vector<std::string> paths;
+    std::vector<std::string> texts;
+    for(int i = 0; i < 3; i++) {
+        auto name = "evict_" + std::to_string(i) + ".cpp";
+        auto text = "int var_" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
+        tmp.touch(name, text);
+        paths.push_back(tmp.path(name));
+        texts.push_back(text);
+    }
+
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024, /*max_documents=*/2));
+
+    std::vector<std::string> evicted;
+    w.peer->on_notification(
+        [&](const worker::EvictedParams& params) { evicted.push_back(params.path); });
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        for(int i = 0; i < 3; i++) {
+            worker::CompileParams cp;
+            cp.path = paths[i];
+            cp.version = 1;
+            cp.text = texts[i];
+            cp.directory = "/tmp";
+            cp.arguments = make_args(paths[i]);
+
+            auto result = co_await w.peer->send_request(cp);
+            EXPECT_TRUE(result.has_value());
+        }
+
+        // The third compile overflowed the 2-document cap: the least
+        // recently used document was evicted and announced to the master.
+        worker::QueryParams hp;
+        hp.kind = worker::QueryKind::Hover;
+        hp.path = paths[0];
+        hp.offset = 4;  // 'var_0'
+
+        auto result = co_await w.peer->send_request(hp);
+        CO_ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(result.value().data, std::string("null"));
+
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ASSERT_TRUE(test_done);
+    ASSERT_EQ(evicted, std::vector<std::string>{paths[0]});
+}
+
 TEST_CASE(SpawnWithMemoryLimit) {
     TempDir tmp;
     tmp.touch("memlimit_test.cpp", "int memlimit_var = 42;\n");

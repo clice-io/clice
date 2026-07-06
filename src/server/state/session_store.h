@@ -15,6 +15,23 @@ namespace clice {
 
 namespace protocol = kota::ipc::protocol;
 
+/// How much of a session's compile state a reset invalidates. Both depths
+/// mark the AST dirty; they differ in which staleness token they bump.
+enum class ResetDepth : std::uint8_t {
+    /// The buffer's identity changed for compilation purposes (context
+    /// switch, orphaned context choice): in-flight compile results no
+    /// longer describe this document. Bumps generation, drops the PCH
+    /// reference and dependency snapshot earned under the old identity,
+    /// and re-arms the self-containment trial.
+    Superseded,
+    /// The built AST is gone (worker eviction/crash) or its inputs
+    /// changed, but the buffer is still the same buffer. Bumps
+    /// dirty_epoch so an in-flight compile cannot declare its product
+    /// fresh; master-side caches (PCH, deps snapshot) stay — pull-side
+    /// validation decides their fate.
+    Lost,
+};
+
 /// The table of open documents plus the buffer-synchronization logic: the
 /// single owner of editor buffer truth. Every didOpen/didChange edit lands
 /// here, and every reader of an open file's text goes through the sessions
@@ -54,6 +71,16 @@ struct SessionStore {
     void apply_change(Session& session,
                       llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
                       int version);
+
+    /// Invalidate a session's compile state to the given depth (see
+    /// ResetDepth). The single reset vocabulary for every "this session
+    /// must recompile" site — context switches, orphaned choices, event
+    /// dispatch effects — so the token discipline lives in one place.
+    /// Static so call sites that hold a Session* but no store reference
+    /// (ContextResolver::switch_context) can use it; it lives here rather
+    /// than on Session because state mutation vocabulary is this store's
+    /// charter.
+    static void reset_compile_state(Session& session, ResetDepth depth);
 };
 
 }  // namespace clice

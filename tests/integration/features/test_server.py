@@ -115,6 +115,15 @@ async def test_diagnostics_received(client, workspace):
 
 
 @pytest.mark.workspace("hello_world")
+async def test_close_clears_diagnostics(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    event = client.wait_for_diagnostics(uri)
+    client.close(uri)
+    await asyncio.wait_for(event.wait(), timeout=10.0)
+    assert client.diagnostics[uri] == []
+
+
+@pytest.mark.workspace("hello_world")
 async def test_hover_before_compile(client, workspace):
     uri, _ = client.open(workspace / "main.cpp")
     result = await client.hover_at(uri, 0, 0, timeout=90.0)

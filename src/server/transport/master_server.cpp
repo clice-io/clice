@@ -17,8 +17,6 @@
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
-#include "kota/ipc/lsp/protocol.h"
-#include "kota/ipc/lsp/uri.h"
 #include "kota/ipc/recording_transport.h"
 #include "kota/ipc/transport.h"
 #include "llvm/ADT/STLExtras.h"
@@ -27,9 +25,6 @@
 #include "llvm/Support/Process.h"
 
 namespace clice {
-
-namespace lsp = kota::ipc::lsp;
-namespace protocol = kota::ipc::protocol;
 
 /// Retention bound of the notify log. Subscribers drain promptly, so only
 /// messages that fire before any client attaches accumulate (a handful of
@@ -163,6 +158,10 @@ kota::task<> MasterServer::workspace_poll_task() {
 
 void MasterServer::wire() {
     pool.on_crash = [this](const WorkerCrashInfo& info) {
+        // A stateless crash loses only in-flight requests, which fail back
+        // to their callers (send_stateless already retries once). No state
+        // outlives the request, so there is nothing to invalidate and no
+        // event to dispatch.
         if(!info.stateful)
             return;
         dispatch(FileEvent::worker_crashed(info.lost_documents));
@@ -174,11 +173,23 @@ void MasterServer::wire() {
             LOG_WARN("Evicted path not in pool: {}", path);
             return;
         }
+        // Owner-table upkeep is pool-domain state and stays here; the
+        // session-side consequence (the worker's AST is gone, same as a
+        // crash) goes through the event pipeline like any invalidation.
         pool.remove_owner(it->second);
+        dispatch(FileEvent::document_evicted(it->second));
     };
 
     compiler.on_indexing_needed = [this]() {
         indexer.schedule();
+    };
+
+    // The compiler's pull-side staleness check found a dependency changed
+    // on disk: route it through the same DiskChanged path the file
+    // tracker's polling uses, so lazy detection and polling share one
+    // invalidation cascade.
+    compiler.on_stale = [this](std::uint32_t path_id) {
+        dispatch(FileEvent::disk_changed(path_id));
     };
 }
 
@@ -195,25 +206,29 @@ std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
     return sessions.open(path_id);
 }
 
-void MasterServer::close_session(std::uint32_t path_id, kota::ipc::JsonPeer* peer) {
-    namespace protocol = kota::ipc::protocol;
-
+void MasterServer::close_session(std::uint32_t path_id) {
     auto path = workspace.path_pool.resolve(path_id);
     // Route the eviction notification before dropping ownership:
     // notify_stateful uses the owner table to find the worker.
     pool.notify_stateful(path_id, worker::EvictParams{std::string(path)});
     pool.remove_owner(path_id);
 
-    // Null before the client's handshake completed: nothing was ever
-    // pushed, so there are no diagnostics to clear (and the LSP spec
-    // forbids publishDiagnostics before the initialize response).
-    if(peer) {
-        protocol::PublishDiagnosticsParams diag_params;
-        auto uri = lsp::URI::from_file_path(std::string(path));
-        if(uri)
-            diag_params.uri = uri->str();
-        diag_params.diagnostics = {};
-        peer->send_notification(diag_params);
+    // Retract the document's published diagnostics through the standard
+    // output path: materialize an empty output and signal the transports
+    // (MasterServer holds no peer — see the class charter). A transport
+    // whose client has not completed the handshake drops the push: nothing
+    // was ever published for it to clear, and publishDiagnostics may not
+    // flow before the initialize response. CDBExact keeps
+    // format_diagnostics from decorating the empty set with guidance.
+    if(auto session = sessions.find(path_id)) {
+        session->output = CompileOutput{
+            .version = std::nullopt,
+            .source = CommandSource::CDBExact,
+            .diagnostics = {},
+            .line_limit = std::nullopt,
+            .inactive_regions = std::nullopt,
+        };
+        compiler.on_output.emit(session);
     }
 
     sessions.close(path_id);
@@ -236,20 +251,22 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         contexts.reset_header_mode(path_id);
     }
 
+    // The Lost reset bumps dirty_epoch so an in-flight compile that
+    // consumed the pre-event world cannot clear ast_dirty when it lands;
+    // generation stays put — the buffer is still the same buffer, and
+    // results that pass their generation check may still be published
+    // (bounded staleness: the flag stays dirty, the next request recompiles).
     for(auto path_id: dirty.mark_ast_dirty) {
         if(auto session = sessions.find(path_id)) {
-            session->ast_dirty = true;
+            SessionStore::reset_compile_state(*session, ResetDepth::Lost);
             session->trial_done = false;
-            // Invalidate in-flight compiles so they cannot clobber the
-            // reset state when they finish (same as switchContext).
-            session->generation += 1;
         }
         contexts.forget_self_contained(path_id);
     }
 
     for(auto path_id: dirty.mark_lost) {
         if(auto session = sessions.find(path_id)) {
-            session->ast_dirty = true;
+            SessionStore::reset_compile_state(*session, ResetDepth::Lost);
         }
     }
 
@@ -259,9 +276,8 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     for(auto path_id: dirty.force_revalidate) {
         contexts.invalidate_header_deps(path_id);
         if(auto session = sessions.find(path_id)) {
-            session->ast_dirty = true;
+            SessionStore::reset_compile_state(*session, ResetDepth::Lost);
             session->trial_done = false;
-            session->generation += 1;
         }
     }
 

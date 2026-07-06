@@ -335,13 +335,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 dirty.reschedule_indexing = true;
                 break;
             }
-            case FileEvent::Kind::ContextChanged: {
-                // Context validation, persistence and session reset happen in
-                // ContextResolver::switch_context, which already lives in the
-                // right module; this case is a hook for future cross-file
-                // policy.
-                break;
-            }
             case FileEvent::Kind::WorkerCrashed: {
                 // The worker's ASTs are gone; every document it owned must
                 // recompile. Compile inputs did not change, so trial state
@@ -349,6 +342,13 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 for(auto path_id: event.paths) {
                     dirty.mark_lost.push_back(path_id);
                 }
+                break;
+            }
+            case FileEvent::Kind::DocumentEvicted: {
+                // Same loss as a crash, scoped to one document: without the
+                // recompile, feature requests re-route to a worker that no
+                // longer holds the AST and silently return null.
+                dirty.mark_lost.push_back(event.path_id);
                 break;
             }
         }

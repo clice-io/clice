@@ -49,6 +49,7 @@ struct DocumentEntry {
 class StatefulWorker {
     kota::ipc::BincodePeer& peer;
     std::uint64_t memory_limit;
+    std::size_t max_documents;
 
     llvm::StringMap<std::shared_ptr<DocumentEntry>> documents;
 
@@ -68,7 +69,7 @@ class StatefulWorker {
     void shrink_if_over_limit() {
         // TODO: Implement memory-based eviction using memory_limit.
         // For now, cap at a fixed number of documents.
-        while(documents.size() > 16 && !lru.empty()) {
+        while(documents.size() > max_documents && !lru.empty()) {
             auto path = lru.back();
             lru.pop_back();
             lru_index.erase(path);
@@ -120,8 +121,10 @@ class StatefulWorker {
     }
 
 public:
-    StatefulWorker(kota::ipc::BincodePeer& peer, std::uint64_t memory_limit) :
-        peer(peer), memory_limit(memory_limit) {}
+    StatefulWorker(kota::ipc::BincodePeer& peer,
+                   std::uint64_t memory_limit,
+                   std::size_t max_documents) :
+        peer(peer), memory_limit(memory_limit), max_documents(max_documents) {}
 
     void register_handlers();
 };
@@ -280,7 +283,8 @@ void StatefulWorker::register_handlers() {
 
 int run_stateful_worker_mode(std::uint64_t memory_limit,
                              const std::string& worker_name,
-                             const std::string& log_dir) {
+                             const std::string& log_dir,
+                             std::size_t max_documents) {
     logging::stderr_logger(worker_name, logging::options);
     if(!log_dir.empty()) {
         // File only: worker stderr is reserved for crash/unexpected output,
@@ -300,7 +304,7 @@ int run_stateful_worker_mode(std::uint64_t memory_limit,
 
     kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
 
-    StatefulWorker worker(peer, memory_limit);
+    StatefulWorker worker(peer, memory_limit, max_documents);
     worker.register_handlers();
 
     LOG_INFO("Stateful worker ready, waiting for requests");

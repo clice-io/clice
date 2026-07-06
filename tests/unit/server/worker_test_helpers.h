@@ -65,7 +65,7 @@ struct WorkerHandle {
     std::unique_ptr<kota::ipc::BincodePeer> peer;
     int stderr_fd = -1;
 
-    bool spawn(std::uint64_t memory_limit = 0) {
+    bool spawn(std::uint64_t memory_limit = 0, std::size_t max_documents = 0) {
         auto binary = clice_binary();
         auto label = memory_limit > 0 ? "stateful" : "stateless";
 
@@ -81,6 +81,10 @@ struct WorkerHandle {
             opts.args.push_back("--stateful");
             opts.args.push_back("--memory-limit");
             opts.args.push_back(std::to_string(memory_limit));
+        }
+        if(max_documents > 0) {
+            opts.args.push_back("--max-documents");
+            opts.args.push_back(std::to_string(max_documents));
         }
         opts.streams = {
             kota::process::stdio::pipe(true, false),  // stdin: child reads

@@ -81,6 +81,28 @@ struct Session {
     /// Whether the AST needs to be rebuilt before serving queries.
     bool ast_dirty = true;
 
+    /// Invalidation epoch: bumped every time an event dispatch applies an
+    /// AST-invalidating effect to this session (dependency changed on disk,
+    /// worker crash, document eviction, ...). A compile snapshots it at
+    /// takeoff and may clear ast_dirty on landing only if it is unchanged —
+    /// see settle_compile(). Division of labor with generation: generation
+    /// answers "is the buffer still the same buffer?", dirty_epoch answers
+    /// "did the world get dirty again after I took off?".
+    std::uint64_t dirty_epoch = 0;
+
+    /// Clearing ast_dirty is a conditional write — the only sanctioned way
+    /// for a compile to declare its product fresh. `launch_epoch` is the
+    /// dirty_epoch snapshotted when the compile took off; if any
+    /// invalidation landed while it was in flight, the flag stays set and
+    /// the next request recompiles. The compile's artifacts (deps snapshot,
+    /// file index, diagnostics) may still be recorded — they are not wrong,
+    /// only not-current.
+    void settle_compile(std::uint64_t launch_epoch) {
+        if(dirty_epoch == launch_epoch) {
+            ast_dirty = false;
+        }
+    }
+
     /// Non-null while a compilation is in flight for this file.
     /// Other queries wait on the event; the compilation task itself
     /// runs independently and cannot be cancelled by LSP $/cancelRequest.

@@ -104,10 +104,11 @@ public:
     std::shared_ptr<Session> find_session(std::uint32_t path_id);
     std::shared_ptr<Session> open_session(std::uint32_t path_id);
 
-    /// Close the session and clear its published diagnostics on `peer`.
-    /// Pass null when no handshake-complete client is attached: nothing was
-    /// ever pushed, so there is nothing to clear.
-    void close_session(std::uint32_t path_id, kota::ipc::JsonPeer* peer);
+    /// Close the session. The diagnostics clear travels through the
+    /// session's output + on_output signal; a transport whose client has
+    /// not completed the handshake drops it (nothing was ever pushed, so
+    /// there is nothing to clear).
+    void close_session(std::uint32_t path_id);
 
     /// The single entry point for file events: fold the batch through the
     /// Invalidator, then execute the resulting effects against the mutable

@@ -288,6 +288,11 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
                                       const std::vector<std::string>& arguments) {
     auto path_id = session.path_id;
     auto path = workspace.path_pool.resolve(path_id);
+    // Snapshot for the pch_ref writes below that sit past a suspension
+    // point: a superseded round's continuation must not write a stale
+    // pch_ref over what the superseding round (or a context switch) just
+    // established. Same discipline as run_compile's post-send check.
+    auto gen = session.generation;
     auto& text = session.text;
     auto bound = compute_preamble_bound(text);
     auto* header_context = contexts.header_context(path_id);
@@ -364,6 +369,9 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     if(auto it = workspace.pch_cache.find(pch_key);
        it != workspace.pch_cache.end() && it->second.building) {
         co_await it->second.building->wait();
+        if(session.generation != gen) {
+            co_return false;
+        }
         if(auto it2 = workspace.pch_cache.find(pch_key);
            it2 != workspace.pch_cache.end() && !it2->second.path.empty()) {
             session.pch_ref = Session::PCHRef{pch_key, it2->second.bound};
@@ -430,12 +438,17 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     st.inactive_regions = std::move(result.value().inactive_regions);
     st.open_conditionals = std::move(result.value().open_conditionals);
 
-    session.pch_ref = Session::PCHRef{pch_key, bound};
-
     LOG_INFO("PCH built for {}: {}", path, st.path);
 
     // Persist cache metadata after successful build.
     workspace.save_cache(contexts);
+
+    // The cache entry above is content-keyed and correct regardless; only
+    // the session pointer must not be written by a superseded round.
+    if(session.generation != gen) {
+        co_return false;
+    }
+    session.pch_ref = Session::PCHRef{pch_key, bound};
 
     co_return true;
 }
@@ -589,6 +602,11 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
     auto pc = session->compiling;
     auto pid = session->path_id;
     auto gen = session->generation;
+    // Takeoff snapshot for the conditional dirty-flag clear on landing
+    // (see Session::settle_compile). The generation checks below answer
+    // "is the buffer still the same buffer"; this answers "did the world
+    // get dirty again while we were flying".
+    auto epoch = session->dirty_epoch;
 
     auto finish_compile = [&]() {
         if(session->compiling == pc) {
@@ -729,7 +747,11 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             }
         }
 
-        session->ast_dirty = false;
+        // Conditional write: if an invalidation landed mid-flight (a header
+        // was saved, the document was evicted, ...) this product describes
+        // a stale world — record it, publish it (bounded staleness), but do
+        // not declare it fresh; the next request recompiles.
+        session->settle_compile(epoch);
         pc->succeeded = true;
         record_deps(*session, result.value().deps);
 
@@ -802,10 +824,14 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
         if(!is_stale(*session)) {
             co_return true;
         }
-        // Dependency change, not a buffer edit: re-run the trial too.
-        session->ast_dirty = true;
-        session->trial_done = false;
-        contexts.forget_self_contained(path_id);
+        // A dependency changed on disk behind this session's back — the
+        // lazy twin of the file tracker's DiskChanged. Route it through
+        // the event pipeline (synchronous) so both share one cascade; for
+        // an open file that dispatch marks the AST dirty, resets the trial
+        // and bumps dirty_epoch. The dispatch re-resolves the session by
+        // path_id; no suspension separates it from this frame, so it finds
+        // the same open session this coroutine holds.
+        on_stale(path_id);
     }
 
     // If an up-to-date compile is already in flight, wait for it.

@@ -120,6 +120,63 @@ TEST_CASE(CloseBumpsGeneration) {
     ASSERT_EQ(store.find(7), nullptr);
 }
 
+TEST_CASE(ResetSupersededBumpsGeneration) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "int x;", 1);
+    session->ast_dirty = false;
+    session->trial_done = true;
+    session->pch_ref = Session::PCHRef{"key", 4};
+    session->ast_deps.emplace();
+    auto gen = session->generation;
+    auto epoch = session->dirty_epoch;
+
+    SessionStore::reset_compile_state(*session, ResetDepth::Superseded);
+
+    ASSERT_TRUE(session->ast_dirty);
+    ASSERT_FALSE(session->trial_done);
+    ASSERT_FALSE(session->pch_ref.has_value());
+    ASSERT_FALSE(session->ast_deps.has_value());
+    ASSERT_EQ(session->generation, gen + 1);
+    ASSERT_EQ(session->dirty_epoch, epoch);
+}
+
+TEST_CASE(ResetLostBumpsEpoch) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "int x;", 1);
+    session->ast_dirty = false;
+    session->trial_done = true;
+    session->pch_ref = Session::PCHRef{"key", 4};
+    auto gen = session->generation;
+    auto epoch = session->dirty_epoch;
+
+    SessionStore::reset_compile_state(*session, ResetDepth::Lost);
+
+    // The buffer is still the same buffer and its inputs did not change:
+    // only the freshness claim is revoked.
+    ASSERT_TRUE(session->ast_dirty);
+    ASSERT_TRUE(session->trial_done);
+    ASSERT_TRUE(session->pch_ref.has_value());
+    ASSERT_EQ(session->generation, gen);
+    ASSERT_EQ(session->dirty_epoch, epoch + 1);
+}
+
+TEST_CASE(SettleCompileConditional) {
+    Session session;
+    session.ast_dirty = true;
+    auto launch_epoch = session.dirty_epoch;
+
+    // Invalidation landed mid-flight: the product must not claim freshness.
+    session.dirty_epoch += 1;
+    session.settle_compile(launch_epoch);
+    ASSERT_TRUE(session.ast_dirty);
+
+    // Quiet flight: the clear goes through.
+    session.settle_compile(session.dirty_epoch);
+    ASSERT_FALSE(session.ast_dirty);
+}
+
 TEST_CASE(ForEachVisitsAll) {
     SessionStore store;
     store.open(1);

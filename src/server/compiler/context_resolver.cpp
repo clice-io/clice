@@ -751,12 +751,7 @@ bool ContextResolver::drop_orphaned_choices(SessionStore& sessions) {
             LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
                      workspace.path_pool.resolve(session_id));
             drop_header_context(session_id);
-            session->pch_ref.reset();
-            session->ast_dirty = true;
-            session->trial_done = false;
-            // Invalidate in-flight compiles so they cannot clobber the
-            // reset state when they finish (same as switchContext).
-            session->generation += 1;
+            SessionStore::reset_compile_state(*session, ResetDepth::Superseded);
             saved_contexts.erase(it);
             dropped_saved = true;
         }
@@ -984,17 +979,12 @@ ext::SwitchContextResult ContextResolver::switch_context(llvm::StringRef path,
     }
 
     drop_header_context(path_id);
-    session->pch_ref.reset();
-    session->ast_deps.reset();
-    session->ast_dirty = true;
-    // The new context needs its own self-containment trial — a
-    // different host can change the macro environment.
-    session->trial_done = false;
+    // The new context is a different compilation identity: supersede any
+    // in-flight compile and drop the state earned under the old one. It
+    // also needs its own self-containment trial — a different host can
+    // change the macro environment.
+    SessionStore::reset_compile_state(*session, ResetDepth::Superseded);
     forget_self_contained(path_id);
-    // Invalidate any in-flight compile: without the bump it would
-    // clobber ast_dirty on completion and publish results for the
-    // old context, with nothing left for is_stale() to detect.
-    session->generation++;
 
     // The table entry is the active choice; persist it across sessions.
     saved_contexts[path_id] = std::move(saved);

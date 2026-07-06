@@ -36,10 +36,12 @@ struct FileEvent {
         /// The compilation database was reloaded; `cdb` lists the files
         /// whose entries were added, removed or changed.
         CDBChanged,
-        /// clice/switchContext changed the file's active header context.
-        ContextChanged,
         /// A stateful worker crashed; `paths` lists the documents it owned.
         WorkerCrashed,
+        /// A stateful worker evicted the document from its LRU cache: the
+        /// built AST is gone, but unlike a crash only this one document is
+        /// affected.
+        DocumentEvicted,
     };
 
     /// CDBChanged payload: the reload's per-file delta, as master path-pool
@@ -91,20 +93,30 @@ struct FileEvent {
         return event;
     }
 
-    static FileEvent context_changed(std::uint32_t path_id) {
-        return {Kind::ContextChanged, path_id};
-    }
-
     static FileEvent worker_crashed(llvm::ArrayRef<std::uint32_t> lost_documents) {
         FileEvent event{Kind::WorkerCrashed};
         event.paths.assign(lost_documents.begin(), lost_documents.end());
         return event;
+    }
+
+    static FileEvent document_evicted(std::uint32_t path_id) {
+        return {Kind::DocumentEvicted, path_id};
     }
 };
 
 /// The effects an event batch demands, deduplicated. The engine computes
 /// these; MasterServer::dispatch() executes them against the mutable
 /// services (sessions, context resolver, background indexer).
+///
+/// Effect algebra: the sets are not disjoint, and stronger effects subsume
+/// weaker ones on the same file — mark_ast_dirty implies the trial reset
+/// that reset_trial asks for, force_revalidate implies mark_ast_dirty's
+/// session treatment, and one event may push a file into several sets
+/// (BufferSaved emits both reset_trial and reset_header_mode for the saved
+/// file). Execution is idempotent per effect, so the overlap is harmless;
+/// what matters is that each set can also occur ALONE (reset_trial without
+/// mark_ast_dirty re-runs the trial on a clean AST), which is why they are
+/// separate vocabulary rather than severity levels of one list.
 struct DirtySet {
     /// Compile inputs changed: ast_dirty + trial_done=false + forget the
     /// cached self-containment verdict.
@@ -165,10 +177,15 @@ struct DirtySet {
 ///     as a DirtySet effect and executed by the dispatcher, so the engine
 ///     stays testable with plain data structures.
 ///
-/// The engine is told about every event, but the buffer-change mechanics of
-/// BufferOpened/BufferEdited (text, version, ast_dirty, generation) are the
-/// SessionStore's charter and stay in apply_open/apply_change; those cases
-/// exist as hooks for future cross-file policy, not as the sync path.
+/// Exemption criterion — invalidation logic may bypass apply() if and only
+/// if it (1) has no cross-file cascade, (2) touches only a single owner's
+/// state, and (3) completes within one synchronous section. SessionStore's
+/// buffer mechanics qualify (apply_open/apply_change own text, version,
+/// ast_dirty, generation; the BufferOpened/BufferEdited cases below exist
+/// as hooks for future cross-file policy, not as the sync path), and so
+/// does clice/switchContext's session reset (single owner, synchronous,
+/// no cascade). Anything failing a clause goes through the pipeline — do
+/// not add ceremonial event kinds for exempt logic.
 class Invalidator {
 public:
     /// Read a file's current on-disk content, or nullopt if unreadable.

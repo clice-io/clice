@@ -98,6 +98,13 @@ public:
     /// Callback invoked when indexing should be scheduled.
     std::function<void()> on_indexing_needed;
 
+    /// Invoked from ensure_compiled's fast path when the pull-side
+    /// staleness check finds a dependency changed on disk. The owner routes
+    /// it into the event pipeline as a DiskChanged (synchronously), so lazy
+    /// detection and the file tracker's polling share one invalidation
+    /// cascade instead of maintaining two.
+    std::function<void(std::uint32_t path_id)> on_stale;
+
     /// Cancel in-flight compile tasks and wait for them to finish.
     kota::task<> stop();
 
