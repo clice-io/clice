@@ -287,6 +287,14 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
                                       std::uint64_t launch_generation,
                                       const std::string& directory,
                                       const std::vector<std::string>& arguments) {
+    // A round superseded during the caller's earlier awaits (module
+    // dependencies) must not touch pch_ref at all: the reset and cache-hit
+    // branches below write it before the first suspension point, and this
+    // round's directory/arguments describe the superseded identity.
+    if(session.generation != launch_generation) {
+        co_return false;
+    }
+
     auto path_id = session.path_id;
     auto path = workspace.path_pool.resolve(path_id);
     auto& text = session.text;
@@ -646,6 +654,14 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         }
         contexts.append_suffix_include(*session, params.text);
 
+        // Whether this round is the self-containment probe: a header
+        // deliberately compiled without its includer prefix to see if it
+        // stands alone. Decided here, where resolve_command chose to omit
+        // the prefix; the landing gates what the probe may write.
+        bool trial_round = attempt == 0 && !session->trial_done && header_context &&
+                           header_context->preamble_path.empty() &&
+                           contexts.header_mode(file_path, pid) == HeaderMode::Unknown;
+
         bool deps_ok = co_await ensure_deps(*session,
                                             gen,
                                             params.directory,
@@ -719,6 +735,18 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             co_return;
         }
 
+        // A probe invalidated mid-flight is discarded whole: its verdict is
+        // a conditional write like the dirty flag (dispatch reset trial_done
+        // and the header mode for the recompile to re-earn), and its
+        // diagnostics come from a compile deliberately run without includer
+        // context — they are never published, including on this path.
+        // ast_dirty is still set, so the next request re-runs the trial.
+        if(trial_round && session->dirty_epoch != epoch) {
+            LOG_INFO("Discarding invalidated self-containment probe for {}", uri_str);
+            finish_compile();
+            co_return;
+        }
+
         // Self-containment trial verdict. Scored once per settled input
         // state: trial_done is reset whenever compile inputs change for
         // reasons other than buffer edits, so a dependency change re-runs
@@ -726,14 +754,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // persisted — SelfContained is recorded in memory alone (dependency
         // changes erase it) so queryContext can dedup identical-flag hosts
         // once the verdict is actually earned, never on a guess.
-        // The trial verdict is a conditional write like the dirty flag: if
-        // an invalidation landed mid-flight, these diagnostics describe the
-        // pre-event world and must not settle trial_done or the header
-        // mode (dispatch reset both for the recompile to re-earn).
-        auto* trial_context = contexts.header_context(pid);
-        if(attempt == 0 && session->dirty_epoch == epoch && !session->trial_done && trial_context &&
-           trial_context->preamble_path.empty() &&
-           contexts.header_mode(file_path, pid) == HeaderMode::Unknown) {
+        if(trial_round) {
             std::vector<protocol::Diagnostic> diagnostics;
             if(!result.value().diagnostics.empty()) {
                 [[maybe_unused]] auto status =
