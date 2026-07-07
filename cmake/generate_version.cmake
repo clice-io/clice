@@ -6,16 +6,35 @@
 #
 # Inputs: SOURCE_DIR, FALLBACK_VERSION, TEMPLATE, OUTPUT_FILE.
 
+# Guard against git's parent-directory repository discovery: a source
+# tarball unpacked inside some other checkout must take the tarball
+# fallback, not describe the surrounding repository. Trust git only when
+# the discovered top-level is the source directory itself.
 execute_process(
-    COMMAND git -C "${SOURCE_DIR}" describe --tags --always --dirty
-    OUTPUT_VARIABLE CLICE_GIT_DESCRIBE
+    COMMAND git -C "${SOURCE_DIR}" rev-parse --show-toplevel
+    OUTPUT_VARIABLE CLICE_GIT_TOPLEVEL
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET
-    RESULT_VARIABLE CLICE_GIT_RESULT
+    RESULT_VARIABLE CLICE_TOPLEVEL_RESULT
 )
 
+set(CLICE_GIT_RESULT 1)
+if(CLICE_TOPLEVEL_RESULT EQUAL 0 AND NOT CLICE_GIT_TOPLEVEL STREQUAL "")
+    file(REAL_PATH "${CLICE_GIT_TOPLEVEL}" CLICE_GIT_TOPLEVEL)
+    file(REAL_PATH "${SOURCE_DIR}" CLICE_SOURCE_REAL)
+    if(CLICE_GIT_TOPLEVEL STREQUAL CLICE_SOURCE_REAL)
+        execute_process(
+            COMMAND git -C "${SOURCE_DIR}" describe --tags --always --dirty
+            OUTPUT_VARIABLE CLICE_GIT_DESCRIBE
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+            RESULT_VARIABLE CLICE_GIT_RESULT
+        )
+    endif()
+endif()
+
 if(NOT CLICE_GIT_RESULT EQUAL 0 OR CLICE_GIT_DESCRIBE STREQUAL "")
-    # Not a git checkout (e.g. a source tarball): base version only.
+    # Not a git checkout of clice (e.g. a source tarball): base version only.
     set(CLICE_VERSION_STRING "${FALLBACK_VERSION}")
 elseif(CLICE_GIT_DESCRIBE MATCHES "^[0-9a-f]+(-dirty)?$")
     # No tag reachable: describe degrades to a bare commit hash.
