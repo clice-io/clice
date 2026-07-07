@@ -670,6 +670,10 @@ void MergedIndex::lookup(this const Self& self,
 }
 
 bool MergedIndex::need_update(this const Self& self) {
+    // compilation_contexts holds at most one entry — the shard's own TU
+    // (merge() is only ever called with tu_path == the shard's file; header
+    // contributions go through header_contexts instead) — so begin() below
+    // reads the whole story, not an arbitrary sample.
     if(self.impl) {
         if(self.impl->compilation_contexts.empty()) {
             return true;
@@ -869,14 +873,12 @@ void MergedIndex::merge(this Self& self,
     self.impl->content = content.str();
     self.impl->line_starts = kota::ipc::lsp::build_line_starts(self.impl->content);
 
-    // Intern the dependencies into the shard's own path table, and capture a
-    // content hash for each distinct one so a later staleness check can tell
-    // a real edit apart from a mere touch (mtime bumped, bytes unchanged).
-    // Only re-hashing at check time can prove that, so the baseline is
-    // recorded here.
-    // TODO: this re-reads every dependency on the event-loop thread even
-    // though the indexer worker already read them; if it shows up on large
-    // cold-start profiles, have the worker ship the hashes in the TUIndex.
+    // Intern the dependencies into the shard's own path table, adopting the
+    // hash of the content the indexing compilation actually consumed as the
+    // staleness baseline: the shard's rows are a function of exactly that
+    // content, so a later mtime bump with matching bytes is provably a mere
+    // touch, and any divergence — including a write that landed during the
+    // indexing run — makes the shard look stale. No disk I/O here.
     std::vector<IncludeLocation> include_locations;
     llvm::SmallVector<DepHash> dep_hashes;
     llvm::DenseSet<std::uint32_t> seen;
@@ -887,19 +889,11 @@ void MergedIndex::merge(this Self& self,
         if(!seen.insert(local_id).second) {
             continue;
         }
-        // A dep modified after the indexed snapshot was built must not
-        // contribute a baseline: hashing it now would bless content the
-        // rows were never built from, hiding the edit forever. With no
-        // stored hash the staleness check stays conservative and the TU
-        // simply reindexes once more.
-        fs::file_status status;
-        if(auto err = fs::status(dep.path, status)) {
-            continue;
-        }
-        auto mtime = std::chrono::duration_cast<std::chrono::milliseconds>(
-            status.getLastModificationTime().time_since_epoch());
-        if(mtime <= build_at) {
-            dep_hashes.emplace_back(local_id, hash_file(dep.path));
+        // A dep the worker could not hash contributes no baseline: the
+        // staleness check then stays conservative (one extra reindex when
+        // its mtime moves) instead of trusting a hash of nothing.
+        if(dep.hash != 0) {
+            dep_hashes.emplace_back(local_id, dep.hash);
         }
     }
 

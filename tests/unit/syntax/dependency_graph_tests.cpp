@@ -74,6 +74,40 @@ TEST_CASE(ModuleCount) {
     EXPECT_EQ(graph.module_count(), 2u);
 }
 
+TEST_CASE(ImportEdges) {
+    clice::DependencyGraph graph;
+    EXPECT_TRUE(graph.importers_of("m").empty());
+    EXPECT_TRUE(graph.imports_of(1).empty());
+
+    graph.set_imports(1, {"m", "n"});
+    graph.set_imports(2, {"m"});
+    EXPECT_EQ(graph.imports_of(1).size(), 2u);
+    EXPECT_EQ(graph.importers_of("m").size(), 2u);
+    EXPECT_EQ(graph.importers_of("n").size(), 1u);
+}
+
+TEST_CASE(SetImportsReplaces) {
+    clice::DependencyGraph graph;
+    graph.set_imports(1, {"m", "n"});
+
+    // A rescan replaces the file's whole import set; dropped edges must
+    // leave the reverse map too.
+    graph.set_imports(1, {"n"});
+    EXPECT_TRUE(graph.importers_of("m").empty());
+    EXPECT_EQ(graph.importers_of("n").size(), 1u);
+
+    graph.set_imports(1, {});
+    EXPECT_TRUE(graph.importers_of("n").empty());
+    EXPECT_TRUE(graph.imports_of(1).empty());
+}
+
+TEST_CASE(DuplicateImportsDedup) {
+    clice::DependencyGraph graph;
+    graph.set_imports(1, {"m", "m"});
+    EXPECT_EQ(graph.imports_of(1).size(), 1u);
+    EXPECT_EQ(graph.importers_of("m").size(), 1u);
+}
+
 // ============================================================================
 // Include edge tests
 // ============================================================================

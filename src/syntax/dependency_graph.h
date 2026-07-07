@@ -61,6 +61,18 @@ public:
     /// Look up all PathIDs that provide a given module (may have multiple candidates).
     llvm::ArrayRef<std::uint32_t> lookup_module(llvm::StringRef module_name) const;
 
+    /// Set the modules a file imports (C++20 `import` declarations, plus the
+    /// implicit interface dependency of a module implementation unit).
+    /// Replaces the file's previous set and maintains the reverse map. An
+    /// empty list clears the file's import edges.
+    void set_imports(std::uint32_t path_id, llvm::ArrayRef<std::string> module_names);
+
+    /// The modules a file imports, as recorded by set_imports.
+    llvm::ArrayRef<std::string> imports_of(std::uint32_t path_id) const;
+
+    /// Files that directly import the given module.
+    llvm::ArrayRef<std::uint32_t> importers_of(llvm::StringRef module_name) const;
+
     /// Set the direct include list for a (file, config) pair.
     void set_includes(std::uint32_t path_id,
                       std::uint32_t config_id,
@@ -117,6 +129,17 @@ public:
 private:
     /// Module name -> PathIDs (multiple candidates possible, e.g. different targets).
     llvm::StringMap<llvm::SmallVector<std::uint32_t, 2>> module_to_path;
+
+    /// PathID -> imported module names. Import edges live here (not in the
+    /// include maps): imports are name-resolved, carry no search config, and
+    /// must never leak into include-chain queries (host inference, preamble
+    /// synthesis).
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 2>> file_imports;
+
+    /// Module name -> PathIDs of files importing it (reverse of
+    /// file_imports). Lets invalidation reach importers of a saved module
+    /// interface even when they never compiled this session.
+    llvm::StringMap<llvm::SmallVector<std::uint32_t, 2>> module_importers;
 
     /// (PathID, ConfigID) -> list of directly included PathIDs.
     /// Each PathID may have bit 31 set to indicate conditional include.

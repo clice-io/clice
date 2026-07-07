@@ -3,6 +3,10 @@
 #include "semantic/ast_utility.h"
 
 #include "kota/ipc/lsp/text.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/xxhash.h"
+#include "clang/Serialization/ASTReader.h"
+#include "clang/Serialization/ModuleManager.h"
 
 namespace clice {
 
@@ -252,38 +256,91 @@ clang::LangOptions& CompilationUnitRef::lang_options() {
     return self->instance->getLangOpts();
 }
 
-std::vector<std::string> CompilationUnitRef::deps() {
-    llvm::StringSet<> deps;
+/// Hash a file's content with the same scheme the server layer uses for its
+/// dependency snapshots (workspace's `hash_file`). Returns 0 on read failure.
+static std::uint64_t hash_file_content(llvm::StringRef path) {
+    auto buffer = llvm::MemoryBuffer::getFile(path);
+    if(!buffer) {
+        return 0;
+    }
+    return llvm::xxh3_64bits((*buffer)->getBuffer());
+}
+
+std::vector<HashedDep> CompilationUnitRef::deps() {
+    llvm::StringMap<std::uint64_t> deps;
 
     /// FIXME: consider `#embed` and `__has_embed`.
+
+    auto add_resident = [&](clang::FileID fid) {
+        auto path = file_path(fid);
+        if(path.empty()) {
+            return;
+        }
+        auto [it, inserted] = deps.try_emplace(path, 0);
+        if(!inserted) {
+            return;
+        }
+        // Hash the buffer the compiler actually consumed rather than
+        // re-reading the file: a disk change that lands while the compilation
+        // is running can then never be blessed as the built-from content.
+        if(auto buffer = self->SM().getBufferOrNone(fid)) {
+            it->second = llvm::xxh3_64bits(buffer->getBuffer());
+        }
+    };
 
     for(auto& [fid, directive]: directives()) {
         for(auto& include: directive.includes) {
             if(!include.skipped) {
-                auto path = file_path(include.fid);
-                if(!path.empty()) {
-                    deps.try_emplace(path);
-                }
+                add_resident(include.fid);
             }
         }
 
         for(auto& has_include: directive.has_includes) {
             if(has_include.fid.isValid()) {
-                auto path = file_path(has_include.fid);
-                if(!path.empty()) {
-                    deps.try_emplace(path);
-                }
+                add_resident(has_include.fid);
             }
         }
     }
 
-    std::vector<std::string> result;
+    for(auto& dep: imported_module_sources()) {
+        deps.try_emplace(dep.path, dep.hash);
+    }
 
-    for(auto& deps: deps) {
-        result.emplace_back(deps.getKey().str());
+    std::vector<HashedDep> result;
+    result.reserve(deps.size());
+    for(auto& entry: deps) {
+        result.push_back({entry.getKey().str(), entry.getValue()});
     }
 
     return result;
+}
+
+std::vector<HashedDep> CompilationUnitRef::imported_module_sources() {
+    std::vector<HashedDep> sources;
+    auto reader = self->instance->getASTReader();
+    if(!reader) {
+        return sources;
+    }
+
+    // The module manager chain covers every loaded module file, including
+    // transitively loaded ones — exactly the set whose interface sources this
+    // compilation's semantics depend on. The sources were consumed through
+    // their PCMs, never read here, so there is no resident buffer to hash:
+    // read them from disk instead. A save landing between the PCM build and
+    // this hash is caught by the push-side invalidation cascade, not by this
+    // snapshot.
+    for(auto& file: reader->getModuleManager()) {
+        if(!file.StandardCXXModule) {
+            continue;
+        }
+        auto& source = file.ActualOriginalSourceFileName.empty()
+                           ? file.OriginalSourceFileName
+                           : file.ActualOriginalSourceFileName;
+        if(!source.empty()) {
+            sources.push_back({source, hash_file_content(source)});
+        }
+    }
+    return sources;
 }
 
 index::SymbolID CompilationUnitRef::getSymbolID(const clang::NamedDecl* decl) {

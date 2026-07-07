@@ -173,6 +173,14 @@ file_indices:
     [TUFileIndexEntry];
 main_file_index:
     TUFileIndexEntry;
+
+// Consumed-content hash per path (parallel to `paths`), and path ids of
+// imported C++20 module interface sources. See index/include_graph.h and
+// index/tu_index.h.
+path_hashes:
+    [ulong];
+imports:
+    [uint];
 }
 
 // The blob's path table is compact: only paths referenced by the symbol

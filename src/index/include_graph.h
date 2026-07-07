@@ -36,6 +36,12 @@ struct IncludeGraph {
     /// don't want to save its path repeatedly, so cache it here.
     std::vector<std::string> paths;
 
+    /// xxh3 hash of each path's content as the compilation consumed it
+    /// (parallel to `paths`), taken from the SourceManager-resident buffers
+    /// at index-build time. The merge side adopts these as staleness
+    /// baselines instead of re-reading the files from disk. 0 = unknown.
+    std::vector<std::uint64_t> path_hashes;
+
     /// All include locations in this tu.
     std::vector<IncludeLocation> locations;
 

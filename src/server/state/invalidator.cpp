@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
 
@@ -86,8 +87,38 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
             }
         }
     };
+    auto new_dependents = workspace.dep_graph.find_host_sources(path_id);
     split_dependents(old_dependents);
-    split_dependents(workspace.dep_graph.find_host_sources(path_id));
+    split_dependents(new_dependents);
+
+    // A module interface among the affected roots (or the saved file itself)
+    // is a compile input of every TU importing its module, transitively
+    // through importing interfaces. The compile-graph cascade inside
+    // rescan_after_save only reaches units that compiled this session; the
+    // scan-built import edges also cover closed TUs that never did.
+    llvm::SmallVector<std::uint32_t> module_seeds(old_dependents.begin(), old_dependents.end());
+    module_seeds.append(new_dependents.begin(), new_dependents.end());
+    module_seeds.push_back(path_id);
+    llvm::DenseSet<std::uint32_t> visited(module_seeds.begin(), module_seeds.end());
+    while(!module_seeds.empty()) {
+        auto seed = module_seeds.pop_back_val();
+        auto module_it = workspace.path_to_module.find(seed);
+        if(module_it == workspace.path_to_module.end()) {
+            continue;
+        }
+        // Only interface units provide a module; an implementation unit
+        // shares the name but its content never reaches importers.
+        auto providers = workspace.dep_graph.lookup_module(module_it->second);
+        if(llvm::find(providers, seed) == providers.end()) {
+            continue;
+        }
+        for(auto importer: workspace.dep_graph.importers_of(module_it->second)) {
+            if(visited.insert(importer).second) {
+                split_dependents(importer);
+                module_seeds.push_back(importer);
+            }
+        }
+    }
 
     // Headers whose resolved context embeds the file through its include
     // chain must re-synthesize their preamble: it copies the chain files'
@@ -210,6 +241,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // within-batch cascades tolerate a stale reverse map by
                 // design (they union the pre/post snapshots).
                 workspace.dep_graph.clear_includes(path_id);
+                workspace.dep_graph.set_imports(path_id, {});
                 rebuild_reverse_map = true;
                 workspace.context_epoch += 1;
                 // Contexts hosted by (or chained through) the removed file

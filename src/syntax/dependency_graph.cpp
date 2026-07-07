@@ -36,6 +36,57 @@ llvm::ArrayRef<std::uint32_t> DependencyGraph::lookup_module(llvm::StringRef mod
     return {};
 }
 
+void DependencyGraph::set_imports(std::uint32_t path_id, llvm::ArrayRef<std::string> module_names) {
+    if(auto it = file_imports.find(path_id); it != file_imports.end()) {
+        for(auto& name: it->second) {
+            auto rev = module_importers.find(name);
+            if(rev == module_importers.end()) {
+                continue;
+            }
+            auto& importers = rev->second;
+            if(auto pos = llvm::find(importers, path_id); pos != importers.end()) {
+                importers.erase(pos);
+            }
+            if(importers.empty()) {
+                module_importers.erase(rev);
+            }
+        }
+        file_imports.erase(it);
+    }
+
+    if(module_names.empty()) {
+        return;
+    }
+
+    auto& imports = file_imports[path_id];
+    for(auto& name: module_names) {
+        if(llvm::find(imports, name) != imports.end()) {
+            continue;
+        }
+        imports.push_back(name);
+        auto& importers = module_importers[name];
+        if(llvm::find(importers, path_id) == importers.end()) {
+            importers.push_back(path_id);
+        }
+    }
+}
+
+llvm::ArrayRef<std::string> DependencyGraph::imports_of(std::uint32_t path_id) const {
+    auto it = file_imports.find(path_id);
+    if(it != file_imports.end()) {
+        return it->second;
+    }
+    return {};
+}
+
+llvm::ArrayRef<std::uint32_t> DependencyGraph::importers_of(llvm::StringRef module_name) const {
+    auto it = module_importers.find(module_name);
+    if(it != module_importers.end()) {
+        return it->second;
+    }
+    return {};
+}
+
 void DependencyGraph::set_includes(std::uint32_t path_id,
                                    std::uint32_t config_id,
                                    llvm::SmallVector<std::uint32_t> included_ids) {
@@ -636,6 +687,21 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 
             if(scan_result.scan_result.is_interface_unit) {
                 graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
+            }
+
+            // Record import edges (a module implementation unit implicitly
+            // imports its interface) so invalidation can reach a module's
+            // importers by name.
+            {
+                auto& sr = scan_result.scan_result;
+                bool implicit_interface_dep = !sr.module_name.empty() && !sr.is_interface_unit;
+                if(!sr.modules.empty() || implicit_interface_dep) {
+                    llvm::SmallVector<std::string> imports(sr.modules.begin(), sr.modules.end());
+                    if(implicit_interface_dep) {
+                        imports.push_back(sr.module_name);
+                    }
+                    graph.set_imports(scan_result.path_id, imports);
+                }
             }
 
             report.includes_found += scan_result.scan_result.includes.size();

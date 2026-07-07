@@ -6,6 +6,7 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
+#include "index/tu_index.h"
 #include "support/filesystem.h"
 #include "syntax/scan.h"
 
@@ -106,8 +107,14 @@ int main() { return 0; }
     // PCHInfo.preamble should be non-empty (contains the #include directives).
     ASSERT_FALSE(info.preamble.empty());
 
-    // PCHInfo.deps should list files involved in building the PCH.
+    // PCHInfo.deps should list files involved in building the PCH, each
+    // hashed from the buffer the compiler consumed.
     ASSERT_FALSE(info.deps.empty());
+    auto dep = llvm::find_if(info.deps, [](const HashedDep& dep) {
+        return llvm::StringRef(dep.path).ends_with("preamble.h");
+    });
+    ASSERT_TRUE(dep != info.deps.end());
+    ASSERT_EQ(dep->hash, llvm::xxh3_64bits(sources.all_files["preamble.h"].content));
 
     // PCHInfo.arguments should match what was passed in.
     ASSERT_EQ(info.arguments.size(), params.arguments.size());
@@ -180,17 +187,19 @@ TEST_CASE(PCMBuildChain) {
     TempDir tmp;
 
     // Module B: no dependencies.
-    tmp.touch("mod_b.cppm", R"(
+    llvm::StringRef b_content = R"(
 export module mod_b;
 export int b_value() { return 42; }
-)");
+)";
+    tmp.touch("mod_b.cppm", b_content);
 
     // Module A: imports B.
-    tmp.touch("mod_a.cppm", R"(
+    llvm::StringRef a_content = R"(
 export module mod_a;
 import mod_b;
 export int a_value() { return b_value() + 1; }
-)");
+)";
+    tmp.touch("mod_a.cppm", a_content);
 
     CompilationDatabase cdb;
     Toolchain tc;
@@ -239,9 +248,106 @@ export int a_value() { return b_value() + 1; }
     // info_a should record mod_b as a dependency.
     ASSERT_TRUE(llvm::find(info_a.mods, "mod_b") != info_a.mods.end());
 
+    // Each PCM's deps carry its own interface source, and A's also carry
+    // B's interface source (the import edge), all with content hashes.
+    auto has_dep = [](const PCMInfo& info, llvm::StringRef path, std::uint64_t hash) {
+        return llvm::any_of(info.deps, [&](const HashedDep& dep) {
+            return dep.path == path && dep.hash == hash;
+        });
+    };
+    ASSERT_TRUE(has_dep(info_b, tmp.path("mod_b.cppm"), llvm::xxh3_64bits(b_content)));
+    ASSERT_TRUE(has_dep(info_a, tmp.path("mod_a.cppm"), llvm::xxh3_64bits(a_content)));
+    ASSERT_TRUE(has_dep(info_a, tmp.path("mod_b.cppm"), llvm::xxh3_64bits(b_content)));
+
     // Clean up temp PCM files.
     llvm::sys::fs::remove(*pcm_b_path);
     llvm::sys::fs::remove(*pcm_a_path);
+}
+
+TEST_CASE(IndexImporterTUIndex) {
+    // Index-kind compile of a TU importing a module: the TUIndex must carry
+    // the interface source as an import dependency and serialize cleanly.
+    TempDir tmp;
+
+    llvm::StringRef iface_content = R"(
+export module mod_x;
+export inline int x_value() { return 42; }
+)";
+    tmp.touch("mod_x.cppm", iface_content);
+    tmp.touch("user.cpp", R"(
+import mod_x;
+int use_x() { return x_value(); }
+)");
+
+    CompilationDatabase cdb;
+    Toolchain tc;
+
+    cdb.add_command(tmp.root.str(),
+                    tmp.path("mod_x.cppm"),
+                    std::format("clang++ -std=c++20 {}", tmp.path("mod_x.cppm")));
+    auto cmds_x = cdb.lookup(tmp.path("mod_x.cppm"));
+    ASSERT_TRUE(tc.resolve(cmds_x.front()).has_value());
+    CompilationParams params_x;
+    params_x.kind = CompilationKind::ModuleInterface;
+    params_x.arguments = cmds_x.front().to_argv();
+
+    auto pcm_path = fs::createTemporaryFile("mod_x", "pcm");
+    ASSERT_TRUE(pcm_path.operator bool());
+    params_x.output_file = *pcm_path;
+
+    PCMInfo info_x;
+    auto unit_x = clice::compile(params_x, info_x);
+    ASSERT_TRUE(unit_x.completed());
+
+    cdb.add_command(tmp.root.str(),
+                    tmp.path("user.cpp"),
+                    std::format("clang++ -std=c++20 {}", tmp.path("user.cpp")));
+    auto cmds_u = cdb.lookup(tmp.path("user.cpp"));
+    ASSERT_TRUE(tc.resolve(cmds_u.front()).has_value());
+    CompilationParams params_u;
+    params_u.kind = CompilationKind::Indexing;
+    params_u.arguments = cmds_u.front().to_argv();
+    params_u.pcms.try_emplace("mod_x", *pcm_path);
+
+    auto unit_u = clice::compile(params_u);
+    ASSERT_TRUE(unit_u.completed());
+
+    auto tu_index = index::TUIndex::build(unit_u);
+    ASSERT_EQ(tu_index.imports.size(), std::size_t(1));
+    auto import_id = tu_index.imports[0];
+    ASSERT_EQ(tu_index.graph.paths[import_id], tmp.path("mod_x.cppm"));
+    ASSERT_EQ(tu_index.graph.path_hashes[import_id], llvm::xxh3_64bits(iface_content));
+
+    // The module symbol must have the same identity on both sides of the
+    // PCM boundary, or cross-TU references could never connect.
+    auto iface_index = index::TUIndex::build(unit_x);
+    auto find_symbol = [](const index::TUIndex& idx, llvm::StringRef name) -> std::uint64_t {
+        for(auto& [hash, symbol]: idx.symbols) {
+            if(symbol.name == name) {
+                return hash;
+            }
+        }
+        return 0;
+    };
+    auto hash_in_iface = find_symbol(iface_index, "x_value");
+    auto hash_in_user = find_symbol(tu_index, "x_value");
+    ASSERT_TRUE(hash_in_iface != 0);
+    ASSERT_EQ(hash_in_iface, hash_in_user);
+
+    // Round-trip through the wire format, as the indexer receives it.
+    std::string data;
+    llvm::raw_string_ostream os(data);
+    tu_index.serialize(os);
+    auto restored = index::TUIndex::from(data.data());
+    ASSERT_EQ(restored.imports, tu_index.imports);
+    ASSERT_EQ(restored.graph.path_hashes, tu_index.graph.path_hashes);
+
+    // Rows located inside the imported module's own files belong to the
+    // module's index run, not this TU's: the import edge is a dependency
+    // only, never a contribution.
+    ASSERT_FALSE(restored.path_file_indices.contains(import_id));
+
+    llvm::sys::fs::remove(*pcm_path);
 }
 
 TEST_CASE(PCHContentDifference) {

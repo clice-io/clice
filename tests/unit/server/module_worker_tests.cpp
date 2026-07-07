@@ -2,8 +2,11 @@
 #include <vector>
 
 #include "test/test.h"
+#include "index/tu_index.h"
 #include "server/protocol/worker.h"
 #include "server/worker_test_helpers.h"
+
+#include "llvm/ADT/STLExtras.h"
 
 namespace clice::testing {
 
@@ -88,6 +91,15 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
         CO_ASSERT_TRUE(result.has_value());
         EXPECT_EQ(result.value().version, 1);
 
+        // The imported module's interface source is a dependency of the
+        // consumer, hashed from its on-disk content, with the compile start
+        // time alongside for the mtime fast layer.
+        auto& deps = result.value().deps;
+        auto dep = llvm::find_if(deps, [&](const HashedDep& dep) { return dep.path == iface; });
+        CO_ASSERT_TRUE(dep != deps.end());
+        EXPECT_TRUE(dep->hash != 0);
+        EXPECT_TRUE(result.value().build_at > 0);
+
         phase2_done = true;
         sf.peer->close_output();
     });
@@ -96,6 +108,83 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
 
     // Cleanup PCM temp file.
     std::remove(pcm_path.c_str());
+}
+
+TEST_CASE(IndexImporterReportsImports) {
+    TempDir tmp;
+    tmp.touch("mod_iface.cppm",
+              "export module Hello;\n" R"(export inline int hello() { return 1; })" "\n");
+    auto iface = tmp.path("mod_iface.cppm");
+    tmp.touch("consumer.cpp", "import Hello;\n" "int use_hello() { return hello(); }\n");
+    auto consumer = tmp.path("consumer.cpp");
+
+    WorkerHandle sl;
+    ASSERT_TRUE(sl.spawn());
+
+    bool done = false;
+
+    sl.run([&]() -> kota::task<> {
+        std::string pcm_path;
+        {
+            worker::BuildParams params;
+            params.kind = worker::BuildKind::BuildPCM;
+            params.file = iface;
+            params.directory = "/tmp";
+            params.arguments = {"clang++",
+                                "-resource-dir",
+                                std::string(resource_dir()),
+                                "-std=c++20",
+                                "--precompile",
+                                iface};
+            params.module_name = "Hello";
+            params.output_path = tmp.path("Hello.pcm");
+
+            auto result = co_await sl.peer->send_request(params);
+            CO_ASSERT_TRUE(result.has_value() && result.value().success);
+            pcm_path = result.value().output_path;
+
+            // Build results carry the compile start time and the interface
+            // source with its consumed-content hash.
+            EXPECT_TRUE(result.value().build_at > 0);
+            auto& deps = result.value().deps;
+            auto dep = llvm::find_if(deps, [&](const HashedDep& dep) { return dep.path == iface; });
+            CO_ASSERT_TRUE(dep != deps.end());
+            EXPECT_TRUE(dep->hash != 0);
+        }
+
+        // Background-index the consumer against the PCM: the TUIndex must
+        // carry the interface source as an import dependency with a hash.
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::Index;
+        params.file = consumer;
+        params.directory = "/tmp";
+        params.arguments = {"clang++",
+                            "-resource-dir",
+                            std::string(resource_dir()),
+                            "-std=c++20",
+                            "-fsyntax-only",
+                            consumer};
+        params.pcms = {
+            {"Hello", pcm_path}
+        };
+
+        auto result = co_await sl.peer->send_request(params);
+        CO_ASSERT_TRUE(result.has_value());
+        CO_ASSERT_TRUE(result.value().success);
+        CO_ASSERT_FALSE(result.value().tu_index_data.empty());
+
+        auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
+        CO_ASSERT_EQ(tu_index.imports.size(), 1u);
+        auto import_id = tu_index.imports[0];
+        EXPECT_EQ(tu_index.graph.paths[import_id], iface);
+        EXPECT_TRUE(tu_index.graph.path_hashes[import_id] != 0);
+
+        std::remove(pcm_path.c_str());
+        done = true;
+        sl.peer->close_output();
+    });
+
+    ASSERT_TRUE(done);
 }
 
 TEST_CASE(BuildPCMChainThenCompile) {
@@ -196,6 +285,15 @@ TEST_CASE(BuildPCMChainThenCompile) {
         auto result = co_await sf.peer->send_request(params);
         CO_ASSERT_TRUE(result.has_value());
         EXPECT_EQ(result.value().version, 1);
+
+        // The consumer spells only `import B;`, but loading B's PCM pulls
+        // A's too — both interface sources must be reported as deps.
+        auto has_dep = [&](llvm::StringRef path) {
+            return llvm::any_of(result.value().deps,
+                                [&](const HashedDep& dep) { return dep.path == path; });
+        };
+        EXPECT_TRUE(has_dep(mod_a));
+        EXPECT_TRUE(has_dep(mod_b));
 
         compile_done = true;
         sf.peer->close_output();

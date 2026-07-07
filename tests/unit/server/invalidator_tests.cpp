@@ -175,6 +175,113 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
 }
 
+TEST_CASE(ModuleSaveReachesImporters) {
+    Workspace workspace;
+    SessionStore store;
+    auto iface = workspace.path_pool.intern("/proj/m.cppm");
+    auto open_user = workspace.path_pool.intern("/proj/open.cpp");
+    auto closed_user = workspace.path_pool.intern("/proj/closed.cpp");
+    workspace.dep_graph.add_module("m", iface);
+    workspace.dep_graph.set_imports(open_user, {"m"});
+    workspace.dep_graph.set_imports(closed_user, {"m"});
+    workspace.path_to_module[iface] = "m";
+    store.open(open_user);
+
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(iface));
+
+    // Importers never compiled this session — the compile graph cannot know
+    // them; the scan-built import edges must. Open ones recompile, closed
+    // ones reindex.
+    ASSERT_TRUE(llvm::is_contained(dirty.mark_ast_dirty, open_user));
+    ASSERT_TRUE(llvm::is_contained(dirty.enqueue_reindex, closed_user));
+}
+
+TEST_CASE(SaveUpdatesImportEdges) {
+    TempDir dir;
+    Workspace workspace;
+    SessionStore store;
+    dir.touch("m.cppm", "export module m;\nexport int f();\n");
+    dir.touch("use.cpp", "import m;\nint run();\n");
+    auto iface = workspace.path_pool.intern(dir.path("m.cppm"));
+    auto importer = workspace.path_pool.intern(dir.path("use.cpp"));
+    workspace.dep_graph.add_module("m", iface);
+    workspace.path_to_module[iface] = "m";
+
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+
+    // The importer's save rescans its imports from disk; only then does the
+    // interface save reach it.
+    invalidator.apply(FileEvent::buffer_saved(importer));
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(iface));
+    ASSERT_TRUE(llvm::is_contained(dirty.enqueue_reindex, importer));
+
+    // Dropping the import on a later save removes the edge again.
+    dir.touch("use.cpp", "int run();\n");
+    invalidator.apply(FileEvent::buffer_saved(importer));
+    dirty = invalidator.apply(FileEvent::buffer_saved(iface));
+    ASSERT_FALSE(llvm::is_contained(dirty.enqueue_reindex, importer));
+}
+
+TEST_CASE(DiskRemovedClearsImports) {
+    Workspace workspace;
+    SessionStore store;
+    auto importer = workspace.path_pool.intern("/proj/use.cpp");
+    workspace.dep_graph.set_imports(importer, {"m"});
+
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+    invalidator.apply(FileEvent::disk_removed(importer));
+
+    ASSERT_TRUE(workspace.dep_graph.importers_of("m").empty());
+    ASSERT_TRUE(workspace.dep_graph.imports_of(importer).empty());
+}
+
+TEST_CASE(TransitiveImportersEnqueue) {
+    Workspace workspace;
+    SessionStore store;
+    auto iface_b = workspace.path_pool.intern("/proj/b.cppm");
+    auto iface_a = workspace.path_pool.intern("/proj/a.cppm");
+    auto user = workspace.path_pool.intern("/proj/use.cpp");
+    workspace.dep_graph.add_module("b", iface_b);
+    workspace.dep_graph.add_module("a", iface_a);
+    workspace.dep_graph.set_imports(iface_a, {"b"});
+    workspace.dep_graph.set_imports(user, {"a"});
+    workspace.path_to_module[iface_b] = "b";
+    workspace.path_to_module[iface_a] = "a";
+
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(iface_b));
+
+    // b's change reaches a (imports b) and, through a's interface, user.
+    ASSERT_TRUE(llvm::is_contained(dirty.enqueue_reindex, iface_a));
+    ASSERT_TRUE(llvm::is_contained(dirty.enqueue_reindex, user));
+}
+
+TEST_CASE(ImplUnitNoCascade) {
+    Workspace workspace;
+    SessionStore store;
+    auto iface = workspace.path_pool.intern("/proj/m.cppm");
+    auto impl = workspace.path_pool.intern("/proj/m.cpp");
+    auto user = workspace.path_pool.intern("/proj/use.cpp");
+    workspace.dep_graph.add_module("m", iface);
+    workspace.dep_graph.set_imports(impl, {"m"});
+    workspace.dep_graph.set_imports(user, {"m"});
+    workspace.path_to_module[iface] = "m";
+    workspace.path_to_module[impl] = "m";
+
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(impl));
+
+    // An implementation unit shares the module name but its content never
+    // reaches importers — only interface saves cascade.
+    ASSERT_FALSE(llvm::is_contained(dirty.enqueue_reindex, user));
+}
+
 TEST_CASE(StaleReverseMapUnion) {
     Workspace workspace;
     SessionStore store;

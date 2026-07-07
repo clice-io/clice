@@ -55,19 +55,57 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     // must be swept below like a dropped one.
     llvm::DenseSet<std::uint32_t> touched;
 
+    // The hash the indexing compilation reported for a graph path; 0 when
+    // the worker could not hash it (or an old-format TUIndex).
+    auto worker_hash = [&](std::uint32_t tu_path_id) -> std::uint64_t {
+        return tu_path_id < tu_index.graph.path_hashes.size()
+                   ? tu_index.graph.path_hashes[tu_path_id]
+                   : 0;
+    };
+
+    // The shard stores file content read from disk here, next to index rows
+    // the worker built from the content it read back then. If the two
+    // diverge — the file changed while the indexing ran — storing either
+    // would pair rows with content they were not built from and corrupt
+    // every position mapping. Skip the file, keep its previous snapshot
+    // (protected from the sweep below), and re-enqueue the TU so the round
+    // redoes it against the new disk state: an explicit redo instead of a
+    // silently wrong store.
+    auto stale_against_worker =
+        [&](std::uint32_t tu_path_id, llvm::StringRef disk_content, llvm::StringRef file_path) {
+            auto expected = worker_hash(tu_path_id);
+            if(expected == 0 || llvm::xxh3_64bits(disk_content) == expected) {
+                return false;
+            }
+            LOG_INFO("Skip merge for {}: disk changed during indexing, re-enqueueing TU {}",
+                     file_path,
+                     main_tu_path);
+            enqueue(file_ids_map[main_tu_path_id]);
+            return true;
+        };
+
     auto merge_file_index = [&](std::uint32_t tu_path_id, index::FileIndex& file_idx) {
         auto global_path_id = file_ids_map[tu_path_id];
         auto& shard = workspace.merged_indices[global_path_id];
 
         if(tu_path_id == main_tu_path_id) {
             llvm::SmallVector<index::DepLocation> deps;
-            deps.reserve(tu_index.graph.locations.size() + 1);
+            deps.reserve(tu_index.graph.locations.size() + tu_index.imports.size() + 1);
             // The TU's own content is a dependency of its shard too: without
             // it, a closed TU edited on disk with unchanged includes would
             // never look stale.
-            deps.push_back({main_tu_path, 0, 0});
+            deps.push_back({main_tu_path, 0, 0, worker_hash(main_tu_path_id)});
             for(auto& loc: tu_index.graph.locations) {
-                deps.push_back({tu_index.graph.paths[loc.path_id], loc.line, loc.include});
+                deps.push_back({tu_index.graph.paths[loc.path_id],
+                                loc.line,
+                                loc.include,
+                                worker_hash(loc.path_id)});
+            }
+            // Imported module interface sources have no include location but
+            // are dependencies all the same: their change must make this
+            // shard look stale.
+            for(auto import_id: tu_index.imports) {
+                deps.push_back({tu_index.graph.paths[import_id], 0, 0, worker_hash(import_id)});
             }
             auto file_path = workspace.path_pool.resolve(global_path_id);
             auto buf = llvm::MemoryBuffer::getFile(file_path);
@@ -78,6 +116,11 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
                 LOG_WARN("Skip merge for {}: cannot read content: {}",
                          file_path,
                          buf.getError().message());
+                touched.insert(global_path_id);
+                return;
+            }
+            if(stale_against_worker(tu_path_id, (*buf)->getBuffer(), file_path)) {
+                touched.insert(global_path_id);
                 return;
             }
             shard.merge(main_tu_path, tu_index.built_at, deps, file_idx, (*buf)->getBuffer());
@@ -102,6 +145,10 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
             if(header_buf) {
                 header_content_storage = (*header_buf)->getBuffer().str();
                 header_content = header_content_storage;
+            }
+            if(stale_against_worker(tu_path_id, header_content, header_path)) {
+                touched.insert(global_path_id);
+                return;
             }
             // Keyed by the including TU so a reindex of that TU replaces its
             // prior contribution to this header's shard.
@@ -389,10 +436,26 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     if(!need_update(file_path))
         co_return;
 
-    // For module interface units, compile their PCM (and transitive deps)
-    // first so the stateless worker has the artifacts it needs.
-    if(workspace.compile_graph && workspace.path_to_module.contains(server_path_id)) {
-        co_await workspace.compile_graph->compile(server_path_id);
+    // For module units, compile their PCM (and transitive deps) first so the
+    // stateless worker has the artifacts it needs. An importer needs its
+    // modules' PCMs the same way — fill_pcm_deps below only hands over
+    // already-built paths, and after an interface save those were just
+    // invalidated.
+    if(workspace.compile_graph) {
+        bool awaited = false;
+        if(workspace.path_to_module.contains(server_path_id)) {
+            co_await workspace.compile_graph->compile(server_path_id);
+            awaited = true;
+        } else if(!workspace.dep_graph.imports_of(server_path_id).empty()) {
+            co_await workspace.compile_graph->compile_deps(server_path_id);
+            awaited = true;
+        }
+        // The PCM builds can suspend for a long time: the file may have been
+        // opened meanwhile (its session owns the truth now) or its shard
+        // refreshed by a concurrent round — re-check both before dispatching.
+        if(awaited && (sessions.find(server_path_id) != nullptr || !need_update(file_path))) {
+            co_return;
+        }
     }
 
     worker::BuildParams params;
@@ -511,6 +574,12 @@ kota::task<> Indexer::run_background_indexing() {
         assert(pending_ids.empty() && "drained queue must have no pending ids");
         index_queue.clear();
         index_queue_pos = 0;
+    } else {
+        // Leftovers arrived while the workers ran (e.g. a merge that skipped
+        // a file whose disk changed mid-indexing re-enqueues its TU). No one
+        // else is guaranteed to reschedule — a schedule() call during the
+        // round was swallowed by indexing_active — so kick the next round.
+        schedule();
     }
 
     LOG_PERF("index",

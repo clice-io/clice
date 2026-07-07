@@ -129,6 +129,58 @@ export module foo;
     EXPECT_TRUE(result.need_preprocess);
 }
 
+TEST_CASE(ImportDeclarations) {
+    auto result = scan(R"(
+import foo;
+import bar.baz;
+)");
+
+    ASSERT_EQ(result.modules.size(), 2u);
+    EXPECT_EQ(result.modules[0], "foo");
+    EXPECT_EQ(result.modules[1], "bar.baz");
+}
+
+TEST_CASE(ExportImport) {
+    auto result = scan(R"(
+export module my.module;
+export import foo;
+import bar;
+)");
+
+    ASSERT_EQ(result.modules.size(), 2u);
+    EXPECT_EQ(result.modules[0], "foo");
+    EXPECT_EQ(result.modules[1], "bar");
+}
+
+TEST_CASE(PartitionImport) {
+    // A partition import implicitly names its primary module, also when the
+    // importer is itself a partition.
+    auto result = scan(R"(
+export module my.module;
+import :part;
+)");
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "my.module:part");
+
+    result = scan(R"(
+export module my.module:other;
+import :part;
+)");
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "my.module:part");
+}
+
+TEST_CASE(HeaderUnitImportSkipped) {
+    auto result = scan(R"(
+import <vector>;
+import "header.h";
+import real.module;
+)");
+
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "real.module");
+}
+
 TEST_CASE(GlobalModuleFragment) {
     auto result = scan(R"(
 module;

@@ -33,8 +33,8 @@ struct PCHInfo {
     /// The content used to build this PCH.
     std::string preamble;
 
-    /// All files involved in building this PCH.
-    std::vector<std::string> deps;
+    /// All files involved in building this PCH, with consumed-content hashes.
+    std::vector<HashedDep> deps;
 
     /// The command arguments used to build this PCH.
     std::vector<const char*> arguments;
@@ -59,8 +59,10 @@ struct PCMInfo : ModuleInfo {
     /// Source file path.
     std::string srcPath;
 
-    /// Files involved in building this PCM(not include module).
-    std::vector<std::string> deps;
+    /// Files involved in building this PCM, with consumed-content hashes.
+    /// Includes the module's own interface source and the sources of every
+    /// imported module.
+    std::vector<HashedDep> deps;
 };
 
 struct CompilationParams {

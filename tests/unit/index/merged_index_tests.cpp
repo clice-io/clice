@@ -7,6 +7,7 @@
 #include "index/merged_index.h"
 
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 
@@ -570,12 +571,12 @@ TEST_CASE(LocalSymbolSerialization) {
     }
 }
 
-// The dep is backdated an hour so the merge (build_at = one minute ago)
-// records its baseline hash; a later write bumps the mtime past build_at,
-// so staleness reaches the Layer 2 content-hash check — exactly the branch
-// these tests exercise. A dep newer than build_at gets no baseline at all
-// (its content may postdate the indexed snapshot).
-index::MergedIndex build_ctx_shard(llvm::StringRef dep_path) {
+// The dep is backdated an hour and the merge stamps build_at = one minute
+// ago, so any later write bumps the mtime past build_at and staleness
+// reaches the Layer 2 content-hash comparison — exactly the branch these
+// tests exercise. The baseline is the worker-reported consumed-content
+// hash carried in DepLocation, adopted verbatim by merge().
+index::MergedIndex build_ctx_shard(llvm::StringRef dep_path, std::uint64_t consumed_hash) {
     namespace stdfs = std::filesystem;
     stdfs::last_write_time(dep_path.str(),
                            stdfs::file_time_type::clock::now() - std::chrono::hours(1));
@@ -585,7 +586,7 @@ index::MergedIndex build_ctx_shard(llvm::StringRef dep_path) {
     index::MergedIndex merged;
     index::FileIndex file_idx;
     index::DepLocation deps[] = {
-        {.path = dep_path, .line = 1}
+        {.path = dep_path, .line = 1, .hash = consumed_hash}
     };
     merged.merge("tu0", build_at, deps, file_idx, "");
     return merged;
@@ -593,12 +594,14 @@ index::MergedIndex build_ctx_shard(llvm::StringRef dep_path) {
 
 TEST_CASE(TouchNoUpdate) {
     TempDir dir;
+    llvm::StringRef content = "int shared = 1;";
     auto dep = dir.path("dep.h");
-    dir.touch("dep.h", "int shared = 1;");
+    dir.touch("dep.h", content);
 
-    auto merged = build_ctx_shard(dep);
+    auto merged = build_ctx_shard(dep, llvm::xxh3_64bits(content));
 
     // Same content, newer mtime — a pure touch must not trigger a reindex.
+    dir.touch("dep.h", content);
     ASSERT_FALSE(merged.need_update());
 
     // The buffer path (serialized shard) must reach the same conclusion.
@@ -611,13 +614,40 @@ TEST_CASE(TouchNoUpdate) {
 
 TEST_CASE(ContentChangeUpdate) {
     TempDir dir;
+    llvm::StringRef content = "int shared = 1;";
     auto dep = dir.path("dep.h");
-    dir.touch("dep.h", "int shared = 1;");
+    dir.touch("dep.h", content);
 
-    auto merged = build_ctx_shard(dep);
+    auto merged = build_ctx_shard(dep, llvm::xxh3_64bits(content));
 
     // Real edit: content hash diverges from the stored baseline.
     dir.touch("dep.h", "int shared = 2;");
+    ASSERT_TRUE(merged.need_update());
+}
+
+TEST_CASE(ConsumedHashIsBaseline) {
+    TempDir dir;
+    auto dep = dir.path("dep.h");
+    dir.touch("dep.h", "int shared = 1;");
+
+    // The indexing compilation consumed different content than the disk
+    // holds now (a write landed during the run): the shard must look stale
+    // even though the disk was never touched after the merge.
+    auto merged = build_ctx_shard(dep, llvm::xxh3_64bits("int shared = 0;"));
+    dir.touch("dep.h", "int shared = 1;");
+    ASSERT_TRUE(merged.need_update());
+}
+
+TEST_CASE(NoBaselineConservative) {
+    TempDir dir;
+    llvm::StringRef content = "int shared = 1;";
+    auto dep = dir.path("dep.h");
+    dir.touch("dep.h", content);
+
+    // Hash 0 = the worker could not read the dep: no baseline is stored, so
+    // an mtime bump cannot be proven harmless and must trigger a rebuild.
+    auto merged = build_ctx_shard(dep, 0);
+    dir.touch("dep.h", content);
     ASSERT_TRUE(merged.need_update());
 }
 

@@ -1,5 +1,6 @@
 #include "server/worker/stateful_worker.h"
 
+#include <chrono>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -192,6 +193,7 @@ void StatefulWorker::register_handlers() {
                     feature::inactive_regions(doc->unit, params.open_conditionals, doc->pch.second)
                         .regions;
                 result.deps = doc->unit.deps();
+                result.build_at = worker::to_build_at(doc->unit.build_at());
 
                 // Build index for main file only (interested_only=true).
                 auto tu_index = index::TUIndex::build(doc->unit, true);

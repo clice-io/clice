@@ -145,7 +145,7 @@ private:
                                 const std::vector<std::string>& arguments);
 
     bool is_stale(const Session& session);
-    void record_deps(Session& session, llvm::ArrayRef<std::string> deps);
+    void record_deps(Session& session, llvm::ArrayRef<HashedDep> deps, std::int64_t build_at);
 
     kota::event_loop& loop;
     Workspace& workspace;

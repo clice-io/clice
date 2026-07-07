@@ -1,11 +1,13 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "compile/hashed_dep.h"
 #include "feature/document_link.h"
 #include "syntax/token.h"
 
@@ -38,6 +40,15 @@ constexpr inline protocol::integer worker_unavailable = -33000;
 inline bool is_operational_error(const protocol::Error& error) {
     return error.code == dispatch_errc::cancelled ||
            error.code == dispatch_errc::worker_unavailable;
+}
+
+/// Convert a compile start timestamp to the whole-second `build_at` a result
+/// reports. Backs off one second: the master compares file mtimes at second
+/// granularity, and flooring alone would let a file saved within the same
+/// second as compile start slip past the mtime fast layer without ever
+/// reaching the hash comparison.
+inline std::int64_t to_build_at(std::chrono::milliseconds start) {
+    return std::chrono::duration_cast<std::chrono::seconds>(start).count() - 1;
 }
 
 /// Kind of AST query dispatched to a stateful worker.
@@ -80,7 +91,18 @@ struct CompileResult {
     /// Diagnostics serialized as JSON (RawValue) to avoid bincode/serde annotation conflicts.
     kota::codec::RawValue diagnostics;
     std::size_t memory_usage;
-    std::vector<std::string> deps;
+
+    /// Files the compilation consumed, hashed by the worker from the buffers
+    /// it actually read (see HashedDep). The master adopts these hashes for
+    /// its staleness snapshots instead of re-reading the disk.
+    std::vector<HashedDep> deps;
+
+    /// When the compilation started (seconds since epoch, worker clock). The
+    /// mtime fast layer of the master's staleness check must use this rather
+    /// than the result's arrival time: a file saved mid-compile has an mtime
+    /// inside the compile window, and only a build-start baseline forces the
+    /// hash comparison that catches it.
+    std::int64_t build_at = 0;
     /// Serialized TUIndex for the main file (interested_only=true).
     std::string tu_index_data;
 
@@ -145,7 +167,12 @@ struct BuildResult {
     /// without user errors indicates clice infrastructure breakage (anomaly).
     bool has_user_errors = false;
     std::string output_path;  ///< PCH or PCM path
-    std::vector<std::string> deps;
+
+    /// Consumed files with worker-side content hashes, and the build start
+    /// time — same contract as the corresponding CompileResult fields.
+    std::vector<HashedDep> deps;
+    std::int64_t build_at = 0;
+
     std::string tu_index_data;
     /// Include directives of the PCH preamble. Structured so the master can
     /// serve both document links and go-to-definition on preamble lines.

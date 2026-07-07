@@ -98,6 +98,12 @@ struct TUIndex {
     /// The include information of this file.
     IncludeGraph graph;
 
+    /// Indices into graph.paths of the C++20 module interface sources this
+    /// TU consumed (through their PCMs, direct or transitive). They carry no
+    /// include location but are dependencies of the TU's index shard: a
+    /// module interface change must make the shard look stale.
+    std::vector<std::uint32_t> imports;
+
     SymbolTable symbols;
 
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;

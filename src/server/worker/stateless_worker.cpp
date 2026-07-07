@@ -1,5 +1,6 @@
 #include "server/worker/stateless_worker.h"
 
+#include <chrono>
 #include <cstdlib>
 
 #include "compile/compilation.h"
@@ -89,6 +90,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     PCHInfo pch_info;
     auto unit = compile(cp, pch_info);
     bool success = unit.completed();
+    auto build_at = worker::to_build_at(unit.build_at());
 
     std::string errors;
     if(!success)
@@ -111,7 +113,8 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
         worker::BuildResult result;
         result.success = true;
         result.output_path = tmp_path;
-        result.deps = pch_info.deps;
+        result.deps = std::move(pch_info.deps);
+        result.build_at = build_at;
         result.tu_index_data = std::move(tu_index_data);
         result.preamble_links = std::move(preamble_links);
         result.inactive_regions = std::move(inactive.regions);
@@ -155,6 +158,7 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
     PCMInfo pcm_info;
     auto unit = compile(cp, pcm_info);
     bool success = unit.completed();
+    auto build_at = worker::to_build_at(unit.build_at());
 
     std::string errors;
     if(!success)
@@ -171,7 +175,8 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
         worker::BuildResult result;
         result.success = true;
         result.output_path = tmp_path;
-        result.deps = pcm_info.deps;
+        result.deps = std::move(pcm_info.deps);
+        result.build_at = build_at;
         result.tu_index_data = std::move(tu_index_data);
         return result;
     } else {

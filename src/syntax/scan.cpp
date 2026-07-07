@@ -82,6 +82,46 @@ ScanResult scan(llvm::StringRef content) {
                 }
                 break;
             }
+            case dds::cxx_import_decl:
+            case dds::cxx_export_import_decl: {
+                // import a.b; / export import a.b; — collect the dotted
+                // name. Header-unit imports (import <h>; / import "h";)
+                // carry no identifiers and are skipped.
+                std::string name;
+                bool seen_import_keyword = false;
+                for(auto& tok: dir.Tokens) {
+                    if(!seen_import_keyword) {
+                        if(tok.is(clang::tok::raw_identifier) &&
+                           content.substr(tok.Offset, tok.Length) == "import") {
+                            seen_import_keyword = true;
+                        }
+                        continue;
+                    }
+                    if(tok.is(clang::tok::raw_identifier)) {
+                        name += content.substr(tok.Offset, tok.Length);
+                    } else if(tok.is(clang::tok::period)) {
+                        name += '.';
+                    } else if(tok.is(clang::tok::colon)) {
+                        name += ':';
+                    } else {
+                        break;
+                    }
+                }
+
+                if(name.starts_with(':')) {
+                    // A partition import names its own primary module
+                    // implicitly; the module declaration precedes any import.
+                    if(result.module_name.empty()) {
+                        break;
+                    }
+                    auto primary = llvm::StringRef(result.module_name).split(':').first;
+                    name.insert(0, primary.str());
+                }
+                if(!name.empty()) {
+                    result.modules.push_back(std::move(name));
+                }
+                break;
+            }
             case dds::cxx_module_decl:
             case dds::cxx_export_module_decl: {
                 if(conditional_depth > 0) {

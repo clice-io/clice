@@ -154,6 +154,23 @@ llvm::SmallVector<std::uint32_t> Workspace::rescan_after_save(std::uint32_t path
     auto file_path = path_pool.resolve(path_id);
     if(auto buf = llvm::MemoryBuffer::getFile(file_path)) {
         auto result = scan((*buf)->getBuffer());
+
+        // The save may have added or removed import declarations; keep the
+        // import edges in sync with the include rescan above.
+        llvm::SmallVector<std::string> imports(result.modules.begin(), result.modules.end());
+        if(!result.module_name.empty() && !result.is_interface_unit) {
+            imports.push_back(result.module_name);
+        }
+        dep_graph.set_imports(path_id, imports);
+
+        // A save can also introduce a module declaration; register it so
+        // name-based lookups (the importer cascade's interface check) see
+        // it. Removal is left alone: a stale provider entry only makes the
+        // cascade conservative.
+        if(result.is_interface_unit) {
+            dep_graph.add_module(result.module_name, path_id);
+        }
+
         if(!result.module_name.empty()) {
             path_to_module[path_id] = std::move(result.module_name);
         } else {
@@ -229,16 +246,16 @@ std::uint64_t hash_file(llvm::StringRef path) {
     return llvm::xxh3_64bits((*buf)->getBuffer());
 }
 
-DepsSnapshot capture_deps_snapshot(PathPool& pool, llvm::ArrayRef<std::string> deps) {
+DepsSnapshot capture_deps_snapshot(PathPool& pool,
+                                   llvm::ArrayRef<HashedDep> deps,
+                                   std::int64_t build_at) {
     DepsSnapshot snap;
-    // Capture timestamp BEFORE hashing to avoid TOCTOU: if a file is modified
-    // during hashing, its mtime will be > build_at, triggering Layer 2 re-hash.
-    snap.build_at = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    snap.build_at = build_at;
     snap.path_ids.reserve(deps.size());
     snap.hashes.reserve(deps.size());
-    for(const auto& file: deps) {
-        snap.path_ids.push_back(pool.intern(file));
-        snap.hashes.push_back(hash_file(file));
+    for(const auto& dep: deps) {
+        snap.path_ids.push_back(pool.intern(dep.path));
+        snap.hashes.push_back(dep.hash);
     }
     return snap;
 }

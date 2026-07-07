@@ -30,6 +30,25 @@ public:
     Builder(TUIndex& result, CompilationUnitRef unit, bool interested_only) :
         SemanticVisitor<Builder>(unit, interested_only), result(result) {
         result.graph = IncludeGraph::from(unit);
+
+        // Imported module interface sources join the path table as
+        // dependencies of this TU's shard. This must happen before build()
+        // computes any path id (reference bitmaps bake them in), and the
+        // main file must stay the last path — an IncludeGraph convention
+        // consumers rely on — so imports are inserted just before it.
+        // Existing location path_ids are unaffected: they never reference
+        // the main file.
+        auto& graph = result.graph;
+        for(auto& dep: unit.imported_module_sources()) {
+            auto it = std::ranges::find(graph.paths, dep.path);
+            if(it == graph.paths.end()) {
+                graph.paths.insert(graph.paths.end() - 1, dep.path);
+                graph.path_hashes.insert(graph.path_hashes.end() - 1, dep.hash);
+                result.imports.push_back(static_cast<std::uint32_t>(graph.paths.size() - 2));
+            } else {
+                result.imports.push_back(static_cast<std::uint32_t>(it - graph.paths.begin()));
+            }
+        }
     }
 
     void handleDeclOccurrence(const clang::NamedDecl* decl,
@@ -260,6 +279,23 @@ public:
 
         index_modules();
 
+        // Rows can land in files this TU never preprocessed: locations
+        // inside an imported module's AST resolve to the module's own
+        // source files, which the include graph does not know. Those rows
+        // belong to the module's own index run (the merge side could not
+        // attribute them here anyway — they carry no include location in
+        // this TU), so drop them instead of handing path_id an unknown
+        // FileID below.
+        llvm::SmallVector<clang::FileID> foreign;
+        for(auto& [fid, index]: result.file_indices) {
+            if(!result.graph.file_table.contains(fid)) {
+                foreign.push_back(fid);
+            }
+        }
+        for(auto fid: foreign) {
+            result.file_indices.erase(fid);
+        }
+
         for(auto& [fid, index]: result.file_indices) {
             for(auto& [symbol_id, relations]: index.relations) {
                 std::ranges::sort(relations, [](const Relation& lhs, const Relation& rhs) {
@@ -423,7 +459,9 @@ void TUIndex::serialize(llvm::raw_ostream& os) const {
                               CreateStructVector<binary::IncludeLocation>(builder, graph.locations),
                               CreateVector(builder, syms),
                               builder.CreateVector(file_idx_vec.data(), file_idx_vec.size()),
-                              main_idx);
+                              main_idx,
+                              builder.CreateVector(graph.path_hashes),
+                              builder.CreateVector(imports));
 
     builder.Finish(tu_index);
     os.write(safe_cast<const char>(builder.GetBufferPointer()), builder.GetSize());
@@ -437,6 +475,15 @@ TUIndex TUIndex::from(const void* data) {
 
     for(auto p: *root->paths()) {
         index.graph.paths.emplace_back(p->str());
+    }
+
+    if(root->path_hashes()) {
+        index.graph.path_hashes.assign(root->path_hashes()->begin(), root->path_hashes()->end());
+    }
+    index.graph.path_hashes.resize(index.graph.paths.size(), 0);
+
+    if(root->imports()) {
+        index.imports.assign(root->imports()->begin(), root->imports()->end());
     }
 
     for(auto loc: *root->locations()) {

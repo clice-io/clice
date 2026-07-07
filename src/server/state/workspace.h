@@ -10,6 +10,7 @@
 
 #include "command/command.h"
 #include "command/toolchain.h"
+#include "compile/hashed_dep.h"
 #include "feature/document_link.h"
 #include "index/merged_index.h"
 #include "index/project_index.h"
@@ -260,9 +261,15 @@ std::string discover_compile_commands(const Config& config, llvm::StringRef work
 /// Hash a file's content using xxh3_64bits. Returns 0 on read failure.
 std::uint64_t hash_file(llvm::StringRef path);
 
-/// Capture a two-layer staleness snapshot after a successful compilation.
-/// Interns dependency paths into the PathPool and hashes each file's content.
-DepsSnapshot capture_deps_snapshot(PathPool& pool, llvm::ArrayRef<std::string> deps);
+/// Capture a two-layer staleness snapshot from a worker's dependency report.
+/// Interns dependency paths into the PathPool and adopts the worker-computed
+/// content hashes verbatim — the snapshot describes what the compilation
+/// actually consumed, not what the disk holds now. `build_at` must be the
+/// compile start time (the worker reports it): with an arrival-time baseline
+/// the mtime fast layer would wave through files saved mid-compile.
+DepsSnapshot capture_deps_snapshot(PathPool& pool,
+                                   llvm::ArrayRef<HashedDep> deps,
+                                   std::int64_t build_at);
 
 /// Two-layer staleness check.
 /// Layer 1 (fast): stat each dep file, compare mtime against build_at.

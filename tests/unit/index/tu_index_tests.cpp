@@ -484,6 +484,36 @@ TEST_CASE(CrossFileHeaderIndex) {
     ASSERT_TRUE(found_in_header);
 }
 
+TEST_CASE(PathHashesRecorded) {
+    add_file("header.h", R"(
+            int helper();
+        )");
+    add_main("main.cpp", R"(
+            #include "header.h"
+            int main() { return helper(); }
+        )");
+    ASSERT_TRUE(compile());
+    tu_index = index::TUIndex::build(*unit);
+
+    // One consumed-content hash per path, all known.
+    auto& graph = tu_index.graph;
+    ASSERT_EQ(graph.path_hashes.size(), graph.paths.size());
+    for(auto hash: graph.path_hashes) {
+        ASSERT_TRUE(hash != 0);
+    }
+
+    // The main file (last path by convention) is hashed from its buffer.
+    ASSERT_EQ(graph.path_hashes.back(), llvm::xxh3_64bits(unit->interested_content()));
+
+    // Hashes and imports survive the serialization round-trip.
+    std::string data;
+    llvm::raw_string_ostream os(data);
+    tu_index.serialize(os);
+    auto restored = index::TUIndex::from(data.data());
+    ASSERT_EQ(restored.graph.path_hashes, tu_index.graph.path_hashes);
+    ASSERT_EQ(restored.imports, tu_index.imports);
+}
+
 TEST_CASE(SymbolKinds) {
     build_index(R"(
             struct $(cls)MyClass {};

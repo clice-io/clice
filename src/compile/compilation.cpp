@@ -7,6 +7,7 @@
 #include "support/logging.h"
 
 #include "llvm/Support/Error.h"
+#include "llvm/Support/xxhash.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Lex/PreprocessorOptions.h"
@@ -414,6 +415,12 @@ CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
             for(auto& [name, path]: params.pcms) {
                 out.mods.emplace_back(name);
             }
+
+            // The interface source itself is read from disk by this build, so
+            // it is a dependency of the PCM like any header it includes.
+            out.deps = unit.deps();
+            out.deps.push_back(
+                {out.srcPath, llvm::xxh3_64bits(unit.file_content(unit.interested_file()))});
         });
 }
 

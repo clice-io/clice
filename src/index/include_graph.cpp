@@ -13,7 +13,7 @@ static std::uint32_t addIncludeChain(CompilationUnitRef unit,
         return -1;
     }
 
-    auto& [paths, locations, file_table] = graph;
+    auto& [paths, path_hashes, locations, file_table] = graph;
 
     auto [iter, success] = file_table.try_emplace(fid, locations.size());
     if(!success) {
@@ -52,6 +52,18 @@ IncludeGraph IncludeGraph::from(CompilationUnitRef unit) {
         graph.file_table[fid] = addIncludeChain(unit, fid, graph, path_table);
     }
     graph.paths.emplace_back(unit.file_path(unit.interested_file()));
+
+    // Hash every path's resident buffer — the content this compilation
+    // actually consumed, immune to concurrent disk writes.
+    graph.path_hashes.assign(graph.paths.size(), 0);
+    for(auto [fid, location]: graph.file_table) {
+        if(location != std::uint32_t(-1)) {
+            graph.path_hashes[graph.locations[location].path_id] =
+                llvm::xxh3_64bits(unit.file_content(fid));
+        }
+    }
+    graph.path_hashes.back() = llvm::xxh3_64bits(unit.file_content(unit.interested_file()));
+
     return graph;
 }
 

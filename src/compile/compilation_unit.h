@@ -9,6 +9,7 @@
 
 #include "compile/diagnostic.h"
 #include "compile/directive.h"
+#include "compile/hashed_dep.h"
 #include "semantic/resolver.h"
 #include "syntax/token.h"
 
@@ -242,7 +243,19 @@ public:
     /// All files involved in building the unit.
     const llvm::DenseSet<clang::FileID>& files();
 
-    std::vector<std::string> deps();
+    /// All files this compilation consumed, each with the hash of the
+    /// consumed content: include and __has_include targets are hashed from
+    /// their SourceManager-resident buffers, imported C++20 module interface
+    /// sources (see imported_module_sources) from disk. The main file is
+    /// excluded — its content is the caller's input, not a dependency.
+    std::vector<HashedDep> deps();
+
+    /// Source paths of every C++20 module interface unit whose PCM this
+    /// compilation loaded, direct or transitive, as recorded in the module
+    /// files themselves, each hashed from disk (the source has no resident
+    /// buffer — it was consumed through its PCM). Empty when no named
+    /// modules were loaded.
+    std::vector<HashedDep> imported_module_sources();
 
     /// Get symbol ID for given declaration.
     index::SymbolID getSymbolID(const clang::NamedDecl* decl);
