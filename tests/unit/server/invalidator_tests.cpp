@@ -209,7 +209,10 @@ TEST_CASE(CloseWithoutShardReindexes) {
     auto closed = workspace.path_pool.intern("/proj/a.cpp");
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    // The file exists on disk (injected read), it just was never indexed.
+    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+        return std::optional<std::string>("int x;");
+    });
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
     // No shard to compare against: nothing serves this file's rows anyway.
@@ -448,6 +451,26 @@ TEST_CASE(RemoveRecreateBatchOrder) {
         ASSERT_TRUE(llvm::find(dirty.reindex_content_changed, file) !=
                     dirty.reindex_content_changed.end());
     }
+}
+
+TEST_CASE(CloseOfDeletedFile) {
+    Workspace workspace;
+    SessionStore store;
+    auto file = workspace.path_pool.intern("/proj/gone.cpp");
+    ContextResolver resolver(workspace);
+    // Disk read fails: the file vanished while it was open.
+    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+        return std::optional<std::string>{};
+    });
+
+    auto dirty = invalidator.apply(FileEvent::buffer_closed(file));
+
+    // The close is the first observation of the removal (the tracker skips
+    // open files): keep any shard serving, do not record ContentChanged,
+    // do not enqueue a nonexistent file.
+    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{file});
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 
 TEST_CASE(CDBAddedScansAndEnqueues) {

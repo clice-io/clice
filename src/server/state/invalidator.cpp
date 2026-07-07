@@ -170,12 +170,21 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the queue's latency, while a close after saved edits must
                 // not serve rows for text that no longer exists. One disk
                 // read settles it; an unreadable file counts as changed.
-                auto shard_it = workspace.merged_indices.find(event.path_id);
-                bool shard_current = false;
-                if(shard_it != workspace.merged_indices.end()) {
-                    auto disk = read_file(workspace.path_pool.resolve(event.path_id));
-                    shard_current = disk && *disk == shard_it->second.content();
+                auto disk = read_file(workspace.path_pool.resolve(event.path_id));
+                if(!disk) {
+                    // Deleted while it was open: the tracker skips open
+                    // files, so this close is the first observation of the
+                    // missing file. Keep any shard serving (same deliberate
+                    // choice as DiskRemoved) instead of recording a
+                    // ContentChanged that would suppress it forever; the
+                    // tracker's next sweep observes the removal and delivers
+                    // the full DiskRemoved cascade.
+                    dirty.add_clear_reindex(event.path_id);
+                    break;
                 }
+                auto shard_it = workspace.merged_indices.find(event.path_id);
+                bool shard_current = shard_it != workspace.merged_indices.end() &&
+                                     *disk == shard_it->second.content();
                 if(shard_current) {
                     dirty.add_reindex_deps_only(event.path_id);
                 } else {
@@ -213,17 +222,20 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         dirty.add_reindex_deps_only(root);
                     }
                 }
+                // A removed module unit takes its PCM with it: importers'
+                // build products went stale, and it stops providing its
+                // module name.
+                cascade_compile_graph(path_id, dirty);
                 // The file's shard deliberately keeps serving navigation
                 // (its content snapshot is the only remaining truth), so any
                 // pending reindex reason recorded before the removal — e.g.
                 // a DiskChanged observed moments earlier — must be dropped:
                 // there is nothing to reindex any more, and a lingering
-                // ContentChanged would suppress the shard forever.
+                // ContentChanged would suppress the shard forever. Emitted
+                // after the compile-graph cascade, which lists the removed
+                // module itself among its dirtied units: the removal is this
+                // event's final word for the file itself.
                 dirty.add_clear_reindex(path_id);
-                // A removed module unit takes its PCM with it: importers'
-                // build products went stale, and it stops providing its
-                // module name.
-                cascade_compile_graph(path_id, dirty);
                 workspace.path_to_module.erase(path_id);
                 // Scrub the includer role: the file's outgoing edges vanished
                 // with it, so it stops being a host-source candidate.

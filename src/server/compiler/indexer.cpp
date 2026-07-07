@@ -336,21 +336,29 @@ bool Indexer::need_update(llvm::StringRef file_path) {
 }
 
 void Indexer::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
-    // Record (or refresh) why the file is pending. ContentChanged is
-    // absorbing: a deps-only cascade cannot downgrade a file whose own
-    // content already changed. The fresh ticket invalidates the clear of
+    // A fresh slot means any prior slot was already consumed (or none
+    // existed); a queued-and-unconsumed slot makes this call a duplicate.
+    bool fresh_slot = pending_ids.insert(server_path_id).second;
+
+    // Record (or refresh) why the file is pending. Within one queued slot
+    // ContentChanged is absorbing: a deps-only cascade cannot downgrade a
+    // file whose own content already changed. Across slots it is not: a
+    // deps-only requeue after the previous slot was consumed is new debt of
+    // its own kind — the in-flight (or finished) pass already covers the
+    // earlier content change, and keeping ContentChanged would suppress the
+    // file's rows past that pass. The fresh ticket invalidates the clear of
     // any index task already in flight for this file.
     auto [it, inserted] = reindex_reasons.try_emplace(server_path_id, reason, ++reindex_ticket);
     if(!inserted) {
         if(reason == ReindexReason::ContentChanged) {
             it->second.reason = ReindexReason::ContentChanged;
+        } else if(fresh_slot) {
+            it->second.reason = ReindexReason::DepsOnly;
         }
         it->second.ticket = reindex_ticket;
     }
 
-    // Already queued and not yet consumed — a second entry would only be
-    // skipped by need_update later; drop it here.
-    if(!pending_ids.insert(server_path_id).second)
+    if(!fresh_slot)
         return;
     index_queue.push_back(server_path_id);
 }
