@@ -801,6 +801,14 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
             session->file_index = std::move(tu_index.main_file_index);
             session->symbols = std::move(tu_index.symbols);
+        } else {
+            // The AST and the file index settle together — that pairing is
+            // what lets navigation trust the index after ensure_compiled. A
+            // compile that produced no index data (fatal error, no AST) must
+            // therefore drop the previous buffer's index rather than leave
+            // it posing as current: an honest gap over yesterday's offsets.
+            session->file_index.reset();
+            session->symbols.reset();
         }
 
         auto version = session->version;

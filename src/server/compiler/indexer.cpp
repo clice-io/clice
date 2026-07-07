@@ -348,10 +348,16 @@ void Indexer::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
     // earlier content change, and keeping ContentChanged would suppress the
     // file's rows past that pass. The fresh ticket invalidates the clear of
     // any index task already in flight for this file.
-    auto [it, inserted] = reindex_reasons.try_emplace(server_path_id, reason, ++reindex_ticket);
+    ++reindex_ticket;
+    auto [it, inserted] =
+        reindex_reasons.try_emplace(server_path_id,
+                                    reason,
+                                    reindex_ticket,
+                                    reason == ReindexReason::ContentChanged ? reindex_ticket : 0);
     if(!inserted) {
         if(reason == ReindexReason::ContentChanged) {
             it->second.reason = ReindexReason::ContentChanged;
+            it->second.content_ticket = reindex_ticket;
         } else if(fresh_slot) {
             it->second.reason = ReindexReason::DepsOnly;
         }
@@ -410,8 +416,16 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     if(sessions.find(server_path_id) != nullptr)
         co_return;
 
-    if(!need_update(file_path))
+    // The engine's own observation is authoritative for content changes:
+    // it saw the event. The dep-hash check below cannot be trusted to see
+    // a file's own edit (it validates the recorded dependencies), so only
+    // deps-only slots — where it exists to deduplicate cascade storms —
+    // may take the shortcut.
+    if(auto it = reindex_reasons.find(server_path_id);
+       (it == reindex_reasons.end() || it->second.reason != ReindexReason::ContentChanged) &&
+       !need_update(file_path)) {
         co_return;
+    }
 
     // For module interface units, compile their PCM (and transitive deps)
     // first so the stateless worker has the artifacts it needs.
@@ -436,14 +450,16 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     auto result = co_await pool.send_stateless(params);
     if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
         auto index_ms = timer.ms();
-        // Merge guard, same token the completion clear uses: a newer
-        // invalidation during this build bumped the ticket (or a removal
-        // cleared the entry), so this result describes a superseded world —
-        // e.g. a compile-command change whose erase+re-enqueue must not be
-        // undone by an in-flight merge of the old-command rows. Drop the
-        // merge; the follow-up queue slot redoes the work.
+        // Merge guard: a newer content-level invalidation during this build
+        // (or a removal clearing the entry) means this result describes text
+        // that no longer exists — e.g. a compile-command change whose
+        // erase+re-enqueue must not be undone by an in-flight merge of the
+        // old-command rows. Drop the merge; the follow-up slot redoes it.
+        // A deps-only requeue is deliberately NOT superseding: the in-flight
+        // rows are positionally right, and suppressing them would trade a
+        // tolerated semantic drift for a coverage hole.
         if(auto it = reindex_reasons.find(server_path_id);
-           it == reindex_reasons.end() || it->second.ticket != ticket) {
+           it == reindex_reasons.end() || it->second.content_ticket > ticket) {
             LOG_INFO("Discarding superseded index result for {}", file_path);
             co_return;
         }

@@ -200,6 +200,12 @@ private:
     struct PendingReindex {
         ReindexReason reason;
         std::uint64_t ticket;
+        /// Ticket of the newest ContentChanged enqueue. The merge guard
+        /// compares against this, not `ticket`: a deps-only requeue during a
+        /// flight bumps `ticket` (to survive the completion clear) but must
+        /// not discard an in-flight content pass — its rows are positionally
+        /// right and the follow-up slot redoes the semantic drift anyway.
+        std::uint64_t content_ticket;
     };
 
     llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;
