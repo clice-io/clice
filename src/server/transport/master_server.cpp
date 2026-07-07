@@ -295,6 +295,12 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     for(auto path_id: dirty.reindex_deps_only) {
         indexer.enqueue(path_id, ReindexReason::DepsOnly);
     }
+    // After the enqueues: when one batch both dirties and removes a file
+    // (DiskChanged then DiskRemoved), the removal is the later fact and
+    // its clear must win.
+    for(auto path_id: dirty.clear_reindex) {
+        indexer.clear_pending(path_id);
+    }
 
     if(dirty.ensure_compile_graph && !workspace.compile_graph) {
         compiler.init_compile_graph();

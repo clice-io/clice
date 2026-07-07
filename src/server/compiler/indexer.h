@@ -106,6 +106,16 @@ public:
         return it->second.reason;
     }
 
+    /// Forget a file's pending-reindex state (reason and queue membership):
+    /// used when the file is removed from disk — nothing is left to reindex,
+    /// and a lingering ContentChanged reason would suppress its deliberately
+    /// still-serving shard forever. A queue slot already consumed stays
+    /// consumed; one not yet consumed will run and skip gracefully.
+    void clear_pending(std::uint32_t server_path_id) {
+        reindex_reasons.erase(server_path_id);
+        pending_ids.erase(server_path_id);
+    }
+
     /// Schedule background indexing (respects idle timeout and dedup).
     void schedule();
 

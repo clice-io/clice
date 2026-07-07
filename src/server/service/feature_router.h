@@ -139,14 +139,6 @@ public:
     RawResult workspace_symbol(llvm::StringRef query);
 
 private:
-    /// Cursor-resolution freshness (IndexQuery's contract, clause 1): an
-    /// index query that resolves a cursor in an open file waits for the
-    /// file's compile first, exactly like every AST-backed request does —
-    /// same await, no timeout. A failed or superseded compile is not an
-    /// error here: the query layer falls back per its contract. No-op for
-    /// closed documents (null session).
-    kota::task<> settle_cursor_file(std::shared_ptr<Session> session);
-
     /// The preamble include links of a session's active PCH, or nullptr.
     const std::vector<feature::DocumentLink>* find_preamble_links(const Session& session);
 

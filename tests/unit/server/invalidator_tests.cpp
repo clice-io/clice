@@ -413,6 +413,10 @@ TEST_CASE(DiskRemovedScrubsSourceRole) {
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
     ASSERT_EQ(workspace.context_epoch, epoch + 1);
+    // The removal clears any pending-reindex state recorded earlier (e.g. a
+    // DiskChanged observed just before deletion): the shard keeps serving
+    // and nothing is left to reindex.
+    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{removed_tu});
 }
 
 TEST_CASE(CDBAddedScansAndEnqueues) {

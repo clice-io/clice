@@ -146,6 +146,11 @@ struct DirtySet {
     /// queries keep serving the previous rows. A file in both lists is
     /// ContentChanged (the indexer's reason upgrade is absorbing).
     llvm::SmallVector<std::uint32_t> reindex_deps_only;
+
+    /// Files whose pending-reindex state must be discarded: a removed file
+    /// has nothing left to reindex, and a stale ContentChanged reason would
+    /// otherwise suppress its (deliberately still-serving) shard forever.
+    llvm::SmallVector<std::uint32_t> clear_reindex;
     /// Headers whose resolved context borrows a compile command that no
     /// longer exists in that form (the host's CDB entry changed): drop the
     /// context so the next use re-resolves. Content validation cannot see
@@ -168,8 +173,8 @@ struct DirtySet {
         return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
                reset_header_mode.empty() && force_revalidate.empty() &&
                reindex_content_changed.empty() && reindex_deps_only.empty() &&
-               drop_context.empty() && !recheck_contexts && !save_cache && !reschedule_indexing &&
-               !ensure_compile_graph;
+               clear_reindex.empty() && drop_context.empty() && !recheck_contexts && !save_cache &&
+               !reschedule_indexing && !ensure_compile_graph;
     }
 };
 

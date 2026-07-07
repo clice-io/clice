@@ -37,12 +37,6 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
                             std::format("Failed to resolve {} item", kind)};
 }
 
-kota::task<> FeatureRouter::settle_cursor_file(std::shared_ptr<Session> session) {
-    if(session) {
-        co_await compiler.ensure_compiled(std::move(session));
-    }
-}
-
 const std::vector<feature::DocumentLink>*
     FeatureRouter::find_preamble_links(const Session& session) {
     if(!session.pch_ref)
@@ -107,13 +101,24 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
     FeatureRouter::definition(std::shared_ptr<Session> session,
                               llvm::StringRef path,
                               const protocol::Position& pos) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     // Preamble include lines first: they have no symbol occurrence in
-    // the index and are invisible to the worker's AST. A session still
-    // dirty after the settle (failed or superseded compile) skips this —
-    // the cached links may describe the pre-edit preamble — and retries
-    // below once the worker compile refreshed the PCH.
+    // the index and are invisible to the worker's AST. A session dirty even
+    // after the awaited compile means the world was re-dirtied mid-flight
+    // (dirty_epoch moved, so the settle did not clear the flag): the cached
+    // links may describe a pre-edit preamble — skip, and let the index and
+    // worker paths below answer.
     if(session && !session->ast_dirty) {
         if(auto directive = resolve_directive_definition(*session, pos); !directive.empty()) {
             co_return to_raw(directive);
@@ -263,7 +268,17 @@ FeatureRouter::RawResult FeatureRouter::references(std::shared_ptr<Session> sess
                                                    llvm::StringRef path,
                                                    const protocol::Position& position,
                                                    bool include_declaration) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     auto locations =
         index_query.query_relations(path, position, RelationKind::Reference, session.get());
@@ -286,7 +301,17 @@ FeatureRouter::RawResult FeatureRouter::references(std::shared_ptr<Session> sess
 FeatureRouter::RawResult FeatureRouter::declaration(std::shared_ptr<Session> session,
                                                     llvm::StringRef path,
                                                     const protocol::Position& position) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     auto locations =
         index_query.query_relations(path, position, RelationKind::Declaration, session.get());
@@ -301,7 +326,17 @@ FeatureRouter::RawResult FeatureRouter::declaration(std::shared_ptr<Session> ses
 FeatureRouter::RawResult FeatureRouter::type_definition(std::shared_ptr<Session> session,
                                                         llvm::StringRef path,
                                                         const protocol::Position& position) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     co_return to_raw(index_query.query_symbol_targets(path,
                                                       position,
@@ -312,7 +347,17 @@ FeatureRouter::RawResult FeatureRouter::type_definition(std::shared_ptr<Session>
 FeatureRouter::RawResult FeatureRouter::implementation(std::shared_ptr<Session> session,
                                                        llvm::StringRef path,
                                                        const protocol::Position& position) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     co_return to_raw(index_query.query_symbol_targets(path,
                                                       position,
@@ -324,7 +369,17 @@ FeatureRouter::RawResult FeatureRouter::call_hierarchy_prepare(std::shared_ptr<S
                                                                const std::string& uri,
                                                                llvm::StringRef path,
                                                                const protocol::Position& position) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     auto info = index_query.lookup_symbol(uri, path, position, session.get());
     if(!info)
@@ -341,7 +396,17 @@ FeatureRouter::RawResult
     FeatureRouter::call_hierarchy_incoming(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::CallHierarchyItem& item) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
@@ -355,7 +420,17 @@ FeatureRouter::RawResult
     FeatureRouter::call_hierarchy_outgoing(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::CallHierarchyItem& item) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
@@ -369,7 +444,17 @@ FeatureRouter::RawResult FeatureRouter::type_hierarchy_prepare(std::shared_ptr<S
                                                                const std::string& uri,
                                                                llvm::StringRef path,
                                                                const protocol::Position& position) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     auto info = index_query.lookup_symbol(uri, path, position, session.get());
     if(!info)
@@ -387,7 +472,17 @@ FeatureRouter::RawResult
     FeatureRouter::type_hierarchy_supertypes(std::shared_ptr<Session> session,
                                              llvm::StringRef path,
                                              const protocol::TypeHierarchyItem& item) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
@@ -401,7 +496,17 @@ FeatureRouter::RawResult
     FeatureRouter::type_hierarchy_subtypes(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::TypeHierarchyItem& item) {
-    co_await settle_cursor_file(session);
+    // Same posture as every AST-backed request: the session's file index
+    // is produced by the very compile awaited here, so once this settles
+    // the index describes the buffer. A failed or superseded compile
+    // (buffer changed while awaiting) yields null rather than a lookup
+    // against positions the buffer no longer has.
+    if(session) {
+        auto gen = session->generation;
+        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+            co_return serde_raw{"null"};
+        }
+    }
 
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());

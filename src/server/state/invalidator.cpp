@@ -213,6 +213,13 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         dirty.reindex_deps_only.push_back(root);
                     }
                 }
+                // The file's shard deliberately keeps serving navigation
+                // (its content snapshot is the only remaining truth), so any
+                // pending reindex reason recorded before the removal — e.g.
+                // a DiskChanged observed moments earlier — must be dropped:
+                // there is nothing to reindex any more, and a lingering
+                // ContentChanged would suppress the shard forever.
+                dirty.clear_reindex.push_back(path_id);
                 // A removed module unit takes its PCM with it: importers'
                 // build products went stale, and it stops providing its
                 // module name.
