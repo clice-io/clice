@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(CLICE_PROJECT LANGUAGES C CXX)
+# Base version; the released version string comes from git describe (see
+# cmake/generate_version.cmake) and this value is the tarball fallback.
+project(CLICE_PROJECT VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -143,10 +145,24 @@ add_custom_command(
 
 add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 
+# Version header, regenerated on every build so the embedded git describe
+# tracks the checked-out commit (content-unchanged writes are elided).
+set(CLICE_VERSION_HEADER "${PROJECT_BINARY_DIR}/generated/version.h")
+add_custom_target(generate_version_header
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+        -DFALLBACK_VERSION=${PROJECT_VERSION}
+        -DTEMPLATE=${PROJECT_SOURCE_DIR}/cmake/version.h.in
+        -DOUTPUT_FILE=${CLICE_VERSION_HEADER}
+        -P "${PROJECT_SOURCE_DIR}/cmake/generate_version.cmake"
+    BYPRODUCTS "${CLICE_VERSION_HEADER}"
+    COMMENT "Generating version header"
+)
+
 file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
 add_library(clice-core STATIC ${CLICE_CORE_SOURCES})
 add_library(clice::core ALIAS clice-core)
-add_dependencies(clice-core generate_flatbuffers_schema)
+add_dependencies(clice-core generate_flatbuffers_schema generate_version_header)
 
 target_include_directories(clice-core PUBLIC
     "${PROJECT_SOURCE_DIR}/src"
@@ -166,6 +182,7 @@ target_link_libraries(clice-core PUBLIC
 
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
 target_link_libraries(clice PRIVATE clice::core kota::deco)
+add_dependencies(clice generate_version_header)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_custom_target(copy_clang_resource ALL

@@ -1,0 +1,11 @@
+#pragma once
+
+namespace clice {
+
+/// Version string baked at build time: `git describe` relative to the
+/// latest tag when building from a repository (a tag-exact build prints
+/// the tag itself), the project's base version otherwise. Generated from
+/// cmake/version.h.in — do not edit.
+inline constexpr const char* version = "@CLICE_VERSION_STRING@";
+
+}  // namespace clice

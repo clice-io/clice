@@ -17,7 +17,10 @@ from tests.integration.utils.workspace import did_change
 @pytest.mark.workspace("hello_world")
 async def test_server_info(client, workspace):
     assert client.init_result.server_info.name == "clice"
-    assert client.init_result.server_info.version == "0.1.0"
+    # The version is injected at build time (git describe or the base
+    # version); pin only that it is present and starts like a version.
+    version = client.init_result.server_info.version
+    assert version and version[0].isdigit()
 
 
 @pytest.mark.workspace("hello_world")

@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <variant>
 
+#include "version.h"
 #include "command/argument_parser.h"
 #include "semantic/symbol_kind.h"
 #include "server/compiler/context_resolver.h"
@@ -173,7 +174,7 @@ void LSPClient::register_lifecycle() {
 
         protocol::ServerInfo info;
         info.name = "clice";
-        info.version = "0.1.0";
+        info.version = clice::version;
         result.server_info = std::move(info);
 
         co_return result;

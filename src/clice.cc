@@ -4,6 +4,7 @@
 #include <sstream>
 #include <string>
 
+#include "version.h"
 #include "server/transport/agentic.h"
 #include "server/transport/master_server.h"
 #include "server/worker/stateful_worker.h"
@@ -191,7 +192,7 @@ int main(int argc, const char** argv) {
         });
 
     if(!args.empty() && (args[0] == "--version" || args[0] == "-v")) {
-        std::println("clice version 0.1.0");
+        std::println("clice version {}", clice::version);
         return 0;
     }
 
