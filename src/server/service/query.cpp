@@ -89,9 +89,16 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
                                                  const protocol::Position& position,
                                                  Session* session) {
     // Freshness contract, clause 1: callers awaited the session's compile,
-    // so a session that is still dirty here had its compile fail or be
-    // superseded — fall through to the merged shard, which resolves
-    // against its own stored snapshot.
+    // and the file index settles together with it. An open document
+    // resolves against that index or not at all — its shard describes a
+    // disk snapshot, and mapping live buffer offsets onto it is exactly
+    // the mixed-view lookup the contract exists to prevent (the
+    // cross-file visit already skips shards of open files for the same
+    // reason). A dirty-after-await session (failed or superseded compile)
+    // or an index-less one therefore reports no hit.
+    if(session && (!session->file_index || session->ast_dirty)) {
+        return {};
+    }
     if(session && session->file_index && !session->ast_dirty) {
         auto map = session->line_map();
         auto offset = map.to_offset(position);

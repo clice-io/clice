@@ -191,12 +191,32 @@ private:
     llvm::DenseSet<std::uint32_t> pending_ids;
     std::size_t index_queue_pos = 0;
 
-    /// The reason each file awaits re-indexing, kept from enqueue until the
-    /// file is skipped (open session, fresh shard) or its index task ends —
-    /// unlike pending_ids, which only covers the un-consumed queue tail.
-    /// The ticket guards the clear: a file re-enqueued while its previous
-    /// index task is still in flight bumps the ticket, so the older task's
-    /// completion must not erase the newer pending state.
+    /// The pending-reindex state machine, per file. This block is the
+    /// authoritative description; every rule below exists because its
+    /// absence was a concrete bug.
+    ///
+    /// States: absent → queued (slot in index_queue + entry here) →
+    /// in-flight (slot consumed, entry alive) → absent again.
+    ///
+    /// Invariants:
+    /// 1. index_one is the ONLY place that decides to skip work (open
+    ///    session, or hash-fresh shard for deps-only slots). Duplicating
+    ///    those checks elsewhere reintroduces reason-blind skips.
+    /// 2. need_update() may shortcut deps-only slots ONLY: the engine
+    ///    observed content changes itself, and the dep-hash check cannot
+    ///    see a file's own edit.
+    /// 3. The merge lands iff the entry is alive and no ContentChanged
+    ///    enqueue happened after launch (content_ticket <= launch ticket).
+    ///    Deps-only requeues do not discard an in-flight pass.
+    /// 4. Completion erases the entry iff ticket == launch ticket: a
+    ///    requeue during the flight must survive the older task's clear.
+    /// 5. Within a queued slot, ContentChanged absorbs; a fresh slot after
+    ///    consumption carries its own reason (the consumed pass owns the
+    ///    earlier debt).
+    /// 6. clear_pending (file removal) drops entry and queue membership;
+    ///    the orphaned slot is skipped at dispatch.
+    /// 7. Queries suppress a file's contributions iff its entry's reason
+    ///    is ContentChanged (see pending_reason).
     struct PendingReindex {
         ReindexReason reason;
         std::uint64_t ticket;

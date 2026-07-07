@@ -550,15 +550,13 @@ kota::task<> Indexer::run_background_indexing() {
 
         auto server_path_id = index_queue[index_queue_pos++];
         pending_ids.erase(server_path_id);
-        auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
-        if(sessions.find(server_path_id) != nullptr || !need_update(file_path)) {
-            // Not pending anymore: an open session's buffer index is
-            // authoritative, and a hash-fresh shard already describes the
-            // current content.
-            reindex_reasons.erase(server_path_id);
-            ++completed;
-            continue;
-        }
+        // No open-session or hash-freshness shortcut here: index_one is the
+        // single decision point for skipping (it knows the pending reason;
+        // a hash check alone cannot see a file's own edit), and the
+        // completion clear in run_index_task retires the pending state with
+        // the ticket honored. A second, reason-blind copy of these checks
+        // here is exactly what once erased ContentChanged state early and
+        // let a stale shard keep serving.
 
         // A queued slot with no pending entry was cleared mid-batch: the
         // file was removed from disk after being enqueued (clear_pending),
