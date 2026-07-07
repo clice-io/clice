@@ -396,17 +396,11 @@ FeatureRouter::RawResult
     FeatureRouter::call_hierarchy_incoming(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::CallHierarchyItem& item) {
-    // Same posture as every AST-backed request: the session's file index
-    // is produced by the very compile awaited here, so once this settles
-    // the index describes the buffer. A failed or superseded compile
-    // (buffer changed while awaiting) yields null rather than a lookup
-    // against positions the buffer no longer has.
-    if(session) {
-        auto gen = session->generation;
-        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
-            co_return serde_raw{"null"};
-        }
-    }
+    // No compile gate here: expansion resolves the previously prepared
+    // item through its stored symbol handle (item.data, with the recorded
+    // range as fallback), not the current cursor — the buffer's present
+    // compile state is irrelevant, and gating would blank expansions the
+    // moment the user edits the file again.
 
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
@@ -420,17 +414,11 @@ FeatureRouter::RawResult
     FeatureRouter::call_hierarchy_outgoing(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::CallHierarchyItem& item) {
-    // Same posture as every AST-backed request: the session's file index
-    // is produced by the very compile awaited here, so once this settles
-    // the index describes the buffer. A failed or superseded compile
-    // (buffer changed while awaiting) yields null rather than a lookup
-    // against positions the buffer no longer has.
-    if(session) {
-        auto gen = session->generation;
-        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
-            co_return serde_raw{"null"};
-        }
-    }
+    // No compile gate here: expansion resolves the previously prepared
+    // item through its stored symbol handle (item.data, with the recorded
+    // range as fallback), not the current cursor — the buffer's present
+    // compile state is irrelevant, and gating would blank expansions the
+    // moment the user edits the file again.
 
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
@@ -472,17 +460,11 @@ FeatureRouter::RawResult
     FeatureRouter::type_hierarchy_supertypes(std::shared_ptr<Session> session,
                                              llvm::StringRef path,
                                              const protocol::TypeHierarchyItem& item) {
-    // Same posture as every AST-backed request: the session's file index
-    // is produced by the very compile awaited here, so once this settles
-    // the index describes the buffer. A failed or superseded compile
-    // (buffer changed while awaiting) yields null rather than a lookup
-    // against positions the buffer no longer has.
-    if(session) {
-        auto gen = session->generation;
-        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
-            co_return serde_raw{"null"};
-        }
-    }
+    // No compile gate here: expansion resolves the previously prepared
+    // item through its stored symbol handle (item.data, with the recorded
+    // range as fallback), not the current cursor — the buffer's present
+    // compile state is irrelevant, and gating would blank expansions the
+    // moment the user edits the file again.
 
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
@@ -496,17 +478,11 @@ FeatureRouter::RawResult
     FeatureRouter::type_hierarchy_subtypes(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::TypeHierarchyItem& item) {
-    // Same posture as every AST-backed request: the session's file index
-    // is produced by the very compile awaited here, so once this settles
-    // the index describes the buffer. A failed or superseded compile
-    // (buffer changed while awaiting) yields null rather than a lookup
-    // against positions the buffer no longer has.
-    if(session) {
-        auto gen = session->generation;
-        if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
-            co_return serde_raw{"null"};
-        }
-    }
+    // No compile gate here: expansion resolves the previously prepared
+    // item through its stored symbol handle (item.data, with the recorded
+    // range as fallback), not the current cursor — the buffer's present
+    // compile state is irrelevant, and gating would blank expansions the
+    // moment the user edits the file again.
 
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
