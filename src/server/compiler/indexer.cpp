@@ -524,15 +524,17 @@ kota::task<> Indexer::run_background_indexing() {
             continue;
         }
 
-        ++dispatched;
-        // Invariant: a queued file always has a pending entry (enqueue
-        // writes it before the queue push, and nothing erases it while it
-        // sits in the un-consumed tail). Ticket 0 is never issued, so if
-        // the invariant ever broke in a release build the task would run
-        // normally and simply leave no entry to clear.
+        // A queued slot with no pending entry was cleared mid-batch: the
+        // file was removed from disk after being enqueued (clear_pending),
+        // so there is nothing to index — skip the slot. Every other slot
+        // has an entry, because enqueue writes it before the queue push.
         auto pending_it = reindex_reasons.find(server_path_id);
-        assert(pending_it != reindex_reasons.end() && "queued file must have a pending reason");
-        auto ticket = pending_it != reindex_reasons.end() ? pending_it->second.ticket : 0;
+        if(pending_it == reindex_reasons.end()) {
+            continue;
+        }
+
+        ++dispatched;
+        auto ticket = pending_it->second.ticket;
         // A member coroutine, not an immediately-invoked capturing lambda:
         // a lambda's captures live in the lambda object, which dies at the
         // end of this statement — anything read after the first suspension

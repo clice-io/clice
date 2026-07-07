@@ -110,7 +110,8 @@ public:
     /// used when the file is removed from disk — nothing is left to reindex,
     /// and a lingering ContentChanged reason would suppress its deliberately
     /// still-serving shard forever. A queue slot already consumed stays
-    /// consumed; one not yet consumed will run and skip gracefully.
+    /// consumed; one not yet consumed is skipped at dispatch time (the
+    /// consume loop treats a missing pending entry as a cleared slot).
     void clear_pending(std::uint32_t server_path_id) {
         reindex_reasons.erase(server_path_id);
         pending_ids.erase(server_path_id);
