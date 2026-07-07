@@ -136,9 +136,16 @@ struct DirtySet {
     /// zero deps.build_at so every chain file is re-validated by hash, plus
     /// the mark_ast_dirty treatment.
     llvm::SmallVector<std::uint32_t> force_revalidate;
-    /// Closed files whose index entries went stale: enqueue for background
-    /// reindexing.
-    llvm::SmallVector<std::uint32_t> enqueue_reindex;
+    /// Closed files whose own content changed: their index rows describe
+    /// text that no longer exists. Enqueue for background reindexing as
+    /// ReindexReason::ContentChanged — queries skip these files'
+    /// contributions until the reindex lands.
+    llvm::SmallVector<std::uint32_t> reindex_content_changed;
+    /// Closed files enqueued only because a dependency changed: their own
+    /// rows are positionally intact. Enqueue as ReindexReason::DepsOnly —
+    /// queries keep serving the previous rows. A file in both lists is
+    /// ContentChanged (the indexer's reason upgrade is absorbing).
+    llvm::SmallVector<std::uint32_t> reindex_deps_only;
     /// Headers whose resolved context borrows a compile command that no
     /// longer exists in that form (the host's CDB entry changed): drop the
     /// context so the next use re-resolves. Content validation cannot see
@@ -159,7 +166,8 @@ struct DirtySet {
 
     bool empty() const {
         return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
-               reset_header_mode.empty() && force_revalidate.empty() && enqueue_reindex.empty() &&
+               reset_header_mode.empty() && force_revalidate.empty() &&
+               reindex_content_changed.empty() && reindex_deps_only.empty() &&
                drop_context.empty() && !recheck_contexts && !save_cache && !reschedule_indexing &&
                !ensure_compile_graph;
     }

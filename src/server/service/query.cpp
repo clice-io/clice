@@ -8,6 +8,7 @@
 
 #include "index/tu_index.h"
 #include "server/compiler/compiler.h"
+#include "server/compiler/indexer.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
 #include "support/filesystem.h"
@@ -24,8 +25,8 @@ namespace lsp = kota::ipc::lsp;
 
 void IndexQuery::visit_sessions(SessionVisitor visitor) const {
     sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
-        // FIXME: when ast_dirty, consider awaiting recompilation
-        // instead of silently falling back to MergedIndex.
+        // Freshness contract, clause 3: a dirty session's file index may
+        // describe a buffer that no longer exists — skip it.
         if(session.file_index && session.symbols && !session.ast_dirty) {
             return visitor(path_id, session);
         }
@@ -35,6 +36,15 @@ void IndexQuery::visit_sessions(SessionVisitor visitor) const {
 
 bool IndexQuery::is_path_open(std::uint32_t path_id) const {
     return sessions.find(path_id) != nullptr;
+}
+
+bool IndexQuery::skip_stale_contribution(std::uint32_t path_id) const {
+    // With background indexing disabled nothing ever catches up: serving
+    // the last-known rows beats a permanent hole.
+    if(!*workspace.config.project.enable_indexing) {
+        return false;
+    }
+    return indexer.pending_reason(path_id) == ReindexReason::ContentChanged;
 }
 
 bool IndexQuery::find_symbol_info(index::SymbolHash hash,
@@ -78,8 +88,10 @@ bool IndexQuery::find_symbol_info(index::SymbolHash hash,
 IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
                                                  const protocol::Position& position,
                                                  Session* session) {
-    // FIXME: when ast_dirty, we fall back to MergedIndex which may be staler.
-    // Consider awaiting the pending recompilation to serve fresher results.
+    // Freshness contract, clause 1: callers awaited the session's compile,
+    // so a session that is still dirty here had its compile fail or be
+    // superseded — fall through to the merged shard, which resolves
+    // against its own stored snapshot.
     if(session && session->file_index && !session->ast_dirty) {
         auto map = session->line_map();
         auto offset = map.to_offset(position);
@@ -102,6 +114,10 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
     // own stored content provides the mapping.
     auto path_id = workspace.path_pool.find(path);
     if(!path_id)
+        return {};
+    // A content-changed pending file's rows describe stale text: a cursor
+    // resolved against them would name the wrong symbol.
+    if(skip_stale_contribution(*path_id))
         return {};
     auto shard_it = workspace.merged_indices.find(*path_id);
     if(shard_it == workspace.merged_indices.end())
@@ -139,7 +155,7 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     auto sym_it = workspace.project_index.symbols.find(hit.hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_path_open(file_id))
+            if(is_path_open(file_id) || skip_stale_contribution(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -237,7 +253,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
         return std::nullopt;
 
     for(auto file_id: sym_it->second.reference_files) {
-        if(is_path_open(file_id))
+        if(is_path_open(file_id) || skip_stale_contribution(file_id))
             continue;
         auto shard_it = workspace.merged_indices.find(file_id);
         if(shard_it == workspace.merged_indices.end())
@@ -291,7 +307,7 @@ void IndexQuery::collect_grouped_relations(
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_path_open(file_id))
+            if(is_path_open(file_id) || skip_stale_contribution(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -326,7 +342,7 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_path_open(file_id))
+            if(is_path_open(file_id) || skip_stale_contribution(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -412,7 +428,7 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
         return std::nullopt;
 
     for(auto file_id: sym_it->second.reference_files) {
-        if(is_path_open(file_id))
+        if(is_path_open(file_id) || skip_stale_contribution(file_id))
             continue;
         auto shard_it = workspace.merged_indices.find(file_id);
         if(shard_it == workspace.merged_indices.end())
@@ -455,7 +471,7 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_path_open(file_id))
+            if(is_path_open(file_id) || skip_stale_contribution(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -736,6 +752,11 @@ std::vector<ResolvedSymbol> IndexQuery::locate_symbols(const agentic::ReadSymbol
 
         auto path_id = workspace.path_pool.find(path_str);
         if(!path_id)
+            return {};
+
+        // The shard's line numbers describe stale text; resolving the
+        // requested line against them would name the wrong symbol.
+        if(skip_stale_contribution(*path_id))
             return {};
 
         auto shard_it = workspace.merged_indices.find(*path_id);

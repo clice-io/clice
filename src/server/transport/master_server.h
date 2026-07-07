@@ -135,8 +135,8 @@ public:
     WorkerPool pool;
     ContextResolver contexts;
     Compiler compiler;
-    IndexQuery index_query;
     Indexer indexer;
+    IndexQuery index_query;
     FeatureRouter features;
     Invalidator invalidator;
 

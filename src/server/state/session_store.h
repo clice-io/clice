@@ -37,11 +37,14 @@ enum class ResetDepth : std::uint8_t {
 /// here, and every reader of an open file's text goes through the sessions
 /// this store hands out.
 ///
-/// Future work: this store does not yet detect buffer desync (client and
-/// server drifting out of sync) or bound the number of concurrently open
-/// sessions. Those safeguards are left for later. Non-monotonic document
-/// versions are warned about at the transport edge, where the protocol
-/// context lives.
+/// Buffer desync (client and server drifting out of sync) is tolerated: an
+/// incremental edit whose range does not fit the buffer is dropped with an
+/// ERROR log, and requests keep being served — a full-document change or a
+/// reopen resynchronizes. Non-monotonic document versions are warned about
+/// at the transport edge, where the protocol context lives.
+///
+/// Future work: this store does not yet bound the number of concurrently
+/// open sessions.
 struct SessionStore {
     llvm::DenseMap<std::uint32_t, std::shared_ptr<Session>> sessions;
 
@@ -67,7 +70,8 @@ struct SessionStore {
     /// Apply a didChange: fold the content changes into the buffer (range →
     /// offset mapping, in-place text replacement, line-start rebuild), then
     /// bump version, generation and mark the AST dirty. Changes whose range
-    /// cannot be mapped to a valid offset span are silently dropped.
+    /// cannot be mapped to a valid offset span are dropped with an ERROR
+    /// log (see the struct comment on desync tolerance).
     void apply_change(Session& session,
                       llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
                       int version);

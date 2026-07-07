@@ -4,6 +4,8 @@
 #include <utility>
 #include <variant>
 
+#include "support/logging.h"
+
 #include "kota/ipc/lsp/position.h"
 
 namespace clice {
@@ -68,6 +70,18 @@ void SessionStore::apply_change(Session& session,
                     auto end = map.to_offset(range.end);
                     if(start && end && *start <= *end) {
                         session.text.replace(*start, *end - *start, c.text);
+                    } else {
+                        // The client's view has drifted from ours (or the
+                        // client is buggy). Drop the edit but keep serving:
+                        // a full-document change or reopen resynchronizes.
+                        LOG_ERROR(
+                            "didChange range {}:{}-{}:{} does not fit the buffer " "(path_id={} version={}); edit dropped",
+                            range.start.line,
+                            range.start.character,
+                            range.end.line,
+                            range.end.character,
+                            session.path_id,
+                            version);
                     }
                 }
                 session.line_starts = lsp::build_line_starts(session.text);

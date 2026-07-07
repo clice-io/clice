@@ -3,12 +3,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "server/state/workspace.h"
 #include "support/signal.h"
 
 #include "kota/async/async.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -17,6 +19,22 @@ namespace clice {
 class ContextResolver;
 class WorkerPool;
 struct SessionStore;
+
+/// Why a file awaits re-indexing. The invalidation engine knows the cause
+/// at enqueue time, so queries can decide in O(1) whether a pending file's
+/// existing index rows are still trustworthy (see IndexQuery's freshness
+/// contract).
+enum class ReindexReason : std::uint8_t {
+    /// Enqueued by a dependency cascade (or a bulk sweep of unknown
+    /// staleness): the file's own content is not known to have changed, so
+    /// its index rows are positionally intact — at worst semantically
+    /// behind — and keep serving until the reindex lands.
+    DepsOnly,
+    /// The file's own content changed: its index rows describe text that
+    /// no longer exists, so queries skip this file's contribution until
+    /// the reindex lands.
+    ContentChanged,
+};
 
 /// Background indexing scheduler.
 ///
@@ -71,8 +89,22 @@ public:
         return ScopedPause{*this};
     }
 
-    /// Add a file to the background indexing queue.
-    void enqueue(std::uint32_t server_path_id);
+    /// Add a file to the background indexing queue. A file enqueued twice
+    /// keeps a single queue entry; its reason is upgraded to ContentChanged
+    /// if either enqueue says so (a file both cascaded onto and edited is
+    /// as stale as the edit makes it).
+    void enqueue(std::uint32_t server_path_id, ReindexReason reason);
+
+    /// Why the file awaits re-indexing (queued or currently being indexed),
+    /// or nullopt when its index is not pending an update. O(1), no I/O —
+    /// the query path calls this per candidate file.
+    std::optional<ReindexReason> pending_reason(std::uint32_t server_path_id) const {
+        auto it = reindex_reasons.find(server_path_id);
+        if(it == reindex_reasons.end()) {
+            return std::nullopt;
+        }
+        return it->second.reason;
+    }
 
     /// Schedule background indexing (respects idle timeout and dedup).
     void schedule();
@@ -147,6 +179,20 @@ private:
     std::vector<std::uint32_t> index_queue;
     llvm::DenseSet<std::uint32_t> pending_ids;
     std::size_t index_queue_pos = 0;
+
+    /// The reason each file awaits re-indexing, kept from enqueue until the
+    /// file is skipped (open session, fresh shard) or its index task ends —
+    /// unlike pending_ids, which only covers the un-consumed queue tail.
+    /// The ticket guards the clear: a file re-enqueued while its previous
+    /// index task is still in flight bumps the ticket, so the older task's
+    /// completion must not erase the newer pending state.
+    struct PendingReindex {
+        ReindexReason reason;
+        std::uint64_t ticket;
+    };
+
+    llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;
+    std::uint64_t reindex_ticket = 0;
     bool indexing_active = false;
     bool indexing_scheduled = false;
     std::shared_ptr<kota::timer> index_idle_timer;
@@ -160,6 +206,16 @@ private:
 
     kota::task<> run_background_indexing();
     kota::task<> index_one(std::uint32_t server_path_id, std::size_t index, std::size_t total);
+
+    /// One dispatched unit of a background round: index the file, then end
+    /// its pending window (ticket-guarded) and report progress. `completed`
+    /// refers into run_background_indexing's frame, which outlives every
+    /// spawned task (it joins them before returning).
+    kota::task<> run_index_task(std::uint32_t server_path_id,
+                                std::uint64_t ticket,
+                                std::size_t index,
+                                std::size_t total,
+                                std::size_t& completed);
 };
 
 }  // namespace clice

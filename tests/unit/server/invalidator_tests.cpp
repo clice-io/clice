@@ -95,7 +95,8 @@ TEST_CASE(CascadeSplitsOpenClosed) {
         EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
         llvm::SmallVector<std::uint32_t> reindexed{mod, closed_user};
         llvm::sort(reindexed);
-        EXPECT_EQ(dirty.enqueue_reindex, reindexed);
+        EXPECT_EQ(dirty.reindex_deps_only, reindexed);
+        EXPECT_TRUE(dirty.reindex_content_changed.empty());
 
         co_await workspace.compile_graph->shutdown();
     };
@@ -132,7 +133,9 @@ TEST_CASE(ChainHitAndMiss) {
     llvm::SmallVector<std::uint32_t> reset{saved, hit, closed};
     llvm::sort(reset);
     ASSERT_EQ(dirty.reset_header_mode, reset);
-    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{closed});
+    // The closed header's own content did not change — only its chain did.
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed});
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
 }
 
 TEST_CASE(SaveMarksDependents) {
@@ -151,9 +154,11 @@ TEST_CASE(SaveMarksDependents) {
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
     // Open dependents recompile, closed ones reindex; the old/new dependent
-    // snapshots overlap fully here, so this also proves the dedup.
+    // snapshots overlap fully here, so this also proves the dedup. A
+    // dependent's own content did not change: deps-only.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
-    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{closed_tu});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed_tu});
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
 }
 
 TEST_CASE(TransitiveDependentsEnqueue) {
@@ -171,7 +176,8 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
     // Only root TUs own index shards; the intermediate header is not one.
-    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{root});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{root});
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
 }
 
@@ -193,10 +199,11 @@ TEST_CASE(StaleReverseMapUnion) {
 
     llvm::SmallVector<std::uint32_t> expected{known, unmapped};
     llvm::sort(expected);
-    ASSERT_EQ(dirty.enqueue_reindex, expected);
+    ASSERT_EQ(dirty.reindex_deps_only, expected);
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
 }
 
-TEST_CASE(CloseEnqueuesReindex) {
+TEST_CASE(CloseWithoutShardReindexes) {
     Workspace workspace;
     SessionStore store;
     auto closed = workspace.path_pool.intern("/proj/a.cpp");
@@ -205,9 +212,47 @@ TEST_CASE(CloseEnqueuesReindex) {
     Invalidator invalidator(workspace, store, resolver);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
-    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{closed});
+    // No shard to compare against: nothing serves this file's rows anyway.
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{closed});
+    ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.reschedule_indexing);
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
+}
+
+TEST_CASE(CloseCurrentShardDepsOnly) {
+    Workspace workspace;
+    SessionStore store;
+    auto closed = workspace.path_pool.intern("/proj/a.cpp");
+    workspace.merged_indices[closed];
+
+    ContextResolver resolver(workspace);
+    // Disk matches the shard's stored content: a browse-and-close must not
+    // blank the file's rows for the reindex queue's latency.
+    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+        return std::optional<std::string>{""};
+    });
+    auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
+
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed});
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+}
+
+TEST_CASE(CloseDivergentShardContentChanged) {
+    Workspace workspace;
+    SessionStore store;
+    auto closed = workspace.path_pool.intern("/proj/a.cpp");
+    workspace.merged_indices[closed];
+
+    ContextResolver resolver(workspace);
+    // Disk holds edits the shard never saw (saved while open): the shard's
+    // rows describe text that no longer exists.
+    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+        return std::optional<std::string>{"int edited;"};
+    });
+    auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
+
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{closed});
+    ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 
 TEST_CASE(CrashMarksLostDirty) {
@@ -312,7 +357,8 @@ TEST_CASE(DiskChangeOpenMarksDirty) {
     // compile's deps validation judges the disk change, but no rescan and
     // no cascade.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_file});
-    ASSERT_TRUE(dirty.enqueue_reindex.empty());
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.reset_trial.empty());
     ASSERT_FALSE(dirty.recheck_contexts);
 }
@@ -333,11 +379,11 @@ TEST_CASE(DiskChangeClosedCascades) {
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // A closed file's disk change cascades exactly like a save, plus the
-    // file's own stale shard is refreshed.
+    // file's own stale shard is refreshed. The changed file's own rows are
+    // untrustworthy; its dependent only rebuilds semantics.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
-    llvm::SmallVector<std::uint32_t> reindexed{header, closed_tu};
-    llvm::sort(reindexed);
-    ASSERT_EQ(dirty.enqueue_reindex, reindexed);
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{header});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed_tu});
     ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<std::uint32_t>{header});
     ASSERT_TRUE(dirty.recheck_contexts);
     ASSERT_TRUE(dirty.reschedule_indexing);
@@ -363,7 +409,8 @@ TEST_CASE(DiskRemovedScrubsSourceRole) {
     ASSERT_EQ(workspace.dep_graph.get_includers(header), llvm::ArrayRef<std::uint32_t>{other_tu});
     ASSERT_TRUE(workspace.dep_graph.get_all_includes(removed_tu).empty());
     ASSERT_TRUE(dirty.recheck_contexts);
-    ASSERT_TRUE(dirty.enqueue_reindex.empty());
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
     ASSERT_EQ(workspace.context_epoch, epoch + 1);
 }
@@ -389,8 +436,10 @@ TEST_CASE(CDBAddedScansAndEnqueues) {
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
     // The rescan resolved the new entry's includes; the new file reindexes.
+    // A command change rewrites rows as thoroughly as an edit.
     ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<std::uint32_t>{main_id});
-    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{main_id});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{main_id});
+    ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
     ASSERT_TRUE(dirty.ensure_compile_graph);
 }
@@ -422,7 +471,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     // Flag changes recompile open files and reindex closed ones; the
     // pull-side cache keys (canonical flags) miss on their own.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_id});
-    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{closed_id});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{closed_id});
+    ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
 
     // The closed file's shard was built under the old command and looks
@@ -448,7 +498,8 @@ TEST_CASE(CDBAddedOpenMarksDirty) {
     // The open file gained its first real entry: drop the guessed command
     // it was compiled with instead of queueing a background reindex.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{file});
-    ASSERT_TRUE(dirty.enqueue_reindex.empty());
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 
 TEST_CASE(CDBChangedDropsHostedContext) {
@@ -477,7 +528,7 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     llvm::sort(dropped);
     ASSERT_EQ(dirty.drop_context, dropped);
     ASSERT_TRUE(llvm::is_contained(dirty.mark_ast_dirty, open_header));
-    ASSERT_TRUE(llvm::is_contained(dirty.enqueue_reindex, closed_header));
+    ASSERT_TRUE(llvm::is_contained(dirty.reindex_content_changed, closed_header));
     ASSERT_EQ(workspace.merged_indices.count(closed_header), 0u);
 }
 
@@ -513,11 +564,15 @@ TEST_CASE(CDBChangedCascadesModule) {
         auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
         // A module unit's flag change cascades through the compile graph
-        // exactly like a content change: importers' PCMs went stale.
+        // exactly like a content change: importers' PCMs went stale. The
+        // unit itself lands in both lists (its own entry changed AND the
+        // cascade dirtied its PCM); the indexer's absorbing upgrade
+        // resolves the overlap to ContentChanged.
         EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
-        llvm::SmallVector<std::uint32_t> reindexed{mod, closed_user};
-        llvm::sort(reindexed);
-        EXPECT_EQ(dirty.enqueue_reindex, reindexed);
+        EXPECT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{mod});
+        llvm::SmallVector<std::uint32_t> deps{mod, closed_user};
+        llvm::sort(deps);
+        EXPECT_EQ(dirty.reindex_deps_only, deps);
 
         co_await workspace.compile_graph->shutdown();
     };
@@ -544,7 +599,8 @@ TEST_CASE(DiskRemovedReindexesIncluders) {
     // Dependents now compile against a missing include: open ones
     // recompile, closed ones reindex.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
-    ASSERT_EQ(dirty.enqueue_reindex, llvm::SmallVector<std::uint32_t>{closed_tu});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed_tu});
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
 }
 
@@ -605,7 +661,8 @@ TEST_CASE(BatchDiskEventsDeduplicate) {
 
     llvm::SmallVector<std::uint32_t> expected{first, second};
     llvm::sort(expected);
-    ASSERT_EQ(dirty.enqueue_reindex, expected);
+    ASSERT_EQ(dirty.reindex_content_changed, expected);
+    ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 
 };  // TEST_SUITE(Invalidator)

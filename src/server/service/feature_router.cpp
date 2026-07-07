@@ -37,6 +37,12 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
                             std::format("Failed to resolve {} item", kind)};
 }
 
+kota::task<> FeatureRouter::settle_cursor_file(std::shared_ptr<Session> session) {
+    if(session) {
+        co_await compiler.ensure_compiled(std::move(session));
+    }
+}
+
 const std::vector<feature::DocumentLink>*
     FeatureRouter::find_preamble_links(const Session& session) {
     if(!session.pch_ref)
@@ -101,10 +107,13 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
     FeatureRouter::definition(std::shared_ptr<Session> session,
                               llvm::StringRef path,
                               const protocol::Position& pos) {
+    co_await settle_cursor_file(session);
+
     // Preamble include lines first: they have no symbol occurrence in
-    // the index and are invisible to the worker's AST. Dirty sessions
-    // skip this — the cached links may describe the pre-edit preamble —
-    // and retry below once the worker compile refreshed the PCH.
+    // the index and are invisible to the worker's AST. A session still
+    // dirty after the settle (failed or superseded compile) skips this —
+    // the cached links may describe the pre-edit preamble — and retries
+    // below once the worker compile refreshed the PCH.
     if(session && !session->ast_dirty) {
         if(auto directive = resolve_directive_definition(*session, pos); !directive.empty()) {
             co_return to_raw(directive);
@@ -254,6 +263,8 @@ FeatureRouter::RawResult FeatureRouter::references(std::shared_ptr<Session> sess
                                                    llvm::StringRef path,
                                                    const protocol::Position& position,
                                                    bool include_declaration) {
+    co_await settle_cursor_file(session);
+
     auto locations =
         index_query.query_relations(path, position, RelationKind::Reference, session.get());
 
@@ -275,6 +286,8 @@ FeatureRouter::RawResult FeatureRouter::references(std::shared_ptr<Session> sess
 FeatureRouter::RawResult FeatureRouter::declaration(std::shared_ptr<Session> session,
                                                     llvm::StringRef path,
                                                     const protocol::Position& position) {
+    co_await settle_cursor_file(session);
+
     auto locations =
         index_query.query_relations(path, position, RelationKind::Declaration, session.get());
     auto defs =
@@ -288,6 +301,8 @@ FeatureRouter::RawResult FeatureRouter::declaration(std::shared_ptr<Session> ses
 FeatureRouter::RawResult FeatureRouter::type_definition(std::shared_ptr<Session> session,
                                                         llvm::StringRef path,
                                                         const protocol::Position& position) {
+    co_await settle_cursor_file(session);
+
     co_return to_raw(index_query.query_symbol_targets(path,
                                                       position,
                                                       RelationKind::TypeDefinition,
@@ -297,6 +312,8 @@ FeatureRouter::RawResult FeatureRouter::type_definition(std::shared_ptr<Session>
 FeatureRouter::RawResult FeatureRouter::implementation(std::shared_ptr<Session> session,
                                                        llvm::StringRef path,
                                                        const protocol::Position& position) {
+    co_await settle_cursor_file(session);
+
     co_return to_raw(index_query.query_symbol_targets(path,
                                                       position,
                                                       RelationKind::Implementation,
@@ -307,6 +324,8 @@ FeatureRouter::RawResult FeatureRouter::call_hierarchy_prepare(std::shared_ptr<S
                                                                const std::string& uri,
                                                                llvm::StringRef path,
                                                                const protocol::Position& position) {
+    co_await settle_cursor_file(session);
+
     auto info = index_query.lookup_symbol(uri, path, position, session.get());
     if(!info)
         co_return serde_raw{"null"};
@@ -322,6 +341,8 @@ FeatureRouter::RawResult
     FeatureRouter::call_hierarchy_incoming(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::CallHierarchyItem& item) {
+    co_await settle_cursor_file(session);
+
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
     if(!info)
@@ -334,6 +355,8 @@ FeatureRouter::RawResult
     FeatureRouter::call_hierarchy_outgoing(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::CallHierarchyItem& item) {
+    co_await settle_cursor_file(session);
+
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
     if(!info)
@@ -346,6 +369,8 @@ FeatureRouter::RawResult FeatureRouter::type_hierarchy_prepare(std::shared_ptr<S
                                                                const std::string& uri,
                                                                llvm::StringRef path,
                                                                const protocol::Position& position) {
+    co_await settle_cursor_file(session);
+
     auto info = index_query.lookup_symbol(uri, path, position, session.get());
     if(!info)
         co_return serde_raw{"null"};
@@ -362,6 +387,8 @@ FeatureRouter::RawResult
     FeatureRouter::type_hierarchy_supertypes(std::shared_ptr<Session> session,
                                              llvm::StringRef path,
                                              const protocol::TypeHierarchyItem& item) {
+    co_await settle_cursor_file(session);
+
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
     if(!info)
@@ -374,6 +401,8 @@ FeatureRouter::RawResult
     FeatureRouter::type_hierarchy_subtypes(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::TypeHierarchyItem& item) {
+    co_await settle_cursor_file(session);
+
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
     if(!info)

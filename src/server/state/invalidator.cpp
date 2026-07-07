@@ -40,7 +40,7 @@ void Invalidator::cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty) 
         if(store.find(dirty_id)) {
             dirty.mark_ast_dirty.push_back(dirty_id);
         } else {
-            dirty.enqueue_reindex.push_back(dirty_id);
+            dirty.reindex_deps_only.push_back(dirty_id);
         }
     }
 }
@@ -66,7 +66,7 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
         if(store.find(dirty_id)) {
             dirty.mark_ast_dirty.push_back(dirty_id);
         } else {
-            dirty.enqueue_reindex.push_back(dirty_id);
+            dirty.reindex_deps_only.push_back(dirty_id);
         }
     }
 
@@ -82,7 +82,7 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
             if(store.find(root)) {
                 dirty.mark_ast_dirty.push_back(root);
             } else {
-                dirty.enqueue_reindex.push_back(root);
+                dirty.reindex_deps_only.push_back(root);
             }
         }
     };
@@ -101,9 +101,10 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
         dirty.reset_header_mode.push_back(header_id);
         // Contexts outlive their sessions: a closed header's shard rows
         // were indexed under the old chain and only a background reindex
-        // can refresh them.
+        // can refresh them. The header's own content did not change, so
+        // its rows keep serving meanwhile.
         if(!store.find(header_id)) {
-            dirty.enqueue_reindex.push_back(header_id);
+            dirty.reindex_deps_only.push_back(header_id);
         }
     }
 
@@ -163,7 +164,23 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the file back to the background indexer, whose shard now
                 // supersedes the dropped session's index.
                 workspace.on_file_closed(event.path_id);
-                dirty.enqueue_reindex.push_back(event.path_id);
+                // Whether the shard's rows still describe the disk decides
+                // how queries treat the file until the reindex lands: a
+                // browse-and-close must not blank the file's references for
+                // the queue's latency, while a close after saved edits must
+                // not serve rows for text that no longer exists. One disk
+                // read settles it; an unreadable file counts as changed.
+                auto shard_it = workspace.merged_indices.find(event.path_id);
+                bool shard_current = false;
+                if(shard_it != workspace.merged_indices.end()) {
+                    auto disk = read_file(workspace.path_pool.resolve(event.path_id));
+                    shard_current = disk && *disk == shard_it->second.content();
+                }
+                if(shard_current) {
+                    dirty.reindex_deps_only.push_back(event.path_id);
+                } else {
+                    dirty.reindex_content_changed.push_back(event.path_id);
+                }
                 dirty.reschedule_indexing = true;
                 break;
             }
@@ -180,7 +197,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // Closed file: disk is the truth. Run the same cascade a
                 // save does, and refresh the file's own now-stale shard.
                 cascade_disk_content_change(path_id, dirty);
-                dirty.enqueue_reindex.push_back(path_id);
+                dirty.reindex_content_changed.push_back(path_id);
                 break;
             }
             case FileEvent::Kind::DiskRemoved: {
@@ -193,7 +210,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     if(store.find(root)) {
                         dirty.mark_ast_dirty.push_back(root);
                     } else {
-                        dirty.enqueue_reindex.push_back(root);
+                        dirty.reindex_deps_only.push_back(root);
                     }
                 }
                 // A removed module unit takes its PCM with it: importers'
@@ -269,13 +286,16 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         // The shard was indexed under the old command, and
                         // the indexer's freshness gate validates content
                         // only: evict the shard so the queued reindex is
-                        // not filtered out as fresh.
+                        // not filtered out as fresh. ContentChanged: a new
+                        // command can rewrite the rows (macros, includes)
+                        // as thoroughly as an edit — and the shard is gone
+                        // anyway.
                         // TODO: a background index task already in flight
                         // can merge its old-command result back after this
                         // eviction; closing that window needs an index
                         // generation guard in the indexer.
                         workspace.merged_indices.erase(path_id);
-                        dirty.enqueue_reindex.push_back(path_id);
+                        dirty.reindex_content_changed.push_back(path_id);
                     }
 
                     // A module unit's command change invalidates importers'
@@ -299,7 +319,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                             dirty.mark_ast_dirty.push_back(header_id);
                         } else {
                             workspace.merged_indices.erase(header_id);
-                            dirty.enqueue_reindex.push_back(header_id);
+                            dirty.reindex_content_changed.push_back(header_id);
                         }
                     }
                 };
@@ -363,7 +383,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     dedup(dirty.reset_trial);
     dedup(dirty.reset_header_mode);
     dedup(dirty.force_revalidate);
-    dedup(dirty.enqueue_reindex);
+    dedup(dirty.reindex_content_changed);
+    dedup(dirty.reindex_deps_only);
     dedup(dirty.drop_context);
     return dirty;
 }

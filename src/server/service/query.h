@@ -23,6 +23,7 @@ namespace clice {
 namespace protocol = kota::ipc::protocol;
 namespace lsp = kota::ipc::lsp;
 
+class Indexer;
 struct Session;
 struct SessionStore;
 
@@ -58,14 +59,45 @@ struct ResolvedSymbol {
 ///   - Compilation — handled by Compiler
 ///   - Background indexing — handled by Indexer
 ///   - Document lifecycle — handled by MasterServer
+///
+/// Freshness contract — results may be incomplete, by design:
+///
+///   1. Cursor resolution (turning an offset in the request's file into a
+///      symbol) is accurate: callers that hold an open session await its
+///      compile first (FeatureRouter awaits ensure_compiled with the same
+///      no-timeout posture as every AST-backed request), so the session's
+///      file index describes the buffer being pointed at. For closed files
+///      the merged shard resolves against its own stored content snapshot
+///      — unless the file's own content changed and its reindex is still
+///      pending, in which case the cursor is unresolvable (clause 2).
+///   2. Cross-file contributions honor the indexer's pending state: a file
+///      awaiting reindex only because a dependency changed keeps serving
+///      its previous rows (its own text did not move), while a file whose
+///      own content changed has its contribution skipped until the reindex
+///      lands — stale rows would point at text that no longer exists.
+///   3. Open sessions whose compile has not (re)finished are skipped
+///      entirely (see visit_sessions): their buffer may have diverged from
+///      the last file index, and unlike closed files their reindex is the
+///      next compile, which the current file's request already awaits.
+///
+///   Symbol identity lookups (find_symbol_info: hash → name/kind) are not
+///   gated: a hash identifies one symbol, so even a stale shard answers
+///   them correctly.
+///
+///   TODO: a blocking query mode (await the pending reindexes instead of
+///   skipping) for consumers that need completeness over latency. Not
+///   implemented — no current caller wants to stall on a full queue.
+///   TODO: a dedicated "is the index ready?" request so agent consumers
+///   can distinguish "no references" from "not indexed yet". Not
+///   implemented — needs protocol design.
 class IndexQuery {
 public:
     /// Visitor for iterating open Sessions.  Returns false to stop early.
     using SessionVisitor =
         std::function<bool(std::uint32_t server_path_id, const Session& session)>;
 
-    IndexQuery(Workspace& workspace, const SessionStore& sessions) :
-        workspace(workspace), sessions(sessions) {}
+    IndexQuery(Workspace& workspace, const SessionStore& sessions, const Indexer& indexer) :
+        workspace(workspace), sessions(sessions), indexer(indexer) {}
 
     /// Query relations (Definition, Reference, etc.) for a symbol at cursor.
     /// @param session  Active Session for this file, or nullptr to use MergedIndex only.
@@ -198,8 +230,14 @@ private:
     /// Check whether a path_id has an active Session.
     bool is_path_open(std::uint32_t path_id) const;
 
+    /// Freshness contract, clause 2: whether a closed file's contribution
+    /// must be skipped because its own content changed and the reindex has
+    /// not landed yet. O(1) per candidate file, no I/O.
+    bool skip_stale_contribution(std::uint32_t path_id) const;
+
     Workspace& workspace;
     const SessionStore& sessions;
+    const Indexer& indexer;
 };
 
 }  // namespace clice

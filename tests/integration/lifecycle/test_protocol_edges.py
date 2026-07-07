@@ -5,7 +5,16 @@ client handshake completed."""
 import asyncio
 
 import pytest
-from lsprotocol.types import ClientCapabilities, InitializedParams, InitializeParams
+from lsprotocol.types import (
+    ClientCapabilities,
+    DidChangeTextDocumentParams,
+    InitializedParams,
+    InitializeParams,
+    Position,
+    Range,
+    TextDocumentContentChangePartial,
+    VersionedTextDocumentIdentifier,
+)
 
 from tests.conftest import check_no_anomaly, shutdown_client
 from tests.integration.utils.assertions import get_errors, guidance_messages
@@ -73,6 +82,43 @@ async def test_change_without_open(client, workspace):
     # The dropped edit must not poison a later open.
     uri, _ = await client.open_and_wait(workspace / "main.cpp")
     assert get_errors(client.diagnostics[uri]) == []
+
+
+async def test_desync_range_tolerated(client, tmp_path):
+    write_source(tmp_path, "main.cpp", "int foo() { return 1; }\n")
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+
+    # An incremental edit whose range lies outside the buffer: the views
+    # have drifted. The edit is dropped with an ERROR log; no refusal.
+    client.text_document_did_change(
+        DidChangeTextDocumentParams(
+            text_document=VersionedTextDocumentIdentifier(uri=uri, version=2),
+            content_changes=[
+                TextDocumentContentChangePartial(
+                    range=Range(
+                        start=Position(line=999, character=0),
+                        end=Position(line=999, character=5),
+                    ),
+                    text="oops",
+                )
+            ],
+        )
+    )
+
+    # Requests keep being served from the retained buffer.
+    hover = await client.hover_at(uri, 0, 4)
+    assert hover is not None
+
+    logs_dir = tmp_path / ".clice" / "logs"
+    for _ in range(50):
+        logs = "".join(f.read_text(errors="replace") for f in logs_dir.rglob("*.log"))
+        if "didChange range" in logs:
+            break
+        await asyncio.sleep(0.1)
+    else:
+        pytest.fail("dropped out-of-sync edit never produced an error log")
 
 
 @pytest.mark.workspace("hello_world")

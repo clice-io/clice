@@ -34,7 +34,7 @@ constexpr static std::size_t notify_log_limit = 128;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
-    index_query(workspace, sessions), indexer(loop, workspace, pool, contexts, sessions),
+    indexer(loop, workspace, pool, contexts, sessions), index_query(workspace, sessions, indexer),
     features(compiler, index_query, workspace, contexts, indexer),
     invalidator(workspace, sessions, contexts), bg_tasks(loop), self_path(std::move(self_path)) {
     // The notify hook is process-wide because the logging layer cannot
@@ -289,8 +289,11 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         contexts.drop_header_context(path_id);
     }
 
-    for(auto path_id: dirty.enqueue_reindex) {
-        indexer.enqueue(path_id);
+    for(auto path_id: dirty.reindex_content_changed) {
+        indexer.enqueue(path_id, ReindexReason::ContentChanged);
+    }
+    for(auto path_id: dirty.reindex_deps_only) {
+        indexer.enqueue(path_id, ReindexReason::DepsOnly);
     }
 
     if(dirty.ensure_compile_graph && !workspace.compile_graph) {
@@ -447,7 +450,11 @@ void MasterServer::load_workspace() {
         for(auto& entry: workspace.cdb.get_entries()) {
             auto file = workspace.cdb.resolve_path(entry.file);
             auto server_id = workspace.path_pool.intern(file);
-            indexer.enqueue(server_id);
+            // Bulk sweep of unknown staleness: the hash gate decides per
+            // file. DepsOnly — a cold start with a warm index cache must
+            // keep serving the loaded shards, not blank every query until
+            // the sweep drains.
+            indexer.enqueue(server_id, ReindexReason::DepsOnly);
         }
         indexer.schedule();
     }

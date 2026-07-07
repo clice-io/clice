@@ -288,9 +288,12 @@ void Indexer::load() {
                     workspace.merged_indices[path_id] = std::move(shard);
                     expected_keys.insert(key);
                 } else {
+                    // No shard survives, so there is nothing stale to keep
+                    // serving; ContentChanged states the truth ("the index
+                    // does not describe this file") without effect.
                     LOG_INFO("Discarding unreadable shard for {}",
                              workspace.path_pool.resolve(path_id));
-                    enqueue(path_id);
+                    enqueue(path_id, ReindexReason::ContentChanged);
                 }
             }
         } else {
@@ -332,7 +335,19 @@ bool Indexer::need_update(llvm::StringRef file_path) {
     return merged_it->second.need_update();
 }
 
-void Indexer::enqueue(std::uint32_t server_path_id) {
+void Indexer::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
+    // Record (or refresh) why the file is pending. ContentChanged is
+    // absorbing: a deps-only cascade cannot downgrade a file whose own
+    // content already changed. The fresh ticket invalidates the clear of
+    // any index task already in flight for this file.
+    auto [it, inserted] = reindex_reasons.try_emplace(server_path_id, reason, ++reindex_ticket);
+    if(!inserted) {
+        if(reason == ReindexReason::ContentChanged) {
+            it->second.reason = ReindexReason::ContentChanged;
+        }
+        it->second.ticket = reindex_ticket;
+    }
+
     // Already queued and not yet consumed — a second entry would only be
     // skipped by need_update later; drop it here.
     if(!pending_ids.insert(server_path_id).second)
@@ -435,6 +450,26 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     }
 }
 
+kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
+                                     std::uint64_t ticket,
+                                     std::size_t index,
+                                     std::size_t total,
+                                     std::size_t& completed) {
+    co_await index_one(server_path_id, index, total);
+    // The pending window ends with the index attempt, success or not (a
+    // failed attempt is re-detected by the hash gate on the next round).
+    // A re-enqueue during the flight bumped the ticket: that newer pending
+    // state must survive this clear.
+    if(auto it = reindex_reasons.find(server_path_id);
+       it != reindex_reasons.end() && it->second.ticket == ticket) {
+        reindex_reasons.erase(it);
+    }
+    ++completed;
+    progress_data.stage = Progress::Stage::Report;
+    progress_data.completed = completed;
+    on_progress_changed.emit();
+}
+
 kota::task<> Indexer::run_background_indexing() {
     if(index_idle_timer) {
         co_await index_idle_timer->wait();
@@ -478,18 +513,28 @@ kota::task<> Indexer::run_background_indexing() {
         pending_ids.erase(server_path_id);
         auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
         if(sessions.find(server_path_id) != nullptr || !need_update(file_path)) {
+            // Not pending anymore: an open session's buffer index is
+            // authoritative, and a hash-fresh shard already describes the
+            // current content.
+            reindex_reasons.erase(server_path_id);
             ++completed;
             continue;
         }
 
         ++dispatched;
-        workers.spawn([&, server_path_id, n = dispatched]() -> kota::task<> {
-            co_await index_one(server_path_id, n, total);
-            ++completed;
-            progress_data.stage = Progress::Stage::Report;
-            progress_data.completed = completed;
-            on_progress_changed.emit();
-        }());
+        // Invariant: a queued file always has a pending entry (enqueue
+        // writes it before the queue push, and nothing erases it while it
+        // sits in the un-consumed tail). Ticket 0 is never issued, so if
+        // the invariant ever broke in a release build the task would run
+        // normally and simply leave no entry to clear.
+        auto pending_it = reindex_reasons.find(server_path_id);
+        assert(pending_it != reindex_reasons.end() && "queued file must have a pending reason");
+        auto ticket = pending_it != reindex_reasons.end() ? pending_it->second.ticket : 0;
+        // A member coroutine, not an immediately-invoked capturing lambda:
+        // a lambda's captures live in the lambda object, which dies at the
+        // end of this statement — anything read after the first suspension
+        // would dangle. Coroutine parameters are copied into the frame.
+        workers.spawn(run_index_task(server_path_id, ticket, dispatched, total, completed));
     }
 
     LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
@@ -509,6 +554,7 @@ kota::task<> Indexer::run_background_indexing() {
     // the next scheduled round.
     if(index_queue_pos >= index_queue.size()) {
         assert(pending_ids.empty() && "drained queue must have no pending ids");
+        assert(reindex_reasons.empty() && "drained queue must have no pending reasons");
         index_queue.clear();
         index_queue_pos = 0;
     }
