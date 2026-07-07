@@ -283,15 +283,28 @@ std::string uri_to_path(const std::string& uri) {
     return uri;
 }
 
+/// The pch_ref write license: a round may (re)write the session's PCH
+/// reference only while BOTH staleness tokens still hold their takeoff
+/// values. A supersede bumps generation; a Lost-type invalidation (disk or
+/// CDB change behind an in-flight round) bumps only dirty_epoch — either
+/// way the round's resolved directory/arguments may describe a command
+/// that no longer exists, and writing its PCH key back would hand later
+/// incomplete-preamble edits a stale-flag PCH.
+static bool may_write_pch_ref(const Session& session,
+                              std::uint64_t launch_generation,
+                              std::uint64_t launch_epoch) {
+    return session.generation == launch_generation && session.dirty_epoch == launch_epoch;
+}
+
 kota::task<bool> Compiler::ensure_pch(Session& session,
                                       std::uint64_t launch_generation,
+                                      std::uint64_t launch_epoch,
                                       const std::string& directory,
                                       const std::vector<std::string>& arguments) {
-    // A round superseded during the caller's earlier awaits (module
+    // A round invalidated during the caller's earlier awaits (module
     // dependencies) must not touch pch_ref at all: the reset and cache-hit
-    // branches below write it before the first suspension point, and this
-    // round's directory/arguments describe the superseded identity.
-    if(session.generation != launch_generation) {
+    // branches below write it before the first suspension point.
+    if(!may_write_pch_ref(session, launch_generation, launch_epoch)) {
         co_return false;
     }
 
@@ -373,10 +386,10 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     if(auto it = workspace.pch_cache.find(pch_key);
        it != workspace.pch_cache.end() && it->second.building) {
         co_await it->second.building->wait();
-        // Guard the pch_ref write below against a superseded round's
+        // Guard the pch_ref write below against an invalidated round's
         // continuation: a newer round (or a context switch) may have
         // established the session's PCH identity while we waited.
-        if(session.generation != launch_generation) {
+        if(!may_write_pch_ref(session, launch_generation, launch_epoch)) {
             co_return false;
         }
         if(auto it2 = workspace.pch_cache.find(pch_key);
@@ -451,8 +464,8 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     workspace.save_cache(contexts);
 
     // The cache entry above is content-keyed and correct regardless; only
-    // the session pointer must not be written by a superseded round.
-    if(session.generation != launch_generation) {
+    // the session pointer must not be written by an invalidated round.
+    if(!may_write_pch_ref(session, launch_generation, launch_epoch)) {
         co_return false;
     }
     session.pch_ref = Session::PCHRef{pch_key, bound};
@@ -465,6 +478,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
 /// and forward_stateless() (completion/signatureHelp path).
 kota::task<bool> Compiler::ensure_deps(Session& session,
                                        std::uint64_t launch_generation,
+                                       std::uint64_t launch_epoch,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments,
                                        std::pair<std::string, uint32_t>& pch,
@@ -561,7 +575,8 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     }
 
     // Build or reuse PCH.
-    auto pch_ok = co_await ensure_pch(session, launch_generation, directory, arguments);
+    auto pch_ok =
+        co_await ensure_pch(session, launch_generation, launch_epoch, directory, arguments);
     if(pch_ok && session.pch_ref.has_value()) {
         if(auto pch_it = workspace.pch_cache.find(session.pch_ref->key);
            pch_it != workspace.pch_cache.end()) {
@@ -664,6 +679,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
 
         bool deps_ok = co_await ensure_deps(*session,
                                             gen,
+                                            epoch,
                                             params.directory,
                                             params.arguments,
                                             params.pch,
@@ -999,6 +1015,11 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
     auto gen = session->generation;
+    // Takeoff snapshot for the pch_ref write license (see
+    // may_write_pch_ref): this request runs concurrently with compiles and
+    // holds no compiling token, so it is the easiest continuation to come
+    // back stale after a disk/CDB change.
+    auto epoch = session->dirty_epoch;
 
     worker::BuildParams wp;
     wp.priority = worker::Priority::High;
@@ -1010,7 +1031,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     contexts.append_suffix_include(*session, wp.text);
 
     ScopedTimer timer;
-    if(!co_await ensure_deps(*session, gen, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
+    if(!co_await ensure_deps(*session, gen, epoch, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
         LOG_WARN("forward_build: dependency preparation failed for {}", path);
         co_return kota::outcome_error(kota::ipc::Error{"Dependency preparation failed"});
     }

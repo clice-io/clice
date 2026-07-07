@@ -23,6 +23,12 @@
 
 namespace clice {
 
+namespace testing {
+
+struct CompilerFixture;
+
+}
+
 namespace protocol = kota::ipc::protocol;
 
 class ContextResolver;
@@ -111,15 +117,21 @@ public:
 private:
     kota::task<> run_compile(std::shared_ptr<Session> session);
 
-    /// @param launch_generation  The caller's generation snapshot from the
-    ///               moment its round took off, NOT one taken on entry: a
-    ///               round superseded during the dependency phase would
-    ///               otherwise re-snapshot the new generation here and slip
-    ///               its stale pch_ref past the post-await guards.
+    /// @param launch_generation, launch_epoch  The caller's staleness-token
+    ///               snapshots from the moment its round took off, NOT ones
+    ///               taken on entry: a round invalidated during the
+    ///               dependency phase would otherwise re-snapshot the new
+    ///               values here and slip a stale pch_ref past the write
+    ///               guards. Both tokens are needed — a supersede bumps
+    ///               generation, but a Lost-type invalidation (disk or CDB
+    ///               change behind an in-flight round) bumps only
+    ///               dirty_epoch, and a round that resolved its command
+    ///               before the event must not write pch_ref back either.
     /// @param scope  When set, cancels the module-dependency wait if this
     ///               compile round is superseded by a newer one.
     kota::task<bool> ensure_deps(Session& session,
                                  std::uint64_t launch_generation,
+                                 std::uint64_t launch_epoch,
                                  const std::string& directory,
                                  const std::vector<std::string>& arguments,
                                  std::pair<std::string, uint32_t>& pch,
@@ -128,6 +140,7 @@ private:
 
     kota::task<bool> ensure_pch(Session& session,
                                 std::uint64_t launch_generation,
+                                std::uint64_t launch_epoch,
                                 const std::string& directory,
                                 const std::vector<std::string>& arguments);
 
@@ -139,6 +152,8 @@ private:
     ContextResolver& contexts;
     WorkerPool& pool;
     kota::task_group<> compile_tasks{loop};
+
+    friend struct testing::CompilerFixture;
 };
 
 }  // namespace clice
