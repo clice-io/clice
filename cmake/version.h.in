@@ -1,11 +1,14 @@
 #pragma once
 
+#include <string_view>
+
 namespace clice {
 
 /// Version string baked at build time: `git describe` relative to the
 /// latest tag when building from a repository (a tag-exact build prints
-/// the tag itself), the project's base version otherwise. Generated from
-/// cmake/version.h.in — do not edit.
-inline constexpr const char* version = "@CLICE_VERSION_STRING@";
+/// the tag itself; without a reachable tag the base version plus the
+/// commit hash), the project's base version for non-git builds.
+/// Generated from cmake/version.h.in — do not edit.
+inline constexpr std::string_view version = "@CLICE_VERSION_STRING@";
 
 }  // namespace clice

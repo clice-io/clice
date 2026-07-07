@@ -215,6 +215,10 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/tests/unit"
     )
     target_link_libraries(unit_tests PRIVATE clice::core kota::zest kota::deco)
+    # The generated/ include dir propagates through clice::core, but the
+    # generation order does not — depend explicitly so a test including
+    # version.h cannot race the generator on a clean parallel build.
+    add_dependencies(unit_tests generate_version_header)
 endif()
 
 if(CLICE_ENABLE_BENCHMARK)

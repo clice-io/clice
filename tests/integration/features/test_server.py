@@ -1,6 +1,7 @@
 """Integration tests for the clice MasterServer using pygls."""
 
 import asyncio
+import subprocess
 
 import pytest
 from lsprotocol.types import (
@@ -15,12 +16,18 @@ from tests.integration.utils.workspace import did_change
 
 
 @pytest.mark.workspace("hello_world")
-async def test_server_info(client, workspace):
+async def test_server_info(client, workspace, executable):
     assert client.init_result.server_info.name == "clice"
     # The version is injected at build time (git describe or the base
-    # version); pin only that it is present and starts like a version.
-    version = client.init_result.server_info.version
-    assert version and version[0].isdigit()
+    # version); instead of pinning a value, pin that the LSP handshake and
+    # the --version CLI report the same thing.
+    result = subprocess.run(
+        [str(executable), "--version"], capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0
+    cli_version = result.stdout.strip().removeprefix("clice version ")
+    assert cli_version and cli_version[0].isdigit()
+    assert client.init_result.server_info.version == cli_version
 
 
 @pytest.mark.workspace("hello_world")

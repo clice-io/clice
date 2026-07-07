@@ -174,7 +174,7 @@ void LSPClient::register_lifecycle() {
 
         protocol::ServerInfo info;
         info.name = "clice";
-        info.version = clice::version;
+        info.version = std::string(clice::version);
         result.server_info = std::move(info);
 
         co_return result;

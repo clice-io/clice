@@ -17,12 +17,15 @@ execute_process(
 if(NOT CLICE_GIT_RESULT EQUAL 0 OR CLICE_GIT_DESCRIBE STREQUAL "")
     # Not a git checkout (e.g. a source tarball): base version only.
     set(CLICE_VERSION_STRING "${FALLBACK_VERSION}")
+elseif(CLICE_GIT_DESCRIBE MATCHES "^[0-9a-f]+(-dirty)?$")
+    # No tag reachable: describe degrades to a bare commit hash.
+    set(CLICE_VERSION_STRING "${FALLBACK_VERSION}+g${CLICE_GIT_DESCRIBE}")
 elseif(CLICE_GIT_DESCRIBE MATCHES "^v")
     # Tag-relative describe; tags are named vX.Y.Z, strip the prefix.
     string(SUBSTRING "${CLICE_GIT_DESCRIBE}" 1 -1 CLICE_VERSION_STRING)
 else()
-    # Repository without a reachable tag: describe is a bare commit hash.
-    set(CLICE_VERSION_STRING "${FALLBACK_VERSION}+g${CLICE_GIT_DESCRIBE}")
+    # A tag without the v prefix: use the describe output verbatim.
+    set(CLICE_VERSION_STRING "${CLICE_GIT_DESCRIBE}")
 endif()
 
 configure_file("${TEMPLATE}" "${OUTPUT_FILE}" @ONLY)
