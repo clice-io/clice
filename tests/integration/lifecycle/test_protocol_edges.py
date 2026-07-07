@@ -5,7 +5,16 @@ client handshake completed."""
 import asyncio
 
 import pytest
-from lsprotocol.types import ClientCapabilities, InitializedParams, InitializeParams
+from lsprotocol.types import (
+    ClientCapabilities,
+    DidChangeTextDocumentParams,
+    InitializedParams,
+    InitializeParams,
+    Position,
+    Range,
+    TextDocumentContentChangePartial,
+    VersionedTextDocumentIdentifier,
+)
 
 from tests.conftest import check_no_anomaly, shutdown_client
 from tests.integration.utils.assertions import get_errors, guidance_messages
@@ -161,6 +170,36 @@ async def test_no_stale_replay(request, executable, tmp_path):
         c.workspace = ws
         await shutdown_client(c)
     check_no_anomaly(request, c)
+
+
+@pytest.mark.workspace("hello_world")
+async def test_desync_error_and_recovery(client, workspace):
+    uri, content = await client.open_and_wait(workspace / "main.cpp")
+
+    # An out-of-range incremental change proves the buffers diverged.
+    client.text_document_did_change(
+        DidChangeTextDocumentParams(
+            text_document=VersionedTextDocumentIdentifier(uri=uri, version=2),
+            content_changes=[
+                TextDocumentContentChangePartial(
+                    range=Range(
+                        start=Position(line=9999, character=0),
+                        end=Position(line=9999, character=1),
+                    ),
+                    text="x",
+                )
+            ],
+        )
+    )
+    with pytest.raises(Exception, match="out of sync"):
+        await client.hover_at(uri, 2, 4)
+    with pytest.raises(Exception, match="out of sync"):
+        await client.definition_at(uri, 9, 17)
+
+    # A whole-document change restores authoritative content.
+    did_change(client, uri, 3, content)
+    hover = await client.hover_at(uri, 2, 4)
+    assert hover is not None
 
 
 async def test_startup_guidance_delivered(request, executable, tmp_path):

@@ -925,6 +925,19 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
     co_return !session->ast_dirty;
 }
 
+kota::task<bool> Compiler::ensure_compiled_bounded(std::shared_ptr<Session> session,
+                                                   std::chrono::milliseconds timeout) {
+    if(!session->ast_dirty) {
+        co_return true;
+    }
+    // The losing branch is dropped by when_any: dropping the sleep is
+    // trivially safe, and dropping the ensure_compiled frame cancels only
+    // this wait — the compile itself runs detached in compile_tasks.
+    [[maybe_unused]] auto raced =
+        co_await kota::when_any(ensure_compiled(session), kota::sleep(timeout));
+    co_return !session->ast_dirty;
+}
+
 Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
                                             std::shared_ptr<Session> session,
                                             std::optional<protocol::Position> position,

@@ -1,6 +1,7 @@
 #include "server/service/feature_router.h"
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <iterator>
 #include <optional>
@@ -16,6 +17,7 @@
 #include "server/compiler/indexer.h"
 #include "server/protocol/serialize.h"
 #include "server/protocol/worker.h"
+#include "support/logging.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
 
@@ -25,9 +27,24 @@ namespace clice {
 
 using serde_raw = kota::codec::RawValue;
 
+/// How long index-backed navigation waits for a dirty session's compile
+/// before degrading to the merged shards. Interactive navigation must not
+/// hang behind a slow TU, and the shards are an acceptable bounded-staleness
+/// answer. An internal constant by design, not configuration: no user knob
+/// can pick a better value than "one perceptible beat".
+constexpr static std::chrono::milliseconds navigation_compile_wait{1000};
+
 /// Error response for feature requests on files with no open session.
 static kota::ipc::Error document_not_open() {
     return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams, "Document not open"};
+}
+
+/// Error response for feature requests on a session whose buffer provably
+/// diverged from the client's (see Session::desynced). -32801 is LSP's
+/// ContentModified — the spec's "result would describe content the client
+/// no longer has" code, which kota's core JSON-RPC enum does not name.
+static kota::ipc::Error document_out_of_sync() {
+    return kota::ipc::Error{-32801, "Document out of sync"};
 }
 
 /// Error response when a call/type hierarchy item cannot be resolved back to
@@ -35,6 +52,19 @@ static kota::ipc::Error document_not_open() {
 static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
     return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
                             std::format("Failed to resolve {} item", kind)};
+}
+
+kota::task<bool> FeatureRouter::await_index_freshness(std::shared_ptr<Session> session) {
+    if(!session || !session->ast_dirty) {
+        co_return true;
+    }
+    if(co_await compiler.ensure_compiled_bounded(session, navigation_compile_wait)) {
+        co_return true;
+    }
+    LOG_DEBUG("Navigation degrades to shards for path_id={}: no fresh compile within {}ms budget",
+              session->path_id,
+              navigation_compile_wait.count());
+    co_return false;
 }
 
 const std::vector<feature::DocumentLink>*
@@ -74,6 +104,8 @@ std::vector<protocol::Location>
 
 kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     FeatureRouter::document_links(std::shared_ptr<Session> session) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     auto result = co_await compiler.forward_document_links(session);
     if(!result.has_value())
         co_return kota::outcome_error(std::move(result.error()));
@@ -101,19 +133,27 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
     FeatureRouter::definition(std::shared_ptr<Session> session,
                               llvm::StringRef path,
                               const protocol::Position& pos) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
+
+    // Give a dirty session's compile a bounded chance to land so the
+    // eager answers below see the fresh file index and PCH links.
+    bool fresh = co_await await_index_freshness(session);
+
+    // An invalid didChange may have desynced the buffer while we waited;
+    // the worker forward below would serve provably diverged text.
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
+
     // Preamble include lines first: they have no symbol occurrence in
     // the index and are invisible to the worker's AST. Dirty sessions
-    // skip this — the cached links may describe the pre-edit preamble —
-    // and retry below once the worker compile refreshed the PCH.
+    // skip this — the cached links may describe the pre-edit preamble.
     if(session && !session->ast_dirty) {
         if(auto directive = resolve_directive_definition(*session, pos); !directive.empty()) {
             co_return to_raw(directive);
         }
     }
 
-    // Dirty sessions also skip the eager index query: resolve_cursor
-    // would fall back to the stale merged shard and could return a
-    // non-empty hit for pre-edit content, bypassing the compile below.
     if(!session || !session->ast_dirty) {
         auto result =
             index_query.query_relations(path, pos, RelationKind::Definition, session.get());
@@ -124,6 +164,15 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
 
     if(!session)
         co_return kota::outcome_error(document_not_open());
+
+    // The bounded wait expired: degrade to the (possibly stale) merged
+    // shard rather than queueing behind the compile a second time — the
+    // forward below would wait unbounded on the same round.
+    if(!fresh) {
+        co_return to_raw(
+            index_query.query_relations(path, pos, RelationKind::Definition, session.get()));
+    }
+
     auto raw = co_await compiler.forward_query(worker::QueryKind::GoToDefinition, session, pos);
     if(raw.has_value() && raw.value().data != "[]" && raw.value().data != "null") {
         co_return std::move(raw.value());
@@ -148,32 +197,46 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
 
 FeatureRouter::RawResult FeatureRouter::hover(std::shared_ptr<Session> session,
                                               const protocol::Position& position) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     co_return co_await compiler.forward_query(worker::QueryKind::Hover, session, position);
 }
 
 FeatureRouter::RawResult FeatureRouter::semantic_tokens(std::shared_ptr<Session> session) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     co_return co_await compiler.forward_query(worker::QueryKind::SemanticTokens, session);
 }
 
 FeatureRouter::RawResult FeatureRouter::inlay_hints(std::shared_ptr<Session> session,
                                                     const protocol::Range& range) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     co_return co_await compiler.forward_query(worker::QueryKind::InlayHints, session, {}, range);
 }
 
 FeatureRouter::RawResult FeatureRouter::folding_range(std::shared_ptr<Session> session) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     co_return co_await compiler.forward_query(worker::QueryKind::FoldingRange, session);
 }
 
 FeatureRouter::RawResult FeatureRouter::document_symbol(std::shared_ptr<Session> session) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol, session);
 }
 
 FeatureRouter::RawResult FeatureRouter::code_action(std::shared_ptr<Session> session) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     co_return co_await compiler.forward_query(worker::QueryKind::CodeAction, session);
 }
 
 FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> session,
                                                    const protocol::Position& position) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     auto pause = indexer.scoped_pause();
 
     auto path_id = session->path_id;
@@ -235,17 +298,23 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
 
 FeatureRouter::RawResult FeatureRouter::signature_help(std::shared_ptr<Session> session,
                                                        const protocol::Position& position) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     auto pause = indexer.scoped_pause();
     co_return co_await compiler.forward_build(worker::BuildKind::SignatureHelp, position, session);
 }
 
 FeatureRouter::RawResult FeatureRouter::formatting(std::shared_ptr<Session> session) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     auto pause = indexer.scoped_pause();
     co_return co_await compiler.forward_format(session);
 }
 
 FeatureRouter::RawResult FeatureRouter::range_formatting(std::shared_ptr<Session> session,
                                                          const protocol::Range& range) {
+    if(session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     auto pause = indexer.scoped_pause();
     co_return co_await compiler.forward_format(session, range);
 }
@@ -254,6 +323,9 @@ FeatureRouter::RawResult FeatureRouter::references(std::shared_ptr<Session> sess
                                                    llvm::StringRef path,
                                                    const protocol::Position& position,
                                                    bool include_declaration) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
+    co_await await_index_freshness(session);
     auto locations =
         index_query.query_relations(path, position, RelationKind::Reference, session.get());
 
@@ -275,6 +347,9 @@ FeatureRouter::RawResult FeatureRouter::references(std::shared_ptr<Session> sess
 FeatureRouter::RawResult FeatureRouter::declaration(std::shared_ptr<Session> session,
                                                     llvm::StringRef path,
                                                     const protocol::Position& position) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
+    co_await await_index_freshness(session);
     auto locations =
         index_query.query_relations(path, position, RelationKind::Declaration, session.get());
     auto defs =
@@ -288,6 +363,9 @@ FeatureRouter::RawResult FeatureRouter::declaration(std::shared_ptr<Session> ses
 FeatureRouter::RawResult FeatureRouter::type_definition(std::shared_ptr<Session> session,
                                                         llvm::StringRef path,
                                                         const protocol::Position& position) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
+    co_await await_index_freshness(session);
     co_return to_raw(index_query.query_symbol_targets(path,
                                                       position,
                                                       RelationKind::TypeDefinition,
@@ -297,6 +375,9 @@ FeatureRouter::RawResult FeatureRouter::type_definition(std::shared_ptr<Session>
 FeatureRouter::RawResult FeatureRouter::implementation(std::shared_ptr<Session> session,
                                                        llvm::StringRef path,
                                                        const protocol::Position& position) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
+    co_await await_index_freshness(session);
     co_return to_raw(index_query.query_symbol_targets(path,
                                                       position,
                                                       RelationKind::Implementation,
@@ -307,6 +388,9 @@ FeatureRouter::RawResult FeatureRouter::call_hierarchy_prepare(std::shared_ptr<S
                                                                const std::string& uri,
                                                                llvm::StringRef path,
                                                                const protocol::Position& position) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
+    co_await await_index_freshness(session);
     auto info = index_query.lookup_symbol(uri, path, position, session.get());
     if(!info)
         co_return serde_raw{"null"};
@@ -322,6 +406,8 @@ FeatureRouter::RawResult
     FeatureRouter::call_hierarchy_incoming(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::CallHierarchyItem& item) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
     if(!info)
@@ -334,6 +420,8 @@ FeatureRouter::RawResult
     FeatureRouter::call_hierarchy_outgoing(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::CallHierarchyItem& item) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
     if(!info)
@@ -346,6 +434,9 @@ FeatureRouter::RawResult FeatureRouter::type_hierarchy_prepare(std::shared_ptr<S
                                                                const std::string& uri,
                                                                llvm::StringRef path,
                                                                const protocol::Position& position) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
+    co_await await_index_freshness(session);
     auto info = index_query.lookup_symbol(uri, path, position, session.get());
     if(!info)
         co_return serde_raw{"null"};
@@ -362,6 +453,8 @@ FeatureRouter::RawResult
     FeatureRouter::type_hierarchy_supertypes(std::shared_ptr<Session> session,
                                              llvm::StringRef path,
                                              const protocol::TypeHierarchyItem& item) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
     if(!info)
@@ -374,6 +467,8 @@ FeatureRouter::RawResult
     FeatureRouter::type_hierarchy_subtypes(std::shared_ptr<Session> session,
                                            llvm::StringRef path,
                                            const protocol::TypeHierarchyItem& item) {
+    if(session && session->desynced)
+        co_return kota::outcome_error(document_out_of_sync());
     auto info =
         index_query.resolve_hierarchy_item(item.uri, path, item.range, item.data, session.get());
     if(!info)

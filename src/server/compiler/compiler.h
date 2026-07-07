@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -67,6 +68,19 @@ public:
     /// Compile an open file's AST if dirty.  On success, updates session's
     /// file_index, pch_ref, ast_deps, and publishes diagnostics.
     kota::task<bool> ensure_compiled(std::shared_ptr<Session> session);
+
+    /// Bounded variant of ensure_compiled for latency-sensitive consumers
+    /// (index-backed navigation): wait until any compile round settles or
+    /// the timeout elapses, whichever comes first, and return whether the
+    /// session is clean. Bounded staleness — the settled round is not
+    /// guaranteed to be the latest (an invalidation landing mid-flight
+    /// keeps the flag dirty; see Session::settle_compile), and a timeout
+    /// abandons only this wait: the detached compile keeps running and
+    /// settles the session for a later request. Preemption works as for
+    /// any compile wait — the caller's frame may itself be cancelled by
+    /// $/cancelRequest, leaving the compile untouched.
+    kota::task<bool> ensure_compiled_bounded(std::shared_ptr<Session> session,
+                                             std::chrono::milliseconds timeout);
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 

@@ -83,13 +83,14 @@ TEST_CASE(WholeDocumentReplace) {
     ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
 }
 
-TEST_CASE(InvalidRangeDropped) {
+TEST_CASE(InvalidRangeMarksDesync) {
     SessionStore store;
     auto session = store.open(1);
     store.apply_open(*session, "short\n", 1);
 
     // A range past the end of the document cannot be mapped to offsets;
-    // the change is silently dropped but version bookkeeping still runs.
+    // the change is dropped, version bookkeeping still runs, and the
+    // session is marked desynced (the buffers provably diverged).
     auto change = partial_change(99, 0, 99, 1, "junk");
     store.apply_change(*session, change, 2);
 
@@ -97,6 +98,36 @@ TEST_CASE(InvalidRangeDropped) {
     ASSERT_EQ(session->version, 2);
     ASSERT_TRUE(session->ast_dirty);
     ASSERT_EQ(session->generation, 2u);
+    ASSERT_TRUE(session->desynced);
+}
+
+TEST_CASE(DesyncRecovery) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "short\n", 1);
+    auto bad = partial_change(99, 0, 99, 1, "junk");
+
+    // A valid incremental change cannot repair the divergence: the buffer
+    // it edits is already wrong.
+    store.apply_change(*session, bad, 2);
+    ASSERT_TRUE(session->desynced);
+    auto valid = partial_change(0, 0, 0, 0, "x");
+    store.apply_change(*session, valid, 3);
+    ASSERT_TRUE(session->desynced);
+
+    // A whole-document change carries authoritative text: it recovers.
+    protocol::TextDocumentContentChangeEvent full =
+        protocol::TextDocumentContentChangeWholeDocument{.text = "fresh\n"};
+    store.apply_change(*session, full, 4);
+    ASSERT_FALSE(session->desynced);
+    ASSERT_EQ(session->text, "fresh\n");
+
+    // ... and so does didOpen.
+    store.apply_change(*session, bad, 5);
+    ASSERT_TRUE(session->desynced);
+    store.apply_open(*session, "opened\n", 6);
+    ASSERT_FALSE(session->desynced);
+    ASSERT_EQ(session->text, "opened\n");
 }
 
 TEST_CASE(ReopenBumpsGeneration) {

@@ -139,6 +139,14 @@ public:
     RawResult workspace_symbol(llvm::StringRef query);
 
 private:
+    /// Give a dirty session's compile a bounded chance to land before an
+    /// index-backed navigation query, so the query sees the fresh file
+    /// index instead of silently answering from stale merged shards.
+    /// Returns whether the session is clean afterwards; on timeout (logged)
+    /// the caller proceeds against the shards — bounded staleness is the
+    /// deliberate trade: navigation must not hang behind a slow TU.
+    kota::task<bool> await_index_freshness(std::shared_ptr<Session> session);
+
     /// The preamble include links of a session's active PCH, or nullptr.
     const std::vector<feature::DocumentLink>* find_preamble_links(const Session& session);
 

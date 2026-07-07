@@ -24,9 +24,14 @@ namespace lsp = kota::ipc::lsp;
 
 void IndexQuery::visit_sessions(SessionVisitor visitor) const {
     sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
-        // FIXME: when ast_dirty, consider awaiting recompilation
-        // instead of silently falling back to MergedIndex.
-        if(session.file_index && session.symbols && !session.ast_dirty) {
+        // Dirty sessions are filtered out and their files served from the
+        // merged shards: position-resolving feature entries give the
+        // compile a bounded chance to land first (FeatureRouter::
+        // await_index_freshness), so a session still dirty here degrades
+        // to the shards by design (bounded staleness). Desynced buffers
+        // are excluded outright — their index describes text the user is
+        // not looking at.
+        if(session.file_index && session.symbols && !session.ast_dirty && !session.desynced) {
             return visitor(path_id, session);
         }
         return true;
@@ -78,9 +83,12 @@ bool IndexQuery::find_symbol_info(index::SymbolHash hash,
 IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
                                                  const protocol::Position& position,
                                                  Session* session) {
-    // FIXME: when ast_dirty, we fall back to MergedIndex which may be staler.
-    // Consider awaiting the pending recompilation to serve fresher results.
-    if(session && session->file_index && !session->ast_dirty) {
+    // The session index is consulted only while fresh; otherwise the merged
+    // shard answers. Position-resolving feature entries give a dirty
+    // session's compile a bounded chance to land first (FeatureRouter::
+    // await_index_freshness), so reaching the fallback dirty is the
+    // deliberate bounded-staleness degradation, not an oversight.
+    if(session && session->file_index && !session->ast_dirty && !session->desynced) {
         auto map = session->line_map();
         auto offset = map.to_offset(position);
         if(!offset)

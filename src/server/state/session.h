@@ -103,6 +103,13 @@ struct Session {
         }
     }
 
+    /// The client's buffer and this one have provably diverged: an
+    /// incremental didChange arrived whose range does not map into the
+    /// current text. Every derived answer would describe a buffer the user
+    /// is not looking at, so feature requests are refused until didOpen or
+    /// a whole-document change installs authoritative content again.
+    bool desynced = false;
+
     /// Non-null while a compilation is in flight for this file.
     /// Other queries wait on the event; the compilation task itself
     /// runs independently and cannot be cancelled by LSP $/cancelRequest.

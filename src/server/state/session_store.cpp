@@ -48,6 +48,9 @@ void SessionStore::apply_open(Session& session, std::string text, int version) {
     session.text = std::move(text);
     session.line_starts = lsp::build_line_starts(session.text);
     session.generation++;
+    // didOpen carries the full text: whatever divergence the previous
+    // buffer had, this content is authoritative again.
+    session.desynced = false;
 }
 
 void SessionStore::apply_change(Session& session,
@@ -61,6 +64,9 @@ void SessionStore::apply_change(Session& session,
                 using T = std::remove_cvref_t<decltype(c)>;
                 if constexpr(std::is_same_v<T, protocol::TextDocumentContentChangeWholeDocument>) {
                     session.text = c.text;
+                    // Full text is authoritative: it re-synchronizes a
+                    // desynced buffer the same way didOpen does.
+                    session.desynced = false;
                 } else {
                     auto& range = c.range;
                     auto map = session.line_map();
@@ -68,6 +74,13 @@ void SessionStore::apply_change(Session& session,
                     auto end = map.to_offset(range.end);
                     if(start && end && *start <= *end) {
                         session.text.replace(*start, *end - *start, c.text);
+                    } else {
+                        // The change's range does not map into the buffer:
+                        // client and server have provably diverged, and
+                        // dropping the edit cannot repair that. Mark the
+                        // session so feature requests refuse to answer from
+                        // untrusted text (see Session::desynced).
+                        session.desynced = true;
                     }
                 }
                 session.line_starts = lsp::build_line_starts(session.text);
