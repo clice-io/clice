@@ -125,6 +125,44 @@ async def test_replay_after_late_handshake(request, executable, tmp_path):
     check_no_anomaly(request, c)
 
 
+async def test_no_stale_replay(request, executable, tmp_path):
+    ws = tmp_path
+    write_source(ws, "main.cpp", "int add(int a, int b) { return a + b; }\n")
+    write_cdb(ws, ["main.cpp"])
+    (ws / "clice.toml").write_text(TEST_TOML)
+
+    c = CliceClient()
+    await c.start_io(str(executable), "serve", f"--workspace={ws}")
+    try:
+        uri, content = c.open(ws / "main.cpp")
+        hover = await c.hover_at(uri, 0, 4)
+        assert hover is not None
+        # An edit during the handshake window invalidates the materialized
+        # output; the replay must skip it instead of pairing pre-edit
+        # results with the new text.
+        did_change(c, uri, 1, content + "int bad(\n")
+        with pytest.raises(Exception):
+            await c.initialize_async(
+                InitializeParams(
+                    capabilities=ClientCapabilities(), root_uri=ws.as_uri()
+                )
+            )
+        c.initialized(InitializedParams())
+        # A request round-trip orders us after the initialized processing:
+        # a (wrong) replay push would already have been recorded.
+        await c.query_context(uri)
+        assert uri not in c.diagnostics
+        # The next compile pushes fresh results for the edited buffer.
+        event = c.wait_for_diagnostics(uri)
+        await c.hover_at(uri, 0, 4)
+        await asyncio.wait_for(event.wait(), timeout=30.0)
+        assert get_errors(c.diagnostics[uri])
+    finally:
+        c.workspace = ws
+        await shutdown_client(c)
+    check_no_anomaly(request, c)
+
+
 async def test_startup_guidance_delivered(request, executable, tmp_path):
     ws = tmp_path
     write_source(ws, "main.cpp", "int x = 1;\n")

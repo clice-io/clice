@@ -194,10 +194,16 @@ void LSPClient::register_lifecycle() {
 
         // Replay compile outputs that materialized while no ready client
         // was attached (documents opened and compiled before the
-        // handshake, or while the server ran headless).
+        // handshake, or while the server ran headless). Only outputs that
+        // still describe the current buffer are replayed: an edit during
+        // the handshake marks the session dirty, and pushing the pre-edit
+        // output would pair stale inactive regions (whose notification
+        // carries no version) with the new text — the next compile pushes
+        // fresh results instead.
         srv.sessions.for_each(
             [this]([[maybe_unused]] std::uint32_t path_id, const Session& session) {
-                if(session.output.has_value()) {
+                if(session.output.has_value() && !session.ast_dirty &&
+                   session.output->version == session.version) {
                     this->push_output(session);
                 }
                 return true;
