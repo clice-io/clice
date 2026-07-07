@@ -456,10 +456,13 @@ kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
                                      std::size_t total,
                                      std::size_t& completed) {
     co_await index_one(server_path_id, index, total);
-    // The pending window ends with the index attempt, success or not (a
-    // failed attempt is re-detected by the hash gate on the next round).
-    // A re-enqueue during the flight bumped the ticket: that newer pending
-    // state must survive this clear.
+    // The pending window ends with the index attempt, success or not. On
+    // failure the last-known rows resume serving — deliberately: keeping
+    // the gate would hide a file that fails to index (broken compile,
+    // missing command) from every cross-file query with no recovery path,
+    // since only a future event re-enqueues it. Any such event re-judges
+    // staleness by content hash. A re-enqueue during the flight bumped
+    // the ticket: that newer pending state must survive this clear.
     if(auto it = reindex_reasons.find(server_path_id);
        it != reindex_reasons.end() && it->second.ticket == ticket) {
         reindex_reasons.erase(it);
