@@ -40,7 +40,7 @@ void Invalidator::cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty) 
         if(store.find(dirty_id)) {
             dirty.mark_ast_dirty.push_back(dirty_id);
         } else {
-            dirty.reindex_deps_only.push_back(dirty_id);
+            dirty.add_reindex_deps_only(dirty_id);
         }
     }
 }
@@ -66,7 +66,7 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
         if(store.find(dirty_id)) {
             dirty.mark_ast_dirty.push_back(dirty_id);
         } else {
-            dirty.reindex_deps_only.push_back(dirty_id);
+            dirty.add_reindex_deps_only(dirty_id);
         }
     }
 
@@ -82,7 +82,7 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
             if(store.find(root)) {
                 dirty.mark_ast_dirty.push_back(root);
             } else {
-                dirty.reindex_deps_only.push_back(root);
+                dirty.add_reindex_deps_only(root);
             }
         }
     };
@@ -104,7 +104,7 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
         // can refresh them. The header's own content did not change, so
         // its rows keep serving meanwhile.
         if(!store.find(header_id)) {
-            dirty.reindex_deps_only.push_back(header_id);
+            dirty.add_reindex_deps_only(header_id);
         }
     }
 
@@ -177,9 +177,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     shard_current = disk && *disk == shard_it->second.content();
                 }
                 if(shard_current) {
-                    dirty.reindex_deps_only.push_back(event.path_id);
+                    dirty.add_reindex_deps_only(event.path_id);
                 } else {
-                    dirty.reindex_content_changed.push_back(event.path_id);
+                    dirty.add_reindex_content_changed(event.path_id);
                 }
                 dirty.reschedule_indexing = true;
                 break;
@@ -197,7 +197,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // Closed file: disk is the truth. Run the same cascade a
                 // save does, and refresh the file's own now-stale shard.
                 cascade_disk_content_change(path_id, dirty);
-                dirty.reindex_content_changed.push_back(path_id);
+                dirty.add_reindex_content_changed(path_id);
                 break;
             }
             case FileEvent::Kind::DiskRemoved: {
@@ -210,7 +210,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     if(store.find(root)) {
                         dirty.mark_ast_dirty.push_back(root);
                     } else {
-                        dirty.reindex_deps_only.push_back(root);
+                        dirty.add_reindex_deps_only(root);
                     }
                 }
                 // The file's shard deliberately keeps serving navigation
@@ -219,7 +219,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // a DiskChanged observed moments earlier — must be dropped:
                 // there is nothing to reindex any more, and a lingering
                 // ContentChanged would suppress the shard forever.
-                dirty.clear_reindex.push_back(path_id);
+                dirty.add_clear_reindex(path_id);
                 // A removed module unit takes its PCM with it: importers'
                 // build products went stale, and it stops providing its
                 // module name.
@@ -302,7 +302,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         // eviction; closing that window needs an index
                         // generation guard in the indexer.
                         workspace.merged_indices.erase(path_id);
-                        dirty.reindex_content_changed.push_back(path_id);
+                        dirty.add_reindex_content_changed(path_id);
                     }
 
                     // A module unit's command change invalidates importers'
@@ -326,7 +326,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                             dirty.mark_ast_dirty.push_back(header_id);
                         } else {
                             workspace.merged_indices.erase(header_id);
-                            dirty.reindex_content_changed.push_back(header_id);
+                            dirty.add_reindex_content_changed(header_id);
                         }
                     }
                 };

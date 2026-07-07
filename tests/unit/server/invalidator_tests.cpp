@@ -419,6 +419,37 @@ TEST_CASE(DiskRemovedScrubsSourceRole) {
     ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{removed_tu});
 }
 
+TEST_CASE(RemoveRecreateBatchOrder) {
+    Workspace workspace;
+    SessionStore store;
+    auto file = workspace.path_pool.intern("/proj/a.cpp");
+    workspace.dep_graph.set_includes(file, 0, {});
+    workspace.dep_graph.build_reverse_map();
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+
+    // Change then delete: the removal is the later fact, the clear wins.
+    {
+        FileEvent events[] = {FileEvent::disk_changed(file), FileEvent::disk_removed(file)};
+        auto dirty = invalidator.apply(events);
+        ASSERT_TRUE(llvm::find(dirty.reindex_content_changed, file) ==
+                    dirty.reindex_content_changed.end());
+        ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{file});
+    }
+
+    // Delete then recreate (an editor's atomic save): the later change must
+    // survive — the recreated file needs its reindex.
+    {
+        workspace.dep_graph.set_includes(file, 0, {});
+        workspace.dep_graph.build_reverse_map();
+        FileEvent events[] = {FileEvent::disk_removed(file), FileEvent::disk_changed(file)};
+        auto dirty = invalidator.apply(events);
+        ASSERT_TRUE(dirty.clear_reindex.empty());
+        ASSERT_TRUE(llvm::find(dirty.reindex_content_changed, file) !=
+                    dirty.reindex_content_changed.end());
+    }
+}
+
 TEST_CASE(CDBAddedScansAndEnqueues) {
     TempDir tmp;
     tmp.touch("inc/header.h", R"(int x = 1;)");

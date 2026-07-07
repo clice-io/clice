@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -10,6 +11,7 @@
 #include "server/state/workspace.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace clice {
@@ -151,6 +153,37 @@ struct DirtySet {
     /// has nothing left to reindex, and a stale ContentChanged reason would
     /// otherwise suppress its (deliberately still-serving) shard forever.
     llvm::SmallVector<std::uint32_t> clear_reindex;
+
+    /// The three reindex effect lists are kept disjoint per file, in event
+    /// order: a batch can hold delete-then-recreate (atomic saves) as well
+    /// as change-then-delete, so neither "clear wins" nor "enqueue wins" is
+    /// right as a fixed rule — the later event for a given file wins. All
+    /// emission goes through these adders to keep that true by construction,
+    /// letting the executor apply the lists in any order.
+    void add_reindex_content_changed(std::uint32_t path_id) {
+        erase_id(clear_reindex, path_id);
+        reindex_content_changed.push_back(path_id);
+    }
+
+    void add_reindex_deps_only(std::uint32_t path_id) {
+        erase_id(clear_reindex, path_id);
+        reindex_deps_only.push_back(path_id);
+    }
+
+    void add_clear_reindex(std::uint32_t path_id) {
+        erase_id(reindex_content_changed, path_id);
+        erase_id(reindex_deps_only, path_id);
+        if(llvm::find(clear_reindex, path_id) == clear_reindex.end()) {
+            clear_reindex.push_back(path_id);
+        }
+    }
+
+private:
+    static void erase_id(llvm::SmallVector<std::uint32_t>& ids, std::uint32_t path_id) {
+        ids.erase(std::remove(ids.begin(), ids.end(), path_id), ids.end());
+    }
+
+public:
     /// Headers whose resolved context borrows a compile command that no
     /// longer exists in that form (the host's CDB entry changed): drop the
     /// context so the next use re-resolves. Content validation cannot see
