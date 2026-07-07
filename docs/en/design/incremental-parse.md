@@ -83,9 +83,9 @@ The benefit of this model is avoiding wasteful compilations during rapid success
 
 ### Content-Addressed PCH Storage
 
-PCH files on disk are named by the hash of the preamble content (e.g., `a3f7e8c1d2b4f6e9.pch`), implementing content-addressed storage. This provides two benefits:
+PCH files on disk are named by a hash of the preamble content together with the frontend-relevant compile flags, directories, and clang version (e.g., `a3f7e8c1d2b4f6e9.pch`), implementing content-addressed storage. This provides two benefits:
 
-- **Disk sharing**: Different files with identical preamble content naturally share the same PCH file on disk, with no additional deduplication logic needed.
+- **Disk sharing**: Different files whose preamble content and compile configuration agree naturally share the same PCH file on disk, with no additional deduplication logic needed.
 - **Cross-session persistence**: PCH cache metadata (path, hash, boundary, dependency snapshot) is serialized to a `cache.json` file on disk. On server restart, this metadata is loaded and each PCH's validity is verified through two-layer invalidation detection, avoiding the need to rebuild all PCHs on a cold start.
 
 When preamble content changes, the new PCH uses a different hash for its filename and the old file becomes orphaned. A cleanup mechanism periodically reclaims orphaned PCH files that have not been used beyond a certain age.
@@ -187,8 +187,6 @@ After loading the cache on startup, all PCH entries are validated through two-la
 - **Is disk PCH slower than in-memory PCH?** The practical impact is minimal. Clang loads PCH using mmap to map the file into memory, avoiding a full read-copy. More importantly, Clang deserializes AST nodes from the PCH lazily -- only nodes actually referenced during compilation are deserialized, and most PCH content is never accessed. Thus PCH loading performance depends primarily on how the binary file is mapped, with no fundamental difference between a disk file and an in-memory buffer. The benefits of disk PCH -- cross-restart persistence, no resident process memory usage, content-addressed sharing -- make this trade-off worthwhile.
 
 ## Known Limitations
-
-- **Per-file independent caching**. The PCH cache is keyed by file path identifier. Even if two files have identical preamble content, they have independent cache entries -- each performing its own invalidation detection and build. While the PCH files on disk are shared through content-addressed naming, cache metadata (dependency snapshots, build state, etc.) is not shared. The improvement direction is to key the cache by preamble content hash plus compilation flags, enabling cross-file cache metadata sharing.
 
 - **Full rebuild**. Any content change in a dependency file triggers a full PCH rebuild, with no way to rebuild only the affected portion. The improvement direction is to adopt chained PCH (see FAQ), limiting the rebuild scope to the chain links after the point of change.
 

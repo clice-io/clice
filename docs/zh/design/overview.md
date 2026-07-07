@@ -77,7 +77,7 @@ LSP 功能的具体实现。每个功能接收一个 `CompilationUnitRef`，返�
 
 包括：代码补全、悬停信息、签名帮助、语义高亮、内嵌提示、文档符号、文档链接、折叠范围、格式化、诊断等。
 
-> `feature/` 只涵盖单文件、基于 AST 的特性实现。跨文件的导航功能（go to definition、find references 等）由 `Indexer` 基于索引数据完成。部分功能存在多阶段处理——例如代码补全中的 include 路径补全在语法层就能完成，不需要完整编译。
+> `feature/` 只涵盖单文件、基于 AST 的特性实现。跨文件的导航功能（go to definition、find references 等）由服务器的 `service/` 层（`FeatureRouter`/`IndexQuery`）基于索引数据提供。部分功能存在多阶段处理——例如代码补全中的 include 路径补全在语法层就能完成，不需要完整编译。
 
 ### `src/server/` — 服务器运行时
 
