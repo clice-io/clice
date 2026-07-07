@@ -402,6 +402,7 @@ void Indexer::schedule() {
 }
 
 kota::task<> Indexer::index_one(std::uint32_t server_path_id,
+                                std::uint64_t ticket,
                                 std::size_t index,
                                 std::size_t total) {
     auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
@@ -435,6 +436,17 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     auto result = co_await pool.send_stateless(params);
     if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
         auto index_ms = timer.ms();
+        // Merge guard, same token the completion clear uses: a newer
+        // invalidation during this build bumped the ticket (or a removal
+        // cleared the entry), so this result describes a superseded world —
+        // e.g. a compile-command change whose erase+re-enqueue must not be
+        // undone by an in-flight merge of the old-command rows. Drop the
+        // merge; the follow-up queue slot redoes the work.
+        if(auto it = reindex_reasons.find(server_path_id);
+           it == reindex_reasons.end() || it->second.ticket != ticket) {
+            LOG_INFO("Discarding superseded index result for {}", file_path);
+            co_return;
+        }
         ScopedTimer merge_timer;
         merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
         LOG_PERF("index",
@@ -463,7 +475,7 @@ kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
                                      std::size_t index,
                                      std::size_t total,
                                      std::size_t& completed) {
-    co_await index_one(server_path_id, index, total);
+    co_await index_one(server_path_id, ticket, index, total);
     // The pending window ends with the index attempt, success or not. On
     // failure the last-known rows resume serving — deliberately: keeping
     // the gate would hide a file that fails to index (broken compile,

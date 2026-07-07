@@ -216,7 +216,10 @@ private:
     Progress progress_data;
 
     kota::task<> run_background_indexing();
-    kota::task<> index_one(std::uint32_t server_path_id, std::size_t index, std::size_t total);
+    kota::task<> index_one(std::uint32_t server_path_id,
+                           std::uint64_t ticket,
+                           std::size_t index,
+                           std::size_t total);
 
     /// One dispatched unit of a background round: index the file, then end
     /// its pending window (ticket-guarded) and report progress. `completed`
