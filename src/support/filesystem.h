@@ -13,6 +13,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/VirtualFileSystem.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -72,6 +73,19 @@ inline std::expected<std::string, std::error_code> read(llvm::StringRef path) {
         return std::unexpected(buffer.getError());
     }
     return buffer.get()->getBuffer().str();
+}
+
+/// Hash a file's content with xxh3_64bits. Returns 0 on read failure.
+///
+/// The single definition matters: workers hash consumed content with this
+/// scheme and the master compares those hashes against its own disk reads,
+/// so every layer must stay in lockstep.
+inline std::uint64_t hash_file(llvm::StringRef path) {
+    auto buffer = llvm::MemoryBuffer::getFile(path);
+    if(!buffer) {
+        return 0;
+    }
+    return llvm::xxh3_64bits((*buffer)->getBuffer());
 }
 
 inline std::expected<void, std::error_code> rename(llvm::StringRef from, llvm::StringRef to) {

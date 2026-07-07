@@ -184,7 +184,7 @@ void
             continue;
         // The verdict is tied to the header's contents — a file edited
         // while the server was down must re-earn its trial.
-        if(entry.content_hash != 0 && hash_file(file) != entry.content_hash)
+        if(entry.content_hash != 0 && fs::hash_file(file) != entry.content_hash)
             continue;
         auto id = workspace.path_pool.intern(file);
         header_modes[id] = HeaderMode::NeedsContext;

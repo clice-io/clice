@@ -4,6 +4,7 @@
 #include <chrono>
 #include <utility>
 
+#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
 
@@ -186,7 +187,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                 if(exists) {
                     state.size = status.getSize();
                     state.mtime_ns = to_nanoseconds(status.getLastModificationTime());
-                    state.hash = hash_file(path);
+                    state.hash = fs::hash_file(path);
                     if(state.hash == 0) {
                         // Read failure (hash_file's sentinel): don't seed a
                         // baseline that would later compare as a change.
@@ -216,7 +217,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
 
             // The stamp moved: only a confirmed content change counts, so
             // touches and checkouts of identical bytes stay silent.
-            auto hash = hash_file(path);
+            auto hash = fs::hash_file(path);
             if(hash == 0) {
                 // The file stats fine but cannot be read right now (e.g. an
                 // antivirus scanner briefly holding a fresh file on Windows).

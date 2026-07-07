@@ -258,9 +258,6 @@ struct Workspace {
 /// exists yet — the file tracker keeps looking on its CDB poll.
 std::string discover_compile_commands(const Config& config, llvm::StringRef workspace_root);
 
-/// Hash a file's content using xxh3_64bits. Returns 0 on read failure.
-std::uint64_t hash_file(llvm::StringRef path);
-
 /// Capture a two-layer staleness snapshot from a worker's dependency report.
 /// Interns dependency paths into the PathPool and adopts the worker-computed
 /// content hashes verbatim — the snapshot describes what the compilation

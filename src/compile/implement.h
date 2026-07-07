@@ -99,6 +99,11 @@ struct CompilationUnitRef::Self {
     std::chrono::milliseconds build_at;
     std::chrono::milliseconds build_duration;
 
+    /// Cached imported_module_sources() result: deps() and TUIndex::build
+    /// both need it for the same unit, and the disk read + hash per module
+    /// interface source need not repeat.
+    std::optional<std::vector<HashedDep>> imported_sources;
+
     auto& SM() {
         return instance->getSourceManager();
     }

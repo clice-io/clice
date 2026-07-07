@@ -250,9 +250,14 @@ export int a_value() { return b_value() + 1; }
 
     // Each PCM's deps carry its own interface source, and A's also carry
     // B's interface source (the import edge), all with content hashes.
+    // Compare separator-normalized: on Windows the driver records forward
+    // slashes while TempDir hands out native paths, and the consuming
+    // staleness checks are stat-based, so either form is functional.
     auto has_dep = [](const PCMInfo& info, llvm::StringRef path, std::uint64_t hash) {
         return llvm::any_of(info.deps, [&](const HashedDep& dep) {
-            return dep.path == path && dep.hash == hash;
+            return llvm::sys::path::convert_to_slash(dep.path) ==
+                       llvm::sys::path::convert_to_slash(path) &&
+                   dep.hash == hash;
         });
     };
     ASSERT_TRUE(has_dep(info_b, tmp.path("mod_b.cppm"), llvm::xxh3_64bits(b_content)));

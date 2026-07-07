@@ -90,16 +90,6 @@ struct DepHash {
 
 namespace {
 
-/// Hash a file's content with the same scheme the server layer uses for its
-/// dependency snapshots (`workspace::hash_file`). Returns 0 on read failure.
-std::uint64_t hash_file(llvm::StringRef path) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
-    if(!buffer) {
-        return 0;
-    }
-    return llvm::xxh3_64bits((*buffer)->getBuffer());
-}
-
 /// Two-layer staleness test for a single dependency, mirroring the server's
 /// `deps_changed`: Layer 1 trusts an unchanged mtime (no file read); Layer 2
 /// re-hashes a file whose mtime moved and treats a matching hash as a mere
@@ -129,7 +119,7 @@ bool dep_stale(llvm::StringRef path,
     // the whole shard just to skip a rebuild. So a touched-but-unchanged file is
     // re-hashed on every check until a real edit forces a genuine reindex — a
     // cheap single read, far cheaper than a needless full reindex.
-    return hash_file(path) != *stored_hash;
+    return fs::hash_file(path) != *stored_hash;
 }
 
 }  // namespace

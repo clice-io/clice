@@ -1,6 +1,7 @@
 #include "compile/implement.h"
 #include "index/usr.h"
 #include "semantic/ast_utility.h"
+#include "support/filesystem.h"
 
 #include "kota/ipc/lsp/text.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -256,16 +257,6 @@ clang::LangOptions& CompilationUnitRef::lang_options() {
     return self->instance->getLangOpts();
 }
 
-/// Hash a file's content with the same scheme the server layer uses for its
-/// dependency snapshots (workspace's `hash_file`). Returns 0 on read failure.
-static std::uint64_t hash_file_content(llvm::StringRef path) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
-    if(!buffer) {
-        return 0;
-    }
-    return llvm::xxh3_64bits((*buffer)->getBuffer());
-}
-
 std::vector<HashedDep> CompilationUnitRef::deps() {
     llvm::StringMap<std::uint64_t> deps;
 
@@ -316,30 +307,39 @@ std::vector<HashedDep> CompilationUnitRef::deps() {
 }
 
 std::vector<HashedDep> CompilationUnitRef::imported_module_sources() {
-    std::vector<HashedDep> sources;
-    auto reader = self->instance->getASTReader();
-    if(!reader) {
-        return sources;
+    if(self->imported_sources) {
+        return *self->imported_sources;
     }
+
+    std::vector<HashedDep> sources;
 
     // The module manager chain covers every loaded module file, including
     // transitively loaded ones — exactly the set whose interface sources this
     // compilation's semantics depend on. The sources were consumed through
     // their PCMs, never read here, so there is no resident buffer to hash:
-    // read them from disk instead. A save landing between the PCM build and
-    // this hash is caught by the push-side invalidation cascade, not by this
-    // snapshot.
-    for(auto& file: reader->getModuleManager()) {
-        if(!file.StandardCXXModule) {
-            continue;
-        }
-        auto& source = file.ActualOriginalSourceFileName.empty()
-                           ? file.OriginalSourceFileName
-                           : file.ActualOriginalSourceFileName;
-        if(!source.empty()) {
-            sources.push_back({source, hash_file_content(source)});
+    // read them from disk instead. This makes the snapshot after-the-fact
+    // for this one edge class: an interface saved between its PCM build and
+    // this hash is recorded with content the consumed PCM predates. Open
+    // importers recover through the save cascade — the dirty flag survives
+    // an in-flight compile — while a closed importer's index shard can have
+    // its save-triggered redo filtered as fresh, staying stale until the
+    // interface changes again. Closing that narrow window would require the
+    // consumed PCM's identity to travel with the result.
+    if(auto reader = self->instance->getASTReader()) {
+        for(auto& file: reader->getModuleManager()) {
+            if(!file.StandardCXXModule) {
+                continue;
+            }
+            auto& source = file.ActualOriginalSourceFileName.empty()
+                               ? file.OriginalSourceFileName
+                               : file.ActualOriginalSourceFileName;
+            if(!source.empty()) {
+                sources.push_back({source, fs::hash_file(source)});
+            }
         }
     }
+
+    self->imported_sources = sources;
     return sources;
 }
 

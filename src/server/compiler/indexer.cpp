@@ -112,11 +112,13 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
             if(!buf) {
                 // Overwriting the shard's stored content with nothing would
                 // silently break every position mapping for this TU; keep the
-                // old snapshot, the staleness check re-enqueues it later.
+                // old snapshot and queue an explicit redo — nothing else
+                // would revisit this TU after a transient read failure.
                 LOG_WARN("Skip merge for {}: cannot read content: {}",
                          file_path,
                          buf.getError().message());
                 touched.insert(global_path_id);
+                enqueue(global_path_id);
                 return;
             }
             if(stale_against_worker(tu_path_id, (*buf)->getBuffer(), file_path)) {

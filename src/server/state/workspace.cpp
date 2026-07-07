@@ -239,13 +239,6 @@ std::string discover_compile_commands(const Config& config, llvm::StringRef work
     return {};
 }
 
-std::uint64_t hash_file(llvm::StringRef path) {
-    auto buf = llvm::MemoryBuffer::getFile(path);
-    if(!buf)
-        return 0;
-    return llvm::xxh3_64bits((*buf)->getBuffer());
-}
-
 DepsSnapshot capture_deps_snapshot(PathPool& pool,
                                    llvm::ArrayRef<HashedDep> deps,
                                    std::int64_t build_at) {
@@ -277,7 +270,7 @@ bool deps_changed(const PathPool& pool, const DepsSnapshot& snap) {
             continue;
 
         // Layer 2: mtime is newer — re-hash content to confirm actual change.
-        auto current_hash = hash_file(path);
+        auto current_hash = fs::hash_file(path);
         if(current_hash != snap.hashes[i])
             return true;
     }

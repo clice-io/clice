@@ -785,7 +785,9 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
 
             if(indicates_missing_context(diagnostics)) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
-                contexts.record_header_mode(pid, HeaderMode::NeedsContext, hash_file(file_path));
+                contexts.record_header_mode(pid,
+                                            HeaderMode::NeedsContext,
+                                            fs::hash_file(file_path));
                 workspace.save_cache(contexts);
                 contexts.drop_header_context(pid);
                 session->pch_ref.reset();
