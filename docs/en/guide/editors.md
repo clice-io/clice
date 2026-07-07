@@ -5,7 +5,7 @@ clice implements the [Language Server Protocol](https://microsoft.github.io/lang
 All setups assume:
 
 - The `clice` executable is on your `PATH` (or use an absolute path in the snippets below).
-- Your project provides a `compile_commands.json` (by default clice searches the workspace root and `build/`).
+- Your project provides a `compile_commands.json` (by default clice searches the workspace root, then each of its immediate subdirectories).
 
 ## Official Plugins
 
@@ -96,7 +96,7 @@ With [vim-lsp](https://github.com/prabirshrestha/vim-lsp):
 if executable('clice')
     au User lsp_setup call lsp#register_server({
         \ 'name': 'clice',
-        \ 'cmd': {server_info->['clice', 'server']},
+        \ 'cmd': {server_info->['clice', 'serve']},
         \ 'allowlist': ['c', 'cpp'],
         \ })
 endif

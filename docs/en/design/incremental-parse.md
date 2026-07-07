@@ -79,7 +79,7 @@ When the user edits a file (`didChange`), the master process only updates the in
 
 The benefit of this model is avoiding wasteful compilations during rapid successive keystrokes. The user may trigger a dozen `didChange` events per second, but compilation only executes when an actual result is needed -- such as a hover or completion request.
 
-> Note that "external file changes" and "user edits" are two independent dirty-marking paths. User edits mark `ast_dirty` via `didChange`; external file changes (e.g., a dependency header modified on disk) are discovered dynamically via two-layer invalidation detection before compilation.
+> Note that "external file changes" and "user edits" are two independent dirty-marking paths. User edits mark `ast_dirty` via `didChange`. External file changes (e.g., a dependency header modified on disk) are discovered proactively: a stat-polling file tracker feeds change events to the invalidation engine, which marks the affected files dirty. The two-layer detection before compilation remains as the defensive backstop for anything the polls have not seen yet.
 
 ### Content-Addressed PCH Storage
 
@@ -192,8 +192,6 @@ After loading the cache on startup, all PCH entries are validated through two-la
 
 - **Full rebuild**. Any content change in a dependency file triggers a full PCH rebuild, with no way to rebuild only the affected portion. The improvement direction is to adopt chained PCH (see FAQ), limiting the rebuild scope to the chain links after the point of change.
 
-- **Compilation flags not part of cache key**. PCH disk filenames and cache lookups do not consider compilation flags. When two files have the same preamble text but different compilation flags (e.g., `-D`), they may incorrectly share a PCH. The improvement direction is to include preprocessing-relevant compilation flags in the cache key.
-
 - **Incomplete preamble completeness check**. The current completeness check only covers unclosed quotes and missing semicolons in `#include`/`import` directives. Other types of incomplete edits (e.g., typing a `#define` value) are not detected. The impact of building a PCH from such an incomplete preamble on subsequent compilation has not been thoroughly tested. Further investigation is needed into Clang's behavior when processing incomplete preprocessor directives, to determine whether the completeness check scope should be extended.
 
-- **No proactive diagnostics push after header save**. Under the current pure pull-based model, after a user saves a header file, open source files that depend on it do not immediately update diagnostics -- the user must trigger an action on the source file (e.g., hover, edit) for the two-layer invalidation detection to discover the change and trigger recompilation. The improvement direction is to check affected open sessions on `didSave` and proactively trigger compilation for them (a hybrid push/pull model).
+- **No proactive recompilation after a header save**. Saving a header (or a change discovered by the file tracker) proactively marks dependent open files dirty, but recompilation stays pull-triggered: their diagnostics refresh on the next request against that file (e.g., hover, edit) rather than immediately. The improvement direction is to proactively trigger compilation for the affected open sessions (a hybrid push/pull model).

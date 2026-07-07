@@ -85,18 +85,29 @@ LSP 功能的具体实现。每个功能接收一个 `CompilationUnitRef`，返�
 
 **`protocol/`** — 协议定义。描述主进程与工作进程之间、以及与客户端之间的通信消息格式。包括 Worker 协议（编译/查询/构建请求）、LSP 扩展协议（编译上下文切换等）、以及面向 AI agent 的 agentic 协议。
 
-**`workspace/`** — 项目级全局状态。`Workspace` 持有编译数据库、工具链、路径池、依赖图、PCH/PCM 缓存、项目索引等全部项目级状态。核心不变量：打开文件的未保存缓冲区内容不会修改 `Workspace`，它只反映磁盘上的状态。
+**`state/`** — 项目与文档状态，以及失效机制。
+
+- `Workspace`：项目级全局状态——编译数据库、工具链、路径池、依赖图、缓存存储、项目索引。核心不变量：打开文件的未保存缓冲区内容不会修改 `Workspace`，它只反映磁盘上的状态
+- `Session` / `SessionStore`：每个打开文件的编辑状态（缓冲区内容、文档版本号、内存索引、PCH 引用等），在 didOpen 时创建，didClose 时销毁；`SessionStore` 拥有打开会话表和缓冲区同步逻辑
+- `Invalidator`：失效引擎——把文件事件（打开/保存、磁盘变化、编译数据库重载、工作进程崩溃）折叠成一组去重后的失效效果
+- `FileTracker`：以 stat 轮询发现编辑器之外发生的变化（重新生成的 `compile_commands.json`、`git checkout`），把事件交给 `Invalidator`
+- `Config`：`clice.toml` 与 LSP `initializationOptions` 的加载与合并
 
 **`compiler/`** — 编译调度与索引管理。
 
 - `Compiler`：编译生命周期的调度器，协调 PCH 构建、模块依赖解析、AST 编译的先后顺序，将编译任务分发给工作进程
 - `CompileGraph`：C++20 模块编译的 DAG 调度器，基于引用计数实现兴趣追踪，支持依赖级联取消
-- `Indexer`：后台索引调度和跨文件查询的入口，综合 `ProjectIndex`、`MergedIndex` 和打开文件的内存索引提供查询结果
+- `ContextResolver`：解析文件的编译命令与 includer 上下文，拥有头文件上下文状态与合成 preamble
+- `Indexer`：后台索引调度——将过期文件入队、把索引构建分发给工作进程并合并产出的分片
 
-**`service/`** — 服务入口与会话管理。
+**`service/`** — 消费编译与索引结果的读侧服务。
 
-- `MasterServer`：顶层协调器，持有 `Workspace`、`Session` 映射、`WorkerPool`、`Compiler`、`Indexer`，将 LSP 请求路由到对应的处理逻辑
-- `Session`：每个打开文件的编辑状态（缓冲区内容、编译版本号、内存索引、PCH 引用等），在 didOpen 时创建，didClose 时销毁
+- `FeatureRouter`：把 feature 请求路由到编译器（依赖 AST 的功能）或索引（跨文件导航），必要时合并两者
+- `IndexQuery`：`ProjectIndex`、`MergedIndex` 与打开文件内存索引之上的查询门面
+
+**`transport/`** — 驱动服务器的协议端点。
+
+- `MasterServer`：组合根。持有 `Workspace`、`SessionStore`、`WorkerPool` 及上述全部服务，并通过唯一的 dispatch 入口执行 `Invalidator` 的失效效果
 - `LSPClient` / `AgentClient`：LSP 协议和 agentic 协议的请求处理器
 
 **`worker/`** — 工作进程管理。

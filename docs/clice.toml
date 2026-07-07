@@ -4,8 +4,6 @@
 # These variables can be referenced in strings using the syntax `${var}`.
 
 # Supported variables:
-# - `${version}`:         The version of clice.
-# - `${llvm_version}`:    The LLVM version used by clice.
 # - `${workspace}`:       The workspace directory provided by the client.
 
 [project]

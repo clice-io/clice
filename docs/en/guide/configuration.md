@@ -1,6 +1,8 @@
 # Configuration
 
-clice reads configuration from `clice.toml` in the workspace root. Configuration can also be passed via LSP `initializationOptions` (JSON format).
+clice reads configuration from `clice.toml` in the workspace root, or from `.clice/config.toml` if the former does not exist. Configuration can also be passed via LSP `initializationOptions` (JSON format); values from `initializationOptions` override the config file, and defaults fill in whatever remains unset after the merge.
+
+Configuration is read once at server startup. Changing it — either file — requires restarting the server; there is no hot reload.
 
 ## Variable Substitution
 
@@ -34,15 +36,7 @@ Maximum number of active files to keep in memory. **Not yet wired** — the opti
 | -------- | ------------------------------------------------------- |
 | `string` | `$XDG_CACHE_HOME/clice/<hash>` or `${workspace}/.clice` |
 
-Directory for storing PCH and PCM cache files. The default uses XDG_CACHE_HOME (or `~/.cache`) with a workspace-specific hash subdirectory. Falls back to `${workspace}/.clice` if the XDG directory cannot be created.
-
-### `project.index_dir`
-
-| Type     | Default              |
-| -------- | -------------------- |
-| `string` | `${cache_dir}/index` |
-
-Directory for storing index files.
+Directory for the unified on-disk cache (PCH, PCM, and index artifacts all live here). The default uses XDG_CACHE_HOME (or `~/.cache`) with a workspace-specific hash subdirectory. Falls back to `${workspace}/.clice` if the XDG directory cannot be created.
 
 ### `project.logging_dir`
 
@@ -90,7 +84,23 @@ Number of stateful worker processes. These hold ASTs in memory and serve queries
 | -------- | ----------------- |
 | `uint32` | `max(cores/2, 2)` |
 
-Number of stateless worker processes. These handle ephemeral tasks (PCH/PCM builds, completion, signature help).
+Number of stateless worker processes spawned at startup. These handle ephemeral tasks (PCH/PCM builds, completion, signature help).
+
+### `project.min_stateless_worker_count`
+
+| Type     | Default    |
+| -------- | ---------- |
+| `uint32` | `0` (auto) |
+
+Lower bound for dynamic scale-down of stateless workers. `0` resolves to an automatic minimum.
+
+### `project.max_stateless_worker_count`
+
+| Type     | Default    |
+| -------- | ---------- |
+| `uint32` | `0` (auto) |
+
+Upper bound for dynamic scale-up of stateless workers. `0` resolves to the CPU core count.
 
 ### `project.worker_memory_limit`
 
@@ -99,6 +109,26 @@ Number of stateless worker processes. These handle ephemeral tasks (PCH/PCM buil
 | `uint64` | `4294967296` (4 GB) |
 
 Per-worker memory limit in bytes. **Not yet enforced** — the option is parsed but memory-based eviction/restart is not implemented yet.
+
+## Tracker
+
+The file tracker polls for changes that happen outside the editor (a `git checkout`, a regenerated `compile_commands.json`, code generators writing headers) so the server picks them up without a restart. Setting an interval to `0` disables that polling loop.
+
+### `tracker.cdb_poll_seconds`
+
+| Type     | Default |
+| -------- | ------- |
+| `uint32` | `3`     |
+
+Interval for re-checking the compilation database file.
+
+### `tracker.workspace_poll_seconds`
+
+| Type     | Default |
+| -------- | ------- |
+| `uint32` | `30`    |
+
+Interval for sweeping workspace files for on-disk changes.
 
 ## Rules
 

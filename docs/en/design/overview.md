@@ -85,18 +85,29 @@ The language server's core runtime, responsible for assembling all the layers ab
 
 **`protocol/`** — Protocol definitions. Describes the message formats for communication between the master process and worker processes, as well as between the server and clients. Includes Worker protocol (compilation/query/build requests), LSP extension protocol (compilation context switching, etc.), and the agentic protocol for AI agents.
 
-**`workspace/`** — Project-level global state. `Workspace` holds the compilation database, toolchain, path pool, dependency graph, PCH/PCM cache, project index, and all other project-level state. Core invariant: unsaved buffer contents of open files never modify the `Workspace` -- it only reflects the state on disk.
+**`state/`** — Project and document state, plus the invalidation machinery.
+
+- `Workspace`: Project-level global state — the compilation database, toolchain, path pool, dependency graph, cache store, and project index. Core invariant: unsaved buffer contents of open files never modify the `Workspace` -- it only reflects the state on disk
+- `Session` / `SessionStore`: The editing state for each open file (buffer contents, document version, in-memory index, PCH reference, etc.), created on didOpen and destroyed on didClose; `SessionStore` owns the table of open sessions and the buffer-synchronization logic
+- `Invalidator`: The invalidation engine — folds file events (buffer opens/saves, on-disk changes, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
+- `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`
+- `Config`: Loading and merging of `clice.toml` and LSP `initializationOptions`
 
 **`compiler/`** — Compilation scheduling and index management.
 
 - `Compiler`: The scheduler for compilation lifecycles. Coordinates the ordering of PCH builds, module dependency resolution, and AST compilation, dispatching compilation tasks to worker processes
 - `CompileGraph`: The DAG scheduler for C++20 module compilation. Uses reference counting for interest tracking, supporting dependency cascade cancellation
-- `Indexer`: Handles background indexing scheduling and serves as the entry point for cross-file queries. Combines `ProjectIndex`, `MergedIndex`, and in-memory indexes for open files to provide query results
+- `ContextResolver`: Resolves the compile command and includer context a file is compiled under, owning header-context state and synthesized preambles
+- `Indexer`: Background indexing scheduling — enqueues stale files, dispatches index builds to workers, and merges the resulting shards
 
-**`service/`** — Service entry point and session management.
+**`service/`** — Read-side services consuming compilation and index results.
 
-- `MasterServer`: The top-level coordinator. Holds `Workspace`, `Session` map, `WorkerPool`, `Compiler`, and `Indexer`, routing LSP requests to the appropriate handling logic
-- `Session`: The editing state for each open file (buffer contents, compilation version number, in-memory index, PCH reference, etc.). Created on didOpen, destroyed on didClose
+- `FeatureRouter`: Routes feature requests to the compiler (AST-backed features) or the index (cross-file navigation), merging both where needed
+- `IndexQuery`: The query facade over `ProjectIndex`, `MergedIndex`, and the in-memory indexes of open files
+
+**`transport/`** — Protocol endpoints driving the server.
+
+- `MasterServer`: The composition root. Owns the `Workspace`, `SessionStore`, `WorkerPool`, and all services above, and executes the `Invalidator`'s effects through its single dispatch entry point
 - `LSPClient` / `AgentClient`: Request handlers for the LSP protocol and agentic protocol
 
 **`worker/`** — Worker process management.

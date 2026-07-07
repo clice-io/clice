@@ -5,7 +5,7 @@ clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-
 所有配置的前提：
 
 - `clice` 可执行文件在 `PATH` 中（或在下面的片段中使用绝对路径）。
-- 项目提供 `compile_commands.json`（clice 默认搜索工作区根目录和 `build/`）。
+- 项目提供 `compile_commands.json`（clice 默认先搜索工作区根目录，再依次搜索其各个直接子目录）。
 
 ## Official Plugins
 
@@ -96,7 +96,7 @@ language-servers = ["clice"]
 if executable('clice')
     au User lsp_setup call lsp#register_server({
         \ 'name': 'clice',
-        \ 'cmd': {server_info->['clice', 'server']},
+        \ 'cmd': {server_info->['clice', 'serve']},
         \ 'allowlist': ['c', 'cpp'],
         \ })
 endif
