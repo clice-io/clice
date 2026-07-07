@@ -566,6 +566,14 @@ kota::task<> Indexer::run_background_indexing() {
              total,
              timer.ms());
     co_await save();
+
+    // Files enqueued while the round was joining its workers saw their
+    // schedule() no-op against indexing_active; without this kick they
+    // would wait for the next external event — and a content-changed
+    // pending file's rows stay skipped for that whole wait.
+    if(index_queue_pos < index_queue.size()) {
+        schedule();
+    }
 }
 
 }  // namespace clice
