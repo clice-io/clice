@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include "test/test.h"
 #include "server/protocol/worker.h"
 #include "server/worker/worker_pool.h"
@@ -943,6 +945,21 @@ TEST_CASE(StartAndStop) {
         done = true;
     });
     EXPECT_TRUE(done);
+}
+
+TEST_CASE(StopIsPrompt) {
+    // Regression guard: stop() must cancel monitor_memory()'s 3s poll
+    // sleep instead of waiting it out.
+    WorkerPoolFixture f;
+    std::chrono::milliseconds elapsed{};
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT_TRUE(f.start(2, 0));
+        auto begin = std::chrono::steady_clock::now();
+        co_await f.stop();
+        elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - begin);
+    });
+    EXPECT_LT(elapsed.count(), 1500);
 }
 
 TEST_CASE(StatelessRequest) {

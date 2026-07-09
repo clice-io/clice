@@ -328,7 +328,7 @@ void MasterServer::schedule_shutdown() {
     if(lifecycle == ServerLifecycle::Exited)
         return;
     lifecycle = ServerLifecycle::ShuttingDown;
-    shutdown_event.set();
+    shutdown_source.cancel();
 }
 
 kota::task<> MasterServer::shutdown_and_cleanup() {
@@ -530,6 +530,12 @@ static kota::task<> accept_connections(MasterServer& server,
     co_await group.join();
 }
 
+/// Pipe-mode serving body: the LSP peer plus the agentic acceptor as a
+/// single task, so the caller can bound both with the shutdown scope.
+static kota::task<> serve_peer(kota::ipc::JsonPeer& peer, kota::task<> acceptor) {
+    co_await kota::when_any(peer.run(), std::move(acceptor));
+}
+
 int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     logging::stderr_logger("master", logging::options);
 
@@ -597,12 +603,12 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                 server.initialize(workspace);
             }
             if(has_acceptor) {
-                co_await kota::when_any(
-                    peer.run(),
-                    accept_connections(server, std::move(acceptor), false, connections),
-                    server.get_shutdown_event().wait());
+                co_await kota::with_token(
+                    serve_peer(peer,
+                               accept_connections(server, std::move(acceptor), false, connections)),
+                    server.shutdown_token());
             } else {
-                co_await kota::when_any(peer.run(), server.get_shutdown_event().wait());
+                co_await kota::with_token(peer.run(), server.shutdown_token());
             }
             co_await server.shutdown_and_cleanup();
         }(server, lsp_peer, connections, std::move(agent_acceptor), has_agent_acceptor, ws));
@@ -629,9 +635,9 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             if(!workspace.empty()) {
                 server.initialize(workspace);
             }
-            co_await kota::when_any(
+            co_await kota::with_token(
                 accept_connections(server, std::move(acceptor), register_lsp, connections),
-                server.get_shutdown_event().wait());
+                server.shutdown_token());
             co_await server.shutdown_and_cleanup();
         }(server, std::move(*acceptor), register_lsp, connections, ws));
         loop.run();

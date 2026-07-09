@@ -117,8 +117,8 @@ public:
 
     void schedule_shutdown();
 
-    kota::event& get_shutdown_event() {
-        return shutdown_event;
+    kota::cancellation_token shutdown_token() const {
+        return shutdown_source.token();
     }
 
     /// The table of open documents and the buffer-sync logic. Public so
@@ -201,7 +201,11 @@ private:
     kota::task<> cdb_poll_task();
     kota::task<> workspace_poll_task();
 
-    kota::event shutdown_event;
+    /// Cancellation scope of the serving phase. run_serve_mode bounds its
+    /// transport tasks with with_token(..., shutdown_token());
+    /// schedule_shutdown() cancels the source, unwinding them so the root
+    /// task proceeds to shutdown_and_cleanup().
+    kota::cancellation_source shutdown_source;
 
     /// Server-owned background tasks (cache checkpoint); cancelled and
     /// joined in shutdown_and_cleanup().

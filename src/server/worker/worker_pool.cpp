@@ -99,7 +99,7 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     auto peer = std::make_unique<kota::ipc::BincodePeer>(loop, std::move(transport));
 
     std::string prefix = "[" + worker_name + "]";
-    io_group.spawn(drain_stderr(std::move(spawn.stderr_pipe), prefix));
+    worker_tasks.spawn(drain_stderr(std::move(spawn.stderr_pipe), prefix));
 
     workers.push_back(WorkerProcess{
         .proc = std::move(spawn.proc),
@@ -112,7 +112,7 @@ bool WorkerPool::spawn_worker(const std::string& self_path,
     w.alive = true;
     if(!stateful)
         alive_stateless_count += 1;
-    io_group.spawn(w.peer->run());
+    worker_tasks.spawn(w.peer->run());
 
     return true;
 }
@@ -128,14 +128,14 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
         if(!spawn_worker(options.self_path, false, 0)) {
             return false;
         }
-        monitor_group.spawn(monitor_worker(stateless_workers.size() - 1, false));
+        worker_tasks.spawn(monitor_worker(stateless_workers.size() - 1, false));
     }
 
     for(std::uint32_t i = 0; i < options.stateful_count; ++i) {
         if(!spawn_worker(options.self_path, true, options.worker_memory_limit)) {
             return false;
         }
-        monitor_group.spawn(monitor_worker(stateful_workers.size() - 1, true));
+        worker_tasks.spawn(monitor_worker(stateful_workers.size() - 1, true));
     }
 
     // Register evicted notification handler for each stateful worker
@@ -163,7 +163,7 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 
     slot_cancel_sources.resize(stateless_workers.size());
 
-    monitor_group.spawn(monitor_memory());
+    worker_tasks.spawn(kota::with_token(monitor_memory(), stop_scope.token()));
 
     LOG_INFO("WorkerPool started: {} stateless, {} stateful workers",
              stateless_workers.size(),
@@ -173,7 +173,7 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 
 kota::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopping...");
-    shutting_down = true;
+    stop_scope.cancel();
     fail_pending_requests();
 
     // Retired workers (scale-down) have their peer moved to retired_peers
@@ -192,7 +192,7 @@ kota::task<> WorkerPool::stop() {
         if(w.alive)
             w.proc.kill(SIGTERM);
 
-    co_await kota::when_all(monitor_group.join(), io_group.join());
+    co_await worker_tasks.join();
 
     LOG_INFO("WorkerPool stopped");
 }
@@ -250,7 +250,7 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
 
     auto result = co_await workers[index].proc.wait();
 
-    if(shutting_down)
+    if(stop_scope.cancelled())
         co_return;
 
     // Intentional retirement (scale-down): skip crash processing and respawn.
@@ -461,7 +461,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     auto peer = std::make_unique<kota::ipc::BincodePeer>(loop, std::move(transport));
 
     std::string prefix = "[" + worker_name + "]";
-    io_group.spawn(drain_stderr(std::move(spawn.stderr_pipe), prefix));
+    worker_tasks.spawn(drain_stderr(std::move(spawn.stderr_pipe), prefix));
 
     workers[index] = WorkerProcess{
         .proc = std::move(spawn.proc),
@@ -478,7 +478,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
         alive_stateless_count += 1;
 
     auto& w = workers[index];
-    io_group.spawn(w.peer->run());
+    worker_tasks.spawn(w.peer->run());
 
     // Dispatch pending requests now that a fresh worker is available.
     if(!stateful)
@@ -491,7 +491,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
         });
     }
 
-    monitor_group.spawn(monitor_worker(index, stateful));
+    worker_tasks.spawn(monitor_worker(index, stateful));
 
     LOG_INFO("Worker {} restarted (attempt {})", worker_name, old_restart_count);
     return true;
@@ -642,8 +642,6 @@ std::size_t WorkerPool::pick_idle_stateless(std::size_t exclude) {
 kota::task<> WorkerPool::monitor_memory() {
     while(true) {
         co_await kota::sleep(std::chrono::milliseconds(3000), loop);
-        if(shutting_down)
-            co_return;
 
         auto mem = kota::sys::memory();
         if(mem.total == 0)
@@ -725,8 +723,6 @@ void WorkerPool::apply_crash_backoff() {
 }
 
 bool WorkerPool::scale_up_worker() {
-    if(shutting_down)
-        return false;
     if(alive_stateless_count >= options.max_stateless)
         return false;
 
@@ -737,7 +733,7 @@ bool WorkerPool::scale_up_worker() {
     }
 
     slot_cancel_sources.push_back(nullptr);
-    monitor_group.spawn(monitor_worker(new_index, false));
+    worker_tasks.spawn(monitor_worker(new_index, false));
 
     max_low_limit = alive_stateless_count > 1 ? alive_stateless_count - 1 : alive_stateless_count;
     low_limit = max_low_limit;
@@ -751,8 +747,6 @@ bool WorkerPool::scale_up_worker() {
 }
 
 void WorkerPool::retire_idle_worker() {
-    if(shutting_down)
-        return;
     // Count workers already marked retiring (exit not yet observed by
     // monitor_worker) to avoid retiring below min_stateless.
     std::size_t pending_retires = 0;
@@ -783,8 +777,6 @@ void WorkerPool::retire_idle_worker() {
 }
 
 void WorkerPool::check_scaling() {
-    if(shutting_down)
-        return;
     bool has_queued = !high_queue.empty() || !low_queue.empty();
 
     // The pool is saturated when all workers are busy with queued work, OR
