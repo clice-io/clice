@@ -82,11 +82,11 @@ jobs:
         run: pixi run -e test-run unit-test ${{ matrix.build_type }}
 
       - name: Integration tests
-        timeout-minutes: 25
+        timeout-minutes: 20
         run: pixi run -e test-run integration-test ${{ matrix.build_type }}
 
       - name: Smoke tests
-        timeout-minutes: 15
+        timeout-minutes: 5
         run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
 
       # sccache runs a background server that holds file locks; if it is
