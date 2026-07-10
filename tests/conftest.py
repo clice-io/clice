@@ -19,6 +19,25 @@ def pytest_runtest_makereport(item, call):
     setattr(item, f"rep_{rep.when}", rep)
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    # Generate test-data CDBs once in the xdist controller; workers would
+    # race writing the same compile_commands.json files.
+    if not hasattr(config, "workerinput"):
+        generate_test_data_cdbs((Path(__file__).parent / "data").resolve())
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    # Tests sharing a @workspace directory mutate it (.clice cleanup, cmake
+    # regeneration), so pin each directory's tests to one xdist worker.
+    # tryfirst: must add the mark before xdist's own hook folds xdist_group
+    # into the nodeid for the loadgroup scheduler.
+    for item in items:
+        marker = item.get_closest_marker("workspace")
+        if marker and marker.args:
+            item.add_marker(pytest.mark.xdist_group(marker.args[0]))
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--executable",
@@ -50,10 +69,8 @@ def executable(request: pytest.FixtureRequest) -> Path:
 
 @pytest.fixture(scope="session")
 def test_data_dir() -> Path:
-    path = Path(__file__).parent / "data"
-    data_dir = path.resolve()
-    generate_test_data_cdbs(data_dir)
-    return data_dir
+    # CDB generation happens in pytest_configure (controller side).
+    return (Path(__file__).parent / "data").resolve()
 
 
 @pytest.fixture
@@ -104,6 +121,12 @@ async def client(
         # Force cache_dir into the workspace so .clice/ cleanup prevents stale PCH.
         project = dict(init_options.get("project", {}))
         project.setdefault("cache_dir", str(workspace / ".clice"))
+        # One worker of each kind is enough for tests and halves the
+        # per-test process-spawn cost (5 -> 3 processes), which dominates
+        # suite time on macOS Debug. Tests needing more override via
+        # @pytest.mark.init_options.
+        project.setdefault("stateless_worker_count", 1)
+        project.setdefault("stateful_worker_count", 1)
         init_options["project"] = project
         await c.initialize(workspace, initialization_options=init_options)
 
@@ -155,6 +178,8 @@ async def agentic(
         init_options = dict(init_options_marker.args[0]) if init_options_marker else {}
         project = dict(init_options.get("project", {}))
         project.setdefault("cache_dir", str(workspace / ".clice"))
+        project.setdefault("stateless_worker_count", 1)
+        project.setdefault("stateful_worker_count", 1)
         init_options["project"] = project
         await c.initialize(workspace, initialization_options=init_options)
 

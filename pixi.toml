@@ -123,6 +123,7 @@ scripts = ["scripts/activate_asan_macos.sh"]
 pytest = "*"
 pytest-asyncio = ">=1.1.0"
 pytest-timeout = "*"
+pytest-xdist = "*"
 pygls = ">=2.0.0"
 lsprotocol = ">=2024.0.0"
 
@@ -186,7 +187,7 @@ cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --snapshot-di
 [feature.test.tasks.integration-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-pytest -s --log-cli-level=INFO --timeout=300 --timeout-method=thread \
+pytest -n auto --dist loadgroup --timeout=300 --timeout-method=thread \
     tests/integration --executable=./build/{{ type }}/bin/clice
 """
 
