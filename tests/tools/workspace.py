@@ -1,7 +1,45 @@
-"""Cache inspection helpers for persistent cache tests."""
+"""On-disk workspace helpers: sources, document edits, cache inspection."""
 
 import json
 from pathlib import Path
+
+from lsprotocol.types import (
+    DidChangeTextDocumentParams,
+    TextDocumentContentChangeWholeDocument,
+    TextDocumentIdentifier,
+    VersionedTextDocumentIdentifier,
+)
+
+
+def doc(uri: str) -> TextDocumentIdentifier:
+    """Create a TextDocumentIdentifier from a URI string."""
+    return TextDocumentIdentifier(uri=uri)
+
+
+def write_source(workspace: Path, name: str, content: str) -> Path:
+    """Write a source file to the workspace directory. Returns the file path."""
+    path = workspace / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    return path
+
+
+def did_change(client, uri: str, version: int, text: str) -> None:
+    """Send a didChange notification with whole-document replacement."""
+    client.text_document_did_change(
+        DidChangeTextDocumentParams(
+            text_document=VersionedTextDocumentIdentifier(uri=uri, version=version),
+            content_changes=[TextDocumentContentChangeWholeDocument(text=text)],
+        )
+    )
+
+
+def get_field(obj, key, default=None):
+    """Read a field from a dict or attribute-style LSP response object."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
 
 # Versioned root of the unified cache store; bump together with
 # cache_format_version in src/server/state/workspace.h.

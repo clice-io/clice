@@ -4,7 +4,7 @@ import asyncio
 import shutil
 
 import pytest
-from tests.cdb import generate_cdb
+from tests.tools.compile_commands import generate_cdb
 from lsprotocol.types import (
     DidOpenTextDocumentParams,
     HoverParams,
@@ -13,8 +13,8 @@ from lsprotocol.types import (
     TextDocumentItem,
 )
 
-from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
-from tests.integration.utils.wait import IDLE_TIMEOUT, wait_for_index
+from tests.tools.checks import assert_clean_compile, assert_has_errors
+from tests.tools.checks import IDLE_TIMEOUT, wait_for_index
 
 
 @pytest.mark.workspace("modules/single_module_no_deps")

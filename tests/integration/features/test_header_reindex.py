@@ -10,8 +10,8 @@ from lsprotocol.types import (
     VersionedTextDocumentIdentifier,
 )
 
-from tests.integration.utils import write_cdb
-from tests.integration.utils.wait import (
+from tests.tools.compile_commands import write_cdb
+from tests.tools.checks import (
     MTIME_GRANULARITY,
     reference_uris,
     wait_for_reference,

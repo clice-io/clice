@@ -8,7 +8,7 @@ a #if cut by the bound resumes via the open-conditional stack.
 
 import asyncio
 
-from tests.integration.utils import write_cdb, write_entries
+from tests.tools.compile_commands import write_cdb, write_entries
 
 
 async def wait_regions(captured, timeout=15.0):

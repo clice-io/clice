@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from tests.integration.utils.wait import wait_for_index
+from tests.tools.checks import wait_for_index
 
 
 def run_cli(executable, host, port, method, **kwargs):
@@ -30,8 +30,12 @@ def run_cli(executable, host, port, method, **kwargs):
 async def indexed_server(request, executable, workspace):
     """Start server with LSP+agentic, compile a file, wait for indexing."""
     import asyncio
-    from tests.integration.utils.client import CliceClient
-    from tests.conftest import check_no_anomaly, shutdown_client, find_free_port
+    from tests.tools.client import CliceClient
+    from tests.tools.lifecycle import (
+        check_no_anomaly,
+        shutdown_client,
+        find_free_port,
+    )
 
     host = "127.0.0.1"
     port = find_free_port()
@@ -40,8 +44,7 @@ async def indexed_server(request, executable, workspace):
     c = CliceClient()
     await c.start_io(*cmd)
 
-    init_options = {"project": {"cache_dir": str(workspace / ".clice")}}
-    await c.initialize(workspace, initialization_options=init_options)
+    await c.initialize(workspace)
 
     uri, _ = await c.open_and_wait(workspace / "main.cpp")
     assert await wait_for_index(c, uri, "add"), "Index not ready"
@@ -192,13 +195,10 @@ async def test_cli_status(indexed_server, workspace):
     assert isinstance(data["indexed"], int)
 
 
-# --- Server mode and CLI entry point tests ---
-
-
 @pytest.mark.workspace("hello_world")
 async def test_socket_mode_connects(executable, workspace):
-    from tests.conftest import find_free_port, shutdown_client
-    from tests.integration.utils.client import CliceClient
+    from tests.tools.lifecycle import find_free_port, shutdown_client
+    from tests.tools.client import CliceClient
 
     port = find_free_port()
     cmd = [str(executable), "serve", "--mode", "socket", "--port", str(port)]

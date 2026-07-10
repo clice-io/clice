@@ -16,10 +16,11 @@ from lsprotocol.types import (
     VersionedTextDocumentIdentifier,
 )
 
-from tests.conftest import check_no_anomaly, shutdown_client
-from tests.integration.utils.assertions import get_errors, guidance_messages
-from tests.integration.utils.client import CliceClient
-from tests.integration.utils.workspace import did_change, write_cdb, write_source
+from tests.tools.lifecycle import check_no_anomaly, shutdown_client
+from tests.tools.checks import get_errors, guidance_messages
+from tests.tools.client import CliceClient
+from tests.tools.compile_commands import write_cdb
+from tests.tools.workspace import did_change, write_source
 
 TEST_TOML = (
     '[project]\ncache_dir = "${workspace}/.clice"\nenable_indexing = false\n'

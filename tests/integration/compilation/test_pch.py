@@ -10,10 +10,10 @@ from lsprotocol.types import (
     Position,
 )
 
-from tests.integration.utils import doc
-from tests.integration.utils.workspace import did_change
-from tests.integration.utils.wait import wait_for_recompile
-from tests.integration.utils.assertions import assert_clean_compile, assert_no_errors
+from tests.tools.workspace import doc
+from tests.tools.workspace import did_change
+from tests.tools.checks import wait_for_recompile
+from tests.tools.checks import assert_clean_compile, assert_no_errors
 
 
 @pytest.mark.workspace("pch_test")

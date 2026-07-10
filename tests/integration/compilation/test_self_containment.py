@@ -7,11 +7,12 @@ only the final diagnostics are published. Verdicts and user context
 choices persist across server sessions via cache.json.
 """
 
-from tests.conftest import make_client, shutdown_client
-from tests.integration.utils import get_field, write_cdb, write_entries
-from tests.integration.utils.assertions import assert_clean_compile
-from tests.integration.utils.cache import read_cache_json
-from tests.integration.utils.wait import wait_for_recompile
+from tests.tools.lifecycle import make_client, shutdown_client
+from tests.tools.compile_commands import write_cdb, write_entries
+from tests.tools.workspace import get_field
+from tests.tools.checks import assert_clean_compile
+from tests.tools.workspace import read_cache_json
+from tests.tools.checks import wait_for_recompile
 
 
 def prefix_files(workspace):
@@ -149,7 +150,7 @@ async def test_header_save_resets_verdict(executable, tmp_path):
         VersionedTextDocumentIdentifier,
     )
 
-    from tests.integration.utils import doc
+    from tests.tools.workspace import doc
 
     (tmp_path / "types.h").write_text("#pragma once\nstruct Point { int x; int y; };\n")
     utils_h = tmp_path / "utils.h"

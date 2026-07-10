@@ -7,9 +7,10 @@ file-top warning explains the situation; an exact CDB match never gets it.
 
 from lsprotocol.types import DiagnosticSeverity
 
-from tests.conftest import make_client, shutdown_client
-from tests.integration.utils import write_cdb
-from tests.integration.utils.assertions import assert_no_anomaly, guidance_messages
+from tests.tools.lifecycle import make_client, shutdown_client
+from tests.tools.compile_commands import write_cdb
+from tests.tools.checks import assert_no_anomaly
+from tests.tools.checks import guidance_messages
 
 GUIDANCE_CODE = "inferred-compile-command"
 

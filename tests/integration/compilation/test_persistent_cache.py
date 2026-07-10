@@ -15,10 +15,11 @@ from lsprotocol.types import (
     Position,
 )
 
-from tests.conftest import make_client, shutdown_client
-from tests.integration.utils import write_cdb, doc
-from tests.integration.utils.wait import MTIME_GRANULARITY, SETTLE_TIME
-from tests.integration.utils.cache import (
+from tests.tools.lifecycle import make_client, shutdown_client
+from tests.tools.compile_commands import write_cdb
+from tests.tools.workspace import doc
+from tests.tools.checks import MTIME_GRANULARITY, SETTLE_TIME
+from tests.tools.workspace import (
     cache_root,
     list_pch_files,
     list_pcm_files,
@@ -26,7 +27,8 @@ from tests.integration.utils.cache import (
     pin_cache_to_workspace,
     read_cache_json,
 )
-from tests.integration.utils.assertions import assert_clean_compile, assert_no_anomaly
+from tests.tools.checks import assert_no_anomaly
+from tests.tools.checks import assert_clean_compile
 
 
 async def test_pch_written_to_cache_dir(client, tmp_path):
@@ -410,7 +412,7 @@ async def test_cache_wiped_while_running(client, tmp_path):
     await asyncio.sleep(1.1)
     (tmp_path / "header.h").write_text("#pragma once\nstruct W { int x; int y; };\n")
 
-    from tests.integration.utils.wait import wait_for_recompile
+    from tests.tools.checks import wait_for_recompile
 
     await wait_for_recompile(client, uri)
     assert_clean_compile(client, uri)

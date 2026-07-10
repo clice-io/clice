@@ -8,11 +8,11 @@ clean; otherwise an undeclared-identifier diagnostic surfaces.
 import pytest
 from lsprotocol.types import DiagnosticSeverity
 
-from tests.conftest import make_client, shutdown_client
-from tests.integration.utils.assertions import (
+from tests.tools.lifecycle import make_client, shutdown_client
+from tests.tools.checks import assert_no_anomaly
+from tests.tools.checks import (
     assert_clean_compile,
     assert_has_errors,
-    assert_no_anomaly,
     get_errors,
 )
 

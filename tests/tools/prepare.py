@@ -1,6 +1,6 @@
 """Prepare test data fixtures for editor E2E tests.
 
-Usage: python tests/prepare.py <fixture> [<fixture> ...]
+Usage: python tests/tools/prepare.py <fixture> [<fixture> ...]
 
 Each fixture is a subdirectory of tests/data. Fixtures with a
 CMakeLists.txt get compile_commands.json generated via CMake; plain
@@ -13,10 +13,10 @@ import shutil
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from tests.cdb import generate_cdb, generate_test_data_cdbs  # noqa: E402
+from tests.tools.compile_commands import generate_cdb, generate_test_data_cdbs  # noqa: E402
 
 
 def xdg_cache_dir(workspace: Path) -> Path | None:

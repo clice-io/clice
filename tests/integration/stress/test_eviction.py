@@ -1,7 +1,7 @@
 """Worker document eviction: opening more files than a stateful worker's
 LRU cap must not silently break features on the evicted documents."""
 
-from tests.integration.utils import write_cdb
+from tests.tools.compile_commands import write_cdb
 
 FILE_COUNT = 18  # one stateful worker holds at most 16 compiled documents
 

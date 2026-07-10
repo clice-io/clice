@@ -1,7 +1,7 @@
 """Compilation database generation for test fixtures.
 
 Stdlib-only so it can be used both by pytest (conftest.py) and by
-standalone scripts (tests/editors/prepare.py) without pulling in
+standalone scripts (tests/tools/prepare.py) without pulling in
 pytest/pygls dependencies.
 """
 
@@ -16,7 +16,7 @@ def generate_cdb(workspace: Path) -> None:
     cmake = shutil.which("cmake")
     if cmake is None:
         raise RuntimeError("cmake executable not found in PATH")
-    toolchain = Path(__file__).resolve().parent.parent / "cmake" / "toolchain.cmake"
+    toolchain = Path(__file__).resolve().parents[2] / "cmake" / "toolchain.cmake"
     cmd = [
         cmake,
         "-G",
@@ -113,3 +113,59 @@ def generate_test_data_cdbs(data_dir: Path) -> None:
                 entries.append(entry(pt_dir, src))
         if entries:
             write(pt_dir, entries)
+
+
+def write_cdb(
+    workspace: Path,
+    files: list[str],
+    *,
+    extra_args: list[str] | None = None,
+    std: str = "c++17",
+) -> None:
+    """Write a compile_commands.json for the given source files.
+
+    Args:
+        workspace: Root directory of the workspace.
+        files: List of source file names (relative to workspace).
+        extra_args: Additional compiler arguments (e.g. ["-DFOO", "-I/bar"]).
+        std: C++ standard version (default: c++17).
+    """
+    entries = []
+    for f in files:
+        args = ["clang++", f"-std={std}", "-fsyntax-only"]
+        if extra_args:
+            args.extend(extra_args)
+        args.append(str(workspace / f))
+        entries.append(
+            {
+                "directory": str(workspace),
+                "file": str(workspace / f),
+                "arguments": args,
+            }
+        )
+    (workspace / "compile_commands.json").write_text(json.dumps(entries, indent=2))
+
+
+def write_entries(workspace, entries):
+    """Write a compile_commands.json with per-file extra arguments.
+
+    Args:
+        workspace: Root directory of the workspace.
+        entries: List of (file_name, extra_args) pairs; a file may appear
+            multiple times to model multi-configuration projects.
+    """
+    data = [
+        {
+            "directory": str(workspace),
+            "file": str(workspace / f),
+            "arguments": [
+                "clang++",
+                "-std=c++17",
+                "-fsyntax-only",
+                *args,
+                str(workspace / f),
+            ],
+        }
+        for f, args in entries
+    ]
+    (workspace / "compile_commands.json").write_text(json.dumps(data))

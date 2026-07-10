@@ -16,8 +16,8 @@ from lsprotocol.types import (
     WorkspaceSymbolParams,
 )
 
-from tests.integration.utils import doc
-from tests.integration.utils.wait import wait_for_index
+from tests.tools.workspace import doc
+from tests.tools.checks import wait_for_index
 
 
 @pytest.mark.workspace("index_features")

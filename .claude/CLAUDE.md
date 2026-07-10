@@ -118,7 +118,7 @@ Three types of tests, all must pass before committing:
 
 - **Unit tests** (`tests/unit/`): C++ tests using the project's own test framework. Test names should be at most 4 words.
 - **Integration tests** (`tests/integration/`): Python pytest tests that start a real clice server and communicate via LSP.
-- **Smoke tests** (`tests/smoke/`): Replay recorded LSP sessions via `tests/replay.py`.
+- **Smoke tests** (`tests/smoke/`): Replay recorded LSP sessions via `tests/tools/replay.py`.
 
 ### Integration Test Style
 

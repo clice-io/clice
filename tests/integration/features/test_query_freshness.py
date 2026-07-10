@@ -1,8 +1,8 @@
 """Navigation right after an edit must resolve against the edited buffer:
 the server settles the file's compile before answering, with no timeout."""
 
-from tests.integration.utils import write_cdb
-from tests.integration.utils.workspace import did_change
+from tests.tools.compile_commands import write_cdb
+from tests.tools.workspace import did_change
 
 SOURCE_V1 = "int foo() { return 1; }\nint main() { return foo(); }\n"
 

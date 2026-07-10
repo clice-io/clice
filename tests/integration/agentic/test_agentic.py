@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from tests.integration.utils.wait import wait_for_index
+from tests.tools.checks import wait_for_index
 
 
 class AgenticRpcClient:
@@ -142,8 +142,12 @@ async def test_concurrent_connections(agentic, workspace):
 @pytest.fixture
 async def indexed_agentic(request, executable, workspace):
     """Start server with LSP+agentic, compile a file, wait for indexing."""
-    from tests.integration.utils.client import CliceClient
-    from tests.conftest import check_no_anomaly, shutdown_client, find_free_port
+    from tests.tools.client import CliceClient
+    from tests.tools.lifecycle import (
+        check_no_anomaly,
+        shutdown_client,
+        find_free_port,
+    )
 
     host = "127.0.0.1"
     port = find_free_port()
@@ -152,8 +156,7 @@ async def indexed_agentic(request, executable, workspace):
     c = CliceClient()
     await c.start_io(*cmd)
 
-    init_options = {"project": {"cache_dir": str(workspace / ".clice")}}
-    await c.initialize(workspace, initialization_options=init_options)
+    await c.initialize(workspace)
 
     uri, _ = await c.open_and_wait(workspace / "main.cpp")
     assert await wait_for_index(c, uri, "add"), "Index not ready"
@@ -423,8 +426,11 @@ async def test_rpc_status(indexed_agentic, workspace):
 @pytest.mark.workspace("hello_world")
 async def test_rpc_shutdown(executable, workspace):
     """Shutdown notification should cause the server to exit cleanly."""
-    from tests.integration.utils.client import CliceClient
-    from tests.conftest import find_free_port, assert_server_exited_cleanly
+    from tests.tools.client import CliceClient
+    from tests.tools.lifecycle import (
+        find_free_port,
+        assert_server_exited_cleanly,
+    )
 
     host = "127.0.0.1"
     port = find_free_port()
@@ -432,8 +438,7 @@ async def test_rpc_shutdown(executable, workspace):
 
     c = CliceClient()
     await c.start_io(*cmd)
-    init_options = {"project": {"cache_dir": str(workspace / ".clice")}}
-    await c.initialize(workspace, initialization_options=init_options)
+    await c.initialize(workspace)
 
     rpc = AgenticRpcClient(host, port)
     body = json.dumps({"jsonrpc": "2.0", "method": "agentic/shutdown", "params": {}})
@@ -526,8 +531,11 @@ async def test_rpc_impact_analysis_unknown(indexed_agentic, workspace):
 
 async def test_shutdown_during_indexing(executable, tmp_path):
     """Shutdown during active background indexing must exit cleanly."""
-    from tests.integration.utils.client import CliceClient
-    from tests.conftest import find_free_port, assert_server_exited_cleanly
+    from tests.tools.client import CliceClient
+    from tests.tools.lifecycle import (
+        find_free_port,
+        assert_server_exited_cleanly,
+    )
 
     workspace = tmp_path / "ws"
     workspace.mkdir()
@@ -558,12 +566,7 @@ async def test_shutdown_during_indexing(executable, tmp_path):
     await c.start_io(*cmd)
 
     try:
-        init_options = {
-            "project": {
-                "cache_dir": str(workspace / ".clice"),
-                "idle_timeout_ms": 0,
-            }
-        }
+        init_options = {"project": {"idle_timeout_ms": 0}}
         try:
             await c.initialize(workspace, initialization_options=init_options)
         except Exception:

@@ -4,19 +4,19 @@ seeds the stat baseline, so tests poll once before mutating the disk."""
 
 import asyncio
 
-from tests.integration.utils import write_cdb
-from tests.integration.utils.assertions import (
+from tests.tools.compile_commands import write_cdb
+from tests.tools.checks import (
     assert_has_errors,
     assert_no_errors,
     get_errors,
 )
-from tests.integration.utils.wait import (
+from tests.tools.checks import (
     MTIME_GRANULARITY,
     wait_for_index,
     wait_for_recompile,
     wait_for_reference,
 )
-from tests.integration.utils.workspace import get_field
+from tests.tools.workspace import get_field
 
 GATED_MAIN = """\
 #ifndef FEATURE

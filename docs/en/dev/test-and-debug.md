@@ -51,7 +51,7 @@ pixi run smoke-test Debug    # debug build
 Equivalent to:
 
 ```bash
-python tests/replay.py tests/smoke/*.jsonl \
+python tests/tools/replay.py tests/smoke/*.jsonl \
     --clice=./build/RelWithDebInfo/bin/clice
 ```
 

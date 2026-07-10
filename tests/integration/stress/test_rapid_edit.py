@@ -9,9 +9,9 @@ from lsprotocol.types import (
     Position,
 )
 
-from tests.integration.utils import doc
-from tests.integration.utils.wait import SETTLE_TIME
-from tests.integration.utils.workspace import did_change
+from tests.tools.workspace import doc
+from tests.tools.checks import SETTLE_TIME
+from tests.tools.workspace import did_change
 
 
 @pytest.mark.workspace("hello_world")

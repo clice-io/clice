@@ -3,16 +3,16 @@
 
 Usage:
     # Full indexing test on LLVM (wait for completion):
-    pixi run python tests/stress.py /home/ykiko/workspace/llvm-project \
+    pixi run python tests/tools/stress.py /home/ykiko/workspace/llvm-project \
         --executable build/RelWithDebInfo/bin/clice
 
     # Time-limited run (just see how far it gets in 5 minutes):
-    pixi run python tests/stress.py /home/ykiko/workspace/llvm-project \
+    pixi run python tests/tools/stress.py /home/ykiko/workspace/llvm-project \
         --executable build/RelWithDebInfo/bin/clice \
         --timeout 300
 
     # Custom worker limits:
-    pixi run python tests/stress.py /home/ykiko/workspace/llvm-project \
+    pixi run python tests/tools/stress.py /home/ykiko/workspace/llvm-project \
         --executable build/RelWithDebInfo/bin/clice \
         --max-stateless 16
 """
@@ -27,8 +27,8 @@ import tempfile
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from tests.integration.utils.client import CliceClient
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tests.tools.client import CliceClient
 
 
 def parse_args():
@@ -266,6 +266,11 @@ async def run_stress_test(args):
             "cache_dir": str(cache_dir),
             "logging_dir": str(log_dir),
             "enable_indexing": True,
+            # 0 = server-side auto. Explicit so CliceClient.initialize's
+            # 1-worker test default doesn't apply — this tool exists to
+            # stress real worker pools.
+            "stateless_worker_count": 0,
+            "stateful_worker_count": 0,
         }
     }
     if args.max_stateless > 0:

@@ -3,10 +3,10 @@ closed dependents — the content-hash staleness check is the storm filter."""
 
 import asyncio
 
-from tests.conftest import make_client, shutdown_client
-from tests.integration.utils import write_cdb
-from tests.integration.utils.cache import cache_root, pin_cache_to_workspace
-from tests.integration.utils.wait import MTIME_GRANULARITY
+from tests.tools.lifecycle import make_client, shutdown_client
+from tests.tools.compile_commands import write_cdb
+from tests.tools.workspace import cache_root, pin_cache_to_workspace
+from tests.tools.checks import MTIME_GRANULARITY
 
 HEADER = "#pragma once\ninline int alpha() { return 1; }\n"
 CLOSED_TU = '#include "header.h"\nint use() { return alpha(); }\n'

@@ -89,16 +89,12 @@ class CliceClient(BaseLanguageClient):
             token = str(params.token) if isinstance(params.token, int) else params.token
             self.progress_events.append({"token": token, "value": params.value})
 
-    # ── URI helpers ──────────────────────────────────────────────────
-
     @staticmethod
     def normalize_uri(uri: str) -> str:
         return unquote(uri)
 
     def path_to_uri(self, filepath: Path) -> str:
         return self.normalize_uri(filepath.as_uri())
-
-    # ── Lifecycle ────────────────────────────────────────────────────
 
     async def initialize(
         self,
@@ -109,7 +105,15 @@ class CliceClient(BaseLanguageClient):
         if initialization_options is None:
             initialization_options = {}
         project = dict(initialization_options.get("project", {}))
-        project.setdefault("cache_dir", str(workspace / ".clice"))
+        # Force cache_dir into the workspace so .clice/ cleanup prevents
+        # stale PCH.
+        project["cache_dir"] = str(workspace / ".clice")
+        # One worker of each kind is enough for tests and halves the
+        # per-test process-spawn cost (5 -> 3 processes), which dominates
+        # suite time on macOS Debug. Tests needing more pass their own
+        # counts via initialization_options.
+        project.setdefault("stateless_worker_count", 1)
+        project.setdefault("stateful_worker_count", 1)
         initialization_options["project"] = project
         # Disable the stat-polling loops: tests drive ticks deterministically
         # through the clice/internal/poll hook instead.
@@ -130,7 +134,6 @@ class CliceClient(BaseLanguageClient):
         self.workspace = workspace
         return result
 
-    # ── Server process control ───────────────────────────────────────
     # Single home for the pygls internals these wrap; tests must not poke
     # at _server/_stop_event/_async_tasks directly.
 
@@ -152,8 +155,6 @@ class CliceClient(BaseLanguageClient):
         # Wait the cancellations out so no task outlives the test teardown.
         await asyncio.gather(*self._async_tasks, return_exceptions=True)
 
-    # ── Document operations ──────────────────────────────────────────
-
     def open(self, filepath: Path, version: int = 0) -> tuple[str, str]:
         """Open a text document. Returns (normalized_uri, content)."""
         content = filepath.read_bytes().decode("utf-8")
@@ -173,8 +174,6 @@ class CliceClient(BaseLanguageClient):
             DidCloseTextDocumentParams(text_document=TextDocumentIdentifier(uri=uri))
         )
 
-    # ── Diagnostics ──────────────────────────────────────────────────
-
     def wait_for_diagnostics(self, uri: str) -> asyncio.Event:
         uri = self.normalize_uri(uri)
         if uri not in self.diagnostics_events:
@@ -192,8 +191,6 @@ class CliceClient(BaseLanguageClient):
             return
         await asyncio.wait_for(event.wait(), timeout=timeout)
 
-    # ── Compile & wait ───────────────────────────────────────────────
-
     async def open_and_wait(
         self, filepath: Path, timeout: float = 60.0
     ) -> tuple[str, str]:
@@ -208,8 +205,6 @@ class CliceClient(BaseLanguageClient):
         )
         await asyncio.wait_for(event.wait(), timeout=timeout)
         return uri, content
-
-    # ── Feature request shortcuts ────────────────────────────────────
 
     async def hover_at(
         self, uri: str, line: int, character: int, *, timeout: float = 30.0
@@ -419,8 +414,6 @@ class CliceClient(BaseLanguageClient):
             ),
             timeout=timeout,
         )
-
-    # ── Extension protocol ───────────────────────────────────────────
 
     async def query_context(
         self, uri: str, *, offset: int | None = None, timeout: float = 30.0

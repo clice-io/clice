@@ -194,7 +194,7 @@ pytest -n auto --dist loadgroup --timeout=300 --timeout-method=thread \
 [feature.test.tasks.smoke-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-python tests/replay.py tests/smoke/*.jsonl \
+python tests/tools/replay.py tests/smoke/*.jsonl \
     --clice=./build/{{ type }}/bin/clice
 """
 
@@ -218,7 +218,7 @@ python = ">=3.13"
 
 # Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]
-cmd = "python tests/prepare.py hello_world modules/hover_on_imported_symbol header_context"
+cmd = "python tests/tools/prepare.py hello_world modules/hover_on_imported_symbol header_context"
 
 # Requires nvim (stable) on PATH.
 [feature.editor.tasks.nvim-e2e]

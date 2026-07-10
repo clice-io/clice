@@ -21,19 +21,17 @@ from lsprotocol.types import (
     VersionedTextDocumentIdentifier,
 )
 
-from tests.conftest import make_client, shutdown_client
-from tests.integration.utils import write_cdb, doc
-from tests.integration.utils.cache import list_pch_files, pin_cache_to_workspace
-from tests.integration.utils.wait import (
+from tests.tools.lifecycle import make_client, shutdown_client
+from tests.tools.compile_commands import write_cdb
+from tests.tools.workspace import doc
+from tests.tools.workspace import list_pch_files, pin_cache_to_workspace
+from tests.tools.checks import (
     MTIME_GRANULARITY,
     SETTLE_TIME,
     wait_for_recompile,
 )
-from tests.integration.utils.assertions import (
-    assert_clean_compile,
-    assert_has_errors,
-    assert_no_anomaly,
-)
+from tests.tools.checks import assert_no_anomaly
+from tests.tools.checks import assert_clean_compile, assert_has_errors
 
 
 async def test_header_change_invalidates_ast(client, tmp_path):
@@ -394,7 +392,7 @@ async def test_didsave_with_module_deps(client, test_data_dir, tmp_path):
         if f.is_file():
             shutil.copy2(f, tmp_path / f.name)
 
-    from tests.cdb import generate_cdb
+    from tests.tools.compile_commands import generate_cdb
 
     generate_cdb(tmp_path)
     await client.initialize(tmp_path)

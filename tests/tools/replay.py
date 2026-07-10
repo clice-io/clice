@@ -19,7 +19,7 @@ sys.stdout.reconfigure(line_buffering=True)
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SERVER_REQUEST_DEFAULTS: dict[str, object] = {
     "window/workDoneProgress/create": None,

@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_client, shutdown_client
-from tests.integration.utils import write_cdb
-from tests.integration.utils.assertions import (
+from tests.tools.lifecycle import make_client, shutdown_client
+from tests.tools.compile_commands import write_cdb
+from tests.tools.checks import (
     anomalies_in_log_files,
     anomalies_in_log_messages,
 )

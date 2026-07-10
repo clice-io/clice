@@ -9,8 +9,8 @@ from lsprotocol.types import (
     TextDocumentIdentifier,
 )
 
-from tests.integration.utils import doc
-from tests.integration.utils.workspace import did_change
+from tests.tools.workspace import doc
+from tests.tools.workspace import did_change
 
 
 @pytest.mark.workspace("include_completion")

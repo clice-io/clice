@@ -6,8 +6,12 @@ import json
 import pytest
 from lsprotocol.types import InitializeParams
 
-from tests.integration.utils.injection import build_params
-from tests.replay import SERVER_REQUEST_DEFAULTS, read_lsp_message, write_lsp_message
+from tests.tools.injection import build_params
+from tests.tools.replay import (
+    SERVER_REQUEST_DEFAULTS,
+    read_lsp_message,
+    write_lsp_message,
+)
 
 INJECTION_FLOOR = 5
 

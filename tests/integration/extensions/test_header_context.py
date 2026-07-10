@@ -17,7 +17,8 @@ from lsprotocol.types import (
     TextDocumentIdentifier,
 )
 
-from tests.integration.utils import doc, get_field, write_entries
+from tests.tools.compile_commands import write_entries
+from tests.tools.workspace import doc, get_field
 
 
 @pytest.mark.workspace("header_context")

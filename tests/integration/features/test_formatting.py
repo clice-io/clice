@@ -1,7 +1,7 @@
 import pytest
 from lsprotocol.types import Position, Range
 
-from tests.integration.utils.workspace import did_change
+from tests.tools.workspace import did_change
 
 UNFORMATTED = "int    add(   int   a  ,  int   b  ) {\nreturn   a+b ;\n}\n"
 FORMATTED = "int add(int a, int b) { return a + b; }\n"

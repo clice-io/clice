@@ -6,9 +6,9 @@ subsumes the -include on reuse (no double processing), and a header with
 no directives of its own (bound == 0) still gets a PCH.
 """
 
-from tests.integration.utils import write_cdb
-from tests.integration.utils.assertions import assert_clean_compile
-from tests.integration.utils.cache import list_pch_files
+from tests.tools.compile_commands import write_cdb
+from tests.tools.checks import assert_clean_compile
+from tests.tools.workspace import list_pch_files
 
 
 async def test_prefix_not_reprocessed(client, tmp_path):

@@ -7,9 +7,10 @@ by canonical flags, host ranking, and switch validation.
 
 import asyncio
 
-from tests.integration.utils import get_field, write_cdb, write_entries
-from tests.integration.utils.assertions import assert_clean_compile, assert_has_errors
-from tests.integration.utils.wait import MTIME_GRANULARITY, wait_for_recompile
+from tests.tools.compile_commands import write_cdb, write_entries
+from tests.tools.workspace import get_field
+from tests.tools.checks import assert_clean_compile, assert_has_errors
+from tests.tools.checks import MTIME_GRANULARITY, wait_for_recompile
 
 
 async def test_source_command_switch(client, tmp_path):
@@ -193,7 +194,7 @@ async def test_stale_epoch_rejected(client, tmp_path):
 
     from lsprotocol.types import DidSaveTextDocumentParams
 
-    from tests.integration.utils import doc
+    from tests.tools.workspace import doc
 
     (tmp_path / "shared.h").write_text("VALUE_TYPE get_value();\n")
     (tmp_path / "main.cpp").write_text(
@@ -282,7 +283,7 @@ async def test_saved_include_updates_hosts(client, tmp_path):
         VersionedTextDocumentIdentifier,
     )
 
-    from tests.integration.utils import doc
+    from tests.tools.workspace import doc
 
     (tmp_path / "lonely.h").write_text("inline int lonely() { return 1; }\n")
     main_cpp = tmp_path / "main.cpp"
