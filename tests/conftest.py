@@ -1,4 +1,5 @@
 import asyncio
+import os
 import shutil
 import socket
 import sys
@@ -103,6 +104,22 @@ def workspace(request: pytest.FixtureRequest, test_data_dir: Path):
         shutil.rmtree(clice_dir, ignore_errors=True)
 
 
+def build_init_options(request: pytest.FixtureRequest, workspace: Path) -> dict:
+    """Initialization options from @pytest.mark.init_options plus test defaults."""
+    marker = request.node.get_closest_marker("init_options")
+    init_options = dict(marker.args[0]) if marker else {}
+    project = dict(init_options.get("project", {}))
+    # Force cache_dir into the workspace so .clice/ cleanup prevents stale PCH.
+    project.setdefault("cache_dir", str(workspace / ".clice"))
+    # One worker of each kind is enough for tests and halves the per-test
+    # process-spawn cost (5 -> 3 processes), which dominates suite time on
+    # macOS Debug. Tests needing more override via @pytest.mark.init_options.
+    project.setdefault("stateless_worker_count", 1)
+    project.setdefault("stateful_worker_count", 1)
+    init_options["project"] = project
+    return init_options
+
+
 @pytest.fixture
 async def client(
     request: pytest.FixtureRequest,
@@ -116,18 +133,7 @@ async def client(
     await c.start_io(*cmd)
 
     if workspace is not None:
-        init_options_marker = request.node.get_closest_marker("init_options")
-        init_options = dict(init_options_marker.args[0]) if init_options_marker else {}
-        # Force cache_dir into the workspace so .clice/ cleanup prevents stale PCH.
-        project = dict(init_options.get("project", {}))
-        project.setdefault("cache_dir", str(workspace / ".clice"))
-        # One worker of each kind is enough for tests and halves the
-        # per-test process-spawn cost (5 -> 3 processes), which dominates
-        # suite time on macOS Debug. Tests needing more override via
-        # @pytest.mark.init_options.
-        project.setdefault("stateless_worker_count", 1)
-        project.setdefault("stateful_worker_count", 1)
-        init_options["project"] = project
+        init_options = build_init_options(request, workspace)
         await c.initialize(workspace, initialization_options=init_options)
 
     yield c
@@ -153,10 +159,32 @@ def check_no_anomaly(request: pytest.FixtureRequest, c: CliceClient) -> None:
     assert_no_anomaly(c, c.workspace)
 
 
+next_port_offset = 0
+
+
 def find_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    """Pick a port from a per-xdist-worker range.
+
+    bind(0) draws from the kernel's shared pool: two concurrent xdist
+    workers can grab the same port in the close-then-rebind gap. Disjoint
+    per-worker ranges (below the ephemeral range) remove that race; the
+    advancing offset avoids immediately reusing a just-released port.
+    """
+    global next_port_offset
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    suffix = worker.removeprefix("gw")
+    index = int(suffix) if suffix.isdigit() else 0
+    base = 21000 + index * 100
+    for _ in range(100):
+        port = base + next_port_offset
+        next_port_offset = (next_port_offset + 1) % 100
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise RuntimeError(f"no free port in range {base}-{base + 99}")
 
 
 @pytest.fixture
@@ -174,13 +202,7 @@ async def agentic(
     await c.start_io(*cmd)
 
     if workspace is not None:
-        init_options_marker = request.node.get_closest_marker("init_options")
-        init_options = dict(init_options_marker.args[0]) if init_options_marker else {}
-        project = dict(init_options.get("project", {}))
-        project.setdefault("cache_dir", str(workspace / ".clice"))
-        project.setdefault("stateless_worker_count", 1)
-        project.setdefault("stateful_worker_count", 1)
-        init_options["project"] = project
+        init_options = build_init_options(request, workspace)
         await c.initialize(workspace, initialization_options=init_options)
 
     yield executable, host, port
