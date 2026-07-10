@@ -8,6 +8,7 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
+#include "support/filesystem.h"
 
 #include "kota/meta/enum.h"
 
@@ -1009,6 +1010,43 @@ int $foo = 1;
     ASSERT_EQ(result->range->start.character, 4U);
     ASSERT_EQ(result->range->end.line, 1U);
     ASSERT_EQ(result->range->end.character, 7U);
+}
+
+TEST_CASE(include_header) {
+    add_file("test.h", "#pragma once\n");
+    add_main("main.cpp", R"cpp(
+#include @arg["test.h"]
+$(outside)
+int x = 0;
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto arg = range("arg", "main.cpp");
+    info = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->kind, SymbolKind::Header);
+    EXPECT_EQ(info->name, "test.h");
+
+    llvm::SmallString<128> path(info->definition);
+    path::remove_dots(path);
+    EXPECT_EQ(path, TestVFS::path("test.h"));
+    ASSERT_TRUE(info->symbol_range.has_value());
+    EXPECT_EQ(info->symbol_range->begin, arg.begin);
+    EXPECT_EQ(info->symbol_range->end, arg.end);
+
+    result = feature::hover(*unit, arg.begin + 1, {}, feature::PositionEncoding::UTF8);
+    ASSERT_TRUE(result.has_value());
+    auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
+    ASSERT_TRUE(content != nullptr);
+    EXPECT_TRUE(content->value.contains("test.h"));
+    EXPECT_TRUE(content->value.contains(TestVFS::path("test.h")));
+    ASSERT_TRUE(result->range.has_value());
+    EXPECT_EQ(result->range->start.line, 1U);
+    EXPECT_EQ(result->range->start.character, 9U);
+    EXPECT_EQ(result->range->end.line, 1U);
+    EXPECT_EQ(result->range->end.character, 17U);
+
+    EXPECT_FALSE(feature::hover_info(*unit, point("outside")).has_value());
 }
 
 TEST_CASE(scoped_attribute) {

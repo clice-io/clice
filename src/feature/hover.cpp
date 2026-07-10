@@ -10,6 +10,7 @@
 #include "semantic/ast_utility.h"
 #include "semantic/find_target.h"
 #include "semantic/selection.h"
+#include "syntax/lexer.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -1044,6 +1045,57 @@ auto attr_hover(const clang::Attr* attr, clang::ASTContext& context) -> std::opt
     return info;
 }
 
+auto include_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional<HoverInfo> {
+    auto interested = unit.interested_file();
+    auto directives_it = unit.directives().find(interested);
+    if(directives_it == unit.directives().end()) {
+        return std::nullopt;
+    }
+
+    auto content = unit.interested_content();
+    auto* lang_opts = &unit.lang_options();
+
+    auto header_name = [&](LocalSourceRange range) -> std::string {
+        auto arg = content.substr(range.begin, range.end - range.begin).trim();
+        if(arg.size() >= 2 && ((arg.front() == '"' && arg.back() == '"') ||
+                               (arg.front() == '<' && arg.back() == '>'))) {
+            arg = arg.drop_front().drop_back();
+        }
+        return arg.str();
+    };
+
+    auto try_directive = [&](clang::SourceLocation loc,
+                             clang::FileID target) -> std::optional<HoverInfo> {
+        if(!target.isValid())
+            return std::nullopt;
+        auto [fid, directive_offset] = unit.decompose_location(loc);
+        if(fid != interested || directive_offset >= content.size())
+            return std::nullopt;
+        auto range = find_directive_argument(content, directive_offset, lang_opts);
+        if(!range || !range->contains(offset))
+            return std::nullopt;
+
+        HoverInfo info;
+        info.name = header_name(*range);
+        info.kind = SymbolKind::Header;
+        info.definition = unit.file_path(target);
+        info.symbol_range = *range;
+        return info;
+    };
+
+    for(const auto& include: directives_it->second.includes) {
+        if(auto info = try_directive(include.location, include.fid)) {
+            return info;
+        }
+    }
+    for(const auto& has_include: directives_it->second.has_includes) {
+        if(auto info = try_directive(has_include.location, has_include.fid)) {
+            return info;
+        }
+    }
+    return std::nullopt;
+}
+
 void add_layout_info(const clang::NamedDecl& decl, HoverInfo& info) {
     if(decl.isInvalidDecl()) {
         return;
@@ -1504,6 +1556,11 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const HoverInfo::Param& par
 
 auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOptions& options)
     -> std::optional<HoverInfo> {
+    /// The hover is over an include directive.
+    if(auto info = include_hover(unit, offset)) {
+        return info;
+    }
+
     auto& context = unit.context();
     auto policy = hover_printing_policy(context.getPrintingPolicy());
 
