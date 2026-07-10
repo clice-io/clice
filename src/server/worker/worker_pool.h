@@ -241,6 +241,10 @@ private:
     /// and triggers dynamic scaling checks.
     kota::task<> monitor_memory();
 
+    /// SIGKILL any worker still alive after the SIGTERM grace period, so a
+    /// wedged worker can't block stop()'s join forever.
+    kota::task<> kill_stragglers();
+
     /// Handle worker crash: update state, fire on_crash callback.
     /// Returns true if the worker should be restarted.
     bool process_crash(std::size_t index, bool stateful, int exit_code, int exit_signal);

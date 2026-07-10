@@ -192,9 +192,28 @@ kota::task<> WorkerPool::stop() {
         if(w.alive)
             w.proc.kill(SIGTERM);
 
+    // A wedged worker that ignores SIGTERM would otherwise block the join
+    // below forever; escalate after a grace period.
+    kota::task_group<> watchdog{loop};
+    watchdog.spawn(kill_stragglers());
+
     co_await worker_tasks.join();
+    watchdog.cancel();
+    co_await watchdog.join();
 
     LOG_INFO("WorkerPool stopped");
+}
+
+kota::task<> WorkerPool::kill_stragglers() {
+    co_await kota::sleep(std::chrono::milliseconds(5000), loop);
+    LOG_WARN("Workers still alive 5s after SIGTERM; escalating to SIGKILL");
+    // 9 == SIGKILL by value; Windows' <csignal> does not define the macro.
+    for(auto& w: stateless_workers)
+        if(w.alive)
+            w.proc.kill(9);
+    for(auto& w: stateful_workers)
+        if(w.alive)
+            w.proc.kill(9);
 }
 
 std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
