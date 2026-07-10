@@ -110,7 +110,7 @@ def build_init_options(request: pytest.FixtureRequest, workspace: Path) -> dict:
     init_options = dict(marker.args[0]) if marker else {}
     project = dict(init_options.get("project", {}))
     # Force cache_dir into the workspace so .clice/ cleanup prevents stale PCH.
-    project.setdefault("cache_dir", str(workspace / ".clice"))
+    project["cache_dir"] = str(workspace / ".clice")
     # One worker of each kind is enough for tests and halves the per-test
     # process-spawn cost (5 -> 3 processes), which dominates suite time on
     # macOS Debug. Tests needing more override via @pytest.mark.init_options.
