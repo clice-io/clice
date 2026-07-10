@@ -237,7 +237,7 @@
 
 ## 特殊悬停目标
 
-- [ ] 类型级悬停显示结构体/枚举成员（[clangd#959](https://github.com/clangd/clangd/issues/959)）
+- [x] 类型级悬停显示结构体/枚举成员（[clangd#959](https://github.com/clangd/clangd/issues/959)）
 
   ```cpp
   enum Color { Red, Green, Blue };
@@ -266,7 +266,7 @@
   // 悬停 "nodiscard" → 显示该属性的说明
   ```
 
-- [ ] `#include` 指令悬停显示解析后的头文件路径
+- [x] `#include` 指令悬停显示解析后的头文件路径
 - [x] `this` 表达式悬停显示指向的类型
 - [x] `__func__` 及相关预定义标识符悬停
 

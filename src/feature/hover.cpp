@@ -118,6 +118,58 @@ auto namespace_scope(const clang::Decl* decl) -> std::string {
     return "";
 }
 
+void print_tag_name(std::string& definition,
+                    const clang::TagDecl& decl,
+                    clang::PrintingPolicy policy) {
+    /// We only need the full tag name, so truncate the body at the opening brace for later fill-in.
+    llvm::raw_string_ostream os(definition);
+    decl.print(os, policy);
+    auto body = definition.rfind('{');
+    if(body == std::string::npos) {
+        return;
+    }
+    definition.resize(body);
+}
+
+auto print_record_definition(const clang::RecordDecl& decl, clang::PrintingPolicy policy)
+    -> std::string {
+    std::string definition;
+
+    print_tag_name(definition, decl, policy);
+
+    llvm::raw_string_ostream os(definition);
+    os << " {";
+    for(const clang::FieldDecl* field: decl.fields()) {
+        os << '\n';
+        field->print(os, policy);
+        os << ';';
+    }
+    os << "\n}";
+
+    return definition;
+}
+
+auto print_enum_definition(const clang::EnumDecl& decl, clang::PrintingPolicy policy)
+    -> std::string {
+    std::string definition;
+
+    print_tag_name(definition, decl, policy);
+
+    llvm::raw_string_ostream os(definition);
+    os << " {";
+    for(const clang::EnumConstantDecl* enumerator: decl.enumerators()) {
+        os << '\n';
+        enumerator->print(os, policy);
+        if(!enumerator->getInitExpr() && !enumerator->getType()->isDependentType()) {
+            os << " = " << llvm::toString(enumerator->getInitVal(), 10);
+        }
+        os << ',';
+    }
+    os << "\n}";
+
+    return definition;
+}
+
 auto print_definition(const clang::Decl* decl,
                       clang::PrintingPolicy policy,
                       const clang::syntax::TokenBuffer& tb) -> std::string {
@@ -129,6 +181,14 @@ auto print_definition(const clang::Decl* decl,
             if(tb.expandedTokens(init->getSourceRange()).size() > 200) {
                 policy.SuppressInitializers = true;
             }
+        }
+    } else if(auto* record = llvm::dyn_cast<clang::RecordDecl>(decl)) {
+        if(auto* definition = record->getDefinition()) {
+            return print_record_definition(*definition, policy);
+        }
+    } else if(auto* enum_decl = llvm::dyn_cast<clang::EnumDecl>(decl)) {
+        if(auto* definition = enum_decl->getDefinition()) {
+            return print_enum_definition(*definition, policy);
         }
     }
 

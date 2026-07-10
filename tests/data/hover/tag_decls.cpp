@@ -152,3 +152,79 @@ namespace nested_templates_class {
 template <class T> struct cls {};
 $(17_nested_template_class)cls<cls<cls<int>>> foo;
 }
+
+namespace enum_explicit {
+enum Color {
+  RED = -123,
+  GREEN,
+  BLUE = 5,
+};
+void foo() {
+  $(18_enum_explicit)Color color = GREEN;
+}
+}
+
+namespace struct_fields {
+struct Point {
+  int x;
+  int y;
+};
+void foo() {
+  $(19_struct_fields)Point point;
+}
+}
+
+namespace inherited_struct {
+struct base {
+  int a;
+};
+
+struct Point : base {
+  int x;
+  int y;
+};
+void foo() {
+  $(20_inherited_struct)Point point;
+}
+}
+
+namespace inherited_class {
+struct first {};
+struct second {};
+
+class Point : public first, virtual protected second {
+  int value;
+};
+void foo() {
+  $(21_inherited_class)Point point;
+}
+}
+
+namespace template_fields {
+template <typename T>
+struct Box {
+  T value;
+};
+void foo() {
+  $(22_template_fields)Box<int> box;
+}
+}
+
+namespace inline_method_body {
+struct Widget {
+  int value;
+  int get() const { return value; }
+};
+void foo() {
+  $(23_inline_method_body)Widget widget;
+}
+}
+
+namespace lambda_field_body {
+struct Widget {
+  int value = [] { return 42; }();
+};
+void foo() {
+  $(24_lambda_field_body)Widget widget;
+}
+}

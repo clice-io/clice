@@ -37,7 +37,7 @@ input_file: tag_decls.cpp
   name: "MyUnion"
   kind: Union
   namespace_scope: "union_decl::ns1::"
-  definition: "union MyUnion {}"
+  definition: "union MyUnion {\n  int x;\n  int y;\n}"
   symbol_range: "[541, 548)"
   markdown: |
     ### union `MyUnion`  
@@ -45,7 +45,10 @@ input_file: tag_decls.cpp
     ---
     ```cpp
     // In namespace union_decl::ns1
-    union MyUnion {}
+    union MyUnion {
+      int x;
+      int y;
+    }
     ```
 
 04_forward_class:
@@ -72,7 +75,7 @@ input_file: tag_decls.cpp
   kind: Enum
   namespace_scope: "enum_def::"
   documentation: "Enum declaration"
-  definition: "enum Hello {}"
+  definition: "enum Hello {\n  ONE = 0,\n  TWO = 1,\n  THREE = 2,\n}"
   symbol_range: "[747, 752)"
   markdown: |
     ### enum `Hello`  
@@ -83,7 +86,11 @@ input_file: tag_decls.cpp
     ---
     ```cpp
     // In namespace enum_def
-    enum Hello {}
+    enum Hello {
+      ONE = 0,
+      TWO = 1,
+      THREE = 2,
+    }
     ```
 
 06_enumerator:
@@ -333,6 +340,129 @@ input_file: tag_decls.cpp
     // In namespace nested_templates_class
     template <>
     struct cls<nested_templates_class::cls<nested_templates_class::cls<int>>> {}
+    ```
+
+18_enum_explicit:
+  name: "Color"
+  kind: Enum
+  namespace_scope: "enum_explicit::"
+  definition: "enum Color {\n  RED = -123,\n  GREEN = -122,\n  BLUE = 5,\n}"
+  symbol_range: "[2394, 2399)"
+  markdown: |
+    ### enum `Color`  
+
+    ---
+    ```cpp
+    // In namespace enum_explicit
+    enum Color {
+      RED = -123,
+      GREEN = -122,
+      BLUE = 5,
+    }
+    ```
+
+19_struct_fields:
+  name: "Point"
+  kind: Struct
+  namespace_scope: "struct_fields::"
+  definition: "struct Point {\n  int x;\n  int y;\n}"
+  symbol_range: "[2497, 2502)"
+  markdown: |
+    ### struct `Point`  
+
+    ---
+    ```cpp
+    // In namespace struct_fields
+    struct Point {
+      int x;
+      int y;
+    }
+    ```
+
+20_inherited_struct:
+  name: "Point"
+  kind: Struct
+  namespace_scope: "inherited_struct::"
+  definition: "struct Point : base {\n  int x;\n  int y;\n}"
+  symbol_range: "[2629, 2634)"
+  markdown: |
+    ### struct `Point`  
+
+    ---
+    ```cpp
+    // In namespace inherited_struct
+    struct Point : base {
+      int x;
+      int y;
+    }
+    ```
+
+21_inherited_class:
+  name: "Point"
+  kind: Class
+  namespace_scope: "inherited_class::"
+  definition: "class Point : public first, virtual protected second {\n  int value;\n}"
+  symbol_range: "[2797, 2802)"
+  markdown: |
+    ### class `Point`  
+
+    ---
+    ```cpp
+    // In namespace inherited_class
+    class Point : public first, virtual protected second {
+      int value;
+    }
+    ```
+
+22_template_fields:
+  name: "Box<int>"
+  kind: Struct
+  namespace_scope: "template_fields::"
+  definition: "template <> struct Box<int> {\n  int value;\n}"
+  symbol_range: "[2907, 2910)"
+  markdown: |
+    ### struct `Box<int>`  
+
+    ---
+    ```cpp
+    // In namespace template_fields
+    template <> struct Box<int> {
+      int value;
+    }
+    ```
+
+23_inline_method_body:
+  name: "Widget"
+  kind: Struct
+  namespace_scope: "inline_method_body::"
+  definition: "struct Widget {\n  int value;\n}"
+  symbol_range: "[3040, 3046)"
+  markdown: |
+    ### struct `Widget`  
+
+    ---
+    ```cpp
+    // In namespace inline_method_body
+    struct Widget {
+      int value;
+    }
+    ```
+
+24_lambda_field_body:
+  name: "Widget"
+  kind: Struct
+  namespace_scope: "lambda_field_body::"
+  definition: "struct Widget {\n  int value = [] {}();\n}"
+  symbol_range: "[3159, 3165)"
+  markdown: |
+    ### struct `Widget`  
+
+    ---
+    ```cpp
+    // In namespace lambda_field_body
+    struct Widget {
+      int value = [] {}();
+    }
     ```
 
 
