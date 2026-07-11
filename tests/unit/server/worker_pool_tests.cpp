@@ -1457,10 +1457,12 @@ TEST_CASE(PreemptCancelsRequest) {
                 code = result.error().code;
         };
         group.spawn(sender());
-        // Long enough for the claim + request write, far shorter than the
-        // worker needs to compile the file.
-        co_await kota::sleep(10);
-
+        // Wait until the claim is visible, then preempt within the same
+        // loop turn: with no suspension in between, the worker's response
+        // cannot be processed first, so the preemption deterministically
+        // catches the request in flight.
+        while(f.low_busy() == 0)
+            co_await kota::sleep(1);
         f.preempt(1);
         co_await group.join();
         EXPECT_EQ(code, worker::dispatch_errc::cancelled);
