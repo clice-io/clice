@@ -174,6 +174,33 @@ public:
                 auto [loc_fid, range] = unit.decompose_expansion_range(
                     clang::SourceRange(import.name_locations.front(),
                                        import.name_locations.back()));
+
+                // Clang reports a partition import's name location at the `:` token.
+                // Recover the complete source spelling so the whole name is navigable.
+                auto import_loc = unit.expansion_location(import.location);
+                auto [import_fid, import_offset] = unit.decompose_location(import_loc);
+                if(import_fid == loc_fid) {
+                    auto content = unit.file_content(loc_fid);
+                    auto source = content.substr(import_offset);
+                    Lexer lexer(source);
+                    bool after_import = false;
+                    bool found_name = false;
+                    while(true) {
+                        auto token = lexer.advance();
+                        if(token.is_eof() || token.is_eod() || token.kind == clang::tok::semi)
+                            break;
+                        if(!after_import) {
+                            after_import = token.is_identifier() &&
+                                           token.text(source) == "import";
+                            continue;
+                        }
+                        if(!found_name) {
+                            range.begin = import_offset + token.range.begin;
+                            found_name = true;
+                        }
+                        range.end = import_offset + token.range.end;
+                    }
+                }
                 llvm::StringRef name = import.full_name.empty() ? import.name : import.full_name;
                 emit(name, loc_fid, range, RelationKind::Reference);
             }
