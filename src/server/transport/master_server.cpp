@@ -160,7 +160,8 @@ kota::task<> MasterServer::workspace_poll_task() {
 void MasterServer::wire() {
     pool.on_crash = [this](const WorkerCrashInfo& info) {
         // A stateless crash loses only in-flight requests, which fail back
-        // to their callers (send_stateless already retries once). No state
+        // to their callers with dispatch_errc::worker_crashed — the compiler
+        // resends idempotent builds, the indexer requeues the file. No state
         // outlives the request, so there is nothing to invalidate and no
         // event to dispatch.
         if(!info.stateful)

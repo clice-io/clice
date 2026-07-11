@@ -32,13 +32,28 @@ constexpr inline protocol::integer cancelled =
 /// No live worker could take the request (crash/restart window or pool stop).
 constexpr inline protocol::integer worker_unavailable = -33000;
 
+/// The worker process died while serving the request. The pool does not
+/// retry: it marks the slot dead and surfaces this code so the caller can
+/// decide — stateless build tasks are idempotent and safe to resend, while
+/// e.g. the indexer prefers to requeue the file instead.
+constexpr inline protocol::integer worker_crashed = -33001;
+
 }  // namespace dispatch_errc
 
 /// True when a dispatch failure is an expected operational condition rather
 /// than clice infrastructure breakage.
 inline bool is_operational_error(const protocol::Error& error) {
     return error.code == dispatch_errc::cancelled ||
-           error.code == dispatch_errc::worker_unavailable;
+           error.code == dispatch_errc::worker_unavailable ||
+           error.code == dispatch_errc::worker_crashed;
+}
+
+/// True for errors produced by the IPC transport itself (broken pipe, closed
+/// peer) as opposed to errors returned by the remote handler. kota surfaces
+/// transport failures with the default RequestFailed code; clice worker
+/// handlers never return that code, so it identifies a dead worker link.
+inline bool is_transport_error(const protocol::Error& error) {
+    return error.code == static_cast<protocol::integer>(protocol::ErrorCode::RequestFailed);
 }
 
 /// Kind of AST query dispatched to a stateful worker.

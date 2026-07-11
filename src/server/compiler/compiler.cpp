@@ -87,6 +87,20 @@ const static std::string& build_failure_message(const auto& result) {
     return result.has_value() ? result.value().error : result.error().message;
 }
 
+/// Send a stateless request, resending once if the worker died mid-request.
+/// The pool does not retry on its own — it marks the dead slot and surfaces
+/// worker_crashed, so the resend lands on a healthy worker. Build tasks are
+/// idempotent; one retry suffices, since a request that kills two workers in
+/// a row is a poison workload that a third attempt would not survive either.
+template <typename Params>
+static kota::ipc::RequestResult<Params> send_stateless_retrying(WorkerPool& pool, Params params) {
+    auto result = co_await pool.send_stateless(params);
+    if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
+        result = co_await pool.send_stateless(params);
+    }
+    co_return std::move(result);
+}
+
 /// Clamp a client-supplied position to the document, following LSP
 /// semantics: a character beyond the line length defaults to the line end,
 /// a line beyond the document defaults to the end of the content.
@@ -226,7 +240,7 @@ void Compiler::init_compile_graph() {
         // in pcm_paths from a previous (now-invalidated) build.
         workspace.fill_pcm_deps(bp.pcms, path_id);
 
-        auto result = co_await pool.send_stateless(bp);
+        auto result = co_await send_stateless_retrying(pool, bp);
         if(!result.has_value() || !result.value().success) {
             workspace.store->abort(pending);
             if(expected_build_failure(result)) {
@@ -440,7 +454,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
 
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", path, bound, pch_key);
 
-    auto result = co_await pool.send_stateless(bp);
+    auto result = co_await send_stateless_retrying(pool, bp);
 
     if(!result.has_value() || !result.value().success) {
         workspace.store->abort(pending);
@@ -1118,7 +1132,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     lsp::LineMap map(wp.text);
     wp.offset = clamped_offset(map, position);
 
-    auto result = co_await pool.send_stateless(wp);
+    auto result = co_await send_stateless_retrying(pool, wp);
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
@@ -1155,7 +1169,7 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     }
 
     ScopedTimer timer;
-    auto result = co_await pool.send_stateless(wp);
+    auto result = co_await send_stateless_retrying(pool, wp);
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,

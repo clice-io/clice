@@ -235,6 +235,12 @@ private:
         /// not discard an in-flight content pass — its rows are positionally
         /// right and the follow-up slot redoes the semantic drift anyway.
         std::uint64_t content_ticket;
+
+        /// Crash/preemption requeues of this entry. Bounds the damage of a
+        /// poison file that reliably crashes workers: without a cap, every
+        /// requeue would burn another worker's crash budget until the whole
+        /// pool is dead.
+        unsigned requeue_attempts = 0;
     };
 
     llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;

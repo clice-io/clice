@@ -517,6 +517,36 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
         LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, result.value().error);
     } else if(result.has_value() && result.value().tu_index_data.empty()) {
         LOG_WARN("[{}/{}] Index returned empty TUIndex for {}", index, total, file_path);
+    } else if(result.error().code == worker::dispatch_errc::cancelled ||
+              result.error().code == worker::dispatch_errc::worker_crashed) {
+        // Preempted under memory pressure or lost to a worker crash: the
+        // work itself is fine — requeue the file with its original reason so
+        // the next round redoes it instead of silently dropping coverage.
+        // Not on worker_unavailable: with no future capacity a requeue would
+        // spin forever. Only while the pending entry survives (a file removed
+        // from disk mid-flight was cleared and has nothing to redo), and only
+        // a bounded number of times — a poison file that crashes every worker
+        // it lands on must not grind the pool's crash budget down.
+        constexpr unsigned max_requeue_attempts = 3;
+        auto it = reindex_reasons.find(server_path_id);
+        if(it == reindex_reasons.end()) {
+            LOG_INFO("[{}/{}] Index dropped for removed file {}", index, total, file_path);
+        } else if(it->second.requeue_attempts >= max_requeue_attempts) {
+            LOG_WARN("[{}/{}] Index giving up on {} after {} requeues: {}",
+                     index,
+                     total,
+                     file_path,
+                     it->second.requeue_attempts,
+                     result.error().message);
+        } else {
+            it->second.requeue_attempts += 1;
+            enqueue(server_path_id, it->second.reason);
+            LOG_INFO("[{}/{}] Index requeued for {}: {}",
+                     index,
+                     total,
+                     file_path,
+                     result.error().message);
+        }
     } else {
         LOG_WARN("[{}/{}] Index IPC error for {}: {}",
                  index,
