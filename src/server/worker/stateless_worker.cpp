@@ -51,15 +51,6 @@ static std::string collect_errors(CompilationUnit& unit) {
     return errors;
 }
 
-/// Build the interested file's TUIndex, serialize it, and return as a string.
-static std::string serialize_tu_index(CompilationUnit& unit) {
-    auto tu_index = index::TUIndex::build(unit, /*interested_only=*/true);
-    std::string serialized;
-    llvm::raw_string_ostream os(serialized);
-    tu_index.serialize(os);
-    return serialized;
-}
-
 /// Serialize the preamble's PreambleState blob (full index + document
 /// links + inactive regions) next to the PCH. Runs while the freshly
 /// parsed AST is still in memory — the only moment the preamble's index
@@ -194,12 +185,7 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
     // TODO: PCM indexing. Unlike the PCH, a PCM is not a transient
     // buffer-derived artifact — module units are ordinary disk files with
     // CDB entries, so their symbols should flow through the normal
-    // background-indexing path (no per-blob pair needed). Until that is
-    // wired up, this per-interface index is produced but unused.
-    std::string tu_index_data;
-    if(success)
-        tu_index_data = serialize_tu_index(unit);
-
+    // background-indexing path (no per-blob pair needed).
     unit = CompilationUnit(nullptr);
 
     if(success) {
@@ -208,7 +194,6 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
         result.success = true;
         result.output_path = tmp_path;
         result.deps = pcm_info.deps;
-        result.tu_index_data = std::move(tu_index_data);
         return result;
     } else {
         LOG_WARN("BuildPCM failed: module={}, {}ms, errors=[{}]",

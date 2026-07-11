@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "command/argument_parser.h"
+#include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/extension.h"
@@ -758,16 +759,16 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // out: concurrent compiles can insert into pch_cache across the
         // await below and rehash the map from under a held pointer.
         std::vector<std::uint32_t> pch_inactive;
+        std::shared_ptr<index::PreambleState> preamble_state;
         if(session->pch_ref.has_value()) {
-            if(auto it = workspace.pch_cache.find(session->pch_ref->key);
-               it != workspace.pch_cache.end()) {
-                if(auto state = it->second.load_state()) {
-                    auto regions = state->inactive_regions();
-                    pch_inactive.assign(regions.begin(), regions.end());
-                    auto conditionals = state->open_conditionals();
-                    params.open_conditionals.assign(conditionals.begin(), conditionals.end());
-                }
-            }
+            auto it = workspace.pch_cache.find(session->pch_ref->key);
+            preamble_state = it != workspace.pch_cache.end() ? it->second.load_state() : nullptr;
+        }
+        if(preamble_state) {
+            auto regions = preamble_state->inactive_regions();
+            pch_inactive.assign(regions.begin(), regions.end());
+            auto conditionals = preamble_state->open_conditionals();
+            params.open_conditionals.assign(conditionals.begin(), conditionals.end());
         }
 
         auto result = co_await pool.send_stateful(pid, params);

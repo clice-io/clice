@@ -534,24 +534,23 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
                 llvm::sys::fs::remove(final_path);
                 if(auto retry = fs::rename(pending.tmp_path, final_path); !retry) {
                     llvm::sys::fs::remove(pending.tmp_path);
-                    if(auto it = ns_state->entries.find(pending.key);
-                       it != ns_state->entries.end()) {
-                        if(pending.aux) {
-                            // The removal above may have deleted a
-                            // committed aux blob; stop serving it. The
-                            // primary is intact, the pair is merely
-                            // incomplete.
-                            ns_state->total_size -= it->second.aux_size;
-                            it->second.aux_size = 0;
-                            state->dirty = true;
-                        } else if(llvm::sys::fs::status(final_path, status)) {
-                            // The old blob is gone as well: drop its entry
-                            // so lookups don't hand out a dangling path.
-                            state->reset_aux_locked(*ns_state, pending.key, it->second);
-                            ns_state->total_size -= it->second.size;
-                            ns_state->entries.erase(it);
-                            state->dirty = true;
-                        }
+                    auto it = ns_state->entries.find(pending.key);
+                    bool entry_alive = it != ns_state->entries.end();
+                    if(pending.aux && entry_alive) {
+                        // The removal above may have deleted a committed
+                        // aux blob; stop serving it. The primary is
+                        // intact, the pair is merely incomplete.
+                        ns_state->total_size -= it->second.aux_size;
+                        it->second.aux_size = 0;
+                        state->dirty = true;
+                    } else if(!pending.aux && entry_alive &&
+                              llvm::sys::fs::status(final_path, status)) {
+                        // The old blob is gone as well: drop its entry so
+                        // lookups don't hand out a dangling path.
+                        state->reset_aux_locked(*ns_state, pending.key, it->second);
+                        ns_state->total_size -= it->second.size;
+                        ns_state->entries.erase(it);
+                        state->dirty = true;
                     }
                     return std::unexpected(retry.error());
                 }

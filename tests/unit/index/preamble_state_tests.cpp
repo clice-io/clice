@@ -27,10 +27,7 @@ void build_state(std::source_location location = std::source_location::current()
     tu_index = index::TUIndex::build(*unit);
 
     links.resize(1);
-    links[0].range = {
-        {1, 0},
-        {1, 8}
-    };
+    links[0].range = {12, 20};
     links[0].target = "/include/foo.h";
     inactive = {4, 9, 30, 42};
     conditionals = {1, 0, 2};
@@ -163,10 +160,7 @@ int main() { return 0; }
 
     auto& loaded_links = state->links();
     ASSERT_EQ(loaded_links.size(), 1);
-    EXPECT_EQ(loaded_links[0].range.start.line, 1);
-    EXPECT_EQ(loaded_links[0].range.start.character, 0);
-    EXPECT_EQ(loaded_links[0].range.end.line, 1);
-    EXPECT_EQ(loaded_links[0].range.end.character, 8);
+    EXPECT_EQ(loaded_links[0].range, LocalSourceRange(12, 20));
     EXPECT_EQ(loaded_links[0].target, "/include/foo.h");
 
     EXPECT_EQ(state->inactive_regions(), llvm::ArrayRef<std::uint32_t>(inactive));

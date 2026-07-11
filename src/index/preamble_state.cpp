@@ -94,10 +94,7 @@ void PreambleState::serialize(CompilationUnitRef unit,
     });
 
     auto link_entries = transform(links, [&](const feature::DocumentLink& link) {
-        binary::LspRange range(link.range.start.line,
-                               link.range.start.character,
-                               link.range.end.line,
-                               link.range.end.character);
+        binary::Range range(link.range.begin, link.range.end);
         return binary::CreatePreambleDocumentLink(builder,
                                                   &range,
                                                   CreateString(builder, link.target));
@@ -261,15 +258,12 @@ const std::vector<feature::DocumentLink>& PreambleState::links() const {
         auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
         if(auto ls = root->links()) {
             links_cache->reserve(ls->size());
-            for(auto l: *ls) {
+            for(auto entry: *ls) {
                 feature::DocumentLink link;
-                if(auto r = l->range()) {
-                    link.range.start.line = r->start_line();
-                    link.range.start.character = r->start_character();
-                    link.range.end.line = r->end_line();
-                    link.range.end.character = r->end_character();
+                if(auto range = entry->range()) {
+                    link.range = *safe_cast<Range>(range);
                 }
-                if(auto target = l->target()) {
+                if(auto target = entry->target()) {
                     link.target = target->str();
                 }
                 links_cache->push_back(std::move(link));

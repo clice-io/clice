@@ -60,21 +60,23 @@ std::vector<protocol::Location>
 
     // Preamble include lines: compiled into the PCH, invisible to the
     // worker's AST — the PCH's cached links carry the targets.
-    if(auto* links = find_preamble_links(session)) {
-        for(auto& link: *links) {
-            if(link.range.start.line != position.line)
-                continue;
-            if(position.character < link.range.start.character ||
-               position.character > link.range.end.character)
-                continue;
+    auto* links = find_preamble_links(session);
+    if(!links)
+        return locations;
+
+    auto offset = session.line_map().to_offset(position);
+    if(!offset)
+        return locations;
+
+    for(auto& link: *links) {
+        if(link.range.contains(*offset)) {
             locations.push_back(protocol::Location{
                 .uri = feature::to_uri(link.target),
                 .range = protocol::Range{},
             });
-            return locations;
+            break;
         }
     }
-
     return locations;
 }
 
@@ -86,9 +88,14 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
 
     // The preamble is compiled into the PCH, so the worker's AST only
     // covers the rest of the file — merge the preamble's links in front.
+    // Links carry byte offsets; this reply edge converts them.
     std::vector<protocol::DocumentLink> links;
+    auto map = session->line_map();
     auto append = [&](const feature::DocumentLink& link) {
-        protocol::DocumentLink out{.range = link.range};
+        auto range = map.to_range(link.range.begin, link.range.end);
+        if(!range)
+            return;
+        protocol::DocumentLink out{.range = *range};
         out.target = link.target;
         links.push_back(std::move(out));
     };

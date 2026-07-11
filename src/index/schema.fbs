@@ -151,18 +151,9 @@ relations:
     [Relation];
 }
 
-// LSP range (line/character pairs), used where positions are stored in
-// protocol coordinates rather than byte offsets.
-struct LspRange {
-    start_line : uint;
-    start_character : uint;
-    end_line : uint;
-    end_character : uint;
-}
-
 table PreambleDocumentLink {
 range:
-    LspRange;
+    Range;
 target:
     string;
 }

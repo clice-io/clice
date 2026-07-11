@@ -22,7 +22,7 @@ constexpr inline std::uint32_t index_format_version = 1;
 /// Bump whenever `schema.fbs` changes the PreambleState layout; a blob
 /// carrying a different value loads as "missing" and the PCH pair is
 /// rebuilt.
-constexpr inline std::uint32_t preamble_format_version = 1;
+constexpr inline std::uint32_t preamble_format_version = 2;
 
 namespace {
 

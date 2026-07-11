@@ -214,9 +214,7 @@ void StatefulWorker::register_handlers() {
         co_return co_await with_ast_or(
             params.path,
             std::vector<feature::DocumentLink>{},
-            [&](DocumentEntry& doc) {
-                return feature::document_links(doc.unit, feature::PositionEncoding::UTF16);
-            });
+            [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
     });
 
     // === Evict ===

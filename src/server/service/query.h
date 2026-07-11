@@ -228,6 +228,10 @@ private:
                                 const Session& session,
                                 const index::PreambleState& state)> visitor) const;
 
+    /// The PCH overlay of a session, or nullptr when it has no PCH or the
+    /// blob is unreadable.
+    std::shared_ptr<index::PreambleState> overlay_of(const Session& session) const;
+
     /// Whether an overlay file entry may contribute result locations.
     /// Filters builtin pseudo files, synthesized context artifacts (their
     /// positions live in cache-directory files the user should never be

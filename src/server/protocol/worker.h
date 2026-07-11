@@ -153,7 +153,7 @@ struct BuildResult {
     bool has_user_errors = false;
     std::string output_path;  ///< PCH or PCM path
     std::vector<std::string> deps;
-    std::string tu_index_data;
+    std::string tu_index_data;          ///< Index: serialized TUIndex, merged by the master
     kota::codec::RawValue result_json;  ///< Completion/SignatureHelp result
 };
 
