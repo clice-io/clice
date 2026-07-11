@@ -373,8 +373,11 @@ void MasterServer::open_cache_store() {
     // Size budgets are deliberately generous: eviction exists to bound
     // disk usage, not to keep the working set tight.
     constexpr std::uint64_t GiB = 1ull << 30;
-    store->register_namespace(
-        {.name = "pch", .extension = ".pch", .policy = CachePolicy::LRU, .max_bytes = 8 * GiB});
+    store->register_namespace({.name = "pch",
+                               .extension = ".pch",
+                               .aux_extension = ".pch.idx",
+                               .policy = CachePolicy::LRU,
+                               .max_bytes = 8 * GiB});
     store->register_namespace(
         {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 8 * GiB});
     store->register_namespace(

@@ -36,6 +36,14 @@ struct CacheNamespace {
     /// File extension appended to keys, including the dot, e.g. ".pch".
     std::string extension;
 
+    /// Optional paired-blob extension, e.g. ".pch.idx".  When set, a key
+    /// owns two files — `{key}{extension}` plus `{key}{aux_extension}` —
+    /// forming a single entry: sized, aged and evicted together.  The
+    /// primary is committed first; committing it resets any stale aux
+    /// blob, so a pair is only served complete (see lookup_aux).  Must not
+    /// be a suffix collision with `extension`.
+    std::string aux_extension;
+
     CachePolicy policy = CachePolicy::LRU;
 
     /// Size budget for LRU namespaces; 0 means unlimited.
@@ -85,6 +93,9 @@ public:
         std::string ns;
         std::string key;
         std::string tmp_path;
+
+        /// Whether this write targets the key's aux blob (begin_store_aux).
+        bool aux = false;
     };
 
     /// Open (creating if necessary) the store under `root`.  Any sibling
@@ -107,9 +118,20 @@ public:
     /// last-accessed time (persisted on the next checkpoint).  No disk IO.
     std::optional<std::string> lookup(llvm::StringRef ns, llvm::StringRef key);
 
+    /// Return the key's aux blob path when the entry exists and its aux
+    /// blob was committed.  Also refreshes last-accessed.  A miss with a
+    /// present primary means the pair is incomplete (crash between the two
+    /// commits, failed aux commit) — callers treat it as a cache miss and
+    /// rebuild the pair.
+    std::optional<std::string> lookup_aux(llvm::StringRef ns, llvm::StringRef key);
+
     /// Begin a two-phase write: returns a unique tmp path the blob must be
     /// written to (safe to hand to a worker process).
     PendingEntry begin_store(llvm::StringRef ns, llvm::StringRef key);
+
+    /// Begin a two-phase write of the key's aux blob.  Commit the primary
+    /// first: committing an aux blob for a key with no live entry fails.
+    PendingEntry begin_store_aux(llvm::StringRef ns, llvm::StringRef key);
 
     /// Finish a two-phase write: fsync the tmp file and atomically rename
     /// it to its final path.  Triggers LRU eviction when the namespace

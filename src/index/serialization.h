@@ -18,6 +18,12 @@ namespace fbs = flatbuffers;
 /// older builds, which read back the field's default of 0.
 constexpr inline std::uint32_t index_format_version = 1;
 
+/// On-disk PreambleState blob schema version (the PCH's `.pch.idx` pair).
+/// Bump whenever `schema.fbs` changes the PreambleState layout; a blob
+/// carrying a different value loads as "missing" and the PCH pair is
+/// rebuilt.
+constexpr inline std::uint32_t preamble_format_version = 1;
+
 namespace {
 
 template <typename Range>

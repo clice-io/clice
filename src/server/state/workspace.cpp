@@ -279,10 +279,6 @@ struct CachePCHEntry {
     std::uint32_t bound;
     std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
-
-    // Preamble share of the inactive-region scan; consumed on PCH reuse.
-    std::vector<std::uint32_t> inactive_regions;
-    std::vector<std::uint8_t> open_conditionals;
 };
 
 struct CachePCMEntry {
@@ -303,6 +299,20 @@ struct CacheData {
 };
 
 }  // namespace
+
+const std::shared_ptr<index::PreambleState>& PCHState::load_state() {
+    if(!state && !index_path.empty()) {
+        state = index::PreambleState::load(index_path);
+        if(!state) {
+            // Unreadable blob: clear the path so queries don't retry the
+            // mmap + verification on every call. The pair now looks
+            // incomplete and ensure_pch rebuilds it on the next compile.
+            LOG_WARN("Failed to open PreambleState blob {}", index_path);
+            index_path.clear();
+        }
+    }
+    return state;
+}
 
 void Workspace::load_cache(ContextResolver& contexts) {
     if(!store)
@@ -344,12 +354,18 @@ void Workspace::load_cache(ContextResolver& contexts) {
         if(!pch_path)
             continue;
 
+        // A PCH without its PreambleState blob is an incomplete pair
+        // (crash between the two commits): treat it as absent so the next
+        // compile rebuilds both.
+        auto index_path = store->lookup_aux("pch", entry.key);
+        if(!index_path)
+            continue;
+
         auto& st = pch_cache[entry.key];
         st.path = *pch_path;
         st.bound = entry.bound;
         st.deps = load_deps(entry.build_at, entry.deps);
-        st.inactive_regions = entry.inactive_regions;
-        st.open_conditionals = entry.open_conditionals;
+        st.index_path = *index_path;
 
         LOG_DEBUG("Loaded cached PCH: {} -> {}", entry.key, *pch_path);
     }
@@ -401,8 +417,6 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         entry.key = e.getKey().str();
         entry.bound = st.bound;
         entry.build_at = st.deps.build_at;
-        entry.inactive_regions = st.inactive_regions;
-        entry.open_conditionals = st.open_conditionals;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
             entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }

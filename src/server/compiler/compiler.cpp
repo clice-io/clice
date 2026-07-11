@@ -350,11 +350,19 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     llvm::StringRef pch_miss = "no_entry";
     if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
         auto& st = it->second;
-        bool in_store = workspace.store && workspace.store->lookup("pch", pch_key);
+        // Both halves of the pair must be present: a PCH whose
+        // PreambleState blob is gone (crash between commits, failed aux
+        // commit) rebuilds whole.
+        bool in_store = workspace.store && workspace.store->lookup("pch", pch_key) &&
+                        workspace.store->lookup_aux("pch", pch_key);
         if(st.path.empty()) {
             pch_miss = "incomplete_entry";
         } else if(!in_store) {
             pch_miss = "evicted";
+        } else if(st.index_path.empty()) {
+            // load_state() found the blob unreadable earlier; republish the
+            // pair rather than serving a PCH with no index forever.
+            pch_miss = "idx_unreadable";
         } else if(deps_changed(workspace.path_pool, st.deps)) {
             pch_miss = "deps_changed";
         } else {
@@ -411,9 +419,11 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return false;
     }
 
-    // Build a new PCH via stateless worker: it writes the blob to the tmp
-    // path allocated here; the store commits (fsync + rename) on success.
+    // Build a new PCH pair via stateless worker: it writes the PCH and its
+    // PreambleState blob to the tmp paths allocated here; the store
+    // commits (fsync + rename) both on success, primary first.
     auto pending = workspace.store->begin_store("pch", pch_key);
+    auto pending_idx = workspace.store->begin_store_aux("pch", pch_key);
 
     worker::BuildParams bp;
     bp.priority = worker::Priority::High;
@@ -424,6 +434,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     bp.text = text;
     bp.preamble_bound = bound;
     bp.output_path = pending.tmp_path;
+    bp.index_output_path = pending_idx.tmp_path;
 
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", path, bound, pch_key);
 
@@ -431,6 +442,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
 
     if(!result.has_value() || !result.value().success) {
         workspace.store->abort(pending);
+        workspace.store->abort(pending_idx);
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", path, build_failure_message(result));
         } else {
@@ -442,21 +454,61 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return false;
     }
 
-    // Commit on the thread pool: it fsyncs the freshly written PCH.
-    auto committed =
-        co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
-    if(!committed.has_value() || !committed.value().has_value()) {
+    // Commit the pair on the thread pool as one job: the fsyncs stay off
+    // the event loop, and no cancellation can land between the two commits
+    // — the store either publishes the whole pair or retracts it (a half
+    // pair would let waiters adopt a PCH whose blob is gone). Opening the
+    // freshly committed blob (mmap + flatbuffer verification, which walks
+    // the whole file) also happens here so no later consumer pays that
+    // walk on the event loop.
+    struct PairCommit {
+        std::optional<std::string> pch_path;
+        std::optional<std::string> index_path;
+        std::shared_ptr<index::PreambleState> state;
+    };
+
+    auto committed = co_await kota::queue([&]() -> PairCommit {
+        PairCommit outcome;
+        auto pch_path = workspace.store->commit(std::move(pending));
+        if(!pch_path) {
+            workspace.store->abort(pending_idx);
+            return outcome;
+        }
+        outcome.pch_path = std::move(*pch_path);
+
+        // The pair is only usable complete: when the index blob cannot be
+        // published, retract the PCH too — the next compile rebuilds both.
+        auto index_path = workspace.store->commit(std::move(pending_idx));
+        if(!index_path) {
+            workspace.store->invalidate("pch", pch_key);
+            return outcome;
+        }
+        outcome.index_path = std::move(*index_path);
+        outcome.state = index::PreambleState::load(*outcome.index_path);
+        return outcome;
+    });
+    if(!committed.has_value() || !committed.value().pch_path.has_value()) {
         LOG_WARN("Failed to commit PCH for {}", path);
+        co_return false;
+    }
+    if(!committed.value().index_path.has_value()) {
+        LOG_WARN("Failed to commit PreambleState blob for {}", path);
+        // A rebuild of an existing key just had its blobs retracted from
+        // the store; the entry's paths now dangle and waiters checking
+        // `!path.empty()` would hand the compile a deleted PCH. Drop it —
+        // the guard tolerates a missing entry.
+        workspace.pch_cache.erase(pch_key);
         co_return false;
     }
 
     auto& st = workspace.pch_cache[pch_key];
-    st.path = committed.value().value();
+    st.path = *committed.value().pch_path;
     st.bound = bound;
     st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
-    st.preamble_links = std::move(result.value().preamble_links);
-    st.inactive_regions = std::move(result.value().inactive_regions);
-    st.open_conditionals = std::move(result.value().open_conditionals);
+    st.index_path = *committed.value().index_path;
+    // Replace the previous blob's mapping (same key, rebuilt content);
+    // in-flight holders of the old shared_ptr stay valid.
+    st.state = committed.value().state;
 
     LOG_INFO("PCH built for {}: {}", path, st.path);
 
@@ -709,8 +761,12 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         if(session->pch_ref.has_value()) {
             if(auto it = workspace.pch_cache.find(session->pch_ref->key);
                it != workspace.pch_cache.end()) {
-                pch_inactive = it->second.inactive_regions;
-                params.open_conditionals = it->second.open_conditionals;
+                if(auto state = it->second.load_state()) {
+                    auto regions = state->inactive_regions();
+                    pch_inactive.assign(regions.begin(), regions.end());
+                    auto conditionals = state->open_conditionals();
+                    params.open_conditionals.assign(conditionals.begin(), conditionals.end());
+                }
             }
         }
 

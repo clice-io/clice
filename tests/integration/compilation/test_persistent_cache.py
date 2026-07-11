@@ -1,7 +1,7 @@
 """Integration tests for persistent PCH/PCM cache.
 
 Verifies that PCH/PCM artifacts are written to the unified cache store
-(.clice/cache/v2/{pch,pcm}/) with content-addressed filenames, survive
+(.clice/cache/v4/{pch,pcm}/) with content-addressed filenames, survive
 server restarts via cache.json, and are properly reused across sessions.
 """
 
@@ -267,12 +267,14 @@ async def test_no_tmp_files_after_build(client, tmp_path):
     uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
     assert_clean_compile(client, uri)
 
-    # No in-flight tmp files should linger after the build settles.
+    # No in-flight tmp files should linger after the build settles. The
+    # pch namespace legitimately holds the paired .pch.idx blobs.
     assert list_tmp_files(tmp_path) == [], "Stale tmp files found"
-    for subdir in ("pch", "pcm"):
+    expected = {"pch": (".pch", ".pch.idx"), "pcm": (".pcm",)}
+    for subdir, extensions in expected.items():
         blob_dir = cache_root(tmp_path) / subdir
         if blob_dir.exists():
-            stray = [p for p in blob_dir.iterdir() if not p.name.endswith(f".{subdir}")]
+            stray = [p for p in blob_dir.iterdir() if not p.name.endswith(extensions)]
             assert stray == [], f"Stray files in {subdir}/: {stray}"
 
 
@@ -377,8 +379,13 @@ async def test_kill9_recovery(executable, tmp_path):
     assert_clean_compile(c2, uri)
     pch_files = list_pch_files(tmp_path)
     assert len(pch_files) >= 1, "PCH should be (re)built after crash"
-    # Blob directories contain only committed blobs, never partial writes.
-    stray = [p for p in (cache_root(tmp_path) / "pch").iterdir() if p.suffix != ".pch"]
+    # Blob directories contain only committed blobs (the PCH and its
+    # paired index), never partial writes.
+    stray = [
+        p
+        for p in (cache_root(tmp_path) / "pch").iterdir()
+        if not p.name.endswith((".pch", ".pch.idx"))
+    ]
     assert stray == [], f"Crash residue in pch/: {stray}"
     assert_no_anomaly(c2, tmp_path)
     await shutdown_client(c2)

@@ -77,6 +77,17 @@ public:
         auto& index = result.file_indices[fid];
 
         auto symbol_id = unit.getSymbolID(def);
+        // Macros get a symbol-table entry like declarations do; without it
+        // build() would default-construct a nameless entry when recording
+        // reference files, and every name lookup for the macro would come
+        // back empty.
+        auto [it, success] = result.symbols.try_emplace(symbol_id.hash);
+        if(success) {
+            auto& symbol = it->second;
+            symbol.name = unit.token_spelling(location).str();
+            symbol.kind = SymbolKind::Macro;
+            symbol.scope = SymbolScope::External;
+        }
         index.occurrences.emplace_back(range, symbol_id.hash);
 
         Relation relation{

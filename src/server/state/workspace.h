@@ -12,6 +12,7 @@
 #include "command/toolchain.h"
 #include "feature/document_link.h"
 #include "index/merged_index.h"
+#include "index/preamble_state.h"
 #include "index/project_index.h"
 #include "semantic/relation_kind.h"
 #include "server/compiler/compile_graph.h"
@@ -32,7 +33,7 @@ class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 3;
+constexpr inline std::uint32_t cache_format_version = 4;
 
 /// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
 ///
@@ -103,19 +104,28 @@ struct SavedContext {
 /// Cached PCH state.  Stored in Workspace.pch_cache keyed by the content
 /// key (hex of xxh3_128bits over preamble text + directories + canonical
 /// flags), so files with identical preambles share one PCH.
+///
+/// Everything derived from the PCH build beyond validity metadata — the
+/// preamble's symbol index, document links, inactive regions, the open
+/// conditional stack — lives in the paired PreambleState blob (the store's
+/// `.pch.idx` aux file), committed and evicted together with the PCH.
 struct PCHState {
     std::string path;
     std::uint32_t bound = 0;
     DepsSnapshot deps;
-    /// Include directives of the preamble, used for document links and
-    /// go-to-definition on preamble include lines.
-    std::vector<feature::DocumentLink> preamble_links;
 
-    /// Inactive regions within the preamble (flat offset pairs) and the
-    /// conditional stack still open at the bound — a #if cut by the bound
-    /// resumes in the AST compile's scan.
-    std::vector<std::uint32_t> inactive_regions;
-    std::vector<std::uint8_t> open_conditionals;
+    /// Path of the paired PreambleState blob.
+    std::string index_path;
+
+    /// Lazily opened blob; shared so a consumer holding it across an await
+    /// survives concurrent entry replacement or eviction.
+    std::shared_ptr<index::PreambleState> state;
+
+    /// Open the blob on first use (memory-mapped, no deserialization).
+    /// Returns nullptr when the blob is missing or unreadable — consumers
+    /// degrade (no overlay, no preamble links) and the next ensure_pch
+    /// treats the incomplete pair as a cache miss.
+    const std::shared_ptr<index::PreambleState>& load_state();
 
     std::shared_ptr<kota::event> building;
 };

@@ -213,6 +213,29 @@ private:
                              const protocol::Position& position,
                              Session* session);
 
+    /// Visit every open session's PCH overlay — the PreambleState blob of
+    /// its preamble. Overlays are the only index source for headers as
+    /// seen under a live buffer's context (novel unsaved preamble edits,
+    /// headers not reachable from any indexed disk TU). Sessions sharing
+    /// one PCH visit the same blob; identical rows also present in disk
+    /// shards are collapsed by per-location dedup at result assembly.
+    /// ast_dirty is deliberately not consulted for header entries: they
+    /// hold disk-derived coordinates that buffer edits cannot move (the
+    /// blob's own staleness follows the PCH's dependency discipline).
+    /// Returns false from the visitor to stop.
+    void visit_pch_overlays(
+        llvm::function_ref<bool(std::uint32_t server_path_id,
+                                const Session& session,
+                                const index::PreambleState& state)> visitor) const;
+
+    /// Whether an overlay file entry may contribute result locations.
+    /// Filters builtin pseudo files, synthesized context artifacts (their
+    /// positions live in cache-directory files the user should never be
+    /// sent to), and files that are themselves open — their sessions
+    /// serve buffer-true rows, while overlay rows describe the disk
+    /// snapshot and would map onto the edited buffer at the wrong lines.
+    bool should_serve_overlay_file(llvm::StringRef path) const;
+
     /// Collect relations grouped by target symbol, across all index sources.
     void collect_grouped_relations(
         index::SymbolHash hash,

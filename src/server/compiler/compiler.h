@@ -87,7 +87,7 @@ public:
 
     /// Forward a document-link query to the stateful worker holding this
     /// file's AST. Covers the main-file region only: the preamble's links
-    /// are cached master-side with the PCH (see PCHState::preamble_links).
+    /// live in the PCH's PreambleState blob (see PCHState::load_state).
     kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         forward_document_links(std::shared_ptr<Session> session);
 

@@ -43,7 +43,7 @@ def get_field(obj, key, default=None):
 
 # Versioned root of the unified cache store; bump together with
 # cache_format_version in src/server/state/workspace.h.
-CACHE_ROOT = Path(".clice") / "cache" / "v3"
+CACHE_ROOT = Path(".clice") / "cache" / "v4"
 
 
 def cache_root(workspace: Path) -> Path:

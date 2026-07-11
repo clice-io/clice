@@ -42,9 +42,15 @@ const std::vector<feature::DocumentLink>*
     if(!session.pch_ref)
         return nullptr;
     auto it = workspace.pch_cache.find(session.pch_ref->key);
-    if(it == workspace.pch_cache.end() || it->second.preamble_links.empty())
+    if(it == workspace.pch_cache.end())
         return nullptr;
-    return &it->second.preamble_links;
+    // The links vector lives in the shared PreambleState, not in the map
+    // value, so the pointer survives map rehash; callers still must not
+    // hold it across an await (entry replacement drops the state).
+    auto& state = it->second.load_state();
+    if(!state || state->links().empty())
+        return nullptr;
+    return &state->links();
 }
 
 std::vector<protocol::Location>

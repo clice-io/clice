@@ -19,6 +19,15 @@ SETTLE_TIME = 0.5  # Time for the server to stabilize after an operation
 IDLE_TIMEOUT = 5.0  # Idle soak time in lifecycle tests
 
 
+def locations_of(result):
+    """Normalize a definition/references response to a list of Locations."""
+    if result is None:
+        return []
+    if isinstance(result, (list, tuple)):
+        return list(result)
+    return [result]
+
+
 async def wait_for_recompile(client, uri: str, *, timeout: float = 60.0) -> None:
     """Trigger recompilation via hover and wait for fresh diagnostics.
 

@@ -2,21 +2,26 @@
 
 #include <algorithm>
 #include <bit>
+#include <format>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
+#include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "server/compiler/compiler.h"
 #include "server/compiler/indexer.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
 #include "support/filesystem.h"
+#include "syntax/scan.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Path.h"
 
 namespace clice {
@@ -36,6 +41,74 @@ void IndexQuery::visit_sessions(SessionVisitor visitor) const {
 
 bool IndexQuery::is_path_open(std::uint32_t path_id) const {
     return sessions.find(path_id) != nullptr;
+}
+
+void IndexQuery::visit_pch_overlays(
+    llvm::function_ref<bool(std::uint32_t, const Session&, const index::PreambleState&)> visitor)
+    const {
+    sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
+        if(!session.pch_ref) {
+            return true;
+        }
+        auto it = workspace.pch_cache.find(session.pch_ref->key);
+        if(it == workspace.pch_cache.end()) {
+            return true;
+        }
+        // Copy the shared_ptr: the visitor runs synchronously, but a held
+        // reference into the map value would not survive a rehash.
+        auto state = it->second.load_state();
+        if(!state) {
+            return true;
+        }
+        return visitor(path_id, session, *state);
+    });
+}
+
+bool IndexQuery::should_serve_overlay_file(llvm::StringRef path) const {
+    if(path.empty() || path.starts_with("<")) {
+        return false;
+    }
+    // An open file serves its own buffer-true rows (its session, plus the
+    // is_path_open shard skip); overlay rows for it were computed from the
+    // disk snapshot and would map onto the edited buffer at wrong lines —
+    // and dedup cannot collapse them, since the positions differ.
+    if(auto path_id = workspace.path_pool.find(path)) {
+        if(is_path_open(*path_id)) {
+            return false;
+        }
+    }
+    return !workspace.is_synthesized_artifact(path);
+}
+
+/// Whether the blob's main-file entry still describes the session's
+/// buffer. A deferred PCH rebuild (the preamble is incomplete mid-edit)
+/// keeps the old pch_ref while the buffer's preamble has moved on; the
+/// entry's rows are buffer coordinates for text that no longer exists,
+/// and a cursor resolved against them could name the wrong symbol.
+static bool preamble_in_sync(const Session& session) {
+    return session.pch_ref && session.pch_ref->bound == compute_preamble_bound(session.text);
+}
+
+/// Sort + unique by a projection key. Cross-source dedup for result
+/// assembly: a row present in both a disk shard and a PCH overlay (or in
+/// two overlays sharing a preamble) comes out identical.
+template <typename T, typename Key>
+static void dedup_by_key(std::vector<T>& items, Key key) {
+    std::ranges::sort(items, [&](const T& lhs, const T& rhs) { return key(lhs) < key(rhs); });
+    auto dup = std::ranges::unique(items, [&](const T& lhs, const T& rhs) {
+        return key(lhs) == key(rhs);
+    });
+    items.erase(dup.begin(), dup.end());
+}
+
+static void dedup_locations(std::vector<protocol::Location>& locations) {
+    dedup_by_key(locations, [](const protocol::Location& location) {
+        return std::tie(location.uri,
+                        location.range.start.line,
+                        location.range.start.character,
+                        location.range.end.line,
+                        location.range.end.character);
+    });
 }
 
 bool IndexQuery::skip_stale_contribution(std::uint32_t path_id) const {
@@ -75,6 +148,16 @@ bool IndexQuery::find_symbol_info(index::SymbolHash hash,
         return true;
     }
 
+    // Check PCH overlays: a symbol that exists only under an open buffer's
+    // context (or in headers no disk TU has been indexed with) is in no
+    // disk table.
+    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+        found = state.find_symbol(hash, name, kind);
+        return !found;
+    });
+    if(found)
+        return true;
+
     // Check per-file MergedIndex shards (TU-local + file-local symbols).
     // Each shard stores exactly the local symbols its occurrences reference,
     // so the symbol will be in the shard that produced the occurrence.
@@ -113,6 +196,28 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
             }
             return true;
         });
+        // The preamble region is compiled into the PCH and invisible to
+        // the per-edit index; its occurrences (macro definitions and
+        // references before the bound) live in the PCH's overlay, in the
+        // same buffer coordinates. Skipped when the buffer's preamble has
+        // drifted from the blob's (deferred rebuild on an incomplete
+        // preamble): a cursor resolved against the old rows could name
+        // the wrong symbol.
+        if(hit.hash == 0 && preamble_in_sync(*session)) {
+            if(auto it = workspace.pch_cache.find(session->pch_ref->key);
+               it != workspace.pch_cache.end()) {
+                if(auto state = it->second.load_state()) {
+                    state->lookup_main(*offset, [&](const index::Occurrence& occ) {
+                        auto range = map.to_range(occ.range.begin, occ.range.end);
+                        if(range) {
+                            hit = {occ.target, *range};
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+            }
+        }
         return hit;
     }
 
@@ -196,6 +301,44 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
         return true;
     });
 
+    // PCH overlays: header rows under each open buffer's live context,
+    // plus the buffer's own preamble region. Rows a disk shard also holds
+    // come out identical and collapse in the dedup below.
+    visit_pch_overlays(
+        [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
+            state.lookup(hit.hash,
+                         kind,
+                         [&](const index::PreambleState::File& file, const index::Relation& r) {
+                             if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
+                                 return true;
+                             auto uri = lsp::URI::from_file_path(file.path);
+                             if(!uri)
+                                 return true;
+                             lsp::LineMap map(file.content, file.line_starts);
+                             if(auto range = map.to_range(r.range.begin, r.range.end))
+                                 locations.push_back({uri->str(), *range});
+                             return true;
+                         });
+
+            // Preamble-region rows are buffer positions of this session's
+            // own file; skipped while dirty like every buffer-coordinate
+            // source (freshness contract, clause 3), and skipped when the
+            // preamble drifted from the blob (deferred rebuild).
+            if(session.ast_dirty || !preamble_in_sync(session))
+                return true;
+            auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
+            if(!uri)
+                return true;
+            auto map = session.line_map();
+            state.lookup_main(hit.hash, kind, [&](const index::Relation& r) {
+                if(auto range = map.to_range(r.range.begin, r.range.end))
+                    locations.push_back({uri->str(), *range});
+                return true;
+            });
+            return true;
+        });
+
+    dedup_locations(locations);
     return locations;
 }
 
@@ -253,6 +396,50 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     });
     if(session_result)
         return session_result;
+
+    // PCH overlays outrank disk shards: they carry the definition as seen
+    // under the live buffer's context, and exist even when no disk TU has
+    // been indexed — the in-memory-file case behind empty go-to-definition.
+    std::optional<protocol::Location> overlay_result;
+    visit_pch_overlays([&](std::uint32_t id,
+                           const Session& session,
+                           const index::PreambleState& state) {
+        if(!session.ast_dirty && preamble_in_sync(session)) {
+            // Preamble region of this session's own buffer (macros
+            // defined before the bound).
+            if(auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)))) {
+                auto map = session.line_map();
+                state.lookup_main(hash, RelationKind::Definition, [&](const index::Relation& r) {
+                    if(auto range = map.to_range(r.range.begin, r.range.end)) {
+                        overlay_result = protocol::Location{uri->str(), *range};
+                        return false;
+                    }
+                    return true;
+                });
+            }
+            if(overlay_result)
+                return false;
+        }
+
+        state.lookup(hash,
+                     RelationKind::Definition,
+                     [&](const index::PreambleState::File& file, const index::Relation& r) {
+                         if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
+                             return true;
+                         auto uri = lsp::URI::from_file_path(file.path);
+                         if(!uri)
+                             return true;
+                         lsp::LineMap map(file.content, file.line_starts);
+                         if(auto range = map.to_range(r.range.begin, r.range.end)) {
+                             overlay_result = protocol::Location{uri->str(), *range};
+                             return false;
+                         }
+                         return true;
+                     });
+        return !overlay_result.has_value();
+    });
+    if(overlay_result)
+        return overlay_result;
 
     // Fall back to ProjectIndex reference files.
     auto sym_it = workspace.project_index.symbols.find(hash);
@@ -340,6 +527,34 @@ void IndexQuery::collect_grouped_relations(
         });
         return true;
     });
+
+    // PCH overlays: call/type relations inside headers under an open
+    // buffer's context. The main-file entry cannot contribute — the
+    // preamble region holds only preprocessor directives.
+    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+        state.lookup(hash,
+                     kind,
+                     [&](const index::PreambleState::File& file, const index::Relation& r) {
+                         if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
+                             return true;
+                         lsp::LineMap map(file.content, file.line_starts);
+                         if(auto range = map.to_range(r.range.begin, r.range.end))
+                             target_ranges[r.target_symbol].push_back(*range);
+                         return true;
+                     });
+        return true;
+    });
+
+    // A row present in both a shard and an overlay lands twice; hierarchy
+    // items must not repeat call sites.
+    for(auto& [target, ranges]: target_ranges) {
+        dedup_by_key(ranges, [](const protocol::Range& range) {
+            return std::tie(range.start.line,
+                            range.start.character,
+                            range.end.line,
+                            range.end.character);
+        });
+    }
 }
 
 void IndexQuery::collect_unique_targets(index::SymbolHash hash,
@@ -373,6 +588,18 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
                 }
             }
         }
+        return true;
+    });
+
+    // PCH overlays: no location is emitted here, so even relations spelled
+    // in synthesized-artifact files contribute their (real) target symbol.
+    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+        state.lookup(hash, kind, [&](const index::PreambleState::File&, const index::Relation& r) {
+            if(seen.insert(r.target_symbol).second) {
+                targets.push_back(r.target_symbol);
+            }
+            return true;
+        });
         return true;
     });
 }
@@ -429,6 +656,37 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
     });
     if(session_result)
         return session_result;
+
+    // PCH overlays store each header's content, so definition text is
+    // extractable even for headers no disk shard covers.
+    std::optional<DefinitionText> overlay_result;
+    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+        state.lookup(hash,
+                     RelationKind::Definition,
+                     [&](const index::PreambleState::File& file, const index::Relation& r) {
+                         if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
+                             return true;
+                         auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
+                         if(def_range.begin >= def_range.end || def_range.end > file.content.size())
+                             return true;
+                         lsp::LineMap map(file.content, file.line_starts);
+                         auto range = map.to_range(def_range.begin, def_range.end);
+                         if(!range)
+                             return true;
+                         overlay_result = DefinitionText{
+                             .file = file.path.str(),
+                             .start_line = static_cast<int>(range->start.line) + 1,
+                             .end_line = static_cast<int>(range->end.line) + 1,
+                             .text =
+                                 std::string(file.content.substr(def_range.begin,
+                                                                 def_range.end - def_range.begin)),
+                         };
+                         return false;
+                     });
+        return !overlay_result.has_value();
+    });
+    if(overlay_result)
+        return overlay_result;
 
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it == workspace.project_index.symbols.end())
@@ -519,6 +777,35 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
             });
             return true;
         });
+        return true;
+    });
+
+    // PCH overlays may repeat rows a shard already produced (same header,
+    // same disk content); dedup against everything collected so far.
+    llvm::StringSet<> seen_rows;
+    for(auto& row: results) {
+        seen_rows.insert(std::format("{}:{}", row.file, row.line));
+    }
+    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+        state.lookup(hash,
+                     kind,
+                     [&](const index::PreambleState::File& file, const index::Relation& rel) {
+                         if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
+                             return true;
+                         lsp::LineMap map(file.content, file.line_starts);
+                         auto pos = map.to_position(rel.range.begin);
+                         if(!pos)
+                             return true;
+                         auto row_key = std::format("{}:{}", file.path.str(), pos->line + 1);
+                         if(!seen_rows.insert(row_key).second)
+                             return true;
+                         results.push_back(ReferenceWithContext{
+                             .file = file.path.str(),
+                             .line = static_cast<int>(pos->line) + 1,
+                             .context = extract_line(file.content, rel.range.begin),
+                         });
+                         return true;
+                     });
         return true;
     });
 
