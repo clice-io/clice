@@ -445,7 +445,7 @@ int main() { @ref[foo](); return 0; }
     EXPECT_TRUE(llvm::StringRef(text->text).contains("void foo"));
 }
 
-TEST_CASE(DirtyPreambleSkipped) {
+TEST_CASE(DirtyPreambleServed) {
     add_main("main.cpp", R"(#define @macro[FOO] 1
 int main() { return 0; }
 )");
@@ -453,12 +453,12 @@ int main() { return 0; }
     session->file_index = index::FileIndex();
     session->symbols = index::SymbolTable();
 
-    // A dirty session's buffer coordinates are untrustworthy; the overlay
-    // main-file entry must be gated exactly like the session index.
+    // Body edits dirty the session but never move preamble rows: as long
+    // as the buffer still starts with the blob's preamble text, the
+    // entry keeps serving — the prefix comparison is the freshness check.
     session->ast_dirty = true;
-    EXPECT_FALSE(index_query.find_definition_location(hash_of("FOO")).has_value());
-
-    session->ast_dirty = false;
+    session->text += "int more;\n";
+    session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
     EXPECT_TRUE(index_query.find_definition_location(hash_of("FOO")).has_value());
 }
 

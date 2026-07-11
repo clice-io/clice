@@ -100,11 +100,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         out.target = link.target;
         links.push_back(std::move(out));
     };
-    // Skipped while dirty: a failed or superseded compile leaves
-    // the stored links describing the pre-edit preamble.
-    if(!session->ast_dirty) {
-        std::ranges::for_each(find_preamble_links(*session), append);
-    }
+    std::ranges::for_each(find_preamble_links(*session), append);
     std::ranges::for_each(result.value(), append);
     co_return links;
 }

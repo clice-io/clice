@@ -55,31 +55,44 @@ std::shared_ptr<index::PreambleState> IndexQuery::overlay_of(const Session& sess
     return it->second.load_state();
 }
 
-void IndexQuery::visit_pch_overlays(
+void IndexQuery::visit_overlays(
+    llvm::function_ref<bool(const index::PreambleState&)> visitor) const {
+    // Sessions with identical preambles share one blob; visit it once.
+    llvm::StringSet<> seen;
+    sessions.for_each([&](std::uint32_t, const Session& session) -> bool {
+        if(!session.pch_key || !seen.insert(*session.pch_key).second) {
+            return true;
+        }
+        auto state = overlay_of(session);
+        return state ? visitor(*state) : true;
+    });
+}
+
+void IndexQuery::visit_preambles(
     llvm::function_ref<bool(std::uint32_t, const Session&, const index::PreambleState&)> visitor)
     const {
     sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
         auto state = overlay_of(session);
-        return state ? visitor(path_id, session, *state) : true;
+        if(!state || !serves_preamble(session, *state)) {
+            return true;
+        }
+        return visitor(path_id, session, *state);
     });
 }
 
 bool IndexQuery::serves_preamble(const Session& session, const index::PreambleState& state) const {
     // The preamble entry's rows are buffer offsets of the file that built
-    // the blob. Serve them only for a clean session of that very file
-    // (identical preambles share a PCH, but macro USRs embed the source
-    // path) whose buffer still starts with the exact preamble text the
-    // blob was built from — a drifted prefix (deferred rebuild on an
-    // incomplete preamble) means the rows describe text that moved.
-    return !session.ast_dirty &&
-           workspace.path_pool.resolve(session.path_id) == state.source_path() &&
+    // the blob: serve them only for that very file (identical preambles
+    // share a PCH, but macro USRs embed the source path) and only while
+    // the buffer still starts with the exact preamble text the blob was
+    // built from. The prefix comparison validates the described region
+    // directly — body edits never move preamble rows — so no dirty-flag
+    // gating is needed on top.
+    return workspace.path_pool.resolve(session.path_id) == state.source_path() &&
            llvm::StringRef(session.text).starts_with(state.preamble_content());
 }
 
 bool IndexQuery::should_serve_overlay_file(llvm::StringRef path) const {
-    if(path.empty() || path.starts_with("<")) {
-        return false;
-    }
     // An open file serves its own buffer-true rows (its session, plus the
     // is_path_open shard skip); overlay rows for it were computed from the
     // disk snapshot and would map onto the edited buffer at wrong lines —
@@ -153,7 +166,7 @@ bool IndexQuery::find_symbol_info(index::SymbolHash hash,
     // Check PCH overlays: a symbol that exists only under an open buffer's
     // context (or in headers no disk TU has been indexed with) is in no
     // disk table.
-    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+    visit_overlays([&](const index::PreambleState& state) {
         found = state.find_symbol(hash, name, kind);
         return !found;
     });
@@ -300,7 +313,7 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     // PCH overlays: header rows under each open buffer's live context.
     // Rows a disk shard also holds come out identical and collapse in the
     // dedup below.
-    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+    visit_overlays([&](const index::PreambleState& state) {
         state.lookup(hit.hash,
                      kind,
                      [&](const index::PreambleState::File& file, const index::Relation& r) {
@@ -317,14 +330,9 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
         return true;
     });
 
-    // Overlay main-file entries: the buffer's own preamble region. These
-    // are buffer positions, so they follow the session gating — skipped
-    // while dirty (freshness contract, clause 3) and when the preamble
-    // drifted from the blob (deferred rebuild).
-    visit_pch_overlays(
+    // Preamble entries: the buffers' own preamble regions.
+    visit_preambles(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(!serves_preamble(session, state))
-                return true;
             auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
             if(!uri)
                 return true;
@@ -399,13 +407,10 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     // PCH overlays outrank disk shards: they carry the definition as seen
     // under the live buffer's context, and exist even when no disk TU has
     // been indexed — the in-memory-file case behind empty go-to-definition.
-    // First the buffers' own preamble regions (macros defined before the
-    // bound; buffer positions, so session-gated), then the header entries.
+    // First the buffers' own preamble regions, then the header entries.
     std::optional<protocol::Location> overlay_result;
-    visit_pch_overlays(
+    visit_preambles(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(!serves_preamble(session, state))
-                return true;
             auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
             if(!uri)
                 return true;
@@ -422,7 +427,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     if(overlay_result)
         return overlay_result;
 
-    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+    visit_overlays([&](const index::PreambleState& state) {
         state.lookup(hash,
                      RelationKind::Definition,
                      [&](const index::PreambleState::File& file, const index::Relation& r) {
@@ -533,7 +538,7 @@ void IndexQuery::collect_grouped_relations(
     // PCH overlays: call/type relations inside headers under an open
     // buffer's context. The main-file entry cannot contribute — the
     // preamble region holds only preprocessor directives.
-    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+    visit_overlays([&](const index::PreambleState& state) {
         state.lookup(hash,
                      kind,
                      [&](const index::PreambleState::File& file, const index::Relation& r) {
@@ -603,7 +608,7 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
     // open header's session is authoritative for its relations (an edited
     // `struct D : NewBase` must not resurface the disk snapshot's OldBase
     // through another file's overlay).
-    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+    visit_overlays([&](const index::PreambleState& state) {
         state.lookup(hash,
                      kind,
                      [&](const index::PreambleState::File& file, const index::Relation& r) {
@@ -671,13 +676,11 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
     if(session_result)
         return session_result;
 
-    // Overlay main-file entries: definitions in the buffer's own preamble
-    // region (a #define above the bound), extracted from the session text.
+    // Preamble entries: definitions in the buffer's own preamble region
+    // (a #define above the bound), extracted from the session text.
     std::optional<DefinitionText> overlay_result;
-    visit_pch_overlays(
+    visit_preambles(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(!serves_preamble(session, state))
-                return true;
             auto map = session.line_map();
             state.lookup_preamble(hash, RelationKind::Definition, [&](const index::Relation& r) {
                 auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
@@ -702,7 +705,7 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
 
     // PCH overlays store each header's content, so definition text is
     // extractable even for headers no disk shard covers.
-    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+    visit_overlays([&](const index::PreambleState& state) {
         state.lookup(hash,
                      RelationKind::Definition,
                      [&](const index::PreambleState::File& file, const index::Relation& r) {
@@ -832,7 +835,7 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
     // PCH overlay header entries may repeat rows a shard already produced
     // (same header, same disk content); the position-level keys collapse
     // those repeats while keeping distinct same-line references.
-    visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
+    visit_overlays([&](const index::PreambleState& state) {
         state.lookup(
             hash,
             kind,
@@ -856,13 +859,10 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
         return true;
     });
 
-    // Overlay main-file entries: references in the buffer's own preamble
-    // region (`#if FOO` above the bound), invisible to the per-edit index.
-    // Buffer positions, so session-gated like every other main-entry use.
-    visit_pch_overlays(
+    // Preamble entries: references in the buffer's own preamble region
+    // (`#if FOO` above the bound), invisible to the per-edit index.
+    visit_preambles(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(!serves_preamble(session, state))
-                return true;
             auto map = session.line_map();
             auto file_path = workspace.path_pool.resolve(id);
             state.lookup_preamble(hash, kind, [&](const index::Relation& rel) {

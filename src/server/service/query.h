@@ -213,41 +213,41 @@ private:
                              const protocol::Position& position,
                              Session* session);
 
-    /// Visit every open session's PCH overlay — the PreambleState blob of
-    /// its preamble. Overlays are the only index source for headers as
-    /// seen under a live buffer's context (novel unsaved preamble edits,
-    /// headers not reachable from any indexed disk TU). Sessions sharing
-    /// one PCH visit the same blob; identical rows also present in disk
-    /// shards are collapsed by per-location dedup at result assembly.
-    /// ast_dirty is deliberately not consulted for header entries: they
-    /// hold disk-derived coordinates that buffer edits cannot move (the
-    /// blob's own staleness follows the PCH's dependency discipline).
-    /// Returns false from the visitor to stop.
-    void visit_pch_overlays(
-        llvm::function_ref<bool(std::uint32_t server_path_id,
-                                const Session& session,
-                                const index::PreambleState& state)> visitor) const;
+    /// Visit each distinct PCH overlay blob once (sessions sharing a
+    /// preamble share one blob). Overlays are the only index source for
+    /// headers as seen under a live buffer's context (novel unsaved
+    /// preamble edits, headers not reachable from any indexed disk TU);
+    /// their header entries hold disk-derived coordinates that buffer
+    /// edits cannot move, so no session gating applies — the blob's own
+    /// staleness follows the PCH's dependency discipline. Identical rows
+    /// also present in disk shards are collapsed by per-location dedup at
+    /// result assembly. Return false from the visitor to stop.
+    void visit_overlays(llvm::function_ref<bool(const index::PreambleState&)> visitor) const;
+
+    /// Visit each open session whose overlay preamble entry may serve
+    /// (see serves_preamble), paired with that blob.
+    void visit_preambles(llvm::function_ref<bool(std::uint32_t server_path_id,
+                                                 const Session& session,
+                                                 const index::PreambleState& state)> visitor) const;
 
     /// The PCH overlay of a session, or nullptr when it has no PCH or the
     /// blob is unreadable.
     std::shared_ptr<index::PreambleState> overlay_of(const Session& session) const;
 
-    /// Whether a session's overlay main-file entry may serve: the session
-    /// is clean, its preamble still matches the blob, and the blob was
-    /// built from this very file — identical preambles share one PCH
-    /// across files, but the main-file entry carries file-local symbol
-    /// identities (macro USRs embed the source path) that must not leak
-    /// between the sharers.
+    /// Whether a session's overlay preamble entry may serve: the blob was
+    /// built from this very file (identical preambles share one PCH, but
+    /// macro USRs embed the source path) and the buffer still starts with
+    /// the blob's stored preamble text.
     bool serves_preamble(const Session& session, const index::PreambleState& state) const;
 
     /// Whether an overlay file entry may contribute results. Filters
-    /// builtin pseudo files, synthesized context artifacts (their
-    /// positions live in cache-directory files the user should never be
-    /// sent to), files that are themselves open — their sessions serve
-    /// buffer-true rows, while overlay rows describe the disk snapshot
-    /// and would map onto the edited buffer at the wrong lines — and
-    /// files whose own disk content changed and awaits reindexing
-    /// (freshness contract, clause 2, same as shard contributions).
+    /// synthesized context artifacts (their positions live in
+    /// cache-directory files the user should never be sent to), files
+    /// that are themselves open — their sessions serve buffer-true rows,
+    /// while overlay rows describe the disk snapshot and would map onto
+    /// the edited buffer at the wrong lines — and files whose own disk
+    /// content changed and awaits reindexing (freshness contract, clause
+    /// 2, same as shard contributions).
     bool should_serve_overlay_file(llvm::StringRef path) const;
 
     /// Collect relations grouped by target symbol, across all index sources.

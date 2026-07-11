@@ -122,8 +122,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     // failure, never a user-code problem — must not be downgraded to an
     // expected build failure.
     bool internal_error = false;
-    if(success && !params.index_output_path.empty() &&
-       !write_preamble_state(unit, params.preamble_bound, params.index_output_path)) {
+    if(success && !write_preamble_state(unit, params.preamble_bound, params.index_output_path)) {
         success = false;
         internal_error = true;
         errors = "Failed to write PreambleState blob";

@@ -279,13 +279,6 @@ struct CachePCHEntry {
     std::uint32_t bound;
     std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
-
-    // preamble_format_version the .pch.idx blob was written with. Entries
-    // from another version are dropped at load so the pair rebuilds
-    // immediately, instead of the mismatch surfacing lazily on the first
-    // overlay query (which cannot trigger a rebuild itself). Old
-    // cache.json files read back 0 and are dropped the same way.
-    std::uint32_t index_format = 0;
 };
 
 struct CachePCMEntry {
@@ -298,6 +291,14 @@ struct CachePCMEntry {
 
 struct CacheData {
     std::vector<std::string> paths;
+
+    // preamble_format_version the .pch.idx blobs were written with (one
+    // binary writes them all). A mismatch drops every PCH entry at load so
+    // the pairs rebuild immediately, instead of the mismatch surfacing
+    // lazily on the first overlay query — which cannot trigger a rebuild.
+    // Old cache.json files read back 0 and are dropped the same way.
+    std::uint32_t pch_index_format = 0;
+
     std::vector<CachePCHEntry> pch;
     std::vector<CachePCMEntry> pcm;
     std::vector<CacheModeEntry> header_modes;
@@ -356,9 +357,10 @@ void Workspace::load_cache(ContextResolver& contexts) {
         return deps;
     };
 
+    bool pch_format_ok = data.pch_index_format == index::preamble_format_version;
     for(auto& entry: data.pch) {
-        if(entry.index_format != index::preamble_format_version) {
-            continue;
+        if(!pch_format_ok) {
+            break;
         }
 
         auto pch_path = store->lookup("pch", entry.key);
@@ -407,6 +409,7 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         return;
 
     CacheData data;
+    data.pch_index_format = index::preamble_format_version;
     std::unordered_map<std::string, std::uint32_t> index_map;
 
     auto intern = [&](std::uint32_t runtime_path_id) -> std::uint32_t {
@@ -428,7 +431,6 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         entry.key = e.getKey().str();
         entry.bound = st.bound;
         entry.build_at = st.deps.build_at;
-        entry.index_format = index::preamble_format_version;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
             entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }
