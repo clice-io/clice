@@ -387,6 +387,49 @@ int main() { @ref[foo](); return 0; }
     EXPECT_FALSE(index_query.find_definition_location(hash_of("foo")).has_value());
 }
 
+TEST_CASE(MacroDefinitionText) {
+    add_main("main.cpp", R"(#define @macro[FOO] 1
+int main() { return 0; }
+)");
+    open_with_overlay();
+    session->file_index = index::FileIndex();
+    session->symbols = index::SymbolTable();
+
+    // Macro Definition relations carry the full #define extent, so the
+    // agentic text path works for a preamble macro via the overlay's
+    // main-file entry.
+    auto text = index_query.get_definition_text(hash_of("FOO"));
+    ASSERT_TRUE(text.has_value());
+    EXPECT_TRUE(llvm::StringRef(text->file).ends_with("main.cpp"));
+    EXPECT_TRUE(llvm::StringRef(text->text).contains("FOO"));
+}
+
+TEST_CASE(SharedPreambleScoped) {
+    add_main("main.cpp", R"(#define @macro[FOO] 1
+#if FOO
+#endif
+int main() { return 0; }
+)");
+    open_with_overlay();
+
+    // A second file with a byte-identical preamble shares the PCH (the
+    // key excludes the source path), but the main-file entry carries
+    // file-local macro identities — its rows must stay scoped to the
+    // file that built the blob.
+    auto other_path = std::string(llvm::sys::path::parent_path(main_path)) + "/other.cpp";
+    auto other = session_store.open(workspace.path_pool.intern(other_path));
+    other->text = session->text;
+    other->line_starts = session->line_starts;
+    other->file_index = index::FileIndex();
+    other->symbols = index::SymbolTable();
+    other->ast_dirty = false;
+    other->pch_ref = session->pch_ref;
+
+    auto refs = index_query.collect_references(hash_of("FOO"), RelationKind::Reference);
+    ASSERT_EQ(refs.size(), 1);
+    EXPECT_TRUE(llvm::StringRef(refs[0].file).ends_with("main.cpp"));
+}
+
 TEST_CASE(DefinitionTextFromOverlay) {
     add_file("foo.h", R"(
 inline void @def[foo]() {}

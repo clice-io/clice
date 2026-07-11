@@ -65,6 +65,12 @@ void IndexQuery::visit_pch_overlays(
     });
 }
 
+bool IndexQuery::serves_main_entry(const Session& session,
+                                   const index::PreambleState& state) const {
+    return !session.ast_dirty && session.preamble_in_sync() &&
+           workspace.path_pool.resolve(session.path_id) == state.main_path();
+}
+
 bool IndexQuery::should_serve_overlay_file(llvm::StringRef path) const {
     if(path.empty() || path.starts_with("<")) {
         return false;
@@ -190,13 +196,10 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
         // The preamble region is compiled into the PCH and invisible to
         // the per-edit index; its occurrences (macro definitions and
         // references before the bound) live in the PCH's overlay, in the
-        // same buffer coordinates. Skipped when the buffer's preamble has
-        // drifted from the blob's (deferred rebuild on an incomplete
-        // preamble): a cursor resolved against the old rows could name
-        // the wrong symbol.
-        auto overlay =
-            hit.hash == 0 && session->preamble_in_sync() ? overlay_of(*session) : nullptr;
-        if(overlay) {
+        // same buffer coordinates — served only under the main-entry gate
+        // (preamble drift, shared-PCH identity).
+        auto overlay = hit.hash == 0 ? overlay_of(*session) : nullptr;
+        if(overlay && serves_main_entry(*session, *overlay)) {
             overlay->lookup_main(*offset, [&](const index::Occurrence& occ) {
                 auto range = map.to_range(occ.range.begin, occ.range.end);
                 if(range) {
@@ -315,7 +318,7 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     // drifted from the blob (deferred rebuild).
     visit_pch_overlays(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(session.ast_dirty || !session.preamble_in_sync())
+            if(!serves_main_entry(session, state))
                 return true;
             auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
             if(!uri)
@@ -396,7 +399,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     std::optional<protocol::Location> overlay_result;
     visit_pch_overlays(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(session.ast_dirty || !session.preamble_in_sync())
+            if(!serves_main_entry(session, state))
                 return true;
             auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
             if(!uri)
@@ -663,9 +666,37 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
     if(session_result)
         return session_result;
 
+    // Overlay main-file entries: definitions in the buffer's own preamble
+    // region (a #define above the bound), extracted from the session text.
+    std::optional<DefinitionText> overlay_result;
+    visit_pch_overlays(
+        [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
+            if(!serves_main_entry(session, state))
+                return true;
+            auto map = session.line_map();
+            state.lookup_main(hash, RelationKind::Definition, [&](const index::Relation& r) {
+                auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
+                if(def_range.begin >= def_range.end || def_range.end > session.text.size())
+                    return true;
+                auto range = map.to_range(def_range.begin, def_range.end);
+                if(!range)
+                    return true;
+                overlay_result = DefinitionText{
+                    .file = std::string(workspace.path_pool.resolve(id)),
+                    .start_line = static_cast<int>(range->start.line) + 1,
+                    .end_line = static_cast<int>(range->end.line) + 1,
+                    .text = std::string(
+                        session.text.substr(def_range.begin, def_range.end - def_range.begin)),
+                };
+                return false;
+            });
+            return !overlay_result.has_value();
+        });
+    if(overlay_result)
+        return overlay_result;
+
     // PCH overlays store each header's content, so definition text is
     // extractable even for headers no disk shard covers.
-    std::optional<DefinitionText> overlay_result;
     visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
         state.lookup(hash,
                      RelationKind::Definition,
@@ -825,7 +856,7 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
     // Buffer positions, so session-gated like every other main-entry use.
     visit_pch_overlays(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(session.ast_dirty || !session.preamble_in_sync())
+            if(!serves_main_entry(session, state))
                 return true;
             auto map = session.line_map();
             auto file_path = workspace.path_pool.resolve(id);

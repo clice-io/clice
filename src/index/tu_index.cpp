@@ -96,6 +96,17 @@ public:
             .target_symbol = 0,
         };
 
+        // Definition relations carry the macro's full extent (name through
+        // last body token), like declarations do — definition-text
+        // consumers decode it out of target_symbol.
+        if(kind.isDeclOrDef() && def) {
+            auto [def_fid, def_range] = unit.decompose_range(
+                clang::SourceRange(def->getDefinitionLoc(), def->getDefinitionEndLoc()));
+            if(def_fid == fid) {
+                relation.set_definition_range(def_range);
+            }
+        }
+
         index.relations[symbol_id.hash].emplace_back(relation);
     }
 

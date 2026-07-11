@@ -69,6 +69,13 @@ public:
                 RelationKind kind,
                 llvm::function_ref<bool(const File&, const Relation&)> callback) const;
 
+    /// Path of the file whose preamble built this blob. Files with
+    /// identical preambles share one PCH (the key excludes the source
+    /// path), but the main-file entry carries file-local symbol
+    /// identities — macro USRs embed the source path — so main-entry
+    /// lookups must be scoped to this file. Borrows the mapped blob.
+    llvm::StringRef main_path() const;
+
     /// Occurrence lookup in the main file's preamble region (offsets are
     /// buffer offsets, valid below the preamble bound).
     void lookup_main(std::uint32_t offset,

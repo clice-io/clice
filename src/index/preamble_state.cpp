@@ -189,6 +189,17 @@ void PreambleState::lookup(SymbolHash symbol,
     }
 }
 
+llvm::StringRef PreambleState::main_path() const {
+    auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
+    auto paths = root->paths();
+    if(paths->size() == 0) {
+        return {};
+    }
+    // Main file is the last path, by IncludeGraph convention.
+    auto path = paths->Get(paths->size() - 1);
+    return llvm::StringRef(path->c_str(), path->size());
+}
+
 void PreambleState::lookup_main(std::uint32_t offset,
                                 llvm::function_ref<bool(const Occurrence&)> callback) const {
     auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());

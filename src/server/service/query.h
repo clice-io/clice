@@ -232,6 +232,14 @@ private:
     /// blob is unreadable.
     std::shared_ptr<index::PreambleState> overlay_of(const Session& session) const;
 
+    /// Whether a session's overlay main-file entry may serve: the session
+    /// is clean, its preamble still matches the blob, and the blob was
+    /// built from this very file — identical preambles share one PCH
+    /// across files, but the main-file entry carries file-local symbol
+    /// identities (macro USRs embed the source path) that must not leak
+    /// between the sharers.
+    bool serves_main_entry(const Session& session, const index::PreambleState& state) const;
+
     /// Whether an overlay file entry may contribute results. Filters
     /// builtin pseudo files, synthesized context artifacts (their
     /// positions live in cache-directory files the user should never be
