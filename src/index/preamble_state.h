@@ -14,6 +14,13 @@
 
 namespace clice::index {
 
+/// On-disk PreambleState blob schema version (the PCH's `.pch.idx` pair).
+/// Bump whenever `schema.fbs` changes the PreambleState layout; a blob
+/// carrying a different value loads as "missing" and the PCH pair is
+/// rebuilt. cache.json records it per entry so a version change is caught
+/// at load time instead of on the first overlay query.
+constexpr inline std::uint32_t preamble_format_version = 2;
+
 /// All master-visible state derived from one PCH build.
 ///
 /// The stateless worker serializes it next to the PCH blob (the store's

@@ -8,6 +8,7 @@
 
 #include "index/tu_index.h"
 #include "server/state/workspace.h"
+#include "syntax/scan.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/visit/common.h"
@@ -135,6 +136,15 @@ struct Session {
     };
 
     std::optional<PCHRef> pch_ref;
+
+    /// Whether the PCH's preamble-derived state (overlay main-file entry,
+    /// document links) still describes this buffer's preamble. A deferred
+    /// PCH rebuild (incomplete preamble mid-edit) keeps the old pch_ref
+    /// while the buffer's preamble has moved on; that state is buffer
+    /// coordinates for text that no longer exists and must not be served.
+    bool preamble_in_sync() const {
+        return pch_ref && pch_ref->bound == compute_preamble_bound(text);
+    }
 
     /// Dependency snapshot from the last successful AST compilation.
     /// Used for two-layer staleness detection (mtime + content hash).

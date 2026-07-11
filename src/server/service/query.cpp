@@ -84,15 +84,6 @@ bool IndexQuery::should_serve_overlay_file(llvm::StringRef path) const {
     return !workspace.is_synthesized_artifact(path);
 }
 
-/// Whether the blob's main-file entry still describes the session's
-/// buffer. A deferred PCH rebuild (the preamble is incomplete mid-edit)
-/// keeps the old pch_ref while the buffer's preamble has moved on; the
-/// entry's rows are buffer coordinates for text that no longer exists,
-/// and a cursor resolved against them could name the wrong symbol.
-static bool preamble_in_sync(const Session& session) {
-    return session.pch_ref && session.pch_ref->bound == compute_preamble_bound(session.text);
-}
-
 /// Cross-source dedup: a row present in both a disk shard and a PCH
 /// overlay (or in two overlays sharing a preamble) comes out identical.
 static void dedup_locations(std::vector<protocol::Location>& locations) {
@@ -203,7 +194,8 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
         // drifted from the blob's (deferred rebuild on an incomplete
         // preamble): a cursor resolved against the old rows could name
         // the wrong symbol.
-        auto overlay = hit.hash == 0 && preamble_in_sync(*session) ? overlay_of(*session) : nullptr;
+        auto overlay =
+            hit.hash == 0 && session->preamble_in_sync() ? overlay_of(*session) : nullptr;
         if(overlay) {
             overlay->lookup_main(*offset, [&](const index::Occurrence& occ) {
                 auto range = map.to_range(occ.range.begin, occ.range.end);
@@ -323,7 +315,7 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     // drifted from the blob (deferred rebuild).
     visit_pch_overlays(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(session.ast_dirty || !preamble_in_sync(session))
+            if(session.ast_dirty || !session.preamble_in_sync())
                 return true;
             auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
             if(!uri)
@@ -404,7 +396,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     std::optional<protocol::Location> overlay_result;
     visit_pch_overlays(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(session.ast_dirty || !preamble_in_sync(session))
+            if(session.ast_dirty || !session.preamble_in_sync())
                 return true;
             auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
             if(!uri)
@@ -833,7 +825,7 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
     // Buffer positions, so session-gated like every other main-entry use.
     visit_pch_overlays(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(session.ast_dirty || !preamble_in_sync(session))
+            if(session.ast_dirty || !session.preamble_in_sync())
                 return true;
             auto map = session.line_map();
             auto file_path = workspace.path_pool.resolve(id);

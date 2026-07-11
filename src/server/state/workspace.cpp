@@ -279,6 +279,13 @@ struct CachePCHEntry {
     std::uint32_t bound;
     std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
+
+    // preamble_format_version the .pch.idx blob was written with. Entries
+    // from another version are dropped at load so the pair rebuilds
+    // immediately, instead of the mismatch surfacing lazily on the first
+    // overlay query (which cannot trigger a rebuild itself). Old
+    // cache.json files read back 0 and are dropped the same way.
+    std::uint32_t index_format = 0;
 };
 
 struct CachePCMEntry {
@@ -350,6 +357,10 @@ void Workspace::load_cache(ContextResolver& contexts) {
     };
 
     for(auto& entry: data.pch) {
+        if(entry.index_format != index::preamble_format_version) {
+            continue;
+        }
+
         auto pch_path = store->lookup("pch", entry.key);
         if(!pch_path)
             continue;
@@ -417,6 +428,7 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         entry.key = e.getKey().str();
         entry.bound = st.bound;
         entry.build_at = st.deps.build_at;
+        entry.index_format = index::preamble_format_version;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
             entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }

@@ -1066,6 +1066,13 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
+    // The result carries byte offsets against the compiled buffer; a
+    // didChange that landed during the await makes them describe text the
+    // session no longer holds — the reply edge would map them onto the
+    // edited buffer at wrong positions.
+    if(session->generation != gen) {
+        co_return std::vector<feature::DocumentLink>{};
+    }
     LOG_PERF("request",
              "kind=DocumentLink file={} wait_ms={} total_ms={}",
              path,

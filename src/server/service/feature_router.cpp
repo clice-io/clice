@@ -39,7 +39,10 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
 
 const std::vector<feature::DocumentLink>*
     FeatureRouter::find_preamble_links(const Session& session) {
-    if(!session.pch_ref)
+    // Link offsets are buffer coordinates as of the PCH build; a drifted
+    // preamble (deferred rebuild mid-edit) would map them onto text that
+    // no longer exists.
+    if(!session.preamble_in_sync())
         return nullptr;
     auto it = workspace.pch_cache.find(session.pch_ref->key);
     if(it == workspace.pch_cache.end())
