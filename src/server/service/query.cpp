@@ -73,8 +73,11 @@ bool IndexQuery::should_serve_overlay_file(llvm::StringRef path) const {
     // is_path_open shard skip); overlay rows for it were computed from the
     // disk snapshot and would map onto the edited buffer at wrong lines —
     // and dedup cannot collapse them, since the positions differ.
+    // Freshness contract, clause 2, same as shards: a file whose own
+    // content changed on disk has its rows suppressed until an up-to-date
+    // view lands — the blob snapshot describes text that no longer exists.
     if(auto path_id = workspace.path_pool.find(path)) {
-        if(is_path_open(*path_id)) {
+        if(is_path_open(*path_id) || skip_stale_contribution(*path_id)) {
             return false;
         }
     }
@@ -596,15 +599,21 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
         return true;
     });
 
-    // PCH overlays: no location is emitted here, so even relations spelled
-    // in synthesized-artifact files contribute their (real) target symbol.
+    // PCH overlays follow the same file rules as every other consumer: an
+    // open header's session is authoritative for its relations (an edited
+    // `struct D : NewBase` must not resurface the disk snapshot's OldBase
+    // through another file's overlay).
     visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
-        state.lookup(hash, kind, [&](const index::PreambleState::File&, const index::Relation& r) {
-            if(seen.insert(r.target_symbol).second) {
-                targets.push_back(r.target_symbol);
-            }
-            return true;
-        });
+        state.lookup(hash,
+                     kind,
+                     [&](const index::PreambleState::File& file, const index::Relation& r) {
+                         if(!should_serve_overlay_file(file.path))
+                             return true;
+                         if(seen.insert(r.target_symbol).second) {
+                             targets.push_back(r.target_symbol);
+                         }
+                         return true;
+                     });
         return true;
     });
 }
@@ -738,6 +747,11 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
                                                                              RelationKind kind) {
     std::vector<ReferenceWithContext> results;
 
+    // Row identity is file:line:character. Every source registers its rows
+    // so overlay repeats of a physical reference another source already
+    // produced collapse, while distinct same-line references survive.
+    llvm::StringSet<> seen_rows;
+
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
@@ -758,6 +772,7 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
                 auto pos = map.to_position(r.range.begin);
                 if(!pos)
                     return true;
+                seen_rows.insert(std::format("{}:{}:{}", file_path, pos->line, pos->character));
                 results.push_back(ReferenceWithContext{
                     .file = file_path.str(),
                     .line = static_cast<int>(pos->line) + 1,
@@ -775,6 +790,7 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
             auto pos = map.to_position(rel.range.begin);
             if(!pos)
                 return true;
+            seen_rows.insert(std::format("{}:{}:{}", file_path, pos->line, pos->character));
             results.push_back(ReferenceWithContext{
                 .file = file_path.str(),
                 .line = static_cast<int>(pos->line) + 1,
@@ -785,34 +801,58 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
         return true;
     });
 
-    // PCH overlays may repeat rows a shard already produced (same header,
-    // same disk content); dedup against everything collected so far.
-    llvm::StringSet<> seen_rows;
-    for(auto& row: results) {
-        seen_rows.insert(std::format("{}:{}", row.file, row.line));
-    }
+    // PCH overlay header entries may repeat rows a shard already produced
+    // (same header, same disk content); the position-level keys collapse
+    // those repeats while keeping distinct same-line references.
     visit_pch_overlays([&](std::uint32_t, const Session&, const index::PreambleState& state) {
-        state.lookup(hash,
-                     kind,
-                     [&](const index::PreambleState::File& file, const index::Relation& rel) {
-                         if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
-                             return true;
-                         lsp::LineMap map(file.content, file.line_starts);
-                         auto pos = map.to_position(rel.range.begin);
-                         if(!pos)
-                             return true;
-                         auto row_key = std::format("{}:{}", file.path.str(), pos->line + 1);
-                         if(!seen_rows.insert(row_key).second)
-                             return true;
-                         results.push_back(ReferenceWithContext{
-                             .file = file.path.str(),
-                             .line = static_cast<int>(pos->line) + 1,
-                             .context = extract_line(file.content, rel.range.begin),
-                         });
-                         return true;
-                     });
+        state.lookup(
+            hash,
+            kind,
+            [&](const index::PreambleState::File& file, const index::Relation& rel) {
+                if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
+                    return true;
+                lsp::LineMap map(file.content, file.line_starts);
+                auto pos = map.to_position(rel.range.begin);
+                if(!pos)
+                    return true;
+                if(!seen_rows.insert(std::format("{}:{}:{}", file.path, pos->line, pos->character))
+                        .second)
+                    return true;
+                results.push_back(ReferenceWithContext{
+                    .file = file.path.str(),
+                    .line = static_cast<int>(pos->line) + 1,
+                    .context = extract_line(file.content, rel.range.begin),
+                });
+                return true;
+            });
         return true;
     });
+
+    // Overlay main-file entries: references in the buffer's own preamble
+    // region (`#if FOO` above the bound), invisible to the per-edit index.
+    // Buffer positions, so session-gated like every other main-entry use.
+    visit_pch_overlays(
+        [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
+            if(session.ast_dirty || !preamble_in_sync(session))
+                return true;
+            auto map = session.line_map();
+            auto file_path = workspace.path_pool.resolve(id);
+            state.lookup_main(hash, kind, [&](const index::Relation& rel) {
+                auto pos = map.to_position(rel.range.begin);
+                if(!pos)
+                    return true;
+                if(!seen_rows.insert(std::format("{}:{}:{}", file_path, pos->line, pos->character))
+                        .second)
+                    return true;
+                results.push_back(ReferenceWithContext{
+                    .file = file_path.str(),
+                    .line = static_cast<int>(pos->line) + 1,
+                    .context = extract_line(session.text, rel.range.begin),
+                });
+                return true;
+            });
+            return true;
+        });
 
     return results;
 }

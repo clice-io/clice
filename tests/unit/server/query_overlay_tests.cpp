@@ -127,15 +127,10 @@ void merge_disk_index() {
     }
 }
 
-void reset() {
-    workspace.project_index = index::ProjectIndex();
-    workspace.merged_indices.clear();
-    workspace.pch_cache.clear();
-    workspace.path_pool = PathPool();
-    workspace.config.project.cache_dir = {};
-    session_store.sessions.clear();
-    session.reset();
-    clear();
+void setup() {
+    // skip_stale_contribution dereferences this optional; a default
+    // Workspace leaves it empty (apply_defaults never runs in tests).
+    workspace.config.project.enable_indexing = true;
 }
 
 protocol::Position position_of(llvm::StringRef name) {
@@ -144,7 +139,6 @@ protocol::Position position_of(llvm::StringRef name) {
 }
 
 TEST_CASE(DefinitionFromOverlayOnly) {
-    reset();
     add_file("foo.h", R"(
 inline void @def[foo]() {}
 )");
@@ -165,7 +159,6 @@ int main() { @ref[$(ref)foo](); return 0; }
 }
 
 TEST_CASE(ReferencesUnionWithDedup) {
-    reset();
     add_file("foo.h", R"(
 inline void @def[foo]() {}
 inline void bar() { @href[$(href)foo](); }
@@ -198,7 +191,6 @@ int main() { @ref[$(ref)foo](); return 0; }
 }
 
 TEST_CASE(PreambleMacroCursor) {
-    reset();
     add_main("main.cpp", R"(#define @macro[$(macro)FOO] 1
 int main() { return 0; }
 )");
@@ -217,7 +209,6 @@ int main() { return 0; }
 }
 
 TEST_CASE(OverlaySymbolInfo) {
-    reset();
     add_file("foo.h", R"(
 inline void @def[foo]() {}
 inline void @bardef[bar]() { foo(); }
@@ -244,7 +235,6 @@ int main() { @ref[foo](); return 0; }
 }
 
 TEST_CASE(OpenHeaderExcluded) {
-    reset();
     add_file("foo.h", R"(
 inline void @def[foo]() {}
 inline void bar() { @href[foo](); }
@@ -269,7 +259,6 @@ int main() { @ref[$(ref)foo](); return 0; }
 }
 
 TEST_CASE(IncomingCallsDedup) {
-    reset();
     add_file("foo.h", R"(
 inline void @def[callee]() {}
 inline void caller() { @call[callee](); }
@@ -291,7 +280,6 @@ int main() { @mcall[$(mcall)callee](); return 0; }
 }
 
 TEST_CASE(CollectReferencesDedup) {
-    reset();
     add_file("foo.h", R"(
 inline void @def[foo]() {}
 inline void bar() { @href[foo](); }
@@ -314,8 +302,92 @@ int main() { @ref[foo](); return 0; }
     EXPECT_EQ(header_rows, 1);
 }
 
+TEST_CASE(OverlaySameLineRefs) {
+    add_file("foo.h", R"(
+inline void @def[foo]() {}
+inline void bar() { @href[foo](); foo(); }
+)");
+    add_main("main.cpp", R"(
+#include "foo.h"
+int main() { @ref[foo](); return 0; }
+)");
+    open_with_overlay();
+
+    // Two distinct references on one header line, served only by the
+    // overlay: position-level dedup keys must keep both.
+    auto refs = index_query.collect_references(hash_of("foo"), RelationKind::Reference);
+    std::size_t header_rows = 0;
+    for(auto& ref: refs) {
+        if(llvm::StringRef(ref.file).ends_with("foo.h"))
+            header_rows += 1;
+    }
+    EXPECT_EQ(header_rows, 2);
+}
+
+TEST_CASE(PreambleMacroReferences) {
+    add_main("main.cpp", R"(#define @macro[FOO] 1
+#if FOO
+#endif
+int main() { return 0; }
+)");
+    open_with_overlay();
+
+    // The `#if FOO` reference sits in the preamble region, invisible to
+    // the per-edit index; only the overlay's main-file entry has it.
+    auto refs = index_query.collect_references(hash_of("FOO"), RelationKind::Reference);
+    bool found = std::ranges::any_of(refs, [&](auto& ref) {
+        return ref.line == 2 && llvm::StringRef(ref.context).contains("#if FOO");
+    });
+    EXPECT_TRUE(found);
+}
+
+TEST_CASE(OpenHeaderTargetsExcluded) {
+    add_file("base.h", R"(
+struct @b[Base] {};
+)");
+    add_file("derived.h", R"(
+#include "base.h"
+struct @d[Derived] : Base {};
+)");
+    add_main("main.cpp", R"(
+#include "derived.h"
+Derived instance;
+)");
+    open_with_overlay();
+
+    auto derived = hash_of("Derived");
+    auto supertypes = index_query.find_supertypes(derived);
+    ASSERT_EQ(supertypes.size(), 1);
+    EXPECT_EQ(supertypes[0].name, "Base");
+
+    // Once derived.h is open, its session owns the type relations spelled
+    // there; the overlay's disk-snapshot rows must stop contributing.
+    session_store.open(workspace.path_pool.intern(header_path("derived.h")));
+    supertypes = index_query.find_supertypes(derived);
+    EXPECT_EQ(supertypes.size(), 0);
+}
+
+TEST_CASE(StaleHeaderSuppressed) {
+    add_file("foo.h", R"(
+inline void @def[foo]() {}
+)");
+    add_main("main.cpp", R"(
+#include "foo.h"
+int main() { @ref[foo](); return 0; }
+)");
+    open_with_overlay();
+
+    ASSERT_TRUE(index_query.find_definition_location(hash_of("foo")).has_value());
+
+    // The header's own disk content changed and awaits reindexing: its
+    // overlay rows describe text that no longer exists (freshness
+    // contract, clause 2), exactly like a shard contribution.
+    indexer.enqueue(workspace.path_pool.intern(header_path("foo.h")),
+                    ReindexReason::ContentChanged);
+    EXPECT_FALSE(index_query.find_definition_location(hash_of("foo")).has_value());
+}
+
 TEST_CASE(DefinitionTextFromOverlay) {
-    reset();
     add_file("foo.h", R"(
 inline void @def[foo]() {}
 )");
@@ -332,7 +404,6 @@ int main() { @ref[foo](); return 0; }
 }
 
 TEST_CASE(DirtyMainEntrySkipped) {
-    reset();
     add_main("main.cpp", R"(#define @macro[FOO] 1
 int main() { return 0; }
 )");
@@ -350,7 +421,6 @@ int main() { return 0; }
 }
 
 TEST_CASE(PreambleDriftSkipped) {
-    reset();
     add_main("main.cpp", R"(#define @macro[FOO] 1
 int main() { return 0; }
 )");
@@ -366,7 +436,6 @@ int main() { return 0; }
 }
 
 TEST_CASE(OverlayOutranksDisk) {
-    reset();
     add_file("foo.h", R"(
 inline void @def[foo]() {}
 )");
@@ -396,7 +465,6 @@ int main() { @ref[foo](); return 0; }
 }
 
 TEST_CASE(SynthesizedArtifactSkipped) {
-    reset();
     workspace.config.project.cache_dir = TestVFS::root();
     add_file("header_context/gen.h", R"(
 inline void @def[gen]() {}
@@ -413,7 +481,6 @@ int main() { @ref[gen](); return 0; }
 }
 
 TEST_CASE(UnreadableBlobCleared) {
-    reset();
     dir.touch("junk.pch.idx", "not a flatbuffer");
 
     PCHState st;
