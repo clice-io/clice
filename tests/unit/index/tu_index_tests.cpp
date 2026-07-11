@@ -484,6 +484,22 @@ TEST_CASE(CrossFileHeaderIndex) {
     ASSERT_TRUE(found_in_header);
 }
 
+TEST_CASE(SerializeUntrackedFile) {
+    build_index("int value = 42;");
+
+    auto fid = unit->interested_file();
+    tu_index.file_indices[fid] = tu_index.main_file_index;
+    tu_index.graph.file_table.erase(fid);
+
+    std::string serialized;
+    llvm::raw_string_ostream os(serialized);
+    tu_index.serialize(os);
+    ASSERT_FALSE(serialized.empty());
+
+    auto restored = index::TUIndex::from(serialized.data());
+    ASSERT_TRUE(restored.path_file_indices.empty());
+}
+
 TEST_CASE(SymbolKinds) {
     build_index(R"(
             struct $(cls)MyClass {};

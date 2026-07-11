@@ -32,6 +32,14 @@ public:
         result.graph = IncludeGraph::from(unit);
     }
 
+    FileIndex* file_index(clang::FileID fid) {
+        // Imported PCM sources are AST-visible but are not owned by this TU's include graph.
+        if(!result.graph.file_table.contains(fid)) {
+            return nullptr;
+        }
+        return &result.file_indices[fid];
+    }
+
     void handleDeclOccurrence(const clang::NamedDecl* decl,
                               RelationKind kind,
                               clang::SourceLocation location) {
@@ -52,7 +60,10 @@ public:
         }
 
         auto [fid, range] = unit.decompose_range(location);
-        auto& index = result.file_indices[fid];
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
 
         auto symbol_id = unit.getSymbolID(decl);
         auto [it, success] = result.symbols.try_emplace(symbol_id.hash);
@@ -62,7 +73,7 @@ public:
             symbol.kind = SymbolKind::from(decl);
             symbol.scope = classify_scope(decl);
         }
-        index.occurrences.emplace_back(range, symbol_id.hash);
+        index->occurrences.emplace_back(range, symbol_id.hash);
     }
 
     void handleMacroOccurrence(const clang::MacroInfo* def,
@@ -74,10 +85,13 @@ public:
         }
 
         auto [fid, range] = unit.decompose_range(location);
-        auto& index = result.file_indices[fid];
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
 
         auto symbol_id = unit.getSymbolID(def);
-        index.occurrences.emplace_back(range, symbol_id.hash);
+        index->occurrences.emplace_back(range, symbol_id.hash);
 
         Relation relation{
             .kind = kind,
@@ -85,7 +99,7 @@ public:
             .target_symbol = 0,
         };
 
-        index.relations[symbol_id.hash].emplace_back(relation);
+        index->relations[symbol_id.hash].emplace_back(relation);
     }
 
     void handleRelation(const clang::NamedDecl* decl,
@@ -93,6 +107,10 @@ public:
                         const clang::NamedDecl* target,
                         clang::SourceRange range) {
         auto [fid, relation_range] = unit.decompose_expansion_range(range);
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
 
         Relation relation{.kind = kind};
 
@@ -120,9 +138,8 @@ public:
             std::unreachable();
         }
 
-        auto& index = result.file_indices[fid];
         auto symbol_id = unit.getSymbolID(ast::normalize(decl));
-        index.relations[symbol_id.hash].emplace_back(relation);
+        index->relations[symbol_id.hash].emplace_back(relation);
     }
 
     /// Module names are indexed like macro names: an occurrence plus a
@@ -137,12 +154,14 @@ public:
                 return;
             if(interested_only && fid != unit.interested_file())
                 return;
+            auto* index = file_index(fid);
+            if(!index)
+                return;
             llvm::SmallString<64> usr("@module@");
             usr += name;
             auto hash = llvm::xxh3_64bits(usr);
 
-            auto& index = result.file_indices[fid];
-            index.occurrences.emplace_back(range, hash);
+            index->occurrences.emplace_back(range, hash);
             Relation relation{
                 .kind = kind,
                 .range = range,
@@ -154,7 +173,7 @@ public:
             if(kind.isDeclOrDef()) {
                 relation.set_definition_range(range);
             }
-            index.relations[hash].emplace_back(relation);
+            index->relations[hash].emplace_back(relation);
 
             auto& symbol = result.symbols[hash];
             if(symbol.name.empty()) {
@@ -259,6 +278,17 @@ public:
         run();
 
         index_modules();
+
+        std::vector<clang::FileID> untracked_files;
+        for(auto& entry: result.file_indices) {
+            auto fid = entry.first;
+            if(!result.graph.file_table.contains(fid)) {
+                untracked_files.push_back(fid);
+            }
+        }
+        for(auto fid: untracked_files) {
+            result.file_indices.erase(fid);
+        }
 
         for(auto& [fid, index]: result.file_indices) {
             for(auto& [symbol_id, relations]: index.relations) {
@@ -408,6 +438,9 @@ void TUIndex::serialize(llvm::raw_ostream& os) const {
     /// Convert FileID-keyed file_indices to path_id-keyed entries.
     llvm::SmallVector<fbs::Offset<binary::TUFileIndexEntry>> file_idx_vec;
     for(auto& [fid, index]: file_indices) {
+        if(!graph.file_table.contains(fid)) {
+            continue;
+        }
         auto pid = graph.path_id(fid);
         file_idx_vec.push_back(serialize_file_index(pid, index));
     }
