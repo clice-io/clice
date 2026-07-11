@@ -15,7 +15,6 @@
 #include "server/state/session.h"
 #include "server/state/session_store.h"
 #include "support/filesystem.h"
-#include "syntax/scan.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
@@ -44,10 +43,10 @@ bool IndexQuery::is_path_open(std::uint32_t path_id) const {
 }
 
 std::shared_ptr<index::PreambleState> IndexQuery::overlay_of(const Session& session) const {
-    if(!session.pch_ref) {
+    if(!session.pch_key) {
         return nullptr;
     }
-    auto it = workspace.pch_cache.find(session.pch_ref->key);
+    auto it = workspace.pch_cache.find(*session.pch_key);
     if(it == workspace.pch_cache.end()) {
         return nullptr;
     }
@@ -65,10 +64,16 @@ void IndexQuery::visit_pch_overlays(
     });
 }
 
-bool IndexQuery::serves_main_entry(const Session& session,
-                                   const index::PreambleState& state) const {
-    return !session.ast_dirty && session.preamble_in_sync() &&
-           workspace.path_pool.resolve(session.path_id) == state.main_path();
+bool IndexQuery::serves_preamble(const Session& session, const index::PreambleState& state) const {
+    // The preamble entry's rows are buffer offsets of the file that built
+    // the blob. Serve them only for a clean session of that very file
+    // (identical preambles share a PCH, but macro USRs embed the source
+    // path) whose buffer still starts with the exact preamble text the
+    // blob was built from — a drifted prefix (deferred rebuild on an
+    // incomplete preamble) means the rows describe text that moved.
+    return !session.ast_dirty &&
+           workspace.path_pool.resolve(session.path_id) == state.source_path() &&
+           llvm::StringRef(session.text).starts_with(state.preamble_content());
 }
 
 bool IndexQuery::should_serve_overlay_file(llvm::StringRef path) const {
@@ -199,8 +204,8 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
         // same buffer coordinates — served only under the main-entry gate
         // (preamble drift, shared-PCH identity).
         auto overlay = hit.hash == 0 ? overlay_of(*session) : nullptr;
-        if(overlay && serves_main_entry(*session, *overlay)) {
-            overlay->lookup_main(*offset, [&](const index::Occurrence& occ) {
+        if(overlay && serves_preamble(*session, *overlay)) {
+            overlay->lookup_preamble(*offset, [&](const index::Occurrence& occ) {
                 auto range = map.to_range(occ.range.begin, occ.range.end);
                 if(range) {
                     hit = {occ.target, *range};
@@ -318,13 +323,13 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     // drifted from the blob (deferred rebuild).
     visit_pch_overlays(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(!serves_main_entry(session, state))
+            if(!serves_preamble(session, state))
                 return true;
             auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
             if(!uri)
                 return true;
             auto map = session.line_map();
-            state.lookup_main(hit.hash, kind, [&](const index::Relation& r) {
+            state.lookup_preamble(hit.hash, kind, [&](const index::Relation& r) {
                 if(auto range = map.to_range(r.range.begin, r.range.end))
                     locations.push_back({uri->str(), *range});
                 return true;
@@ -399,13 +404,13 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     std::optional<protocol::Location> overlay_result;
     visit_pch_overlays(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(!serves_main_entry(session, state))
+            if(!serves_preamble(session, state))
                 return true;
             auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
             if(!uri)
                 return true;
             auto map = session.line_map();
-            state.lookup_main(hash, RelationKind::Definition, [&](const index::Relation& r) {
+            state.lookup_preamble(hash, RelationKind::Definition, [&](const index::Relation& r) {
                 if(auto range = map.to_range(r.range.begin, r.range.end)) {
                     overlay_result = protocol::Location{uri->str(), *range};
                     return false;
@@ -671,10 +676,10 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
     std::optional<DefinitionText> overlay_result;
     visit_pch_overlays(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(!serves_main_entry(session, state))
+            if(!serves_preamble(session, state))
                 return true;
             auto map = session.line_map();
-            state.lookup_main(hash, RelationKind::Definition, [&](const index::Relation& r) {
+            state.lookup_preamble(hash, RelationKind::Definition, [&](const index::Relation& r) {
                 auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
                 if(def_range.begin >= def_range.end || def_range.end > session.text.size())
                     return true;
@@ -856,11 +861,11 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
     // Buffer positions, so session-gated like every other main-entry use.
     visit_pch_overlays(
         [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            if(!serves_main_entry(session, state))
+            if(!serves_preamble(session, state))
                 return true;
             auto map = session.line_map();
             auto file_path = workspace.path_pool.resolve(id);
-            state.lookup_main(hash, kind, [&](const index::Relation& rel) {
+            state.lookup_preamble(hash, kind, [&](const index::Relation& rel) {
                 auto pos = map.to_position(rel.range.begin);
                 if(!pos)
                     return true;

@@ -9,9 +9,6 @@ namespace clice::testing {
 
 namespace {
 
-namespace lsp = kota::ipc::lsp;
-namespace protocol = kota::ipc::protocol;
-
 TEST_SUITE(document_link, Tester) {
 
 std::vector<feature::DocumentLink> links;

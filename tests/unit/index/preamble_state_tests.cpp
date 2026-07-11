@@ -99,7 +99,7 @@ int main() { @ref[foo](); return 0; }
     EXPECT_TRUE(found_ref);
 }
 
-TEST_CASE(MainFileLookup) {
+TEST_CASE(PreambleLookup) {
     add_file("foo.h", R"(
 inline void @def[foo]() {}
 )");
@@ -111,9 +111,9 @@ int main() { @ref[$(ref)foo](); return 0; }
 
     auto foo = hash_of("foo");
 
-    // Occurrence lookup by offset in the main-file entry.
+    // Occurrence lookup by offset in the preamble entry.
     bool found_occurrence = false;
-    state->lookup_main(point("ref"), [&](const index::Occurrence& occurrence) {
+    state->lookup_preamble(point("ref"), [&](const index::Occurrence& occurrence) {
         EXPECT_EQ(occurrence.target, foo);
         EXPECT_EQ(dump(occurrence.range), dump(range("ref")));
         found_occurrence = true;
@@ -121,9 +121,9 @@ int main() { @ref[$(ref)foo](); return 0; }
     });
     EXPECT_TRUE(found_occurrence);
 
-    // Relation lookup by symbol in the main-file entry.
+    // Relation lookup by symbol in the preamble entry.
     bool found_relation = false;
-    state->lookup_main(foo, RelationKind::Reference, [&](const index::Relation& r) {
+    state->lookup_preamble(foo, RelationKind::Reference, [&](const index::Relation& r) {
         EXPECT_EQ(dump(r.range), dump(range("ref")));
         found_relation = true;
         return false;

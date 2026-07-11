@@ -10,7 +10,6 @@
 #include "server/service/query.h"
 #include "server/state/session_store.h"
 #include "server/worker/worker_pool.h"
-#include "syntax/scan.h"
 
 #include "kota/ipc/lsp/text.h"
 #include "llvm/Support/Path.h"
@@ -36,7 +35,7 @@ std::string main_path;
 
 /// Compile the added sources, serialize the full TUIndex as a
 /// PreambleState blob (exactly what the PCH build produces), and open a
-/// session whose pch_ref points at it. The session's own file index is
+/// session whose pch_key points at it. The session's own file index is
 /// the interested-only index, mirroring the production per-edit index.
 void open_with_overlay(std::source_location location = std::source_location::current()) {
     ASSERT_TRUE(compile());
@@ -68,7 +67,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     session->file_index = std::move(session_index.main_file_index);
     session->symbols = std::move(session_index.symbols);
     session->ast_dirty = false;
-    session->pch_ref = Session::PCHRef{"key", compute_preamble_bound(session->text)};
+    session->pch_key = "key";
 }
 
 index::SymbolHash hash_of(llvm::StringRef name,
@@ -423,7 +422,7 @@ int main() { return 0; }
     other->file_index = index::FileIndex();
     other->symbols = index::SymbolTable();
     other->ast_dirty = false;
-    other->pch_ref = session->pch_ref;
+    other->pch_key = session->pch_key;
 
     auto refs = index_query.collect_references(hash_of("FOO"), RelationKind::Reference);
     ASSERT_EQ(refs.size(), 1);
@@ -446,7 +445,7 @@ int main() { @ref[foo](); return 0; }
     EXPECT_TRUE(llvm::StringRef(text->text).contains("void foo"));
 }
 
-TEST_CASE(DirtyMainEntrySkipped) {
+TEST_CASE(DirtyPreambleSkipped) {
     add_main("main.cpp", R"(#define @macro[FOO] 1
 int main() { return 0; }
 )");
@@ -471,10 +470,11 @@ int main() { return 0; }
     session->file_index = index::FileIndex();
     session->symbols = index::SymbolTable();
 
-    // A deferred PCH rebuild keeps an old pch_ref while the buffer's
-    // preamble moved on; the blob's main-file rows must not be served
-    // against the drifted buffer.
-    session->pch_ref = Session::PCHRef{"key", session->pch_ref->bound + 7};
+    // A deferred PCH rebuild keeps an old blob while the buffer's
+    // preamble moved on; once the buffer no longer starts with the blob's
+    // stored preamble text, its rows must not be served.
+    session->text = "// drift\n" + session->text;
+    session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
     EXPECT_FALSE(index_query.find_definition_location(hash_of("FOO")).has_value());
 }
 

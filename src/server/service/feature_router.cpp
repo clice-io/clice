@@ -39,12 +39,9 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
 
 const std::vector<feature::DocumentLink>*
     FeatureRouter::find_preamble_links(const Session& session) {
-    // Link offsets are buffer coordinates as of the PCH build; a drifted
-    // preamble (deferred rebuild mid-edit) would map them onto text that
-    // no longer exists.
-    if(!session.preamble_in_sync())
+    if(!session.pch_key)
         return nullptr;
-    auto it = workspace.pch_cache.find(session.pch_ref->key);
+    auto it = workspace.pch_cache.find(*session.pch_key);
     if(it == workspace.pch_cache.end())
         return nullptr;
     // The links vector lives in the shared PreambleState, not in the map
@@ -52,6 +49,11 @@ const std::vector<feature::DocumentLink>*
     // hold it across an await (entry replacement drops the state).
     auto& state = it->second.load_state();
     if(!state || state->links().empty())
+        return nullptr;
+    // Link offsets are buffer coordinates as of the PCH build; serve them
+    // only while the buffer still starts with that exact preamble text
+    // (a deferred rebuild mid-edit keeps an old blob for a moved buffer).
+    if(!llvm::StringRef(session.text).starts_with(state->preamble_content()))
         return nullptr;
     return &state->links();
 }

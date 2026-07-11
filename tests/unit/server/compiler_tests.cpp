@@ -32,10 +32,10 @@ TEST_CASE(EpochGuardsPchWrite) {
 
     Session session;
     session.path_id = workspace.path_pool.intern("/proj/a.cpp");
-    // No preamble directives: a current round would take the pch_ref reset
+    // No preamble directives: a current round would take the pch_key reset
     // branch; an invalidated continuation must not touch it.
     session.text = "int x;";
-    session.pch_ref = Session::PCHRef{"key", 0};
+    session.pch_key = "key";
 
     auto gen = session.generation;
     auto epoch = session.dirty_epoch;
@@ -60,8 +60,8 @@ TEST_CASE(EpochGuardsPchWrite) {
 
     EXPECT_FALSE(wrote);
     // The stale continuation left the session's PCH reference untouched.
-    ASSERT_TRUE(session.pch_ref.has_value());
-    EXPECT_EQ(session.pch_ref->key, std::string("key"));
+    ASSERT_TRUE(session.pch_key.has_value());
+    EXPECT_EQ(*session.pch_key, std::string("key"));
 }
 
 };  // TEST_SUITE(CompilerGuards)

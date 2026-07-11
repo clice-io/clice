@@ -8,7 +8,6 @@
 
 #include "index/tu_index.h"
 #include "server/state/workspace.h"
-#include "syntax/scan.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/visit/common.h"
@@ -127,24 +126,12 @@ struct Session {
 
     std::shared_ptr<PendingCompile> compiling;
 
-    /// Reference to the PCH entry in Workspace.pch_cache, if any.
-    /// The PCH itself is owned by Workspace (shared, content-addressed);
-    /// Session only stores enough to locate and validate it.
-    struct PCHRef {
-        std::string key;          ///< Content key into Workspace.pch_cache.
-        std::uint32_t bound = 0;  ///< Preamble byte boundary.
-    };
-
-    std::optional<PCHRef> pch_ref;
-
-    /// Whether the PCH's preamble-derived state (overlay main-file entry,
-    /// document links) still describes this buffer's preamble. A deferred
-    /// PCH rebuild (incomplete preamble mid-edit) keeps the old pch_ref
-    /// while the buffer's preamble has moved on; that state is buffer
-    /// coordinates for text that no longer exists and must not be served.
-    bool preamble_in_sync() const {
-        return pch_ref && pch_ref->bound == compute_preamble_bound(text);
-    }
+    /// Content key into Workspace.pch_cache for this session's PCH, if
+    /// any. The PCH itself is owned by Workspace (shared,
+    /// content-addressed); whether its preamble-derived state still
+    /// describes this buffer is checked against the blob's stored
+    /// preamble text at the point of use.
+    std::optional<std::string> pch_key;
 
     /// Dependency snapshot from the last successful AST compilation.
     /// Used for two-layer staleness detection (mtime + content hash).

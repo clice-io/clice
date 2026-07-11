@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -19,7 +20,7 @@ namespace clice::index {
 /// carrying a different value loads as "missing" and the PCH pair is
 /// rebuilt. cache.json records it per entry so a version change is caught
 /// at load time instead of on the first overlay query.
-constexpr inline std::uint32_t preamble_format_version = 2;
+constexpr inline std::uint32_t preamble_format_version = 3;
 
 /// All master-visible state derived from one PCH build.
 ///
@@ -71,20 +72,26 @@ public:
 
     /// Path of the file whose preamble built this blob. Files with
     /// identical preambles share one PCH (the key excludes the source
-    /// path), but the main-file entry carries file-local symbol
-    /// identities — macro USRs embed the source path — so main-entry
-    /// lookups must be scoped to this file. Borrows the mapped blob.
-    llvm::StringRef main_path() const;
+    /// path), but the preamble entry carries file-local symbol identities
+    /// — macro USRs embed the source path — so its lookups must be scoped
+    /// to this file. Borrows the mapped blob.
+    llvm::StringRef source_path() const;
 
-    /// Occurrence lookup in the main file's preamble region (offsets are
-    /// buffer offsets, valid below the preamble bound).
-    void lookup_main(std::uint32_t offset,
-                     llvm::function_ref<bool(const Occurrence&)> callback) const;
+    /// The exact preamble text this blob was built from. Consumers serve
+    /// preamble-entry rows only while the live buffer still starts with
+    /// it — the rows are buffer offsets into this prefix. Borrows the
+    /// mapped blob.
+    llvm::StringRef preamble_content() const;
 
-    /// Relations of `symbol` in the main file's preamble region.
-    void lookup_main(SymbolHash symbol,
-                     RelationKind kind,
-                     llvm::function_ref<bool(const Relation&)> callback) const;
+    /// Occurrence lookup in the source file's preamble region (buffer
+    /// offsets below the preamble bound).
+    void lookup_preamble(std::uint32_t offset,
+                         llvm::function_ref<bool(const Occurrence&)> callback) const;
+
+    /// Relations of `symbol` in the source file's preamble region.
+    void lookup_preamble(SymbolHash symbol,
+                         RelationKind kind,
+                         llvm::function_ref<bool(const Relation&)> callback) const;
 
     /// Look up a symbol's name and kind in the blob's symbol table.
     bool find_symbol(SymbolHash hash, std::string& name, SymbolKind& kind) const;
@@ -108,7 +115,7 @@ private:
 
     /// Lazily materialized from the blob; queries and the document-link
     /// splice run on the master event loop, so no synchronization needed.
-    mutable std::unique_ptr<std::vector<feature::DocumentLink>> links_cache;
+    mutable std::optional<std::vector<feature::DocumentLink>> links_cache;
 };
 
 }  // namespace clice::index

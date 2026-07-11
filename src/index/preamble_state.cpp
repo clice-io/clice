@@ -70,14 +70,19 @@ void PreambleState::serialize(CompilationUnitRef unit,
             serialize_entry(builder, index.graph.path_id(fid), file_index, content, line_starts));
     }
 
-    // Main file is the last path in graph.paths (convention from
-    // IncludeGraph). Its offsets are buffer offsets; content and line
-    // starts stay empty — conversions go through the live session.
-    auto main_entry = serialize_entry(builder,
-                                      static_cast<std::uint32_t>(index.graph.paths.size() - 1),
-                                      index.main_file_index,
-                                      llvm::StringRef(),
-                                      {});
+    // The source file is the last path in graph.paths (convention from
+    // IncludeGraph). The preamble compile remaps the buffer truncated at
+    // the bound, so interested_content() is exactly the preamble text the
+    // PCH was built from — stored so consumers can compare it against the
+    // live buffer's prefix before serving these rows.
+    auto preamble_text = unit.interested_content();
+    auto preamble_starts = kota::ipc::lsp::build_line_starts(
+        std::string_view(preamble_text.data(), preamble_text.size()));
+    auto preamble_entry = serialize_entry(builder,
+                                          static_cast<std::uint32_t>(index.graph.paths.size() - 1),
+                                          index.main_file_index,
+                                          preamble_text,
+                                          preamble_starts);
 
     llvm::SmallVector<std::pair<SymbolHash, const Symbol*>, 0> sorted_symbols;
     sorted_symbols.reserve(index.symbols.size());
@@ -104,7 +109,7 @@ void PreambleState::serialize(CompilationUnitRef unit,
                                             preamble_format_version,
                                             CreateVector(builder, paths),
                                             CreateVector(builder, files),
-                                            main_entry,
+                                            preamble_entry,
                                             CreateVector(builder, syms),
                                             CreateVector(builder, link_entries),
                                             CreateVector(builder, inactive_regions),
@@ -189,26 +194,35 @@ void PreambleState::lookup(SymbolHash symbol,
     }
 }
 
-llvm::StringRef PreambleState::main_path() const {
+llvm::StringRef PreambleState::source_path() const {
     auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
     auto paths = root->paths();
     if(paths->size() == 0) {
         return {};
     }
-    // Main file is the last path, by IncludeGraph convention.
+    // The source file is the last path, by IncludeGraph convention.
     auto path = paths->Get(paths->size() - 1);
     return llvm::StringRef(path->c_str(), path->size());
 }
 
-void PreambleState::lookup_main(std::uint32_t offset,
-                                llvm::function_ref<bool(const Occurrence&)> callback) const {
+llvm::StringRef PreambleState::preamble_content() const {
     auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
-    auto main = root->main_file();
-    if(!main || !main->occurrences()) {
+    auto preamble = root->preamble();
+    if(!preamble || !preamble->content()) {
+        return {};
+    }
+    return llvm::StringRef(preamble->content()->c_str(), preamble->content()->size());
+}
+
+void PreambleState::lookup_preamble(std::uint32_t offset,
+                                    llvm::function_ref<bool(const Occurrence&)> callback) const {
+    auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
+    auto preamble = root->preamble();
+    if(!preamble || !preamble->occurrences()) {
         return;
     }
 
-    auto& occurrences = *main->occurrences();
+    auto& occurrences = *preamble->occurrences();
     auto it =
         std::ranges::lower_bound(occurrences, offset, {}, [](auto o) { return o->range().end(); });
 
@@ -224,16 +238,16 @@ void PreambleState::lookup_main(std::uint32_t offset,
     }
 }
 
-void PreambleState::lookup_main(SymbolHash symbol,
-                                RelationKind kind,
-                                llvm::function_ref<bool(const Relation&)> callback) const {
+void PreambleState::lookup_preamble(SymbolHash symbol,
+                                    RelationKind kind,
+                                    llvm::function_ref<bool(const Relation&)> callback) const {
     auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
-    auto main = root->main_file();
-    if(!main || !main->relations()) {
+    auto preamble = root->preamble();
+    if(!preamble || !preamble->relations()) {
         return;
     }
 
-    auto& rels = *main->relations();
+    auto& rels = *preamble->relations();
     auto it = std::ranges::lower_bound(rels, symbol, {}, [](auto e) { return e->symbol(); });
     if(it == rels.end() || it->symbol() != symbol || !it->relations()) {
         return;
@@ -265,7 +279,7 @@ bool PreambleState::find_symbol(SymbolHash hash, std::string& name, SymbolKind& 
 
 const std::vector<feature::DocumentLink>& PreambleState::links() const {
     if(!links_cache) {
-        links_cache = std::make_unique<std::vector<feature::DocumentLink>>();
+        links_cache.emplace();
         auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
         if(auto ls = root->links()) {
             links_cache->reserve(ls->size());

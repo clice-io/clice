@@ -238,7 +238,7 @@ private:
     /// across files, but the main-file entry carries file-local symbol
     /// identities (macro USRs embed the source path) that must not leak
     /// between the sharers.
-    bool serves_main_entry(const Session& session, const index::PreambleState& state) const;
+    bool serves_preamble(const Session& session, const index::PreambleState& state) const;
 
     /// Whether an overlay file entry may contribute results. Filters
     /// builtin pseudo files, synthesized context artifacts (their

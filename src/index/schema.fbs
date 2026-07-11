@@ -206,9 +206,10 @@ paths:
 files:
     [PreambleFileEntry] (required);
 
-// The main file's preamble region, in buffer offsets. Content and line
-// starts are omitted: conversions go through the live session buffer.
-main_file:
+// The source file's own preamble region, in buffer offsets. Its content
+// is the exact preamble text the PCH was built from — consumers compare
+// it against the live buffer's prefix before serving these rows.
+preamble:
     PreambleFileEntry;
 
 // Sorted by symbol_id for binary search.
