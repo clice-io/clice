@@ -323,6 +323,16 @@ async def test_partition_import_definition(client, workspace):
     assert any(loc.uri.endswith("part_a.cppm") for loc in locs), locs
 
 
+@pytest.mark.workspace("modules/partition_with_external_import")
+async def test_partition_import_definition_range(client, workspace):
+    uri, _ = await client.open_and_wait(workspace / "app.cppm")
+    assert await wait_for_index(client, uri, "App:Core"), "Index not ready"
+
+    for character in range(14, 19):
+        locs = to_locations(await client.definition_at(uri, 1, character))
+        assert any(loc.uri.endswith("part.cppm") for loc in locs), locs
+
+
 @pytest.mark.workspace("modules/macro_import")
 async def test_macro_import_definition(client, workspace):
     # `import MATH_MODULE;` where the name comes from a macro: the index

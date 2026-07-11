@@ -190,8 +190,7 @@ public:
                         if(token.is_eof() || token.is_eod() || token.kind == clang::tok::semi)
                             break;
                         if(!after_import) {
-                            after_import = token.is_identifier() &&
-                                           token.text(source) == "import";
+                            after_import = token.is_identifier() && token.text(source) == "import";
                             continue;
                         }
                         if(!found_name) {

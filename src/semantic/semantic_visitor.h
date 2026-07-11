@@ -23,9 +23,7 @@ public:
 
     template <typename Traverse>
     bool on_traverse_decl(clang::Decl* decl, Traverse traverse) {
-        if constexpr(requires(Derived& derived) {
-            derived.filter_traverse_decl(decl, traverse);
-        }) {
+        if constexpr(requires(Derived& derived) { derived.filter_traverse_decl(decl, traverse); }) {
             return getDerived().filter_traverse_decl(decl, traverse);
         } else {
             return (this->*traverse)(decl);
