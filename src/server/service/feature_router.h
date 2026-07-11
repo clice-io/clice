@@ -139,8 +139,9 @@ public:
     RawResult workspace_symbol(llvm::StringRef query);
 
 private:
-    /// The preamble include links of a session's active PCH, or nullptr.
-    const std::vector<feature::DocumentLink>* find_preamble_links(const Session& session);
+    /// The preamble include links of a session's active PCH; empty when
+    /// there is no PCH or its preamble no longer matches the buffer.
+    std::vector<feature::DocumentLink> find_preamble_links(const Session& session);
 
     /// Resolve go-to-definition on a preamble include line that the worker
     /// AST cannot see: the include is compiled into the PCH, so the target

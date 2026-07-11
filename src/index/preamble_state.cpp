@@ -277,25 +277,23 @@ bool PreambleState::find_symbol(SymbolHash hash, std::string& name, SymbolKind& 
     return true;
 }
 
-const std::vector<feature::DocumentLink>& PreambleState::links() const {
-    if(!links_cache) {
-        links_cache.emplace();
-        auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
-        if(auto ls = root->links()) {
-            links_cache->reserve(ls->size());
-            for(auto entry: *ls) {
-                feature::DocumentLink link;
-                if(auto range = entry->range()) {
-                    link.range = *safe_cast<Range>(range);
-                }
-                if(auto target = entry->target()) {
-                    link.target = target->str();
-                }
-                links_cache->push_back(std::move(link));
+std::vector<feature::DocumentLink> PreambleState::links() const {
+    std::vector<feature::DocumentLink> links;
+    auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
+    if(auto ls = root->links()) {
+        links.reserve(ls->size());
+        for(auto entry: *ls) {
+            feature::DocumentLink link;
+            if(auto range = entry->range()) {
+                link.range = *safe_cast<Range>(range);
             }
+            if(auto target = entry->target()) {
+                link.target = target->str();
+            }
+            links.push_back(std::move(link));
         }
     }
-    return *links_cache;
+    return links;
 }
 
 llvm::ArrayRef<std::uint32_t> PreambleState::inactive_regions() const {

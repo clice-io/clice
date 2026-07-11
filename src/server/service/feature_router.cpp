@@ -37,25 +37,21 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
                             std::format("Failed to resolve {} item", kind)};
 }
 
-const std::vector<feature::DocumentLink>*
-    FeatureRouter::find_preamble_links(const Session& session) {
+std::vector<feature::DocumentLink> FeatureRouter::find_preamble_links(const Session& session) {
     if(!session.pch_key)
-        return nullptr;
+        return {};
     auto it = workspace.pch_cache.find(*session.pch_key);
     if(it == workspace.pch_cache.end())
-        return nullptr;
-    // The links vector lives in the shared PreambleState, not in the map
-    // value, so the pointer survives map rehash; callers still must not
-    // hold it across an await (entry replacement drops the state).
+        return {};
     auto& state = it->second.load_state();
-    if(!state || state->links().empty())
-        return nullptr;
+    if(!state)
+        return {};
     // Link offsets are buffer coordinates as of the PCH build; serve them
     // only while the buffer still starts with that exact preamble text
     // (a deferred rebuild mid-edit keeps an old blob for a moved buffer).
     if(!llvm::StringRef(session.text).starts_with(state->preamble_content()))
-        return nullptr;
-    return &state->links();
+        return {};
+    return state->links();
 }
 
 std::vector<protocol::Location>
@@ -64,16 +60,16 @@ std::vector<protocol::Location>
     std::vector<protocol::Location> locations;
 
     // Preamble include lines: compiled into the PCH, invisible to the
-    // worker's AST — the PCH's cached links carry the targets.
-    auto* links = find_preamble_links(session);
-    if(!links)
+    // worker's AST — the PCH's stored links carry the targets.
+    auto links = find_preamble_links(session);
+    if(links.empty())
         return locations;
 
     auto offset = session.line_map().to_offset(position);
     if(!offset)
         return locations;
 
-    for(auto& link: *links) {
+    for(auto& link: links) {
         if(link.range.contains(*offset)) {
             locations.push_back(protocol::Location{
                 .uri = feature::to_uri(link.target),
@@ -105,11 +101,9 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         links.push_back(std::move(out));
     };
     // Skipped while dirty: a failed or superseded compile leaves
-    // the cached links describing the pre-edit preamble.
+    // the stored links describing the pre-edit preamble.
     if(!session->ast_dirty) {
-        if(auto* pch_links = find_preamble_links(*session)) {
-            std::ranges::for_each(*pch_links, append);
-        }
+        std::ranges::for_each(find_preamble_links(*session), append);
     }
     std::ranges::for_each(result.value(), append);
     co_return links;

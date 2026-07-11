@@ -1,7 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -96,9 +95,8 @@ public:
     /// Look up a symbol's name and kind in the blob's symbol table.
     bool find_symbol(SymbolHash hash, std::string& name, SymbolKind& kind) const;
 
-    /// Document links of the preamble region, materialized lazily on first
-    /// access and cached for the blob's lifetime.
-    const std::vector<feature::DocumentLink>& links() const;
+    /// Document links of the preamble region, materialized from the blob.
+    std::vector<feature::DocumentLink> links() const;
 
     /// Inactive regions within the preamble (flat begin/end offset pairs).
     /// Borrows the mapped blob.
@@ -112,10 +110,6 @@ private:
     explicit PreambleState(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
     std::unique_ptr<llvm::MemoryBuffer> buffer;
-
-    /// Lazily materialized from the blob; queries and the document-link
-    /// splice run on the master event loop, so no synchronization needed.
-    mutable std::optional<std::vector<feature::DocumentLink>> links_cache;
 };
 
 }  // namespace clice::index

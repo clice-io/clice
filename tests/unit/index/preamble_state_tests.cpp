@@ -158,7 +158,7 @@ int main() { return 0; }
 )");
     build_state();
 
-    auto& loaded_links = state->links();
+    auto loaded_links = state->links();
     ASSERT_EQ(loaded_links.size(), 1);
     EXPECT_EQ(loaded_links[0].range, LocalSourceRange(12, 20));
     EXPECT_EQ(loaded_links[0].target, "/include/foo.h");
