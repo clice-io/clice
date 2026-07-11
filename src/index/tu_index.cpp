@@ -255,6 +255,16 @@ public:
         }
     }
 
+    template <typename Traverse>
+    bool filter_traverse_decl(clang::Decl* decl, Traverse traverse) {
+        // Imported declarations are indexed by their own module TU.
+        if(decl->isFromASTFile()) {
+            return true;
+        }
+
+        return (this->*traverse)(decl);
+    }
+
     void build() {
         run();
 
