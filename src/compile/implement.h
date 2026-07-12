@@ -77,8 +77,6 @@ struct CompilationUnitRef::Self {
     /// All directive information collected during the preprocessing.
     llvm::DenseMap<clang::FileID, Directive> directives;
 
-    llvm::DenseSet<clang::FileID> all_files;
-
     /// Cache for file path. It is used to avoid multiple file path lookup.
     llvm::DenseMap<clang::FileID, llvm::StringRef> path_cache;
 

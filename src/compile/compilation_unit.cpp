@@ -315,21 +315,6 @@ index::SymbolID CompilationUnitRef::getSymbolID(const clang::MacroInfo* macro) {
     return index::SymbolID{hash, name.str()};
 }
 
-const llvm::DenseSet<clang::FileID>& CompilationUnitRef::files() {
-    if(self->all_files.empty()) {
-        /// FIXME: handle preamble and embed file id.
-        for(auto& [fid, directive]: directives()) {
-            for(auto& include: directive.includes) {
-                if(!include.skipped && include.fid.isValid()) {
-                    self->all_files.insert(include.fid);
-                }
-            }
-        }
-        self->all_files.insert(self->SM().getMainFileID());
-    }
-    return self->all_files;
-}
-
 clang::TranslationUnitDecl* CompilationUnitRef::tu() {
     return self->instance->getASTContext().getTranslationUnitDecl();
 }

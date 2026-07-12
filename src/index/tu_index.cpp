@@ -28,8 +28,19 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
 class Builder : public SemanticVisitor<Builder> {
 public:
     Builder(TUIndex& result, CompilationUnitRef unit, bool interested_only) :
-        SemanticVisitor<Builder>(unit, interested_only), result(result) {
-        result.graph = IncludeGraph::from(unit);
+        SemanticVisitor<Builder>(unit, interested_only), result(result) {}
+
+    /// The only gate through which rows enter `file_indices`. With
+    /// interested_only, the index covers just the interested file — yet
+    /// AST nodes reachable from its top-level decls can carry locations
+    /// in other files: inherited default arguments and base specifiers
+    /// of classes defined in a preamble header land there. Such rows
+    /// belong to the preamble's own index, so they are dropped here.
+    FileIndex* file_index(clang::FileID fid) {
+        if(interested_only && fid != unit.interested_file()) {
+            return nullptr;
+        }
+        return &result.file_indices[fid];
     }
 
     void handleDeclOccurrence(const clang::NamedDecl* decl,
@@ -52,7 +63,10 @@ public:
         }
 
         auto [fid, range] = unit.decompose_range(location);
-        auto& index = result.file_indices[fid];
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
 
         auto symbol_id = unit.getSymbolID(decl);
         auto [it, success] = result.symbols.try_emplace(symbol_id.hash);
@@ -62,7 +76,7 @@ public:
             symbol.kind = SymbolKind::from(decl);
             symbol.scope = classify_scope(decl);
         }
-        index.occurrences.emplace_back(range, symbol_id.hash);
+        index->occurrences.emplace_back(range, symbol_id.hash);
     }
 
     void handleMacroOccurrence(const clang::MacroInfo* def,
@@ -74,7 +88,10 @@ public:
         }
 
         auto [fid, range] = unit.decompose_range(location);
-        auto& index = result.file_indices[fid];
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
 
         auto symbol_id = unit.getSymbolID(def);
         // Macros get a symbol-table entry like declarations do; without it
@@ -88,7 +105,7 @@ public:
             symbol.kind = SymbolKind::Macro;
             symbol.scope = SymbolScope::External;
         }
-        index.occurrences.emplace_back(range, symbol_id.hash);
+        index->occurrences.emplace_back(range, symbol_id.hash);
 
         Relation relation{
             .kind = kind,
@@ -107,7 +124,7 @@ public:
             }
         }
 
-        index.relations[symbol_id.hash].emplace_back(relation);
+        index->relations[symbol_id.hash].emplace_back(relation);
     }
 
     void handleRelation(const clang::NamedDecl* decl,
@@ -115,6 +132,10 @@ public:
                         const clang::NamedDecl* target,
                         clang::SourceRange range) {
         auto [fid, relation_range] = unit.decompose_expansion_range(range);
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
 
         Relation relation{.kind = kind};
 
@@ -142,9 +163,8 @@ public:
             std::unreachable();
         }
 
-        auto& index = result.file_indices[fid];
         auto symbol_id = unit.getSymbolID(ast::normalize(decl));
-        index.relations[symbol_id.hash].emplace_back(relation);
+        index->relations[symbol_id.hash].emplace_back(relation);
     }
 
     /// Module names are indexed like macro names: an occurrence plus a
@@ -157,14 +177,14 @@ public:
                         RelationKind kind) {
             if(name.empty())
                 return;
-            if(interested_only && fid != unit.interested_file())
+            auto* index = file_index(fid);
+            if(!index)
                 return;
             llvm::SmallString<64> usr("@module@");
             usr += name;
             auto hash = llvm::xxh3_64bits(usr);
 
-            auto& index = result.file_indices[fid];
-            index.occurrences.emplace_back(range, hash);
+            index->occurrences.emplace_back(range, hash);
             Relation relation{
                 .kind = kind,
                 .range = range,
@@ -176,7 +196,7 @@ public:
             if(kind.isDeclOrDef()) {
                 relation.set_definition_range(range);
             }
-            index.relations[hash].emplace_back(relation);
+            index->relations[hash].emplace_back(relation);
 
             auto& symbol = result.symbols[hash];
             if(symbol.name.empty()) {
@@ -281,6 +301,16 @@ public:
         run();
 
         index_modules();
+
+        // Build the include graph from what the index actually recorded:
+        // every fid keying `file_indices` gets its include chain resolved
+        // through the SourceManager, so the lookups below cannot miss.
+        llvm::SmallVector<clang::FileID, 16> indexed_fids;
+        indexed_fids.reserve(result.file_indices.size());
+        for(auto& [fid, index]: result.file_indices) {
+            indexed_fids.push_back(fid);
+        }
+        result.graph = IncludeGraph::from(unit, indexed_fids);
 
         for(auto& [fid, index]: result.file_indices) {
             for(auto& [symbol_id, relations]: index.relations) {

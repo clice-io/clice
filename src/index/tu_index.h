@@ -108,6 +108,12 @@ struct TUIndex {
 
     FileIndex main_file_index;
 
+    /// Build the index for `unit`. With interested_only, only rows in
+    /// the interested file are kept. Note that a full build over a unit
+    /// compiled with a preamble PCH is not a production combination
+    /// (background indexing compiles without PCH): rows landing in the
+    /// PCH's loaded copy of the main file would serialize a second entry
+    /// under the main path id.
     static TUIndex build(CompilationUnitRef unit, bool interested_only = false);
 
     void serialize(llvm::raw_ostream& os) const;

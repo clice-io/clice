@@ -14,7 +14,6 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 #include "clang/Tooling/Syntax/Tokens.h"
 
 namespace clice {
@@ -238,9 +237,6 @@ public:
     llvm::DenseMap<clang::FileID, Directive>& directives();
 
     clang::TranslationUnitDecl* tu();
-
-    /// All files involved in building the unit.
-    const llvm::DenseSet<clang::FileID>& files();
 
     std::vector<std::string> deps();
 
