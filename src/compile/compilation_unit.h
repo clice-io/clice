@@ -2,11 +2,13 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "compile/dep_file.h"
 #include "compile/diagnostic.h"
 #include "compile/directive.h"
 #include "semantic/resolver.h"
@@ -140,6 +142,11 @@ public:
     /// Get the file content of the file ID.
     auto file_content(clang::FileID fid) -> llvm::StringRef;
 
+    /// The buffer this compilation read for `fid`, or nullopt when it was
+    /// never loaded here (e.g. a preamble header served from a PCH). Unlike
+    /// file_content, never falls back to a fake buffer.
+    auto loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef>;
+
     /// Get the interested file ID. Currently, it is the same as the main
     /// file id，i.e. the file id of source file.
     auto interested_file() -> clang::FileID;
@@ -247,7 +254,9 @@ public:
 
     clang::TranslationUnitDecl* tu();
 
-    std::vector<std::string> deps();
+    /// The files this compilation read (include and __has_include targets),
+    /// each with the hash of the bytes the compiler actually consumed.
+    std::vector<DepFile> deps();
 
     /// Get symbol ID for given declaration.
     index::SymbolID getSymbolID(const clang::NamedDecl* decl);

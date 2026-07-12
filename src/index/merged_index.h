@@ -14,11 +14,14 @@
 namespace clice::index {
 
 /// A dependency of a compilation context: where it was included and the
-/// file's path, interned into the shard's own path table on merge.
+/// file's path, interned into the shard's own path table on merge, plus the
+/// hash of the bytes the indexing compile consumed for it (0 = unavailable;
+/// the staleness baseline then stays conservative for this file).
 struct DepLocation {
     llvm::StringRef path;
     std::uint32_t line = 0;
     std::uint32_t include_id = 0;
+    std::uint64_t content_hash = 0;
 };
 
 class MergedIndex {

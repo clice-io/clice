@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cassert>
+#include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <expected>
 #include <memory>
@@ -53,6 +55,30 @@ inline std::expected<std::string, std::error_code> createTemporaryFile(llvm::Str
         return std::unexpected(error);
     }
     return path.str().str();
+}
+
+/// A file's mtime as nanoseconds since epoch — the resolution every
+/// freshness baseline in the project stores.
+inline std::int64_t mtime_ns(const llvm::sys::fs::file_status& status) {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               status.getLastModificationTime().time_since_epoch())
+        .count();
+}
+
+/// Filesystem mtime-granularity guard for freshness baselines: a stat fast
+/// path is only recorded for a file whose mtime precedes the reference
+/// moment by at least this much. Closer to it, a coarse-granularity
+/// filesystem (FAT stores 2s mtimes, several network filesystems whole
+/// seconds) could stamp a write the reference never saw with a timestamp
+/// from before it — so those files re-earn their fast path through one
+/// hash comparison instead.
+constexpr inline std::int64_t mtime_guard_ns = 2'000'000'000;
+
+/// The newest mtime (ns) a file may carry and still be provably untouched
+/// since the reference moment `at_ms` (a build start, or "now" for
+/// content read on the spot).
+constexpr std::int64_t stat_baseline_before_ns(std::int64_t at_ms) {
+    return at_ms * 1'000'000 - mtime_guard_ns;
 }
 
 inline std::expected<void, std::error_code> write(llvm::StringRef path, llvm::StringRef content) {

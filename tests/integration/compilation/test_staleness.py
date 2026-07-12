@@ -544,6 +544,59 @@ async def test_saved_host_reinvalidates_header(client, tmp_path):
     )
 
 
+async def test_same_second_save_detected(client, tmp_path):
+    """A header saved immediately after the dependent's compile — within the
+    same second — must still invalidate the PCH. Deliberately no mtime sleep:
+    a watermark-based freshness check is blind exactly here."""
+    (tmp_path / "header.h").write_text(
+        "#pragma once\ninline int value() { return 1; }\n"
+    )
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { return value(); }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    assert_clean_compile(client, uri)
+
+    (tmp_path / "header.h").write_text(
+        "#pragma once\ninline int renamed() { return 1; }\n"
+    )
+    client.text_document_did_save(
+        DidSaveTextDocumentParams(
+            text_document=TextDocumentIdentifier(uri=(tmp_path / "header.h").as_uri())
+        )
+    )
+
+    # main.cpp still calls value(): a reused stale PCH would compile clean.
+    await wait_for_recompile(client, uri)
+    assert_has_errors(client, uri, "Expected errors after same-second header save")
+
+
+async def test_backdated_header_change_detected(client, tmp_path):
+    """A header whose content changes while its mtime moves backwards
+    (rsync -t, git-restore-mtime) must be caught by the pull-side check
+    alone — no didSave is sent."""
+    header = tmp_path / "header.h"
+    header.write_text("#pragma once\ninline int value() { return 1; }\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { return value(); }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    assert_clean_compile(client, uri)
+
+    stat = header.stat()
+    header.write_text("#pragma once\ninline int renamed() { return 1; }\n")
+    os.utime(header, (stat.st_atime, stat.st_mtime - 100))
+
+    await wait_for_recompile(client, uri)
+    assert_has_errors(client, uri, "Expected errors after backdated header change")
+
+
 async def test_orphan_header_default_command(client, tmp_path):
     """A header with no CDB entry and no including source falls back to the
     synthesized default command and still compiles."""

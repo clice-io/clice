@@ -178,6 +178,21 @@ TEST_CASE(BuildPCMRequest) {
 
         auto result = co_await w.peer->send_request(params);
         EXPECT_TRUE(result.has_value());
+        if(result.has_value()) {
+            auto& build = result.value();
+            EXPECT_TRUE(build.success);
+            EXPECT_TRUE(build.build_at > 0);
+            // The module source itself must be a hashed dependency: the PCM
+            // cache key embeds no content, so the deps snapshot is the only
+            // thing that can see an offline edit of the interface.
+            bool source_dep = false;
+            for(auto& dep: build.deps) {
+                if(dep.path == src) {
+                    source_dep = dep.hash != 0;
+                }
+            }
+            EXPECT_TRUE(source_dep);
+        }
         test_done = true;
         w.peer->close_output();
     });

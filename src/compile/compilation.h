@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "compile/compilation_unit.h"
+#include "compile/dep_file.h"
 #include "support/filesystem.h"
 
 #include "llvm/ADT/StringMap.h"
@@ -27,14 +28,11 @@ struct PCHInfo {
     /// The path of the output PCH file.
     std::string path;
 
-    /// The building time of this PCH.
-    std::int64_t mtime;
-
     /// The content used to build this PCH.
     std::string preamble;
 
-    /// All files involved in building this PCH.
-    std::vector<std::string> deps;
+    /// All files involved in building this PCH, with consumed-content hashes.
+    std::vector<DepFile> deps;
 
     /// The command arguments used to build this PCH.
     std::vector<const char*> arguments;
@@ -59,8 +57,11 @@ struct PCMInfo : ModuleInfo {
     /// Source file path.
     std::string srcPath;
 
-    /// Files involved in building this PCM(not include module).
-    std::vector<std::string> deps;
+    /// Files involved in building this PCM (not including imported modules),
+    /// with consumed-content hashes. Contains the module source file itself:
+    /// unlike the PCH key, the PCM cache key does not embed any content, so
+    /// the deps snapshot is the only thing that can see the source change.
+    std::vector<DepFile> deps;
 };
 
 struct CompilationParams {

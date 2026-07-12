@@ -43,6 +43,12 @@ struct IncludeGraph {
     /// parse even when no index row lands in the included file.
     std::vector<IncludeLocation> locations;
 
+    /// Parallel to `paths`: hash of the bytes this compilation actually
+    /// consumed per file (0 = the buffer was unavailable for hashing).
+    /// Freshness baselines built from these describe what the index rows
+    /// were built from, never a later disk state.
+    std::vector<std::uint64_t> path_hashes;
+
     /// Each `FileID` represents a new header context and is introduced
     /// by a new include directive. So a include directive is a new header
     /// context. A map between FileID and its include location.

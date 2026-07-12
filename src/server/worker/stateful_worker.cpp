@@ -191,6 +191,7 @@ void StatefulWorker::register_handlers() {
                 result.inactive_regions =
                     feature::inactive_regions(doc->unit, params.open_conditionals, doc->pch.second)
                         .regions;
+                result.build_at = doc->unit.build_at().count();
                 result.deps = doc->unit.deps();
 
                 // Build index for main file only (interested_only=true).

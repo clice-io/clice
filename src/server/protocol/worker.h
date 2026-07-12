@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "compile/dep_file.h"
 #include "feature/document_link.h"
 #include "syntax/token.h"
 
@@ -80,7 +81,10 @@ struct CompileResult {
     /// Diagnostics serialized as JSON (RawValue) to avoid bincode/serde annotation conflicts.
     kota::codec::RawValue diagnostics;
     std::size_t memory_usage;
-    std::vector<std::string> deps;
+    /// Milliseconds since epoch, sampled before the compile started. Files
+    /// whose mtime is past this moment may differ from what the build read.
+    std::int64_t build_at = 0;
+    std::vector<DepFile> deps;
     /// Serialized TUIndex for the main file (interested_only=true).
     std::string tu_index_data;
 
@@ -152,7 +156,10 @@ struct BuildResult {
     /// without user errors indicates clice infrastructure breakage (anomaly).
     bool has_user_errors = false;
     std::string output_path;  ///< PCH or PCM path
-    std::vector<std::string> deps;
+    /// Milliseconds since epoch, sampled before the build started. Files
+    /// whose mtime is past this moment may differ from what the build read.
+    std::int64_t build_at = 0;
+    std::vector<DepFile> deps;
     std::string tu_index_data;          ///< Index: serialized TUIndex, merged by the master
     kota::codec::RawValue result_json;  ///< Completion/SignatureHelp result
 };

@@ -252,10 +252,11 @@ void Compiler::init_compile_graph() {
 
         auto pcm_path = std::move(committed.value().value());
         workspace.pcm_paths[path_id] = pcm_path;
-        workspace.pcm_cache[path_id] = {
-            pcm_path,
-            pcm_key,
-            capture_deps_snapshot(workspace.path_pool, result.value().deps)};
+        workspace.pcm_cache[path_id] = {pcm_path,
+                                        pcm_key,
+                                        capture_deps_snapshot(workspace.path_pool,
+                                                              result.value().deps,
+                                                              result.value().build_at)};
         LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
 
         // Persist cache metadata after successful build.
@@ -505,7 +506,8 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto& st = workspace.pch_cache[pch_key];
     st.path = *committed.value().pch_path;
     st.bound = bound;
-    st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
+    st.deps =
+        capture_deps_snapshot(workspace.path_pool, result.value().deps, result.value().build_at);
     st.index_path = *committed.value().index_path;
     // Replace the previous blob's mapping (same key, rebuilt content);
     // in-flight holders of the old shared_ptr stay valid.
@@ -644,7 +646,7 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     co_return true;
 }
 
-bool Compiler::is_stale(const Session& session) {
+bool Compiler::is_stale(Session& session) {
     if(session.ast_deps.has_value() && deps_changed(workspace.path_pool, *session.ast_deps))
         return true;
 
@@ -665,8 +667,8 @@ bool Compiler::is_stale(const Session& session) {
     return false;
 }
 
-void Compiler::record_deps(Session& session, llvm::ArrayRef<std::string> deps) {
-    session.ast_deps = capture_deps_snapshot(workspace.path_pool, deps);
+void Compiler::record_deps(Session& session, llvm::ArrayRef<DepFile> deps, std::int64_t build_at) {
+    session.ast_deps = capture_deps_snapshot(workspace.path_pool, deps, build_at);
 }
 
 /// Pull-based compilation entry point for user-opened files.
@@ -852,7 +854,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // not declare it fresh; the next request recompiles.
         session->settle_compile(epoch);
         pc->succeeded = true;
-        record_deps(*session, result.value().deps);
+        record_deps(*session, result.value().deps, result.value().build_at);
 
         if(!result.value().tu_index_data.empty()) {
             auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());

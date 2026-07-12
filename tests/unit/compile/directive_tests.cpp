@@ -304,10 +304,12 @@ const char e[] = {
     bool data_found = false;
     bool probe_found = false;
     for(auto& dep: deps) {
-        ASSERT_TRUE(path::is_absolute(dep));
-        header_found |= dep == TestVFS::path("data.h");
-        data_found |= dep == TestVFS::path("data.bin");
-        probe_found |= dep == TestVFS::path("probe.bin");
+        ASSERT_TRUE(path::is_absolute(dep.path));
+        // Every readable dep ships the consumed-content hash.
+        ASSERT_TRUE(dep.hash != 0);
+        header_found |= dep.path == TestVFS::path("data.h");
+        data_found |= dep.path == TestVFS::path("data.bin");
+        probe_found |= dep.path == TestVFS::path("probe.bin");
     }
     ASSERT_TRUE(header_found);
     ASSERT_TRUE(data_found);
@@ -329,7 +331,8 @@ TEST_CASE(FailedIncludeDeps) {
 
     auto deps = built.deps();
     ASSERT_EQ(deps.size(), 1U);
-    ASSERT_EQ(deps[0], TestVFS::path("test.h"));
+    ASSERT_EQ(deps[0].path, TestVFS::path("test.h"));
+    ASSERT_TRUE(deps[0].hash != 0);
 };
 
 };  // TEST_SUITE(Directive)

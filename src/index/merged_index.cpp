@@ -3,6 +3,7 @@
 #include <ranges>
 #include <tuple>
 
+#include "compile/dep_file.h"
 #include "index/path_pool.h"
 #include "index/serialization.h"
 #include "support/filesystem.h"
@@ -88,6 +89,19 @@ struct DepHash {
     friend bool operator==(const DepHash&, const DepHash&) = default;
 };
 
+/// Stat fast path for one dependency, recorded at merge time only when the
+/// file provably did not change since before the indexed build started.
+/// Layout must mirror `binary::DepStamp` so `safe_cast` can alias it.
+/// The server's mutable, in-place-repairing form of the same fast path is
+/// `DepState` (server/state/workspace.h).
+struct DepStamp {
+    std::uint32_t path_id;
+    std::uint64_t size;
+    std::int64_t mtime_ns;
+
+    friend bool operator==(const DepStamp&, const DepStamp&) = default;
+};
+
 namespace {
 
 /// Hash a file's content with the same scheme the server layer uses for its
@@ -101,34 +115,34 @@ std::uint64_t hash_file(llvm::StringRef path) {
 }
 
 /// Two-layer staleness test for a single dependency, mirroring the server's
-/// `deps_changed`: Layer 1 trusts an unchanged mtime (no file read); Layer 2
-/// re-hashes a file whose mtime moved and treats a matching hash as a mere
-/// touch, not a real edit.
+/// `deps_changed`: Layer 1 trusts a stat EQUAL to the recorded stamp (no
+/// file read) — equality, not a watermark, so backdated or preserved mtimes
+/// cannot masquerade as fresh; Layer 2 re-hashes the disk against the
+/// consumed-content hash and treats a match as a mere touch, not an edit.
 bool dep_stale(llvm::StringRef path,
-               std::uint64_t build_at,
+               const DepStamp* stamp,
                std::optional<std::uint64_t> stored_hash) {
     fs::file_status status;
     if(auto err = fs::status(path, status)) {
         return true;
     }
 
-    auto mtime = std::chrono::duration_cast<std::chrono::milliseconds>(
-        status.getLastModificationTime().time_since_epoch());
-    if(mtime.count() <= static_cast<std::int64_t>(build_at)) {
+    if(stamp && stamp->size == status.getSize() && stamp->mtime_ns == fs::mtime_ns(status)) {
         return false;
     }
 
-    // mtime moved: without a baseline hash we cannot prove the content is
-    // unchanged, so fall back to the conservative rebuild.
+    // The stat moved (or no stamp was recorded): without a baseline hash we
+    // cannot prove the content unchanged, so fall back to the conservative
+    // rebuild.
     if(!stored_hash) {
         return true;
     }
     // A matching hash means the file was only touched, not edited. We do NOT
-    // refresh the stored mtime baseline on a match: the baseline lives inside
-    // the immutable serialized shard, and updating it would mean re-serializing
-    // the whole shard just to skip a rebuild. So a touched-but-unchanged file is
-    // re-hashed on every check until a real edit forces a genuine reindex — a
-    // cheap single read, far cheaper than a needless full reindex.
+    // refresh the stored stamp on a match: the baseline lives inside the
+    // immutable serialized shard, and updating it would mean re-serializing
+    // the whole shard just to skip a rebuild. So a touched-but-unchanged file
+    // is re-hashed on every check until a real edit forces a genuine reindex
+    // — a cheap single read, far cheaper than a needless full reindex.
     return hash_file(path) != *stored_hash;
 }
 
@@ -159,9 +173,14 @@ struct CompilationContext {
 
     std::vector<IncludeLocation> include_locations;
 
-    /// Content hash of each distinct dependency (first-seen order), used by
-    /// the Layer 2 staleness check to distinguish a real edit from a touch.
+    /// Consumed-content hash of each distinct dependency (first-seen order),
+    /// used by the Layer 2 staleness check to distinguish an edit from a
+    /// touch. Reported by the indexing worker from the compiler's buffers.
     llvm::SmallVector<DepHash> dep_hashes;
+
+    /// Stat fast paths for the dependencies that provably did not change
+    /// since before the indexed build started (sparse, like dep_hashes).
+    llvm::SmallVector<DepStamp> dep_stamps;
 
     friend bool operator==(const CompilationContext&, const CompilationContext&) = default;
 };
@@ -322,6 +341,13 @@ void MergedIndex::load_in_memory(this Self& self) {
                 context.dep_hashes.emplace_back(*safe_cast<DepHash>(dep));
             }
         }
+        // Absent from shards written before the stamp field existed: their
+        // deps simply have no fast path and validate by hash.
+        if(entry->dep_stamps()) {
+            for(auto stamp: *entry->dep_stamps()) {
+                context.dep_stamps.emplace_back(*safe_cast<DepStamp>(stamp));
+            }
+        }
         index.compilation_contexts.try_emplace(path, std::move(context));
     }
 
@@ -455,7 +481,8 @@ void MergedIndex::serialize(this const Self& self, llvm::raw_ostream& out) {
             context.canonical_id,
             context.build_at,
             CreateStructVector<binary::IncludeLocation>(builder, context.include_locations),
-            CreateStructVector<binary::DepHash>(builder, context.dep_hashes));
+            CreateStructVector<binary::DepHash>(builder, context.dep_hashes),
+            CreateStructVector<binary::DepStamp>(builder, context.dep_stamps));
     });
 
     llvm::SmallVector<const Occurrence*> occurrence_keys;
@@ -675,28 +702,39 @@ bool MergedIndex::need_update(this const Self& self) {
             return true;
         }
 
-        auto& context = self.impl->compilation_contexts.begin()->getSecond();
         auto& paths = self.impl->paths.paths;
 
-        llvm::DenseMap<std::uint32_t, std::uint64_t> hashes;
-        for(auto& dep: context.dep_hashes) {
-            hashes.try_emplace(dep.path_id, dep.content_hash);
-        }
+        // Every context must be validated: shards normally hold one, but
+        // whichever a partial iteration skipped would keep serving stale
+        // rows behind a fresh verdict.
+        for(auto& entry: self.impl->compilation_contexts) {
+            auto& context = entry.getSecond();
 
-        llvm::DenseSet<std::uint32_t> deps;
-        for(auto& location: context.include_locations) {
-            if(!deps.insert(location.path_id).second) {
-                continue;
+            llvm::DenseMap<std::uint32_t, std::uint64_t> hashes;
+            for(auto& dep: context.dep_hashes) {
+                hashes.try_emplace(dep.path_id, dep.content_hash);
             }
-            // A dep the table does not cover cannot be validated: rebuild.
-            if(location.path_id >= paths.size()) {
-                return true;
+            llvm::DenseMap<std::uint32_t, const DepStamp*> stamps;
+            for(auto& stamp: context.dep_stamps) {
+                stamps.try_emplace(stamp.path_id, &stamp);
             }
-            auto it = hashes.find(location.path_id);
-            if(dep_stale(paths[location.path_id],
-                         context.build_at,
-                         it != hashes.end() ? std::optional(it->second) : std::nullopt)) {
-                return true;
+
+            llvm::DenseSet<std::uint32_t> deps;
+            for(auto& location: context.include_locations) {
+                if(!deps.insert(location.path_id).second) {
+                    continue;
+                }
+                // A dep the table does not cover cannot be validated: rebuild.
+                if(location.path_id >= paths.size()) {
+                    return true;
+                }
+                auto stamp_it = stamps.find(location.path_id);
+                auto it = hashes.find(location.path_id);
+                if(dep_stale(paths[location.path_id],
+                             stamp_it != stamps.end() ? stamp_it->second : nullptr,
+                             it != hashes.end() ? std::optional(it->second) : std::nullopt)) {
+                    return true;
+                }
             }
         }
 
@@ -707,30 +745,39 @@ bool MergedIndex::need_update(this const Self& self) {
             return true;
         }
 
-        auto context = *index->compilation_contexts()->begin();
         auto* paths = index->paths();
 
-        llvm::DenseMap<std::uint32_t, std::uint64_t> hashes;
-        if(context->dep_hashes()) {
-            for(auto dep: *context->dep_hashes()) {
-                hashes.try_emplace(dep->path_id(), dep->content_hash());
+        for(auto context: *index->compilation_contexts()) {
+            llvm::DenseMap<std::uint32_t, std::uint64_t> hashes;
+            if(context->dep_hashes()) {
+                for(auto dep: *context->dep_hashes()) {
+                    hashes.try_emplace(dep->path_id(), dep->content_hash());
+                }
             }
-        }
+            llvm::DenseMap<std::uint32_t, const binary::DepStamp*> stamps;
+            if(context->dep_stamps()) {
+                for(auto stamp: *context->dep_stamps()) {
+                    stamps.try_emplace(stamp->path_id(), stamp);
+                }
+            }
 
-        llvm::DenseSet<std::uint32_t> deps;
-        for(auto location: *context->include_locations()) {
-            if(!deps.insert(location->path_id()).second) {
-                continue;
-            }
-            // A dep the table does not cover cannot be validated: rebuild.
-            if(!paths || location->path_id() >= paths->size()) {
-                return true;
-            }
-            auto it = hashes.find(location->path_id());
-            if(dep_stale(paths->Get(location->path_id())->string_view(),
-                         context->build_at(),
-                         it != hashes.end() ? std::optional(it->second) : std::nullopt)) {
-                return true;
+            llvm::DenseSet<std::uint32_t> deps;
+            for(auto location: *context->include_locations()) {
+                if(!deps.insert(location->path_id()).second) {
+                    continue;
+                }
+                // A dep the table does not cover cannot be validated: rebuild.
+                if(!paths || location->path_id() >= paths->size()) {
+                    return true;
+                }
+                auto stamp_it = stamps.find(location->path_id());
+                auto it = hashes.find(location->path_id());
+                if(dep_stale(paths->Get(location->path_id())->string_view(),
+                             stamp_it != stamps.end() ? safe_cast<DepStamp>(stamp_it->second)
+                                                      : nullptr,
+                             it != hashes.end() ? std::optional(it->second) : std::nullopt)) {
+                    return true;
+                }
             }
         }
 
@@ -869,37 +916,42 @@ void MergedIndex::merge(this Self& self,
     self.impl->content = content.str();
     self.impl->line_starts = kota::ipc::lsp::build_line_starts(self.impl->content);
 
-    // Intern the dependencies into the shard's own path table, and capture a
-    // content hash for each distinct one so a later staleness check can tell
-    // a real edit apart from a mere touch (mtime bumped, bytes unchanged).
-    // Only re-hashing at check time can prove that, so the baseline is
-    // recorded here.
-    // TODO: this re-reads every dependency on the event-loop thread even
-    // though the indexer worker already read them; if it shows up on large
-    // cold-start profiles, have the worker ship the hashes in the TUIndex.
+    // Intern the dependencies into the shard's own path table. The staleness
+    // baseline per distinct dep is two-part: the consumed-content hash the
+    // worker computed from the compiler's own buffers (describing exactly
+    // what the rows were built from), and a stat fast path recorded only for
+    // files that provably did not change since before the build started —
+    // for the rest the stat could describe content the rows were never built
+    // from, so they re-earn their fast path through a hash check instead.
     std::vector<IncludeLocation> include_locations;
     llvm::SmallVector<DepHash> dep_hashes;
+    llvm::SmallVector<DepStamp> dep_stamps;
     llvm::DenseSet<std::uint32_t> seen;
     include_locations.reserve(deps.size());
+    auto baseline_before_ns = fs::stat_baseline_before_ns(build_at.count());
     for(auto& dep: deps) {
         auto local_id = self.impl->paths.path_id(dep.path);
         include_locations.push_back({local_id, dep.line, dep.include_id});
         if(!seen.insert(local_id).second) {
             continue;
         }
-        // A dep modified after the indexed snapshot was built must not
-        // contribute a baseline: hashing it now would bless content the
-        // rows were never built from, hiding the edit forever. With no
-        // stored hash the staleness check stays conservative and the TU
-        // simply reindexes once more.
+
         fs::file_status status;
-        if(auto err = fs::status(dep.path, status)) {
-            continue;
+        bool stat_ok = !fs::status(dep.path, status);
+        bool untouched = stat_ok && fs::mtime_ns(status) <= baseline_before_ns;
+
+        auto hash = dep.content_hash;
+        if(hash == 0 && untouched) {
+            // The worker had no buffer to hash (e.g. behind a PCH); the
+            // unchanged mtime proves the disk still holds the consumed
+            // bytes, so hash it here.
+            hash = hash_file(dep.path);
         }
-        auto mtime = std::chrono::duration_cast<std::chrono::milliseconds>(
-            status.getLastModificationTime().time_since_epoch());
-        if(mtime <= build_at) {
-            dep_hashes.emplace_back(local_id, hash_file(dep.path));
+        if(hash != 0) {
+            dep_hashes.emplace_back(local_id, hash);
+        }
+        if(untouched) {
+            dep_stamps.push_back({local_id, status.getSize(), fs::mtime_ns(status)});
         }
     }
 
@@ -917,6 +969,7 @@ void MergedIndex::merge(this Self& self,
         context.build_at = build_at.count();
         context.include_locations = std::move(include_locations);
         context.dep_hashes = std::move(dep_hashes);
+        context.dep_stamps = std::move(dep_stamps);
     });
     self.impl->occurrences_cache.clear();
 }

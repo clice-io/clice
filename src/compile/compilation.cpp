@@ -7,6 +7,7 @@
 #include "support/logging.h"
 
 #include "llvm/Support/Error.h"
+#include "llvm/Support/xxhash.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Lex/PreprocessorOptions.h"
@@ -367,10 +368,6 @@ CompilationUnit compile(CompilationParams& params) {
 CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
     assert(!params.output_file.empty() && "PCH file path cannot be empty");
 
-    /// Record the begin time of PCH building.
-    auto now = std::chrono::system_clock::now().time_since_epoch();
-    out.mtime = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-
     return run_clang(
         params,
         std::make_unique<clang::GeneratePCHAction>(),
@@ -410,6 +407,13 @@ CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
         },
         [&](CompilationUnitRef unit) {
             out.path = params.output_file.str();
+            out.deps = unit.deps();
+            // deps() collects include targets only; the module source is a
+            // build input of its PCM all the same. Canonicalize it like
+            // every other dep — srcPath keeps the command line's raw
+            // spelling, which consumers cannot stat reliably.
+            out.deps.emplace_back(std::string(unit.file_path(unit.interested_file())),
+                                  llvm::xxh3_64bits(unit.interested_content()));
 
             for(auto& [name, path]: params.pcms) {
                 out.mods.emplace_back(name);

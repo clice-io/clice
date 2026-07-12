@@ -106,20 +106,21 @@ TEST_CASE(InvalidateDropsBorrowed) {
     auto borrowed = workspace.path_pool.intern("/proj/borrowed.h");
     auto synthesized = workspace.path_pool.intern("/proj/synthesized.h");
 
-    // A self-contained borrow tracks no chain deps: zeroing its baseline
-    // could never force re-validation, so invalidation drops it outright.
+    // A self-contained borrow tracks no chain deps: forcing re-validation
+    // could never trigger anything, so invalidation drops it outright.
     resolver.header_contexts[borrowed] = HeaderContext{};
     resolver.invalidate_header_deps(borrowed);
     ASSERT_FALSE(resolver.header_contexts.contains(borrowed));
 
-    // A synthesized context re-validates its chain by content hash.
+    // A synthesized context re-validates its chain by content hash: the
+    // fast paths are dropped, the consumed hash stays.
     auto& context = resolver.header_contexts[synthesized];
-    context.deps.path_ids = {borrowed};
-    context.deps.hashes = {7};
-    context.deps.build_at = 123;
+    context.deps.deps.push_back({.path_id = borrowed, .size = 42, .mtime_ns = 123, .hash = 7});
     resolver.invalidate_header_deps(synthesized);
     ASSERT_TRUE(resolver.header_contexts.contains(synthesized));
-    ASSERT_EQ(resolver.header_contexts[synthesized].deps.build_at, 0);
+    auto& dep = resolver.header_contexts[synthesized].deps.deps[0];
+    ASSERT_EQ(dep.mtime_ns, 0);
+    ASSERT_EQ(dep.hash, 7u);
 }
 
 };  // TEST_SUITE(ContextResolver)

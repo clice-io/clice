@@ -229,40 +229,89 @@ std::uint64_t hash_file(llvm::StringRef path) {
     return llvm::xxh3_64bits((*buf)->getBuffer());
 }
 
-DepsSnapshot capture_deps_snapshot(PathPool& pool, llvm::ArrayRef<std::string> deps) {
+DepsSnapshot capture_deps_snapshot(PathPool& pool,
+                                   llvm::ArrayRef<DepFile> deps,
+                                   std::int64_t build_at) {
+    // Files whose mtime falls within the guard of the build start count as
+    // "possibly modified during the build" and get no fast-path baseline;
+    // one passing hash comparison repairs them (see deps_changed).
+    auto baseline_before_ns = fs::stat_baseline_before_ns(build_at);
+
     DepsSnapshot snap;
-    // Capture timestamp BEFORE hashing to avoid TOCTOU: if a file is modified
-    // during hashing, its mtime will be > build_at, triggering Layer 2 re-hash.
-    snap.build_at = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    snap.path_ids.reserve(deps.size());
-    snap.hashes.reserve(deps.size());
+    snap.deps.reserve(deps.size());
     for(const auto& file: deps) {
-        snap.path_ids.push_back(pool.intern(file));
-        snap.hashes.push_back(hash_file(file));
+        auto& dep = snap.deps.emplace_back();
+        dep.path_id = pool.intern(file.path);
+        dep.hash = file.hash;
+
+        llvm::sys::fs::file_status status;
+        if(llvm::sys::fs::status(file.path, status)) {
+            // The build read it, but it is gone already: record the absence,
+            // reappearing counts as a change.
+            dep.missing = true;
+            dep.hash = 0;
+            continue;
+        }
+
+        auto mtime_ns = fs::mtime_ns(status);
+        if(mtime_ns > baseline_before_ns) {
+            // Possibly modified during or after the build: this stat may
+            // describe content the build never saw, so it must not become a
+            // fast-path baseline. The consumed hash stays; the next check
+            // compares the disk against it and repairs the fast path on a
+            // match.
+            continue;
+        }
+
+        // Untouched since before the build started — the disk still holds
+        // the consumed bytes, so the stat is a trustworthy fast path.
+        dep.size = status.getSize();
+        dep.mtime_ns = mtime_ns;
+        if(dep.hash == 0) {
+            // The worker could not hash the consumed bytes; the unchanged
+            // mtime proves the disk still holds them, so hash it here.
+            dep.hash = hash_file(file.path);
+        }
     }
     return snap;
 }
 
-bool deps_changed(const PathPool& pool, const DepsSnapshot& snap) {
-    for(std::size_t i = 0; i < snap.path_ids.size(); ++i) {
-        auto path = pool.resolve(snap.path_ids[i]);
+bool deps_changed(const PathPool& pool, DepsSnapshot& snap) {
+    for(auto& dep: snap.deps) {
+        auto path = pool.resolve(dep.path_id);
         llvm::sys::fs::file_status status;
         if(auto ec = llvm::sys::fs::status(path, status)) {
-            // File disappeared — definitely changed.
-            if(snap.hashes[i] != 0)
+            // Gone now: a change unless it was already missing at build time.
+            if(!dep.missing)
                 return true;
             continue;
         }
+        if(dep.missing) {
+            // Missing at build time, present now.
+            return true;
+        }
 
-        // Layer 1: mtime check (cheap, stat only).
-        auto current_mtime = llvm::sys::toTimeT(status.getLastModificationTime());
-        if(current_mtime <= snap.build_at)
+        // Layer 1: an unchanged stat proves unchanged content — the baseline
+        // is only ever recorded or repaired against the consumed hash.
+        auto size = status.getSize();
+        auto mtime_ns = fs::mtime_ns(status);
+        if(dep.mtime_ns != 0 && dep.size == size && dep.mtime_ns == mtime_ns)
             continue;
 
-        // Layer 2: mtime is newer — re-hash content to confirm actual change.
-        auto current_hash = hash_file(path);
-        if(current_hash != snap.hashes[i])
+        // No trusted hash to compare against: rebuild once to converge.
+        if(dep.hash == 0)
             return true;
+
+        // Layer 2: compare the disk against the consumed bytes. hash_file's
+        // 0 sentinel (unreadable right now) cannot match and counts as
+        // changed — conservative, retried by the next check.
+        if(hash_file(path) != dep.hash)
+            return true;
+
+        // Touched but not modified — repair the fast path so the next check
+        // is a single stat again.
+        dep.size = size;
+        dep.mtime_ns = mtime_ns;
     }
     return false;
 }
@@ -272,12 +321,18 @@ namespace {
 struct CacheDepEntry {
     std::uint32_t path;  // index into CacheData::paths
     std::uint64_t hash;
+    // Defaulted so cache.json files written before the per-dep stat baseline
+    // still load: the fields read back zeroed ("no fast path") and the first
+    // staleness check re-earns them by hash. Their old entry-level build_at
+    // is skipped as an unknown field.
+    kota::meta::defaulted<std::uint64_t> size;
+    kota::meta::defaulted<std::int64_t> mtime_ns;
+    kota::meta::defaulted<bool> missing;
 };
 
 struct CachePCHEntry {
     std::string key;  // CacheStore key in the "pch" namespace
     std::uint32_t bound;
-    std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
 };
 
@@ -285,7 +340,6 @@ struct CachePCMEntry {
     std::string key;  // CacheStore key in the "pcm" namespace
     std::uint32_t source_file;
     std::string module_name;
-    std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
 };
 
@@ -344,15 +398,17 @@ void Workspace::load_cache(ContextResolver& contexts) {
         return idx < data.paths.size() ? llvm::StringRef(data.paths[idx]) : "";
     };
 
-    auto load_deps = [&](std::int64_t build_at, const auto& dep_entries) -> DepsSnapshot {
+    auto load_deps = [&](const auto& dep_entries) -> DepsSnapshot {
         DepsSnapshot deps;
-        deps.build_at = build_at;
         for(auto& dep: dep_entries) {
             auto dep_path = resolve(dep.path);
             if(dep_path.empty())
                 continue;
-            deps.path_ids.push_back(path_pool.intern(dep_path));
-            deps.hashes.push_back(dep.hash);
+            deps.deps.push_back({.path_id = path_pool.intern(dep_path),
+                                 .size = dep.size,
+                                 .mtime_ns = dep.mtime_ns,
+                                 .hash = dep.hash,
+                                 .missing = dep.missing});
         }
         return deps;
     };
@@ -377,7 +433,7 @@ void Workspace::load_cache(ContextResolver& contexts) {
         auto& st = pch_cache[entry.key];
         st.path = *pch_path;
         st.bound = entry.bound;
-        st.deps = load_deps(entry.build_at, entry.deps);
+        st.deps = load_deps(entry.deps);
         st.index_path = *index_path;
 
         LOG_DEBUG("Loaded cached PCH: {} -> {}", entry.key, *pch_path);
@@ -390,7 +446,7 @@ void Workspace::load_cache(ContextResolver& contexts) {
             continue;
 
         auto path_id = path_pool.intern(source);
-        pcm_cache[path_id] = {*pcm_path, entry.key, load_deps(entry.build_at, entry.deps)};
+        pcm_cache[path_id] = {*pcm_path, entry.key, load_deps(entry.deps)};
         pcm_paths[path_id] = *pcm_path;
 
         LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, *pcm_path);
@@ -430,9 +486,9 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         CachePCHEntry entry;
         entry.key = e.getKey().str();
         entry.bound = st.bound;
-        entry.build_at = st.deps.build_at;
-        for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
-            entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
+        for(auto& dep: st.deps.deps) {
+            entry.deps.push_back(
+                {intern(dep.path_id), dep.hash, dep.size, dep.mtime_ns, dep.missing});
         }
         data.pch.push_back(std::move(entry));
     }
@@ -446,9 +502,9 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         entry.source_file = intern(path_id);
         auto mod_it = path_to_module.find(path_id);
         entry.module_name = mod_it != path_to_module.end() ? mod_it->second : "";
-        entry.build_at = st.deps.build_at;
-        for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
-            entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
+        for(auto& dep: st.deps.deps) {
+            entry.deps.push_back(
+                {intern(dep.path_id), dep.hash, dep.size, dep.mtime_ns, dep.missing});
         }
         data.pcm.push_back(std::move(entry));
     }

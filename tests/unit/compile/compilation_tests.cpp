@@ -100,14 +100,19 @@ int main() { return 0; }
     // PCHInfo.path should match the output file.
     ASSERT_EQ(info.path, *pch_path);
 
-    // PCHInfo.mtime should be a reasonable timestamp (non-zero, recent).
-    ASSERT_TRUE(info.mtime > 0);
+    // build_at is sampled before the compile runs (non-zero, recent).
+    ASSERT_TRUE(preamble_unit.build_at().count() > 0);
 
     // PCHInfo.preamble should be non-empty (contains the #include directives).
     ASSERT_FALSE(info.preamble.empty());
 
-    // PCHInfo.deps should list files involved in building the PCH.
+    // PCHInfo.deps should list files involved in building the PCH, each with
+    // the hash of the consumed bytes.
     ASSERT_FALSE(info.deps.empty());
+    for(auto& dep: info.deps) {
+        ASSERT_FALSE(dep.path.empty());
+        ASSERT_TRUE(dep.hash != 0);
+    }
 
     // PCHInfo.arguments should match what was passed in.
     ASSERT_EQ(info.arguments.size(), params.arguments.size());

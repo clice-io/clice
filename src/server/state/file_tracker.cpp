@@ -4,6 +4,7 @@
 #include <chrono>
 #include <utility>
 
+#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
 
@@ -13,10 +14,6 @@
 #include "llvm/Support/FileSystem.h"
 
 namespace clice {
-
-static std::int64_t to_nanoseconds(const llvm::sys::TimePoint<>& time) {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(time.time_since_epoch()).count();
-}
 
 FileTracker::FileTracker(Workspace& workspace,
                          const SessionStore& store,
@@ -40,7 +37,7 @@ FileTracker::CDBStamp FileTracker::stat_cdb() const {
     }
     stamp.exists = true;
     stamp.size = status.getSize();
-    stamp.mtime_ns = to_nanoseconds(status.getLastModificationTime());
+    stamp.mtime_ns = fs::mtime_ns(status);
     return stamp;
 }
 
@@ -185,7 +182,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                 state.missing = !exists;
                 if(exists) {
                     state.size = status.getSize();
-                    state.mtime_ns = to_nanoseconds(status.getLastModificationTime());
+                    state.mtime_ns = fs::mtime_ns(status);
                     state.hash = hash_file(path);
                     if(state.hash == 0) {
                         // Read failure (hash_file's sentinel): don't seed a
@@ -209,7 +206,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
             }
 
             auto size = status.getSize();
-            auto mtime_ns = to_nanoseconds(status.getLastModificationTime());
+            auto mtime_ns = fs::mtime_ns(status);
             if(!state.missing && state.size == size && state.mtime_ns == mtime_ns) {
                 continue;
             }

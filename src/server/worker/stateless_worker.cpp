@@ -126,6 +126,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     PCHInfo pch_info;
     auto unit = compile(cp, pch_info);
     bool success = unit.completed();
+    auto build_at = unit.build_at().count();
 
     std::string errors;
     if(!success)
@@ -160,6 +161,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
         worker::BuildResult result;
         result.success = true;
         result.output_path = tmp_path;
+        result.build_at = build_at;
         result.deps = pch_info.deps;
         return result;
     } else {
@@ -200,6 +202,7 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
     PCMInfo pcm_info;
     auto unit = compile(cp, pcm_info);
     bool success = unit.completed();
+    auto build_at = unit.build_at().count();
 
     std::string errors;
     if(!success)
@@ -216,6 +219,7 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
         worker::BuildResult result;
         result.success = true;
         result.output_path = tmp_path;
+        result.build_at = build_at;
         result.deps = pcm_info.deps;
         return result;
     } else {

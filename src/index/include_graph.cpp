@@ -3,6 +3,8 @@
 #include "compile/compilation_unit.h"
 #include "support/logging.h"
 
+#include "llvm/Support/xxhash.h"
+
 namespace clice::index {
 
 static std::uint32_t addIncludeChain(CompilationUnitRef unit,
@@ -14,7 +16,7 @@ static std::uint32_t addIncludeChain(CompilationUnitRef unit,
         return -1;
     }
 
-    auto& [paths, locations, file_table] = graph;
+    auto& [paths, locations, path_hashes, file_table] = graph;
 
     auto [iter, success] = file_table.try_emplace(fid, locations.size());
     if(!success) {
@@ -67,6 +69,27 @@ IncludeGraph IncludeGraph::from(CompilationUnitRef unit,
     auto interested = unit.interested_file();
     graph.file_table[interested] = addIncludeChain(unit, interested, graph, path_table);
     graph.paths.emplace_back(unit.file_path(interested));
+
+    // Hash the consumed bytes per path from the compiler's own buffers.
+    // Freshness checks compare the disk against these, so they must
+    // describe what the rows were built from — a fid whose buffer never
+    // loaded here (preamble header behind a PCH) contributes no hash and
+    // its consumers stay conservative.
+    graph.path_hashes.assign(graph.paths.size(), 0);
+    auto hash_fid = [&](clang::FileID fid, std::uint32_t path_id) {
+        if(graph.path_hashes[path_id] != 0) {
+            return;
+        }
+        if(auto content = unit.loaded_file_content(fid)) {
+            graph.path_hashes[path_id] = llvm::xxh3_64bits(*content);
+        }
+    };
+    for(auto& [fid, location]: graph.file_table) {
+        if(location != static_cast<std::uint32_t>(-1)) {
+            hash_fid(fid, graph.locations[location].path_id);
+        }
+    }
+    hash_fid(interested, graph.paths.size() - 1);
     return graph;
 }
 

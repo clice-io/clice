@@ -144,8 +144,10 @@ private:
                                 const std::string& directory,
                                 const std::vector<std::string>& arguments);
 
-    bool is_stale(const Session& session);
-    void record_deps(Session& session, llvm::ArrayRef<std::string> deps);
+    /// Non-const: a passing staleness check may repair the snapshots'
+    /// stat fast paths in place (see deps_changed).
+    bool is_stale(Session& session);
+    void record_deps(Session& session, llvm::ArrayRef<DepFile> deps, std::int64_t build_at);
 
     kota::event_loop& loop;
     Workspace& workspace;

@@ -7,6 +7,7 @@
 #include "index/merged_index.h"
 
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 
@@ -676,6 +677,119 @@ TEST_CASE(OldShardDiscarded) {
         ASSERT_TRUE(loaded.content().empty());
         ASSERT_TRUE(loaded.need_update());
     }
+}
+
+std::uint64_t file_hash(llvm::StringRef path) {
+    auto buf = llvm::MemoryBuffer::getFile(path);
+    return buf ? llvm::xxh3_64bits((*buf)->getBuffer()) : 0;
+}
+
+/// A build_at far enough in the future that every existing file clears the
+/// mtime guard and earns a stat fast path at merge.
+std::chrono::milliseconds generous_build_at() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::system_clock::now().time_since_epoch()) +
+           std::chrono::milliseconds(10'000);
+}
+
+TEST_CASE(NeedUpdateChecksAllContexts) {
+    TempDir tmp;
+    tmp.touch("a.h", "int a();\n");
+    tmp.touch("b.h", "int b();\n");
+    auto a = tmp.path("a.h");
+    auto b = tmp.path("b.h");
+
+    index::MergedIndex shard;
+    index::FileIndex fi_a, fi_b;
+    auto dep_of = [&](const std::string& path) {
+        return llvm::SmallVector<index::DepLocation>{
+            {path, 1, 0, file_hash(path)}
+        };
+    };
+    shard.merge("tuA", generous_build_at(), dep_of(a), fi_a, "int a();\n");
+    shard.merge("tuB", generous_build_at(), dep_of(b), fi_b, "int b();\n");
+
+    ASSERT_FALSE(shard.need_update());
+
+    // Only one contribution's dependency goes stale at a time; a check that
+    // stops at a single context would miss whichever the iteration order
+    // hides, so exercise both.
+    tmp.touch("b.h", "int b2();\n");
+    ASSERT_TRUE(shard.need_update());
+
+    shard.merge("tuB", generous_build_at(), dep_of(b), fi_b, "int b2();\n");
+    ASSERT_FALSE(shard.need_update());
+    tmp.touch("a.h", "int a2();\n");
+    ASSERT_TRUE(shard.need_update());
+
+    // The serialized reader shares the loop: both contexts again through a
+    // reloaded view.
+    shard.merge("tuA", generous_build_at(), dep_of(a), fi_a, "int a2();\n");
+    llvm::SmallString<1024> s;
+    llvm::raw_svector_ostream os(s);
+    shard.serialize(os);
+    auto view = index::MergedIndex(s);
+    ASSERT_FALSE(view.need_update());
+
+    tmp.touch("b.h", "int b3();\n");
+    ASSERT_TRUE(view.need_update());
+
+    // Restore b (fresh again via the hash layer), then break a: the verdict
+    // now hinges on the second context alone.
+    tmp.touch("b.h", "int b2();\n");
+    ASSERT_FALSE(view.need_update());
+    tmp.touch("a.h", "int a3();\n");
+    ASSERT_TRUE(view.need_update());
+}
+
+TEST_CASE(NeedUpdateBackdatedEdit) {
+    TempDir tmp;
+    tmp.touch("dep.h", "int old_name();\n");
+    auto dep = tmp.path("dep.h");
+
+    index::MergedIndex shard;
+    index::FileIndex fi;
+    llvm::SmallVector<index::DepLocation> deps{
+        {dep, 1, 0, file_hash(dep)}
+    };
+    shard.merge("tu", generous_build_at(), deps, fi, "content");
+    ASSERT_FALSE(shard.need_update());
+
+    // Same length, mtime rolled back: a watermark would call this fresh;
+    // stamp equality sends it to the hash layer.
+    auto recorded = file_mtime_ns(dep);
+    tmp.touch("dep.h", "int new_name();\n");
+    set_file_mtime(dep, recorded - 5'000'000'000);
+    ASSERT_TRUE(shard.need_update());
+}
+
+TEST_CASE(SerializedStampsValidate) {
+    TempDir tmp;
+    tmp.touch("dep.h", "int f();\n");
+    auto dep = tmp.path("dep.h");
+
+    index::MergedIndex shard;
+    index::FileIndex fi;
+    llvm::SmallVector<index::DepLocation> deps{
+        {dep, 1, 0, file_hash(dep)}
+    };
+    shard.merge("tu", generous_build_at(), deps, fi, "content");
+
+    llvm::SmallString<1024> s;
+    llvm::raw_svector_ostream os(s);
+    shard.serialize(os);
+    auto view = index::MergedIndex(s);
+
+    ASSERT_FALSE(view.need_update());
+
+    // Touched, not modified: the immutable stamp mismatches, the hash
+    // proves the content unchanged.
+    set_file_mtime(dep, file_mtime_ns(dep) + 5'000'000'000);
+    ASSERT_FALSE(view.need_update());
+
+    // A real edit is caught by the hash layer.
+    tmp.touch("dep.h", "int g();\n");
+    ASSERT_TRUE(view.need_update());
 }
 
 };  // TEST_SUITE(MergedIndex)

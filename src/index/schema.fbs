@@ -49,6 +49,15 @@ struct DepHash {
     content_hash : ulong;
 }
 
+// Stat fast path for one dependency: recorded only when the file provably
+// did not change since before the indexed build started, so an equal stat
+// proves the disk still holds the content the rows were built from.
+struct DepStamp {
+    path_id : uint;
+    size : ulong;
+    mtime_ns : long;
+}
+
 table CompilationContextEntry {
 path_id:
     uint;
@@ -62,6 +71,12 @@ include_locations:
     [IncludeLocation];
 dep_hashes:
     [DepHash];
+
+// Added fields read back as absent from older shards — validation then has
+// no fast path and goes by dep_hashes alone, which stays correct. That is
+// why this addition does not bump index_format_version.
+dep_stamps:
+    [DepStamp];
 }
 
 table OccurrenceEntry {
@@ -251,6 +266,13 @@ file_indices:
     [TUFileIndexEntry];
 main_file_index:
     TUFileIndexEntry;
+
+// Parallel to `paths`: hash of the bytes the indexing compile actually
+// consumed per file (0 = unavailable). The master validates its own disk
+// reads against these before pairing rows with content, and stores them
+// as the shards' staleness baselines.
+path_hashes:
+    [ulong];
 }
 
 // The blob's path table is compact: only paths referenced by the symbol

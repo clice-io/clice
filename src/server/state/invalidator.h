@@ -135,8 +135,8 @@ struct DirtySet {
     /// Executed by the context resolver, which owns the verdicts.
     llvm::SmallVector<std::uint32_t> reset_header_mode;
     /// Header sessions whose synthesized preamble embeds changed content:
-    /// zero deps.build_at so every chain file is re-validated by hash, plus
-    /// the mark_ast_dirty treatment.
+    /// drop the chain snapshot's fast paths so every chain file is
+    /// re-validated by hash, plus the mark_ast_dirty treatment.
     llvm::SmallVector<std::uint32_t> force_revalidate;
     /// Closed files whose own content changed: their index rows describe
     /// text that no longer exists. Enqueue for background reindexing as

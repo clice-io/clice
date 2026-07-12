@@ -140,6 +140,10 @@ auto CompilationUnitRef::file_content(clang::FileID fid) -> llvm::StringRef {
     return self->SM().getBufferData(fid);
 }
 
+auto CompilationUnitRef::loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef> {
+    return self->SM().getBufferDataOrNone(fid);
+}
+
 auto CompilationUnitRef::interested_file() -> clang::FileID {
     return self->SM().getMainFileID();
 }
@@ -273,14 +277,53 @@ clang::LangOptions& CompilationUnitRef::lang_options() {
     return self->instance->getLangOpts();
 }
 
-std::vector<std::string> CompilationUnitRef::deps() {
-    llvm::StringSet<> deps;
+std::vector<DepFile> CompilationUnitRef::deps() {
+    llvm::StringMap<std::uint64_t> deps;
+
+    // Hash the buffer the compiler read for this fid — the consumed bytes.
+    // The same path can appear under several fids (repeated includes); any
+    // of their buffers holds the same content, so the first one wins.
+    auto add_fid = [&](clang::FileID fid) {
+        auto path = file_path(fid);
+        if(path.empty()) {
+            return;
+        }
+        auto it = deps.try_emplace(path, 0).first;
+        if(it->second == 0) {
+            if(auto buffer = self->SM().getBufferDataOrNone(fid)) {
+                it->second = llvm::xxh3_64bits(*buffer);
+            }
+        }
+    };
+
+    /// Embedded files have no FileID (clang delivers their contents as a
+    /// single annotation token). Processing the directive loaded the file
+    /// into the SourceManager's content cache, so this looks up the very
+    /// buffer the build consumed; only an existence-only probe whose
+    /// content was never read loads it here instead. An unreadable file
+    /// hashes as 0 and the snapshot capture falls back to a
+    /// build_at-guarded disk hash.
+    auto add_file = [&](clang::OptionalFileEntryRef file) {
+        if(!file) {
+            return;
+        }
+        auto path = file_path(*file);
+        if(path.empty()) {
+            return;
+        }
+        auto it = deps.try_emplace(path, 0).first;
+        if(it->second == 0) {
+            if(auto buffer = self->SM().getMemoryBufferForFileOrNone(*file)) {
+                it->second = llvm::xxh3_64bits(buffer->getBuffer());
+            }
+        }
+    };
 
     for(auto& [fid, directive]: directives()) {
         for(auto& include: directive.includes) {
             /// A failed include leaves an invalid fid — nothing to depend on.
             if(!include.skipped && include.fid.isValid()) {
-                deps.try_emplace(file_path(include.fid));
+                add_fid(include.fid);
             }
         }
 
@@ -295,30 +338,24 @@ std::vector<std::string> CompilationUnitRef::deps() {
         /// file-creation events from the workspace watcher.
         for(auto& has_include: directive.has_includes) {
             if(has_include.fid.isValid()) {
-                deps.try_emplace(file_path(has_include.fid));
+                add_fid(has_include.fid);
             }
         }
 
-        /// Embedded files have no FileID (clang delivers their contents as
-        /// a single annotation token), so they are resolved through their
-        /// file entry instead.
         for(auto& embed: directive.embeds) {
-            if(embed.file) {
-                deps.try_emplace(file_path(*embed.file));
-            }
+            add_file(embed.file);
         }
 
         for(auto& has_embed: directive.has_embeds) {
-            if(has_embed.file) {
-                deps.try_emplace(file_path(*has_embed.file));
-            }
+            add_file(has_embed.file);
         }
     }
 
-    std::vector<std::string> result;
+    std::vector<DepFile> result;
+    result.reserve(deps.size());
 
-    for(auto& deps: deps) {
-        result.emplace_back(deps.getKey().str());
+    for(auto& dep: deps) {
+        result.emplace_back(dep.getKey().str(), dep.getValue());
     }
 
     return result;

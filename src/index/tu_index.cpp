@@ -475,7 +475,8 @@ void TUIndex::serialize(llvm::raw_ostream& os) const {
                               CreateStructVector<binary::IncludeLocation>(builder, graph.locations),
                               CreateVector(builder, syms),
                               builder.CreateVector(file_idx_vec.data(), file_idx_vec.size()),
-                              main_idx);
+                              main_idx,
+                              CreateVector(builder, graph.path_hashes));
 
     builder.Finish(tu_index);
     os.write(safe_cast<const char>(builder.GetBufferPointer()), builder.GetSize());
@@ -494,6 +495,11 @@ TUIndex TUIndex::from(const void* data) {
     for(auto loc: *root->locations()) {
         index.graph.locations.emplace_back(*safe_cast<IncludeLocation>(loc));
     }
+
+    if(root->path_hashes()) {
+        index.graph.path_hashes.assign(root->path_hashes()->begin(), root->path_hashes()->end());
+    }
+    index.graph.path_hashes.resize(index.graph.paths.size(), 0);
 
     for(auto entry: *root->symbols()) {
         auto& symbol = index.symbols[entry->symbol_id()];

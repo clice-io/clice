@@ -10,6 +10,7 @@
 
 #include "command/command.h"
 #include "command/toolchain.h"
+#include "compile/dep_file.h"
 #include "feature/document_link.h"
 #include "index/merged_index.h"
 #include "index/preamble_state.h"
@@ -35,22 +36,55 @@ class ContextResolver;
 /// Bump to discard all cached artifacts after incompatible format changes.
 constexpr inline std::uint32_t cache_format_version = 4;
 
-/// Two-layer staleness snapshot for compilation artifacts (PCH, AST, etc.).
-///
-/// Layer 1 (fast): compare each file's current mtime against build_at.
-///   If all mtimes <= build_at, the artifact is fresh (zero I/O beyond stat).
-///
-/// Layer 2 (precise): for files whose mtime changed, re-hash their content
-///   and compare against the stored hash.  If the hash matches, the file was
-///   "touched" but not actually modified — skip the rebuild.
-struct DepsSnapshot {
-    llvm::SmallVector<std::uint32_t> path_ids;
-    llvm::SmallVector<std::uint64_t> hashes;
-    std::int64_t build_at = 0;
-};
-
 /// Sentinel for "no path": path pool ids start at 0, so 0 is a real file.
 constexpr inline std::uint32_t no_path_id = ~0u;
+
+/// One dependency's freshness record inside a DepsSnapshot.
+///
+/// `hash` describes the bytes the build actually consumed (reported by the
+/// worker from the compiler's own buffers). `size`/`mtime_ns` are a stat
+/// fast path: they are only recorded when the file provably did not change
+/// since before the build started, so matching them proves the disk still
+/// holds the consumed content. mtime_ns == 0 means "no fast path" — the
+/// check falls through to the hash comparison and, on a match, repairs the
+/// fast path in place. The index shard's immutable, non-repairing form of
+/// the same fast path is `DepStamp` (merged_index.cpp).
+struct DepState {
+    std::uint32_t path_id = no_path_id;
+    std::uint64_t size = 0;
+    std::int64_t mtime_ns = 0;
+    std::uint64_t hash = 0;
+    /// The file did not exist when the artifact was built (hash is 0 then).
+    bool missing = false;
+};
+
+/// Two-layer staleness snapshot for compilation artifacts (PCH, PCM, AST,
+/// synthesized header preambles). Same vocabulary as FileTracker::FileState.
+///
+/// Layer 1 (fast): stat each dep; size and mtime_ns EQUAL to the record
+///   means unchanged (zero I/O beyond stat). Equality — not a watermark —
+///   so backdated or preserved mtimes cannot masquerade as fresh.
+///
+/// Layer 2 (precise): otherwise hash the disk content and compare against
+///   the consumed-content hash. A match means the file was touched but not
+///   modified: the record's fast path is repaired and no rebuild happens.
+struct DepsSnapshot {
+    llvm::SmallVector<DepState> deps;
+
+    bool empty() const {
+        return deps.empty();
+    }
+
+    /// Drop every fast-path baseline so the next check re-validates each
+    /// dependency by content hash (the hashes stay: they describe what the
+    /// artifact was built from). Used when embedded copies of dependency
+    /// content may disagree with the files themselves.
+    void force_revalidate() {
+        for(auto& dep: deps) {
+            dep.mtime_ns = 0;
+        }
+    }
+};
 
 /// Context for compiling a header file that lacks its own CDB entry.
 struct HeaderContext {
@@ -270,13 +304,20 @@ std::string discover_compile_commands(const Config& config, llvm::StringRef work
 /// Hash a file's content using xxh3_64bits. Returns 0 on read failure.
 std::uint64_t hash_file(llvm::StringRef path);
 
-/// Capture a two-layer staleness snapshot after a successful compilation.
-/// Interns dependency paths into the PathPool and hashes each file's content.
-DepsSnapshot capture_deps_snapshot(PathPool& pool, llvm::ArrayRef<std::string> deps);
+/// Capture a staleness snapshot from a build's reported inputs.
+///
+/// `deps` carries the consumed-content hashes the worker computed at build
+/// time; `build_at` is milliseconds since epoch, sampled before the build
+/// started. Each dependency is stat'ed once: a file untouched since
+/// `build_at` gets a {size, mtime_ns} fast-path baseline, a file modified
+/// during or after the build gets none — the next check must prove the disk
+/// still matches the consumed hash before trusting (and repairing) the stat.
+DepsSnapshot capture_deps_snapshot(PathPool& pool,
+                                   llvm::ArrayRef<DepFile> deps,
+                                   std::int64_t build_at);
 
-/// Two-layer staleness check.
-/// Layer 1 (fast): stat each dep file, compare mtime against build_at.
-/// Layer 2 (precise): for files with mtime > build_at, re-hash content.
-bool deps_changed(const PathPool& pool, const DepsSnapshot& snap);
+/// Two-layer staleness check; see DepsSnapshot. Repairs fast-path baselines
+/// in place when a hash comparison proves a touched file unchanged.
+bool deps_changed(const PathPool& pool, DepsSnapshot& snap);
 
 }  // namespace clice

@@ -55,19 +55,35 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     // must be swept below like a dropped one.
     llvm::DenseSet<std::uint32_t> touched;
 
+    // The shard pairs the worker's rows with content read from disk here; if
+    // the disk moved on since the worker read it, the rows' offsets describe
+    // bytes that no longer exist and merging would misplace every position
+    // until the next reindex. The worker's consumed-content hash arbitrates:
+    // on a mismatch the merge is skipped — the changed file fails the next
+    // staleness check (or is already pending), so a follow-up pass redoes it
+    // against the settled content. A missing hash (0) proceeds as before.
+    auto content_matches = [&](std::uint32_t tu_path_id, llvm::StringRef disk_content) {
+        auto consumed = tu_index.graph.path_hashes[tu_path_id];
+        return consumed == 0 || llvm::xxh3_64bits(disk_content) == consumed;
+    };
+
     auto merge_file_index = [&](std::uint32_t tu_path_id, index::FileIndex& file_idx) {
         auto global_path_id = file_ids_map[tu_path_id];
         auto& shard = workspace.merged_indices[global_path_id];
 
         if(tu_path_id == main_tu_path_id) {
+            auto& path_hashes = tu_index.graph.path_hashes;
             llvm::SmallVector<index::DepLocation> deps;
             deps.reserve(tu_index.graph.locations.size() + 1);
             // The TU's own content is a dependency of its shard too: without
             // it, a closed TU edited on disk with unchanged includes would
             // never look stale.
-            deps.push_back({main_tu_path, 0, 0});
+            deps.push_back({main_tu_path, 0, 0, path_hashes[main_tu_path_id]});
             for(auto& loc: tu_index.graph.locations) {
-                deps.push_back({tu_index.graph.paths[loc.path_id], loc.line, loc.include});
+                deps.push_back({tu_index.graph.paths[loc.path_id],
+                                loc.line,
+                                loc.include,
+                                path_hashes[loc.path_id]});
             }
             auto file_path = workspace.path_pool.resolve(global_path_id);
             auto buf = llvm::MemoryBuffer::getFile(file_path);
@@ -75,9 +91,17 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
                 // Overwriting the shard's stored content with nothing would
                 // silently break every position mapping for this TU; keep the
                 // old snapshot, the staleness check re-enqueues it later.
+                // `touched` shields it from the sweep below — a skip must
+                // not strip the last-known rows.
                 LOG_WARN("Skip merge for {}: cannot read content: {}",
                          file_path,
                          buf.getError().message());
+                touched.insert(global_path_id);
+                return;
+            }
+            if(!content_matches(main_tu_path_id, (*buf)->getBuffer())) {
+                LOG_INFO("Skip merge for {}: disk moved on since it was indexed", file_path);
+                touched.insert(global_path_id);
                 return;
             }
             shard.merge(main_tu_path, tu_index.built_at, deps, file_idx, (*buf)->getBuffer());
@@ -102,6 +126,14 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
             if(header_buf) {
                 header_content_storage = (*header_buf)->getBuffer().str();
                 header_content = header_content_storage;
+            }
+            // Unconditional, unlike the read above: an unreadable or
+            // truncated-to-empty header must not slip past the arbitration
+            // and pair the rows with content they were not built from.
+            if(!content_matches(tu_path_id, header_content)) {
+                LOG_INFO("Skip merge for {}: disk moved on since it was indexed", header_path);
+                touched.insert(global_path_id);
+                return;
             }
             // Keyed by the including TU so a reindex of that TU replaces its
             // prior contribution to this header's shard.

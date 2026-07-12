@@ -302,8 +302,9 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     // Headers whose synthesized preamble embeds changed chain content:
-    // zeroing build_at forces deps_changed() to re-validate every chain
-    // file by content hash; open sessions also recompile and re-trial.
+    // dropping the snapshot's fast paths forces deps_changed() to re-validate
+    // every chain file by content hash; open sessions also recompile and
+    // re-trial.
     for(auto path_id: dirty.force_revalidate) {
         contexts.invalidate_header_deps(path_id);
         if(auto session = sessions.find(path_id)) {
