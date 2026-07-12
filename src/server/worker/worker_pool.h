@@ -86,8 +86,8 @@ struct WorkerPoolOptions {
 ///     to one worker (path_id affinity), balanced by document count.
 ///
 /// The pool owns process lifecycle only: it respawns crashed workers with
-/// exponential backoff and gives a slot up after `max_crash_streak`
-/// consecutive fast crashes. It never retries requests. A request that was
+/// exponential backoff and gives a slot up once a streak exceeds
+/// `max_crash_streak` consecutive fast crashes. It never retries requests. A request that was
 /// in flight when its worker died fails with dispatch_errc::worker_crashed
 /// (or dispatch_errc::cancelled if the pool itself preempted the worker to
 /// relieve memory pressure); the caller decides whether to resend or requeue.
