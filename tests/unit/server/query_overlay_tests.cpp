@@ -278,68 +278,6 @@ int main() { @mcall[$(mcall)callee](); return 0; }
     }
 }
 
-TEST_CASE(CollectReferencesDedup) {
-    add_file("foo.h", R"(
-inline void @def[foo]() {}
-inline void bar() { @href[foo](); }
-)");
-    add_main("main.cpp", R"(
-#include "foo.h"
-int main() { @ref[foo](); return 0; }
-)");
-    open_with_overlay();
-    merge_disk_index();
-
-    auto refs = index_query.collect_references(hash_of("foo"), RelationKind::Reference);
-    std::size_t header_rows = 0;
-    for(auto& ref: refs) {
-        if(llvm::StringRef(ref.file).ends_with("foo.h")) {
-            header_rows += 1;
-            EXPECT_TRUE(llvm::StringRef(ref.context).contains("bar"));
-        }
-    }
-    EXPECT_EQ(header_rows, 1);
-}
-
-TEST_CASE(OverlaySameLineRefs) {
-    add_file("foo.h", R"(
-inline void @def[foo]() {}
-inline void bar() { @href[foo](); foo(); }
-)");
-    add_main("main.cpp", R"(
-#include "foo.h"
-int main() { @ref[foo](); return 0; }
-)");
-    open_with_overlay();
-
-    // Two distinct references on one header line, served only by the
-    // overlay: position-level dedup keys must keep both.
-    auto refs = index_query.collect_references(hash_of("foo"), RelationKind::Reference);
-    std::size_t header_rows = 0;
-    for(auto& ref: refs) {
-        if(llvm::StringRef(ref.file).ends_with("foo.h"))
-            header_rows += 1;
-    }
-    EXPECT_EQ(header_rows, 2);
-}
-
-TEST_CASE(PreambleMacroReferences) {
-    add_main("main.cpp", R"(#define @macro[FOO] 1
-#if FOO
-#endif
-int main() { return 0; }
-)");
-    open_with_overlay();
-
-    // The `#if FOO` reference sits in the preamble region, invisible to
-    // the per-edit index; only the overlay's main-file entry has it.
-    auto refs = index_query.collect_references(hash_of("FOO"), RelationKind::Reference);
-    bool found = std::ranges::any_of(refs, [&](auto& ref) {
-        return ref.line == 2 && llvm::StringRef(ref.context).contains("#if FOO");
-    });
-    EXPECT_TRUE(found);
-}
-
 TEST_CASE(OpenHeaderTargetsExcluded) {
     add_file("base.h", R"(
 struct @b[Base] {};
@@ -390,59 +328,44 @@ TEST_CASE(MacroDefinitionText) {
     add_main("main.cpp", R"(#define @macro[FOO] 1
 int main() { return 0; }
 )");
-    open_with_overlay();
-    session->file_index = index::FileIndex();
-    session->symbols = index::SymbolTable();
+    ASSERT_TRUE(compile());
+    full_index = index::TUIndex::build(*unit);
+    merge_disk_index();
 
     // Macro Definition relations carry the full #define extent, so the
-    // agentic text path works for a preamble macro via the overlay's
-    // main-file entry.
+    // agentic text path works for macros through the disk index.
     auto text = index_query.get_definition_text(hash_of("FOO"));
     ASSERT_TRUE(text.has_value());
-    EXPECT_TRUE(llvm::StringRef(text->file).ends_with("main.cpp"));
     EXPECT_TRUE(llvm::StringRef(text->text).contains("FOO"));
 }
 
 TEST_CASE(SharedPreambleScoped) {
-    add_main("main.cpp", R"(#define @macro[FOO] 1
+    add_main("main.cpp", R"(#define @macro[$(macro)FOO] 1
 #if FOO
 #endif
 int main() { return 0; }
 )");
     open_with_overlay();
+    session->file_index = index::FileIndex();
+    session->symbols = index::SymbolTable();
 
     // A second file with a byte-identical preamble shares the PCH (the
-    // key excludes the source path), but the main-file entry carries
+    // key excludes the source path), but the preamble entry carries
     // file-local macro identities — its rows must stay scoped to the
     // file that built the blob.
     auto other_path = std::string(llvm::sys::path::parent_path(main_path)) + "/other.cpp";
     auto other = session_store.open(workspace.path_pool.intern(other_path));
     other->text = session->text;
     other->line_starts = session->line_starts;
-    other->file_index = index::FileIndex();
-    other->symbols = index::SymbolTable();
     other->ast_dirty = false;
     other->pch_key = session->pch_key;
 
-    auto refs = index_query.collect_references(hash_of("FOO"), RelationKind::Reference);
-    ASSERT_EQ(refs.size(), 1);
-    EXPECT_TRUE(llvm::StringRef(refs[0].file).ends_with("main.cpp"));
-}
-
-TEST_CASE(DefinitionTextFromOverlay) {
-    add_file("foo.h", R"(
-inline void @def[foo]() {}
-)");
-    add_main("main.cpp", R"(
-#include "foo.h"
-int main() { @ref[foo](); return 0; }
-)");
-    open_with_overlay();
-
-    auto text = index_query.get_definition_text(hash_of("foo"));
-    ASSERT_TRUE(text.has_value());
-    EXPECT_TRUE(llvm::StringRef(text->file).ends_with("foo.h"));
-    EXPECT_TRUE(llvm::StringRef(text->text).contains("void foo"));
+    auto locations = index_query.query_relations(main_path,
+                                                 position_of("macro"),
+                                                 RelationKind::Reference,
+                                                 session.get());
+    ASSERT_EQ(locations.size(), 1);
+    EXPECT_TRUE(llvm::StringRef(locations[0].uri).ends_with("main.cpp"));
 }
 
 TEST_CASE(DirtyPreambleServed) {

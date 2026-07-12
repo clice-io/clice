@@ -676,63 +676,6 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
     if(session_result)
         return session_result;
 
-    // Preamble entries: definitions in the buffer's own preamble region
-    // (a #define above the bound), extracted from the session text.
-    std::optional<DefinitionText> overlay_result;
-    visit_preambles(
-        [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            auto map = session.line_map();
-            state.lookup_preamble(hash, RelationKind::Definition, [&](const index::Relation& r) {
-                auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
-                if(def_range.begin >= def_range.end || def_range.end > session.text.size())
-                    return true;
-                auto range = map.to_range(def_range.begin, def_range.end);
-                if(!range)
-                    return true;
-                overlay_result = DefinitionText{
-                    .file = std::string(workspace.path_pool.resolve(id)),
-                    .start_line = static_cast<int>(range->start.line) + 1,
-                    .end_line = static_cast<int>(range->end.line) + 1,
-                    .text = std::string(
-                        session.text.substr(def_range.begin, def_range.end - def_range.begin)),
-                };
-                return false;
-            });
-            return !overlay_result.has_value();
-        });
-    if(overlay_result)
-        return overlay_result;
-
-    // PCH overlays store each header's content, so definition text is
-    // extractable even for headers no disk shard covers.
-    visit_overlays([&](const index::PreambleState& state) {
-        state.lookup(hash,
-                     RelationKind::Definition,
-                     [&](const index::PreambleState::File& file, const index::Relation& r) {
-                         if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
-                             return true;
-                         auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
-                         if(def_range.begin >= def_range.end || def_range.end > file.content.size())
-                             return true;
-                         lsp::LineMap map(file.content, file.line_starts);
-                         auto range = map.to_range(def_range.begin, def_range.end);
-                         if(!range)
-                             return true;
-                         overlay_result = DefinitionText{
-                             .file = file.path.str(),
-                             .start_line = static_cast<int>(range->start.line) + 1,
-                             .end_line = static_cast<int>(range->end.line) + 1,
-                             .text =
-                                 std::string(file.content.substr(def_range.begin,
-                                                                 def_range.end - def_range.begin)),
-                         };
-                         return false;
-                     });
-        return !overlay_result.has_value();
-    });
-    if(overlay_result)
-        return overlay_result;
-
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it == workspace.project_index.symbols.end())
         return std::nullopt;
@@ -778,11 +721,6 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
                                                                              RelationKind kind) {
     std::vector<ReferenceWithContext> results;
 
-    // Row identity is file:line:character. Every source registers its rows
-    // so overlay repeats of a physical reference another source already
-    // produced collapse, while distinct same-line references survive.
-    llvm::StringSet<> seen_rows;
-
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
@@ -803,7 +741,6 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
                 auto pos = map.to_position(r.range.begin);
                 if(!pos)
                     return true;
-                seen_rows.insert(std::format("{}:{}:{}", file_path, pos->line, pos->character));
                 results.push_back(ReferenceWithContext{
                     .file = file_path.str(),
                     .line = static_cast<int>(pos->line) + 1,
@@ -821,7 +758,6 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
             auto pos = map.to_position(rel.range.begin);
             if(!pos)
                 return true;
-            seen_rows.insert(std::format("{}:{}:{}", file_path, pos->line, pos->character));
             results.push_back(ReferenceWithContext{
                 .file = file_path.str(),
                 .line = static_cast<int>(pos->line) + 1,
@@ -831,56 +767,6 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
         });
         return true;
     });
-
-    // PCH overlay header entries may repeat rows a shard already produced
-    // (same header, same disk content); the position-level keys collapse
-    // those repeats while keeping distinct same-line references.
-    visit_overlays([&](const index::PreambleState& state) {
-        state.lookup(
-            hash,
-            kind,
-            [&](const index::PreambleState::File& file, const index::Relation& rel) {
-                if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
-                    return true;
-                lsp::LineMap map(file.content, file.line_starts);
-                auto pos = map.to_position(rel.range.begin);
-                if(!pos)
-                    return true;
-                if(!seen_rows.insert(std::format("{}:{}:{}", file.path, pos->line, pos->character))
-                        .second)
-                    return true;
-                results.push_back(ReferenceWithContext{
-                    .file = file.path.str(),
-                    .line = static_cast<int>(pos->line) + 1,
-                    .context = extract_line(file.content, rel.range.begin),
-                });
-                return true;
-            });
-        return true;
-    });
-
-    // Preamble entries: references in the buffer's own preamble region
-    // (`#if FOO` above the bound), invisible to the per-edit index.
-    visit_preambles(
-        [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            auto map = session.line_map();
-            auto file_path = workspace.path_pool.resolve(id);
-            state.lookup_preamble(hash, kind, [&](const index::Relation& rel) {
-                auto pos = map.to_position(rel.range.begin);
-                if(!pos)
-                    return true;
-                if(!seen_rows.insert(std::format("{}:{}:{}", file_path, pos->line, pos->character))
-                        .second)
-                    return true;
-                results.push_back(ReferenceWithContext{
-                    .file = file_path.str(),
-                    .line = static_cast<int>(pos->line) + 1,
-                    .context = extract_line(session.text, rel.range.begin),
-                });
-                return true;
-            });
-            return true;
-        });
 
     return results;
 }
