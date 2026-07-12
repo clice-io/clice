@@ -18,7 +18,6 @@ namespace clice {
 
 class ContextResolver;
 class WorkerPool;
-struct SessionStore;
 
 /// Why a file awaits re-indexing. The invalidation engine knows the cause
 /// at enqueue time, so queries can decide in O(1) whether a pending file's
@@ -56,10 +55,8 @@ public:
     Indexer(kota::event_loop& loop,
             Workspace& workspace,
             WorkerPool& pool,
-            ContextResolver& contexts,
-            const SessionStore& sessions) :
-        loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts),
-        sessions(sessions) {}
+            ContextResolver& contexts) :
+        loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts) {}
 
     /// Temporarily pause background indexing to give priority to user
     /// requests.  Indexing tasks already dispatched to workers continue,
@@ -182,7 +179,6 @@ private:
 
     /// Open documents, read-only. A file with an open Session is skipped by
     /// background indexing (its buffer index is authoritative).
-    const SessionStore& sessions;
 
     /// Background indexing queue and scheduling state.  pending_ids mirrors
     /// the un-consumed tail of index_queue so enqueue can dedupe; the queue

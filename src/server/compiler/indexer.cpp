@@ -413,8 +413,10 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                                 std::size_t total) {
     auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
 
-    if(sessions.find(server_path_id) != nullptr)
-        co_return;
+    // Open files are indexed like closed ones: the shard is the file's
+    // disk truth, which disk-only consumers (the agentic transport) need
+    // regardless of any live buffer. LSP queries already skip open files'
+    // shards in favor of their sessions, so the two never mix.
 
     // The engine's own observation is authoritative for content changes:
     // it saw the event. The dep-hash check below cannot be trusted to see
