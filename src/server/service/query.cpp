@@ -28,6 +28,9 @@ namespace clice {
 namespace lsp = kota::ipc::lsp;
 
 void IndexQuery::visit_sessions(SessionVisitor visitor) const {
+    if(options.disk_only) {
+        return;
+    }
     sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
         // Freshness contract, clause 3: a dirty session's file index may
         // describe a buffer that no longer exists — skip it.
@@ -57,6 +60,9 @@ std::shared_ptr<index::PreambleState> IndexQuery::overlay_of(const Session& sess
 
 void IndexQuery::visit_overlays(
     llvm::function_ref<bool(const index::PreambleState&)> visitor) const {
+    if(options.disk_only) {
+        return;
+    }
     // Sessions with identical preambles share one blob; visit it once.
     llvm::StringSet<> seen;
     sessions.for_each([&](std::uint32_t, const Session& session) -> bool {
@@ -71,6 +77,9 @@ void IndexQuery::visit_overlays(
 void IndexQuery::visit_preambles(
     llvm::function_ref<bool(std::uint32_t, const Session&, const index::PreambleState&)> visitor)
     const {
+    if(options.disk_only) {
+        return;
+    }
     sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
         auto state = overlay_of(session);
         if(!state || !serves_preamble(session, *state)) {
@@ -124,6 +133,10 @@ static void dedup_locations(std::vector<protocol::Location>& locations) {
         return key(lhs) == key(rhs);
     });
     locations.erase(dup.begin(), dup.end());
+}
+
+bool IndexQuery::skip_shard(std::uint32_t path_id) const {
+    return (!options.disk_only && is_path_open(path_id)) || skip_stale_contribution(path_id);
 }
 
 bool IndexQuery::skip_stale_contribution(std::uint32_t path_id) const {
@@ -276,7 +289,7 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     auto sym_it = workspace.project_index.symbols.find(hit.hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_path_open(file_id) || skip_stale_contribution(file_id))
+            if(skip_shard(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -454,7 +467,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
         return std::nullopt;
 
     for(auto file_id: sym_it->second.reference_files) {
-        if(is_path_open(file_id) || skip_stale_contribution(file_id))
+        if(skip_shard(file_id))
             continue;
         auto shard_it = workspace.merged_indices.find(file_id);
         if(shard_it == workspace.merged_indices.end())
@@ -508,7 +521,7 @@ void IndexQuery::collect_grouped_relations(
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_path_open(file_id) || skip_stale_contribution(file_id))
+            if(skip_shard(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -577,7 +590,7 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_path_open(file_id) || skip_stale_contribution(file_id))
+            if(skip_shard(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -652,36 +665,12 @@ static std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
 }
 
 std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index::SymbolHash hash) {
-    std::optional<DefinitionText> session_result;
-    visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
-        auto map = session.line_map();
-        session.file_index->lookup(hash, RelationKind::Definition, [&](const index::Relation& rel) {
-            auto def_range = std::bit_cast<LocalSourceRange>(rel.target_symbol);
-            if(def_range.begin >= def_range.end || def_range.end > session.text.size())
-                return true;
-            auto range = map.to_range(def_range.begin, def_range.end);
-            if(!range)
-                return true;
-            session_result = DefinitionText{
-                .file = std::string(workspace.path_pool.resolve(id)),
-                .start_line = static_cast<int>(range->start.line) + 1,
-                .end_line = static_cast<int>(range->end.line) + 1,
-                .text = std::string(
-                    session.text.substr(def_range.begin, def_range.end - def_range.begin)),
-            };
-            return false;
-        });
-        return !session_result.has_value();
-    });
-    if(session_result)
-        return session_result;
-
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it == workspace.project_index.symbols.end())
         return std::nullopt;
 
     for(auto file_id: sym_it->second.reference_files) {
-        if(is_path_open(file_id) || skip_stale_contribution(file_id))
+        if(skip_shard(file_id))
             continue;
         auto shard_it = workspace.merged_indices.find(file_id);
         if(shard_it == workspace.merged_indices.end())
@@ -724,7 +713,7 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
-            if(is_path_open(file_id) || skip_stale_contribution(file_id))
+            if(skip_shard(file_id))
                 continue;
             auto shard_it = workspace.merged_indices.find(file_id);
             if(shard_it == workspace.merged_indices.end())
@@ -750,23 +739,6 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
             });
         }
     }
-
-    visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
-        auto map = session.line_map();
-        auto file_path = workspace.path_pool.resolve(id);
-        session.file_index->lookup(hash, kind, [&](const index::Relation& rel) {
-            auto pos = map.to_position(rel.range.begin);
-            if(!pos)
-                return true;
-            results.push_back(ReferenceWithContext{
-                .file = file_path.str(),
-                .line = static_cast<int>(pos->line) + 1,
-                .context = extract_line(session.text, rel.range.begin),
-            });
-            return true;
-        });
-        return true;
-    });
 
     return results;
 }
@@ -960,11 +932,6 @@ std::vector<ResolvedSymbol> IndexQuery::locate_symbols(const agentic::ReadSymbol
 
         for(auto& [hash, symbol]: workspace.project_index.symbols)
             try_symbol(hash, symbol);
-        visit_sessions([&](std::uint32_t, const Session& session) -> bool {
-            for(auto& [hash, symbol]: *session.symbols)
-                try_symbol(hash, symbol);
-            return true;
-        });
 
         if(!exact_matches.empty())
             return exact_matches;
@@ -974,34 +941,6 @@ std::vector<ResolvedSymbol> IndexQuery::locate_symbols(const agentic::ReadSymbol
     if(loc.path.has_value() && loc.line.has_value()) {
         auto path_str = *loc.path;
         auto target_line = static_cast<protocol::uinteger>(*loc.line - 1);
-
-        auto pool_it = workspace.path_pool.cache.find(path_str);
-        auto server_id = pool_it != workspace.path_pool.cache.end() ? pool_it->second : ~0u;
-        if(server_id != ~0u) {
-            std::vector<ResolvedSymbol> session_result;
-            with_session(server_id, [&](const Session& session) {
-                auto map = session.line_map();
-                for(auto& [hash, rels]: session.file_index->relations) {
-                    for(auto& rel: rels) {
-                        if(rel.kind.value() != RelationKind::Definition)
-                            continue;
-                        auto start = map.to_position(rel.range.begin);
-                        if(start && start->line == target_line) {
-                            std::string name;
-                            SymbolKind kind;
-                            if(!find_symbol_info(hash, name, kind))
-                                continue;
-                            if(kind == SymbolKind::Parameter || kind == SymbolKind::Label)
-                                continue;
-                            session_result.push_back(
-                                {hash, std::move(name), kind, path_str, *loc.line});
-                        }
-                    }
-                }
-            });
-            if(!session_result.empty())
-                return session_result;
-        }
 
         auto path_id = workspace.path_pool.find(path_str);
         if(!path_id)

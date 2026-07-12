@@ -25,8 +25,9 @@ Workspace workspace;
 SessionStore session_store;
 WorkerPool pool{loop};
 ContextResolver resolver{workspace};
-Indexer indexer{loop, workspace, pool, resolver, session_store};
+Indexer indexer{loop, workspace, pool, resolver};
 IndexQuery index_query{workspace, session_store, indexer};
+IndexQuery agent_query{workspace, session_store, indexer, {.disk_only = true}};
 
 TempDir dir;
 index::TUIndex full_index;
@@ -334,7 +335,7 @@ int main() { return 0; }
 
     // Macro Definition relations carry the full #define extent, so the
     // agentic text path works for macros through the disk index.
-    auto text = index_query.get_definition_text(hash_of("FOO"));
+    auto text = agent_query.get_definition_text(hash_of("FOO"));
     ASSERT_TRUE(text.has_value());
     EXPECT_TRUE(llvm::StringRef(text->text).contains("FOO"));
 }

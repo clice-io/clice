@@ -137,6 +137,12 @@ public:
     Compiler compiler;
     Indexer indexer;
     IndexQuery index_query;
+
+    /// The agentic transport's view of the index: disk truth only.
+    /// Agents read files from disk, so buffer state must not leak into
+    /// their answers — see IndexQueryOptions::disk_only.
+    IndexQuery agent_query;
+
     FeatureRouter features;
     Invalidator invalidator;
 
