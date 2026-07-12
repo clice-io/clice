@@ -7,6 +7,7 @@ server restarts via cache.json, and are properly reused across sessions.
 
 import asyncio
 import json
+import os
 
 import pytest
 from lsprotocol.types import (
@@ -257,8 +258,10 @@ async def test_pcm_cache_entry_has_deps(client, test_data_dir, tmp_path):
     for entry in cache["pcm"]:
         deps = entry.get("deps", [])
         assert deps, f"PCM entry {entry.get('module_name')} has no deps"
-        source = paths[entry["source_file"]]
-        dep_paths = {paths[d["path"]] for d in deps}
+        # Deps are canonicalized through real_path; compare resolved forms
+        # (on macOS the pytest tmp dir sits behind the /var symlink).
+        source = os.path.realpath(paths[entry["source_file"]])
+        dep_paths = {os.path.realpath(paths[d["path"]]) for d in deps}
         assert source in dep_paths, "Module source must be its own dependency"
         assert all(d["hash"] != 0 for d in deps)
 
