@@ -329,7 +329,13 @@ void CacheStore::register_namespace(CacheNamespace ns) {
     // checkpoint of a crashed instance.  Aux blobs are collected aside and
     // attached after the scan — directory order is arbitrary, so an aux
     // file may be seen before its primary.
-    llvm::StringMap<std::uint64_t> aux_sizes;
+    struct AuxBlob {
+        std::uint64_t size;
+        llvm::sys::TimePoint<> mtime;
+    };
+
+    llvm::StringMap<AuxBlob> aux_blobs;
+    llvm::StringMap<llvm::sys::TimePoint<>> primary_mtimes;
     std::error_code ec;
     for(auto iter = llvm::sys::fs::directory_iterator(ns_state.dir, ec);
         !ec && iter != llvm::sys::fs::directory_iterator();
@@ -344,7 +350,8 @@ void CacheStore::register_namespace(CacheNamespace ns) {
 
         auto& aux_ext = ns_state.config.aux_extension;
         if(!aux_ext.empty() && filename.ends_with(aux_ext)) {
-            aux_sizes[filename.drop_back(aux_ext.size())] = status.getSize();
+            aux_blobs[filename.drop_back(aux_ext.size())] = {status.getSize(),
+                                                             status.getLastModificationTime()};
             continue;
         }
 
@@ -362,17 +369,24 @@ void CacheStore::register_namespace(CacheNamespace ns) {
 
         ns_state.entries[filename] = {status.getSize(), 0, atime};
         ns_state.total_size += status.getSize();
+        primary_mtimes[filename] = status.getLastModificationTime();
     }
 
-    // Attach aux blobs to their entries; an aux without a primary is crash
-    // residue (a pair evicted halfway) — remove it, nothing references it.
-    for(auto& [key, size]: aux_sizes) {
-        if(auto it = ns_state.entries.find(key); it != ns_state.entries.end()) {
-            it->second.aux_size = size;
-            ns_state.total_size += size;
+    // Attach aux blobs to their entries. An aux without a primary is crash
+    // residue (a pair evicted halfway); an aux OLDER than its primary is
+    // residue of a removal that failed while the file was held open (see
+    // reset_aux_locked) — pairs commit primary-first, so a legitimate aux
+    // is never older, and adopting one would pair a fresh primary with
+    // stale aux data. Remove both kinds, nothing references them.
+    for(auto& entry: aux_blobs) {
+        auto key = entry.getKey();
+        auto it = ns_state.entries.find(key);
+        if(it != ns_state.entries.end() && entry.getValue().mtime >= primary_mtimes[key]) {
+            it->second.aux_size = entry.getValue().size;
+            ns_state.total_size += entry.getValue().size;
         } else {
             llvm::sys::fs::remove(state->aux_blob_path(ns_state, key));
-            LOG_DEBUG("CacheStore: removed orphan aux blob {} in {}", key, ns_state.config.name);
+            LOG_DEBUG("CacheStore: removed stale aux blob {} in {}", key, ns_state.config.name);
         }
     }
 

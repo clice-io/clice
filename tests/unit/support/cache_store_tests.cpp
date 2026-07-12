@@ -554,6 +554,36 @@ TEST_CASE(PairSurvivesReopen) {
     ASSERT_EQ(fs::read(*hit).value_or(""), "aux");
 }
 
+TEST_CASE(StaleAuxDropped) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_paired(store);
+        put(store, "pch", "k1", "primary");
+        put_aux(store, "pch", "k1", "aux");
+        store.shutdown();
+    }
+
+    // Residue of an aux removal that failed while the file was held open
+    // (see reset_aux_locked): the primary was republished, the old aux
+    // stayed behind. Pairs commit primary-first, so a legitimate aux is
+    // never older than its primary — registration must not adopt this one.
+    auto aux_path = tmp.path("root/cache/v1/pch/k1.pch.idx");
+    auto fd = llvm::sys::fs::openNativeFileForWrite(aux_path,
+                                                    llvm::sys::fs::CD_OpenExisting,
+                                                    llvm::sys::fs::OF_None);
+    ASSERT_TRUE(bool(fd));
+    auto old_time = std::chrono::system_clock::now() - std::chrono::hours(1);
+    ASSERT_FALSE(bool(llvm::sys::fs::setLastAccessAndModificationTime(*fd, old_time, old_time)));
+    llvm::sys::fs::closeFile(*fd);
+
+    auto store = open_store(tmp);
+    register_paired(store);
+    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
+    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
+    ASSERT_FALSE(fs::read(aux_path).has_value());
+}
+
 TEST_CASE(OrphanAuxSwept) {
     TempDir tmp;
     {
