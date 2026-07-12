@@ -57,6 +57,46 @@ index::SymbolHash hash_of(llvm::StringRef name,
     return hash;
 }
 
+TEST_CASE(ForcedIncludeServed) {
+    add_file("forced.h", R"(int @def[forced_value] = 1;)");
+    add_main("main.cpp", R"(int x = forced_value;)");
+
+    // A compile-command forced include: clang records its include edge in
+    // the predefines buffer, which is a valid location — so unlike the
+    // synthetic buffers themselves, the file must stay in the blob under
+    // its own path.
+    prepare();
+    owned_args.insert(owned_args.end() - 1, "-include");
+    owned_args.insert(owned_args.end() - 1, TestVFS::path("forced.h"));
+    params.arguments.clear();
+    for(auto& arg: owned_args) {
+        params.arguments.push_back(arg.c_str());
+    }
+    ASSERT_TRUE(try_compile());
+    tu_index = index::TUIndex::build(*unit);
+
+    auto blob_path = dir.path("state.pch.idx");
+    std::error_code ec;
+    llvm::raw_fd_ostream os(blob_path, ec);
+    ASSERT_FALSE(bool(ec));
+    index::PreambleState::serialize(*unit, tu_index, {}, {}, {}, os);
+    os.close();
+
+    state = index::PreambleState::load(blob_path);
+    ASSERT_TRUE(state != nullptr);
+
+    bool found = false;
+    state->lookup(hash_of("forced_value"),
+                  RelationKind::Definition,
+                  [&](const index::PreambleState::File& file, const index::Relation& r) {
+                      EXPECT_TRUE(file.path.ends_with("forced.h"));
+                      EXPECT_EQ(dump(r.range), dump(range("def", "forced.h")));
+                      found = true;
+                      return false;
+                  });
+    EXPECT_TRUE(found);
+}
+
 TEST_CASE(HeaderRelationLookup) {
     add_file("foo.h", R"(
 inline void @def[foo]() {}

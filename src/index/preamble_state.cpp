@@ -63,10 +63,12 @@ void PreambleState::serialize(CompilationUnitRef unit,
     Offsets<binary::PreambleFileEntry> files;
     files.reserve(index.file_indices.size());
     for(auto& [fid, file_index]: index.file_indices) {
-        // A file with no include edge (the predefines buffer, a
-        // synthesized prefix injected via -include) has no real path to
-        // attribute rows to — path_id() would misfile them under the
-        // source file. Such rows are never servable; don't write them.
+        // A file with no include edge is a synthetic buffer (predefines,
+        // <command line>): it has no real path to attribute rows to, and
+        // path_id() would misfile them under the source file. Real files
+        // forced in via -include are not affected — clang records their
+        // include edge in the predefines buffer, which is a valid
+        // location (covered by ForcedIncludeServed).
         if(index.graph.include_location_id(fid) == static_cast<std::uint32_t>(-1)) {
             continue;
         }
