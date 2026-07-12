@@ -375,9 +375,11 @@ void CacheStore::register_namespace(CacheNamespace ns) {
     // Attach aux blobs to their entries. An aux without a primary is crash
     // residue (a pair evicted halfway); an aux OLDER than its primary is
     // residue of a removal that failed while the file was held open (see
-    // reset_aux_locked) — pairs commit primary-first, so a legitimate aux
-    // is never older, and adopting one would pair a fresh primary with
-    // stale aux data. Remove both kinds, nothing references them.
+    // reset_aux_locked) — writers put the aux file on disk only after the
+    // primary is fully flushed (see handle_build_pch) and pairs commit
+    // primary-first, so a legitimate aux is never older, and adopting one
+    // would pair a fresh primary with stale aux data. Remove both kinds,
+    // nothing references them.
     for(auto& entry: aux_blobs) {
         auto key = entry.getKey();
         auto it = ns_state.entries.find(key);

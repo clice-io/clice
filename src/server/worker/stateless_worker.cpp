@@ -54,17 +54,30 @@ static std::string collect_errors(CompilationUnit& unit) {
 }
 
 /// Serialize the preamble's PreambleState blob (full index + document
-/// links + inactive regions) next to the PCH. Runs while the freshly
+/// links + inactive regions) into a string. Runs while the freshly
 /// parsed AST is still in memory — the only moment the preamble's index
-/// is obtainable without deserializing the whole PCH. Returns an error
-/// description on failure so the master's anomaly carries the cause.
-static std::optional<std::string> write_preamble_state(CompilationUnit& unit,
-                                                       std::uint32_t preamble_bound,
-                                                       llvm::StringRef output_path) {
+/// is obtainable without deserializing the whole PCH. The file write
+/// happens separately, after the PCH itself is flushed.
+static std::string serialize_preamble_state(CompilationUnit& unit, std::uint32_t preamble_bound) {
     auto tu_index = index::TUIndex::build(unit);
     auto links = feature::document_links(unit);
     auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
 
+    std::string blob;
+    llvm::raw_string_ostream os(blob);
+    index::PreambleState::serialize(unit,
+                                    tu_index,
+                                    links,
+                                    inactive.regions,
+                                    inactive.open_stack,
+                                    os);
+    return blob;
+}
+
+/// Write the serialized blob next to the PCH. Returns an error description
+/// on failure so the master's anomaly carries the cause.
+static std::optional<std::string> write_preamble_state(llvm::StringRef blob,
+                                                       llvm::StringRef output_path) {
     std::error_code ec;
     llvm::raw_fd_ostream os(output_path, ec);
     if(ec) {
@@ -73,12 +86,7 @@ static std::optional<std::string> write_preamble_state(CompilationUnit& unit,
         LOG_ERROR("BuildPCH: {}", message);
         return message;
     }
-    index::PreambleState::serialize(unit,
-                                    tu_index,
-                                    links,
-                                    inactive.regions,
-                                    inactive.open_stack,
-                                    os);
+    os << blob;
     os.flush();
     if(os.has_error()) {
         auto message = std::format("failed writing PreambleState blob {}: {}",
@@ -123,22 +131,29 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     if(!success)
         errors = collect_errors(unit);
 
-    // The PCH is only served together with its PreambleState blob, so a
+    std::string blob;
+    if(success) {
+        blob = serialize_preamble_state(unit, params.preamble_bound);
+    }
+
+    // Destroy CompilationUnit to flush PCH to disk.
+    unit = CompilationUnit(nullptr);
+
+    // Write the blob strictly after the PCH flush: the CacheStore's
+    // restart adoption validates a pair by "aux not older than primary"
+    // (renames preserve mtimes), so the on-disk order must match the
+    // logical one. The PCH is only served together with its blob, so a
     // blob write failure fails the whole build. It is an internal I/O
     // failure, never a user-code problem — must not be downgraded to an
     // expected build failure.
     bool internal_error = false;
     if(success) {
-        if(auto error =
-               write_preamble_state(unit, params.preamble_bound, params.index_output_path)) {
+        if(auto error = write_preamble_state(blob, params.index_output_path)) {
             success = false;
             internal_error = true;
             errors = std::move(*error);
         }
     }
-
-    // Destroy CompilationUnit to flush PCH to disk.
-    unit = CompilationUnit(nullptr);
 
     if(success) {
         LOG_INFO("BuildPCH done: file={}, output={}, {}ms", params.file, tmp_path, timer.ms());
