@@ -286,9 +286,13 @@ std::vector<std::string> CompilationUnitRef::deps() {
 
         /// FIXME: Not-found `__has_include`/`__has_embed` probes leave no
         /// trace here, so creating the probed file later cannot invalidate
-        /// products built while it was missing. Tracking them requires the
-        /// candidate paths of the failed lookup (clang's preamble keeps a
-        /// MissingFiles set for exactly this), not just the hits.
+        /// products built while it was missing. `clang -MD` drops misses
+        /// the same way — the build ecosystem accepts this hole, and even
+        /// clang's preamble simulates the failed lookup's candidate paths
+        /// only for `#include` misses. Rather than stat'ing candidate sets
+        /// per freshness check, the right home is the invalidation
+        /// pipeline: persist unresolved lookups and match them against
+        /// file-creation events from the workspace watcher.
         for(auto& has_include: directive.has_includes) {
             if(has_include.fid.isValid()) {
                 deps.try_emplace(file_path(has_include.fid));
