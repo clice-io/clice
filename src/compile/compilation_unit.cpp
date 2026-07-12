@@ -1,6 +1,7 @@
 #include "compile/implement.h"
 #include "index/usr.h"
 #include "semantic/ast_utility.h"
+#include "support/filesystem.h"
 
 #include "kota/ipc/lsp/text.h"
 
@@ -82,25 +83,29 @@ auto CompilationUnitRef::file_offset(clang::SourceLocation location) -> std::uin
     return self->SM().getFileOffset(location);
 }
 
-auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
-    if(!fid.isValid())
-        return {};
-    if(auto it = self->path_cache.find(fid); it != self->path_cache.end()) {
+auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef {
+    if(auto it = self->path_cache.find(&entry.getFileEntry()); it != self->path_cache.end()) {
         return it->second;
     }
 
-    auto entry = self->SM().getFileEntryRefForID(fid);
-    if(!entry) {
-        return {};
-    }
+    auto& fm = self->SM().getFileManager();
 
-    llvm::SmallString<128> path;
+    /// Absolutize against the compile's working directory first, then
+    /// resolve through the compiler's VFS so remapped and in-memory
+    /// files canonicalize like on-disk ones. Since the cache is keyed
+    /// by the inode-unique FileEntry, every symlinked spelling of a
+    /// file collapses to a single path.
+    llvm::SmallString<128> path(entry.getName());
+    fm.makeAbsolutePath(path);
 
-    /// Try to get the real path of the file.
-    auto name = entry->getName();
-    if(auto error = llvm::sys::fs::real_path(name, path)) {
-        /// If failed, use the virtual path.
-        path = name;
+    llvm::SmallString<128> real;
+    if(auto error = fm.getVirtualFileSystem().getRealPath(path, real)) {
+        /// The VFS cannot resolve it; keep the absolute path with dot
+        /// segments removed rather than a raw spelling — consumers stat
+        /// these paths from a different working directory.
+        path::remove_dots(path, /*remove_dot_dot=*/true);
+    } else {
+        path = real;
     }
     assert(!path.empty() && "Invalid file path");
 
@@ -110,9 +115,22 @@ auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
     memcpy(data, path.data(), size);
     data[size] = '\0';
 
-    auto [it, inserted] = self->path_cache.try_emplace(fid, llvm::StringRef(data, size));
+    auto [it, inserted] =
+        self->path_cache.try_emplace(&entry.getFileEntry(), llvm::StringRef(data, size));
     assert(inserted && "File path already exists");
     return it->second;
+}
+
+auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
+    if(!fid.isValid())
+        return {};
+
+    auto entry = self->SM().getFileEntryRefForID(fid);
+    if(!entry) {
+        return {};
+    }
+
+    return file_path(*entry);
 }
 
 auto CompilationUnitRef::file_content(clang::FileID fid) -> llvm::StringRef {
@@ -255,7 +273,16 @@ clang::LangOptions& CompilationUnitRef::lang_options() {
 std::vector<std::string> CompilationUnitRef::deps() {
     llvm::StringSet<> deps;
 
-    /// FIXME: consider `#embed` and `__has_embed`.
+    /// Embedded files have no FileID (clang delivers their contents as a
+    /// single annotation token), so they are resolved through their file
+    /// entry instead.
+    auto add_file = [&](clang::OptionalFileEntryRef file) {
+        if(file) {
+            if(auto path = file_path(*file); !path.empty()) {
+                deps.try_emplace(path);
+            }
+        }
+    };
 
     for(auto& [fid, directive]: directives()) {
         for(auto& include: directive.includes) {
@@ -274,6 +301,14 @@ std::vector<std::string> CompilationUnitRef::deps() {
                     deps.try_emplace(path);
                 }
             }
+        }
+
+        for(auto& embed: directive.embeds) {
+            add_file(embed.file);
+        }
+
+        for(auto& has_embed: directive.has_embeds) {
+            add_file(has_embed.file);
         }
     }
 
