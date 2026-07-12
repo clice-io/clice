@@ -131,8 +131,10 @@ public:
     /// null-terminated.
     auto file_path(clang::FileEntryRef entry) -> llvm::StringRef;
 
-    /// Same, for the file entry backing `fid`; empty for fids without
-    /// one (builtin and scratch buffers).
+    /// Same, for the file entry backing `fid`. The fid must be valid and
+    /// backed by a file entry (asserted): synthetic buffers (<built-in>,
+    /// <command line>, <scratch space>) have none — callers must filter
+    /// them out first, see `is_builtin_file`.
     auto file_path(clang::FileID fid) -> llvm::StringRef;
 
     /// Get the file content of the file ID.

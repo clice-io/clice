@@ -122,11 +122,13 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
 }
 
 auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
-    if(!fid.isValid())
-        return {};
+    assert(fid.isValid() && "file_path: invalid fid");
 
     auto entry = self->SM().getFileEntryRefForID(fid);
+    assert(entry && "file_path: fid has no backing file entry, check is_builtin_file first");
     if(!entry) {
+        /// Callers violating the contract get a degraded result in release
+        /// builds; the worker must not crash on it.
         return {};
     }
 
@@ -273,42 +275,33 @@ clang::LangOptions& CompilationUnitRef::lang_options() {
 std::vector<std::string> CompilationUnitRef::deps() {
     llvm::StringSet<> deps;
 
-    /// Embedded files have no FileID (clang delivers their contents as a
-    /// single annotation token), so they are resolved through their file
-    /// entry instead.
-    auto add_file = [&](clang::OptionalFileEntryRef file) {
-        if(file) {
-            if(auto path = file_path(*file); !path.empty()) {
-                deps.try_emplace(path);
-            }
-        }
-    };
-
     for(auto& [fid, directive]: directives()) {
         for(auto& include: directive.includes) {
-            if(!include.skipped) {
-                auto path = file_path(include.fid);
-                if(!path.empty()) {
-                    deps.try_emplace(path);
-                }
+            /// A failed include leaves an invalid fid — nothing to depend on.
+            if(!include.skipped && include.fid.isValid()) {
+                deps.try_emplace(file_path(include.fid));
             }
         }
 
         for(auto& has_include: directive.has_includes) {
             if(has_include.fid.isValid()) {
-                auto path = file_path(has_include.fid);
-                if(!path.empty()) {
-                    deps.try_emplace(path);
-                }
+                deps.try_emplace(file_path(has_include.fid));
             }
         }
 
+        /// Embedded files have no FileID (clang delivers their contents as
+        /// a single annotation token), so they are resolved through their
+        /// file entry instead.
         for(auto& embed: directive.embeds) {
-            add_file(embed.file);
+            if(embed.file) {
+                deps.try_emplace(file_path(*embed.file));
+            }
         }
 
         for(auto& has_embed: directive.has_embeds) {
-            add_file(has_embed.file);
+            if(has_embed.file) {
+                deps.try_emplace(file_path(*has_embed.file));
+            }
         }
     }
 
