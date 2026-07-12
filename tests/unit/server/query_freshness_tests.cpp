@@ -24,7 +24,7 @@ Workspace workspace;
 SessionStore store;
 WorkerPool pool{loop};
 ContextResolver resolver{workspace};
-Indexer indexer{loop, workspace, pool, resolver};
+Indexer indexer{loop, workspace, pool, resolver, store};
 IndexQuery index_query{workspace, store, indexer};
 IndexQuery agent_query{workspace, store, indexer, {.disk_only = true}};
 

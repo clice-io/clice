@@ -262,6 +262,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request([&srv](RequestContext&,
                            const SymbolSearchParams& params) -> RequestResult<SymbolSearchParams> {
+        srv.on_agentic_query();
         auto max = params.max_results.value_or(100);
         std::string query_lower = llvm::StringRef(params.query).lower();
 
@@ -305,6 +306,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const ReadSymbolParams& params) -> RequestResult<ReadSymbolParams> {
+            srv.on_agentic_query();
             auto resolved = resolve_unique(params, srv.agent_query);
             if(!resolved)
                 co_return kota::outcome_error(std::move(resolved.error()));
@@ -328,6 +330,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     peer.on_request(
         [&srv](RequestContext&,
                const DocumentSymbolsParams& params) -> RequestResult<DocumentSymbolsParams> {
+            srv.on_agentic_query();
             auto is_document_level = [](SymbolKind kind) {
                 return kind == SymbolKind::Namespace || kind == SymbolKind::Class ||
                        kind == SymbolKind::Struct || kind == SymbolKind::Union ||
@@ -384,6 +387,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const DefinitionParams& params) -> RequestResult<DefinitionParams> {
+            srv.on_agentic_query();
             auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.agent_query);
@@ -411,6 +415,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request([&srv](RequestContext&,
                            const ReferencesParams& params) -> RequestResult<ReferencesParams> {
+        srv.on_agentic_query();
         auto resolved = resolve_unique(
             ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
             srv.agent_query);
@@ -447,6 +452,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const CallGraphParams& params) -> RequestResult<CallGraphParams> {
+            srv.on_agentic_query();
             auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.agent_query);
@@ -509,6 +515,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     peer.on_request(
         [&srv](RequestContext&,
                const TypeHierarchyParams& params) -> RequestResult<TypeHierarchyParams> {
+            srv.on_agentic_query();
             auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
                 srv.agent_query);

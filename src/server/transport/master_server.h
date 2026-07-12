@@ -115,6 +115,12 @@ public:
     /// services (sessions, context resolver, background indexer).
     void dispatch(llvm::ArrayRef<FileEvent> events);
 
+    /// Called by the agentic index-query handlers before answering. The
+    /// first call turns on open-file indexing (sticky) and enqueues the
+    /// currently open files, so agents get shards for files whose
+    /// sessions otherwise satisfied every consumer.
+    void on_agentic_query();
+
     void schedule_shutdown();
 
     kota::cancellation_token shutdown_token() const {

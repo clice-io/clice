@@ -34,7 +34,7 @@ constexpr static std::size_t notify_log_limit = 128;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
-    indexer(loop, workspace, pool, contexts), index_query(workspace, sessions, indexer),
+    indexer(loop, workspace, pool, contexts, sessions), index_query(workspace, sessions, indexer),
     agent_query(workspace, sessions, indexer, {.disk_only = true}),
     features(compiler, index_query, workspace, contexts, indexer),
     invalidator(workspace, sessions, contexts), bg_tasks(loop), self_path(std::move(self_path)) {
@@ -237,6 +237,25 @@ void MasterServer::close_session(std::uint32_t path_id) {
     dispatch(FileEvent::buffer_closed(path_id));
 
     LOG_DEBUG("didClose: {}", path);
+}
+
+void MasterServer::on_agentic_query() {
+    if(indexer.index_open_files) {
+        return;
+    }
+    // First agentic index query: agents read disk truth, so open files'
+    // disk snapshots must be indexed too — background indexing skips
+    // them otherwise, since the LSP side is fully served by their
+    // sessions. Sticky for the server's lifetime. DepsOnly is enough:
+    // a missing or content-stale shard fails need_update anyway, and a
+    // current one makes the slot a cheap no-op.
+    indexer.index_open_files = true;
+    for(auto& [path_id, session]: sessions.sessions) {
+        if(session) {
+            indexer.enqueue(path_id, ReindexReason::DepsOnly);
+        }
+    }
+    indexer.schedule();
 }
 
 void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
