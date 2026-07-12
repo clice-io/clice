@@ -156,18 +156,22 @@ async def indexed_agentic(request, executable, workspace):
     c = CliceClient()
     await c.start_io(*cmd)
 
-    await c.initialize(workspace)
+    # The first agentic query triggers a catch-up indexing round for open
+    # files; the default 3s idle timer would dominate every fixture setup.
+    await c.initialize(
+        workspace, initialization_options={"project": {"idle_timeout_ms": 10}}
+    )
 
     uri, _ = await c.open_and_wait(workspace / "main.cpp")
     assert await wait_for_index(c, uri, "add"), "Index not ready"
 
     rpc = AgenticRpcClient(host, port)
 
-    for _ in range(30):
+    for _ in range(300):
         resp = rpc.request("agentic/symbolSearch", {"query": "add"})
         if "result" in resp and resp["result"]["symbols"]:
             break
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.1)
     else:
         pytest.fail("agentic/symbolSearch never returned indexed symbols")
 
