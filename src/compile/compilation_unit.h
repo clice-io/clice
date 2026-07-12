@@ -126,8 +126,8 @@ public:
     /// Get the canonical path of the file entry: absolutized against the
     /// compile's working directory and resolved through the compiler's
     /// VFS, falling back to the absolute path with dot segments removed.
-    /// The cache is keyed by the inode-unique FileEntry, so all symlinked
-    /// spellings of a file yield one path. The result is guaranteed to be
+    /// Symlinked spellings of a file resolve to one path; hardlinked
+    /// spellings each keep their own. The result is guaranteed to be
     /// null-terminated.
     auto file_path(clang::FileEntryRef entry) -> llvm::StringRef;
 

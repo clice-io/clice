@@ -78,7 +78,7 @@ struct CompilationUnitRef::Self {
     llvm::DenseMap<clang::FileID, Directive> directives;
 
     /// Cache for file path. It is used to avoid multiple file path lookup.
-    llvm::DenseMap<const clang::FileEntry*, llvm::StringRef> path_cache;
+    llvm::DenseMap<clang::FileEntryRef, llvm::StringRef> path_cache;
 
     /// Cache for symbol id.
     llvm::DenseMap<const void*, std::uint64_t> symbol_hash_cache;

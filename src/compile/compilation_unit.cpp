@@ -84,7 +84,7 @@ auto CompilationUnitRef::file_offset(clang::SourceLocation location) -> std::uin
 }
 
 auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef {
-    if(auto it = self->path_cache.find(&entry.getFileEntry()); it != self->path_cache.end()) {
+    if(auto it = self->path_cache.find(entry); it != self->path_cache.end()) {
         return it->second;
     }
 
@@ -92,9 +92,11 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
 
     /// Absolutize against the compile's working directory first, then
     /// resolve through the compiler's VFS so remapped and in-memory
-    /// files canonicalize like on-disk ones. Since the cache is keyed
-    /// by the inode-unique FileEntry, every symlinked spelling of a
-    /// file collapses to a single path.
+    /// files canonicalize like on-disk ones. Symlinked spellings of a
+    /// file collapse into one path here; hardlinked spellings do not
+    /// (`real_path` does not fold them), and the cache is keyed by the
+    /// spelling-level FileEntryRef so each keeps its own path — the
+    /// dependency set must cover every spelling the compile read.
     llvm::SmallString<128> path(entry.getName());
     fm.makeAbsolutePath(path);
 
@@ -115,8 +117,7 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
     memcpy(data, path.data(), size);
     data[size] = '\0';
 
-    auto [it, inserted] =
-        self->path_cache.try_emplace(&entry.getFileEntry(), llvm::StringRef(data, size));
+    auto [it, inserted] = self->path_cache.try_emplace(entry, llvm::StringRef(data, size));
     assert(inserted && "File path already exists");
     return it->second;
 }
@@ -283,6 +284,11 @@ std::vector<std::string> CompilationUnitRef::deps() {
             }
         }
 
+        /// FIXME: Not-found `__has_include`/`__has_embed` probes leave no
+        /// trace here, so creating the probed file later cannot invalidate
+        /// products built while it was missing. Tracking them requires the
+        /// candidate paths of the failed lookup (clang's preamble keeps a
+        /// MissingFiles set for exactly this), not just the hits.
         for(auto& has_include: directive.has_includes) {
             if(has_include.fid.isValid()) {
                 deps.try_emplace(file_path(has_include.fid));
