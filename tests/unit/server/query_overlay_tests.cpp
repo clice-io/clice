@@ -429,26 +429,6 @@ int main() { return 0; }
     EXPECT_TRUE(llvm::StringRef(refs[0].file).ends_with("main.cpp"));
 }
 
-TEST_CASE(PathLineFromOverlay) {
-    add_file("foo.h", R"(
-inline void @def[foo]() {}
-)");
-    add_main("main.cpp", R"(
-#include "foo.h"
-int main() { @ref[foo](); return 0; }
-)");
-    open_with_overlay();
-
-    // The agentic path+line locator must reach headers that exist in no
-    // session and no shard, matching what go-to-definition can resolve.
-    agentic::ReadSymbolParams loc;
-    loc.path = header_path("foo.h");
-    loc.line = 2;
-    auto resolved = index_query.locate_symbols(loc);
-    ASSERT_EQ(resolved.size(), 1);
-    EXPECT_EQ(resolved[0].name, "foo");
-}
-
 TEST_CASE(DefinitionTextFromOverlay) {
     add_file("foo.h", R"(
 inline void @def[foo]() {}

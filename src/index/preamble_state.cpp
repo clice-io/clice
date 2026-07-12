@@ -201,50 +201,6 @@ void PreambleState::lookup(SymbolHash symbol,
     }
 }
 
-void PreambleState::lookup_file(
-    llvm::StringRef path,
-    RelationKind kind,
-    llvm::function_ref<bool(const File&, SymbolHash, const Relation&)> callback) const {
-    auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
-    auto paths = root->paths();
-
-    // A header included more than once has one entry per inclusion; scan
-    // them all.
-    for(auto entry: *root->files()) {
-        if(entry->path_id() >= paths->size() || !entry->relations()) {
-            continue;
-        }
-        auto entry_path = paths->Get(entry->path_id());
-        if(llvm::StringRef(entry_path->c_str(), entry_path->size()) != path) {
-            continue;
-        }
-
-        File file{
-            .path = path,
-            .content = entry->content()
-                           ? llvm::StringRef(entry->content()->c_str(), entry->content()->size())
-                           : llvm::StringRef(),
-            .line_starts = entry->line_starts() ? std::span(entry->line_starts()->data(),
-                                                            entry->line_starts()->size())
-                                                : std::span<const std::uint32_t>(),
-        };
-
-        for(auto rel_entry: *entry->relations()) {
-            if(!rel_entry->relations()) {
-                continue;
-            }
-            for(auto rel: *rel_entry->relations()) {
-                auto r = safe_cast<Relation>(rel);
-                if(r->kind & kind) {
-                    if(!callback(file, rel_entry->symbol(), *r)) {
-                        return;
-                    }
-                }
-            }
-        }
-    }
-}
-
 llvm::StringRef PreambleState::source_path() const {
     auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
     auto paths = root->paths();

@@ -64,18 +64,12 @@ public:
     static std::shared_ptr<PreambleState> load(llvm::StringRef path);
 
     /// Iterate relations of `symbol` matching `kind` across all header
-    /// entries. Return false from the callback to stop.
+    /// entries. Return false from the callback to stop. This is the only
+    /// query shape overlays serve: hash-anchored answering. Discovery
+    /// inputs (by name, by path and line) are the disk index's job.
     void lookup(SymbolHash symbol,
                 RelationKind kind,
                 llvm::function_ref<bool(const File&, const Relation&)> callback) const;
-
-    /// Iterate relations matching `kind` within the header entries whose
-    /// path equals `path` — the path/line locator's counterpart of
-    /// lookup(). Return false from the callback to stop.
-    void lookup_file(
-        llvm::StringRef path,
-        RelationKind kind,
-        llvm::function_ref<bool(const File&, SymbolHash, const Relation&)> callback) const;
 
     /// Path of the file whose preamble built this blob. Files with
     /// identical preambles share one PCH (the key excludes the source

@@ -1118,68 +1118,44 @@ std::vector<ResolvedSymbol> IndexQuery::locate_symbols(const agentic::ReadSymbol
         }
 
         auto path_id = workspace.path_pool.find(path_str);
-        // The shard's line numbers describe stale text when the file's own
-        // content changed; resolving the requested line against them would
-        // name the wrong symbol.
-        if(path_id && !skip_stale_contribution(*path_id)) {
-            auto shard_it = workspace.merged_indices.find(*path_id);
-            if(shard_it != workspace.merged_indices.end() &&
-               !shard_it->second.line_starts().empty()) {
-                auto& merged_index = shard_it->second;
-                lsp::LineMap map(merged_index.content(), merged_index.line_starts());
+        if(!path_id)
+            return {};
 
-                for(auto& [hash, symbol]: workspace.project_index.symbols) {
-                    if(!symbol.reference_files.contains(*path_id))
-                        continue;
-                    bool found = false;
-                    merged_index.lookup(hash,
-                                        RelationKind::Definition,
-                                        [&](const index::Relation& r) {
-                                            // FIXME: unchecked optional dereference
-                                            auto range = map.to_range(r.range.begin, r.range.end);
-                                            if(range && range->start.line == target_line) {
-                                                found = true;
-                                                return false;
-                                            }
-                                            return true;
-                                        });
-                    if(found)
-                        return {
-                            {hash, symbol.name, symbol.kind, path_str, *loc.line}
-                        };
+        // The shard's line numbers describe stale text; resolving the
+        // requested line against them would name the wrong symbol.
+        if(skip_stale_contribution(*path_id))
+            return {};
+
+        auto shard_it = workspace.merged_indices.find(*path_id);
+        if(shard_it == workspace.merged_indices.end())
+            return {};
+
+        auto& merged_index = shard_it->second;
+        auto ls = merged_index.line_starts();
+        if(ls.empty())
+            return {};
+        lsp::LineMap map(merged_index.content(), ls);
+
+        for(auto& [hash, symbol]: workspace.project_index.symbols) {
+            if(!symbol.reference_files.contains(*path_id))
+                continue;
+            bool found = false;
+            merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+                // FIXME: unchecked optional dereference
+                auto range = map.to_range(r.range.begin, r.range.end);
+                if(range && range->start.line == target_line) {
+                    found = true;
+                    return false;
                 }
-            }
+                return true;
+            });
+            if(found)
+                return {
+                    {hash, symbol.name, symbol.kind, path_str, *loc.line}
+                };
         }
 
-        // PCH overlays: a header reachable only through an open buffer's
-        // preamble has rows in no session and no shard.
-        std::vector<ResolvedSymbol> overlay_result;
-        llvm::DenseSet<index::SymbolHash> seen;
-        visit_overlays([&](const index::PreambleState& state) {
-            state.lookup_file(
-                path_str,
-                RelationKind::Definition,
-                [&](const index::PreambleState::File& file,
-                    index::SymbolHash hash,
-                    const index::Relation& r) {
-                    if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
-                        return true;
-                    lsp::LineMap map(file.content, file.line_starts);
-                    auto start = map.to_position(r.range.begin);
-                    if(!start || start->line != target_line || !seen.insert(hash).second)
-                        return true;
-                    std::string name;
-                    SymbolKind kind;
-                    if(!find_symbol_info(hash, name, kind))
-                        return true;
-                    if(kind == SymbolKind::Parameter || kind == SymbolKind::Label)
-                        return true;
-                    overlay_result.push_back({hash, std::move(name), kind, path_str, *loc.line});
-                    return true;
-                });
-            return true;
-        });
-        return overlay_result;
+        return {};
     }
 
     return {};
