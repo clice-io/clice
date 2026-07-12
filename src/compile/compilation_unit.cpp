@@ -255,7 +255,21 @@ clang::LangOptions& CompilationUnitRef::lang_options() {
 std::vector<std::string> CompilationUnitRef::deps() {
     llvm::StringSet<> deps;
 
-    /// FIXME: consider `#embed` and `__has_embed`.
+    /// Embedded files have no FileID (clang delivers their contents as a
+    /// single annotation token), so they are resolved through their file
+    /// entry rather than `file_path`.
+    auto add_file = [&](clang::OptionalFileEntryRef file) {
+        if(!file) {
+            return;
+        }
+        llvm::SmallString<128> path;
+        if(auto error = llvm::sys::fs::real_path(file->getName(), path)) {
+            path = file->getName();
+        }
+        if(!path.empty()) {
+            deps.try_emplace(path);
+        }
+    };
 
     for(auto& [fid, directive]: directives()) {
         for(auto& include: directive.includes) {
@@ -274,6 +288,14 @@ std::vector<std::string> CompilationUnitRef::deps() {
                     deps.try_emplace(path);
                 }
             }
+        }
+
+        for(auto& embed: directive.embeds) {
+            add_file(embed.file);
+        }
+
+        for(auto& has_embed: directive.has_embeds) {
+            add_file(has_embed.file);
         }
     }
 

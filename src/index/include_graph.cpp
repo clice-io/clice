@@ -51,9 +51,6 @@ IncludeGraph IncludeGraph::from(CompilationUnitRef unit,
     llvm::StringMap<std::uint32_t> path_table;
     IncludeGraph graph;
 
-    /// Note that `#embed`ed files never get a FileID — clang delivers
-    /// their contents as a single annotation token — so include
-    /// directives are the only directive kind that introduces fids here.
     for(auto& [fid, directive]: unit.directives()) {
         for(auto& include: directive.includes) {
             if(!include.skipped && include.fid.isValid()) {

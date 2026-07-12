@@ -278,6 +278,34 @@ TEST_CASE(HasEmbed) {
     EXPECT_HAS_EMBED(1, "1", "non-existed.bin", /*exists=*/false);
 };
 
+TEST_CASE(EmbedInDeps) {
+    run(R"cpp(
+#[data.bin]
+0123456789
+
+#[probe.bin]
+AB
+
+#[main.cpp]
+const char e[] = {
+#embed "data.bin"
+};
+
+#if __has_embed("probe.bin")
+#endif
+)cpp");
+
+    auto deps = unit->deps();
+    bool data_found = false;
+    bool probe_found = false;
+    for(auto& dep: deps) {
+        data_found |= llvm::StringRef(dep).ends_with("data.bin");
+        probe_found |= llvm::StringRef(dep).ends_with("probe.bin");
+    }
+    ASSERT_TRUE(data_found);
+    ASSERT_TRUE(probe_found);
+};
+
 };  // TEST_SUITE(Directive)
 
 }  // namespace
