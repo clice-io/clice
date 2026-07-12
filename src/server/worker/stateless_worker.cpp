@@ -1,6 +1,8 @@
 #include "server/worker/stateless_worker.h"
 
 #include <cstdlib>
+#include <format>
+#include <optional>
 
 #include "compile/compilation.h"
 #include "feature/feature.h"
@@ -54,10 +56,11 @@ static std::string collect_errors(CompilationUnit& unit) {
 /// Serialize the preamble's PreambleState blob (full index + document
 /// links + inactive regions) next to the PCH. Runs while the freshly
 /// parsed AST is still in memory — the only moment the preamble's index
-/// is obtainable without deserializing the whole PCH.
-static bool write_preamble_state(CompilationUnit& unit,
-                                 std::uint32_t preamble_bound,
-                                 llvm::StringRef output_path) {
+/// is obtainable without deserializing the whole PCH. Returns an error
+/// description on failure so the master's anomaly carries the cause.
+static std::optional<std::string> write_preamble_state(CompilationUnit& unit,
+                                                       std::uint32_t preamble_bound,
+                                                       llvm::StringRef output_path) {
     auto tu_index = index::TUIndex::build(unit);
     auto links = feature::document_links(unit);
     auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
@@ -65,8 +68,10 @@ static bool write_preamble_state(CompilationUnit& unit,
     std::error_code ec;
     llvm::raw_fd_ostream os(output_path, ec);
     if(ec) {
-        LOG_ERROR("BuildPCH: cannot write PreambleState blob {}: {}", output_path, ec.message());
-        return false;
+        auto message =
+            std::format("cannot open PreambleState blob {}: {}", output_path, ec.message());
+        LOG_ERROR("BuildPCH: {}", message);
+        return message;
     }
     index::PreambleState::serialize(unit,
                                     tu_index,
@@ -76,13 +81,14 @@ static bool write_preamble_state(CompilationUnit& unit,
                                     os);
     os.flush();
     if(os.has_error()) {
-        LOG_ERROR("BuildPCH: failed writing PreambleState blob {}: {}",
-                  output_path,
-                  os.error().message());
+        auto message = std::format("failed writing PreambleState blob {}: {}",
+                                   output_path,
+                                   os.error().message());
         os.clear_error();
-        return false;
+        LOG_ERROR("BuildPCH: {}", message);
+        return message;
     }
-    return true;
+    return std::nullopt;
 }
 
 static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
@@ -122,10 +128,13 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     // failure, never a user-code problem — must not be downgraded to an
     // expected build failure.
     bool internal_error = false;
-    if(success && !write_preamble_state(unit, params.preamble_bound, params.index_output_path)) {
-        success = false;
-        internal_error = true;
-        errors = "Failed to write PreambleState blob";
+    if(success) {
+        if(auto error =
+               write_preamble_state(unit, params.preamble_bound, params.index_output_path)) {
+            success = false;
+            internal_error = true;
+            errors = std::move(*error);
+        }
     }
 
     // Destroy CompilationUnit to flush PCH to disk.
