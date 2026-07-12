@@ -834,11 +834,16 @@ void WorkerPool::preempt_low_priority(std::size_t count) {
 
         // Signal the sender first, then take the slot out of rotation and
         // kill the process — the kill is what actually frees the memory.
+        // The kill fails the in-flight request, and the sender classifies
+        // that failure as preemption by consulting the source. Today the
+        // runtime only queues waiters on cancel/close (never resumes them
+        // inline), so either order behaves the same; cancelling first
+        // keeps the classification correct without depending on that.
         auto source = w.preempt_source;
         w.preempted = true;
-        mark_worker_dead(i, false, true);
         if(source)
             source->cancel();
+        mark_worker_dead(i, false, true);
         ++preempted;
     }
     if(preempted > 0) {
