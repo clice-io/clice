@@ -348,6 +348,12 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(!path_id)
                 co_return result;
 
+            // The same shard gate every other agentic lookup applies
+            // (freshness contract, clause 2): a shard whose file changed
+            // on disk serves nothing until its reindex lands.
+            if(srv.agent_query.skip_shard(*path_id))
+                co_return result;
+
             auto shard_it = srv.workspace.merged_indices.find(*path_id);
             if(shard_it == srv.workspace.merged_indices.end())
                 co_return result;

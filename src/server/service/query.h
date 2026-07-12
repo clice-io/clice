@@ -195,6 +195,11 @@ public:
     /// read/definition/references tools share.
     std::vector<ResolvedSymbol> locate_symbols(const agentic::ReadSymbolParams& loc);
 
+    /// Whether a file's shard sits this query out: its own disk content
+    /// changed and awaits reindexing (clause 2), or — unless disk_only —
+    /// the file is open and its session serves it instead.
+    bool skip_shard(std::uint32_t path_id) const;
+
     /// Iterate all open Sessions with valid, up-to-date file indices.
     void visit_sessions(SessionVisitor visitor) const;
 
@@ -276,11 +281,6 @@ private:
     /// must be skipped because its own content changed and the reindex has
     /// not landed yet. O(1) per candidate file, no I/O.
     bool skip_stale_contribution(std::uint32_t path_id) const;
-
-    /// Whether a file's shard sits this query out: its own disk content
-    /// changed and awaits reindexing (clause 2), or — unless disk_only —
-    /// the file is open and its session serves it instead.
-    bool skip_shard(std::uint32_t path_id) const;
 
     Workspace& workspace;
     const SessionStore& sessions;
