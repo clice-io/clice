@@ -63,6 +63,13 @@ void PreambleState::serialize(CompilationUnitRef unit,
     Offsets<binary::PreambleFileEntry> files;
     files.reserve(index.file_indices.size());
     for(auto& [fid, file_index]: index.file_indices) {
+        // A file with no include edge (the predefines buffer, a
+        // synthesized prefix injected via -include) has no real path to
+        // attribute rows to — path_id() would misfile them under the
+        // source file. Such rows are never servable; don't write them.
+        if(index.graph.include_location_id(fid) == static_cast<std::uint32_t>(-1)) {
+            continue;
+        }
         auto content = unit.file_content(fid);
         auto line_starts =
             kota::ipc::lsp::build_line_starts(std::string_view(content.data(), content.size()));
@@ -188,6 +195,50 @@ void PreambleState::lookup(SymbolHash symbol,
             if(r->kind & kind) {
                 if(!callback(file, *r)) {
                     return;
+                }
+            }
+        }
+    }
+}
+
+void PreambleState::lookup_file(
+    llvm::StringRef path,
+    RelationKind kind,
+    llvm::function_ref<bool(const File&, SymbolHash, const Relation&)> callback) const {
+    auto root = fbs::GetRoot<binary::PreambleState>(buffer->getBufferStart());
+    auto paths = root->paths();
+
+    // A header included more than once has one entry per inclusion; scan
+    // them all.
+    for(auto entry: *root->files()) {
+        if(entry->path_id() >= paths->size() || !entry->relations()) {
+            continue;
+        }
+        auto entry_path = paths->Get(entry->path_id());
+        if(llvm::StringRef(entry_path->c_str(), entry_path->size()) != path) {
+            continue;
+        }
+
+        File file{
+            .path = path,
+            .content = entry->content()
+                           ? llvm::StringRef(entry->content()->c_str(), entry->content()->size())
+                           : llvm::StringRef(),
+            .line_starts = entry->line_starts() ? std::span(entry->line_starts()->data(),
+                                                            entry->line_starts()->size())
+                                                : std::span<const std::uint32_t>(),
+        };
+
+        for(auto rel_entry: *entry->relations()) {
+            if(!rel_entry->relations()) {
+                continue;
+            }
+            for(auto rel: *rel_entry->relations()) {
+                auto r = safe_cast<Relation>(rel);
+                if(r->kind & kind) {
+                    if(!callback(file, rel_entry->symbol(), *r)) {
+                        return;
+                    }
                 }
             }
         }

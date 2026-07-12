@@ -17,8 +17,8 @@ namespace clice::index {
 /// On-disk PreambleState blob schema version (the PCH's `.pch.idx` pair).
 /// Bump whenever `schema.fbs` changes the PreambleState layout; a blob
 /// carrying a different value loads as "missing" and the PCH pair is
-/// rebuilt. cache.json records it per entry so a version change is caught
-/// at load time instead of on the first overlay query.
+/// rebuilt. cache.json records it so a version change is caught at load
+/// time instead of on the first overlay query.
 constexpr inline std::uint32_t preamble_format_version = 3;
 
 /// All master-visible state derived from one PCH build.
@@ -68,6 +68,14 @@ public:
     void lookup(SymbolHash symbol,
                 RelationKind kind,
                 llvm::function_ref<bool(const File&, const Relation&)> callback) const;
+
+    /// Iterate relations matching `kind` within the header entries whose
+    /// path equals `path` — the path/line locator's counterpart of
+    /// lookup(). Return false from the callback to stop.
+    void lookup_file(
+        llvm::StringRef path,
+        RelationKind kind,
+        llvm::function_ref<bool(const File&, SymbolHash, const Relation&)> callback) const;
 
     /// Path of the file whose preamble built this blob. Files with
     /// identical preambles share one PCH (the key excludes the source
