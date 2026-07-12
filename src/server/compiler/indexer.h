@@ -20,6 +20,12 @@ class ContextResolver;
 struct SessionStore;
 class WorkerPool;
 
+namespace testing {
+
+struct IndexerFixture;
+
+}
+
 /// Why a file awaits re-indexing. The invalidation engine knows the cause
 /// at enqueue time, so queries can decide in O(1) whether a pending file's
 /// existing index rows are still trustworthy (see IndexQuery's freshness
@@ -236,12 +242,34 @@ private:
         /// right and the follow-up slot redoes the semantic drift anyway.
         std::uint64_t content_ticket;
 
-        /// Crash/preemption requeues of this entry. Bounds the damage of a
-        /// poison file that reliably crashes workers: without a cap, every
-        /// requeue would burn another worker's crash budget until the whole
-        /// pool is dead.
+        /// Crash requeues of this entry. Bounds the damage of a poison
+        /// file that reliably crashes workers: without a cap, every
+        /// requeue would burn another worker's crash budget until the
+        /// whole pool is dead. Preemption requeues do not count — they
+        /// say nothing about the file.
         unsigned requeue_attempts = 0;
     };
+
+    /// What a failed index dispatch did to the file's pending state.
+    enum class RequeueVerdict : std::uint8_t {
+        /// No pending entry survived (file removed mid-flight).
+        Dropped,
+        /// The crash budget is spent; the file is abandoned.
+        GaveUp,
+        /// Re-enqueued for the next round.
+        Requeued,
+    };
+
+    constexpr static unsigned max_requeue_attempts = 3;
+
+    /// Requeue a file whose index dispatch failed with a crash or a
+    /// memory-pressure preemption. Only crashes spend the bounded budget:
+    /// a preemption says nothing about the file, and capping it would
+    /// silently drop coverage — the pending reason is erased after the
+    /// attempt, so the stale shard would be served as fresh.
+    RequeueVerdict note_dispatch_failure(std::uint32_t server_path_id, bool crashed);
+
+    friend struct testing::IndexerFixture;
 
     llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;
     std::uint64_t reindex_ticket = 0;

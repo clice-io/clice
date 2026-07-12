@@ -523,29 +523,30 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
         // work itself is fine — requeue the file with its original reason so
         // the next round redoes it instead of silently dropping coverage.
         // Not on worker_unavailable: with no future capacity a requeue would
-        // spin forever. Only while the pending entry survives (a file removed
-        // from disk mid-flight was cleared and has nothing to redo), and only
-        // a bounded number of times — a poison file that crashes every worker
-        // it lands on must not grind the pool's crash budget down.
-        constexpr unsigned max_requeue_attempts = 3;
-        auto it = reindex_reasons.find(server_path_id);
-        if(it == reindex_reasons.end()) {
-            LOG_INFO("[{}/{}] Index dropped for removed file {}", index, total, file_path);
-        } else if(it->second.requeue_attempts >= max_requeue_attempts) {
-            LOG_WARN("[{}/{}] Index giving up on {} after {} requeues: {}",
-                     index,
-                     total,
-                     file_path,
-                     it->second.requeue_attempts,
-                     result.error().message);
-        } else {
-            it->second.requeue_attempts += 1;
-            enqueue(server_path_id, it->second.reason);
-            LOG_INFO("[{}/{}] Index requeued for {}: {}",
-                     index,
-                     total,
-                     file_path,
-                     result.error().message);
+        // spin forever.
+        bool crashed = result.error().code == worker::dispatch_errc::worker_crashed;
+        switch(note_dispatch_failure(server_path_id, crashed)) {
+            case RequeueVerdict::Dropped: {
+                LOG_INFO("[{}/{}] Index dropped for removed file {}", index, total, file_path);
+                break;
+            }
+            case RequeueVerdict::GaveUp: {
+                LOG_WARN("[{}/{}] Index giving up on {} after {} requeues: {}",
+                         index,
+                         total,
+                         file_path,
+                         max_requeue_attempts,
+                         result.error().message);
+                break;
+            }
+            case RequeueVerdict::Requeued: {
+                LOG_INFO("[{}/{}] Index requeued for {}: {}",
+                         index,
+                         total,
+                         file_path,
+                         result.error().message);
+                break;
+            }
         }
     } else {
         LOG_WARN("[{}/{}] Index IPC error for {}: {}",
@@ -554,6 +555,27 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                  file_path,
                  result.error().message);
     }
+}
+
+auto Indexer::note_dispatch_failure(std::uint32_t server_path_id, bool crashed) -> RequeueVerdict {
+    // Only while the pending entry survives: a file removed from disk
+    // mid-flight was cleared and has nothing to redo.
+    auto it = reindex_reasons.find(server_path_id);
+    if(it == reindex_reasons.end()) {
+        return RequeueVerdict::Dropped;
+    }
+
+    if(it->second.requeue_attempts >= max_requeue_attempts) {
+        return RequeueVerdict::GaveUp;
+    }
+
+    if(crashed) {
+        it->second.requeue_attempts += 1;
+    }
+    // The enqueue bumps the entry's ticket, which shields it from the
+    // in-flight task's pending-state clear.
+    enqueue(server_path_id, it->second.reason);
+    return RequeueVerdict::Requeued;
 }
 
 kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,

@@ -12,6 +12,30 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice::testing {
+
+/// Test fixture with friend access to Indexer internals.
+struct IndexerFixture {
+    using Verdict = Indexer::RequeueVerdict;
+
+    constexpr static unsigned budget = Indexer::max_requeue_attempts;
+
+    kota::event_loop loop;
+    Workspace workspace;
+    WorkerPool pool{loop};
+    ContextResolver contexts{workspace};
+    SessionStore sessions;
+    Indexer indexer{loop, workspace, pool, contexts, sessions};
+
+    Verdict fail(std::uint32_t id, bool crashed) {
+        return indexer.note_dispatch_failure(id, crashed);
+    }
+
+    unsigned attempts(std::uint32_t id) {
+        auto it = indexer.reindex_reasons.find(id);
+        return it == indexer.reindex_reasons.end() ? 0u : it->second.requeue_attempts;
+    }
+};
+
 namespace {
 
 TEST_SUITE(IndexerMerge) {
@@ -83,6 +107,45 @@ TEST_CASE(MergeSkipsMovedDisk) {
 }
 
 };  // TEST_SUITE(IndexerMerge)
+
+TEST_SUITE(IndexerRequeue) {
+
+TEST_CASE(PreemptionKeepsBudget) {
+    IndexerFixture f;
+    auto id = f.workspace.path_pool.intern("/proj/a.cpp");
+    f.indexer.enqueue(id, ReindexReason::ContentChanged);
+
+    // A preemption under memory pressure requeues without spending the
+    // crash budget, no matter how often it repeats.
+    for(unsigned i = 0; i < 2 * IndexerFixture::budget; ++i) {
+        ASSERT_EQ(int(f.fail(id, /*crashed=*/false)), int(IndexerFixture::Verdict::Requeued));
+    }
+    ASSERT_EQ(f.attempts(id), 0u);
+    ASSERT_TRUE(f.indexer.pending_reason(id).has_value());
+}
+
+TEST_CASE(CrashSpendsBudget) {
+    IndexerFixture f;
+    auto id = f.workspace.path_pool.intern("/proj/poison.cpp");
+    f.indexer.enqueue(id, ReindexReason::ContentChanged);
+
+    for(unsigned i = 0; i < IndexerFixture::budget; ++i) {
+        ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
+    }
+    ASSERT_EQ(f.attempts(id), IndexerFixture::budget);
+    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::GaveUp));
+
+    // A preemption cannot revive a file whose crash budget is spent.
+    ASSERT_EQ(int(f.fail(id, /*crashed=*/false)), int(IndexerFixture::Verdict::GaveUp));
+}
+
+TEST_CASE(DroppedWithoutPending) {
+    IndexerFixture f;
+    auto id = f.workspace.path_pool.intern("/proj/gone.cpp");
+    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Dropped));
+}
+
+};  // TEST_SUITE(IndexerRequeue)
 
 }  // namespace
 }  // namespace clice::testing
