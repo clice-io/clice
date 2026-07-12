@@ -246,14 +246,25 @@ void MasterServer::on_agentic_query() {
     // First agentic index query: agents read disk truth, so open files'
     // disk snapshots must be indexed too — background indexing skips
     // them otherwise, since the LSP side is fully served by their
-    // sessions. Sticky for the server's lifetime. DepsOnly is enough:
-    // a missing or content-stale shard fails need_update anyway, and a
-    // current one makes the slot a cheap no-op.
+    // sessions. Sticky for the server's lifetime.
     indexer.index_open_files = true;
     for(auto& [path_id, session]: sessions.sessions) {
-        if(session) {
-            indexer.enqueue(path_id, ReindexReason::DepsOnly);
+        if(!session) {
+            continue;
         }
+        // Same disk-vs-shard arbitration as BufferClosed: a current shard
+        // keeps serving through the catch-up, while a stale or missing one
+        // (a save that landed while its reindex slot was still skipped)
+        // must not answer agents with the pre-save rows.
+        auto disk = fs::read(workspace.path_pool.resolve(path_id));
+        if(!disk) {
+            continue;
+        }
+        auto shard_it = workspace.merged_indices.find(path_id);
+        bool shard_current =
+            shard_it != workspace.merged_indices.end() && *disk == shard_it->second.content();
+        indexer.enqueue(path_id,
+                        shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
     }
     indexer.schedule();
 }
