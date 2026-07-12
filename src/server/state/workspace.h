@@ -63,7 +63,10 @@ struct DepState {
 ///
 /// Layer 1 (fast): stat each dep; size and mtime_ns EQUAL to the record
 ///   means unchanged (zero I/O beyond stat). Equality — not a watermark —
-///   so backdated or preserved mtimes cannot masquerade as fresh.
+///   so backdated or preserved mtimes cannot masquerade as fresh. The one
+///   deliberate residual: different bytes behind an identical size AND
+///   identical nanosecond mtime are invisible, the universal limit of any
+///   stat-based fast path (FileTracker, ccache and clangd accept the same).
 ///
 /// Layer 2 (precise): otherwise hash the disk content and compare against
 ///   the consumed-content hash. A match means the file was touched but not

@@ -546,11 +546,10 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     // Read the chain files (all but the target) from disk. The synthesized
     // preamble deliberately reflects disk state, never open-document buffers:
     // open files must not be depended upon by other files. Each file is
-    // stat'ed before it is read: if a write slips in between, the recorded
-    // stat no longer matches the disk and the next check re-validates the
-    // file by hash. Stats within the mtime guard of the read get no fast
-    // path at all — a coarse-granularity filesystem could stamp a slightly
-    // later write with the same mtime.
+    // stat'ed AFTER it is read, and only a stat older than the mtime guard
+    // becomes a fast path: a write racing the read stamps an mtime inside
+    // the guard, so such a file keeps only its hash and the next check
+    // compares the disk against the embedded bytes.
     auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::system_clock::now().time_since_epoch())
                       .count();
@@ -563,11 +562,6 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     deps.deps.reserve(chain.size());
     for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
         auto cur_path = workspace.path_pool.resolve(chain[i]);
-        llvm::sys::fs::file_status status;
-        if(llvm::sys::fs::status(cur_path, status)) {
-            LOG_WARN("resolve_header_context: cannot stat {}", cur_path);
-            return std::nullopt;
-        }
         auto buf = llvm::MemoryBuffer::getFile(cur_path);
         if(!buf) {
             LOG_WARN("resolve_header_context: cannot read {}", cur_path);
@@ -575,6 +569,11 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
         }
         chain_contents.emplace_back((*buf)->getBuffer());
         chain_entries.push_back({cur_path, chain_contents.back()});
+        llvm::sys::fs::file_status status;
+        if(llvm::sys::fs::status(cur_path, status)) {
+            LOG_WARN("resolve_header_context: cannot stat {}", cur_path);
+            return std::nullopt;
+        }
         // The hash covers the buffer just read — the bytes the synthesized
         // preamble embeds — never a re-read that could be newer.
         auto mtime_ns = fs::mtime_ns(status);
@@ -592,11 +591,13 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     std::string self_snapshot_path;
     std::uint64_t target_hash = 0;
     llvm::sys::fs::file_status target_status;
-    bool target_stat_ok = !llvm::sys::fs::status(target_path, target_status);
+    bool target_stat_ok = false;
     auto preamble_dir = path::join(workspace.config.project.cache_dir, "header_context");
     if(auto target_buf = llvm::MemoryBuffer::getFile(target_path)) {
         auto content = (*target_buf)->getBuffer();
         target_hash = llvm::xxh3_64bits(content);
+        // Stat after the read, same discipline as the chain files above.
+        target_stat_ok = !llvm::sys::fs::status(target_path, target_status);
         self_snapshot_path = path::join(preamble_dir, std::format("{:016x}.self.h", target_hash));
         if(!llvm::sys::fs::exists(self_snapshot_path)) {
             auto ec = llvm::sys::fs::create_directories(preamble_dir);

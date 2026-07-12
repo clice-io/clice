@@ -247,7 +247,11 @@ DepsSnapshot capture_deps_snapshot(PathPool& pool,
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(file.path, status)) {
             // The build read it, but it is gone already: record the absence,
-            // reappearing counts as a change.
+            // reappearing counts as a change. Still-missing deliberately
+            // counts as unchanged — flagging it would rebuild on every
+            // check without ever converging, while the artifact is the
+            // last remaining truth for the file (and dependents' recovery
+            // is the DiskRemoved cascade's job, not this snapshot's).
             dep.missing = true;
             dep.hash = 0;
             continue;
@@ -444,6 +448,16 @@ void Workspace::load_cache(ContextResolver& contexts) {
         auto source = resolve(entry.source_file);
         if(!pcm_path || source.empty())
             continue;
+
+        // PCM builds now always record at least the module source itself as
+        // a dependency, so an empty list marks an entry from before deps
+        // were populated — an unvalidatable snapshot that would blindly
+        // serve a stale PCM (the key embeds no content). Drop it and let
+        // the module rebuild once.
+        if(entry.deps.empty()) {
+            LOG_INFO("Dropping dep-less cached PCM for {} (pre-upgrade entry)", source);
+            continue;
+        }
 
         auto path_id = path_pool.intern(source);
         pcm_cache[path_id] = {*pcm_path, entry.key, load_deps(entry.deps)};

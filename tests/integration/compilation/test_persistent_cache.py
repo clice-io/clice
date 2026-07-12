@@ -234,6 +234,43 @@ async def test_pcm_offline_edit_invalidates(executable, test_data_dir, tmp_path)
     await shutdown_client(c2)
 
 
+async def test_depless_pcm_entry_dropped(executable, test_data_dir, tmp_path):
+    """A PCM cache entry with an empty deps list (written before deps were
+    populated) is unvalidatable and must be dropped at load, not trusted."""
+    import shutil
+
+    from tests.tools.compile_commands import generate_cdb
+    from tests.tools.checks import assert_has_errors
+
+    src = test_data_dir / "modules" / "save_recompile"
+    for f in src.iterdir():
+        if f.is_file():
+            shutil.copy2(f, tmp_path / f.name)
+    pin_cache_to_workspace(tmp_path)
+    generate_cdb(tmp_path)
+
+    c1 = await make_client(executable, tmp_path)
+    mid_uri, _ = await c1.open_and_wait(tmp_path / "mid.cppm")
+    assert_clean_compile(c1, mid_uri)
+    await shutdown_client(c1)
+
+    # Simulate a pre-upgrade cache: strip the PCM deps, then break the
+    # interface offline. A trusted dep-less entry would compile mid clean.
+    cache_path = cache_root(tmp_path) / "cache.json"
+    cache = json.loads(cache_path.read_text())
+    for entry in cache["pcm"]:
+        entry["deps"] = []
+    cache_path.write_text(json.dumps(cache))
+    (tmp_path / "leaf.cppm").write_text(
+        "export module Leaf;\n\nexport int renamed_leaf() {\n    return 1;\n}\n"
+    )
+
+    c2 = await make_client(executable, tmp_path)
+    mid_uri2, _ = await c2.open_and_wait(tmp_path / "mid.cppm")
+    assert_has_errors(c2, mid_uri2, "Expected errors after offline interface edit")
+    await shutdown_client(c2)
+
+
 async def test_pcm_cache_entry_has_deps(client, test_data_dir, tmp_path):
     """cache.json PCM entries must record dependencies, including the module
     source file itself — an empty list is permanently blind."""
