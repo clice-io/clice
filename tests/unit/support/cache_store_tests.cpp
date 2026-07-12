@@ -568,14 +568,17 @@ TEST_CASE(StaleAuxDropped) {
     // (see reset_aux_locked): the primary was republished, the old aux
     // stayed behind. Pairs commit primary-first, so a legitimate aux is
     // never older than its primary — registration must not adopt this one.
+    // int-FD flavor: setLastAccessAndModificationTime has no overload for
+    // the native handle type on Windows.
     auto aux_path = tmp.path("root/cache/v1/pch/k1.pch.idx");
-    auto fd = llvm::sys::fs::openNativeFileForWrite(aux_path,
-                                                    llvm::sys::fs::CD_OpenExisting,
-                                                    llvm::sys::fs::OF_None);
-    ASSERT_TRUE(bool(fd));
+    int fd = 0;
+    ASSERT_FALSE(bool(llvm::sys::fs::openFileForWrite(aux_path,
+                                                      fd,
+                                                      llvm::sys::fs::CD_OpenExisting,
+                                                      llvm::sys::fs::OF_None)));
     auto old_time = std::chrono::system_clock::now() - std::chrono::hours(1);
-    ASSERT_FALSE(bool(llvm::sys::fs::setLastAccessAndModificationTime(*fd, old_time, old_time)));
-    llvm::sys::fs::closeFile(*fd);
+    ASSERT_FALSE(bool(llvm::sys::fs::setLastAccessAndModificationTime(fd, old_time, old_time)));
+    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
 
     auto store = open_store(tmp);
     register_paired(store);
