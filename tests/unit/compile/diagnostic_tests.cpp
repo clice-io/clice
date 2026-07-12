@@ -1,6 +1,7 @@
 #include "test/test.h"
 #include "compile/compilation.h"
 #include "compile/diagnostic.h"
+#include "feature/feature.h"
 
 namespace clice::testing {
 
@@ -181,6 +182,33 @@ void foo() {}
 
     auto unit = compile(dp.params);
     ASSERT_TRUE(unit.completed());
+}
+
+TEST_CASE(CommandLineNote) {
+    /// A macro-redefinition note points into <command line>; related
+    /// information must skip it instead of emitting an empty URI.
+    DiagParams dp(R"(
+#define FOO 2
+int main() { return 0; }
+)",
+                  {"-DFOO=1"});
+
+    auto unit = compile(dp.params);
+    ASSERT_TRUE(unit.completed());
+
+    auto diagnostics = feature::diagnostics(unit);
+    bool redefined = false;
+    for(auto& diag: diagnostics) {
+        if(auto* text = std::get_if<std::string>(&diag.message)) {
+            redefined |= text->find("macro redefined") != std::string::npos;
+        }
+        if(diag.related_information.has_value()) {
+            for(auto& related: *diag.related_information) {
+                ASSERT_FALSE(related.location.uri.empty());
+            }
+        }
+    }
+    ASSERT_TRUE(redefined);
 }
 
 };  // TEST_SUITE(Diagnostic)

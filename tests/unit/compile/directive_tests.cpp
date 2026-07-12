@@ -314,6 +314,24 @@ const char e[] = {
     ASSERT_TRUE(probe_found);
 };
 
+TEST_CASE(FailedIncludeDeps) {
+    // A failed include records an invalid fid; deps must skip it
+    // instead of resolving it to a path.
+    add_files("main.cpp", R"cpp(
+#[test.h]
+
+#[main.cpp]
+#include "test.h"
+#include "missing.h"
+)cpp");
+    prepare();
+    auto built = clice::compile(params);
+
+    auto deps = built.deps();
+    ASSERT_EQ(deps.size(), 1U);
+    ASSERT_EQ(deps[0], TestVFS::path("test.h"));
+};
+
 };  // TEST_SUITE(Directive)
 
 }  // namespace
