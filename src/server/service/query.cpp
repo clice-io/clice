@@ -96,8 +96,10 @@ bool IndexQuery::serves_preamble(const Session& session, const index::PreambleSt
     // the buffer still starts with the exact preamble text the blob was
     // built from. The prefix comparison validates the described region
     // directly — body edits never move preamble rows — so no dirty-flag
-    // gating is needed on top.
-    return workspace.path_pool.resolve(session.path_id) == state.source_path() &&
+    // gating is needed on top. The blob stores clang's native path
+    // (backslashes on Windows) while the pool normalizes separators, so
+    // compare through the pool's lookup, not raw strings.
+    return workspace.path_pool.find(state.source_path()) == session.path_id &&
            llvm::StringRef(session.text).starts_with(state.preamble_content());
 }
 
