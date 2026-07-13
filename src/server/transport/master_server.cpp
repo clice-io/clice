@@ -35,6 +35,7 @@ constexpr static std::size_t notify_log_limit = 128;
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
     indexer(loop, workspace, pool, contexts, sessions), index_query(workspace, sessions, indexer),
+    agent_query(workspace, sessions, indexer, {.disk_only = true}),
     features(compiler, index_query, workspace, contexts, indexer),
     invalidator(workspace, sessions, contexts), bg_tasks(loop), self_path(std::move(self_path)) {
     // The notify hook is process-wide because the logging layer cannot
@@ -238,6 +239,36 @@ void MasterServer::close_session(std::uint32_t path_id) {
     LOG_DEBUG("didClose: {}", path);
 }
 
+void MasterServer::on_agentic_query() {
+    if(indexer.index_open_files) {
+        return;
+    }
+    // First agentic index query: agents read disk truth, so open files'
+    // disk snapshots must be indexed too — background indexing skips
+    // them otherwise, since the LSP side is fully served by their
+    // sessions. Sticky for the server's lifetime.
+    indexer.index_open_files = true;
+    for(auto& [path_id, session]: sessions.sessions) {
+        if(!session) {
+            continue;
+        }
+        // Same disk-vs-shard arbitration as BufferClosed: a current shard
+        // keeps serving through the catch-up, while a stale or missing one
+        // (a save that landed while its reindex slot was still skipped)
+        // must not answer agents with the pre-save rows.
+        auto disk = fs::read(workspace.path_pool.resolve(path_id));
+        if(!disk) {
+            continue;
+        }
+        auto shard_it = workspace.merged_indices.find(path_id);
+        bool shard_current =
+            shard_it != workspace.merged_indices.end() && *disk == shard_it->second.content();
+        indexer.enqueue(path_id,
+                        shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
+    }
+    indexer.schedule();
+}
+
 void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     auto dirty = invalidator.apply(events);
 
@@ -373,8 +404,11 @@ void MasterServer::open_cache_store() {
     // Size budgets are deliberately generous: eviction exists to bound
     // disk usage, not to keep the working set tight.
     constexpr std::uint64_t GiB = 1ull << 30;
-    store->register_namespace(
-        {.name = "pch", .extension = ".pch", .policy = CachePolicy::LRU, .max_bytes = 8 * GiB});
+    store->register_namespace({.name = "pch",
+                               .extension = ".pch",
+                               .aux_extension = ".pch.idx",
+                               .policy = CachePolicy::LRU,
+                               .max_bytes = 8 * GiB});
     store->register_namespace(
         {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 8 * GiB});
     store->register_namespace(

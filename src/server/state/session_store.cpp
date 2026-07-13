@@ -97,7 +97,7 @@ void SessionStore::reset_compile_state(Session& session, ResetDepth depth) {
     session.ast_dirty = true;
     switch(depth) {
         case ResetDepth::Superseded: {
-            session.pch_ref.reset();
+            session.pch_key.reset();
             session.ast_deps.reset();
             session.trial_done = false;
             // Invalidate any in-flight compile: without the bump it would

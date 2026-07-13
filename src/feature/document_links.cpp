@@ -7,8 +7,7 @@
 
 namespace clice::feature {
 
-auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
-    -> std::vector<DocumentLink> {
+auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
     std::vector<DocumentLink> links;
 
     auto interested = unit.interested_file();
@@ -20,7 +19,6 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
     auto content = unit.interested_content();
     auto& directives = directives_it->second;
     auto* lang_opts = &unit.lang_options();
-    LineMap map(content, unit.line_starts(), encoding);
 
     auto add_link = [&](clang::SourceLocation loc, llvm::StringRef target) {
         auto [fid, offset] = unit.decompose_location(loc);
@@ -29,10 +27,7 @@ auto document_links(CompilationUnitRef unit, PositionEncoding encoding)
         auto range = find_directive_argument(content, offset, lang_opts);
         if(!range)
             return;
-        auto protocol_range = to_range(map, *range);
-        if(!protocol_range)
-            return;
-        links.push_back(DocumentLink{.range = *protocol_range, .target = target.str()});
+        links.push_back(DocumentLink{.range = *range, .target = target.str()});
     };
 
     for(const auto& include: directives.includes) {

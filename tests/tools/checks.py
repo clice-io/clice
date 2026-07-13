@@ -19,6 +19,15 @@ SETTLE_TIME = 0.5  # Time for the server to stabilize after an operation
 IDLE_TIMEOUT = 5.0  # Idle soak time in lifecycle tests
 
 
+def locations_of(result):
+    """Normalize a definition/references response to a list of Locations."""
+    if result is None:
+        return []
+    if isinstance(result, (list, tuple)):
+        return list(result)
+    return [result]
+
+
 async def wait_for_recompile(client, uri: str, *, timeout: float = 60.0) -> None:
     """Trigger recompilation via hover and wait for fresh diagnostics.
 
@@ -115,6 +124,25 @@ def anomalies_in_log_files(workspace: Path | None) -> list[str]:
     return found
 
 
+CRASH_TRACE_MARKER = "=== CRASH STACK TRACE ==="
+
+
+def crash_traces_in_log_files(workspace: Path | None) -> list[str]:
+    """Crash stack traces recorded by crashed processes in their log files."""
+    if workspace is None:
+        return []
+    logs_dir = Path(workspace) / ".clice" / "logs"
+    if not logs_dir.exists():
+        return []
+    traces = []
+    for log_file in sorted(logs_dir.rglob("*.log")):
+        text = log_file.read_text(errors="replace")
+        pos = text.find(CRASH_TRACE_MARKER)
+        if pos != -1:
+            traces.append(f"--- {log_file.name} ---\n{text[pos:]}")
+    return traces
+
+
 def assert_no_anomaly(client, workspace: Path | None = None) -> None:
     """Assert the session produced zero anomalies (client messages + logs).
 
@@ -123,7 +151,11 @@ def assert_no_anomaly(client, workspace: Path | None = None) -> None:
     """
     found = anomalies_in_log_messages(client)
     found += anomalies_in_log_files(workspace)
-    assert not found, f"clice reported internal anomalies: {found}"
+    # A crashed worker leaves its stack trace in its own log file; surface
+    # it here so a one-off CI crash is diagnosable from the test output.
+    traces = crash_traces_in_log_files(workspace) if found else []
+    detail = "\n" + "\n".join(traces) if traces else ""
+    assert not found, f"clice reported internal anomalies: {found}{detail}"
 
 
 def guidance_messages(client) -> list[str]:

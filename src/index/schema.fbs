@@ -151,6 +151,84 @@ relations:
     [Relation];
 }
 
+table PreambleDocumentLink {
+range:
+    Range;
+target:
+    string;
+}
+
+// One file covered by a preamble compilation. Content and line starts are
+// stored (like MergedIndex shards) so the master converts byte offsets to
+// LSP positions without touching the filesystem.
+table PreambleFileEntry {
+path_id:
+    uint;
+
+// Sorted by (range.begin, range.end, target).
+occurrences:
+    [Occurrence];
+
+// Sorted by symbol hash for binary search.
+relations:
+    [TUFileRelationsEntry];
+
+content:
+    string;
+
+line_starts:
+    [uint];
+}
+
+table PreambleSymbolEntry {
+symbol_id:
+    ulong;
+name:
+    string;
+kind:
+    ubyte;
+}
+
+// Everything the master needs from one PCH build, written by the stateless
+// worker next to the PCH blob and opened as a memory-mapped FlatBuffer:
+// the preamble's symbol index plus the PCH-derived feature state that the
+// master splices into main-file results (document links, inactive regions,
+// open conditional stack).
+table PreambleState {
+format_version:
+    uint;
+
+// Blob-local path table; every path_id indexes into it.
+paths:
+    [string] (required);
+
+// Header entries covered by the preamble.
+files:
+    [PreambleFileEntry] (required);
+
+// The source file's own preamble region, in buffer offsets. Its content
+// is the exact preamble text the PCH was built from — consumers compare
+// it against the live buffer's prefix before serving these rows.
+preamble:
+    PreambleFileEntry;
+
+// Sorted by symbol_id for binary search.
+symbols:
+    [PreambleSymbolEntry] (required);
+
+links:
+    [PreambleDocumentLink];
+
+// Flat begin/end offset pairs within the preamble region.
+inactive_regions:
+    [uint];
+
+// Conditional stack still open at the preamble bound (see
+// feature::InactiveScan::open_stack encoding).
+open_conditionals:
+    [ubyte];
+}
+
 table TUFileIndexEntry {
 file_id:
     uint;

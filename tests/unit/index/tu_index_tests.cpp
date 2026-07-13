@@ -698,6 +698,130 @@ TEST_CASE(ScopeTULocal) {
     ASSERT_EQ(found, expected);
 }
 
+TEST_CASE(PreambleDefaultArgument) {
+    // An out-of-line definition inherits the default argument expression
+    // from the in-class declaration; its DeclRefExpr is located in the
+    // preamble header, whose FileID is loaded from the PCH.
+    add_file("foo.h", R"(
+struct Foo {
+    static constexpr int npos = -1;
+    int find(int x = npos) const;
+};
+)");
+    add_main("main.cpp", R"(
+#include "foo.h"
+int Foo::@def[$(1)find](int x) const { return 0; }
+)");
+    ASSERT_TRUE(compile_with_pch());
+
+    // A full build keeps the preamble rows: this proves the row exists
+    // (so the gate test below cannot pass vacuously) and that the loaded
+    // fid resolves through the graph to the header's path.
+    tu_index = index::TUIndex::build(*unit);
+    bool found = false;
+    for(auto& [fid, index]: tu_index.file_indices) {
+        found |= tu_index.graph.path(tu_index.graph.path_id(fid)).ends_with("foo.h");
+    }
+    ASSERT_TRUE(found);
+
+    tu_index = index::TUIndex::build(*unit, true);
+
+    // Rows resolving into the preamble are dropped: the preamble's own
+    // index covers them. Only the main file's rows remain.
+    ASSERT_TRUE(tu_index.file_indices.empty());
+    EXPECT_SELECT("1", "def");
+}
+
+TEST_CASE(PreambleBaseSpecifier) {
+    // A forward declaration reaches the definition's base specifiers via
+    // the shared DefinitionData; their source ranges are in the preamble
+    // header, whose FileID is loaded from the PCH.
+    add_file("bar.h", R"(
+struct Base {};
+struct Derived : Base {};
+)");
+    add_main("main.cpp", R"(
+#include "bar.h"
+struct Derived;
+Derived* use();
+)");
+    ASSERT_TRUE(compile_with_pch());
+
+    // Full build: the base-specifier rows land in the preamble header
+    // and its loaded fid resolves to the header's path.
+    tu_index = index::TUIndex::build(*unit);
+    bool found = false;
+    for(auto& [fid, index]: tu_index.file_indices) {
+        found |= tu_index.graph.path(tu_index.graph.path_id(fid)).ends_with("bar.h");
+    }
+    ASSERT_TRUE(found);
+
+    tu_index = index::TUIndex::build(*unit, true);
+
+    ASSERT_TRUE(tu_index.file_indices.empty());
+    ASSERT_FALSE(tu_index.main_file_index.occurrences.empty());
+}
+
+TEST_CASE(HeaderMacroDropped) {
+    // Macro occurrences flow through the same gate: a definition in an
+    // included header is dropped from an interested-only build, while
+    // the reference in the main file is kept.
+    add_file("baz.h", R"(
+#define BAZ 1
+)");
+    add_main("main.cpp", R"(
+#include "baz.h"
+int x = $(1)BAZ;
+)");
+    ASSERT_TRUE(compile());
+
+    tu_index = index::TUIndex::build(*unit, true);
+    ASSERT_TRUE(tu_index.file_indices.empty());
+    ASSERT_FALSE(tu_index.main_file_index.occurrences.empty());
+}
+
+TEST_CASE(UnknownFidFallback) {
+    // A preamble header's loaded FileID is unknown to a graph built
+    // without indexed fids; lookups must degrade to the interested
+    // file instead of crashing.
+    add_file("foo.h", R"(
+struct Foo {};
+)");
+    add_main("main.cpp", R"(
+#include "foo.h"
+int x = 1;
+)");
+    ASSERT_TRUE(compile_with_pch());
+
+    auto graph = index::IncludeGraph::from(*unit);
+    auto fid = unit->file_id(TestVFS::path("foo.h"));
+    ASSERT_TRUE(fid.isValid());
+    ASSERT_EQ(graph.include_location_id(fid), static_cast<std::uint32_t>(-1));
+    ASSERT_EQ(graph.path_id(fid), static_cast<std::uint32_t>(graph.paths.size() - 1));
+}
+
+TEST_CASE(PreambleFidResolved) {
+    // When a preamble header's fid is passed as an indexed fid, its
+    // include chain is recovered through the SourceManager even though
+    // this parse's preprocessor callbacks never saw the include.
+    add_file("foo.h", R"(
+struct Foo {};
+)");
+    add_main("main.cpp", R"(
+#include "foo.h"
+int x = 1;
+)");
+    ASSERT_TRUE(compile_with_pch());
+
+    auto fid = unit->file_id(TestVFS::path("foo.h"));
+    ASSERT_TRUE(fid.isValid());
+
+    auto graph = index::IncludeGraph::from(*unit, {fid});
+    auto include = graph.include_location_id(fid);
+    ASSERT_TRUE(include != static_cast<std::uint32_t>(-1));
+    ASSERT_TRUE(graph.path(graph.path_id(fid)).ends_with("foo.h"));
+}
+
 };  // TEST_SUITE(tu_index)
 
 }  // namespace

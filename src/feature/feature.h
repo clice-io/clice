@@ -289,8 +289,9 @@ auto inlay_hints(CompilationUnitRef unit,
                  const InlayHintsOptions& options,
                  PositionEncoding encoding) -> std::vector<protocol::InlayHint>;
 
-auto document_links(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
-    -> std::vector<DocumentLink>;
+/// Include-directive links of the interested file, in byte offsets; the
+/// reply edge converts them with the session's line map.
+auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink>;
 
 /// Go-to-definition on an include directive: when `offset` falls on the
 /// argument of an #include or __has_include in the interested file, the

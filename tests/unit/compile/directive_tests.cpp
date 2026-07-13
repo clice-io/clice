@@ -278,6 +278,60 @@ TEST_CASE(HasEmbed) {
     EXPECT_HAS_EMBED(1, "1", "non-existed.bin", /*exists=*/false);
 };
 
+TEST_CASE(EmbedInDeps) {
+    run(R"cpp(
+#[data.h]
+
+#[data.bin]
+0123456789
+
+#[probe.bin]
+AB
+
+#[main.cpp]
+#include "data.h"
+
+const char e[] = {
+#embed "data.bin"
+};
+
+#if __has_embed("probe.bin")
+#endif
+)cpp");
+
+    auto deps = unit->deps();
+    bool header_found = false;
+    bool data_found = false;
+    bool probe_found = false;
+    for(auto& dep: deps) {
+        ASSERT_TRUE(path::is_absolute(dep));
+        header_found |= dep == TestVFS::path("data.h");
+        data_found |= dep == TestVFS::path("data.bin");
+        probe_found |= dep == TestVFS::path("probe.bin");
+    }
+    ASSERT_TRUE(header_found);
+    ASSERT_TRUE(data_found);
+    ASSERT_TRUE(probe_found);
+};
+
+TEST_CASE(FailedIncludeDeps) {
+    // A failed include records an invalid fid; deps must skip it
+    // instead of resolving it to a path.
+    add_files("main.cpp", R"cpp(
+#[test.h]
+
+#[main.cpp]
+#include "test.h"
+#include "missing.h"
+)cpp");
+    prepare();
+    auto built = clice::compile(params);
+
+    auto deps = built.deps();
+    ASSERT_EQ(deps.size(), 1U);
+    ASSERT_EQ(deps[0], TestVFS::path("test.h"));
+};
+
 };  // TEST_SUITE(Directive)
 
 }  // namespace

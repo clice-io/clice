@@ -129,7 +129,14 @@ struct BuildParams {
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
 
-    std::string output_path;               ///< BuildPCH, BuildPCM
+    std::string output_path;  ///< BuildPCH, BuildPCM
+
+    /// BuildPCH: tmp path for the PreambleState blob (the PCH's paired
+    /// `.pch.idx`), allocated by the master's store alongside output_path.
+    /// The worker serializes the preamble's index and feature state into
+    /// it; the master commits both blobs together.
+    std::string index_output_path;
+
     std::string module_name;               ///< BuildPCM
     uint32_t preamble_bound = UINT32_MAX;  ///< BuildPCH
     LocalSourceRange format_range;         ///< Format (default = full document)
@@ -146,21 +153,13 @@ struct BuildResult {
     bool has_user_errors = false;
     std::string output_path;  ///< PCH or PCM path
     std::vector<std::string> deps;
-    std::string tu_index_data;
-    /// Include directives of the PCH preamble. Structured so the master can
-    /// serve both document links and go-to-definition on preamble lines.
-    std::vector<clice::feature::DocumentLink> preamble_links;
-
-    /// Inactive regions within the preamble region (flat offset pairs)
-    /// and the conditional stack still open at the bound.
-    std::vector<std::uint32_t> inactive_regions;
-    std::vector<std::uint8_t> open_conditionals;
+    std::string tu_index_data;          ///< Index: serialized TUIndex, merged by the master
     kota::codec::RawValue result_json;  ///< Completion/SignatureHelp result
 };
 
 /// Request the document links of an open file's AST. Only the main-file
 /// region is covered: the preamble is compiled into the PCH, and its links
-/// travel in BuildResult::preamble_links.
+/// live in the PCH's PreambleState blob (spliced in by the master).
 struct DocumentLinkParams {
     std::string path;
 };

@@ -1,10 +1,13 @@
 #include "server/worker/stateless_worker.h"
 
 #include <cstdlib>
+#include <format>
+#include <optional>
 
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "feature/inactive_regions.h"
+#include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "server/protocol/worker.h"
 #include "server/worker/worker_common.h"
@@ -50,16 +53,50 @@ static std::string collect_errors(CompilationUnit& unit) {
     return errors;
 }
 
-/// Build a TUIndex, serialize it, and return as a string.
-static std::string serialize_tu_index(CompilationUnit& unit, bool interested_only = false) {
-    auto tu_index = index::TUIndex::build(unit, interested_only);
-    if(!interested_only) {
-        tu_index.main_file_index = index::FileIndex();
+/// Serialize the preamble's PreambleState blob (full index + document
+/// links + inactive regions) into a string. Runs while the freshly
+/// parsed AST is still in memory — the only moment the preamble's index
+/// is obtainable without deserializing the whole PCH. The file write
+/// happens separately, after the PCH itself is flushed.
+static std::string serialize_preamble_state(CompilationUnit& unit, std::uint32_t preamble_bound) {
+    auto tu_index = index::TUIndex::build(unit);
+    auto links = feature::document_links(unit);
+    auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
+
+    std::string blob;
+    llvm::raw_string_ostream os(blob);
+    index::PreambleState::serialize(unit,
+                                    tu_index,
+                                    links,
+                                    inactive.regions,
+                                    inactive.open_stack,
+                                    os);
+    return blob;
+}
+
+/// Write the serialized blob next to the PCH. Returns an error description
+/// on failure so the master's anomaly carries the cause.
+static std::optional<std::string> write_preamble_state(llvm::StringRef blob,
+                                                       llvm::StringRef output_path) {
+    std::error_code ec;
+    llvm::raw_fd_ostream os(output_path, ec);
+    if(ec) {
+        auto message =
+            std::format("cannot open PreambleState blob {}: {}", output_path, ec.message());
+        LOG_ERROR("BuildPCH: {}", message);
+        return message;
     }
-    std::string serialized;
-    llvm::raw_string_ostream os(serialized);
-    tu_index.serialize(os);
-    return serialized;
+    os << blob;
+    os.flush();
+    if(os.has_error()) {
+        auto message = std::format("failed writing PreambleState blob {}: {}",
+                                   output_path,
+                                   os.error().message());
+        os.clear_error();
+        LOG_ERROR("BuildPCH: {}", message);
+        return message;
+    }
+    return std::nullopt;
 }
 
 static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
@@ -94,17 +131,29 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     if(!success)
         errors = collect_errors(unit);
 
-    std::string tu_index_data;
-    std::vector<feature::DocumentLink> preamble_links;
-    feature::InactiveScan inactive;
+    std::string blob;
     if(success) {
-        tu_index_data = serialize_tu_index(unit);
-        preamble_links = feature::document_links(unit);
-        inactive = feature::inactive_regions(unit, {}, 0, params.preamble_bound);
+        blob = serialize_preamble_state(unit, params.preamble_bound);
     }
 
     // Destroy CompilationUnit to flush PCH to disk.
     unit = CompilationUnit(nullptr);
+
+    // Write the blob strictly after the PCH flush: the CacheStore's
+    // restart adoption validates a pair by "aux not older than primary"
+    // (renames preserve mtimes), so the on-disk order must match the
+    // logical one. The PCH is only served together with its blob, so a
+    // blob write failure fails the whole build. It is an internal I/O
+    // failure, never a user-code problem — must not be downgraded to an
+    // expected build failure.
+    bool internal_error = false;
+    if(success) {
+        if(auto error = write_preamble_state(blob, params.index_output_path)) {
+            success = false;
+            internal_error = true;
+            errors = std::move(*error);
+        }
+    }
 
     if(success) {
         LOG_INFO("BuildPCH done: file={}, output={}, {}ms", params.file, tmp_path, timer.ms());
@@ -112,10 +161,6 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
         result.success = true;
         result.output_path = tmp_path;
         result.deps = pch_info.deps;
-        result.tu_index_data = std::move(tu_index_data);
-        result.preamble_links = std::move(preamble_links);
-        result.inactive_regions = std::move(inactive.regions);
-        result.open_conditionals = std::move(inactive.open_stack);
         return result;
     } else {
         LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]", params.file, timer.ms(), errors);
@@ -123,7 +168,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
         worker::BuildResult result;
         result.success = false;
         result.error = errors.empty() ? "PCH compilation failed" : errors;
-        result.has_user_errors = !errors.empty();
+        result.has_user_errors = !internal_error && !errors.empty();
         return result;
     }
 }
@@ -160,10 +205,10 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
     if(!success)
         errors = collect_errors(unit);
 
-    std::string tu_index_data;
-    if(success)
-        tu_index_data = serialize_tu_index(unit, true);
-
+    // TODO: PCM indexing. Unlike the PCH, a PCM is not a transient
+    // buffer-derived artifact — module units are ordinary disk files with
+    // CDB entries, so their symbols should flow through the normal
+    // background-indexing path (no per-blob pair needed).
     unit = CompilationUnit(nullptr);
 
     if(success) {
@@ -172,7 +217,6 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
         result.success = true;
         result.output_path = tmp_path;
         result.deps = pcm_info.deps;
-        result.tu_index_data = std::move(tu_index_data);
         return result;
     } else {
         LOG_WARN("BuildPCM failed: module={}, {}ms, errors=[{}]",

@@ -358,9 +358,10 @@ TEST_CASE(DiskChangeOpenMarksDirty) {
 
     // The buffer is the truth for an open file: recompile so the next
     // compile's deps validation judges the disk change, but no rescan and
-    // no cascade.
+    // no cascade. The file's shard describes the old disk, so its reindex
+    // queues alongside (skipped while open-file indexing is off).
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_file});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{open_file});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.reset_trial.empty());
     ASSERT_FALSE(dirty.recheck_contexts);
@@ -529,16 +530,20 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     // Flag changes recompile open files and reindex closed ones; the
     // pull-side cache keys (canonical flags) miss on their own.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_id});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{closed_id});
+    llvm::SmallVector<std::uint32_t> reindexed{open_id, closed_id};
+    llvm::sort(reindexed);
+    auto content_changed = dirty.reindex_content_changed;
+    llvm::sort(content_changed);
+    ASSERT_EQ(content_changed, reindexed);
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
 
-    // The closed file's shard was built under the old command and looks
-    // fresh to content-only validation: it must be evicted so the queued
-    // reindex is not filtered out. The open file's shard stays (its next
-    // compile owns the refresh).
+    // Both shards were built under the old command and look fresh to
+    // content-only validation: evict them so the queued reindexes are not
+    // filtered out. The open file's slot is skipped while open-file
+    // indexing is off; its next compile owns the session-side refresh.
     ASSERT_EQ(workspace.merged_indices.count(closed_id), 0u);
-    ASSERT_EQ(workspace.merged_indices.count(open_id), 1u);
+    ASSERT_EQ(workspace.merged_indices.count(open_id), 0u);
 }
 
 TEST_CASE(CDBAddedOpenMarksDirty) {
@@ -554,9 +559,10 @@ TEST_CASE(CDBAddedOpenMarksDirty) {
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
     // The open file gained its first real entry: drop the guessed command
-    // it was compiled with instead of queueing a background reindex.
+    // it was compiled with, and queue the reindex that builds its shard
+    // under the real command once open-file indexing is on.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{file});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{file});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 

@@ -126,15 +126,12 @@ struct Session {
 
     std::shared_ptr<PendingCompile> compiling;
 
-    /// Reference to the PCH entry in Workspace.pch_cache, if any.
-    /// The PCH itself is owned by Workspace (shared, content-addressed);
-    /// Session only stores enough to locate and validate it.
-    struct PCHRef {
-        std::string key;          ///< Content key into Workspace.pch_cache.
-        std::uint32_t bound = 0;  ///< Preamble byte boundary.
-    };
-
-    std::optional<PCHRef> pch_ref;
+    /// Content key into Workspace.pch_cache for this session's PCH, if
+    /// any. The PCH itself is owned by Workspace (shared,
+    /// content-addressed); whether its preamble-derived state still
+    /// describes this buffer is checked against the blob's stored
+    /// preamble text at the point of use.
+    std::optional<std::string> pch_key;
 
     /// Dependency snapshot from the last successful AST compilation.
     /// Used for two-layer staleness detection (mtime + content hash).

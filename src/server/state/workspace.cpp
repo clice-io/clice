@@ -279,10 +279,6 @@ struct CachePCHEntry {
     std::uint32_t bound;
     std::int64_t build_at;
     std::vector<CacheDepEntry> deps;
-
-    // Preamble share of the inactive-region scan; consumed on PCH reuse.
-    std::vector<std::uint32_t> inactive_regions;
-    std::vector<std::uint8_t> open_conditionals;
 };
 
 struct CachePCMEntry {
@@ -295,6 +291,14 @@ struct CachePCMEntry {
 
 struct CacheData {
     std::vector<std::string> paths;
+
+    // preamble_format_version the .pch.idx blobs were written with (one
+    // binary writes them all). A mismatch drops every PCH entry at load so
+    // the pairs rebuild immediately, instead of the mismatch surfacing
+    // lazily on the first overlay query — which cannot trigger a rebuild.
+    // Old cache.json files read back 0 and are dropped the same way.
+    std::uint32_t pch_index_format = 0;
+
     std::vector<CachePCHEntry> pch;
     std::vector<CachePCMEntry> pcm;
     std::vector<CacheModeEntry> header_modes;
@@ -303,6 +307,20 @@ struct CacheData {
 };
 
 }  // namespace
+
+const std::shared_ptr<index::PreambleState>& PCHState::load_state() {
+    if(!state && !index_path.empty()) {
+        state = index::PreambleState::load(index_path);
+        if(!state) {
+            // Unreadable blob: clear the path so queries don't retry the
+            // mmap + verification on every call. The pair now looks
+            // incomplete and ensure_pch rebuilds it on the next compile.
+            LOG_WARN("Failed to open PreambleState blob {}", index_path);
+            index_path.clear();
+        }
+    }
+    return state;
+}
 
 void Workspace::load_cache(ContextResolver& contexts) {
     if(!store)
@@ -339,17 +357,28 @@ void Workspace::load_cache(ContextResolver& contexts) {
         return deps;
     };
 
+    bool pch_format_ok = data.pch_index_format == index::preamble_format_version;
     for(auto& entry: data.pch) {
+        if(!pch_format_ok) {
+            break;
+        }
+
         auto pch_path = store->lookup("pch", entry.key);
         if(!pch_path)
+            continue;
+
+        // A PCH without its PreambleState blob is an incomplete pair
+        // (crash between the two commits): treat it as absent so the next
+        // compile rebuilds both.
+        auto index_path = store->lookup_aux("pch", entry.key);
+        if(!index_path)
             continue;
 
         auto& st = pch_cache[entry.key];
         st.path = *pch_path;
         st.bound = entry.bound;
         st.deps = load_deps(entry.build_at, entry.deps);
-        st.inactive_regions = entry.inactive_regions;
-        st.open_conditionals = entry.open_conditionals;
+        st.index_path = *index_path;
 
         LOG_DEBUG("Loaded cached PCH: {} -> {}", entry.key, *pch_path);
     }
@@ -380,6 +409,7 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         return;
 
     CacheData data;
+    data.pch_index_format = index::preamble_format_version;
     std::unordered_map<std::string, std::uint32_t> index_map;
 
     auto intern = [&](std::uint32_t runtime_path_id) -> std::uint32_t {
@@ -401,8 +431,6 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         entry.key = e.getKey().str();
         entry.bound = st.bound;
         entry.build_at = st.deps.build_at;
-        entry.inactive_regions = st.inactive_regions;
-        entry.open_conditionals = st.open_conditionals;
         for(std::size_t i = 0; i < st.deps.path_ids.size(); ++i) {
             entry.deps.push_back({intern(st.deps.path_ids[i]), st.deps.hashes[i]});
         }

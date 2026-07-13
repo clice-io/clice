@@ -124,6 +124,16 @@ object_ptr<CompilationInfo>
 
         /// Handle CMake's Xclang PCH workaround:
         /// -Xclang -include-pch -Xclang <pchfile> → discard both pairs.
+        ///
+        /// TODO: Dropping the project's own PCH here (and OPT_include_pch in
+        /// the parser table) is required for correctness: it may be produced
+        /// by GCC or a different clang version we cannot load. Open sessions
+        /// lose nothing — the plain -include survives and our own preamble
+        /// PCH covers it. Background indexing however compiles without any
+        /// PCH at all, so projects that use one to speed up their build
+        /// (e.g. LLVM's cmake_pch) index noticeably slower than they
+        /// compile. Index results are unaffected; consider building a
+        /// clice-owned PCH for indexing to win that speed back.
         if(is_xclang_option(id) && arg.values.size() == 1) {
             if(remove_pch) {
                 remove_pch = false;

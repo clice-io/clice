@@ -139,6 +139,16 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // disk-content cascade covers everything a save invalidates.
                 cascade_disk_content_change(path_id, dirty);
 
+                // The file's own shard describes the pre-save disk. With
+                // open-file indexing off the queued slot is skipped and
+                // BufferClosed repairs on close; with it on (an agent is
+                // around), the reindex lands promptly. Saves only come from
+                // open buffers — the session check just drops synthetic
+                // events for files nobody has open.
+                if(store.find(path_id)) {
+                    dirty.add_reindex_content_changed(path_id);
+                }
+
                 // ... unless a save hook or formatter rewrote the file as it
                 // landed, leaving the disk ahead of the buffer. Dependents
                 // already read the rewritten disk through the cascade above;
@@ -199,8 +209,11 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // Open file: the buffer is the truth, so no disk rescan —
                     // what the disk change means for this file is decided by
                     // the next compile's deps validation. Recompile so that
-                    // validation actually runs.
+                    // validation actually runs. The shard describes the old
+                    // disk regardless of the buffer; queue its reindex like
+                    // a save (skipped-and-repaired-on-close without agents).
                     dirty.mark_ast_dirty.push_back(path_id);
+                    dirty.add_reindex_content_changed(path_id);
                     break;
                 }
                 // Closed file: disk is the truth. Run the same cascade a
@@ -299,8 +312,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     if(store.find(path_id)) {
                         // The next compile re-resolves the command (added:
                         // first real entry replaces the guessed one;
-                        // changed: new flags; removed: fall back).
+                        // changed: new flags; removed: fall back). The
+                        // shard was indexed under the old command either
+                        // way — same eviction as the closed branch.
                         dirty.mark_ast_dirty.push_back(path_id);
+                        if(!keep_shard) {
+                            workspace.merged_indices.erase(path_id);
+                            dirty.add_reindex_content_changed(path_id);
+                        }
                     } else if(!keep_shard) {
                         // The shard was indexed under the old command, and
                         // the indexer's freshness gate validates content

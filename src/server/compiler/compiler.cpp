@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "command/argument_parser.h"
+#include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/extension.h"
@@ -283,14 +284,14 @@ std::string uri_to_path(const std::string& uri) {
     return uri;
 }
 
-/// The pch_ref write license: a round may (re)write the session's PCH
+/// The pch_key write license: a round may (re)write the session's PCH
 /// reference only while BOTH staleness tokens still hold their takeoff
 /// values. A supersede bumps generation; a Lost-type invalidation (disk or
 /// CDB change behind an in-flight round) bumps only dirty_epoch — either
 /// way the round's resolved directory/arguments may describe a command
 /// that no longer exists, and writing its PCH key back would hand later
 /// incomplete-preamble edits a stale-flag PCH.
-static bool may_write_pch_ref(const Session& session,
+static bool may_write_pch_key(const Session& session,
                               std::uint64_t launch_generation,
                               std::uint64_t launch_epoch) {
     return session.generation == launch_generation && session.dirty_epoch == launch_epoch;
@@ -302,9 +303,9 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
                                       const std::string& directory,
                                       const std::vector<std::string>& arguments) {
     // A round invalidated during the caller's earlier awaits (module
-    // dependencies) must not touch pch_ref at all: the reset and cache-hit
+    // dependencies) must not touch pch_key at all: the reset and cache-hit
     // branches below write it before the first suspension point.
-    if(!may_write_pch_ref(session, launch_generation, launch_epoch)) {
+    if(!may_write_pch_key(session, launch_generation, launch_epoch)) {
         co_return false;
     }
 
@@ -318,7 +319,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts land here too: they borrow
         // a command but inject nothing.
-        session.pch_ref.reset();
+        session.pch_key.reset();
         co_return true;
     }
 
@@ -350,15 +351,23 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     llvm::StringRef pch_miss = "no_entry";
     if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
         auto& st = it->second;
-        bool in_store = workspace.store && workspace.store->lookup("pch", pch_key);
+        // Both halves of the pair must be present: a PCH whose
+        // PreambleState blob is gone (crash between commits, failed aux
+        // commit) rebuilds whole.
+        bool in_store = workspace.store && workspace.store->lookup("pch", pch_key) &&
+                        workspace.store->lookup_aux("pch", pch_key);
         if(st.path.empty()) {
             pch_miss = "incomplete_entry";
         } else if(!in_store) {
             pch_miss = "evicted";
+        } else if(st.index_path.empty()) {
+            // load_state() found the blob unreadable earlier; republish the
+            // pair rather than serving a PCH with no index forever.
+            pch_miss = "idx_unreadable";
         } else if(deps_changed(workspace.path_pool, st.deps)) {
             pch_miss = "deps_changed";
         } else {
-            session.pch_ref = Session::PCHRef{pch_key, bound};
+            session.pch_key = pch_key;
             LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, path);
             co_return true;
         }
@@ -374,8 +383,8 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     // the session's previous PCH if it is still available.
     if(!is_preamble_complete(text, bound)) {
         LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
-        if(session.pch_ref.has_value()) {
-            auto it = workspace.pch_cache.find(session.pch_ref->key);
+        if(session.pch_key.has_value()) {
+            auto it = workspace.pch_cache.find(*session.pch_key);
             co_return it != workspace.pch_cache.end() && !it->second.path.empty();
         }
         co_return false;
@@ -386,15 +395,15 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     if(auto it = workspace.pch_cache.find(pch_key);
        it != workspace.pch_cache.end() && it->second.building) {
         co_await it->second.building->wait();
-        // Guard the pch_ref write below against an invalidated round's
+        // Guard the pch_key write below against an invalidated round's
         // continuation: a newer round (or a context switch) may have
         // established the session's PCH identity while we waited.
-        if(!may_write_pch_ref(session, launch_generation, launch_epoch)) {
+        if(!may_write_pch_key(session, launch_generation, launch_epoch)) {
             co_return false;
         }
         if(auto it2 = workspace.pch_cache.find(pch_key);
            it2 != workspace.pch_cache.end() && !it2->second.path.empty()) {
-            session.pch_ref = Session::PCHRef{pch_key, it2->second.bound};
+            session.pch_key = pch_key;
             co_return true;
         }
         co_return false;
@@ -411,9 +420,11 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return false;
     }
 
-    // Build a new PCH via stateless worker: it writes the blob to the tmp
-    // path allocated here; the store commits (fsync + rename) on success.
+    // Build a new PCH pair via stateless worker: it writes the PCH and its
+    // PreambleState blob to the tmp paths allocated here; the store
+    // commits (fsync + rename) both on success, primary first.
     auto pending = workspace.store->begin_store("pch", pch_key);
+    auto pending_idx = workspace.store->begin_store_aux("pch", pch_key);
 
     worker::BuildParams bp;
     bp.priority = worker::Priority::High;
@@ -424,6 +435,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     bp.text = text;
     bp.preamble_bound = bound;
     bp.output_path = pending.tmp_path;
+    bp.index_output_path = pending_idx.tmp_path;
 
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", path, bound, pch_key);
 
@@ -431,6 +443,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
 
     if(!result.has_value() || !result.value().success) {
         workspace.store->abort(pending);
+        workspace.store->abort(pending_idx);
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", path, build_failure_message(result));
         } else {
@@ -442,21 +455,61 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return false;
     }
 
-    // Commit on the thread pool: it fsyncs the freshly written PCH.
-    auto committed =
-        co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
-    if(!committed.has_value() || !committed.value().has_value()) {
+    // Commit the pair on the thread pool as one job: the fsyncs stay off
+    // the event loop, and no cancellation can land between the two commits
+    // — the store either publishes the whole pair or retracts it (a half
+    // pair would let waiters adopt a PCH whose blob is gone). Opening the
+    // freshly committed blob (mmap + flatbuffer verification, which walks
+    // the whole file) also happens here so no later consumer pays that
+    // walk on the event loop.
+    struct PairCommit {
+        std::optional<std::string> pch_path;
+        std::optional<std::string> index_path;
+        std::shared_ptr<index::PreambleState> state;
+    };
+
+    auto committed = co_await kota::queue([&]() -> PairCommit {
+        PairCommit outcome;
+        auto pch_path = workspace.store->commit(std::move(pending));
+        if(!pch_path) {
+            workspace.store->abort(pending_idx);
+            return outcome;
+        }
+        outcome.pch_path = std::move(*pch_path);
+
+        // The pair is only usable complete: when the index blob cannot be
+        // published, retract the PCH too — the next compile rebuilds both.
+        auto index_path = workspace.store->commit(std::move(pending_idx));
+        if(!index_path) {
+            workspace.store->invalidate("pch", pch_key);
+            return outcome;
+        }
+        outcome.index_path = std::move(*index_path);
+        outcome.state = index::PreambleState::load(*outcome.index_path);
+        return outcome;
+    });
+    if(!committed.has_value() || !committed.value().pch_path.has_value()) {
         LOG_WARN("Failed to commit PCH for {}", path);
+        co_return false;
+    }
+    if(!committed.value().index_path.has_value()) {
+        LOG_WARN("Failed to commit PreambleState blob for {}", path);
+        // A rebuild of an existing key just had its blobs retracted from
+        // the store; the entry's paths now dangle and waiters checking
+        // `!path.empty()` would hand the compile a deleted PCH. Drop it —
+        // the guard tolerates a missing entry.
+        workspace.pch_cache.erase(pch_key);
         co_return false;
     }
 
     auto& st = workspace.pch_cache[pch_key];
-    st.path = committed.value().value();
+    st.path = *committed.value().pch_path;
     st.bound = bound;
     st.deps = capture_deps_snapshot(workspace.path_pool, result.value().deps);
-    st.preamble_links = std::move(result.value().preamble_links);
-    st.inactive_regions = std::move(result.value().inactive_regions);
-    st.open_conditionals = std::move(result.value().open_conditionals);
+    st.index_path = *committed.value().index_path;
+    // Replace the previous blob's mapping (same key, rebuilt content);
+    // in-flight holders of the old shared_ptr stay valid.
+    st.state = committed.value().state;
 
     LOG_INFO("PCH built for {}: {}", path, st.path);
 
@@ -465,10 +518,10 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
 
     // The cache entry above is content-keyed and correct regardless; only
     // the session pointer must not be written by an invalidated round.
-    if(!may_write_pch_ref(session, launch_generation, launch_epoch)) {
+    if(!may_write_pch_key(session, launch_generation, launch_epoch)) {
         co_return false;
     }
-    session.pch_ref = Session::PCHRef{pch_key, bound};
+    session.pch_key = pch_key;
 
     co_return true;
 }
@@ -577,8 +630,8 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     // Build or reuse PCH.
     auto pch_ok =
         co_await ensure_pch(session, launch_generation, launch_epoch, directory, arguments);
-    if(pch_ok && session.pch_ref.has_value()) {
-        if(auto pch_it = workspace.pch_cache.find(session.pch_ref->key);
+    if(pch_ok && session.pch_key.has_value()) {
+        if(auto pch_it = workspace.pch_cache.find(*session.pch_key);
            pch_it != workspace.pch_cache.end()) {
             pch = {pch_it->second.path, pch_it->second.bound};
         }
@@ -601,9 +654,9 @@ bool Compiler::is_stale(const Session& session) {
        header_context && deps_changed(workspace.path_pool, header_context->deps))
         return true;
 
-    // Check PCH staleness via the session's pch_ref.
-    if(session.pch_ref.has_value()) {
-        auto pch_it = workspace.pch_cache.find(session.pch_ref->key);
+    // Check PCH staleness via the session's pch_key.
+    if(session.pch_key.has_value()) {
+        auto pch_it = workspace.pch_cache.find(*session.pch_key);
         if(pch_it != workspace.pch_cache.end() &&
            deps_changed(workspace.path_pool, pch_it->second.deps))
             return true;
@@ -706,12 +759,16 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // out: concurrent compiles can insert into pch_cache across the
         // await below and rehash the map from under a held pointer.
         std::vector<std::uint32_t> pch_inactive;
-        if(session->pch_ref.has_value()) {
-            if(auto it = workspace.pch_cache.find(session->pch_ref->key);
-               it != workspace.pch_cache.end()) {
-                pch_inactive = it->second.inactive_regions;
-                params.open_conditionals = it->second.open_conditionals;
-            }
+        std::shared_ptr<index::PreambleState> preamble_state;
+        if(session->pch_key.has_value()) {
+            auto it = workspace.pch_cache.find(*session->pch_key);
+            preamble_state = it != workspace.pch_cache.end() ? it->second.load_state() : nullptr;
+        }
+        if(preamble_state) {
+            auto regions = preamble_state->inactive_regions();
+            pch_inactive.assign(regions.begin(), regions.end());
+            auto conditionals = preamble_state->open_conditionals();
+            params.open_conditionals.assign(conditionals.begin(), conditionals.end());
         }
 
         auto result = co_await pool.send_stateful(pid, params);
@@ -784,7 +841,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                 contexts.record_header_mode(pid, HeaderMode::NeedsContext, hash_file(file_path));
                 workspace.save_cache(contexts);
                 contexts.drop_header_context(pid);
-                session->pch_ref.reset();
+                session->pch_key.reset();
                 continue;
             }
         }
@@ -1009,6 +1066,13 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
+    // The result carries byte offsets against the compiled buffer; a
+    // didChange that landed during the await makes them describe text the
+    // session no longer holds — the reply edge would map them onto the
+    // edited buffer at wrong positions.
+    if(session->generation != gen) {
+        co_return std::vector<feature::DocumentLink>{};
+    }
     LOG_PERF("request",
              "kind=DocumentLink file={} wait_ms={} total_ms={}",
              path,
@@ -1023,8 +1087,8 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
     auto gen = session->generation;
-    // Takeoff snapshot for the pch_ref write license (see
-    // may_write_pch_ref): this request runs concurrently with compiles and
+    // Takeoff snapshot for the pch_key write license (see
+    // may_write_pch_key): this request runs concurrently with compiles and
     // holds no compiling token, so it is the easiest continuation to come
     // back stale after a disk/CDB change.
     auto epoch = session->dirty_epoch;

@@ -17,7 +17,7 @@ from lsprotocol.types import (
 )
 
 from tests.tools.workspace import doc
-from tests.tools.checks import wait_for_index
+from tests.tools.checks import locations_of, wait_for_index
 
 
 @pytest.mark.workspace("index_features")
@@ -247,14 +247,6 @@ async def test_workspace_symbol_class(client, workspace):
     assert "Animal" in names
 
     client.close(uri)
-
-
-def locations_of(result):
-    if result is None:
-        return []
-    if isinstance(result, (list, tuple)):
-        return list(result)
-    return [result]
 
 
 @pytest.mark.workspace("index_features")

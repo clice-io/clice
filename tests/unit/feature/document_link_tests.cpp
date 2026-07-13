@@ -9,9 +9,6 @@ namespace clice::testing {
 
 namespace {
 
-namespace lsp = kota::ipc::lsp;
-namespace protocol = kota::ipc::protocol;
-
 TEST_SUITE(document_link, Tester) {
 
 std::vector<feature::DocumentLink> links;
@@ -19,23 +16,15 @@ std::vector<feature::DocumentLink> links;
 void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
     add_files("main.cpp", source);
     ASSERT_TRUE(compile(standard));
-    links = feature::document_links(*unit, feature::PositionEncoding::UTF8);
-}
-
-auto to_local_range(const protocol::Range& range) -> LocalSourceRange {
-    auto content = unit->interested_content();
-    auto line_starts = unit->line_starts();
-    lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
-    return LocalSourceRange(*map.to_offset(range.start), *map.to_offset(range.end));
+    links = feature::document_links(*unit);
 }
 
 void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) {
     auto& link = links[index];
     auto expected = range(name, "main.cpp");
-    auto actual = to_local_range(link.range);
 
-    ASSERT_EQ(actual.begin, expected.begin);
-    ASSERT_EQ(actual.end, expected.end);
+    ASSERT_EQ(link.range.begin, expected.begin);
+    ASSERT_EQ(link.range.end, expected.end);
 
     llvm::SmallString<128> target(link.target.begin(), link.target.end());
     path::remove_dots(target);

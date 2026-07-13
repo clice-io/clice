@@ -40,7 +40,7 @@ std::string uri_to_path(const std::string& uri);
 ///
 /// Compiler holds no persistent state of its own.  All project-wide data
 /// lives in Workspace; per-file data lives in Session.  Compiler reads from
-/// both and writes compilation results back to Session (file_index, pch_ref,
+/// both and writes compilation results back to Session (file_index, pch_key,
 /// ast_deps, diagnostics).
 ///
 /// Responsibilities:
@@ -65,7 +65,7 @@ public:
     void init_compile_graph();
 
     /// Compile an open file's AST if dirty.  On success, updates session's
-    /// file_index, pch_ref, ast_deps, and publishes diagnostics.
+    /// file_index, pch_key, ast_deps, and publishes diagnostics.
     kota::task<bool> ensure_compiled(std::shared_ptr<Session> session);
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
@@ -87,7 +87,7 @@ public:
 
     /// Forward a document-link query to the stateful worker holding this
     /// file's AST. Covers the main-file region only: the preamble's links
-    /// are cached master-side with the PCH (see PCHState::preamble_links).
+    /// live in the PCH's PreambleState blob (see PCHState::load_state).
     kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         forward_document_links(std::shared_ptr<Session> session);
 
@@ -121,12 +121,12 @@ private:
     ///               snapshots from the moment its round took off, NOT ones
     ///               taken on entry: a round invalidated during the
     ///               dependency phase would otherwise re-snapshot the new
-    ///               values here and slip a stale pch_ref past the write
+    ///               values here and slip a stale pch_key past the write
     ///               guards. Both tokens are needed — a supersede bumps
     ///               generation, but a Lost-type invalidation (disk or CDB
     ///               change behind an in-flight round) bumps only
     ///               dirty_epoch, and a round that resolved its command
-    ///               before the event must not write pch_ref back either.
+    ///               before the event must not write pch_key back either.
     /// @param scope  When set, cancels the module-dependency wait if this
     ///               compile round is superseded by a newer one.
     kota::task<bool> ensure_deps(Session& session,

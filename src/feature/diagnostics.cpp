@@ -28,7 +28,9 @@ void add_related(protocol::Diagnostic& diagnostic,
                  CompilationUnitRef unit,
                  const Diagnostic& raw,
                  PositionEncoding encoding) {
-    if(raw.fid.isInvalid() || !raw.range.valid()) {
+    /// Related information can point into a synthetic buffer, e.g. a
+    /// macro defined on the command line; there is no file to link to.
+    if(raw.fid.isInvalid() || unit.is_builtin_file(raw.fid) || !raw.range.valid()) {
         return;
     }
 

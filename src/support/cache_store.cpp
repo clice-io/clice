@@ -146,7 +146,11 @@ std::int64_t now_ms() {
 
 struct CacheStore::State {
     struct Entry {
+        /// Primary blob size.  total_size accounts size + aux_size.
         std::uint64_t size = 0;
+        /// Aux blob size; non-zero means the aux blob is committed (blobs
+        /// are never empty, so zero doubles as "absent").
+        std::uint64_t aux_size = 0;
         std::int64_t atime = 0;
     };
 
@@ -191,6 +195,26 @@ struct CacheStore::State {
 
     std::string blob_path(const Namespace& ns, llvm::StringRef key) const {
         return path::join(ns.dir, key.str() + ns.config.extension);
+    }
+
+    std::string aux_blob_path(const Namespace& ns, llvm::StringRef key) const {
+        return path::join(ns.dir, key.str() + ns.config.aux_extension);
+    }
+
+    /// Drop a key's committed aux blob (file + accounting).  Called when
+    /// the primary is republished: the old aux describes the old primary,
+    /// and an incomplete pair is strictly better than a mismatched one.
+    /// The accounting is zeroed even when the delete fails (file open on
+    /// Windows) — lookup_aux must stop serving the stale blob immediately;
+    /// the leftover file is overwritten by the following aux commit or
+    /// swept when the entry is eventually evicted.
+    void reset_aux_locked(Namespace& ns, llvm::StringRef key, Entry& entry) {
+        if(ns.config.aux_extension.empty() || entry.aux_size == 0) {
+            return;
+        }
+        llvm::sys::fs::remove(aux_blob_path(ns, key));
+        ns.total_size -= entry.aux_size;
+        entry.aux_size = 0;
     }
 
     Namespace* find_namespace(llvm::StringRef name) {
@@ -302,20 +326,37 @@ void CacheStore::register_namespace(CacheNamespace ns) {
 
     // Adopt blobs already on disk.  The directory scan, not the manifest,
     // decides existence: this also picks up blobs committed after the last
-    // checkpoint of a crashed instance.
+    // checkpoint of a crashed instance.  Aux blobs are collected aside and
+    // attached after the scan — directory order is arbitrary, so an aux
+    // file may be seen before its primary.
+    struct AuxBlob {
+        std::uint64_t size;
+        llvm::sys::TimePoint<> mtime;
+    };
+
+    llvm::StringMap<AuxBlob> aux_blobs;
+    llvm::StringMap<llvm::sys::TimePoint<>> primary_mtimes;
     std::error_code ec;
     for(auto iter = llvm::sys::fs::directory_iterator(ns_state.dir, ec);
         !ec && iter != llvm::sys::fs::directory_iterator();
         iter.increment(ec)) {
         auto filename = path::filename(iter->path());
-        auto& ext = ns_state.config.extension;
-        if(!ext.empty() && !filename.consume_back(ext)) {
-            continue;
-        }
 
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(iter->path(), status) ||
            status.type() != llvm::sys::fs::file_type::regular_file) {
+            continue;
+        }
+
+        auto& aux_ext = ns_state.config.aux_extension;
+        if(!aux_ext.empty() && filename.ends_with(aux_ext)) {
+            aux_blobs[filename.drop_back(aux_ext.size())] = {status.getSize(),
+                                                             status.getLastModificationTime()};
+            continue;
+        }
+
+        auto& ext = ns_state.config.extension;
+        if(!ext.empty() && !filename.consume_back(ext)) {
             continue;
         }
 
@@ -326,8 +367,29 @@ void CacheStore::register_namespace(CacheNamespace ns) {
                                status.getLastModificationTime().time_since_epoch())
                                .count();
 
-        ns_state.entries[filename] = {status.getSize(), atime};
+        ns_state.entries[filename] = {status.getSize(), 0, atime};
         ns_state.total_size += status.getSize();
+        primary_mtimes[filename] = status.getLastModificationTime();
+    }
+
+    // Attach aux blobs to their entries. An aux without a primary is crash
+    // residue (a pair evicted halfway); an aux OLDER than its primary is
+    // residue of a removal that failed while the file was held open (see
+    // reset_aux_locked) — writers put the aux file on disk only after the
+    // primary is fully flushed (see handle_build_pch) and pairs commit
+    // primary-first, so a legitimate aux is never older, and adopting one
+    // would pair a fresh primary with stale aux data. Remove both kinds,
+    // nothing references them.
+    for(auto& entry: aux_blobs) {
+        auto key = entry.getKey();
+        auto it = ns_state.entries.find(key);
+        if(it != ns_state.entries.end() && entry.getValue().mtime >= primary_mtimes[key]) {
+            it->second.aux_size = entry.getValue().size;
+            ns_state.total_size += entry.getValue().size;
+        } else {
+            llvm::sys::fs::remove(state->aux_blob_path(ns_state, key));
+            LOG_DEBUG("CacheStore: removed stale aux blob {} in {}", key, ns_state.config.name);
+        }
     }
 
     // Enforce the budget immediately in case it shrank since the last run.
@@ -352,6 +414,24 @@ std::optional<std::string> CacheStore::lookup(llvm::StringRef ns, llvm::StringRe
     return state->blob_path(*ns_state, key);
 }
 
+std::optional<std::string> CacheStore::lookup_aux(llvm::StringRef ns, llvm::StringRef key) {
+    std::lock_guard guard(state->mutex);
+
+    auto* ns_state = state->find_namespace(ns);
+    if(!ns_state || ns_state->config.aux_extension.empty()) {
+        return std::nullopt;
+    }
+
+    auto it = ns_state->entries.find(key);
+    if(it == ns_state->entries.end() || it->second.aux_size == 0) {
+        return std::nullopt;
+    }
+
+    it->second.atime = state->next_stamp();
+    state->dirty = true;
+    return state->aux_blob_path(*ns_state, key);
+}
+
 CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::StringRef key) {
     std::lock_guard guard(state->mutex);
 
@@ -371,6 +451,28 @@ CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::Strin
 
     auto tmp_name = std::format("{}{}", state->next_tmp_id++, ns_state->config.extension);
     return PendingEntry{ns.str(), key.str(), path::join(state->tmp_dir, tmp_name)};
+}
+
+CacheStore::PendingEntry CacheStore::begin_store_aux(llvm::StringRef ns, llvm::StringRef key) {
+    std::lock_guard guard(state->mutex);
+
+    auto* ns_state = state->find_namespace(ns);
+    assert(ns_state && "begin_store_aux on unregistered namespace");
+    if(!ns_state) {
+        LOG_ERROR("CacheStore: begin_store_aux on unregistered namespace {}", ns);
+        return {};
+    }
+    if(ns_state->config.aux_extension.empty()) {
+        LOG_ERROR("CacheStore: begin_store_aux on namespace {} without aux extension", ns);
+        return {};
+    }
+
+    if(auto ec = llvm::sys::fs::create_directories(state->tmp_dir)) {
+        LOG_WARN("CacheStore: cannot re-create tmp dir {}: {}", state->tmp_dir, ec.message());
+    }
+
+    auto tmp_name = std::format("{}{}", state->next_tmp_id++, ns_state->config.aux_extension);
+    return PendingEntry{ns.str(), key.str(), path::join(state->tmp_dir, tmp_name), /*aux=*/true};
 }
 
 std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pending) {
@@ -412,7 +514,16 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
             return std::unexpected(std::make_error_code(std::errc::invalid_argument));
         }
 
-        final_path = state->blob_path(*ns_state, pending.key);
+        // An aux blob attaches to a live entry; without one (primary commit
+        // failed, or the entry was evicted in between) it would be an
+        // orphan — refuse, the caller rebuilds the pair.
+        if(pending.aux && !ns_state->entries.contains(pending.key)) {
+            llvm::sys::fs::remove(pending.tmp_path);
+            return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
+        }
+
+        final_path = pending.aux ? state->aux_blob_path(*ns_state, pending.key)
+                                 : state->blob_path(*ns_state, pending.key);
         // The namespace dir can be wiped externally while the server runs;
         // re-create it so the rename below doesn't fail forever.
         if(auto ec = llvm::sys::fs::create_directories(ns_state->dir)) {
@@ -439,10 +550,20 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
                 llvm::sys::fs::remove(final_path);
                 if(auto retry = fs::rename(pending.tmp_path, final_path); !retry) {
                     llvm::sys::fs::remove(pending.tmp_path);
-                    if(auto it = ns_state->entries.find(pending.key);
-                       it != ns_state->entries.end() && llvm::sys::fs::status(final_path, status)) {
+                    auto it = ns_state->entries.find(pending.key);
+                    bool entry_alive = it != ns_state->entries.end();
+                    if(pending.aux && entry_alive) {
+                        // The removal above may have deleted a committed
+                        // aux blob; stop serving it. The primary is
+                        // intact, the pair is merely incomplete.
+                        ns_state->total_size -= it->second.aux_size;
+                        it->second.aux_size = 0;
+                        state->dirty = true;
+                    } else if(!pending.aux && entry_alive &&
+                              llvm::sys::fs::status(final_path, status)) {
                         // The old blob is gone as well: drop its entry so
                         // lookups don't hand out a dangling path.
+                        state->reset_aux_locked(*ns_state, pending.key, it->second);
                         ns_state->total_size -= it->second.size;
                         ns_state->entries.erase(it);
                         state->dirty = true;
@@ -453,11 +574,20 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
         }
 
         auto& entry = ns_state->entries[pending.key];
-        // Unsigned wraparound is intentional and exact here: entry.size is
-        // already included in total_size, so total + new - old stays correct
-        // even when the replacement blob is smaller.
-        ns_state->total_size += status.getSize() - entry.size;
-        entry.size = status.getSize();
+        if(pending.aux) {
+            ns_state->total_size += status.getSize() - entry.aux_size;
+            entry.aux_size = status.getSize();
+        } else {
+            // A republished primary invalidates the old aux blob: serving
+            // yesterday's aux next to today's primary would be a silent
+            // mismatch, while an incomplete pair is a plain cache miss.
+            state->reset_aux_locked(*ns_state, pending.key, entry);
+            // Unsigned wraparound is intentional and exact here: entry.size
+            // is already included in total_size, so total + new - old stays
+            // correct even when the replacement blob is smaller.
+            ns_state->total_size += status.getSize() - entry.size;
+            entry.size = status.getSize();
+        }
         entry.atime = state->next_stamp();
 
         if(ns_state->config.policy == CachePolicy::LRU) {
@@ -494,8 +624,11 @@ void CacheStore::invalidate(llvm::StringRef ns, llvm::StringRef key) {
             return;
         }
 
+        if(!ns_state->config.aux_extension.empty()) {
+            llvm::sys::fs::remove(state->aux_blob_path(*ns_state, key));
+        }
         llvm::sys::fs::remove(state->blob_path(*ns_state, key));
-        ns_state->total_size -= it->second.size;
+        ns_state->total_size -= it->second.size + it->second.aux_size;
         ns_state->entries.erase(it);
 
         if(ns_state->config.policy != CachePolicy::Scratch) {
@@ -546,7 +679,8 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
     candidates.reserve(ns.entries.size());
     for(auto& entry: ns.entries) {
         if(entry.first() != keep_key) {
-            candidates.push_back({entry.first(), entry.second.atime, entry.second.size});
+            candidates.push_back(
+                {entry.first(), entry.second.atime, entry.second.size + entry.second.aux_size});
         }
     }
     std::ranges::sort(candidates, {}, &Candidate::atime);
@@ -555,8 +689,23 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
         if(ns.total_size <= ns.config.max_bytes) {
             break;
         }
-        // A failed delete (e.g. the file is open on Windows) keeps the
-        // entry so the next eviction round retries it.
+        // Aux first, then primary: whatever a failure leaves behind is a
+        // served primary with a missing aux (a plain pair miss), never an
+        // orphan aux.  A failed delete (e.g. the file is open on Windows)
+        // keeps the entry so the next eviction round retries it.
+        if(!ns.config.aux_extension.empty()) {
+            auto it = ns.entries.find(candidate.key);
+            if(it->second.aux_size != 0) {
+                if(llvm::sys::fs::remove(aux_blob_path(ns, candidate.key))) {
+                    LOG_DEBUG("CacheStore: cannot evict aux {} from {}, retrying later",
+                              candidate.key,
+                              ns.config.name);
+                    continue;
+                }
+                ns.total_size -= it->second.aux_size;
+                it->second.aux_size = 0;
+            }
+        }
         if(llvm::sys::fs::remove(blob_path(ns, candidate.key))) {
             LOG_DEBUG("CacheStore: cannot evict {} from {}, retrying later",
                       candidate.key,
@@ -568,8 +717,9 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
                  ns.config.name,
                  candidate.key,
                  candidate.size);
-        ns.total_size -= candidate.size;
-        ns.entries.erase(candidate.key);
+        auto it = ns.entries.find(candidate.key);
+        ns.total_size -= it->second.size;
+        ns.entries.erase(it);
         dirty = true;
     }
 }

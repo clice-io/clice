@@ -1,6 +1,7 @@
 #include "index/include_graph.h"
 
 #include "compile/compilation_unit.h"
+#include "support/logging.h"
 
 namespace clice::index {
 
@@ -45,14 +46,38 @@ static std::uint32_t addIncludeChain(CompilationUnitRef unit,
     return index;
 }
 
-IncludeGraph IncludeGraph::from(CompilationUnitRef unit) {
+IncludeGraph IncludeGraph::from(CompilationUnitRef unit,
+                                llvm::ArrayRef<clang::FileID> indexed_fids) {
     llvm::StringMap<std::uint32_t> path_table;
     IncludeGraph graph;
-    for(auto fid: unit.files()) {
+
+    for(auto& [fid, directive]: unit.directives()) {
+        for(auto& include: directive.includes) {
+            if(!include.skipped && include.fid.isValid()) {
+                graph.file_table[include.fid] =
+                    addIncludeChain(unit, include.fid, graph, path_table);
+            }
+        }
+    }
+
+    for(auto fid: indexed_fids) {
         graph.file_table[fid] = addIncludeChain(unit, fid, graph, path_table);
     }
-    graph.paths.emplace_back(unit.file_path(unit.interested_file()));
+
+    auto interested = unit.interested_file();
+    graph.file_table[interested] = addIncludeChain(unit, interested, graph, path_table);
+    graph.paths.emplace_back(unit.file_path(interested));
     return graph;
+}
+
+std::uint32_t IncludeGraph::include_location_id(clang::FileID fid) const {
+    auto it = file_table.find(fid);
+    if(it == file_table.end()) [[unlikely]] {
+        LOG_WARN("IncludeGraph: fid {} missing from file table, attributing to interested file",
+                 fid.getHashValue());
+        return -1;
+    }
+    return it->second;
 }
 
 }  // namespace clice::index

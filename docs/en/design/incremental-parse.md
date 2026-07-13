@@ -52,7 +52,7 @@ The preamble is compiled into a PCH file and cached on disk. Subsequent compilat
 - A hash of the preamble content
 - The preamble byte boundary (bound)
 - A dependency snapshot (`DepsSnapshot`, see below)
-- DocumentLink information extracted from the PCH (`#include` directive positions and targets, for the editor to display clickable links)
+- A handle to the paired preamble-state blob, stored next to the PCH and sharing its lifecycle: the preamble's symbol index plus feature state extracted at build time (document links, inactive regions, the open conditional stack), opened as a memory-mapped FlatBuffer and queried lazily (see [symbol index](symbol-index.md))
 
 ### Two-Layer Invalidation Detection
 

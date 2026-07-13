@@ -17,8 +17,8 @@
 namespace clice {
 
 class ContextResolver;
-class WorkerPool;
 struct SessionStore;
+class WorkerPool;
 
 /// Why a file awaits re-indexing. The invalidation engine knows the cause
 /// at enqueue time, so queries can decide in O(1) whether a pending file's
@@ -60,6 +60,15 @@ public:
             const SessionStore& sessions) :
         loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts),
         sessions(sessions) {}
+
+    /// Whether open files' disk snapshots are indexed like closed ones.
+    /// Off by default: the LSP side never reads an open file's shard (its
+    /// session serves it), so the work would be pure waste — until an
+    /// agent shows up, whose disk-truth queries need those shards. Turned
+    /// on (sticky) by the first agentic index query; files closed before
+    /// that are already covered, because BufferClosed re-enqueues a file
+    /// whose shard does not match the disk.
+    bool index_open_files = false;
 
     /// Temporarily pause background indexing to give priority to user
     /// requests.  Indexing tasks already dispatched to workers continue,
@@ -179,10 +188,10 @@ private:
     Workspace& workspace;
     WorkerPool& pool;
     ContextResolver& contexts;
+    const SessionStore& sessions;
 
     /// Open documents, read-only. A file with an open Session is skipped by
     /// background indexing (its buffer index is authoritative).
-    const SessionStore& sessions;
 
     /// Background indexing queue and scheduling state.  pending_ids mirrors
     /// the un-consumed tail of index_queue so enqueue can dedupe; the queue

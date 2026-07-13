@@ -44,6 +44,25 @@ void register_lru(CacheStore& store, std::uint64_t max_bytes = 0) {
         {.name = "pch", .extension = ".pch", .policy = CachePolicy::LRU, .max_bytes = max_bytes});
 }
 
+void register_paired(CacheStore& store, std::uint64_t max_bytes = 0) {
+    store.register_namespace({.name = "pch",
+                              .extension = ".pch",
+                              .aux_extension = ".pch.idx",
+                              .policy = CachePolicy::LRU,
+                              .max_bytes = max_bytes});
+}
+
+/// Run a full two-phase aux write with the given content.
+std::string
+    put_aux(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
+    auto pending = store.begin_store_aux(ns, key);
+    require(!pending.tmp_path.empty(), "begin_store_aux returned no tmp path");
+    require(fs::write(pending.tmp_path, content).has_value(), "tmp write failed");
+    auto committed = store.commit(std::move(pending));
+    require(committed.has_value(), "aux commit failed");
+    return *committed;
+}
+
 /// Run a full two-phase write with the given content.
 std::string
     put(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
@@ -447,6 +466,157 @@ TEST_CASE(CheckpointAutoTriggers) {
     auto manifest = fs::read(tmp.path("root/cache/v1/manifest.json"));
     ASSERT_TRUE(manifest.has_value());
     ASSERT_TRUE(llvm::StringRef(*manifest).contains("k0"));
+}
+
+TEST_CASE(PairStoreAndLookup) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_paired(store);
+
+    // A primary alone is an incomplete pair: lookup serves it, lookup_aux
+    // must miss.
+    put(store, "pch", "k1", "primary blob");
+    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
+    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
+
+    auto aux_path = put_aux(store, "pch", "k1", "aux blob");
+    ASSERT_TRUE(llvm::StringRef(aux_path).ends_with(".pch.idx"));
+
+    auto hit = store.lookup_aux("pch", "k1");
+    ASSERT_TRUE(hit.has_value());
+    ASSERT_EQ(fs::read(*hit).value_or(""), "aux blob");
+}
+
+TEST_CASE(AuxWithoutPrimaryFails) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_paired(store);
+
+    auto pending = store.begin_store_aux("pch", "ghost");
+    require(fs::write(pending.tmp_path, "orphan").has_value(), "tmp write failed");
+    ASSERT_FALSE(store.commit(std::move(pending)).has_value());
+    ASSERT_FALSE(store.lookup_aux("pch", "ghost").has_value());
+}
+
+TEST_CASE(PrimaryRecommitResetsAux) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_paired(store);
+
+    put(store, "pch", "k1", "old primary");
+    auto aux_path = put_aux(store, "pch", "k1", "old aux");
+
+    // Republishing the primary must drop the stale aux: yesterday's aux
+    // next to today's primary would be a silent mismatch.
+    put(store, "pch", "k1", "new primary");
+    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
+    ASSERT_FALSE(fs::read(aux_path).has_value());
+
+    put_aux(store, "pch", "k1", "new aux");
+    ASSERT_TRUE(store.lookup_aux("pch", "k1").has_value());
+}
+
+TEST_CASE(PairEvictedTogether) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_paired(store, 25);
+
+    put(store, "pch", "k1", "aaaaaaaaaa");
+    auto aux_path = put_aux(store, "pch", "k1", "aaaaaaaaaa");
+
+    // The pair counts as one 20-byte entry; the next 10-byte pair pushes
+    // the total over budget and k1 must vanish whole — both files.
+    put(store, "pch", "k2", "bbbbb");
+    put_aux(store, "pch", "k2", "bbbbb");
+
+    ASSERT_FALSE(store.lookup("pch", "k1").has_value());
+    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
+    ASSERT_FALSE(fs::read(aux_path).has_value());
+    ASSERT_TRUE(store.lookup("pch", "k2").has_value());
+    ASSERT_TRUE(store.lookup_aux("pch", "k2").has_value());
+}
+
+TEST_CASE(PairSurvivesReopen) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_paired(store);
+        put(store, "pch", "k1", "primary");
+        put_aux(store, "pch", "k1", "aux");
+        store.shutdown();
+    }
+
+    auto store = open_store(tmp);
+    register_paired(store);
+    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
+    auto hit = store.lookup_aux("pch", "k1");
+    ASSERT_TRUE(hit.has_value());
+    ASSERT_EQ(fs::read(*hit).value_or(""), "aux");
+}
+
+TEST_CASE(StaleAuxDropped) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_paired(store);
+        put(store, "pch", "k1", "primary");
+        put_aux(store, "pch", "k1", "aux");
+        store.shutdown();
+    }
+
+    // Residue of an aux removal that failed while the file was held open
+    // (see reset_aux_locked): the primary was republished, the old aux
+    // stayed behind. Pairs commit primary-first, so a legitimate aux is
+    // never older than its primary — registration must not adopt this one.
+    // int-FD flavor: setLastAccessAndModificationTime has no overload for
+    // the native handle type on Windows.
+    auto aux_path = tmp.path("root/cache/v1/pch/k1.pch.idx");
+    int fd = 0;
+    ASSERT_FALSE(bool(llvm::sys::fs::openFileForWrite(aux_path,
+                                                      fd,
+                                                      llvm::sys::fs::CD_OpenExisting,
+                                                      llvm::sys::fs::OF_None)));
+    auto old_time = std::chrono::system_clock::now() - std::chrono::hours(1);
+    ASSERT_FALSE(bool(llvm::sys::fs::setLastAccessAndModificationTime(fd, old_time, old_time)));
+    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+
+    auto store = open_store(tmp);
+    register_paired(store);
+    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
+    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
+    ASSERT_FALSE(fs::read(aux_path).has_value());
+}
+
+TEST_CASE(OrphanAuxSwept) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_paired(store);
+        store.shutdown();
+    }
+
+    // Crash residue: an aux blob whose primary is gone.  Registration must
+    // remove it — nothing can ever reference it again.
+    tmp.touch("root/cache/v1/pch/ghost.pch.idx", "orphan");
+
+    auto store = open_store(tmp);
+    register_paired(store);
+    ASSERT_FALSE(store.lookup_aux("pch", "ghost").has_value());
+    ASSERT_FALSE(fs::read(tmp.path("root/cache/v1/pch/ghost.pch.idx")).has_value());
+}
+
+TEST_CASE(InvalidateRemovesPair) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_paired(store);
+
+    put(store, "pch", "k1", "primary");
+    auto aux_path = put_aux(store, "pch", "k1", "aux");
+
+    store.invalidate("pch", "k1");
+    ASSERT_FALSE(store.lookup("pch", "k1").has_value());
+    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
+    ASSERT_FALSE(fs::read(aux_path).has_value());
 }
 
 };  // TEST_SUITE(CacheStore)

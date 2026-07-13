@@ -90,14 +90,28 @@ struct ResolvedSymbol {
 ///   TODO: a dedicated "is the index ready?" request so agent consumers
 ///   can distinguish "no references" from "not indexed yet". Not
 ///   implemented — needs protocol design.
+
+/// Which index sources an IndexQuery instance serves from.
+struct IndexQueryOptions {
+    /// Disk truth only: buffer state — open sessions' file indexes and
+    /// their PCH overlays — never participates, and open files answer
+    /// from their shards exactly like closed ones. This is the agentic
+    /// transport's mode: agents read files from disk, so positions from
+    /// unsaved buffers would not match what they read.
+    bool disk_only = false;
+};
+
 class IndexQuery {
 public:
     /// Visitor for iterating open Sessions.  Returns false to stop early.
     using SessionVisitor =
         std::function<bool(std::uint32_t server_path_id, const Session& session)>;
 
-    IndexQuery(Workspace& workspace, const SessionStore& sessions, const Indexer& indexer) :
-        workspace(workspace), sessions(sessions), indexer(indexer) {}
+    IndexQuery(Workspace& workspace,
+               const SessionStore& sessions,
+               const Indexer& indexer,
+               IndexQueryOptions options = {}) :
+        workspace(workspace), sessions(sessions), indexer(indexer), options(options) {}
 
     /// Query relations (Definition, Reference, etc.) for a symbol at cursor.
     /// @param session  Active Session for this file, or nullptr to use MergedIndex only.
@@ -153,6 +167,10 @@ public:
     std::vector<protocol::SymbolInformation> search_symbols(llvm::StringRef query,
                                                             std::size_t max_results = 100);
 
+    /// The three queries below serve the agentic tools and are only ever
+    /// called on the disk_only instance: their bodies read shards alone,
+    /// with no session or overlay passes to disable.
+
     struct DefinitionText {
         std::string file;
         int start_line;
@@ -177,21 +195,13 @@ public:
     /// read/definition/references tools share.
     std::vector<ResolvedSymbol> locate_symbols(const agentic::ReadSymbolParams& loc);
 
+    /// Whether a file's shard sits this query out: its own disk content
+    /// changed and awaits reindexing (clause 2), or — unless disk_only —
+    /// the file is open and its session serves it instead.
+    bool skip_shard(std::uint32_t path_id) const;
+
     /// Iterate all open Sessions with valid, up-to-date file indices.
     void visit_sessions(SessionVisitor visitor) const;
-
-    /// Invoke a callback with the Session for a specific server-level path_id.
-    /// The callback is not invoked if no Session exists for that path_id.
-    template <typename Fn>
-    void with_session(std::uint32_t server_path_id, Fn&& fn) const {
-        visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
-            if(id == server_path_id) {
-                fn(session);
-                return false;
-            }
-            return true;
-        });
-    }
 
     /// Convert internal SymbolKind to LSP SymbolKind.
     static protocol::SymbolKind to_lsp_symbol_kind(SymbolKind kind);
@@ -212,6 +222,43 @@ private:
     CursorHit resolve_cursor(llvm::StringRef path,
                              const protocol::Position& position,
                              Session* session);
+
+    /// Visit each distinct PCH overlay blob once (sessions sharing a
+    /// preamble share one blob). Overlays are the only index source for
+    /// headers as seen under a live buffer's context (novel unsaved
+    /// preamble edits, headers not reachable from any indexed disk TU);
+    /// their header entries hold disk-derived coordinates that buffer
+    /// edits cannot move, so no session gating applies — the blob's own
+    /// staleness follows the PCH's dependency discipline. Identical rows
+    /// also present in disk shards are collapsed by per-location dedup at
+    /// result assembly. Return false from the visitor to stop.
+    void visit_overlays(llvm::function_ref<bool(const index::PreambleState&)> visitor) const;
+
+    /// Visit each open session whose overlay preamble entry may serve
+    /// (see serves_preamble), paired with that blob.
+    void visit_preambles(llvm::function_ref<bool(std::uint32_t server_path_id,
+                                                 const Session& session,
+                                                 const index::PreambleState& state)> visitor) const;
+
+    /// The PCH overlay of a session, or nullptr when it has no PCH or the
+    /// blob is unreadable.
+    std::shared_ptr<index::PreambleState> overlay_of(const Session& session) const;
+
+    /// Whether a session's overlay preamble entry may serve: the blob was
+    /// built from this very file (identical preambles share one PCH, but
+    /// macro USRs embed the source path) and the buffer still starts with
+    /// the blob's stored preamble text.
+    bool serves_preamble(const Session& session, const index::PreambleState& state) const;
+
+    /// Whether an overlay file entry may contribute results. Filters
+    /// synthesized context artifacts (their positions live in
+    /// cache-directory files the user should never be sent to), files
+    /// that are themselves open — their sessions serve buffer-true rows,
+    /// while overlay rows describe the disk snapshot and would map onto
+    /// the edited buffer at the wrong lines — and files whose own disk
+    /// content changed and awaits reindexing (freshness contract, clause
+    /// 2, same as shard contributions).
+    bool should_serve_overlay_file(llvm::StringRef path) const;
 
     /// Collect relations grouped by target symbol, across all index sources.
     void collect_grouped_relations(
@@ -238,6 +285,7 @@ private:
     Workspace& workspace;
     const SessionStore& sessions;
     const Indexer& indexer;
+    IndexQueryOptions options;
 };
 
 }  // namespace clice

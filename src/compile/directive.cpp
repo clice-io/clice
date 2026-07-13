@@ -57,6 +57,13 @@ private:
             return;
         }
 
+        /// FIXME: This drops macros living in synthetic buffers (<built-in>,
+        /// <command line>), so a `-D` macro has no definition anywhere in the
+        /// index and go-to-definition on it fails with no feedback. These
+        /// buffers have real content in the SourceManager (`#define FOO 1`
+        /// lines); keep such definitions and serve them through a generated
+        /// preview document (a temp file on disk, or LSP 3.18
+        /// `workspace/textDocumentContent`) instead of dropping them.
         if(unit.is_builtin_file(unit.file_id(loc))) {
             return;
         }

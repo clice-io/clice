@@ -126,7 +126,7 @@ TEST_CASE(ResetSupersededBumpsGeneration) {
     store.apply_open(*session, "int x;", 1);
     session->ast_dirty = false;
     session->trial_done = true;
-    session->pch_ref = Session::PCHRef{"key", 4};
+    session->pch_key = "key";
     session->ast_deps.emplace();
     auto gen = session->generation;
     auto epoch = session->dirty_epoch;
@@ -135,7 +135,7 @@ TEST_CASE(ResetSupersededBumpsGeneration) {
 
     ASSERT_TRUE(session->ast_dirty);
     ASSERT_FALSE(session->trial_done);
-    ASSERT_FALSE(session->pch_ref.has_value());
+    ASSERT_FALSE(session->pch_key.has_value());
     ASSERT_FALSE(session->ast_deps.has_value());
     ASSERT_EQ(session->generation, gen + 1);
     ASSERT_EQ(session->dirty_epoch, epoch);
@@ -147,7 +147,7 @@ TEST_CASE(ResetLostBumpsEpoch) {
     store.apply_open(*session, "int x;", 1);
     session->ast_dirty = false;
     session->trial_done = true;
-    session->pch_ref = Session::PCHRef{"key", 4};
+    session->pch_key = "key";
     auto gen = session->generation;
     auto epoch = session->dirty_epoch;
 
@@ -157,7 +157,7 @@ TEST_CASE(ResetLostBumpsEpoch) {
     // only the freshness claim is revoked.
     ASSERT_TRUE(session->ast_dirty);
     ASSERT_TRUE(session->trial_done);
-    ASSERT_TRUE(session->pch_ref.has_value());
+    ASSERT_TRUE(session->pch_key.has_value());
     ASSERT_EQ(session->generation, gen);
     ASSERT_EQ(session->dirty_epoch, epoch + 1);
 }

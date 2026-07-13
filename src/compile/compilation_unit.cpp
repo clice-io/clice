@@ -1,6 +1,7 @@
 #include "compile/implement.h"
 #include "index/usr.h"
 #include "semantic/ast_utility.h"
+#include "support/filesystem.h"
 
 #include "kota/ipc/lsp/text.h"
 
@@ -82,25 +83,31 @@ auto CompilationUnitRef::file_offset(clang::SourceLocation location) -> std::uin
     return self->SM().getFileOffset(location);
 }
 
-auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
-    if(!fid.isValid())
-        return {};
-    if(auto it = self->path_cache.find(fid); it != self->path_cache.end()) {
+auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef {
+    if(auto it = self->path_cache.find(entry); it != self->path_cache.end()) {
         return it->second;
     }
 
-    auto entry = self->SM().getFileEntryRefForID(fid);
-    if(!entry) {
-        return {};
-    }
+    auto& fm = self->SM().getFileManager();
 
-    llvm::SmallString<128> path;
+    /// Absolutize against the compile's working directory first, then
+    /// resolve through the compiler's VFS so remapped and in-memory
+    /// files canonicalize like on-disk ones. Symlinked spellings of a
+    /// file collapse into one path here; hardlinked spellings do not
+    /// (`real_path` does not fold them), and the cache is keyed by the
+    /// spelling-level FileEntryRef so each keeps its own path — the
+    /// dependency set must cover every spelling the compile read.
+    llvm::SmallString<128> path(entry.getName());
+    fm.makeAbsolutePath(path);
 
-    /// Try to get the real path of the file.
-    auto name = entry->getName();
-    if(auto error = llvm::sys::fs::real_path(name, path)) {
-        /// If failed, use the virtual path.
-        path = name;
+    llvm::SmallString<128> real;
+    if(auto error = fm.getVirtualFileSystem().getRealPath(path, real)) {
+        /// The VFS cannot resolve it; keep the absolute path with dot
+        /// segments removed rather than a raw spelling — consumers stat
+        /// these paths from a different working directory.
+        path::remove_dots(path, /*remove_dot_dot=*/true);
+    } else {
+        path = real;
     }
     assert(!path.empty() && "Invalid file path");
 
@@ -110,9 +117,23 @@ auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
     memcpy(data, path.data(), size);
     data[size] = '\0';
 
-    auto [it, inserted] = self->path_cache.try_emplace(fid, llvm::StringRef(data, size));
+    auto [it, inserted] = self->path_cache.try_emplace(entry, llvm::StringRef(data, size));
     assert(inserted && "File path already exists");
     return it->second;
+}
+
+auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
+    assert(fid.isValid() && "file_path: invalid fid");
+
+    auto entry = self->SM().getFileEntryRefForID(fid);
+    assert(entry && "file_path: fid has no backing file entry, check is_builtin_file first");
+    if(!entry) {
+        /// Callers violating the contract get a degraded result in release
+        /// builds; the worker must not crash on it.
+        return {};
+    }
+
+    return file_path(*entry);
 }
 
 auto CompilationUnitRef::file_content(clang::FileID fid) -> llvm::StringRef {
@@ -255,24 +276,41 @@ clang::LangOptions& CompilationUnitRef::lang_options() {
 std::vector<std::string> CompilationUnitRef::deps() {
     llvm::StringSet<> deps;
 
-    /// FIXME: consider `#embed` and `__has_embed`.
-
     for(auto& [fid, directive]: directives()) {
         for(auto& include: directive.includes) {
-            if(!include.skipped) {
-                auto path = file_path(include.fid);
-                if(!path.empty()) {
-                    deps.try_emplace(path);
-                }
+            /// A failed include leaves an invalid fid — nothing to depend on.
+            if(!include.skipped && include.fid.isValid()) {
+                deps.try_emplace(file_path(include.fid));
             }
         }
 
+        /// FIXME: Not-found `__has_include`/`__has_embed` probes leave no
+        /// trace here, so creating the probed file later cannot invalidate
+        /// products built while it was missing. `clang -MD` drops misses
+        /// the same way — the build ecosystem accepts this hole, and even
+        /// clang's preamble simulates the failed lookup's candidate paths
+        /// only for `#include` misses. Rather than stat'ing candidate sets
+        /// per freshness check, the right home is the invalidation
+        /// pipeline: persist unresolved lookups and match them against
+        /// file-creation events from the workspace watcher.
         for(auto& has_include: directive.has_includes) {
             if(has_include.fid.isValid()) {
-                auto path = file_path(has_include.fid);
-                if(!path.empty()) {
-                    deps.try_emplace(path);
-                }
+                deps.try_emplace(file_path(has_include.fid));
+            }
+        }
+
+        /// Embedded files have no FileID (clang delivers their contents as
+        /// a single annotation token), so they are resolved through their
+        /// file entry instead.
+        for(auto& embed: directive.embeds) {
+            if(embed.file) {
+                deps.try_emplace(file_path(*embed.file));
+            }
+        }
+
+        for(auto& has_embed: directive.has_embeds) {
+            if(has_embed.file) {
+                deps.try_emplace(file_path(*has_embed.file));
             }
         }
     }
@@ -313,21 +351,6 @@ index::SymbolID CompilationUnitRef::getSymbolID(const clang::MacroInfo* macro) {
         self->symbol_hash_cache.try_emplace(macro, hash);
     }
     return index::SymbolID{hash, name.str()};
-}
-
-const llvm::DenseSet<clang::FileID>& CompilationUnitRef::files() {
-    if(self->all_files.empty()) {
-        /// FIXME: handle preamble and embed file id.
-        for(auto& [fid, directive]: directives()) {
-            for(auto& include: directive.includes) {
-                if(!include.skipped && include.fid.isValid()) {
-                    self->all_files.insert(include.fid);
-                }
-            }
-        }
-        self->all_files.insert(self->SM().getMainFileID());
-    }
-    return self->all_files;
 }
 
 clang::TranslationUnitDecl* CompilationUnitRef::tu() {

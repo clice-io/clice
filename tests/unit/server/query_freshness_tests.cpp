@@ -26,6 +26,7 @@ WorkerPool pool{loop};
 ContextResolver resolver{workspace};
 Indexer indexer{loop, workspace, pool, resolver, store};
 IndexQuery index_query{workspace, store, indexer};
+IndexQuery agent_query{workspace, store, indexer, {.disk_only = true}};
 
 std::uint32_t main_id = 0;
 std::uint32_t header_id = 0;
@@ -83,7 +84,7 @@ index::SymbolHash symbol_at(std::uint32_t path_id, std::uint32_t offset) {
 /// Files contributing reference rows for a symbol, by basename.
 std::vector<std::string> reference_files(index::SymbolHash hash) {
     std::vector<std::string> files;
-    for(auto& ref: index_query.collect_references(hash, RelationKind::Reference)) {
+    for(auto& ref: agent_query.collect_references(hash, RelationKind::Reference)) {
         files.push_back(llvm::sys::path::filename(ref.file).str());
     }
     return files;
@@ -138,7 +139,7 @@ TEST_CASE(PendingGateSplitsRows) {
     agentic::ReadSymbolParams by_line;
     by_line.path = std::string(workspace.path_pool.resolve(main_id));
     by_line.line = 3;
-    ASSERT_FALSE(index_query.locate_symbols(by_line).empty());
+    ASSERT_FALSE(agent_query.locate_symbols(by_line).empty());
 
     // The file's own content changed: its contribution is skipped until the
     // reindex lands; other files' rows are unaffected.
@@ -148,7 +149,7 @@ TEST_CASE(PendingGateSplitsRows) {
 
     // Cursor-style resolution against the stale rows is unresolvable: the
     // line numbers describe text that no longer exists.
-    ASSERT_TRUE(index_query.locate_symbols(by_line).empty());
+    ASSERT_TRUE(agent_query.locate_symbols(by_line).empty());
 
     // A content-changed definition file drops out of definition lookups.
     indexer.enqueue(header_id, ReindexReason::ContentChanged);
