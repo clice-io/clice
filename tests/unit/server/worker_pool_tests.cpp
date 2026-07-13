@@ -107,6 +107,10 @@ struct WorkerPoolFixture {
         pool.mark_worker_dead(idx, stateful, false);
     }
 
+    void set_retiring(std::size_t idx) {
+        pool.stateless_workers[idx].retiring = true;
+    }
+
     /// Manually queue a waiter, as acquire_stateless_slot does when it
     /// cannot claim directly.
     auto enqueue_waiter(worker::Priority p) {
@@ -770,6 +774,21 @@ TEST_CASE(LowCapCountsLive) {
     // A slot awaiting respawn is future capacity, not schedulable now: the
     // reserve-one-for-high cap must not let low-priority work occupy both
     // live workers for the whole respawn window.
+    EXPECT_EQ(f.max_low_limit(), 1u);
+    EXPECT_EQ(f.effective_low_limit(), 1u);
+}
+
+TEST_CASE(LowCapSkipsRetiring) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.add_stateless();
+    f.add_stateless();
+    f.set_low_limit(8);
+
+    f.set_retiring(1);
+
+    // A retiring slot is alive but takes no new work, so it must not
+    // count toward the schedulable pool the cap reserves from.
     EXPECT_EQ(f.max_low_limit(), 1u);
     EXPECT_EQ(f.effective_low_limit(), 1u);
 }

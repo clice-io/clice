@@ -63,6 +63,12 @@ std::size_t WorkerPool::alive_stateless() const {
     });
 }
 
+std::size_t WorkerPool::schedulable_stateless() const {
+    return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
+        return w.state == SlotState::Alive && !w.retiring;
+    });
+}
+
 std::size_t WorkerPool::busy_stateless() const {
     return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
         return w.state == SlotState::Alive && w.busy;

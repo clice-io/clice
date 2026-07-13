@@ -285,6 +285,10 @@ private:
     /// Stateless slots that can serve requests now.
     std::size_t alive_stateless() const;
 
+    /// Alive stateless slots that also accept new work: a retiring slot
+    /// stays alive to finish its request but is skipped by dispatch.
+    std::size_t schedulable_stateless() const;
+
     /// Alive stateless slots with a request in flight.
     std::size_t busy_stateless() const;
 
@@ -302,12 +306,12 @@ private:
 
     /// Reserve one worker for high-priority requests by capping low-priority
     /// concurrency at one below the slots that can be scheduled right now.
-    /// A slot dying or awaiting respawn cannot serve; counting it would let
-    /// low-priority work occupy every live worker for the whole respawn
-    /// window. With a single live worker this collapses to 1: both
+    /// A slot dying, awaiting respawn, or retiring cannot take new work;
+    /// counting it would let low-priority requests occupy every schedulable
+    /// worker. With a single schedulable worker this collapses to 1: both
     /// priorities share it, and high wins only via queue ordering.
     std::size_t max_low_limit() const {
-        auto live = alive_stateless();
+        auto live = schedulable_stateless();
         return live > 1 ? live - 1 : live;
     }
 
