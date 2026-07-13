@@ -1230,6 +1230,32 @@ TEST_CASE(PreemptKillsLowWorkers) {
     EXPECT_EQ(f.crash_streak(0), 0u);
 }
 
+TEST_CASE(PreemptCreditsHealthyRun) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.set_crash_streak(0, false, 2);
+    f.set_uptime(0, false, std::chrono::milliseconds(60'000));
+
+    f.preempt(1);
+
+    // The healthy interval before the preemption clears the stale streak,
+    // exactly as the next crash's accounting would have.
+    EXPECT_EQ(f.crash_streak(0), 0u);
+}
+
+TEST_CASE(PreemptKeepsYoungStreak) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.set_crash_streak(0, false, 2);
+    f.set_uptime(0, false, std::chrono::milliseconds(0));
+
+    f.preempt(1);
+
+    // A slot that has not yet earned the healthy credit keeps its streak:
+    // preemption neither punishes nor forgives.
+    EXPECT_EQ(f.crash_streak(0), 2u);
+}
+
 TEST_CASE(SevereMemoryTick) {
     WorkerPoolFixture f;
     f.add_stateless(true, true, true);

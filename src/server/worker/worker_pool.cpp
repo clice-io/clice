@@ -393,6 +393,14 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     }
 }
 
+void WorkerPool::reset_streak_if_healthy(WorkerProcess& w) {
+    auto now = std::chrono::steady_clock::now();
+    if(w.spawn_time != std::chrono::steady_clock::time_point{} &&
+       now - w.spawn_time >= options.healthy_uptime) {
+        w.crash_streak = 0;
+    }
+}
+
 bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, int exit_signal) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
     auto& w = workers[index];
@@ -451,13 +459,7 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
         }
     }
 
-    // A worker that ran healthily for a while starts a fresh streak: the
-    // budget bounds crash loops, not lifetime bad luck.
-    auto now = std::chrono::steady_clock::now();
-    if(w.spawn_time != std::chrono::steady_clock::time_point{} &&
-       now - w.spawn_time >= options.healthy_uptime) {
-        w.crash_streak = 0;
-    }
+    reset_streak_if_healthy(w);
     w.crash_streak += 1;
 
     WorkerCrashInfo info;
@@ -841,6 +843,10 @@ void WorkerPool::preempt_low_priority(std::size_t count) {
         // keeps the classification correct without depending on that.
         auto source = w.preempt_source;
         w.preempted = true;
+        // The preempt respawn skips crash accounting, so credit a healthy
+        // run here the same way a crash would — the slot must not carry a
+        // stale streak past the healthy interval that already cleared it.
+        reset_streak_if_healthy(w);
         if(source)
             source->cancel();
         mark_worker_dead(i, false, true);

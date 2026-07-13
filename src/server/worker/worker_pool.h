@@ -351,6 +351,12 @@ private:
     /// the first crash, exponential from the second on.
     std::chrono::milliseconds backoff_delay(unsigned crash_streak) const;
 
+    /// A worker that ran healthily for a while starts a fresh streak: the
+    /// budget bounds crash loops, not lifetime bad luck. Called on crash
+    /// accounting and on preemption — a preempted slot must not carry a
+    /// stale streak past the healthy interval that would have cleared it.
+    void reset_streak_if_healthy(WorkerProcess& w);
+
     /// Permanently vacate a slot and fail waiters if it was the last one.
     void give_up_slot(std::size_t index, bool stateful);
 
