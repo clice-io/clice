@@ -135,8 +135,12 @@ TEST_CASE(CrashSpendsBudget) {
     ASSERT_EQ(f.attempts(id), IndexerFixture::budget);
     ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::GaveUp));
 
-    // A preemption cannot revive a file whose crash budget is spent.
-    ASSERT_EQ(int(f.fail(id, /*crashed=*/false)), int(IndexerFixture::Verdict::GaveUp));
+    // A preemption still requeues a file whose crash budget is spent:
+    // dropping it would erase the pending state and serve the stale
+    // shard as fresh. Only the next crash gives up.
+    ASSERT_EQ(int(f.fail(id, /*crashed=*/false)), int(IndexerFixture::Verdict::Requeued));
+    ASSERT_EQ(f.attempts(id), IndexerFixture::budget);
+    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::GaveUp));
 }
 
 TEST_CASE(DroppedWithoutPending) {

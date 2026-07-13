@@ -569,11 +569,14 @@ auto Indexer::note_dispatch_failure(std::uint32_t server_path_id, bool crashed) 
         return RequeueVerdict::Dropped;
     }
 
-    if(it->second.requeue_attempts >= max_requeue_attempts) {
-        return RequeueVerdict::GaveUp;
-    }
-
+    // The budget both counts and gates crashes only: a preemption under
+    // memory pressure says nothing about the file, so it requeues even
+    // when the crash budget is already spent — giving up on it would
+    // clear the pending state and serve the stale shard as fresh.
     if(crashed) {
+        if(it->second.requeue_attempts >= max_requeue_attempts) {
+            return RequeueVerdict::GaveUp;
+        }
         it->second.requeue_attempts += 1;
     }
     // The enqueue bumps the entry's ticket, which shields it from the
