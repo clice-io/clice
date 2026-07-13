@@ -145,6 +145,25 @@ TEST_CASE(DroppedWithoutPending) {
     ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Dropped));
 }
 
+TEST_CASE(ContentChangeResetsBudget) {
+    IndexerFixture f;
+    auto id = f.workspace.path_pool.intern("/proj/fixed.cpp");
+    f.indexer.enqueue(id, ReindexReason::ContentChanged);
+
+    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
+    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
+    ASSERT_EQ(f.attempts(id), 2u);
+
+    // The user fixes the file: new content starts a fresh poison budget.
+    f.indexer.enqueue(id, ReindexReason::ContentChanged);
+    ASSERT_EQ(f.attempts(id), 0u);
+
+    // A deps-only cascade is not new content and keeps the ledger.
+    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
+    f.indexer.enqueue(id, ReindexReason::DepsOnly);
+    ASSERT_EQ(f.attempts(id), 1u);
+}
+
 };  // TEST_SUITE(IndexerRequeue)
 
 }  // namespace

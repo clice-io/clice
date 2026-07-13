@@ -393,6 +393,10 @@ void Indexer::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
         if(reason == ReindexReason::ContentChanged) {
             it->second.reason = ReindexReason::ContentChanged;
             it->second.content_ticket = reindex_ticket;
+            // New content starts a fresh poison budget: the crashes the
+            // old bytes caused say nothing about the fixed ones, and a
+            // stale ledger would abandon the file on its first hiccup.
+            it->second.requeue_attempts = 0;
         } else if(fresh_slot) {
             it->second.reason = ReindexReason::DepsOnly;
         }
@@ -573,8 +577,13 @@ auto Indexer::note_dispatch_failure(std::uint32_t server_path_id, bool crashed) 
         it->second.requeue_attempts += 1;
     }
     // The enqueue bumps the entry's ticket, which shields it from the
-    // in-flight task's pending-state clear.
+    // in-flight task's pending-state clear. It also resets the poison
+    // budget on ContentChanged — right for a user edit, wrong for this
+    // requeue of the same bytes — so restore the ledger afterwards
+    // (try_emplace on the existing key keeps `it` valid).
+    auto attempts = it->second.requeue_attempts;
     enqueue(server_path_id, it->second.reason);
+    it->second.requeue_attempts = attempts;
     return RequeueVerdict::Requeued;
 }
 
