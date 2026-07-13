@@ -731,7 +731,13 @@ TEST_CASE(NeedUpdateChecksAllContexts) {
     auto view = index::MergedIndex(s);
     ASSERT_FALSE(view.need_update());
 
+    // Same-size rewrites move the mtime explicitly: Windows file times
+    // advance in ~16ms ticks, so a rewrite landing in the stamp's tick
+    // reproduces size AND mtime exactly and the stat fast path rightly
+    // trusts it. A real edit arrives long after the stamp; the bump
+    // models that and pins these verdicts on the hash layer.
     tmp.touch("b.h", "int b3();\n");
+    set_file_mtime(b, file_mtime_ns(b) + 5'000'000'000);
     ASSERT_TRUE(view.need_update());
 
     // Restore b (fresh again via the hash layer), then break a: the verdict
@@ -739,6 +745,7 @@ TEST_CASE(NeedUpdateChecksAllContexts) {
     tmp.touch("b.h", "int b2();\n");
     ASSERT_FALSE(view.need_update());
     tmp.touch("a.h", "int a3();\n");
+    set_file_mtime(a, file_mtime_ns(a) + 5'000'000'000);
     ASSERT_TRUE(view.need_update());
 }
 
@@ -787,8 +794,11 @@ TEST_CASE(SerializedStampsValidate) {
     set_file_mtime(dep, file_mtime_ns(dep) + 5'000'000'000);
     ASSERT_FALSE(view.need_update());
 
-    // A real edit is caught by the hash layer.
+    // A real edit is caught by the hash layer. The explicit mtime bump
+    // keeps the same-size rewrite out of the stamp's Windows time tick
+    // (see NeedUpdateChecksAllContexts).
     tmp.touch("dep.h", "int g();\n");
+    set_file_mtime(dep, file_mtime_ns(dep) + 5'000'000'000);
     ASSERT_TRUE(view.need_update());
 }
 
