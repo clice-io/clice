@@ -301,11 +301,14 @@ private:
     }
 
     /// Reserve one worker for high-priority requests by capping low-priority
-    /// concurrency at capacity - 1. With a single worker this collapses to 1:
-    /// both priorities share it, and high wins only via queue ordering.
+    /// concurrency at one below the slots that can be scheduled right now.
+    /// A slot dying or awaiting respawn cannot serve; counting it would let
+    /// low-priority work occupy every live worker for the whole respawn
+    /// window. With a single live worker this collapses to 1: both
+    /// priorities share it, and high wins only via queue ordering.
     std::size_t max_low_limit() const {
-        auto capacity = stateless_capacity();
-        return capacity > 1 ? capacity - 1 : capacity;
+        auto live = alive_stateless();
+        return live > 1 ? live - 1 : live;
     }
 
     std::size_t effective_low_limit() const {

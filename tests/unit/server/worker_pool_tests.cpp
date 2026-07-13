@@ -758,6 +758,22 @@ TEST_CASE(EffectiveLimitClamped) {
     EXPECT_EQ(f.effective_low_limit(), 2u);
 }
 
+TEST_CASE(LowCapCountsLive) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.add_stateless();
+    f.add_stateless();
+    f.set_low_limit(8);
+
+    f.mark_dead(1);
+
+    // A slot awaiting respawn is future capacity, not schedulable now: the
+    // reserve-one-for-high cap must not let low-priority work occupy both
+    // live workers for the whole respawn window.
+    EXPECT_EQ(f.max_low_limit(), 1u);
+    EXPECT_EQ(f.effective_low_limit(), 1u);
+}
+
 };  // TEST_SUITE(WorkerPoolScheduling)
 
 TEST_SUITE(WorkerPoolCrash) {
