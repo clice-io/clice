@@ -87,6 +87,24 @@ const static std::string& build_failure_message(const auto& result) {
     return result.has_value() ? result.value().error : result.error().message;
 }
 
+/// A quarantined document must not hide behind empty diagnostics: publish
+/// one that says why every semantic feature went quiet, and how to lift it.
+static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
+    std::vector<protocol::Diagnostic> diagnostics(1);
+    auto& diagnostic = diagnostics[0];
+    diagnostic.range = protocol::Range{
+        .start = protocol::Position{.line = 0, .character = 0},
+        .end = protocol::Position{.line = 0, .character = 0},
+    };
+    diagnostic.severity = protocol::DiagnosticSeverity::Error;
+    diagnostic.source = "clice";
+    diagnostic.message = std::format(
+        "compiling this file crashed the language server worker {} times; " "the file is quarantined until it is edited",
+        crashes);
+    auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(diagnostics);
+    return kota::codec::RawValue{json ? std::move(*json) : "[]"};
+}
+
 /// Send a stateless request, resending once if the worker died mid-request.
 /// The pool does not retry on its own — it marks the dead slot and surfaces
 /// worker_crashed, so the resend lands on a healthy worker. Build tasks are
@@ -787,7 +805,11 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             params.open_conditionals.assign(conditionals.begin(), conditionals.end());
         }
 
-        auto result = co_await pool.send_stateful(pid, params);
+        // A quarantined document's probe is a known risk: tell the pool so
+        // the crash, if it comes, does not spend the slot's budget.
+        bool suspect = session->compile_crash_streak >= Session::quarantine_threshold;
+        session->quarantine_probe = false;
+        auto result = co_await pool.send_stateful(pid, params, {}, suspect);
 
         if(session->generation != gen) {
             LOG_INFO("ensure_compiled: generation mismatch ({} vs {}) for {}",
@@ -810,12 +832,26 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                             uri_str,
                             result.error().message);
             }
+            // The budget the pool keeps is per slot; the poison is in the
+            // document. Count the crash here so a document that keeps
+            // killing workers is quarantined instead of burning slots.
+            if(result.error().code == worker::dispatch_errc::worker_crashed) {
+                session->compile_crash_streak += 1;
+            }
+            // No expendable worker right now: the probe never ran — keep
+            // it armed so a later request retries once one frees up.
+            if(suspect && result.error().code == worker::dispatch_errc::worker_unavailable) {
+                session->quarantine_probe = true;
+            }
+            bool quarantined = session->compile_crash_streak >= Session::quarantine_threshold;
             // Clear path: empty diagnostics without a version, and no
-            // inactive-regions update.
+            // inactive-regions update. A quarantined document announces
+            // itself instead of hiding behind the empty list.
             session->output = CompileOutput{
                 .version = std::nullopt,
                 .source = source,
-                .diagnostics = {},
+                .diagnostics = quarantined ? quarantine_diagnostics(session->compile_crash_streak)
+                                           : kota::codec::RawValue{},
                 .line_limit = suffix_line_limit,
                 .inactive_regions = std::nullopt,
             };
@@ -867,6 +903,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // a stale world — record it, publish it (bounded staleness), but do
         // not declare it fresh; the next request recompiles.
         session->settle_compile(epoch);
+        session->compile_crash_streak = 0;
         pc->succeeded = true;
         record_deps(*session, result.value().deps, result.value().build_at);
 
@@ -942,6 +979,17 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
               session->version,
               gen,
               session->ast_dirty);
+
+    // The crash budget lives on pool slots, the poison lives in documents:
+    // a document that keeps killing workers is quarantined instead of
+    // burning slot after slot. A content change grants one probe attempt.
+    if(session->compile_crash_streak >= Session::quarantine_threshold &&
+       !session->quarantine_probe) {
+        LOG_WARN("ensure_compiled: {} quarantined after {} worker crashes",
+                 workspace.path_pool.resolve(path_id),
+                 session->compile_crash_streak);
+        co_return false;
+    }
 
     if(!session->ast_dirty) {
         if(!is_stale(*session)) {

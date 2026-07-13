@@ -50,12 +50,23 @@ void SessionStore::apply_open(Session& session, std::string text, int version) {
     session.text = std::move(text);
     session.line_starts = lsp::build_line_starts(session.text);
     session.generation++;
+    session.compile_crash_streak = 0;
+    session.quarantine_probe = false;
 }
 
 void SessionStore::apply_change(Session& session,
                                 llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
                                 int version) {
     session.version = version;
+
+    // A content change re-arms a quarantined document with one probe
+    // attempt; below the threshold the streak simply restarts — the new
+    // bytes owe nothing to the old ones.
+    if(session.compile_crash_streak >= Session::quarantine_threshold) {
+        session.quarantine_probe = true;
+    } else {
+        session.compile_crash_streak = 0;
+    }
 
     for(auto& change: changes) {
         std::visit(

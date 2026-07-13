@@ -67,6 +67,12 @@ struct WorkerPoolOptions {
     /// streak resets.
     std::chrono::milliseconds healthy_uptime{30'000};
 
+    /// Cooldown before a slot that gave up is revived with a fresh crash
+    /// budget. The pool must never stay at zero workers forever: document
+    /// quarantine isolates the poison, and this bounds how long a fully
+    /// burnt pool stays dark. 0 disables revival.
+    std::chrono::milliseconds revive_after{30'000};
+
     /// Dynamic scaling bounds for stateless workers.
     /// min_stateless: floor — never retire below this count.
     /// max_stateless: ceiling — never spawn above this count (0 = auto = CPU cores).
@@ -102,10 +108,15 @@ public:
     kota::task<> stop();
 
     /// Send a request to a stateful worker with path_id affinity routing.
+    /// `suspect` marks a workload the caller already distrusts (a
+    /// quarantined document's probe): if it crashes the worker, the crash
+    /// does not spend the slot's budget — the failure says something about
+    /// the document, not the slot.
     template <typename Params>
     RequestResult<Params> send_stateful(std::uint32_t path_id,
                                         const Params& params,
-                                        kota::ipc::request_options opts = {});
+                                        kota::ipc::request_options opts = {},
+                                        bool suspect = false);
 
     /// Send a request to a stateless worker with priority-aware scheduling.
     template <typename Params>
@@ -182,6 +193,11 @@ private:
 
         /// Consecutive fast crashes; resets after healthy uptime.
         unsigned crash_streak = 0;
+
+        /// In-flight requests whose caller flagged them as suspect (a
+        /// quarantined document's probe). While non-zero, a crash does not
+        /// spend the slot's budget — see send_stateful.
+        unsigned suspect_inflight = 0;
 
         std::chrono::steady_clock::time_point spawn_time{};
 
@@ -423,6 +439,10 @@ private:
     /// stacktraces, sanitizer reports) was drained to EOF.
     kota::task_group<> worker_tasks{loop};
     WorkerPoolOptions options;
+
+    /// Set once start() succeeded: gates background concerns (slot
+    /// revival) that need a running event loop.
+    bool started = false;
     std::string log_dir;
 
     struct SpawnedProcess {
@@ -440,6 +460,15 @@ private:
     /// Refill an existing slot with a fresh process.
     bool respawn_worker(std::size_t index, bool stateful);
 
+    /// After `revive_after`, grant a given-up slot a fresh crash budget
+    /// and respawn it: the pool never stays at zero workers forever.
+    kota::task<> revive_slot(std::size_t index, bool stateful);
+
+    /// A stateful worker that may be sacrificed to a suspect compile:
+    /// alive and hosting no document other than `path_id` itself, which is
+    /// reassigned to it. SIZE_MAX when every live worker hosts others.
+    std::size_t assign_expendable(std::uint32_t path_id);
+
     void install_evict_handler(WorkerProcess& worker);
 
     kota::task<> monitor_worker(std::size_t index, bool stateful);
@@ -450,11 +479,18 @@ private:
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
                                                 const Params& params,
-                                                kota::ipc::request_options opts) {
-    auto idx = assign_worker(path_id);
+                                                kota::ipc::request_options opts,
+                                                bool suspect) {
+    // A suspect workload only runs on a worker hosting no other document:
+    // its crash must never take healthy sessions with it. With no such
+    // worker available right now, the caller keeps the probe armed and
+    // tries again later instead of risking one.
+    auto idx = suspect ? assign_expendable(path_id) : assign_worker(path_id);
     if(idx == SIZE_MAX) {
-        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
-                                                       "No stateful workers available"});
+        co_return kota::outcome_error(
+            kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+                             suspect ? "No expendable stateful worker for quarantined probe"
+                                     : "No stateful workers available"});
     }
 
     auto& assigned = stateful_workers[idx];
@@ -471,7 +507,18 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     // moment the worker dies.
     auto peer = assigned.peer;
     auto gen = assigned.generation;
+    if(suspect) {
+        assigned.suspect_inflight += 1;
+    }
     auto result = co_await peer->send_request(params, opts);
+    // Unwind the counter only when the request did not die on transport:
+    // a crash leaves it for the monitor's accounting to consume, and the
+    // generation guard skips incarnations already torn down elsewhere.
+    bool transport_dead = !result.has_value() && worker::is_transport_error(result.error());
+    if(suspect && !transport_dead && stateful_workers[idx].generation == gen &&
+       stateful_workers[idx].suspect_inflight > 0) {
+        stateful_workers[idx].suspect_inflight -= 1;
+    }
 
     if(result.has_value() || !worker::is_transport_error(result.error()))
         co_return std::move(result);

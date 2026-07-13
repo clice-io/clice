@@ -78,6 +78,22 @@ struct Session {
     /// Used to detect stale compilation results (ABA prevention).
     std::uint64_t generation = 0;
 
+    /// A document whose compiles keep crashing workers is quarantined at
+    /// this many consecutive crashes: the crash budget lives on pool slots
+    /// but the poison lives in documents, and without the cut one document
+    /// burns slot after slot until the whole pool is dead.
+    constexpr static unsigned quarantine_threshold = 2;
+
+    /// Consecutive compiles of this document that crashed a worker. A
+    /// successful compile clears it; a content change below the threshold
+    /// restarts it (the new bytes owe nothing to the old ones).
+    unsigned compile_crash_streak = 0;
+
+    /// One compile attempt granted to a quarantined document by a content
+    /// change, consumed at dispatch. A crashing probe returns straight to
+    /// quarantine; a successful one clears the streak.
+    bool quarantine_probe = false;
+
     /// Whether the AST needs to be rebuilt before serving queries.
     bool ast_dirty = true;
 

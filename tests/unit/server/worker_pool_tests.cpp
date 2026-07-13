@@ -111,6 +111,20 @@ struct WorkerPoolFixture {
         pool.stateless_workers[idx].retiring = true;
     }
 
+    void set_suspect_inflight(std::size_t idx, bool stateful, unsigned n) {
+        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
+        workers[idx].suspect_inflight = n;
+    }
+
+    void set_revive_after(std::chrono::milliseconds cooldown) {
+        pool.options.revive_after = cooldown;
+    }
+
+    bool slot_dead(std::size_t idx, bool stateful = false) const {
+        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
+        return workers[idx].state == WorkerPool::SlotState::Dead;
+    }
+
     /// Manually queue a waiter, as acquire_stateless_slot does when it
     /// cannot claim directly.
     auto enqueue_waiter(worker::Priority p) {
@@ -968,6 +982,21 @@ TEST_CASE(HealthyUptimeResetsStreak) {
     EXPECT_EQ(f.crash_streak(0), 1u);
 }
 
+TEST_CASE(SuspectCrashKeepsBudget) {
+    WorkerPoolFixture f;
+    f.add_stateful(true);
+    f.set_crash_streak(0, true, 2);
+    f.set_suspect_inflight(0, true, 1);
+
+    // A crash with a suspect request (a quarantined document's probe) in
+    // flight says something about the document, not the slot: the streak
+    // stays where it was and the slot respawns.
+    auto should_restart = f.simulate_crash(0, true);
+
+    EXPECT_TRUE(should_restart);
+    EXPECT_EQ(f.crash_streak(0, true), 2u);
+}
+
 TEST_CASE(BackoffDelaySchedule) {
     WorkerPoolFixture f;
     using ms = std::chrono::milliseconds;
@@ -1425,6 +1454,36 @@ TEST_CASE(CrashAndRestart) {
         }
         EXPECT_TRUE(f.worker_alive(0));
         EXPECT_NE(f.worker_pid(0), pid);
+
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(DeadSlotRevives) {
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT_TRUE(f.start(1, 0));
+        f.set_revive_after(std::chrono::milliseconds(300));
+        f.set_max_crash_streak(0);
+        co_await kota::sleep(500);
+
+        // The very first crash exceeds the zero budget: the slot dies...
+        f.kill_worker(0);
+        for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
+            co_await kota::sleep(100);
+        }
+        EXPECT_TRUE(f.slot_dead(0));
+
+        // ...and is revived with a fresh budget after the cooldown: the
+        // pool never stays at zero workers forever.
+        for(int i = 0; i < 100 && !f.worker_alive(0); ++i) {
+            co_await kota::sleep(100);
+        }
+        EXPECT_TRUE(f.worker_alive(0));
+        EXPECT_EQ(f.crash_streak(0), 0u);
 
         co_await f.stop();
         done = true;

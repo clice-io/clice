@@ -223,6 +223,7 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 
     worker_tasks.spawn(kota::with_token(monitor_loop(), stop_scope.token()));
 
+    started = true;
     LOG_INFO("WorkerPool started: {} stateless, {} stateful workers",
              stateless_workers.size(),
              stateful_workers.size());
@@ -286,6 +287,36 @@ std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
     owner[path_id] = selected;
     stateful_workers[selected].owned_documents += 1;
     return selected;
+}
+
+std::size_t WorkerPool::assign_expendable(std::uint32_t path_id) {
+    auto expendable = [&](std::size_t i) {
+        if(stateful_workers[i].state != SlotState::Alive) {
+            return false;
+        }
+        for(auto& [pid, widx]: owner) {
+            if(widx == i && pid != path_id) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // Keep the current owner when sacrificing it risks nothing.
+    if(auto it = owner.find(path_id); it != owner.end() && expendable(it->second)) {
+        return it->second;
+    }
+
+    for(std::size_t i = 0; i < stateful_workers.size(); ++i) {
+        if(!expendable(i)) {
+            continue;
+        }
+        remove_owner(path_id);
+        owner[path_id] = i;
+        stateful_workers[i].owned_documents += 1;
+        return i;
+    }
+    return SIZE_MAX;
 }
 
 std::size_t WorkerPool::pick_least_loaded() {
@@ -466,7 +497,14 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     }
 
     reset_streak_if_healthy(w);
-    w.crash_streak += 1;
+    // A crash while a suspect request (a quarantined document's probe) was
+    // in flight says something about the document, not the slot: respawn
+    // with the streak untouched, like a preemption.
+    bool suspect = w.suspect_inflight > 0;
+    w.suspect_inflight = 0;
+    if(!suspect) {
+        w.crash_streak += 1;
+    }
 
     WorkerCrashInfo info;
     info.worker_index = index;
@@ -551,6 +589,30 @@ void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
         // can return an error instead of hanging.
         try_dispatch_pending();
     }
+    // Revival is a running-pool concern: unit fixtures drive slot state
+    // without an event loop, and a coroutine queued on a never-run loop
+    // outlives the pool.
+    if(started && options.revive_after.count() > 0) {
+        worker_tasks.spawn(revive_slot(index, stateful));
+    }
+}
+
+kota::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
+    co_await kota::with_token(kota::sleep(options.revive_after, loop), stop_scope.token());
+    if(stop_scope.cancelled()) {
+        co_return;
+    }
+    auto& w = stateful ? stateful_workers[index] : stateless_workers[index];
+    if(w.state != SlotState::Dead) {
+        co_return;
+    }
+    // A fresh budget, not a pardon: if the workload that killed the slot is
+    // still around, the budget bounds the damage again and the next revival
+    // is one cooldown away.
+    LOG_INFO("Worker {} reviving after cooldown", w.name);
+    w.crash_streak = 0;
+    w.state = SlotState::Respawning;
+    worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
 }
 
 std::size_t WorkerPool::claim_stateless(std::size_t index, worker::Priority priority) {
