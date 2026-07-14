@@ -59,28 +59,26 @@ void SessionStore::apply_change(Session& session,
                                 int version) {
     session.version = version;
 
-    // A content change re-arms a quarantined document with one probe
-    // attempt. It deliberately does NOT reset the streak: only a compile
-    // that succeeds proves the document healthy — resetting on edits
-    // would let a poison file under active editing crash a worker per
-    // keystroke and never reach quarantine.
-    if(session.compile_crash_streak >= Session::quarantine_threshold) {
-        session.quarantine_probe = true;
-    }
-
+    bool applied = false;
     for(auto& change: changes) {
         std::visit(
             [&](auto& c) {
                 using T = std::remove_cvref_t<decltype(c)>;
                 if constexpr(std::is_same_v<T, protocol::TextDocumentContentChangeWholeDocument>) {
-                    session.text = c.text;
+                    if(session.text != c.text) {
+                        session.text = c.text;
+                        applied = true;
+                    }
                 } else {
                     auto& range = c.range;
                     auto map = session.line_map();
                     auto start = map.to_offset(range.start);
                     auto end = map.to_offset(range.end);
                     if(start && end && *start <= *end) {
-                        session.text.replace(*start, *end - *start, c.text);
+                        if(llvm::StringRef(session.text).substr(*start, *end - *start) != c.text) {
+                            session.text.replace(*start, *end - *start, c.text);
+                            applied = true;
+                        }
                     } else {
                         // The client's view has drifted from ours (or the
                         // client is buggy). Drop the edit but keep serving:
@@ -98,6 +96,16 @@ void SessionStore::apply_change(Session& session,
                 session.line_starts = lsp::build_line_starts(session.text);
             },
             change);
+    }
+
+    // A real content change re-arms a quarantined document with one probe
+    // attempt — dropped or no-op edits grant none, or the unchanged poison
+    // bytes would be compiled again. It deliberately does NOT reset the
+    // streak: only a compile that succeeds proves the document healthy;
+    // resetting on edits would let a poison file under active editing
+    // crash a worker per keystroke and never reach quarantine.
+    if(applied && session.compile_crash_streak >= Session::quarantine_threshold) {
+        session.quarantine_probe = true;
     }
 
     session.generation++;

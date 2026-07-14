@@ -221,6 +221,29 @@ TEST_CASE(QuarantineProbeOnEdit) {
     ASSERT_TRUE(session->quarantine_probe);
 }
 
+TEST_CASE(DroppedEditNoProbe) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "int a;\n", 1);
+    session->compile_crash_streak = Session::quarantine_threshold;
+
+    // The probe license is one attempt per real content change: an edit
+    // whose range does not fit the buffer is dropped, an empty change list
+    // and a no-op replacement change nothing — none may re-arm a compile
+    // of the unchanged poison bytes.
+    store.apply_change(*session, partial_change(99, 0, 99, 1, "junk"), 2);
+    ASSERT_FALSE(session->quarantine_probe);
+
+    store.apply_change(*session, {}, 3);
+    ASSERT_FALSE(session->quarantine_probe);
+
+    store.apply_change(*session, partial_change(0, 0, 0, 1, "i"), 4);
+    ASSERT_FALSE(session->quarantine_probe);
+
+    store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 5);
+    ASSERT_TRUE(session->quarantine_probe);
+}
+
 TEST_CASE(ReopenClearsQuarantine) {
     SessionStore store;
     auto session = store.open(1);
