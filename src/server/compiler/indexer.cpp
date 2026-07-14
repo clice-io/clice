@@ -533,9 +533,16 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
         // a verdict, and each retry round waits out the idle timer rather
         // than spinning. Without revival a requeue could never succeed.
         bool crashed = result.error().code == worker::dispatch_errc::worker_crashed;
-        switch(note_dispatch_failure(server_path_id, crashed)) {
+        switch(note_dispatch_failure(server_path_id, ticket, crashed)) {
             case RequeueVerdict::Dropped: {
                 LOG_INFO("[{}/{}] Index dropped for removed file {}", index, total, file_path);
+                break;
+            }
+            case RequeueVerdict::Superseded: {
+                LOG_INFO("[{}/{}] Index failure for superseded content of {}",
+                         index,
+                         total,
+                         file_path);
                 break;
             }
             case RequeueVerdict::GaveUp: {
@@ -565,12 +572,22 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     }
 }
 
-auto Indexer::note_dispatch_failure(std::uint32_t server_path_id, bool crashed) -> RequeueVerdict {
+auto Indexer::note_dispatch_failure(std::uint32_t server_path_id,
+                                    std::uint64_t ticket,
+                                    bool crashed) -> RequeueVerdict {
     // Only while the pending entry survives: a file removed from disk
     // mid-flight was cleared and has nothing to redo.
     auto it = reindex_reasons.find(server_path_id);
     if(it == reindex_reasons.end()) {
         return RequeueVerdict::Dropped;
+    }
+
+    // The failed dispatch carried bytes a ContentChanged enqueue has since
+    // replaced: its crash says nothing about the fixed content, so it
+    // neither spends the fresh budget nor requeues — the newer content's
+    // own slot redoes the work.
+    if(it->second.content_ticket > ticket) {
+        return RequeueVerdict::Superseded;
     }
 
     // The budget both counts and gates crashes only: a preemption under

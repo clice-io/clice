@@ -254,6 +254,9 @@ private:
     enum class RequeueVerdict : std::uint8_t {
         /// No pending entry survived (file removed mid-flight).
         Dropped,
+        /// The failed dispatch carried bytes older than the pending
+        /// content; the newer content's own queued slot redoes the work.
+        Superseded,
         /// The crash budget is spent; the file is abandoned.
         GaveUp,
         /// Re-enqueued for the next round.
@@ -263,11 +266,16 @@ private:
     constexpr static unsigned max_requeue_attempts = 3;
 
     /// Requeue a file whose index dispatch failed with a crash or a
-    /// memory-pressure preemption. Only crashes spend the bounded budget:
-    /// a preemption says nothing about the file, and capping it would
-    /// silently drop coverage — the pending reason is erased after the
-    /// attempt, so the stale shard would be served as fresh.
-    RequeueVerdict note_dispatch_failure(std::uint32_t server_path_id, bool crashed);
+    /// memory-pressure preemption. `ticket` is the failed dispatch's launch
+    /// ticket: a crash of superseded bytes says nothing about the current
+    /// content and must not spend its budget. Only crashes spend the
+    /// bounded budget: a preemption says nothing about the file, and
+    /// capping it would silently drop coverage — the pending reason is
+    /// erased after the attempt, so the stale shard would be served as
+    /// fresh.
+    RequeueVerdict note_dispatch_failure(std::uint32_t server_path_id,
+                                         std::uint64_t ticket,
+                                         bool crashed);
 
     friend struct testing::IndexerFixture;
 

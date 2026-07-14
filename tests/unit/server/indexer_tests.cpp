@@ -26,8 +26,19 @@ struct IndexerFixture {
     SessionStore sessions;
     Indexer indexer{loop, workspace, pool, contexts, sessions};
 
+    /// Fail the entry's current dispatch: the launch ticket matches.
     Verdict fail(std::uint32_t id, bool crashed) {
-        return indexer.note_dispatch_failure(id, crashed);
+        return indexer.note_dispatch_failure(id, ticket(id), crashed);
+    }
+
+    /// Fail a dispatch launched with an explicit (possibly stale) ticket.
+    Verdict fail_at(std::uint32_t id, std::uint64_t ticket, bool crashed) {
+        return indexer.note_dispatch_failure(id, ticket, crashed);
+    }
+
+    std::uint64_t ticket(std::uint32_t id) {
+        auto it = indexer.reindex_reasons.find(id);
+        return it == indexer.reindex_reasons.end() ? UINT64_MAX : it->second.ticket;
     }
 
     unsigned attempts(std::uint32_t id) {
@@ -141,6 +152,22 @@ TEST_CASE(CrashSpendsBudget) {
     ASSERT_EQ(int(f.fail(id, /*crashed=*/false)), int(IndexerFixture::Verdict::Requeued));
     ASSERT_EQ(f.attempts(id), IndexerFixture::budget);
     ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::GaveUp));
+}
+
+TEST_CASE(StaleCrashKeepsBudget) {
+    IndexerFixture f;
+    auto id = f.workspace.path_pool.intern("/proj/edited.cpp");
+    f.indexer.enqueue(id, ReindexReason::ContentChanged);
+    auto stale = f.ticket(id);
+
+    // The user fixes the file while the old bytes' dispatch is in flight:
+    // the stale crash must not spend the fixed content's budget or touch
+    // its pending slot.
+    f.indexer.enqueue(id, ReindexReason::ContentChanged);
+    ASSERT_EQ(int(f.fail_at(id, stale, /*crashed=*/true)),
+              int(IndexerFixture::Verdict::Superseded));
+    ASSERT_EQ(f.attempts(id), 0u);
+    ASSERT_TRUE(f.indexer.pending_reason(id).has_value());
 }
 
 TEST_CASE(DroppedWithoutPending) {
