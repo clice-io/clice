@@ -18,6 +18,7 @@
 #include "semantic/relation_kind.h"
 #include "server/compiler/compile_graph.h"
 #include "server/state/config.h"
+#include "server/state/quarantine.h"
 #include "support/cache_store.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
@@ -225,6 +226,13 @@ struct Workspace {
     /// so files with identical preambles share one PCH.  Hot-path mirror
     /// of CacheStore state; blob paths come from the store.
     llvm::StringMap<PCHState> pch_cache;
+
+    /// Crash budget for shared build artifacts (PCH/PCM), keyed by the
+    /// same content-derived cache keys: an artifact that keeps killing
+    /// workers is refused until its content — and therefore its key —
+    /// changes. Document quarantine cannot contain these: the artifact is
+    /// shared, so every dependent would burn workers of its own.
+    CrashBudget build_crashes;
 
     /// PCM cache, keyed by module source path_id.
     llvm::DenseMap<std::uint32_t, PCMState> pcm_cache;

@@ -1,0 +1,173 @@
+#include "test/test.h"
+#include "server/state/quarantine.h"
+
+namespace clice::testing {
+
+namespace {
+
+TEST_SUITE(QuarantineMachine) {
+
+TEST_CASE(CrashesAccumulate) {
+    Quarantine q;
+    EXPECT_FALSE(q.active());
+
+    q.on_crash();
+    EXPECT_EQ(q.crashes(), 1u);
+    EXPECT_FALSE(q.active());
+    EXPECT_FALSE(q.blocked());
+
+    q.on_crash();
+    EXPECT_EQ(q.crashes(), 2u);
+    EXPECT_TRUE(q.active());
+    EXPECT_TRUE(q.blocked());
+}
+
+TEST_CASE(LandClearsInherited) {
+    Quarantine q;
+    q.on_crash();
+
+    // A crash recorded while the flight was up survives its landing: the
+    // same content will kill again on the next request.
+    auto flight = q.begin_flight();
+    q.on_crash();
+    EXPECT_TRUE(q.grew(flight));
+    q.land(flight);
+    EXPECT_EQ(q.crashes(), 1u);
+
+    // A clean flight clears everything it inherited.
+    auto clean = q.begin_flight();
+    EXPECT_FALSE(q.grew(clean));
+    q.land(clean);
+    EXPECT_EQ(q.crashes(), 0u);
+}
+
+TEST_CASE(LandNeverUnderflows) {
+    Quarantine q;
+    q.on_crash();
+    auto flight = q.begin_flight();
+
+    // A reopen (reset) while the flight is up must not underflow the
+    // fresh record when the stale flight lands.
+    q.reset();
+    q.land(flight);
+    EXPECT_EQ(q.crashes(), 0u);
+}
+
+TEST_CASE(EditArmsOneProbe) {
+    Quarantine q;
+
+    // Below the threshold an edit grants nothing.
+    q.on_crash();
+    q.on_edit(true);
+    EXPECT_FALSE(q.blocked());
+    q.on_crash();
+    EXPECT_TRUE(q.blocked());
+
+    // Dropped and no-op edits grant nothing; a real one arms the probe.
+    q.on_edit(false);
+    EXPECT_TRUE(q.blocked());
+    q.on_edit(true);
+    EXPECT_FALSE(q.blocked());
+    EXPECT_TRUE(q.active());
+
+    // The attempt spends it; back to blocked. Re-arming is only honored
+    // while quarantined — a stray re-arm below the threshold must not
+    // pre-arm a future spell.
+    q.spend_probe();
+    EXPECT_TRUE(q.blocked());
+    q.land(q.begin_flight());
+    q.re_arm_probe();
+    q.on_crash();
+    q.on_crash();
+    EXPECT_TRUE(q.blocked());
+    q.on_edit(true);
+
+    // An attempt that never ran hands the license back.
+    q.on_edit(true);
+    q.spend_probe();
+    q.re_arm_probe();
+    EXPECT_FALSE(q.blocked());
+}
+
+TEST_CASE(ProbeSuccessRecovers) {
+    Quarantine q;
+    q.on_crash();
+    q.on_crash();
+    q.on_edit(true);
+
+    // The probe compile: takes off, spends the probe, lands clean.
+    auto flight = q.begin_flight();
+    q.spend_probe();
+    q.land(flight);
+    EXPECT_EQ(q.crashes(), 0u);
+    EXPECT_FALSE(q.active());
+    EXPECT_FALSE(q.blocked());
+}
+
+TEST_CASE(AnnounceOncePerSpell) {
+    Quarantine q;
+    EXPECT_FALSE(q.needs_announcement());
+
+    q.on_crash();
+    q.on_crash();
+    EXPECT_TRUE(q.needs_announcement());
+    q.mark_announced();
+    EXPECT_FALSE(q.needs_announcement());
+
+    // More crashes in the same spell do not re-announce, and neither does
+    // a landing that clears only part of the evidence and stays active.
+    q.on_crash();
+    EXPECT_FALSE(q.needs_announcement());
+    {
+        auto flight = q.begin_flight();
+        q.on_crash();
+        q.on_crash();
+        q.land(flight);
+        EXPECT_TRUE(q.active());
+        EXPECT_FALSE(q.needs_announcement());
+    }
+    q.land(q.begin_flight());
+    q.on_crash();
+    q.on_crash();
+    EXPECT_TRUE(q.needs_announcement());
+}
+
+TEST_CASE(ResetClearsAll) {
+    Quarantine q;
+    q.on_crash();
+    q.on_crash();
+    q.on_edit(true);
+    q.mark_announced();
+
+    q.reset();
+    EXPECT_EQ(q.crashes(), 0u);
+    EXPECT_FALSE(q.active());
+    EXPECT_FALSE(q.blocked());
+    EXPECT_FALSE(q.needs_announcement());
+
+    // reset() must clear the probe and the announcement, not just the
+    // streak: a fresh spell must block and announce again.
+    q.on_crash();
+    q.on_crash();
+    EXPECT_TRUE(q.blocked());
+    EXPECT_TRUE(q.needs_announcement());
+}
+
+TEST_CASE(BudgetBlocksAtThreshold) {
+    CrashBudget budget;
+    EXPECT_FALSE(budget.blocked("key-a"));
+
+    budget.on_crash("key-a");
+    EXPECT_FALSE(budget.blocked("key-a"));
+    budget.on_crash("key-a");
+    EXPECT_TRUE(budget.blocked("key-a"));
+
+    // Keys are independent: fresh content (fresh key) starts fresh.
+    EXPECT_FALSE(budget.blocked("key-b"));
+}
+
+};  // TEST_SUITE(QuarantineMachine)
+
+}  // namespace
+
+}  // namespace clice::testing

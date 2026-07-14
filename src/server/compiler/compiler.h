@@ -117,6 +117,14 @@ public:
 private:
     kota::task<> run_compile(std::shared_ptr<Session> session);
 
+    /// Publish the quarantine diagnostic as the session's current output
+    /// and mark the spell announced. `source` falls back to the previous
+    /// output's command source when the announcement has no compile of its
+    /// own (the ensure_compiled entry gate).
+    void publish_quarantined(const std::shared_ptr<Session>& session,
+                             std::optional<CommandSource> source,
+                             std::optional<std::uint32_t> line_limit);
+
     /// @param launch_generation, launch_epoch  The caller's staleness-token
     ///               snapshots from the moment its round took off, NOT ones
     ///               taken on entry: a round invalidated during the

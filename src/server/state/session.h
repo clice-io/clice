@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "index/tu_index.h"
+#include "server/state/quarantine.h"
 #include "server/state/workspace.h"
 
 #include "kota/async/async.h"
@@ -78,29 +79,11 @@ struct Session {
     /// Used to detect stale compilation results (ABA prevention).
     std::uint64_t generation = 0;
 
-    /// A document whose compiles keep crashing workers is quarantined at
-    /// this many consecutive crashes: the crash budget lives on pool slots
-    /// but the poison lives in documents, and without the cut one document
-    /// burns slot after slot until the whole pool is dead.
-    constexpr static unsigned quarantine_threshold = 2;
-
-    /// Consecutive compiles of this document that crashed a worker. Only
-    /// a successful compile clears it — edits never do, or a poison file
-    /// under active editing would crash one worker per keystroke without
-    /// ever reaching quarantine. New content gets its say via the probe.
-    unsigned compile_crash_streak = 0;
-
-    /// One compile attempt granted to a quarantined document by a content
-    /// change, consumed at dispatch. A crashing probe returns straight to
-    /// quarantine; a successful one clears the streak.
-    bool quarantine_probe = false;
-
-    /// Whether the quarantine diagnostic has been published for the current
-    /// quarantine spell. A quarantine reached outside the compile-failure
-    /// landing (a completion or PCH build) has no output of its own; the
-    /// next ensure_compiled announces it once instead of going silently
-    /// dead. Cleared when real output lands.
-    bool quarantine_announced = false;
+    /// Crash containment for this document's content: the crash budget
+    /// lives on pool slots, but the poison lives in documents — without
+    /// the cut one document burns slot after slot until the whole pool is
+    /// dead. All transitions go through the type; see quarantine.h.
+    Quarantine quarantine;
 
     /// Whether the AST needs to be rebuilt before serving queries.
     bool ast_dirty = true;

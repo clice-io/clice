@@ -50,9 +50,7 @@ void SessionStore::apply_open(Session& session, std::string text, int version) {
     session.text = std::move(text);
     session.line_starts = lsp::build_line_starts(session.text);
     session.generation++;
-    session.compile_crash_streak = 0;
-    session.quarantine_probe = false;
-    session.quarantine_announced = false;
+    session.quarantine.reset();
 }
 
 void SessionStore::apply_change(Session& session,
@@ -100,14 +98,8 @@ void SessionStore::apply_change(Session& session,
     }
 
     // A real content change re-arms a quarantined document with one probe
-    // attempt — dropped or no-op edits grant none, or the unchanged poison
-    // bytes would be compiled again. It deliberately does NOT reset the
-    // streak: only a compile that succeeds proves the document healthy;
-    // resetting on edits would let a poison file under active editing
-    // crash a worker per keystroke and never reach quarantine.
-    if(applied && session.compile_crash_streak >= Session::quarantine_threshold) {
-        session.quarantine_probe = true;
-    }
+    // attempt; dropped or no-op edits grant none (see Quarantine::on_edit).
+    session.quarantine.on_edit(applied);
 
     session.generation++;
     session.ast_dirty = true;

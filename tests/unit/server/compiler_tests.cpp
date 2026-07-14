@@ -80,13 +80,17 @@ TEST_CASE(QuarantineBlocksBuilds) {
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern("/proj/poison.cpp");
     session->text = "int x;\n";
-    session->compile_crash_streak = Session::quarantine_threshold;
+    session->quarantine.on_crash();
+    session->quarantine.on_crash();
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
         auto result = co_await compiler.forward_build(worker::BuildKind::Completion, {}, session);
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
+        // The gate's message, not the empty pool's: without the gate this
+        // test would still see worker_unavailable and prove nothing.
+        EXPECT_TRUE(result.error().message.contains("quarantined"));
         done = true;
     };
     auto task = body();
@@ -143,7 +147,7 @@ TEST_CASE(PchCrashCountsStreak) {
                                                           directory,
                                                           arguments);
         EXPECT_FALSE(built);
-        EXPECT_EQ(session.compile_crash_streak, 1u);
+        EXPECT_EQ(session.quarantine.crashes(), 1u);
 
         co_await pool.stop();
         done = true;
@@ -154,6 +158,35 @@ TEST_CASE(PchCrashCountsStreak) {
     EXPECT_TRUE(done);
 
     logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(QuarantineBlocksFormat) {
+    // Formatting is still this document's content on a worker: quarantine
+    // refuses it like any other stateless build.
+    kota::event_loop loop;
+    Workspace workspace;
+    ContextResolver contexts(workspace);
+    WorkerPool pool(loop);
+    Compiler compiler(loop, workspace, contexts, pool);
+
+    auto session = std::make_shared<Session>();
+    session->path_id = workspace.path_pool.intern("/proj/poison.cpp");
+    session->text = "int x;\n";
+    session->quarantine.on_crash();
+    session->quarantine.on_crash();
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        auto result = co_await compiler.forward_format(session, std::nullopt);
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
+        EXPECT_TRUE(result.error().message.contains("quarantined"));
+        done = true;
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+    EXPECT_TRUE(done);
 }
 
 TEST_CASE(GateAnnouncesQuarantine) {
@@ -169,7 +202,8 @@ TEST_CASE(GateAnnouncesQuarantine) {
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern("/proj/poison.cpp");
     session->text = "int x;\n";
-    session->compile_crash_streak = Session::quarantine_threshold;
+    session->quarantine.on_crash();
+    session->quarantine.on_crash();
 
     int emits = 0;
     auto conn = compiler.on_output.connect([&](const std::shared_ptr<Session>&) { emits += 1; });
@@ -186,7 +220,7 @@ TEST_CASE(GateAnnouncesQuarantine) {
     EXPECT_TRUE(done);
 
     EXPECT_EQ(emits, 1);
-    EXPECT_TRUE(session->quarantine_announced);
+    EXPECT_FALSE(session->quarantine.needs_announcement());
     ASSERT_TRUE(session->output.has_value());
     EXPECT_TRUE(session->output->diagnostics.data.contains("quarantined"));
 }
@@ -219,7 +253,7 @@ TEST_CASE(PchCrashBlocksBuild) {
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern(src);
     session->text = "#pragma clang __debug crash\n";
-    session->compile_crash_streak = Session::quarantine_threshold - 1;
+    session->quarantine.on_crash();
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
@@ -233,7 +267,84 @@ TEST_CASE(PchCrashBlocksBuild) {
         auto result = co_await compiler.forward_build(worker::BuildKind::Completion, {}, session);
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
-        EXPECT_EQ(session->compile_crash_streak, Session::quarantine_threshold);
+        EXPECT_EQ(session->quarantine.crashes(), Quarantine::threshold);
+
+        co_await pool.stop();
+        done = true;
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+    EXPECT_TRUE(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(PoisonPreambleBudget) {
+    // One document's quarantine cannot contain a poison preamble: the PCH
+    // is shared, so every session with the same preamble would re-trigger
+    // the build and burn workers of its own. After `threshold` crashed
+    // builds the key itself is refused — before any dispatch, which is why
+    // the third session records no crash at all.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    auto src = tmp.path("a.cpp");
+
+    kota::event_loop loop;
+    Workspace workspace;
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ASSERT_TRUE(store.has_value());
+    store->register_namespace({.name = "pch",
+                               .extension = ".pch",
+                               .aux_extension = ".pch.idx",
+                               .policy = CachePolicy::LRU,
+                               .max_bytes = 1ull << 30});
+    workspace.store.emplace(std::move(*store));
+
+    ContextResolver contexts(workspace);
+    WorkerPool pool(loop);
+    Compiler compiler(loop, workspace, contexts, pool);
+
+    auto make_session = [&] {
+        Session session;
+        session.path_id = workspace.path_pool.intern(src);
+        session.text = "#pragma clang __debug crash\n";
+        return session;
+    };
+    auto first = make_session();
+    auto second = make_session();
+    auto third = make_session();
+
+    std::string directory = tmp.path(".");
+    auto arguments = make_args(src);
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        CO_ASSERT_TRUE(pool.start(opts));
+        co_await kota::sleep(500);
+
+        auto build = [&](Session& session) {
+            return CompilerFixture::ensure_pch(compiler,
+                                               session,
+                                               session.generation,
+                                               session.dirty_epoch,
+                                               directory,
+                                               arguments);
+        };
+        CO_ASSERT_FALSE(co_await build(first));
+        EXPECT_EQ(first.quarantine.crashes(), 1u);
+        CO_ASSERT_FALSE(co_await build(second));
+        EXPECT_EQ(second.quarantine.crashes(), 1u);
+
+        // The key's budget is spent: refused without touching a worker.
+        CO_ASSERT_FALSE(co_await build(third));
+        EXPECT_EQ(third.quarantine.crashes(), 0u);
 
         co_await pool.stop();
         done = true;
