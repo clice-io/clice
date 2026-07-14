@@ -124,6 +124,10 @@ struct WorkerPoolFixture {
         pool.options.revive_after = cooldown;
     }
 
+    void set_max_stateless(std::size_t n) {
+        pool.options.max_stateless = n;
+    }
+
     bool slot_dead(std::size_t idx, bool stateful = false) const {
         auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
         return workers[idx].state == WorkerPool::SlotState::Dead;
@@ -1530,6 +1534,26 @@ TEST_CASE(DeadSlotRevives) {
         }
         EXPECT_TRUE(f.worker_alive(0));
         EXPECT_EQ(f.crash_streak(0), 0u);
+
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(RetiringHoldsScaleUp) {
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT_TRUE(f.start(2, 0));
+        f.set_max_stateless(2);
+        f.set_retiring(0);
+
+        // The retiring worker still holds its process until the monitor
+        // reaps it: a replacement now would run three processes against a
+        // ceiling of two, worsening the pressure that retired it.
+        EXPECT_FALSE(f.scale_up());
+        EXPECT_EQ(f.stateless_count(), 2u);
 
         co_await f.stop();
         done = true;

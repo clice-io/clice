@@ -865,7 +865,14 @@ void WorkerPool::apply_crash_backoff() {
 }
 
 bool WorkerPool::scale_up_worker() {
-    if(stateless_capacity() >= options.max_stateless)
+    // The ceiling bounds live processes, not schedulable slots: a retiring
+    // worker still holds its process until the monitor reaps it, and a
+    // replacement spawned beside it would push the pool past max_stateless
+    // during exactly the memory pressure that triggered the retirement.
+    auto footprint = std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
+        return w.state != SlotState::Dead && w.state != SlotState::Retired;
+    });
+    if(static_cast<std::size_t>(footprint) >= options.max_stateless)
         return false;
 
     // A Dead slot is capacity already allocated, just waiting out its
