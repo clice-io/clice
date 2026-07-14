@@ -7,6 +7,7 @@ that fixes it earns a probe that brings it back.
 """
 
 import asyncio
+import os
 
 import pytest
 from lsprotocol.types import (
@@ -42,7 +43,12 @@ async def test_poison_quarantine(executable, tmp_path):
     (tmp_path / "poison.cpp").write_text(POISON.format(n=0))
     write_cdb(tmp_path, ["healthy.cpp", "poison.cpp"])
 
+    # Worker crashes are the point of this test; Debug builds trap
+    # anomalies with abort() unless told otherwise (same as
+    # test_crash_recovery.py).
+    os.environ["CLICE_ANOMALY_NO_TRAP"] = "1"
     client = await make_client(executable, tmp_path)
+    os.environ.pop("CLICE_ANOMALY_NO_TRAP", None)
     try:
         healthy_uri, _ = client.open(tmp_path / "healthy.cpp")
         poison_uri, _ = client.open(tmp_path / "poison.cpp")
