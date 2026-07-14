@@ -1,9 +1,13 @@
 #include <string>
 #include <vector>
 
+#include "test/temp_dir.h"
 #include "test/test.h"
 #include "server/compiler/compiler.h"
 #include "server/compiler/context_resolver.h"
+#include "server/worker_test_helpers.h"
+#include "support/anomaly.h"
+#include "support/cache_store.h"
 
 namespace clice::testing {
 
@@ -62,6 +66,67 @@ TEST_CASE(EpochGuardsPchWrite) {
     // The stale continuation left the session's PCH reference untouched.
     ASSERT_TRUE(session.pch_key.has_value());
     EXPECT_EQ(*session.pch_key, std::string("key"));
+}
+
+TEST_CASE(PchCrashCountsStreak) {
+    // A PCH build that kills its stateless worker must count toward the
+    // document's quarantine streak: the preamble is the document's content
+    // too, and without this a poison preamble never quarantines.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    auto src = tmp.path("a.cpp");
+
+    kota::event_loop loop;
+    Workspace workspace;
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ASSERT_TRUE(store.has_value());
+    store->register_namespace({.name = "pch",
+                               .extension = ".pch",
+                               .aux_extension = ".pch.idx",
+                               .policy = CachePolicy::LRU,
+                               .max_bytes = 1ull << 30});
+    workspace.store.emplace(std::move(*store));
+
+    ContextResolver contexts(workspace);
+    WorkerPool pool(loop);
+    Compiler compiler(loop, workspace, contexts, pool);
+
+    Session session;
+    session.path_id = workspace.path_pool.intern(src);
+    session.text = "#pragma clang __debug crash\n";
+
+    std::string directory = tmp.path(".");
+    auto arguments = make_args(src);
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        CO_ASSERT_TRUE(pool.start(opts));
+        co_await kota::sleep(500);
+
+        bool built = co_await CompilerFixture::ensure_pch(compiler,
+                                                          session,
+                                                          session.generation,
+                                                          session.dirty_epoch,
+                                                          directory,
+                                                          arguments);
+        EXPECT_FALSE(built);
+        EXPECT_EQ(session.compile_crash_streak, 1u);
+
+        co_await pool.stop();
+        done = true;
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+    EXPECT_TRUE(done);
+
+    logging::reset_anomaly_for_testing();
 }
 
 };  // TEST_SUITE(CompilerGuards)

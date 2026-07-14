@@ -876,23 +876,21 @@ bool WorkerPool::scale_up_worker() {
     auto dead = std::ranges::find(stateless_workers, SlotState::Dead, &WorkerProcess::state);
     if(dead != stateless_workers.end()) {
         auto index = static_cast<std::size_t>(dead - stateless_workers.begin());
-        dead->crash_streak = 0;
-        dead->state = SlotState::Respawning;
+        auto& w = *dead;
+        w.crash_streak = 0;
+        w.state = SlotState::Respawning;
         if(!respawn_worker(index, false)) {
             // Back to Dead with a fresh cooldown revival armed, so a failed
             // early revive does not orphan the slot.
             give_up_slot(index, false);
-            LOG_WARN("scale_up: revive of {} failed", stateless_workers[index].name);
+            LOG_WARN("scale_up: revive of {} failed", w.name);
             return false;
         }
-        LOG_INFO("Scaled up: revived {} (alive={})",
-                 stateless_workers[index].name,
-                 alive_stateless());
+        LOG_INFO("Scaled up: revived {} (alive={})", w.name, alive_stateless());
+    } else if(!spawn_worker(false)) {
+        LOG_WARN("scale_up: spawn_worker failed");
+        return false;
     } else {
-        if(!spawn_worker(false)) {
-            LOG_WARN("scale_up: spawn_worker failed");
-            return false;
-        }
         LOG_INFO("Scaled up: spawned {} (alive={})",
                  stateless_workers.back().name,
                  alive_stateless());

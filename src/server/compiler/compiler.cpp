@@ -818,21 +818,17 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         session->quarantine_probe = false;
         auto result = co_await pool.send_stateful(pid, params, {}, suspect);
 
-        // Crash accounting runs even for superseded compiles: the crash was
-        // caused by content this document dispatched, and skipping it would
-        // let a poison file dodge quarantine by being edited between the
-        // dispatch and the crash response. The budget the pool keeps is per
-        // slot; the poison is in the document — a document that keeps
-        // killing workers is quarantined instead of burning slots. Only a
-        // real mid-request death counts: a restarting-window fast-fail
-        // (worker_restarting) never reached a worker.
+        // Crash accounting runs even for superseded compiles: the crash came
+        // from content this document dispatched, and skipping it would let a
+        // poison file dodge quarantine by being edited between dispatch and
+        // the crash response. Only a real mid-request death counts — a
+        // restarting-window fast-fail never reached a worker.
         if(!result.has_value()) {
             if(result.error().code == worker::dispatch_errc::worker_crashed) {
                 session->compile_crash_streak += 1;
-            }
-            // No expendable worker right now: the probe never ran — keep
-            // it armed so a later request retries once one frees up.
-            if(suspect && result.error().code == worker::dispatch_errc::worker_unavailable) {
+            } else if(suspect && result.error().code == worker::dispatch_errc::worker_unavailable) {
+                // The probe never ran: keep it armed so a later request
+                // retries once an expendable worker frees up.
                 session->quarantine_probe = true;
             }
         }
@@ -1166,6 +1162,17 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
     auto gen = session->generation;
+
+    // This build compiles the same content the quarantine watches; a
+    // quarantined document gets no stateless builds either, or completion
+    // requests would keep killing workers the compile path is protecting.
+    // Recovery stays with the compile path's probe.
+    if(session->compile_crash_streak >= Session::quarantine_threshold) {
+        LOG_WARN("forward_build: {} is quarantined, refusing build", path);
+        co_return kota::outcome_error(
+            kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
+    }
+
     // Takeoff snapshot for the pch_key write license (see
     // may_write_pch_key): this request runs concurrently with compiles and
     // holds no compiling token, so it is the easiest continuation to come
@@ -1197,6 +1204,11 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
 
     auto result = co_await send_stateless_retrying(pool, wp);
     if(!result.has_value()) {
+        // Same content, same quarantine: a completion build that kills its
+        // worker counts like a compile crash.
+        if(result.error().code == worker::dispatch_errc::worker_crashed) {
+            session->compile_crash_streak += 1;
+        }
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
                         "build (kind={}) failed for {}: {}",
