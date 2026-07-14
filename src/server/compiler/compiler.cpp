@@ -771,6 +771,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                            header_context->preamble_path.empty() &&
                            contexts.header_mode(file_path, pid) == HeaderMode::Unknown;
 
+        auto entry_streak = session->compile_crash_streak;
         bool deps_ok = co_await ensure_deps(*session,
                                             gen,
                                             epoch,
@@ -791,6 +792,28 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                      session->generation,
                      gen,
                      uri_str);
+            finish_compile();
+            co_return;
+        }
+
+        // A PCH crash inside ensure_deps may have tipped the document into
+        // quarantine — the entry gate ran before the streak grew. Stop
+        // before the stateful dispatch instead of feeding the same content
+        // to one more worker; the crash also spends any armed probe, since
+        // this WAS the probe's attempt. A probe whose PCH build survived
+        // (streak unchanged) continues to the compile.
+        if(session->compile_crash_streak > entry_streak &&
+           session->compile_crash_streak >= Session::quarantine_threshold) {
+            LOG_WARN("ensure_compiled: {} quarantined during dependency prep", uri_str);
+            session->quarantine_probe = false;
+            session->output = CompileOutput{
+                .version = std::nullopt,
+                .source = source,
+                .diagnostics = quarantine_diagnostics(session->compile_crash_streak),
+                .line_limit = suffix_line_limit,
+                .inactive_regions = std::nullopt,
+            };
+            on_output.emit(session);
             finish_compile();
             co_return;
         }
@@ -1192,6 +1215,14 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     if(!co_await ensure_deps(*session, gen, epoch, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
         LOG_WARN("forward_build: dependency preparation failed for {}", path);
         co_return kota::outcome_error(kota::ipc::Error{"Dependency preparation failed"});
+    }
+    // A PCH crash inside ensure_deps may have tipped the document into
+    // quarantine after the entry gate: stop before dispatching the same
+    // content again.
+    if(session->compile_crash_streak >= Session::quarantine_threshold) {
+        LOG_WARN("forward_build: {} quarantined during dependency prep", path);
+        co_return kota::outcome_error(
+            kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
     }
     auto wait_ms = timer.ms();
 

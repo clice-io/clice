@@ -68,6 +68,33 @@ TEST_CASE(EpochGuardsPchWrite) {
     EXPECT_EQ(*session.pch_key, std::string("key"));
 }
 
+TEST_CASE(QuarantineBlocksBuilds) {
+    // A quarantined document gets no stateless builds either: completion
+    // requests compile the same content the quarantine watches.
+    kota::event_loop loop;
+    Workspace workspace;
+    ContextResolver contexts(workspace);
+    WorkerPool pool(loop);
+    Compiler compiler(loop, workspace, contexts, pool);
+
+    auto session = std::make_shared<Session>();
+    session->path_id = workspace.path_pool.intern("/proj/poison.cpp");
+    session->text = "int x;\n";
+    session->compile_crash_streak = Session::quarantine_threshold;
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        auto result = co_await compiler.forward_build(worker::BuildKind::Completion, {}, session);
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
+        done = true;
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+    EXPECT_TRUE(done);
+}
+
 TEST_CASE(PchCrashCountsStreak) {
     // A PCH build that kills its stateless worker must count toward the
     // document's quarantine streak: the preamble is the document's content
