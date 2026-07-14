@@ -114,7 +114,14 @@ template <typename Params>
 static kota::ipc::RequestResult<Params> send_stateless_retrying(WorkerPool& pool, Params params) {
     auto result = co_await pool.send_stateless(params);
     if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-        result = co_await pool.send_stateless(params);
+        auto retry = co_await pool.send_stateless(params);
+        // A failed retry must not launder the crash: the first attempt
+        // killed a worker, and callers count that evidence toward the
+        // document's quarantine no matter how the retry failed.
+        if(retry.has_value()) {
+            co_return std::move(retry);
+        }
+        co_return std::move(result);
     }
     co_return std::move(result);
 }
@@ -740,6 +747,14 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
+    // The streak this request inherited. Crashes recorded past this point
+    // (a PCH build inside ensure_deps, a concurrent completion build) are
+    // fresh evidence about the current content: a successful landing clears
+    // only the inherited history, never them — or a preamble that reliably
+    // kills the PCH builder while the no-PCH fallback compile succeeds
+    // would burn one stateless worker per edit without ever quarantining.
+    auto entry_streak = session->compile_crash_streak;
+
     // At most two rounds: a header with unknown self-containment compiles
     // without a prefix first; if the diagnostics indicate missing includer
     // context, the second round re-compiles with a synthesized prefix.
@@ -771,7 +786,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                            header_context->preamble_path.empty() &&
                            contexts.header_mode(file_path, pid) == HeaderMode::Unknown;
 
-        auto entry_streak = session->compile_crash_streak;
         bool deps_ok = co_await ensure_deps(*session,
                                             gen,
                                             epoch,
@@ -806,6 +820,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
            session->compile_crash_streak >= Session::quarantine_threshold) {
             LOG_WARN("ensure_compiled: {} quarantined during dependency prep", uri_str);
             session->quarantine_probe = false;
+            session->quarantine_announced = true;
             session->output = CompileOutput{
                 .version = std::nullopt,
                 .source = source,
@@ -878,6 +893,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                             result.error().message);
             }
             bool quarantined = session->compile_crash_streak >= Session::quarantine_threshold;
+            session->quarantine_announced = quarantined;
             // Clear path: empty diagnostics without a version, and no
             // inactive-regions update. A quarantined document announces
             // itself instead of hiding behind the empty list.
@@ -937,7 +953,10 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // a stale world — record it, publish it (bounded staleness), but do
         // not declare it fresh; the next request recompiles.
         session->settle_compile(epoch);
-        session->compile_crash_streak = 0;
+        // Success clears the inherited streak but keeps crashes recorded
+        // during this request (see entry_streak above): they will recur on
+        // the next request and must keep accumulating toward quarantine.
+        session->compile_crash_streak -= std::min(entry_streak, session->compile_crash_streak);
         pc->succeeded = true;
         record_deps(*session, result.value().deps, result.value().build_at);
 
@@ -965,6 +984,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         inactive.insert(inactive.end(),
                         result.value().inactive_regions.begin(),
                         result.value().inactive_regions.end());
+        session->quarantine_announced = false;
         session->output = CompileOutput{
             .version = version,
             .source = source,
@@ -1022,6 +1042,22 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
         LOG_WARN("ensure_compiled: {} quarantined after {} worker crashes",
                  workspace.path_pool.resolve(path_id),
                  session->compile_crash_streak);
+        // A quarantine reached outside the compile-failure landing (a
+        // completion or PCH build tipped the streak, or the crash landed on
+        // a superseded generation) never materialized its diagnostic;
+        // announce it once here instead of leaving the file silently dead.
+        if(!session->quarantine_announced) {
+            session->quarantine_announced = true;
+            session->output = CompileOutput{
+                .version = std::nullopt,
+                .source =
+                    session->output.has_value() ? session->output->source : CommandSource::CDBExact,
+                .diagnostics = quarantine_diagnostics(session->compile_crash_streak),
+                .line_limit = std::nullopt,
+                .inactive_regions = std::nullopt,
+            };
+            on_output.emit(session);
+        }
         co_return false;
     }
 

@@ -156,6 +156,41 @@ TEST_CASE(PchCrashCountsStreak) {
     logging::reset_anomaly_for_testing();
 }
 
+TEST_CASE(GateAnnouncesQuarantine) {
+    // A quarantine reached without a compile-failure landing (completion
+    // or PCH build tipped the streak) has published nothing; the entry
+    // gate must announce it exactly once instead of going silently dead.
+    kota::event_loop loop;
+    Workspace workspace;
+    ContextResolver contexts(workspace);
+    WorkerPool pool(loop);
+    Compiler compiler(loop, workspace, contexts, pool);
+
+    auto session = std::make_shared<Session>();
+    session->path_id = workspace.path_pool.intern("/proj/poison.cpp");
+    session->text = "int x;\n";
+    session->compile_crash_streak = Session::quarantine_threshold;
+
+    int emits = 0;
+    auto conn = compiler.on_output.connect([&](const std::shared_ptr<Session>&) { emits += 1; });
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        CO_ASSERT_FALSE(co_await compiler.ensure_compiled(session));
+        CO_ASSERT_FALSE(co_await compiler.ensure_compiled(session));
+        done = true;
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+    EXPECT_TRUE(done);
+
+    EXPECT_EQ(emits, 1);
+    EXPECT_TRUE(session->quarantine_announced);
+    ASSERT_TRUE(session->output.has_value());
+    EXPECT_TRUE(session->output->diagnostics.data.contains("quarantined"));
+}
+
 TEST_CASE(PchCrashBlocksBuild) {
     // A PCH crash inside a completion build's dependency prep can tip the
     // document into quarantine after the entry gate: the build must stop

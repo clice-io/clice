@@ -52,6 +52,7 @@ void SessionStore::apply_open(Session& session, std::string text, int version) {
     session.generation++;
     session.compile_crash_streak = 0;
     session.quarantine_probe = false;
+    session.quarantine_announced = false;
 }
 
 void SessionStore::apply_change(Session& session,

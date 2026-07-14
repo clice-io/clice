@@ -95,6 +95,13 @@ struct Session {
     /// quarantine; a successful one clears the streak.
     bool quarantine_probe = false;
 
+    /// Whether the quarantine diagnostic has been published for the current
+    /// quarantine spell. A quarantine reached outside the compile-failure
+    /// landing (a completion or PCH build) has no output of its own; the
+    /// next ensure_compiled announces it once instead of going silently
+    /// dead. Cleared when real output lands.
+    bool quarantine_announced = false;
+
     /// Whether the AST needs to be rebuilt before serving queries.
     bool ast_dirty = true;
 
