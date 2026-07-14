@@ -907,6 +907,7 @@ TEST_CASE(OperationalErrorCodes) {
     EXPECT_TRUE(
         worker::is_operational_error(Error{worker::dispatch_errc::worker_unavailable, "x"}));
     EXPECT_TRUE(worker::is_operational_error(Error{worker::dispatch_errc::worker_crashed, "x"}));
+    EXPECT_TRUE(worker::is_operational_error(Error{worker::dispatch_errc::worker_restarting, "x"}));
     EXPECT_FALSE(worker::is_operational_error(Error{"plain failure"}));
 }
 
@@ -1266,6 +1267,9 @@ TEST_CASE(CrashBudgetBoundary) {
 }
 
 TEST_CASE(StatefulDyingRejected) {
+    // A request landing in the restart window never reached a worker: it
+    // fails with worker_restarting, not worker_crashed, so crash accounting
+    // (document quarantine) does not blame the document for the window.
     WorkerPoolFixture f;
     f.add_stateful();
     f.assign_worker(7);
@@ -1275,7 +1279,7 @@ TEST_CASE(StatefulDyingRejected) {
     f.run([&]() -> kota::task<> {
         auto result = co_await f.pool.send_stateful(7, worker::DocumentLinkParams{"/x.cpp"});
         CO_ASSERT_FALSE(result.has_value());
-        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_crashed);
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_restarting);
         done = true;
     });
     EXPECT_TRUE(done);

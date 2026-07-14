@@ -495,7 +495,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
 
     auto& assigned = stateful_workers[idx];
     if(assigned.state == SlotState::Dying || assigned.state == SlotState::Respawning) {
-        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_crashed,
+        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_restarting,
                                                        "Assigned stateful worker is restarting"});
     }
     if(assigned.state != SlotState::Alive) {

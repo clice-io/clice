@@ -38,6 +38,11 @@ constexpr inline protocol::integer worker_unavailable = -33000;
 /// e.g. the indexer prefers to requeue the file instead.
 constexpr inline protocol::integer worker_crashed = -33001;
 
+/// The assigned worker is mid-restart after a crash: the request was never
+/// dispatched. Distinct from worker_crashed so crash accounting (document
+/// quarantine) does not blame a document for a window it merely hit.
+constexpr inline protocol::integer worker_restarting = -33002;
+
 }  // namespace dispatch_errc
 
 /// True when a dispatch failure is an expected operational condition rather
@@ -45,7 +50,8 @@ constexpr inline protocol::integer worker_crashed = -33001;
 inline bool is_operational_error(const protocol::Error& error) {
     return error.code == dispatch_errc::cancelled ||
            error.code == dispatch_errc::worker_unavailable ||
-           error.code == dispatch_errc::worker_crashed;
+           error.code == dispatch_errc::worker_crashed ||
+           error.code == dispatch_errc::worker_restarting;
 }
 
 /// True for errors produced by the IPC transport itself (broken pipe, closed

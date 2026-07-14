@@ -477,6 +477,13 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     if(!result.has_value() || !result.value().success) {
         workspace.store->abort(pending);
         workspace.store->abort(pending_idx);
+        // The preamble is this document's content too: a PCH build that
+        // crashes workers counts toward the same quarantine streak as the
+        // stateful compile, or a poison preamble would keep killing two
+        // stateless slots per feature request without ever quarantining.
+        if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
+            session.compile_crash_streak += 1;
+        }
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", path, build_failure_message(result));
         } else {
@@ -811,6 +818,25 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         session->quarantine_probe = false;
         auto result = co_await pool.send_stateful(pid, params, {}, suspect);
 
+        // Crash accounting runs even for superseded compiles: the crash was
+        // caused by content this document dispatched, and skipping it would
+        // let a poison file dodge quarantine by being edited between the
+        // dispatch and the crash response. The budget the pool keeps is per
+        // slot; the poison is in the document — a document that keeps
+        // killing workers is quarantined instead of burning slots. Only a
+        // real mid-request death counts: a restarting-window fast-fail
+        // (worker_restarting) never reached a worker.
+        if(!result.has_value()) {
+            if(result.error().code == worker::dispatch_errc::worker_crashed) {
+                session->compile_crash_streak += 1;
+            }
+            // No expendable worker right now: the probe never ran — keep
+            // it armed so a later request retries once one frees up.
+            if(suspect && result.error().code == worker::dispatch_errc::worker_unavailable) {
+                session->quarantine_probe = true;
+            }
+        }
+
         if(session->generation != gen) {
             LOG_INFO("ensure_compiled: generation mismatch ({} vs {}) for {}",
                      session->generation,
@@ -831,17 +857,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                             "Compile failed for {}: {}",
                             uri_str,
                             result.error().message);
-            }
-            // The budget the pool keeps is per slot; the poison is in the
-            // document. Count the crash here so a document that keeps
-            // killing workers is quarantined instead of burning slots.
-            if(result.error().code == worker::dispatch_errc::worker_crashed) {
-                session->compile_crash_streak += 1;
-            }
-            // No expendable worker right now: the probe never ran — keep
-            // it armed so a later request retries once one frees up.
-            if(suspect && result.error().code == worker::dispatch_errc::worker_unavailable) {
-                session->quarantine_probe = true;
             }
             bool quarantined = session->compile_crash_streak >= Session::quarantine_threshold;
             // Clear path: empty diagnostics without a version, and no
