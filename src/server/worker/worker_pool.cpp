@@ -602,7 +602,7 @@ void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
     // Revival is a running-pool concern: unit fixtures drive slot state
     // without an event loop, and a coroutine queued on a never-run loop
     // outlives the pool.
-    if(started && options.revive_after.count() > 0) {
+    if(revives_slots()) {
         worker_tasks.spawn(revive_slot(index, stateful));
     }
 }
@@ -868,9 +868,34 @@ bool WorkerPool::scale_up_worker() {
     if(stateless_capacity() >= options.max_stateless)
         return false;
 
-    if(!spawn_worker(false)) {
-        LOG_WARN("scale_up: spawn_worker failed");
-        return false;
+    // A Dead slot is capacity already allocated, just waiting out its
+    // revival cooldown; under scale-up pressure revive it now instead of
+    // appending a fresh slot beside it — the cooldown revival would later
+    // fire too and grow the pool past what saturation asked for. The
+    // pending revive_slot task no-ops once the state is no longer Dead.
+    auto dead = std::ranges::find(stateless_workers, SlotState::Dead, &WorkerProcess::state);
+    if(dead != stateless_workers.end()) {
+        auto index = static_cast<std::size_t>(dead - stateless_workers.begin());
+        dead->crash_streak = 0;
+        dead->state = SlotState::Respawning;
+        if(!respawn_worker(index, false)) {
+            // Back to Dead with a fresh cooldown revival armed, so a failed
+            // early revive does not orphan the slot.
+            give_up_slot(index, false);
+            LOG_WARN("scale_up: revive of {} failed", stateless_workers[index].name);
+            return false;
+        }
+        LOG_INFO("Scaled up: revived {} (alive={})",
+                 stateless_workers[index].name,
+                 alive_stateless());
+    } else {
+        if(!spawn_worker(false)) {
+            LOG_WARN("scale_up: spawn_worker failed");
+            return false;
+        }
+        LOG_INFO("Scaled up: spawned {} (alive={})",
+                 stateless_workers.back().name,
+                 alive_stateless());
     }
 
     // The new worker raises the ceiling; grow the low allowance by exactly
@@ -878,8 +903,6 @@ bool WorkerPool::scale_up_worker() {
     // backoff state accumulated.
     low_limit = std::min(low_limit + 1, max_low_limit());
     try_dispatch_pending();
-
-    LOG_INFO("Scaled up: spawned {} (alive={})", stateless_workers.back().name, alive_stateless());
     return true;
 }
 

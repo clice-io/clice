@@ -522,12 +522,16 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     } else if(result.has_value() && result.value().tu_index_data.empty()) {
         LOG_WARN("[{}/{}] Index returned empty TUIndex for {}", index, total, file_path);
     } else if(result.error().code == worker::dispatch_errc::cancelled ||
-              result.error().code == worker::dispatch_errc::worker_crashed) {
+              result.error().code == worker::dispatch_errc::worker_crashed ||
+              (result.error().code == worker::dispatch_errc::worker_unavailable &&
+               pool.revives_slots())) {
         // Preempted under memory pressure or lost to a worker crash: the
         // work itself is fine — requeue the file with its original reason so
         // the next round redoes it instead of silently dropping coverage.
-        // Not on worker_unavailable: with no future capacity a requeue would
-        // spin forever.
+        // worker_unavailable requeues (budget-free, like a preemption) only
+        // when the pool revives dead slots: the outage is then a window, not
+        // a verdict, and each retry round waits out the idle timer rather
+        // than spinning. Without revival a requeue could never succeed.
         bool crashed = result.error().code == worker::dispatch_errc::worker_crashed;
         switch(note_dispatch_failure(server_path_id, crashed)) {
             case RequeueVerdict::Dropped: {

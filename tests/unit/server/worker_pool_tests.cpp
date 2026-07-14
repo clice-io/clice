@@ -129,6 +129,10 @@ struct WorkerPoolFixture {
         return workers[idx].state == WorkerPool::SlotState::Dead;
     }
 
+    std::size_t stateless_count() const {
+        return pool.stateless_workers.size();
+    }
+
     /// Manually queue a waiter, as acquire_stateless_slot does when it
     /// cannot claim directly.
     auto enqueue_waiter(worker::Priority p) {
@@ -1522,6 +1526,56 @@ TEST_CASE(DeadSlotRevives) {
         // ...and is revived with a fresh budget after the cooldown: the
         // pool never stays at zero workers forever.
         for(int i = 0; i < 100 && !f.worker_alive(0); ++i) {
+            co_await kota::sleep(100);
+        }
+        EXPECT_TRUE(f.worker_alive(0));
+        EXPECT_EQ(f.crash_streak(0), 0u);
+
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(RevivesSlotsGate) {
+    // Revival — and with it the indexer's requeue-on-unavailable — is only
+    // promised by a started pool with a nonzero cooldown.
+    WorkerPoolFixture f;
+    EXPECT_FALSE(f.pool.revives_slots());
+
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT_TRUE(f.start(1, 0));
+        EXPECT_TRUE(f.pool.revives_slots());
+        f.set_revive_after(std::chrono::milliseconds(0));
+        EXPECT_FALSE(f.pool.revives_slots());
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(ScaleUpRevivesDead) {
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT_TRUE(f.start(2, 0));
+        // Cooldown far in the future: only scale-up can bring the slot back.
+        f.set_revive_after(std::chrono::minutes(10));
+        f.set_max_crash_streak(0);
+        co_await kota::sleep(500);
+
+        f.kill_worker(0);
+        for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
+            co_await kota::sleep(100);
+        }
+        CO_ASSERT_TRUE(f.slot_dead(0));
+
+        // Scale-up pressure revives the dead slot instead of appending a
+        // third worker next to it.
+        CO_ASSERT_TRUE(f.scale_up());
+        EXPECT_EQ(f.stateless_count(), 2u);
+        for(int i = 0; i < 50 && !f.worker_alive(0); ++i) {
             co_await kota::sleep(100);
         }
         EXPECT_TRUE(f.worker_alive(0));

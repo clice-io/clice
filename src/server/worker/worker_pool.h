@@ -131,6 +131,16 @@ public:
     /// document was evicted).
     void remove_owner(std::uint32_t path_id);
 
+    /// True when a Dead slot is not final: the running pool revives dead
+    /// slots after a cooldown, so "no capacity" is a window, not a verdict.
+    /// Callers (the indexer's requeue) may retry work that failed with
+    /// worker_unavailable instead of dropping it. Unit fixtures drive slot
+    /// state without an event loop and never start the pool, so revival
+    /// stays off for them.
+    bool revives_slots() const {
+        return started && options.revive_after.count() > 0;
+    }
+
     /// Callback invoked when a worker process crashes.
     std::function<void(const WorkerCrashInfo&)> on_crash;
 
