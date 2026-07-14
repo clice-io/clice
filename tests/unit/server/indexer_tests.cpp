@@ -48,6 +48,12 @@ struct IndexerFixture {
         auto it = indexer.reindex_reasons.find(id);
         return it == indexer.reindex_reasons.end() ? 0u : it->second.requeue_attempts;
     }
+
+    /// Consume the queued slot as a dispatch would, so a later enqueue
+    /// takes the fresh-slot (mid-flight) path.
+    void consume(std::uint32_t id) {
+        indexer.pending_ids.erase(id);
+    }
 };
 
 namespace {
@@ -171,6 +177,25 @@ TEST_CASE(StaleCrashKeepsBudget) {
               int(IndexerFixture::Verdict::Superseded));
     ASSERT_EQ(f.attempts(id), 0u);
     ASSERT_TRUE(f.indexer.pending_reason(id).has_value());
+}
+
+TEST_CASE(DepsDowngradeKeepsDebt) {
+    IndexerFixture f;
+    auto id = f.workspace.path_pool.intern("/proj/c.cpp");
+    f.indexer.enqueue(id, ReindexReason::ContentChanged);
+    auto launch = f.ticket(id);
+
+    // The content pass is dispatched; a deps-only cascade lands mid-flight
+    // and downgrades the pending reason, betting on that pass to cover the
+    // edit. The pass fails — the requeue must restore the ContentChanged
+    // debt or the stale shard stops being suppressed.
+    f.consume(id);
+    f.indexer.enqueue(id, ReindexReason::DepsOnly);
+    ASSERT_EQ(int(*f.indexer.pending_reason(id)), int(ReindexReason::DepsOnly));
+
+    ASSERT_EQ(int(f.fail_at(id, launch, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
+    ASSERT_EQ(int(*f.indexer.pending_reason(id)), int(ReindexReason::ContentChanged));
+    ASSERT_EQ(f.attempts(id), 1u);
 }
 
 TEST_CASE(DroppedWithoutPending) {

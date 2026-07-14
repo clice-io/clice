@@ -600,13 +600,20 @@ auto Indexer::note_dispatch_failure(std::uint32_t server_path_id,
         }
         it->second.requeue_attempts += 1;
     }
+    // Requeue with the debt class this dispatch carried, not the entry's
+    // current one: a deps-only enqueue that landed mid-flight downgraded
+    // the reason betting on this content pass to land — a failed pass
+    // leaves the edit uncovered, and only a ContentChanged pending entry
+    // keeps suppressing the stale shard.
+    auto reason =
+        it->second.content_ticket == ticket ? ReindexReason::ContentChanged : it->second.reason;
     // The enqueue bumps the entry's ticket, which shields it from the
     // in-flight task's pending-state clear. It also resets the poison
     // budget on ContentChanged — right for a user edit, wrong for this
     // requeue of the same bytes — so restore the ledger afterwards
     // (try_emplace on the existing key keeps `it` valid).
     auto attempts = it->second.requeue_attempts;
-    enqueue(server_path_id, it->second.reason);
+    enqueue(server_path_id, reason);
     it->second.requeue_attempts = attempts;
     return RequeueVerdict::Requeued;
 }
