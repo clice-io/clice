@@ -1,3 +1,5 @@
+#include <limits>
+
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
@@ -38,7 +40,8 @@ struct IndexerFixture {
 
     std::uint64_t ticket(std::uint32_t id) {
         auto it = indexer.reindex_reasons.find(id);
-        return it == indexer.reindex_reasons.end() ? UINT64_MAX : it->second.ticket;
+        return it == indexer.reindex_reasons.end() ? std::numeric_limits<std::uint64_t>::max()
+                                                   : it->second.ticket;
     }
 
     unsigned attempts(std::uint32_t id) {

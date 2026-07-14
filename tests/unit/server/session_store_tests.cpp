@@ -240,7 +240,13 @@ TEST_CASE(DroppedEditNoProbe) {
     store.apply_change(*session, partial_change(0, 0, 0, 1, "i"), 4);
     ASSERT_FALSE(session->quarantine_probe);
 
-    store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 5);
+    // A whole-document change carrying identical bytes is a no-op too.
+    protocol::TextDocumentContentChangeWholeDocument whole;
+    whole.text = session->text;
+    store.apply_change(*session, protocol::TextDocumentContentChangeEvent(whole), 5);
+    ASSERT_FALSE(session->quarantine_probe);
+
+    store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 6);
     ASSERT_TRUE(session->quarantine_probe);
 }
 

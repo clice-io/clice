@@ -156,6 +156,61 @@ TEST_CASE(PchCrashCountsStreak) {
     logging::reset_anomaly_for_testing();
 }
 
+TEST_CASE(PchCrashBlocksBuild) {
+    // A PCH crash inside a completion build's dependency prep can tip the
+    // document into quarantine after the entry gate: the build must stop
+    // instead of dispatching the same content to one more worker.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    auto src = tmp.path("a.cpp");
+
+    kota::event_loop loop;
+    Workspace workspace;
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ASSERT_TRUE(store.has_value());
+    store->register_namespace({.name = "pch",
+                               .extension = ".pch",
+                               .aux_extension = ".pch.idx",
+                               .policy = CachePolicy::LRU,
+                               .max_bytes = 1ull << 30});
+    workspace.store.emplace(std::move(*store));
+
+    ContextResolver contexts(workspace);
+    WorkerPool pool(loop);
+    Compiler compiler(loop, workspace, contexts, pool);
+
+    auto session = std::make_shared<Session>();
+    session->path_id = workspace.path_pool.intern(src);
+    session->text = "#pragma clang __debug crash\n";
+    session->compile_crash_streak = Session::quarantine_threshold - 1;
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        CO_ASSERT_TRUE(pool.start(opts));
+        co_await kota::sleep(500);
+
+        auto result = co_await compiler.forward_build(worker::BuildKind::Completion, {}, session);
+        CO_ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
+        EXPECT_EQ(session->compile_crash_streak, Session::quarantine_threshold);
+
+        co_await pool.stop();
+        done = true;
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+    EXPECT_TRUE(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
 };  // TEST_SUITE(CompilerGuards)
 
 }  // namespace
