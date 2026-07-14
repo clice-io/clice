@@ -325,6 +325,10 @@ private:
     /// alive ones plus those dying or awaiting respawn.
     std::size_t stateless_capacity() const;
 
+    /// Stateless slots still holding a process: stateless_capacity() plus
+    /// retiring workers, which keep theirs until the monitor reaps them.
+    std::size_t stateless_footprint() const;
+
     /// True while at least one stateless slot can still (eventually) serve.
     bool has_future_capacity() const {
         return stateless_capacity() > 0;

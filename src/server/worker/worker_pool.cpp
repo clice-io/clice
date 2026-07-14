@@ -87,6 +87,12 @@ std::size_t WorkerPool::stateless_capacity() const {
     });
 }
 
+std::size_t WorkerPool::stateless_footprint() const {
+    return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
+        return w.state != SlotState::Dead && w.state != SlotState::Retired;
+    });
+}
+
 std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::string& name,
                                                                     bool stateful) {
     kota::process::options opts;
@@ -869,10 +875,7 @@ bool WorkerPool::scale_up_worker() {
     // worker still holds its process until the monitor reaps it, and a
     // replacement spawned beside it would push the pool past max_stateless
     // during exactly the memory pressure that triggered the retirement.
-    auto footprint = std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
-        return w.state != SlotState::Dead && w.state != SlotState::Retired;
-    });
-    if(static_cast<std::size_t>(footprint) >= options.max_stateless)
+    if(stateless_footprint() >= options.max_stateless)
         return false;
 
     // A Dead slot is capacity already allocated, just waiting out its
