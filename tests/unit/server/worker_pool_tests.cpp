@@ -440,6 +440,37 @@ TEST_CASE(SkipDeadWorkers) {
     EXPECT_EQ(f.pick_least_loaded(), 2u);
 }
 
+TEST_CASE(ProbeWorkerNotPicked) {
+    WorkerPoolFixture f;
+    f.add_stateful(true, 5);
+    f.add_stateful(true, 0);
+    f.set_suspect_inflight(1, true, 1);
+
+    // The idle worker hosts an in-flight quarantine probe — a known crash
+    // risk. A new document goes to the busier worker instead.
+    EXPECT_EQ(f.pick_least_loaded(), 0u);
+
+    // With no alternative, the probe worker still serves.
+    f.mark_dead(0, true);
+    EXPECT_EQ(f.pick_least_loaded(), 1u);
+}
+
+TEST_CASE(StaleEvictionIgnored) {
+    WorkerPoolFixture f;
+    f.add_stateful();
+    f.add_stateful();
+    auto idx = f.assign_worker(7);
+
+    // An eviction from a worker that lost ownership (probe reassignment
+    // left it a stale copy) must not unseat the current owner.
+    EXPECT_FALSE(f.pool.remove_owner_from(7, idx + 1));
+    EXPECT_TRUE(f.has_owner(7));
+
+    EXPECT_TRUE(f.pool.remove_owner_from(7, idx));
+    EXPECT_FALSE(f.has_owner(7));
+    EXPECT_EQ(f.stateful_owned(idx), 0u);
+}
+
 TEST_CASE(AllDeadNoAssignment) {
     WorkerPoolFixture f;
     f.add_stateful(false, 0);

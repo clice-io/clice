@@ -131,6 +131,12 @@ public:
     /// document was evicted).
     void remove_owner(std::uint32_t path_id);
 
+    /// Remove path_id from ownership only if worker_index is its current
+    /// owner. Returns whether it was removed — false means the eviction
+    /// came from a stale copy on a worker that lost ownership (probe
+    /// reassignment) and the current owner's state is untouched.
+    bool remove_owner_from(std::uint32_t path_id, std::size_t worker_index);
+
     /// True when a Dead slot is not final: the running pool revives dead
     /// slots after a cooldown, so "no capacity" is a window, not a verdict.
     /// Callers (the indexer's requeue) may retry work that failed with
@@ -144,10 +150,13 @@ public:
     /// Callback invoked when a worker process crashes.
     std::function<void(const WorkerCrashInfo&)> on_crash;
 
-    /// Callback invoked when a stateful worker sends an EvictedParams notification.
-    /// The master translates the path to a path_id and calls remove_owner() so the
-    /// owner table shrinks together with the worker's document set.
-    std::function<void(const std::string& path)> on_evicted;
+    /// Callback invoked when a stateful worker sends an EvictedParams
+    /// notification, with the slot index of the evicting worker. The master
+    /// translates the path to a path_id and calls remove_owner_from() so an
+    /// eviction of a stale copy — a quarantine probe moved ownership to
+    /// another worker while the old one kept its document entry — cannot
+    /// unseat the current owner.
+    std::function<void(const std::string& path, std::size_t worker_index)> on_evicted;
 
 private:
     /// Lifecycle of a worker slot. The generation counter is bumped on every
@@ -483,7 +492,7 @@ private:
     /// reassigned to it. SIZE_MAX when every live worker hosts others.
     std::size_t assign_expendable(std::uint32_t path_id);
 
-    void install_evict_handler(WorkerProcess& worker);
+    void install_evict_handler(WorkerProcess& worker, std::size_t index);
 
     kota::task<> monitor_worker(std::size_t index, bool stateful);
 

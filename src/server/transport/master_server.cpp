@@ -169,7 +169,7 @@ void MasterServer::wire() {
         dispatch(FileEvent::worker_crashed(info.lost_documents));
     };
 
-    pool.on_evicted = [this](const std::string& path) {
+    pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
         auto it = workspace.path_pool.cache.find(path);
         if(it == workspace.path_pool.cache.end()) {
             LOG_WARN("Evicted path not in pool: {}", path);
@@ -178,8 +178,14 @@ void MasterServer::wire() {
         // Owner-table upkeep is pool-domain state and stays here; the
         // session-side consequence (the worker's AST is gone, same as a
         // crash) goes through the event pipeline like any invalidation.
-        pool.remove_owner(it->second);
-        dispatch(FileEvent::document_evicted(it->second));
+        // Only the current owner's eviction counts: a stale copy left
+        // behind by a probe reassignment says nothing about the document
+        // the new owner still holds.
+        if(pool.remove_owner_from(it->second, worker_index)) {
+            dispatch(FileEvent::document_evicted(it->second));
+        } else {
+            LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
+        }
     };
 
     compiler.on_indexing_needed = [this]() {

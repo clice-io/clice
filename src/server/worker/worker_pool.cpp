@@ -139,10 +139,10 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
     return SpawnedProcess{std::move(spawn.proc), std::move(peer)};
 }
 
-void WorkerPool::install_evict_handler(WorkerProcess& worker) {
-    worker.peer->on_notification([this](const worker::EvictedParams& params) {
+void WorkerPool::install_evict_handler(WorkerProcess& worker, std::size_t index) {
+    worker.peer->on_notification([this, index](const worker::EvictedParams& params) {
         if(on_evicted) {
-            on_evicted(params.path);
+            on_evicted(params.path, index);
         }
     });
 }
@@ -165,7 +165,7 @@ bool WorkerPool::spawn_worker(bool stateful) {
     });
 
     if(stateful)
-        install_evict_handler(workers[index]);
+        install_evict_handler(workers[index], index);
     worker_tasks.spawn(monitor_worker(index, stateful));
     return true;
 }
@@ -192,7 +192,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     // until a healthy uptime resets it.
 
     if(stateful)
-        install_evict_handler(w);
+        install_evict_handler(w, index);
     worker_tasks.spawn(monitor_worker(index, stateful));
 
     if(!stateful)
@@ -336,16 +336,26 @@ std::size_t WorkerPool::assign_expendable(std::uint32_t path_id) {
 }
 
 std::size_t WorkerPool::pick_least_loaded() {
-    std::size_t best = SIZE_MAX;
-    for(std::size_t i = 0; i < stateful_workers.size(); ++i) {
-        if(stateful_workers[i].state != SlotState::Alive)
-            continue;
-        if(best == SIZE_MAX ||
-           stateful_workers[i].owned_documents < stateful_workers[best].owned_documents) {
-            best = i;
+    // Two passes: a worker hosting an in-flight quarantine probe is a
+    // known crash risk, so new documents are pinned elsewhere while any
+    // other live worker exists — a probe crash must not take a freshly
+    // opened healthy document with it.
+    for(bool allow_suspect: {false, true}) {
+        std::size_t best = SIZE_MAX;
+        for(std::size_t i = 0; i < stateful_workers.size(); ++i) {
+            auto& w = stateful_workers[i];
+            if(w.state != SlotState::Alive)
+                continue;
+            if(!allow_suspect && w.suspect_inflight > 0)
+                continue;
+            if(best == SIZE_MAX || w.owned_documents < stateful_workers[best].owned_documents) {
+                best = i;
+            }
         }
+        if(best != SIZE_MAX)
+            return best;
     }
-    return best;
+    return SIZE_MAX;
 }
 
 void WorkerPool::remove_owner(std::uint32_t path_id) {
@@ -356,6 +366,16 @@ void WorkerPool::remove_owner(std::uint32_t path_id) {
     auto worker_idx = it->second;
     stateful_workers[worker_idx].owned_documents -= 1;
     owner.erase(it);
+}
+
+bool WorkerPool::remove_owner_from(std::uint32_t path_id, std::size_t worker_index) {
+    auto it = owner.find(path_id);
+    if(it == owner.end() || it->second != worker_index)
+        return false;
+
+    stateful_workers[worker_index].owned_documents -= 1;
+    owner.erase(it);
+    return true;
 }
 
 void WorkerPool::clear_owner(std::size_t worker_index) {
