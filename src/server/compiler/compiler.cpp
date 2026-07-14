@@ -1195,6 +1195,12 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
 
     auto result = co_await pool.send_stateful(path_id, wp);
     if(!result.has_value()) {
+        // A query that kills the worker is this document's doing even
+        // though its compile landed: separate ledger, since only a query
+        // that answers disproves it (see Quarantine::on_query_crash).
+        if(result.error().code == worker::dispatch_errc::worker_crashed) {
+            session->quarantine.on_query_crash();
+        }
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
                         "query (kind={}) failed for {}: {}",
@@ -1204,6 +1210,7 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
+    session->quarantine.on_query_land();
     LOG_PERF("request", "kind={} file={} wait_ms={} total_ms={}", kind, path, wait_ms, timer.ms());
     co_return std::move(result.value());
 }
@@ -1225,6 +1232,9 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
 
     auto result = co_await pool.send_stateful(path_id, worker::DocumentLinkParams{path});
     if(!result.has_value()) {
+        if(result.error().code == worker::dispatch_errc::worker_crashed) {
+            session->quarantine.on_query_crash();
+        }
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
                         "documentLink failed for {}: {}",
@@ -1233,6 +1243,7 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
+    session->quarantine.on_query_land();
     // The result carries byte offsets against the compiled buffer; a
     // didChange that landed during the await makes them describe text the
     // session no longer holds — the reply edge would map them onto the

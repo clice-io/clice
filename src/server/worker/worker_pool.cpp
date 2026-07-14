@@ -220,10 +220,13 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
     // Resolve auto max_stateless (0 = CPU cores).
     if(options.max_stateless == 0)
         options.max_stateless = kota::sys::parallelism();
+    options.max_stateless = std::max(options.max_stateless, options.stateless_count);
     if(options.min_stateless == 0)
         options.min_stateless = 1;
-    options.min_stateless = std::min(options.min_stateless, options.stateless_count);
-    options.max_stateless = std::max(options.max_stateless, options.stateless_count);
+    // The configured floor is honored even above the startup count: idle
+    // scale-down must not shrink a scaled-up pool below it. Only the
+    // ceiling bounds it.
+    options.min_stateless = std::min(options.min_stateless, options.max_stateless);
 
     low_limit = max_low_limit();
 

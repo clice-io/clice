@@ -167,13 +167,20 @@ struct WorkerPoolFixture {
         return pool.scale_up_worker();
     }
 
-    bool start(std::uint32_t stateless = 2, std::uint32_t stateful = 0) {
+    bool start(std::uint32_t stateless = 2,
+               std::uint32_t stateful = 0,
+               std::uint32_t min_stateless = 0) {
         WorkerPoolOptions opts;
         opts.self_path = clice_binary();
         opts.stateless_count = stateless;
         opts.stateful_count = stateful;
+        opts.min_stateless = min_stateless;
         opts.max_stateless = 8;
         return pool.start(opts);
+    }
+
+    std::size_t min_stateless() const {
+        return pool.options.min_stateless;
     }
 
     kota::task<> stop() {
@@ -1566,6 +1573,21 @@ TEST_CASE(DeadSlotRevives) {
         EXPECT_TRUE(f.worker_alive(0));
         EXPECT_EQ(f.crash_streak(0), 0u);
 
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(FloorAboveStartupKept) {
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        // A floor configured above the startup count survives start():
+        // scale-up may grow past it later, and idle scale-down must hold
+        // the configured warm set instead of shrinking back to startup.
+        CO_ASSERT_TRUE(f.start(2, 0, /*min_stateless=*/4));
+        EXPECT_EQ(f.min_stateless(), 4u);
         co_await f.stop();
         done = true;
     });

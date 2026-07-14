@@ -41,16 +41,18 @@ public:
     class Flight {
         friend class Quarantine;
         unsigned inherited = 0;
+        unsigned inherited_total = 0;
     };
 
     /// Crashes currently blamed on this document's content.
     unsigned crashes() const {
-        return streak;
+        return streak + query_streak;
     }
 
-    /// The document has spent its crash budget.
+    /// The document has spent its crash budget: compile and query evidence
+    /// pool into one budget — both are this content killing workers.
     bool active() const {
-        return streak >= threshold;
+        return crashes() >= threshold;
     }
 
     /// Quarantined with no probe attempt armed: refuse dispatches.
@@ -67,6 +69,7 @@ public:
     Flight begin_flight() const {
         Flight flight;
         flight.inherited = streak;
+        flight.inherited_total = crashes();
         return flight;
     }
 
@@ -75,14 +78,34 @@ public:
     /// content). Used with active() to stop a request whose dependency
     /// phase already tipped the document into quarantine.
     bool grew(Flight flight) const {
-        return streak > flight.inherited;
+        return crashes() > flight.inherited_total;
     }
 
-    /// A full compile of the current content landed: the inherited evidence
-    /// is disproved, but crashes recorded during the flight will recur on
-    /// the next request and must keep accumulating toward quarantine.
+    /// A full compile of the current content landed: the inherited compile
+    /// evidence is disproved, but crashes recorded during the flight will
+    /// recur on the next request, and query evidence is untouched — the
+    /// compile succeeding says nothing about the queries that follow it.
     void land(Flight flight) {
         streak -= std::min(flight.inherited, streak);
+        if(!active()) {
+            announced_spell = false;
+        }
+    }
+
+    /// A query on this document's settled AST killed a worker. A separate
+    /// ledger from compile crashes: a successful compile does not disprove
+    /// it — the same AST crashes the same query again — so only a query
+    /// that answers (on_query_land) clears it. Without the split, the
+    /// crash-triggered recompile would land, launder the evidence, and the
+    /// next query would kill a worker again, forever.
+    void on_query_crash() {
+        query_streak += 1;
+    }
+
+    /// A query answered: queries on the current content provably do not
+    /// kill workers.
+    void on_query_land() {
+        query_streak = 0;
         if(!active()) {
             announced_spell = false;
         }
@@ -127,12 +150,14 @@ public:
     /// The document was (re)opened: fresh content, fresh record.
     void reset() {
         streak = 0;
+        query_streak = 0;
         probe = false;
         announced_spell = false;
     }
 
 private:
     unsigned streak = 0;
+    unsigned query_streak = 0;
     bool probe = false;
     bool announced_spell = false;
 };

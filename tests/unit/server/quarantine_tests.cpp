@@ -104,6 +104,45 @@ TEST_CASE(ProbeSuccessRecovers) {
     EXPECT_FALSE(q.blocked());
 }
 
+TEST_CASE(QueryCrashSurvivesCompile) {
+    Quarantine q;
+    q.on_query_crash();
+
+    // A successful compile does not disprove a query crash: the same AST
+    // crashes the same query again. Without the separate ledger, the
+    // crash-triggered recompile would launder the evidence forever.
+    q.land(q.begin_flight());
+    EXPECT_EQ(q.crashes(), 1u);
+    q.on_query_crash();
+    EXPECT_TRUE(q.blocked());
+
+    // Recovery: an edit grants the probe, its compile lands, and the
+    // first query that answers clears the ledger.
+    q.on_edit(true);
+    q.spend_probe();
+    q.land(q.begin_flight());
+    EXPECT_TRUE(q.active());
+    q.on_query_land();
+    EXPECT_FALSE(q.active());
+    EXPECT_FALSE(q.blocked());
+}
+
+TEST_CASE(MixedEvidenceCounts) {
+    Quarantine q;
+    q.on_crash();
+
+    // Query evidence accrued mid-flight counts toward grew(); the landing
+    // clears only the inherited compile share.
+    auto flight = q.begin_flight();
+    q.on_query_crash();
+    EXPECT_TRUE(q.grew(flight));
+    q.land(flight);
+    EXPECT_EQ(q.crashes(), 1u);
+
+    q.on_query_land();
+    EXPECT_EQ(q.crashes(), 0u);
+}
+
 TEST_CASE(AnnounceOncePerSpell) {
     Quarantine q;
     EXPECT_FALSE(q.needs_announcement());
@@ -139,6 +178,7 @@ TEST_CASE(ResetClearsAll) {
     q.on_edit(true);
     q.mark_announced();
 
+    q.on_query_crash();
     q.reset();
     EXPECT_EQ(q.crashes(), 0u);
     EXPECT_FALSE(q.active());
