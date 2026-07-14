@@ -60,12 +60,12 @@ void SessionStore::apply_change(Session& session,
     session.version = version;
 
     // A content change re-arms a quarantined document with one probe
-    // attempt; below the threshold the streak simply restarts — the new
-    // bytes owe nothing to the old ones.
+    // attempt. It deliberately does NOT reset the streak: only a compile
+    // that succeeds proves the document healthy — resetting on edits
+    // would let a poison file under active editing crash a worker per
+    // keystroke and never reach quarantine.
     if(session.compile_crash_streak >= Session::quarantine_threshold) {
         session.quarantine_probe = true;
-    } else {
-        session.compile_crash_streak = 0;
     }
 
     for(auto& change: changes) {

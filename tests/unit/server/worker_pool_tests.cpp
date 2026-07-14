@@ -75,6 +75,10 @@ struct WorkerPoolFixture {
         return pool.assign_worker(path_id);
     }
 
+    std::size_t assign_expendable(std::uint32_t path_id) {
+        return pool.assign_expendable(path_id);
+    }
+
     void remove_owner(std::uint32_t path_id) {
         pool.remove_owner(path_id);
     }
@@ -980,6 +984,40 @@ TEST_CASE(HealthyUptimeResetsStreak) {
 
     EXPECT_TRUE(should_restart);
     EXPECT_EQ(f.crash_streak(0), 1u);
+}
+
+TEST_CASE(ExpendableSkipsHosts) {
+    WorkerPoolFixture f;
+    f.add_stateful(true);
+    f.add_stateful(true);
+
+    // A healthy document lives on worker 0 (least-loaded first pick)...
+    ASSERT_EQ(f.assign_worker(1), 0u);
+
+    // ...so a suspect compile may only sacrifice worker 1, and the
+    // document's ownership moves there.
+    ASSERT_EQ(f.assign_expendable(2), 1u);
+    ASSERT_EQ(f.owner_of(2), 1u);
+
+    // The current owner is kept while it hosts nothing else.
+    ASSERT_EQ(f.assign_expendable(2), 1u);
+
+    // With every live worker hosting someone else's document, there is
+    // nothing to sacrifice: the probe stays armed instead of running.
+    ASSERT_EQ(f.assign_worker(3), 0u);
+    ASSERT_EQ(f.assign_expendable(4), SIZE_MAX);
+}
+
+TEST_CASE(SingleWorkerProbes) {
+    WorkerPoolFixture f;
+    f.add_stateful(true);
+
+    // A single-worker pool has nothing to preserve by refusing the
+    // probe: it runs on the lone worker rather than quarantining the
+    // document until the session reopens.
+    ASSERT_EQ(f.assign_worker(1), 0u);
+    ASSERT_EQ(f.assign_expendable(2), 0u);
+    ASSERT_EQ(f.owner_of(2), 0u);
 }
 
 TEST_CASE(SuspectCrashKeepsBudget) {

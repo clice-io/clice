@@ -198,6 +198,41 @@ TEST_CASE(ForEachVisitsAll) {
     ASSERT_EQ(visited, 1);
 }
 
+TEST_CASE(QuarantineProbeOnEdit) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "int a;\n", 1);
+
+    // An edit never resets the streak — only a successful compile proves
+    // the document healthy. Resetting here would let a poison file under
+    // active editing crash one worker per keystroke without ever reaching
+    // quarantine.
+    session->compile_crash_streak = 1;
+    store.apply_change(*session, partial_change(0, 0, 0, 0, "x"), 2);
+    ASSERT_EQ(session->compile_crash_streak, 1u);
+    ASSERT_FALSE(session->quarantine_probe);
+
+    // At the threshold an edit re-arms one probe and keeps the streak: a
+    // quarantined document earns a single attempt per change, not a fresh
+    // budget.
+    session->compile_crash_streak = Session::quarantine_threshold;
+    store.apply_change(*session, partial_change(0, 0, 0, 0, "y"), 3);
+    ASSERT_EQ(session->compile_crash_streak, Session::quarantine_threshold);
+    ASSERT_TRUE(session->quarantine_probe);
+}
+
+TEST_CASE(ReopenClearsQuarantine) {
+    SessionStore store;
+    auto session = store.open(1);
+    session->compile_crash_streak = Session::quarantine_threshold;
+    session->quarantine_probe = true;
+
+    store.apply_open(*session, "int a;\n", 1);
+
+    ASSERT_EQ(session->compile_crash_streak, 0u);
+    ASSERT_FALSE(session->quarantine_probe);
+}
+
 };  // TEST_SUITE(SessionStore)
 
 }  // namespace

@@ -307,14 +307,24 @@ std::size_t WorkerPool::assign_expendable(std::uint32_t path_id) {
         return it->second;
     }
 
-    for(std::size_t i = 0; i < stateful_workers.size(); ++i) {
-        if(!expendable(i)) {
-            continue;
-        }
+    auto take = [&](std::size_t i) {
         remove_owner(path_id);
         owner[path_id] = i;
         stateful_workers[i].owned_documents += 1;
         return i;
+    };
+
+    for(std::size_t i = 0; i < stateful_workers.size(); ++i) {
+        if(expendable(i)) {
+            return take(i);
+        }
+    }
+
+    // A single-worker pool has nothing to preserve by refusing: run the
+    // probe there — the occasional respawn beats quarantining the document
+    // until the session reopens.
+    if(stateful_workers.size() == 1 && stateful_workers[0].state == SlotState::Alive) {
+        return take(0);
     }
     return SIZE_MAX;
 }

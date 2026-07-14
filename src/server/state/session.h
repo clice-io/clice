@@ -84,9 +84,10 @@ struct Session {
     /// burns slot after slot until the whole pool is dead.
     constexpr static unsigned quarantine_threshold = 2;
 
-    /// Consecutive compiles of this document that crashed a worker. A
-    /// successful compile clears it; a content change below the threshold
-    /// restarts it (the new bytes owe nothing to the old ones).
+    /// Consecutive compiles of this document that crashed a worker. Only
+    /// a successful compile clears it — edits never do, or a poison file
+    /// under active editing would crash one worker per keystroke without
+    /// ever reaching quarantine. New content gets its say via the probe.
     unsigned compile_crash_streak = 0;
 
     /// One compile attempt granted to a quarantined document by a content
