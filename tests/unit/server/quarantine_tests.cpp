@@ -208,6 +208,37 @@ TEST_CASE(ProbeRidesCrashingKind) {
     // Compile strikes make the compile the recovery vehicle.
     q.on_crash();
     EXPECT_TRUE(q.recovery_compile());
+
+    // The predicates require the armed probe: a concurrent request that
+    // lost the race to spend it holds no license, and the kind is simply
+    // blocked again.
+    q.spend_probe();
+    EXPECT_FALSE(q.recovery_compile());
+    EXPECT_FALSE(q.recovery_kind(1));
+    EXPECT_TRUE(q.kind_blocked(1));
+    EXPECT_FALSE(q.kind_blocked(2));
+}
+
+TEST_CASE(GuardReturnsUnspentProbe) {
+    Quarantine q;
+    q.on_kind_crash(1);
+    q.on_kind_crash(1);
+    q.on_edit(true);
+
+    // Unwinding with no strike recorded (a cancellation before dispatch)
+    // hands the license back.
+    {
+        Quarantine::ProbeGuard guard(q);
+        EXPECT_TRUE(q.blocked());
+    }
+    EXPECT_FALSE(q.blocked());
+
+    // A recorded strike keeps it spent: the attempt ran and crashed.
+    {
+        Quarantine::ProbeGuard guard(q);
+        q.on_kind_crash(1);
+    }
+    EXPECT_TRUE(q.blocked());
 }
 
 TEST_CASE(AnnounceOncePerSpell) {

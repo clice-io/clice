@@ -71,18 +71,57 @@ public:
     /// Whether a compile is this quarantine's recovery attempt: the probe
     /// rides the dispatch that can disprove the evidence, and a compile
     /// disproves only compile strikes — a kind-quarantined document's
-    /// compile is ordinary work and must not spend the probe.
+    /// compile is ordinary work and must not spend the probe. Requires the
+    /// armed probe: a concurrent request that lost the race to spend it
+    /// holds no license.
     bool recovery_compile() const {
-        return active() && streak > 0;
+        return active() && streak > 0 && probe;
     }
 
     /// Whether a dispatch of `kind` is this quarantine's recovery attempt:
-    /// only a kind holding strikes can disprove them. A harmless hover on
-    /// a semantic-tokens-quarantined document must leave the probe for the
+    /// only a kind holding strikes can disprove them, and only while the
+    /// edit-granted probe is armed. A harmless hover on a
+    /// semantic-tokens-quarantined document must leave the probe for the
     /// semantic-tokens retry.
     bool recovery_kind(std::uint8_t kind) const {
-        return active() && kind_streaks.contains(kind);
+        return active() && kind_streaks.contains(kind) && probe;
     }
+
+    /// This kind holds strikes and no probe is armed: its dispatch is
+    /// neither licensed recovery nor safe ordinary work — refuse it.
+    bool kind_blocked(std::uint8_t kind) const {
+        return active() && kind_streaks.contains(kind) && !probe;
+    }
+
+    /// Holds a spent probe across a recovery dispatch: if the coroutine
+    /// unwinds (an LSP cancellation) before any attempt dispatched — no
+    /// new strikes recorded — the license is handed back, so a cancelled
+    /// recovery does not strand the document until another edit. Call
+    /// settle() once the outcome is known and owned by the call site.
+    class [[nodiscard]] ProbeGuard {
+    public:
+        explicit ProbeGuard(Quarantine& quarantine) :
+            quarantine(&quarantine), strikes(quarantine.crashes()) {
+            quarantine.spend_probe();
+        }
+
+        ProbeGuard(const ProbeGuard&) = delete;
+        ProbeGuard& operator=(const ProbeGuard&) = delete;
+
+        ~ProbeGuard() {
+            if(quarantine && quarantine->crashes() == strikes) {
+                quarantine->re_arm_probe();
+            }
+        }
+
+        void settle() {
+            quarantine = nullptr;
+        }
+
+    private:
+        Quarantine* quarantine;
+        unsigned strikes;
+    };
 
     /// A dispatch carrying this document's content killed a worker.
     /// `death` is the worker incarnation's identity (worker::death_of):

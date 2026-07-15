@@ -125,6 +125,11 @@ private:
                              std::optional<CommandSource> source,
                              std::optional<std::uint32_t> line_limit);
 
+    /// Clear the published quarantine diagnostic after a stateless or
+    /// query recovery lifted the quarantine: no compile ran to overwrite
+    /// the output, and the stale "file is quarantined" must not linger.
+    void publish_recovered(const std::shared_ptr<Session>& session);
+
     /// @param launch_generation, launch_epoch  The caller's staleness-token
     ///               snapshots from the moment its round took off, NOT ones
     ///               taken on entry: a round invalidated during the
