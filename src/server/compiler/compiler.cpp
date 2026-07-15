@@ -129,35 +129,39 @@ void Compiler::publish_quarantined(const std::shared_ptr<Session>& session,
 /// worker_crashed, so the resend lands on a healthy worker. Build tasks are
 /// idempotent; one retry suffices, since a request that kills two workers in
 /// a row is a poison workload that a third attempt would not survive either.
-template <typename Params>
-static kota::ipc::RequestResult<Params> send_stateless_retrying(WorkerPool& pool, Params params) {
+///
+/// `on_crash` fires once per attempt that killed a worker — evidence is
+/// counted per death, not per request, so a poison build that burns two
+/// workers spends two strikes. Callers must count ONLY through it: the
+/// returned error is the retry's status, which may not be a crash.
+template <typename Params, typename OnCrash>
+static kota::ipc::RequestResult<Params> send_stateless_retrying(WorkerPool& pool,
+                                                                Params params,
+                                                                OnCrash on_crash) {
     auto result = co_await pool.send_stateless(params);
     if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-        auto retry = co_await pool.send_stateless(params);
-        // A failed retry must not launder the crash: the first attempt
-        // killed a worker, and callers count that evidence toward the
-        // document's quarantine no matter how the retry failed.
-        if(retry.has_value()) {
-            co_return std::move(retry);
+        on_crash(result.error());
+        result = co_await pool.send_stateless(params);
+        if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
+            on_crash(result.error());
         }
-        co_return std::move(result);
     }
     co_return std::move(result);
 }
 
 /// Every stateless build carrying an open document's content goes through
-/// here: a dispatch that killed a worker is blamed on the session before
-/// the caller sees the result, so no site can forget the accounting.
-/// Grep for build_for to enumerate every such site.
+/// here: each worker kill is blamed on the session before the caller sees
+/// the result, so no site can forget the accounting. Grep for build_for to
+/// enumerate every such site.
 template <typename Params>
 static kota::ipc::RequestResult<Params> build_for(WorkerPool& pool,
                                                   Session& session,
                                                   Params params) {
-    auto result = co_await send_stateless_retrying(pool, std::move(params));
-    if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-        session.quarantine.on_crash(worker::death_of(result.error()));
-    }
-    co_return std::move(result);
+    return send_stateless_retrying(pool,
+                                   std::move(params),
+                                   [&session](const kota::ipc::protocol::Error& error) {
+                                       session.quarantine.on_crash(worker::death_of(error));
+                                   });
 }
 
 /// Clamp a client-supplied position to the document, following LSP
@@ -314,13 +318,14 @@ void Compiler::init_compile_graph() {
         // in pcm_paths from a previous (now-invalidated) build.
         workspace.fill_pcm_deps(bp.pcms, path_id);
 
-        auto result = co_await send_stateless_retrying(pool, bp);
+        auto result = co_await send_stateless_retrying(
+            pool,
+            bp,
+            [this, &budget_key](const kota::ipc::protocol::Error&) {
+                workspace.build_crashes.on_crash(budget_key);
+            });
         if(!result.has_value() || !result.value().success) {
             workspace.store->abort(pending);
-            if(!result.has_value() &&
-               result.error().code == worker::dispatch_errc::worker_crashed) {
-                workspace.build_crashes.on_crash(budget_key);
-            }
             if(expected_build_failure(result)) {
                 LOG_WARN("BuildPCM failed for module {}: {}",
                          module_name,
@@ -342,6 +347,7 @@ void Compiler::init_compile_graph() {
             co_return false;
         }
 
+        workspace.build_crashes.on_land(budget_key);
         auto pcm_path = std::move(committed.value().value());
         workspace.pcm_paths[path_id] = pcm_path;
         workspace.pcm_cache[path_id] = {pcm_path,
@@ -542,17 +548,20 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
 
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", path, bound, pch_key);
 
-    auto result = co_await build_for(pool, session, bp);
+    // Each worker kill lands in two ledgers by design: the session's (the
+    // preamble is this document's content) and the shared key's (other
+    // sessions with the same preamble must stop re-triggering the build).
+    auto result = co_await send_stateless_retrying(
+        pool,
+        bp,
+        [this, &session, &pch_key](const kota::ipc::protocol::Error& error) {
+            session.quarantine.on_crash(worker::death_of(error));
+            workspace.build_crashes.on_crash(pch_key);
+        });
 
     if(!result.has_value() || !result.value().success) {
         workspace.store->abort(pending);
         workspace.store->abort(pending_idx);
-        // The preamble is this document's content too — build_for blamed
-        // the session. The shared-key budget additionally stops other
-        // sessions with the same preamble from re-triggering the build.
-        if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-            workspace.build_crashes.on_crash(pch_key);
-        }
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", path, build_failure_message(result));
         } else {
@@ -610,6 +619,9 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         workspace.pch_cache.erase(pch_key);
         co_return false;
     }
+
+    // The key built: its strikes were transient, not poison.
+    workspace.build_crashes.on_land(pch_key);
 
     auto& st = workspace.pch_cache[pch_key];
     st.path = *committed.value().pch_path;
@@ -1114,7 +1126,9 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
         on_stale(path_id);
     }
 
-    // If an up-to-date compile is already in flight, wait for it.
+    // If an up-to-date compile is already in flight, wait for it. The wait
+    // may watch that compile spend the streak's last budget: re-check the
+    // gate afterwards (below) before launching a replacement.
     // This co_await may be cancelled by LSP $/cancelRequest — that's fine,
     // it just means this particular feature request is abandoned.  The
     // detached compile task keeps running independently.
@@ -1137,6 +1151,17 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
     // If we fell through (not superseding) and the generation changed while
     // we were waiting, the session was closed or replaced — don't compile.
     if(!session->compiling && session->generation != gen) {
+        co_return false;
+    }
+
+    // The compile just waited out may have spent the streak's last budget
+    // (its crash, or its PCH build's): the entry gate ran before that
+    // evidence existed, so a waiter must not launch a replacement for
+    // content that is now quarantined. The crash's own error path already
+    // announced it.
+    if(session->quarantine.blocked()) {
+        LOG_WARN("ensure_compiled: {} quarantined while waiting for a compile",
+                 workspace.path_pool.resolve(path_id));
         co_return false;
     }
 

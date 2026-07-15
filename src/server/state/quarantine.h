@@ -230,6 +230,13 @@ public:
         entry.last_crash = std::chrono::steady_clock::now();
     }
 
+    /// The artifact built: the key's strikes were transient, not poison —
+    /// without this, two unrelated hiccups far apart would block a key
+    /// that rebuilds fine in between.
+    void on_land(llvm::StringRef key) {
+        crashes.erase(key);
+    }
+
 private:
     struct Entry {
         unsigned count = 0;

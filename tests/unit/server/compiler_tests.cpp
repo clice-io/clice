@@ -147,7 +147,9 @@ TEST_CASE(PchCrashCountsStreak) {
                                                           directory,
                                                           arguments);
         EXPECT_FALSE(built);
-        EXPECT_EQ(session.quarantine.crashes(), 1u);
+        // Two strikes from one request: the retry's death is separate
+        // evidence — blame is counted per worker killed, not per request.
+        EXPECT_EQ(session.quarantine.crashes(), 2u);
 
         co_await pool.stop();
         done = true;
@@ -267,7 +269,8 @@ TEST_CASE(PchCrashBlocksBuild) {
         auto result = co_await compiler.forward_build(worker::BuildKind::Completion, {}, session);
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
-        EXPECT_EQ(session->quarantine.crashes(), Quarantine::threshold);
+        // One inherited strike plus both deaths of the doomed PCH build.
+        EXPECT_EQ(session->quarantine.crashes(), 3u);
 
         co_await pool.stop();
         done = true;
@@ -337,12 +340,15 @@ TEST_CASE(PoisonPreambleBudget) {
                                                directory,
                                                arguments);
         };
+        // One request, two dead workers, two strikes: the key blocks after
+        // a single poison build instead of burning workers for a second
+        // session's attempt.
         CO_ASSERT_FALSE(co_await build(first));
-        EXPECT_EQ(first.quarantine.crashes(), 1u);
-        CO_ASSERT_FALSE(co_await build(second));
-        EXPECT_EQ(second.quarantine.crashes(), 1u);
+        EXPECT_EQ(first.quarantine.crashes(), 2u);
 
-        // The key's budget is spent: refused without touching a worker.
+        // Refused without touching a worker.
+        CO_ASSERT_FALSE(co_await build(second));
+        EXPECT_EQ(second.quarantine.crashes(), 0u);
         CO_ASSERT_FALSE(co_await build(third));
         EXPECT_EQ(third.quarantine.crashes(), 0u);
 

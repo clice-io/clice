@@ -227,6 +227,17 @@ TEST_CASE(BudgetBlocksAtThreshold) {
     EXPECT_FALSE(budget.blocked("key-b"));
 }
 
+TEST_CASE(BudgetClearsOnLand) {
+    // A successful build proves the strikes were transient: without the
+    // clear, two unrelated hiccups far apart would block a key that
+    // rebuilds fine in between.
+    CrashBudget budget;
+    budget.on_crash("key");
+    budget.on_land("key");
+    budget.on_crash("key");
+    EXPECT_FALSE(budget.blocked("key"));
+}
+
 TEST_CASE(BudgetRearmsAfterCooldown) {
     // The poison may live in content the key cannot see (a header included
     // by the hashed preamble text): a block is a cooldown, not a verdict.

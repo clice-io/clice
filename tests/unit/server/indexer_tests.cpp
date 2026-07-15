@@ -49,6 +49,10 @@ struct IndexerFixture {
         return it == indexer.reindex_reasons.end() ? 0u : it->second.requeue_attempts;
     }
 
+    void set_attempts(std::uint32_t id, unsigned n) {
+        indexer.reindex_reasons.find(id)->second.requeue_attempts = n;
+    }
+
     /// Consume the queued slot as a dispatch would, so a later enqueue
     /// takes the fresh-slot (mid-flight) path.
     void consume(std::uint32_t id) {
@@ -153,14 +157,18 @@ TEST_CASE(CrashSpendsBudget) {
         ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
     }
     ASSERT_EQ(f.attempts(id), IndexerFixture::budget);
-    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::GaveUp));
 
     // A preemption still requeues a file whose crash budget is spent:
     // dropping it would erase the pending state and serve the stale
     // shard as fresh. Only the next crash gives up.
     ASSERT_EQ(int(f.fail(id, /*crashed=*/false)), int(IndexerFixture::Verdict::Requeued));
     ASSERT_EQ(f.attempts(id), IndexerFixture::budget);
+
+    // Giving up clears the pending slot: nothing is left to requeue, and
+    // the stale shard serves as fresh — the accepted cost of abandoning.
     ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::GaveUp));
+    ASSERT_FALSE(f.indexer.pending_reason(id).has_value());
+    ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Dropped));
 }
 
 TEST_CASE(StaleCrashKeepsBudget) {
@@ -196,6 +204,22 @@ TEST_CASE(DepsDowngradeKeepsDebt) {
     ASSERT_EQ(int(f.fail_at(id, launch, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
     ASSERT_EQ(int(*f.indexer.pending_reason(id)), int(ReindexReason::ContentChanged));
     ASSERT_EQ(f.attempts(id), 1u);
+}
+
+TEST_CASE(GaveUpClearsDowngraded) {
+    IndexerFixture f;
+    auto id = f.workspace.path_pool.intern("/proj/d.cpp");
+    f.indexer.enqueue(id, ReindexReason::ContentChanged);
+    auto launch = f.ticket(id);
+    f.set_attempts(id, IndexerFixture::budget);
+
+    // A deps-only enqueue lands mid-flight, then the content pass spends
+    // its last life. The downgraded entry must not stay queued: its retry
+    // is doomed, and the give-up already accepted the staleness.
+    f.consume(id);
+    f.indexer.enqueue(id, ReindexReason::DepsOnly);
+    ASSERT_EQ(int(f.fail_at(id, launch, /*crashed=*/true)), int(IndexerFixture::Verdict::GaveUp));
+    ASSERT_FALSE(f.indexer.pending_reason(id).has_value());
 }
 
 TEST_CASE(DroppedWithoutPending) {

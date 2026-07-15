@@ -601,6 +601,12 @@ auto Indexer::note_dispatch_failure(std::uint32_t server_path_id,
     // clear the pending state and serve the stale shard as fresh.
     if(crashed) {
         if(it->second.requeue_attempts >= max_requeue_attempts) {
+            // Giving up accepts the staleness, so clear the pending slot
+            // here rather than relying on run_index_task's ticket-guarded
+            // clear: a deps-only enqueue that landed mid-flight bumped the
+            // ticket, and the guard would leave that downgraded entry
+            // queued — a doomed retry that spends one more worker.
+            clear_pending(server_path_id);
             return RequeueVerdict::GaveUp;
         }
         it->second.requeue_attempts += 1;
