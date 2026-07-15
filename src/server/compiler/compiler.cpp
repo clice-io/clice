@@ -1361,13 +1361,17 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     auto path = std::string(workspace.path_pool.resolve(path_id));
     auto gen = session->generation;
 
-    // This build compiles the same content the quarantine watches; a
-    // blocked document gets no stateless builds either, or completion
-    // requests would keep killing workers the compile path is protecting.
-    // A probe-armed document passes: when this kind holds the strikes,
-    // this dispatch IS the recovery attempt.
-    if(session->quarantine.blocked()) {
+    // This build compiles the same content the quarantine watches: while
+    // the document is quarantined, only the recovery dispatch — the kind
+    // holding the strikes, with the probe armed — may run. Anything else
+    // is arbitrary work on proven-poisonous content. A refusal announces
+    // the quarantine, or a completion-only client would never see it.
+    bool recovery = session->quarantine.recovery_kind(evidence_kind(kind));
+    if(session->quarantine.active() && (session->quarantine.blocked() || !recovery)) {
         LOG_WARN("forward_build: {} is quarantined, refusing build", path);
+        if(session->quarantine.needs_announcement()) {
+            publish_quarantined(session, std::nullopt, std::nullopt);
+        }
         co_return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
     }
@@ -1401,6 +1405,9 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     if(session->quarantine.active() && session->quarantine.grew(flight)) {
         session->quarantine.spend_probe();
         LOG_WARN("forward_build: {} quarantined during dependency prep", path);
+        if(session->quarantine.needs_announcement()) {
+            publish_quarantined(session, std::nullopt, std::nullopt);
+        }
         co_return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
     }
@@ -1414,15 +1421,17 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     wp.offset = clamped_offset(map, position);
 
     // When this kind holds the strikes, this dispatch is the recovery
-    // attempt the edit licensed: spend the probe, hand it back only if the
-    // build provably never dispatched.
-    bool recovery = session->quarantine.recovery_kind(evidence_kind(kind));
+    // attempt the edit licensed: spend the probe, hand it back only if no
+    // attempt dispatched at all — an unavailable retry after a crashed
+    // first attempt already spent the license on that crash.
     if(recovery) {
         session->quarantine.spend_probe();
     }
+    auto strikes_before = session->quarantine.crashes();
     auto result = co_await build_for(pool, *session, evidence_kind(kind), wp);
     if(!result.has_value()) {
-        if(recovery && result.error().code == worker::dispatch_errc::worker_unavailable) {
+        if(recovery && result.error().code == worker::dispatch_errc::worker_unavailable &&
+           session->quarantine.crashes() == strikes_before) {
             session->quarantine.re_arm_probe();
         }
         if(!worker::is_operational_error(result.error())) {
@@ -1450,10 +1459,14 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     auto gen = session->generation;
 
     // Formatting runs no sema, but it is still this document's content on
-    // a worker: a blocked document is refused. A probe-armed one passes —
-    // when format holds the strikes, this dispatch is the recovery.
-    if(session->quarantine.blocked()) {
+    // a worker: while quarantined, only format-as-recovery may run, and a
+    // refusal announces the quarantine.
+    bool recovery = session->quarantine.recovery_kind(evidence_kind(worker::BuildKind::Format));
+    if(session->quarantine.active() && (session->quarantine.blocked() || !recovery)) {
         LOG_WARN("forward_format: {} is quarantined, refusing format", path);
+        if(session->quarantine.needs_announcement()) {
+            publish_quarantined(session, std::nullopt, std::nullopt);
+        }
         co_return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
     }
@@ -1475,13 +1488,14 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     }
 
     ScopedTimer timer;
-    bool recovery = session->quarantine.recovery_kind(evidence_kind(worker::BuildKind::Format));
     if(recovery) {
         session->quarantine.spend_probe();
     }
+    auto strikes_before = session->quarantine.crashes();
     auto result = co_await build_for(pool, *session, evidence_kind(worker::BuildKind::Format), wp);
     if(!result.has_value()) {
-        if(recovery && result.error().code == worker::dispatch_errc::worker_unavailable) {
+        if(recovery && result.error().code == worker::dispatch_errc::worker_unavailable &&
+           session->quarantine.crashes() == strikes_before) {
             session->quarantine.re_arm_probe();
         }
         if(!worker::is_operational_error(result.error())) {

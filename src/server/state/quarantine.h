@@ -116,9 +116,7 @@ public:
     /// compile succeeding says nothing about the dispatches it never ran.
     void land(Flight flight) {
         streak -= std::min(flight.inherited, streak);
-        if(!active()) {
-            announced_spell = false;
-        }
+        settle();
     }
 
     /// A dispatch of `kind` — a query against the settled AST, a stateless
@@ -139,9 +137,7 @@ public:
     /// provably does not kill workers.
     void on_kind_land(std::uint8_t kind) {
         kind_streaks.erase(kind);
-        if(!active()) {
-            announced_spell = false;
-        }
+        settle();
     }
 
     /// A content change grants a quarantined document one probe attempt.
@@ -190,6 +186,17 @@ public:
     }
 
 private:
+    /// Leaving quarantine retires the spell's state: the armed probe is a
+    /// license for a quarantine that no longer exists — left set, the next
+    /// spell would start with a free crashing dispatch and no edit — and
+    /// the announcement re-arms for the next spell.
+    void settle() {
+        if(!active()) {
+            probe = false;
+            announced_spell = false;
+        }
+    }
+
     /// Whether this death was already counted. Remembering only the most
     /// recent identity suffices: a peer teardown fails all of a death's
     /// in-flight requests in the same loop turn, so their errors arrive

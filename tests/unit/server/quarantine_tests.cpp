@@ -104,6 +104,12 @@ TEST_CASE(ProbeSuccessRecovers) {
     EXPECT_EQ(q.crashes(), 0u);
     EXPECT_FALSE(q.active());
     EXPECT_FALSE(q.blocked());
+
+    // Recovery leaves no stale probe: the next spell blocks immediately
+    // instead of inheriting a free attempt from the last one.
+    q.on_crash();
+    q.on_crash();
+    EXPECT_TRUE(q.blocked());
 }
 
 TEST_CASE(QueryCrashSurvivesCompile) {
@@ -142,6 +148,14 @@ TEST_CASE(KindsRecoverIndependently) {
 
     q.on_kind_land(1);
     EXPECT_FALSE(q.active());
+
+    // Leaving quarantine via a kind landing retires an armed probe too —
+    // an adoption (PCH cache hit) can land a kind before any dispatch
+    // spent the probe, and the next spell must not inherit it.
+    q.on_edit(true);
+    q.on_kind_crash(3);
+    q.on_kind_crash(3);
+    EXPECT_TRUE(q.blocked());
 }
 
 TEST_CASE(MixedEvidenceCounts) {

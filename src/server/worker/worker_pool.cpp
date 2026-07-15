@@ -144,7 +144,12 @@ void WorkerPool::install_evict_handler(WorkerProcess& worker, std::size_t index)
         [this, index, gen = worker.generation](const worker::EvictedParams& params) {
             // A buffered eviction from a dead peer can drain after the slot
             // respawned and reacquired the same path; matching by slot index
-            // alone would unseat the new owner.
+            // alone would unseat the new owner. A same-generation ABA (a
+            // live worker's stale-copy eviction draining after a probe
+            // reassigned the path back to it) is accepted: the notification
+            // carries no ownership epoch, the window is one notification
+            // drain, and the cost is one spurious invalidation-recompile —
+            // not corrupted state.
             if(stateful_workers[index].generation != gen) {
                 return;
             }
