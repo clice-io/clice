@@ -140,11 +140,18 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
 }
 
 void WorkerPool::install_evict_handler(WorkerProcess& worker, std::size_t index) {
-    worker.peer->on_notification([this, index](const worker::EvictedParams& params) {
-        if(on_evicted) {
-            on_evicted(params.path, index);
-        }
-    });
+    worker.peer->on_notification(
+        [this, index, gen = worker.generation](const worker::EvictedParams& params) {
+            // A buffered eviction from a dead peer can drain after the slot
+            // respawned and reacquired the same path; matching by slot index
+            // alone would unseat the new owner.
+            if(stateful_workers[index].generation != gen) {
+                return;
+            }
+            if(on_evicted) {
+                on_evicted(params.path, index);
+            }
+        });
 }
 
 bool WorkerPool::spawn_worker(bool stateful) {

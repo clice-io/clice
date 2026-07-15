@@ -25,6 +25,7 @@
 #include "kota/ipc/lsp/uri.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/Basic/Version.h"
@@ -289,14 +290,18 @@ void Compiler::init_compile_graph() {
                  pcm_key,
                  module_name);
 
-        // Same shared-artifact budget as the PCH: a module interface whose
-        // PCM build keeps killing workers is refused instead of killing two
-        // more per dependent compile. Editing the module starts a fresh
-        // key with a fresh budget.
-        if(workspace.build_crashes.blocked(pcm_key)) {
+        // Same shared-artifact budget as the PCH, but keyed with the
+        // module's current content: unlike pch_key (which embeds the
+        // preamble text), pcm_key is content-free, and a blocked budget
+        // must unlock the moment the poison is edited.
+        auto content = llvm::MemoryBuffer::getFile(file_path);
+        auto budget_key = std::format("{}-{:016x}",
+                                      pcm_key,
+                                      content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0);
+        if(workspace.build_crashes.blocked(budget_key)) {
             LOG_WARN("PCM build for module {} refused: key {} keeps crashing workers",
                      module_name,
-                     pcm_key);
+                     budget_key);
             co_return false;
         }
 
@@ -314,7 +319,7 @@ void Compiler::init_compile_graph() {
             workspace.store->abort(pending);
             if(!result.has_value() &&
                result.error().code == worker::dispatch_errc::worker_crashed) {
-                workspace.build_crashes.on_crash(pcm_key);
+                workspace.build_crashes.on_crash(budget_key);
             }
             if(expected_build_failure(result)) {
                 LOG_WARN("BuildPCM failed for module {}: {}",
@@ -898,7 +903,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
 
         // A quarantined document's probe is a known risk: tell the pool so
         // the crash, if it comes, does not spend the slot's budget.
-        bool suspect = session->quarantine.active();
+        auto suspect = session->quarantine.active() ? Suspect::Isolated : Suspect::No;
         session->quarantine.spend_probe();
         auto result = co_await pool.send_stateful(pid, params, {}, suspect);
 
@@ -910,7 +915,8 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         if(!result.has_value()) {
             if(result.error().code == worker::dispatch_errc::worker_crashed) {
                 session->quarantine.on_crash(worker::death_of(result.error()));
-            } else if(suspect && result.error().code == worker::dispatch_errc::worker_unavailable) {
+            } else if(suspect == Suspect::Isolated &&
+                      result.error().code == worker::dispatch_errc::worker_unavailable) {
                 // The probe never ran: keep it armed so a later request
                 // retries once an expendable worker frees up.
                 session->quarantine.re_arm_probe();
@@ -1193,7 +1199,11 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
         }
     }
 
-    auto result = co_await pool.send_stateful(path_id, wp);
+    // A recovery query after a query-crash quarantine is still distrusted:
+    // it needs the owner (the AST lives there), but its crash spends no
+    // slot budget and new documents avoid the worker while it flies.
+    auto suspect = session->quarantine.active() ? Suspect::InPlace : Suspect::No;
+    auto result = co_await pool.send_stateful(path_id, wp, {}, suspect);
     if(!result.has_value()) {
         // A query that kills the worker is this document's doing even
         // though its compile landed: separate ledger, since only a query
@@ -1210,7 +1220,12 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
-    session->quarantine.on_query_land();
+    // The reply proves queries on the DISPATCHED content answer; an edit
+    // that landed mid-flight must not launder the new content's ledger —
+    // crashes count regardless of staleness, successes only when fresh.
+    if(session->generation == gen) {
+        session->quarantine.on_query_land();
+    }
     LOG_PERF("request", "kind={} file={} wait_ms={} total_ms={}", kind, path, wait_ms, timer.ms());
     co_return std::move(result.value());
 }
@@ -1230,7 +1245,9 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     }
     auto wait_ms = timer.ms();
 
-    auto result = co_await pool.send_stateful(path_id, worker::DocumentLinkParams{path});
+    auto suspect = session->quarantine.active() ? Suspect::InPlace : Suspect::No;
+    auto result =
+        co_await pool.send_stateful(path_id, worker::DocumentLinkParams{path}, {}, suspect);
     if(!result.has_value()) {
         if(result.error().code == worker::dispatch_errc::worker_crashed) {
             session->quarantine.on_query_crash(worker::death_of(result.error()));
@@ -1243,14 +1260,15 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
-    session->quarantine.on_query_land();
     // The result carries byte offsets against the compiled buffer; a
     // didChange that landed during the await makes them describe text the
     // session no longer holds — the reply edge would map them onto the
-    // edited buffer at wrong positions.
+    // edited buffer at wrong positions. The same staleness gates the query
+    // ledger: a stale success must not launder the new content's evidence.
     if(session->generation != gen) {
         co_return std::vector<feature::DocumentLink>{};
     }
+    session->quarantine.on_query_land();
     LOG_PERF("request",
              "kind=DocumentLink file={} wait_ms={} total_ms={}",
              path,

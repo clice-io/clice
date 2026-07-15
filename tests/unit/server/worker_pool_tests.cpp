@@ -183,6 +183,16 @@ struct WorkerPoolFixture {
         return pool.options.min_stateless;
     }
 
+    void force_owner(std::uint32_t path_id, std::size_t idx) {
+        pool.owner[path_id] = idx;
+        pool.stateful_workers[idx].owned_documents += 1;
+    }
+
+    unsigned suspect_inflight(std::size_t idx, bool stateful) const {
+        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
+        return workers[idx].suspect_inflight;
+    }
+
     kota::task<> stop() {
         return pool.stop();
     }
@@ -1572,6 +1582,33 @@ TEST_CASE(DeadSlotRevives) {
         }
         EXPECT_TRUE(f.worker_alive(0));
         EXPECT_EQ(f.crash_streak(0), 0u);
+
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(InPlaceKeepsOwner) {
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT_TRUE(f.start(0, 2));
+        co_await kota::sleep(500);
+
+        // Two documents pin worker 0: it is the owner but not expendable.
+        f.force_owner(7, 0);
+        f.force_owner(8, 0);
+
+        // An in-place suspect keeps owner routing — the AST lives there —
+        // instead of migrating to the free worker like an isolated probe,
+        // and its budget exemption unwinds once the reply lands.
+        auto result = co_await f.pool.send_stateful(7,
+                                                    worker::DocumentLinkParams{"/x.cpp"},
+                                                    {},
+                                                    Suspect::InPlace);
+        EXPECT_EQ(f.owner_of(7), 0u);
+        EXPECT_EQ(f.suspect_inflight(0, true), 0u);
 
         co_await f.stop();
         done = true;

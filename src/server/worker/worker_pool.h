@@ -80,6 +80,21 @@ struct WorkerPoolOptions {
     std::uint32_t max_stateless = 0;
 };
 
+/// How much the caller distrusts a stateful dispatch (see the class doc's
+/// responsibility contract). Every flavor of distrust exempts the slot's
+/// crash budget; they differ in routing.
+enum class Suspect : std::uint8_t {
+    /// Ordinary work.
+    No,
+    /// A quarantined document's probe compile: runs only on a worker
+    /// hosting no other document, so a crash takes nothing healthy along.
+    Isolated,
+    /// A quarantined document's recovery query: it must reach the worker
+    /// holding the AST, so it keeps owner routing; while it flies, the
+    /// worker is avoided by new-document assignment.
+    InPlace,
+};
+
 /// Multi-process scheduler for clice worker processes.
 ///
 /// Two kinds of workers are managed:
@@ -109,10 +124,12 @@ struct WorkerPoolOptions {
 ///     never blamed twice). worker_restarting: never dispatched, blameless.
 ///     worker_unavailable: a capacity window — retryable later when
 ///     revives_slots(). cancelled: deliberate preemption, requeue freely.
-///   - `suspect` is the single sanctioned policy hint INTO the pool: the
-///     caller already distrusts the workload (a quarantine probe), so its
-///     crash spends no slot budget and it only runs where it can take no
-///     healthy document with it.
+///   - Suspect is the single sanctioned policy hint INTO the pool: the
+///     caller already distrusts the workload, so its crash spends no slot
+///     budget. An Isolated probe additionally runs only where it can take
+///     no healthy document with it; an InPlace recovery query keeps owner
+///     routing (the AST lives there) and is merely avoided by new-document
+///     assignment while it flies.
 class WorkerPool {
 public:
     WorkerPool(kota::event_loop& loop) : loop(loop) {}
@@ -124,15 +141,14 @@ public:
     kota::task<> stop();
 
     /// Send a request to a stateful worker with path_id affinity routing.
-    /// `suspect` marks a workload the caller already distrusts (a
-    /// quarantined document's probe): if it crashes the worker, the crash
-    /// does not spend the slot's budget — the failure says something about
-    /// the document, not the slot.
+    /// A suspect dispatch's crash does not spend the slot's budget — the
+    /// failure says something about the document, not the slot; see
+    /// Suspect for the routing difference between its flavors.
     template <typename Params>
     RequestResult<Params> send_stateful(std::uint32_t path_id,
                                         const Params& params,
                                         kota::ipc::request_options opts = {},
-                                        bool suspect = false);
+                                        Suspect suspect = Suspect::No);
 
     /// Send a request to a stateless worker with priority-aware scheduling.
     template <typename Params>
@@ -519,17 +535,18 @@ template <typename Params>
 RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
                                                 const Params& params,
                                                 kota::ipc::request_options opts,
-                                                bool suspect) {
-    // A suspect workload only runs on a worker hosting no other document:
+                                                Suspect suspect) {
+    // An isolated probe only runs on a worker hosting no other document:
     // its crash must never take healthy sessions with it. With no such
     // worker available right now, the caller keeps the probe armed and
-    // tries again later instead of risking one.
-    auto idx = suspect ? assign_expendable(path_id) : assign_worker(path_id);
+    // tries again later instead of risking one. An in-place suspect stays
+    // with the owner — the AST it queries lives there.
+    auto idx = suspect == Suspect::Isolated ? assign_expendable(path_id) : assign_worker(path_id);
     if(idx == SIZE_MAX) {
-        co_return kota::outcome_error(
-            kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
-                             suspect ? "No expendable stateful worker for quarantined probe"
-                                     : "No stateful workers available"});
+        co_return kota::outcome_error(kota::ipc::Error{
+            worker::dispatch_errc::worker_unavailable,
+            suspect == Suspect::Isolated ? "No expendable stateful worker for quarantined probe"
+                                         : "No stateful workers available"});
     }
 
     auto& assigned = stateful_workers[idx];
@@ -546,7 +563,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     // moment the worker dies.
     auto peer = assigned.peer;
     auto gen = assigned.generation;
-    if(suspect) {
+    if(suspect != Suspect::No) {
         assigned.suspect_inflight += 1;
     }
     auto result = co_await peer->send_request(params, opts);
@@ -554,7 +571,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     // a crash leaves it for the monitor's accounting to consume, and the
     // generation guard skips incarnations already torn down elsewhere.
     bool transport_dead = !result.has_value() && worker::is_transport_error(result.error());
-    if(suspect && !transport_dead && stateful_workers[idx].generation == gen &&
+    if(suspect != Suspect::No && !transport_dead && stateful_workers[idx].generation == gen &&
        stateful_workers[idx].suspect_inflight > 0) {
         stateful_workers[idx].suspect_inflight -= 1;
     }

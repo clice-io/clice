@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include "test/test.h"
 #include "server/state/quarantine.h"
 
@@ -223,6 +225,16 @@ TEST_CASE(BudgetBlocksAtThreshold) {
 
     // Keys are independent: fresh content (fresh key) starts fresh.
     EXPECT_FALSE(budget.blocked("key-b"));
+}
+
+TEST_CASE(BudgetRearmsAfterCooldown) {
+    // The poison may live in content the key cannot see (a header included
+    // by the hashed preamble text): a block is a cooldown, not a verdict.
+    // Zero cooldown models "elapsed" — the key earns a fresh budget.
+    CrashBudget budget{std::chrono::milliseconds(0)};
+    budget.on_crash("key");
+    budget.on_crash("key");
+    EXPECT_FALSE(budget.blocked("key"));
 }
 
 };  // TEST_SUITE(QuarantineMachine)
