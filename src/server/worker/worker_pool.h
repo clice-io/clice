@@ -91,12 +91,28 @@ struct WorkerPoolOptions {
 ///   - Stateful workers keep per-document ASTs; each open document is pinned
 ///     to one worker (path_id affinity), balanced by document count.
 ///
-/// The pool owns process lifecycle only: it respawns crashed workers with
-/// exponential backoff and gives a slot up once a streak exceeds
-/// `max_crash_streak` consecutive fast crashes. It never retries requests. A request that was
-/// in flight when its worker died fails with dispatch_errc::worker_crashed
-/// (or dispatch_errc::cancelled if the pool itself preempted the worker to
-/// relieve memory pressure); the caller decides whether to resend or requeue.
+/// Responsibility contract — the pool is mechanism, callers are policy:
+///
+///   - The pool owns PROCESSES and CAPACITY: spawn, monitor, respawn with
+///     backoff, per-slot crash budget (streak, healthy-uptime reset),
+///     give-up -> cooldown revival, scaling between min/max, preemption
+///     under memory pressure, scheduling (priority, affinity, probe
+///     isolation). Its guarantee: capacity is never permanently zero.
+///   - The pool NEVER retries a request. Requests do not survive a crash;
+///     slots do. Retry policy is semantic and lives with the caller: the
+///     compiler resends idempotent builds once, the indexer requeues with
+///     its own budget, a stateful compile never resends (the crash is
+///     evidence about the content — see state/quarantine.h).
+///   - The dispatch_errc taxonomy is the contract language. worker_crashed:
+///     the request died with its worker — the caller may blame its content
+///     (Error::data carries the dead incarnation's identity so one death is
+///     never blamed twice). worker_restarting: never dispatched, blameless.
+///     worker_unavailable: a capacity window — retryable later when
+///     revives_slots(). cancelled: deliberate preemption, requeue freely.
+///   - `suspect` is the single sanctioned policy hint INTO the pool: the
+///     caller already distrusts the workload (a quarantine probe), so its
+///     crash spends no slot budget and it only runs where it can take no
+///     healthy document with it.
 class WorkerPool {
 public:
     WorkerPool(kota::event_loop& loop) : loop(loop) {}
@@ -553,7 +569,8 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
         mark_worker_dead(idx, true, true);
     co_return kota::outcome_error(
         kota::ipc::Error{worker::dispatch_errc::worker_crashed,
-                         "Stateful worker died during request: " + result.error().message});
+                         "Stateful worker died during request: " + result.error().message,
+                         worker::death_identity(idx, gen, true)});
 }
 
 template <typename Params>
@@ -604,7 +621,8 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     }
     co_return kota::outcome_error(
         kota::ipc::Error{worker::dispatch_errc::worker_crashed,
-                         "Stateless worker died during request: " + result.error().message});
+                         "Stateless worker died during request: " + result.error().message,
+                         worker::death_identity(idx, gen, false)});
 }
 
 template <typename Params>

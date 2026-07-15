@@ -143,6 +143,25 @@ TEST_CASE(MixedEvidenceCounts) {
     EXPECT_EQ(q.crashes(), 0u);
 }
 
+TEST_CASE(DeathCountedOnce) {
+    Quarantine q;
+
+    // One process death fails every request in flight on it: a compile and
+    // a query blaming the same incarnation count once, across ledgers.
+    q.on_crash("sf:1:7");
+    q.on_query_crash("sf:1:7");
+    EXPECT_EQ(q.crashes(), 1u);
+
+    // A different incarnation is a different death.
+    q.on_crash("sf:1:8");
+    EXPECT_EQ(q.crashes(), 2u);
+
+    // Anonymous evidence (no identity) always counts.
+    q.on_crash();
+    q.on_crash();
+    EXPECT_EQ(q.crashes(), 4u);
+}
+
 TEST_CASE(AnnounceOncePerSpell) {
     Quarantine q;
     EXPECT_FALSE(q.needs_announcement());

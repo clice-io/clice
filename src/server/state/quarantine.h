@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <string>
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -61,8 +62,13 @@ public:
     }
 
     /// A dispatch carrying this document's content killed a worker.
-    void on_crash() {
-        streak += 1;
+    /// `death` is the worker incarnation's identity (worker::death_of):
+    /// one process death fails every request in flight on it, and a death
+    /// already counted — by either ledger — is not counted again.
+    void on_crash(llvm::StringRef death = {}) {
+        if(!counted(death)) {
+            streak += 1;
+        }
     }
 
     /// Snapshot the inherited evidence at compile takeoff.
@@ -98,8 +104,10 @@ public:
     /// that answers (on_query_land) clears it. Without the split, the
     /// crash-triggered recompile would land, launder the evidence, and the
     /// next query would kill a worker again, forever.
-    void on_query_crash() {
-        query_streak += 1;
+    void on_query_crash(llvm::StringRef death = {}) {
+        if(!counted(death)) {
+            query_streak += 1;
+        }
     }
 
     /// A query answered: queries on the current content provably do not
@@ -153,13 +161,30 @@ public:
         query_streak = 0;
         probe = false;
         announced_spell = false;
+        last_death.clear();
     }
 
 private:
+    /// Whether this death was already counted. Remembering only the most
+    /// recent identity suffices: a peer teardown fails all of a death's
+    /// in-flight requests in the same loop turn, so their errors arrive
+    /// adjacently. Anonymous evidence (no identity) always counts.
+    bool counted(llvm::StringRef death) {
+        if(death.empty()) {
+            return false;
+        }
+        if(death == last_death) {
+            return true;
+        }
+        last_death = death.str();
+        return false;
+    }
+
     unsigned streak = 0;
     unsigned query_streak = 0;
     bool probe = false;
     bool announced_spell = false;
+    std::string last_death;
 };
 
 /// Content-keyed crash budget for shared build artifacts (PCH, PCM).

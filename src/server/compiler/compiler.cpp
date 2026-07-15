@@ -154,7 +154,7 @@ static kota::ipc::RequestResult<Params> build_for(WorkerPool& pool,
                                                   Params params) {
     auto result = co_await send_stateless_retrying(pool, std::move(params));
     if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-        session.quarantine.on_crash();
+        session.quarantine.on_crash(worker::death_of(result.error()));
     }
     co_return std::move(result);
 }
@@ -909,7 +909,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // restarting-window fast-fail never reached a worker.
         if(!result.has_value()) {
             if(result.error().code == worker::dispatch_errc::worker_crashed) {
-                session->quarantine.on_crash();
+                session->quarantine.on_crash(worker::death_of(result.error()));
             } else if(suspect && result.error().code == worker::dispatch_errc::worker_unavailable) {
                 // The probe never ran: keep it armed so a later request
                 // retries once an expendable worker frees up.
@@ -1199,7 +1199,7 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
         // though its compile landed: separate ledger, since only a query
         // that answers disproves it (see Quarantine::on_query_crash).
         if(result.error().code == worker::dispatch_errc::worker_crashed) {
-            session->quarantine.on_query_crash();
+            session->quarantine.on_query_crash(worker::death_of(result.error()));
         }
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
@@ -1233,7 +1233,7 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     auto result = co_await pool.send_stateful(path_id, worker::DocumentLinkParams{path});
     if(!result.has_value()) {
         if(result.error().code == worker::dispatch_errc::worker_crashed) {
-            session->quarantine.on_query_crash();
+            session->quarantine.on_query_crash(worker::death_of(result.error()));
         }
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,

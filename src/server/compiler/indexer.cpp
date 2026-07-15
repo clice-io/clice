@@ -546,12 +546,17 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                 break;
             }
             case RequeueVerdict::GaveUp: {
-                LOG_WARN("[{}/{}] Index giving up on {} after {} requeues: {}",
-                         index,
-                         total,
-                         file_path,
-                         max_requeue_attempts,
-                         result.error().message);
+                // Log-only by design: the file is usually not open (open
+                // documents are served by their session, not the shard),
+                // so there is no diagnostic surface. Cross-file references
+                // into this file stay stale until its content changes.
+                LOG_WARN(
+                    "[{}/{}] Index giving up on {} after {} crash requeues; " "its cross-file data stays stale until it is edited: {}",
+                    index,
+                    total,
+                    file_path,
+                    max_requeue_attempts,
+                    result.error().message);
                 break;
             }
             case RequeueVerdict::Requeued: {
