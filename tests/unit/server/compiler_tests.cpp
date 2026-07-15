@@ -283,6 +283,63 @@ TEST_CASE(PchCrashBlocksBuild) {
     logging::reset_anomaly_for_testing();
 }
 
+TEST_CASE(StopUnblocksCompileWaiters) {
+    // Compiler::stop() cancels compile_tasks, destroying a suspended
+    // run_compile frame without resuming it. The finish must be RAII: a
+    // waiter parked on the pending compile's `done` event would otherwise
+    // hang forever and the session would stay bricked behind `compiling`.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("slow.cpp", "");
+    auto src = tmp.path("slow.cpp");
+
+    kota::event_loop loop;
+    Workspace workspace;
+    ContextResolver contexts(workspace);
+    WorkerPool pool(loop);
+    Compiler compiler(loop, workspace, contexts, pool);
+
+    auto session = std::make_shared<Session>();
+    session->path_id = workspace.path_pool.intern(src);
+    session->text = "#include <vector>\n#include <string>\nint main() { return 0; }\n";
+
+    bool waiter_done = false;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(pool.start(opts));
+        co_await kota::sleep(500);
+
+        kota::task_group<> group(loop);
+        auto waiter = [&]() -> kota::task<> {
+            [[maybe_unused]] bool ok = co_await compiler.ensure_compiled(session);
+            waiter_done = true;
+        };
+        group.spawn(waiter());
+
+        // Let the compile reach the stateful worker, then tear down.
+        co_await kota::sleep(300);
+        co_await compiler.stop();
+        co_await group.join();
+
+        EXPECT_TRUE(waiter_done);
+        EXPECT_TRUE(session->compiling == nullptr);
+
+        co_await pool.stop();
+        done = true;
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+    EXPECT_TRUE(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
 TEST_CASE(PoisonPreambleBudget) {
     // One document's quarantine cannot contain a poison preamble: the PCH
     // is shared, so every session with the same preamble would re-trigger

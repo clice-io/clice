@@ -1,5 +1,6 @@
 #include "server/worker/stateful_worker.h"
 
+#include <atomic>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -44,6 +45,19 @@ struct DocumentEntry {
 
     // Per-document serialization mutex
     kota::mutex strand;
+};
+
+/// RAII ownership of a locked strand. kotatsu cancellation destroys a
+/// suspended coroutine frame without resuming it — a peer close (or a
+/// wire-level $/cancelRequest) cancels the handler task while it awaits the
+/// thread pool — so a manual unlock after the await would never run on that
+/// path and the document's strand would deadlock forever.
+struct [[nodiscard]] StrandGuard {
+    kota::mutex& strand;
+
+    ~StrandGuard() {
+        strand.unlock();
+    }
 };
 
 class StatefulWorker {
@@ -103,14 +117,24 @@ class StatefulWorker {
 
         co_await doc->ast_ready.wait();
         co_await doc->strand.lock();
+        StrandGuard strand_guard{doc->strand};
 
-        auto result = co_await kota::queue([&]() -> R {
-            if(!doc->has_ast || (!doc->unit.completed() && !doc->unit.fatal_error()))
-                return std::move(missing);
-            return fn(*doc);
-        });
+        // The frame stays alive until fn returns even when the handler is
+        // cancelled mid-await, so the by-reference captures are safe; the
+        // hook just lets a cancelled query return its missing value instead
+        // of walking the whole AST for a result nobody will read.
+        std::atomic<bool> cancelled{false};
+        auto result = co_await kota::queue(
+            [&]() -> R {
+                if(cancelled.load(std::memory_order_relaxed)) {
+                    return std::move(missing);
+                }
+                if(!doc->has_ast || (!doc->unit.completed() && !doc->unit.fatal_error()))
+                    return std::move(missing);
+                return fn(*doc);
+            },
+            [&] { cancelled.store(true, std::memory_order_relaxed); });
 
-        doc->strand.unlock();
         co_return result.value();
     }
 
@@ -141,6 +165,20 @@ void StatefulWorker::register_handlers() {
 
         co_await doc->strand.lock();
 
+        // Every exit — including a cancellation that destroys this frame at
+        // the queue await below — must release the strand and wake the AST
+        // waiters: an unset ast_ready would hang every later query for this
+        // document (they observe has_ast == false and return their missing
+        // value; the next Compile sets a real AST).
+        struct [[nodiscard]] CompileGuard {
+            DocumentEntry& doc;
+
+            ~CompileGuard() {
+                doc.ast_ready.set();
+                doc.strand.unlock();
+            }
+        } guard{*doc};
+
         // Copy params to doc AFTER acquiring the strand lock, so that
         // concurrent Compile requests waiting on the strand don't
         // overwrite our fields before we use them.
@@ -154,56 +192,66 @@ void StatefulWorker::register_handlers() {
             doc->pcms.try_emplace(name, pcm_path);
         }
 
-        auto compile_result = co_await kota::queue([&]() -> worker::CompileResult {
-            ScopedTimer timer;
+        // The parse itself is cancellable: CompilationParams::stop is
+        // polled after every top-level declaration, so the hook reaches
+        // into the middle of the AST build instead of waiting for it to
+        // finish; an interrupted unit reports !completed() and the phases
+        // after it are skipped like any other incomplete compile. The
+        // document stays coherent at every early exit (unit and has_ast
+        // are set together).
+        auto stop = std::make_shared<std::atomic_bool>(false);
+        auto compile_result = co_await kota::queue(
+            [&]() -> worker::CompileResult {
+                ScopedTimer timer;
 
-            CompilationParams cp;
-            cp.kind = CompilationKind::Content;
-            fill_args(cp, doc->directory, doc->arguments);
-            if(!doc->pch.first.empty()) {
-                cp.pch = doc->pch;
-            }
-            cp.add_remapped_file(params.path, doc->text);
-            for(auto& entry: doc->pcms) {
-                cp.pcms.try_emplace(entry.getKey(), entry.getValue());
-            }
+                CompilationParams cp;
+                cp.kind = CompilationKind::Content;
+                fill_args(cp, doc->directory, doc->arguments);
+                if(!doc->pch.first.empty()) {
+                    cp.pch = doc->pch;
+                }
+                cp.add_remapped_file(params.path, doc->text);
+                for(auto& entry: doc->pcms) {
+                    cp.pcms.try_emplace(entry.getKey(), entry.getValue());
+                }
+                cp.stop = stop;
 
-            doc->unit = compile(cp);
-            doc->has_ast = true;
+                doc->unit = compile(cp);
+                doc->has_ast = true;
 
-            worker::CompileResult result;
-            result.version = doc->version;
-            if(doc->unit.completed() || doc->unit.fatal_error()) {
-                auto diags = feature::diagnostics(doc->unit);
-                auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(diags);
-                result.diagnostics = kota::codec::RawValue{json ? std::move(*json) : "[]"};
-                LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
-                         params.path,
-                         timer.ms(),
-                         diags.size(),
-                         doc->unit.fatal_error());
-            } else {
-                result.diagnostics = kota::codec::RawValue{"[]"};
-                LOG_WARN("Compile incomplete: path={}, {}ms", params.path, timer.ms());
-            }
-            result.memory_usage = 0;  // TODO: query actual memory
-            if(doc->unit.completed()) {
-                result.inactive_regions =
-                    feature::inactive_regions(doc->unit, params.open_conditionals, doc->pch.second)
-                        .regions;
-                result.build_at = doc->unit.build_at().count();
-                result.deps = doc->unit.deps();
+                worker::CompileResult result;
+                result.version = doc->version;
+                if(doc->unit.completed() || doc->unit.fatal_error()) {
+                    auto diags = feature::diagnostics(doc->unit);
+                    auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(diags);
+                    result.diagnostics = kota::codec::RawValue{json ? std::move(*json) : "[]"};
+                    LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
+                             params.path,
+                             timer.ms(),
+                             diags.size(),
+                             doc->unit.fatal_error());
+                } else {
+                    result.diagnostics = kota::codec::RawValue{"[]"};
+                    LOG_WARN("Compile incomplete: path={}, {}ms", params.path, timer.ms());
+                }
+                result.memory_usage = 0;  // TODO: query actual memory
+                if(doc->unit.completed() && !stop->load(std::memory_order_relaxed)) {
+                    result.inactive_regions = feature::inactive_regions(doc->unit,
+                                                                        params.open_conditionals,
+                                                                        doc->pch.second)
+                                                  .regions;
+                    result.build_at = doc->unit.build_at().count();
+                    result.deps = doc->unit.deps();
 
-                // Build index for main file only (interested_only=true).
-                auto tu_index = index::TUIndex::build(doc->unit, true);
-                llvm::raw_string_ostream os(result.tu_index_data);
-                tu_index.serialize(os);
-            }
-            return result;
-        });
+                    // Build index for main file only (interested_only=true).
+                    auto tu_index = index::TUIndex::build(doc->unit, true);
+                    llvm::raw_string_ostream os(result.tu_index_data);
+                    tu_index.serialize(os);
+                }
+                return result;
+            },
+            [stop] { stop->store(true, std::memory_order_relaxed); });
 
-        doc->strand.unlock();
-        doc->ast_ready.set();
         shrink_if_over_limit();
 
         co_return compile_result.value();

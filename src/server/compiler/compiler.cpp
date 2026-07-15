@@ -352,7 +352,6 @@ void Compiler::init_compile_graph() {
                 workspace.build_crashes.on_crash(budget_key);
             });
         if(!result.has_value() || !result.value().success) {
-            workspace.store->abort(pending);
             if(expected_build_failure(result)) {
                 LOG_WARN("BuildPCM failed for module {}: {}",
                          module_name,
@@ -592,8 +591,6 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         });
 
     if(!result.has_value() || !result.value().success) {
-        workspace.store->abort(pending);
-        workspace.store->abort(pending_idx);
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", path, build_failure_message(result));
         } else {
@@ -622,7 +619,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         PairCommit outcome;
         auto pch_path = workspace.store->commit(std::move(pending));
         if(!pch_path) {
-            workspace.store->abort(pending_idx);
+            // pending_idx cleans its own tmp blob when the frame unwinds.
             return outcome;
         }
         outcome.pch_path = std::move(*pch_path);
@@ -843,13 +840,24 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
     // get dirty again while we were flying".
     auto epoch = session->dirty_epoch;
 
-    auto finish_compile = [&]() {
-        if(session->compiling == pc) {
-            session->compiling.reset();
+    // RAII, not a manual call: kotatsu cancellation destroys a suspended
+    // frame without resuming it (compile_tasks.cancel() at shutdown), and
+    // a finish that never runs would leave session->compiling set and
+    // `done` unset — every waiter in ensure_compiled hangs and the session
+    // is bricked. Same pattern as BuildingGuard and UnitGuard.
+    struct [[nodiscard]] FinishCompile {
+        std::shared_ptr<Session>& session;
+        std::shared_ptr<Session::PendingCompile>& pc;
+        std::uint32_t pid;
+
+        ~FinishCompile() {
+            if(session->compiling == pc) {
+                session->compiling.reset();
+            }
+            LOG_INFO("ensure_compiled: finish path_id={}", pid);
+            pc->done.set();
         }
-        LOG_INFO("ensure_compiled: finish path_id={}", pid);
-        pc->done.set();
-    };
+    } finish_compile{session, pc, pid};
 
     LOG_INFO("ensure_compiled: starting compile path_id={} gen={}", pid, gen);
 
@@ -906,7 +914,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         pc->deps_done = true;
         if(!deps_ok) {
             LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
-            finish_compile();
             co_return;
         }
 
@@ -915,7 +922,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                      session->generation,
                      gen,
                      uri_str);
-            finish_compile();
             co_return;
         }
 
@@ -929,7 +935,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             LOG_WARN("ensure_compiled: {} quarantined during dependency prep", uri_str);
             session->quarantine.spend_probe();
             publish_quarantined(session, source, suffix_line_limit);
-            finish_compile();
             co_return;
         }
 
@@ -982,7 +987,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                      session->generation,
                      gen,
                      uri_str);
-            finish_compile();
             co_return;
         }
 
@@ -1013,7 +1017,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                 };
                 on_output.emit(session);
             }
-            finish_compile();
             co_return;
         }
 
@@ -1025,7 +1028,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // ast_dirty is still set, so the next request re-runs the trial.
         if(trial_round && session->dirty_epoch != epoch) {
             LOG_INFO("Discarding invalidated self-containment probe for {}", uri_str);
-            finish_compile();
             co_return;
         }
 
@@ -1079,7 +1081,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         }
 
         auto version = session->version;
-        finish_compile();
 
         LOG_PERF("request", "kind=Compile file={} total_ms={}", file_path, timer.ms());
         // The preamble's share lives with the PCH; the compile result
@@ -1100,8 +1101,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             on_indexing_needed();
         co_return;
     }
-
-    finish_compile();
 }
 
 /// AST and diagnostics have been published to the client.

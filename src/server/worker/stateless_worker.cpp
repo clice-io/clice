@@ -1,5 +1,6 @@
 #include "server/worker/stateless_worker.h"
 
+#include <atomic>
 #include <cstdlib>
 #include <format>
 #include <optional>
@@ -99,13 +100,15 @@ static std::optional<std::string> write_preamble_state(llvm::StringRef blob,
     return std::nullopt;
 }
 
-static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
+static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
+                                            const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
     cp.kind = CompilationKind::Preamble;
     fill_args(cp, params.directory, params.arguments);
     cp.add_remapped_file(params.file, params.text, params.preamble_bound);
+    cp.stop = stop;
 
     // When the master provides an output path it is already a tmp path
     // allocated by its CacheStore: write directly, the master commits
@@ -125,7 +128,10 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
 
     PCHInfo pch_info;
     auto unit = compile(cp, pch_info);
-    bool success = unit.completed();
+    // A cancelled parse reports !completed(); the extra check catches a
+    // cancellation landing between the parse and the serialization, whose
+    // blob nobody will read. The tmp file is removed like any failed build.
+    bool success = unit.completed() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit.build_at().count();
 
     std::string errors;
@@ -175,7 +181,8 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params) {
     }
 }
 
-static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
+static worker::BuildResult handle_build_pcm(const worker::BuildParams& params,
+                                            const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
@@ -184,6 +191,7 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
     for(auto& [name, path]: params.pcms) {
         cp.pcms.try_emplace(name, path);
     }
+    cp.stop = stop;
 
     // See handle_build_pch: a provided output path is the master's tmp path.
     std::string tmp_path;
@@ -201,7 +209,7 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
 
     PCMInfo pcm_info;
     auto unit = compile(cp, pcm_info);
-    bool success = unit.completed();
+    bool success = unit.completed() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit.build_at().count();
 
     std::string errors;
@@ -236,7 +244,8 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params) {
     }
 }
 
-static worker::BuildResult handle_index(const worker::BuildParams& params) {
+static worker::BuildResult handle_index(const worker::BuildParams& params,
+                                        const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
@@ -245,6 +254,7 @@ static worker::BuildResult handle_index(const worker::BuildParams& params) {
     for(auto& [name, path]: params.pcms) {
         cp.pcms.try_emplace(name, path);
     }
+    cp.stop = stop;
 
     auto unit = compile(cp);
     if(!unit.completed()) {
@@ -252,6 +262,11 @@ static worker::BuildResult handle_index(const worker::BuildParams& params) {
         return {false, "Index compilation failed"};
     }
 
+    // Building and serializing the index costs a large share of the pass;
+    // skip both when the cancellation landed after the parse finished.
+    if(stop->load(std::memory_order_relaxed)) {
+        return {false, "Index cancelled"};
+    }
     auto tu_index = index::TUIndex::build(unit);
     std::string serialized;
     llvm::raw_string_ostream os(serialized);
@@ -267,7 +282,8 @@ static worker::BuildResult handle_index(const worker::BuildParams& params) {
     return result;
 }
 
-static worker::BuildResult handle_completion(const worker::BuildParams& params) {
+static worker::BuildResult handle_completion(const worker::BuildParams& params,
+                                             const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
@@ -281,6 +297,7 @@ static worker::BuildResult handle_completion(const worker::BuildParams& params) 
     }
     cp.add_remapped_file(params.file, params.text);
     cp.completion = {params.file, params.offset};
+    cp.stop = stop;
 
     auto items = feature::code_complete(cp);
     LOG_DEBUG("Completion done: {} items, {}ms", items.size(), timer.ms());
@@ -290,7 +307,8 @@ static worker::BuildResult handle_completion(const worker::BuildParams& params) 
     return result;
 }
 
-static worker::BuildResult handle_signature_help(const worker::BuildParams& params) {
+static worker::BuildResult handle_signature_help(const worker::BuildParams& params,
+                                                 const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
@@ -304,6 +322,7 @@ static worker::BuildResult handle_signature_help(const worker::BuildParams& para
     }
     cp.add_remapped_file(params.file, params.text);
     cp.completion = {params.file, params.offset};
+    cp.stop = stop;
 
     auto help = feature::signature_help(cp);
     LOG_DEBUG("SignatureHelp done: {}ms", timer.ms());
@@ -362,20 +381,32 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     peer.on_request([&](RequestContext& ctx,
                         const worker::BuildParams& params) -> RequestResult<worker::BuildParams> {
         using K = worker::BuildKind;
-        auto result = co_await kota::queue([&]() -> worker::BuildResult {
-            switch(params.kind) {
-                case K::BuildPCH: return handle_build_pch(params);
-                case K::BuildPCM: return handle_build_pcm(params);
-                case K::Index: {
-                    ScopedNice guard;
-                    return handle_index(params);
+        // A cancellation (peer close, wire-level $/cancelRequest) dequeues
+        // work that has not started; work already on the pool thread learns
+        // through the hook: the shared flag doubles as CompilationParams::
+        // stop, which clang polls after every top-level declaration, so
+        // even the parse itself stops instead of running to completion for
+        // a result nobody will read.
+        auto stop = std::make_shared<std::atomic_bool>(false);
+        auto result = co_await kota::queue(
+            [&]() -> worker::BuildResult {
+                if(stop->load(std::memory_order_relaxed)) {
+                    return {false, "Build cancelled"};
                 }
-                case K::Completion: return handle_completion(params);
-                case K::SignatureHelp: return handle_signature_help(params);
-                case K::Format: return handle_format(params);
-            }
-            return {false, "Unknown build kind"};
-        });
+                switch(params.kind) {
+                    case K::BuildPCH: return handle_build_pch(params, stop);
+                    case K::BuildPCM: return handle_build_pcm(params, stop);
+                    case K::Index: {
+                        ScopedNice guard;
+                        return handle_index(params, stop);
+                    }
+                    case K::Completion: return handle_completion(params, stop);
+                    case K::SignatureHelp: return handle_signature_help(params, stop);
+                    case K::Format: return handle_format(params);
+                }
+                return {false, "Unknown build kind"};
+            },
+            [stop] { stop->store(true, std::memory_order_relaxed); });
         co_return result.value();
     });
 

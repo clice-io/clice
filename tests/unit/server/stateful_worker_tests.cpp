@@ -52,6 +52,60 @@ TEST_CASE(CompileRequest) {
     ASSERT_TRUE(test_done);
 }
 
+TEST_CASE(CancelledCompileFreesStrand) {
+    TempDir tmp;
+    tmp.touch("cancel_test.cpp", "");
+    auto src = tmp.path("cancel_test.cpp");
+
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        // Slow enough that the cancel lands while the AST build is still on
+        // the pool thread.
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = "#include <vector>\n#include <string>\nint main() { return 0; }\n";
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+        cp.pch = {"", 0};
+        cp.pcms = {};
+
+        kota::cancellation_source source;
+        kota::ipc::request_options opts;
+        opts.token = source.token();
+
+        bool first_failed = false;
+        kota::task_group<> group(w.loop);
+        auto sender = [&]() -> kota::task<> {
+            auto result = co_await w.peer->send_request(cp, opts);
+            first_failed = !result.has_value();
+        };
+        group.spawn(sender());
+        co_await kota::sleep(150, w.loop);
+        source.cancel();
+        co_await group.join();
+        EXPECT_TRUE(first_failed);
+
+        // The strand must be free again: a second compile of the same
+        // document completes instead of hanging behind the cancelled one's
+        // never-released lock (the guard releases it when the cancelled
+        // handler's frame unwinds).
+        cp.version = 2;
+        auto retry = co_await w.peer->send_request(cp);
+        CO_ASSERT_TRUE(retry.has_value());
+        EXPECT_EQ(retry.value().version, 2);
+
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ASSERT_TRUE(test_done);
+}
+
 TEST_CASE(HoverWithoutCompile) {
     WorkerHandle w;
     ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
