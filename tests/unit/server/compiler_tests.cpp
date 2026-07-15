@@ -322,8 +322,14 @@ TEST_CASE(StopUnblocksCompileWaiters) {
         };
         group.spawn(waiter());
 
-        // Let the compile reach the stateful worker, then tear down.
-        co_await kota::sleep(300);
+        // Deterministic in-flight state: the pending compile is registered
+        // and the waiter still parked, so stop() provably cancels a
+        // suspended run_compile instead of racing one that already landed.
+        for(int i = 0; i < 100 && session->compiling == nullptr; ++i) {
+            co_await kota::sleep(10);
+        }
+        CO_ASSERT_TRUE(session->compiling != nullptr);
+        CO_ASSERT_FALSE(waiter_done);
         co_await compiler.stop();
 
         // Bounded: a waiter left hanging (the pre-RAII bug) fails this

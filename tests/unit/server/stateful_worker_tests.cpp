@@ -86,7 +86,14 @@ TEST_CASE(CancelledCompileFreesStrand) {
             first_failed = !result.has_value();
         };
         group.spawn(sender());
-        co_await kota::sleep(150, w.loop);
+        // One short tick: enough for the request bytes to flush, far below
+        // any parse of four STL headers. The $/cancelRequest then chases
+        // the request down the same pipe, and the single-threaded worker
+        // processes it while the handler is parked on the pool await — the
+        // compile cannot have replied first, so the cancel deterministically
+        // lands mid-flight (a 150ms window lost this race on a warm macOS
+        // runner that compiled the TU faster).
+        co_await kota::sleep(20, w.loop);
         source.cancel();
         co_await group.join();
         EXPECT_TRUE(first_failed);
