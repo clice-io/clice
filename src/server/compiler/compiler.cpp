@@ -150,19 +150,38 @@ static kota::ipc::RequestResult<Params> send_stateless_retrying(WorkerPool& pool
 }
 
 /// Every stateless build carrying an open document's content goes through
-/// here: each worker kill is blamed on the session before the caller sees
-/// the result, so no site can forget the accounting. Grep for build_for to
+/// here: each worker kill is blamed on the session's ledger for `kind`
+/// before the caller sees the result, so no site can forget the
+/// accounting, and a build that answers clears its own kind — a compile
+/// landing disproves none of this evidence. Grep for build_for to
 /// enumerate every such site.
 template <typename Params>
-static kota::ipc::RequestResult<Params> build_for(WorkerPool& pool,
-                                                  Session& session,
-                                                  Params params) {
-    return send_stateless_retrying(pool,
-                                   std::move(params),
-                                   [&session](const kota::ipc::protocol::Error& error) {
-                                       session.quarantine.on_crash(worker::death_of(error));
-                                   });
+static kota::ipc::RequestResult<Params>
+    build_for(WorkerPool& pool, Session& session, std::uint8_t kind, Params params) {
+    auto result = co_await send_stateless_retrying(
+        pool,
+        std::move(params),
+        [&session, kind](const kota::ipc::protocol::Error& error) {
+            session.quarantine.on_kind_crash(kind, worker::death_of(error));
+        });
+    if(result.has_value()) {
+        session.quarantine.on_kind_land(kind);
+    }
+    co_return std::move(result);
 }
+
+/// Evidence-kind discriminators for Quarantine's per-kind ledgers. Queries
+/// and stateless builds share one space, offset so they cannot collide;
+/// document links have no QueryKind and get their own slot.
+constexpr std::uint8_t evidence_kind(worker::QueryKind kind) {
+    return static_cast<std::uint8_t>(kind);
+}
+
+constexpr std::uint8_t evidence_kind(worker::BuildKind kind) {
+    return 0x40 + static_cast<std::uint8_t>(kind);
+}
+
+constexpr inline std::uint8_t document_link_evidence = 0x20;
 
 /// Clamp a client-supplied position to the document, following LSP
 /// semantics: a character beyond the line length defaults to the line end,
@@ -555,7 +574,8 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         pool,
         bp,
         [this, &session, &pch_key](const kota::ipc::protocol::Error& error) {
-            session.quarantine.on_crash(worker::death_of(error));
+            session.quarantine.on_kind_crash(evidence_kind(worker::BuildKind::BuildPCH),
+                                             worker::death_of(error));
             workspace.build_crashes.on_crash(pch_key);
         });
 
@@ -622,6 +642,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
 
     // The key built: its strikes were transient, not poison.
     workspace.build_crashes.on_land(pch_key);
+    session.quarantine.on_kind_land(evidence_kind(worker::BuildKind::BuildPCH));
 
     auto& st = workspace.pch_cache[pch_key];
     st.path = *committed.value().pch_path;
@@ -1226,15 +1247,28 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
 
     // A recovery query after a query-crash quarantine is still distrusted:
     // it needs the owner (the AST lives there), but its crash spends no
-    // slot budget and new documents avoid the worker while it flies.
+    // slot budget and new documents avoid the worker while it flies. It is
+    // also the attempt the edit's probe licensed — spend the probe here
+    // (idempotent when the compile already spent it; this covers the
+    // clean-AST fast path) and hand it back only when the query provably
+    // never dispatched.
     auto suspect = session->quarantine.active() ? Suspect::InPlace : Suspect::No;
+    if(suspect == Suspect::InPlace) {
+        session->quarantine.spend_probe();
+    }
     auto result = co_await pool.send_stateful(path_id, wp, {}, suspect);
     if(!result.has_value()) {
         // A query that kills the worker is this document's doing even
-        // though its compile landed: separate ledger, since only a query
-        // that answers disproves it (see Quarantine::on_query_crash).
-        if(result.error().code == worker::dispatch_errc::worker_crashed) {
-            session->quarantine.on_query_crash(worker::death_of(result.error()));
+        // though its compile landed: per-kind ledger, since only this query
+        // kind answering disproves it (see Quarantine::on_kind_crash).
+        auto code = result.error().code;
+        if(code == worker::dispatch_errc::worker_crashed) {
+            session->quarantine.on_kind_crash(evidence_kind(kind),
+                                              worker::death_of(result.error()));
+        } else if(suspect == Suspect::InPlace &&
+                  (code == worker::dispatch_errc::worker_unavailable ||
+                   code == worker::dispatch_errc::worker_restarting)) {
+            session->quarantine.re_arm_probe();
         }
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
@@ -1249,7 +1283,7 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     // that landed mid-flight must not launder the new content's ledger —
     // crashes count regardless of staleness, successes only when fresh.
     if(session->generation == gen) {
-        session->quarantine.on_query_land();
+        session->quarantine.on_kind_land(evidence_kind(kind));
     }
     LOG_PERF("request", "kind={} file={} wait_ms={} total_ms={}", kind, path, wait_ms, timer.ms());
     co_return std::move(result.value());
@@ -1271,11 +1305,20 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     auto wait_ms = timer.ms();
 
     auto suspect = session->quarantine.active() ? Suspect::InPlace : Suspect::No;
+    if(suspect == Suspect::InPlace) {
+        session->quarantine.spend_probe();
+    }
     auto result =
         co_await pool.send_stateful(path_id, worker::DocumentLinkParams{path}, {}, suspect);
     if(!result.has_value()) {
-        if(result.error().code == worker::dispatch_errc::worker_crashed) {
-            session->quarantine.on_query_crash(worker::death_of(result.error()));
+        auto code = result.error().code;
+        if(code == worker::dispatch_errc::worker_crashed) {
+            session->quarantine.on_kind_crash(document_link_evidence,
+                                              worker::death_of(result.error()));
+        } else if(suspect == Suspect::InPlace &&
+                  (code == worker::dispatch_errc::worker_unavailable ||
+                   code == worker::dispatch_errc::worker_restarting)) {
+            session->quarantine.re_arm_probe();
         }
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
@@ -1293,7 +1336,7 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     if(session->generation != gen) {
         co_return std::vector<feature::DocumentLink>{};
     }
-    session->quarantine.on_query_land();
+    session->quarantine.on_kind_land(document_link_evidence);
     LOG_PERF("request",
              "kind=DocumentLink file={} wait_ms={} total_ms={}",
              path,
@@ -1356,7 +1399,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     lsp::LineMap map(wp.text);
     wp.offset = clamped_offset(map, position);
 
-    auto result = co_await build_for(pool, *session, wp);
+    auto result = co_await build_for(pool, *session, evidence_kind(kind), wp);
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
@@ -1402,7 +1445,7 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     }
 
     ScopedTimer timer;
-    auto result = co_await build_for(pool, *session, wp);
+    auto result = co_await build_for(pool, *session, evidence_kind(worker::BuildKind::Format), wp);
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,

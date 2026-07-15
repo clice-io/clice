@@ -108,40 +108,55 @@ TEST_CASE(ProbeSuccessRecovers) {
 
 TEST_CASE(QueryCrashSurvivesCompile) {
     Quarantine q;
-    q.on_query_crash();
+    q.on_kind_crash(1);
 
-    // A successful compile does not disprove a query crash: the same AST
+    // A successful compile does not disprove a kind crash: the same AST
     // crashes the same query again. Without the separate ledger, the
     // crash-triggered recompile would launder the evidence forever.
     q.land(q.begin_flight());
     EXPECT_EQ(q.crashes(), 1u);
-    q.on_query_crash();
+    q.on_kind_crash(1);
     EXPECT_TRUE(q.blocked());
 
     // Recovery: an edit grants the probe, its compile lands, and the
-    // first query that answers clears the ledger.
+    // crashing kind answering clears the ledger.
     q.on_edit(true);
     q.spend_probe();
     q.land(q.begin_flight());
     EXPECT_TRUE(q.active());
-    q.on_query_land();
+    q.on_kind_land(1);
     EXPECT_FALSE(q.active());
     EXPECT_FALSE(q.blocked());
+}
+
+TEST_CASE(KindsRecoverIndependently) {
+    Quarantine q;
+    q.on_kind_crash(1);
+    q.on_kind_crash(1);
+    EXPECT_TRUE(q.blocked());
+
+    // A harmless other kind answering (a hover while semantic tokens is
+    // the crasher) must not launder the crashing kind's evidence.
+    q.on_kind_land(2);
+    EXPECT_TRUE(q.blocked());
+
+    q.on_kind_land(1);
+    EXPECT_FALSE(q.active());
 }
 
 TEST_CASE(MixedEvidenceCounts) {
     Quarantine q;
     q.on_crash();
 
-    // Query evidence accrued mid-flight counts toward grew(); the landing
+    // Kind evidence accrued mid-flight counts toward grew(); the landing
     // clears only the inherited compile share.
     auto flight = q.begin_flight();
-    q.on_query_crash();
+    q.on_kind_crash(1);
     EXPECT_TRUE(q.grew(flight));
     q.land(flight);
     EXPECT_EQ(q.crashes(), 1u);
 
-    q.on_query_land();
+    q.on_kind_land(1);
     EXPECT_EQ(q.crashes(), 0u);
 }
 
@@ -151,7 +166,7 @@ TEST_CASE(DeathCountedOnce) {
     // One process death fails every request in flight on it: a compile and
     // a query blaming the same incarnation count once, across ledgers.
     q.on_crash("sf:1:7");
-    q.on_query_crash("sf:1:7");
+    q.on_kind_crash(1, "sf:1:7");
     EXPECT_EQ(q.crashes(), 1u);
 
     // A different incarnation is a different death.
@@ -199,7 +214,7 @@ TEST_CASE(ResetClearsAll) {
     q.on_edit(true);
     q.mark_announced();
 
-    q.on_query_crash();
+    q.on_kind_crash(1);
     q.reset();
     EXPECT_EQ(q.crashes(), 0u);
     EXPECT_FALSE(q.active());

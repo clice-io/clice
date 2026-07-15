@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <string>
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -48,7 +50,11 @@ public:
 
     /// Crashes currently blamed on this document's content.
     unsigned crashes() const {
-        return streak + query_streak;
+        unsigned total = streak;
+        for(auto& [kind, count]: kind_streaks) {
+            total += count;
+        }
+        return total;
     }
 
     /// The document has spent its crash budget: compile and query evidence
@@ -90,8 +96,8 @@ public:
 
     /// A full compile of the current content landed: the inherited compile
     /// evidence is disproved, but crashes recorded during the flight will
-    /// recur on the next request, and query evidence is untouched — the
-    /// compile succeeding says nothing about the queries that follow it.
+    /// recur on the next request, and per-kind evidence is untouched — the
+    /// compile succeeding says nothing about the dispatches it never ran.
     void land(Flight flight) {
         streak -= std::min(flight.inherited, streak);
         if(!active()) {
@@ -99,22 +105,24 @@ public:
         }
     }
 
-    /// A query on this document's settled AST killed a worker. A separate
-    /// ledger from compile crashes: a successful compile does not disprove
-    /// it — the same AST crashes the same query again — so only a query
-    /// that answers (on_query_land) clears it. Without the split, the
-    /// crash-triggered recompile would land, launder the evidence, and the
-    /// next query would kill a worker again, forever.
-    void on_query_crash(llvm::StringRef death = {}) {
+    /// A dispatch of `kind` — a query against the settled AST, a stateless
+    /// build such as completion or format — killed a worker. Per-kind
+    /// ledgers, separate from the compile streak: a compile landing
+    /// disproves none of this (the same AST crashes the same query again,
+    /// clang-format never ran the compile's code), and one kind's success
+    /// says nothing about another's — a harmless hover must not launder
+    /// semantic-tokens evidence. Kind values are caller-defined
+    /// discriminators; each kind clears only via its own on_kind_land.
+    void on_kind_crash(std::uint8_t kind, llvm::StringRef death = {}) {
         if(!counted(death)) {
-            query_streak += 1;
+            kind_streaks[kind] += 1;
         }
     }
 
-    /// A query answered: queries on the current content provably do not
-    /// kill workers.
-    void on_query_land() {
-        query_streak = 0;
+    /// A dispatch of `kind` answered: this kind on the current content
+    /// provably does not kill workers.
+    void on_kind_land(std::uint8_t kind) {
+        kind_streaks.erase(kind);
         if(!active()) {
             announced_spell = false;
         }
@@ -159,7 +167,7 @@ public:
     /// The document was (re)opened: fresh content, fresh record.
     void reset() {
         streak = 0;
-        query_streak = 0;
+        kind_streaks.clear();
         probe = false;
         announced_spell = false;
         last_death.clear();
@@ -182,7 +190,7 @@ private:
     }
 
     unsigned streak = 0;
-    unsigned query_streak = 0;
+    llvm::SmallDenseMap<std::uint8_t, unsigned, 4> kind_streaks;
     bool probe = false;
     bool announced_spell = false;
     std::string last_death;
