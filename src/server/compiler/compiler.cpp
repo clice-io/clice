@@ -152,22 +152,19 @@ static kota::ipc::RequestResult<Params> send_stateless_retrying(WorkerPool& pool
 /// Every stateless build carrying an open document's content goes through
 /// here: each worker kill is blamed on the session's ledger for `kind`
 /// before the caller sees the result, so no site can forget the
-/// accounting, and a build that answers clears its own kind — a compile
-/// landing disproves none of this evidence. Grep for build_for to
-/// enumerate every such site.
+/// accounting. Clearing the kind on success stays with the caller — it
+/// must be guarded by the launch generation, or a stale reply would
+/// launder evidence the new content recorded meanwhile. Grep for
+/// build_for to enumerate every such site.
 template <typename Params>
 static kota::ipc::RequestResult<Params>
     build_for(WorkerPool& pool, Session& session, std::uint8_t kind, Params params) {
-    auto result = co_await send_stateless_retrying(
-        pool,
-        std::move(params),
-        [&session, kind](const kota::ipc::protocol::Error& error) {
-            session.quarantine.on_kind_crash(kind, worker::death_of(error));
-        });
-    if(result.has_value()) {
-        session.quarantine.on_kind_land(kind);
-    }
-    co_return std::move(result);
+    return send_stateless_retrying(pool,
+                                   std::move(params),
+                                   [&session, kind](const kota::ipc::protocol::Error& error) {
+                                       session.quarantine.on_kind_crash(kind,
+                                                                        worker::death_of(error));
+                                   });
 }
 
 /// Evidence-kind discriminators for Quarantine's per-kind ledgers. Queries
@@ -486,6 +483,9 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
             pch_miss = "deps_changed";
         } else {
             session.pch_key = pch_key;
+            // Adopting a proven-good artifact disproves the session's PCH
+            // strikes as surely as building one.
+            session.quarantine.on_kind_land(evidence_kind(worker::BuildKind::BuildPCH));
             LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, path);
             co_return true;
         }
@@ -522,6 +522,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         if(auto it2 = workspace.pch_cache.find(pch_key);
            it2 != workspace.pch_cache.end() && !it2->second.path.empty()) {
             session.pch_key = pch_key;
+            session.quarantine.on_kind_land(evidence_kind(worker::BuildKind::BuildPCH));
             co_return true;
         }
         co_return false;
@@ -640,9 +641,13 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return false;
     }
 
-    // The key built: its strikes were transient, not poison.
+    // The key built: its strikes were transient, not poison. The session
+    // ledger clears only when this build's launch is still current — a
+    // stale build must not launder strikes the new content recorded.
     workspace.build_crashes.on_land(pch_key);
-    session.quarantine.on_kind_land(evidence_kind(worker::BuildKind::BuildPCH));
+    if(session.generation == launch_generation) {
+        session.quarantine.on_kind_land(evidence_kind(worker::BuildKind::BuildPCH));
+    }
 
     auto& st = workspace.pch_cache[pch_key];
     st.path = *committed.value().pch_path;
@@ -934,10 +939,15 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             params.open_conditionals.assign(conditionals.begin(), conditionals.end());
         }
 
-        // A quarantined document's probe is a known risk: tell the pool so
-        // the crash, if it comes, does not spend the slot's budget.
-        auto suspect = session->quarantine.active() ? Suspect::Isolated : Suspect::No;
-        session->quarantine.spend_probe();
+        // The probe rides the dispatch that can disprove its evidence: a
+        // compile spends it only when compiles are the crashers. A
+        // kind-quarantined document's compile is ordinary work, and the
+        // probe must survive it for the crashing kind's own retry.
+        bool recovery = session->quarantine.recovery_compile();
+        auto suspect = recovery ? Suspect::Isolated : Suspect::No;
+        if(recovery) {
+            session->quarantine.spend_probe();
+        }
         auto result = co_await pool.send_stateful(pid, params, {}, suspect);
 
         // Crash accounting runs even for superseded compiles: the crash came
@@ -1245,15 +1255,15 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
         }
     }
 
-    // A recovery query after a query-crash quarantine is still distrusted:
-    // it needs the owner (the AST lives there), but its crash spends no
-    // slot budget and new documents avoid the worker while it flies. It is
-    // also the attempt the edit's probe licensed — spend the probe here
-    // (idempotent when the compile already spent it; this covers the
-    // clean-AST fast path) and hand it back only when the query provably
-    // never dispatched.
-    auto suspect = session->quarantine.active() ? Suspect::InPlace : Suspect::No;
-    if(suspect == Suspect::InPlace) {
+    // A recovery query — this kind holds the strikes — is still
+    // distrusted: it needs the owner (the AST lives there), but its crash
+    // spends no slot budget and new documents avoid the worker while it
+    // flies. It also spends the probe the edit licensed (a harmless kind
+    // must not: hover would strand a semantic-tokens quarantine), handing
+    // it back only when the query provably never dispatched.
+    bool recovery = session->quarantine.recovery_kind(evidence_kind(kind));
+    auto suspect = recovery ? Suspect::InPlace : Suspect::No;
+    if(recovery) {
         session->quarantine.spend_probe();
     }
     auto result = co_await pool.send_stateful(path_id, wp, {}, suspect);
@@ -1265,9 +1275,8 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
         if(code == worker::dispatch_errc::worker_crashed) {
             session->quarantine.on_kind_crash(evidence_kind(kind),
                                               worker::death_of(result.error()));
-        } else if(suspect == Suspect::InPlace &&
-                  (code == worker::dispatch_errc::worker_unavailable ||
-                   code == worker::dispatch_errc::worker_restarting)) {
+        } else if(recovery && (code == worker::dispatch_errc::worker_unavailable ||
+                               code == worker::dispatch_errc::worker_restarting)) {
             session->quarantine.re_arm_probe();
         }
         if(!worker::is_operational_error(result.error())) {
@@ -1304,8 +1313,9 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     }
     auto wait_ms = timer.ms();
 
-    auto suspect = session->quarantine.active() ? Suspect::InPlace : Suspect::No;
-    if(suspect == Suspect::InPlace) {
+    bool recovery = session->quarantine.recovery_kind(document_link_evidence);
+    auto suspect = recovery ? Suspect::InPlace : Suspect::No;
+    if(recovery) {
         session->quarantine.spend_probe();
     }
     auto result =
@@ -1315,9 +1325,8 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         if(code == worker::dispatch_errc::worker_crashed) {
             session->quarantine.on_kind_crash(document_link_evidence,
                                               worker::death_of(result.error()));
-        } else if(suspect == Suspect::InPlace &&
-                  (code == worker::dispatch_errc::worker_unavailable ||
-                   code == worker::dispatch_errc::worker_restarting)) {
+        } else if(recovery && (code == worker::dispatch_errc::worker_unavailable ||
+                               code == worker::dispatch_errc::worker_restarting)) {
             session->quarantine.re_arm_probe();
         }
         if(!worker::is_operational_error(result.error())) {
@@ -1353,14 +1362,16 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     auto gen = session->generation;
 
     // This build compiles the same content the quarantine watches; a
-    // quarantined document gets no stateless builds either, or completion
+    // blocked document gets no stateless builds either, or completion
     // requests would keep killing workers the compile path is protecting.
-    // Recovery stays with the compile path's probe.
-    if(session->quarantine.active()) {
+    // A probe-armed document passes: when this kind holds the strikes,
+    // this dispatch IS the recovery attempt.
+    if(session->quarantine.blocked()) {
         LOG_WARN("forward_build: {} is quarantined, refusing build", path);
         co_return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
     }
+    auto flight = session->quarantine.begin_flight();
 
     // Takeoff snapshot for the pch_key write license (see
     // may_write_pch_key): this request runs concurrently with compiles and
@@ -1384,8 +1395,11 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     }
     // A PCH crash inside ensure_deps may have tipped the document into
     // quarantine after the entry gate: stop before dispatching the same
-    // content again.
-    if(session->quarantine.active()) {
+    // content again — that crash also spent any armed probe (it WAS the
+    // attempt). A probe that predates this request's own evidence does not
+    // excuse dispatching content that just proved poisonous.
+    if(session->quarantine.active() && session->quarantine.grew(flight)) {
+        session->quarantine.spend_probe();
         LOG_WARN("forward_build: {} quarantined during dependency prep", path);
         co_return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
@@ -1399,8 +1413,18 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     lsp::LineMap map(wp.text);
     wp.offset = clamped_offset(map, position);
 
+    // When this kind holds the strikes, this dispatch is the recovery
+    // attempt the edit licensed: spend the probe, hand it back only if the
+    // build provably never dispatched.
+    bool recovery = session->quarantine.recovery_kind(evidence_kind(kind));
+    if(recovery) {
+        session->quarantine.spend_probe();
+    }
     auto result = co_await build_for(pool, *session, evidence_kind(kind), wp);
     if(!result.has_value()) {
+        if(recovery && result.error().code == worker::dispatch_errc::worker_unavailable) {
+            session->quarantine.re_arm_probe();
+        }
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
                         "build (kind={}) failed for {}: {}",
@@ -1410,6 +1434,11 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
         }
         co_return kota::outcome_error(std::move(result.error()));
     }
+    // The reply proves this kind on the DISPATCHED content answers; a
+    // stale success must not launder evidence the new content recorded.
+    if(session->generation == gen) {
+        session->quarantine.on_kind_land(evidence_kind(kind));
+    }
     LOG_PERF("request", "kind={} file={} wait_ms={} total_ms={}", kind, path, wait_ms, timer.ms());
     co_return std::move(result.value().result_json);
 }
@@ -1418,11 +1447,12 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
                                              std::optional<protocol::Range> range) {
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
+    auto gen = session->generation;
 
     // Formatting runs no sema, but it is still this document's content on
-    // a worker: a quarantined document waits for its probe to land instead
-    // of keeping a side channel that can kill workers.
-    if(session->quarantine.active()) {
+    // a worker: a blocked document is refused. A probe-armed one passes —
+    // when format holds the strikes, this dispatch is the recovery.
+    if(session->quarantine.blocked()) {
         LOG_WARN("forward_format: {} is quarantined, refusing format", path);
         co_return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
@@ -1445,8 +1475,15 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     }
 
     ScopedTimer timer;
+    bool recovery = session->quarantine.recovery_kind(evidence_kind(worker::BuildKind::Format));
+    if(recovery) {
+        session->quarantine.spend_probe();
+    }
     auto result = co_await build_for(pool, *session, evidence_kind(worker::BuildKind::Format), wp);
     if(!result.has_value()) {
+        if(recovery && result.error().code == worker::dispatch_errc::worker_unavailable) {
+            session->quarantine.re_arm_probe();
+        }
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
                         "format failed for {}: {}",
@@ -1454,6 +1491,9 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
                         result.error().message);
         }
         co_return kota::outcome_error(std::move(result.error()));
+    }
+    if(session->generation == gen) {
+        session->quarantine.on_kind_land(evidence_kind(worker::BuildKind::Format));
     }
     LOG_PERF("request", "kind=Format file={} total_ms={}", path, timer.ms());
     co_return std::move(result.value().result_json);

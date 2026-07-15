@@ -68,6 +68,22 @@ public:
         return active() && !probe;
     }
 
+    /// Whether a compile is this quarantine's recovery attempt: the probe
+    /// rides the dispatch that can disprove the evidence, and a compile
+    /// disproves only compile strikes — a kind-quarantined document's
+    /// compile is ordinary work and must not spend the probe.
+    bool recovery_compile() const {
+        return active() && streak > 0;
+    }
+
+    /// Whether a dispatch of `kind` is this quarantine's recovery attempt:
+    /// only a kind holding strikes can disprove them. A harmless hover on
+    /// a semantic-tokens-quarantined document must leave the probe for the
+    /// semantic-tokens retry.
+    bool recovery_kind(std::uint8_t kind) const {
+        return active() && kind_streaks.contains(kind);
+    }
+
     /// A dispatch carrying this document's content killed a worker.
     /// `death` is the worker incarnation's identity (worker::death_of):
     /// one process death fails every request in flight on it, and a death

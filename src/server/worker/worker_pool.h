@@ -563,17 +563,37 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     // moment the worker dies.
     auto peer = assigned.peer;
     auto gen = assigned.generation;
+
+    // RAII unwind: a cancellation that unwinds the frame mid-await must
+    // not leave the worker marked as hosting suspect work forever. On
+    // transport death the guard is disarmed instead — the monitor's crash
+    // accounting consumes the count — and the generation check skips
+    // incarnations already torn down elsewhere.
+    struct SuspectGuard {
+        WorkerPool& pool;
+        std::size_t idx;
+        unsigned gen;
+        bool armed;
+
+        ~SuspectGuard() {
+            if(!armed) {
+                return;
+            }
+            auto& w = pool.stateful_workers[idx];
+            if(w.generation == gen && w.suspect_inflight > 0) {
+                w.suspect_inflight -= 1;
+            }
+        }
+    };
+
     if(suspect != Suspect::No) {
         assigned.suspect_inflight += 1;
     }
+    SuspectGuard suspect_guard{*this, idx, gen, suspect != Suspect::No};
     auto result = co_await peer->send_request(params, opts);
-    // Unwind the counter only when the request did not die on transport:
-    // a crash leaves it for the monitor's accounting to consume, and the
-    // generation guard skips incarnations already torn down elsewhere.
     bool transport_dead = !result.has_value() && worker::is_transport_error(result.error());
-    if(suspect != Suspect::No && !transport_dead && stateful_workers[idx].generation == gen &&
-       stateful_workers[idx].suspect_inflight > 0) {
-        stateful_workers[idx].suspect_inflight -= 1;
+    if(transport_dead) {
+        suspect_guard.armed = false;
     }
 
     if(result.has_value() || !worker::is_transport_error(result.error()))

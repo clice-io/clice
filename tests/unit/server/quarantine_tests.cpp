@@ -179,6 +179,23 @@ TEST_CASE(DeathCountedOnce) {
     EXPECT_EQ(q.crashes(), 4u);
 }
 
+TEST_CASE(ProbeRidesCrashingKind) {
+    Quarantine q;
+    q.on_kind_crash(1);
+    q.on_kind_crash(1);
+    q.on_edit(true);
+
+    // Only the crashing kind's dispatch is the recovery attempt: a
+    // harmless other kind or an innocent compile must not spend the probe.
+    EXPECT_FALSE(q.recovery_compile());
+    EXPECT_FALSE(q.recovery_kind(2));
+    EXPECT_TRUE(q.recovery_kind(1));
+
+    // Compile strikes make the compile the recovery vehicle.
+    q.on_crash();
+    EXPECT_TRUE(q.recovery_compile());
+}
+
 TEST_CASE(AnnounceOncePerSpell) {
     Quarantine q;
     EXPECT_FALSE(q.needs_announcement());
