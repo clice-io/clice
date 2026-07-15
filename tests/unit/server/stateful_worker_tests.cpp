@@ -1,3 +1,4 @@
+#include <format>
 #include <string>
 #include <vector>
 
@@ -63,13 +64,21 @@ TEST_CASE(CancelledCompileFreesStrand) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        // Slow enough that the cancel lands while the AST build is still on
-        // the pool thread.
+        // A deterministically slow TU: two hundred thousand trivial
+        // declarations keep the parse far past the cancellation tick on any
+        // hardware — two consecutive macOS runners completed a whole
+        // four-STL-header compile roundtrip inside 20ms — while the
+        // per-declaration stop poll keeps the cancelled remainder cheap.
+        std::string text;
+        text.reserve(1 << 22);
+        for(int i = 0; i < 200'000; ++i) {
+            text += std::format("int v{};\n", i);
+        }
+
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text =
-            "#include <vector>\n#include <string>\n#include <algorithm>\n" "#include <regex>\nint main() { return 0; }\n";
+        cp.text = std::move(text);
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};

@@ -192,6 +192,15 @@ void StatefulWorker::register_handlers() {
             doc->pcms.try_emplace(name, pcm_path);
         }
 
+        // The old AST describes the text this request just replaced: drop
+        // it before the cancellable await, or a cancellation landing while
+        // the work is still queued would wake waiters with the previous
+        // unit installed next to the new buffer — with_ast_or would serve
+        // stale offsets as current. Waiters observe has_ast == false and
+        // return their missing value until a compile lands.
+        doc->has_ast = false;
+        doc->unit = CompilationUnit(nullptr);
+
         // The parse itself is cancellable: CompilationParams::stop is
         // polled after every top-level declaration, so the hook reaches
         // into the middle of the AST build instead of waiting for it to
