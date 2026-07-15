@@ -68,7 +68,8 @@ TEST_CASE(CancelledCompileFreesStrand) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = "#include <vector>\n#include <string>\nint main() { return 0; }\n";
+        cp.text =
+            "#include <vector>\n#include <string>\n#include <algorithm>\n" "#include <regex>\nint main() { return 0; }\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
@@ -93,11 +94,67 @@ TEST_CASE(CancelledCompileFreesStrand) {
         // The strand must be free again: a second compile of the same
         // document completes instead of hanging behind the cancelled one's
         // never-released lock (the guard releases it when the cancelled
-        // handler's frame unwinds).
+        // handler's frame unwinds). Bounded so a regression is a clean,
+        // attributable failure instead of a CI-wide timeout.
         cp.version = 2;
-        auto retry = co_await w.peer->send_request(cp);
+        kota::ipc::request_options retry_opts;
+        retry_opts.timeout = std::chrono::milliseconds(30'000);
+        auto retry = co_await w.peer->send_request(cp, retry_opts);
         CO_ASSERT_TRUE(retry.has_value());
         EXPECT_EQ(retry.value().version, 2);
+
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ASSERT_TRUE(test_done);
+}
+
+TEST_CASE(CancelledQueryFreesStrand) {
+    TempDir tmp;
+    tmp.touch("query_cancel.cpp", "");
+    auto src = tmp.path("query_cancel.cpp");
+
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = "int value() { return 42; }\n";
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+        cp.pch = {"", 0};
+        cp.pcms = {};
+        auto compiled = co_await w.peer->send_request(cp);
+        CO_ASSERT_TRUE(compiled.has_value());
+
+        // Queries take the strand through with_ast_or: a cancelled query
+        // must release it on unwind like a cancelled compile does.
+        worker::QueryParams qp;
+        qp.kind = worker::QueryKind::SemanticTokens;
+        qp.path = src;
+
+        kota::cancellation_source source;
+        kota::ipc::request_options opts;
+        opts.token = source.token();
+
+        kota::task_group<> group(w.loop);
+        auto sender = [&]() -> kota::task<> {
+            [[maybe_unused]] auto result = co_await w.peer->send_request(qp, opts);
+        };
+        group.spawn(sender());
+        source.cancel();
+        co_await group.join();
+
+        // Bounded: a still-locked strand fails this cleanly via timeout.
+        kota::ipc::request_options retry_opts;
+        retry_opts.timeout = std::chrono::milliseconds(30'000);
+        auto retry = co_await w.peer->send_request(qp, retry_opts);
+        CO_ASSERT_TRUE(retry.has_value());
 
         test_done = true;
         w.peer->close_output();

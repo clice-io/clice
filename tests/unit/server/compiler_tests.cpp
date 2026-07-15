@@ -302,7 +302,8 @@ TEST_CASE(StopUnblocksCompileWaiters) {
 
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern(src);
-    session->text = "#include <vector>\n#include <string>\nint main() { return 0; }\n";
+    session->text =
+        "#include <vector>\n#include <string>\n#include <algorithm>\n" "#include <regex>\nint main() { return 0; }\n";
 
     bool waiter_done = false;
     bool done = false;
@@ -324,6 +325,15 @@ TEST_CASE(StopUnblocksCompileWaiters) {
         // Let the compile reach the stateful worker, then tear down.
         co_await kota::sleep(300);
         co_await compiler.stop();
+
+        // Bounded: a waiter left hanging (the pre-RAII bug) fails this
+        // cleanly here instead of hanging the whole binary.
+        for(int i = 0; i < 100 && !waiter_done; ++i) {
+            co_await kota::sleep(100);
+        }
+        if(!waiter_done) {
+            group.cancel();
+        }
         co_await group.join();
 
         EXPECT_TRUE(waiter_done);

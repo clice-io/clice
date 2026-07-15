@@ -122,6 +122,17 @@ TEST_CASE(DropRemovesTmp) {
         ASSERT_TRUE(llvm::sys::fs::exists(second));
     }
     ASSERT_FALSE(llvm::sys::fs::exists(second));
+
+    // Move assignment cleans the destination's own tmp before adopting.
+    auto lhs = store.begin_store("pch", "k3");
+    auto rhs = store.begin_store("pch", "k4");
+    ASSERT_TRUE(fs::write(lhs.tmp_path, "junk").has_value());
+    ASSERT_TRUE(fs::write(rhs.tmp_path, "junk").has_value());
+    auto third = lhs.tmp_path;
+    auto fourth = rhs.tmp_path;
+    lhs = std::move(rhs);
+    ASSERT_FALSE(llvm::sys::fs::exists(third));
+    ASSERT_TRUE(llvm::sys::fs::exists(fourth));
 }
 
 TEST_CASE(CommitWithoutWriteFails) {
