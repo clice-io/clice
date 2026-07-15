@@ -86,9 +86,11 @@ struct CacheNamespace {
 class CacheStore {
 public:
     /// A two-phase write in progress.  The caller (or a worker process on
-    /// its behalf) writes the blob to tmp_path, then either commits or
-    /// aborts.  Dropping a PendingEntry without commit/abort leaks the tmp
-    /// file until the next open() sweep.
+    /// its behalf) writes the blob to tmp_path, then commits.  Self-cleaning:
+    /// an entry destroyed without being committed removes its tmp file —
+    /// kotatsu cancellation destroys a suspended coroutine frame without
+    /// resuming it, so a manual abort after the await would never run on
+    /// that path and the tmp blob would leak until the next open() sweep.
     struct PendingEntry {
         std::string ns;
         std::string key;
@@ -96,6 +98,42 @@ public:
 
         /// Whether this write targets the key's aux blob (begin_store_aux).
         bool aux = false;
+
+        PendingEntry() = default;
+
+        PendingEntry(std::string ns, std::string key, std::string tmp_path, bool aux = false) :
+            ns(std::move(ns)), key(std::move(key)), tmp_path(std::move(tmp_path)), aux(aux) {}
+
+        PendingEntry(const PendingEntry&) = delete;
+        PendingEntry& operator=(const PendingEntry&) = delete;
+
+        PendingEntry(PendingEntry&& other) noexcept :
+            ns(std::move(other.ns)), key(std::move(other.key)), tmp_path(std::move(other.tmp_path)),
+            aux(other.aux) {
+            other.tmp_path.clear();
+        }
+
+        PendingEntry& operator=(PendingEntry&& other) noexcept {
+            if(this != &other) {
+                remove_tmp();
+                ns = std::move(other.ns);
+                key = std::move(other.key);
+                tmp_path = std::move(other.tmp_path);
+                aux = other.aux;
+                other.tmp_path.clear();
+            }
+            return *this;
+        }
+
+        ~PendingEntry() {
+            remove_tmp();
+        }
+
+    private:
+        /// Idempotent: commit() consumes the entry by value, and after its
+        /// rename the tmp path no longer exists — removing a missing file
+        /// is a no-op.
+        void remove_tmp();
     };
 
     /// Open (creating if necessary) the store under `root`.  Any sibling
@@ -142,9 +180,6 @@ public:
     /// the stale destination is removed and the rename retried, and if the
     /// new blob still cannot be published an error is returned.
     std::expected<std::string, std::error_code> commit(PendingEntry pending);
-
-    /// Cancel a two-phase write and delete the tmp file.
-    void abort(const PendingEntry& pending);
 
     /// Remove a blob.  Primarily for Persistent namespaces, whose cleanup
     /// is the caller's mark-and-sweep; LRU namespaces rarely need it.

@@ -604,9 +604,9 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
     return final_path;
 }
 
-void CacheStore::abort(const PendingEntry& pending) {
-    if(!pending.tmp_path.empty()) {
-        llvm::sys::fs::remove(pending.tmp_path);
+void CacheStore::PendingEntry::remove_tmp() {
+    if(!tmp_path.empty()) {
+        llvm::sys::fs::remove(tmp_path);
     }
 }
 

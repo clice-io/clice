@@ -192,7 +192,6 @@ static std::optional<CacheStore::PendingEntry>
     llvm::raw_fd_ostream os(pending.tmp_path, ec);
     if(ec) {
         LOG_WARN("Failed to write index blob {}: {}", key, ec.message());
-        store.abort(pending);
         return std::nullopt;
     }
     serialize(os);
@@ -202,7 +201,6 @@ static std::optional<CacheStore::PendingEntry>
     if(os.has_error()) {
         LOG_WARN("Failed to write index blob {}: {}", key, os.error().message());
         os.clear_error();
-        store.abort(pending);
         return std::nullopt;
     }
     return pending;
@@ -257,10 +255,8 @@ kota::task<> Indexer::save() {
     auto committed =
         co_await kota::queue([&] { return store.commit(std::move(*project_pending)); });
     if(!committed.has_value() || !committed.value().has_value()) {
+        // The shard entries clean their own tmp blobs up on destruction.
         LOG_WARN("Failed to commit ProjectIndex blob, dropping {} shard blobs", shards.size());
-        for(auto& pending: shards) {
-            store.abort(pending);
-        }
         co_return;
     }
 
