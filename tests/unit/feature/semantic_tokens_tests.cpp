@@ -20,8 +20,11 @@ namespace protocol = kota::ipc::protocol;
 
 struct DecodedToken {
     LocalSourceRange range;
-    std::uint32_t line = 0;
-    std::uint32_t start = 0;
+    /// Absolute positions are accumulated in 64 bits so that a broken delta
+    /// stream (e.g. an underflowed deltaStart) stays visible instead of
+    /// wrapping back to a plausible value.
+    std::uint64_t line = 0;
+    std::uint64_t start = 0;
     std::uint32_t length = 0;
     std::uint32_t type = 0;
     std::uint32_t modifiers = 0;
@@ -45,8 +48,8 @@ auto decode_utf8_tokens(llvm::StringRef content, const protocol::SemanticTokens&
     std::vector<DecodedToken> result;
     result.reserve(tokens.data.size() / 5);
 
-    std::uint32_t line = 0;
-    std::uint32_t character = 0;
+    std::uint64_t line = 0;
+    std::uint64_t character = 0;
     for(std::size_t i = 0; i < tokens.data.size(); i += 5) {
         auto delta_line = tokens.data[i + 0];
         auto delta_char = tokens.data[i + 1];
@@ -56,18 +59,27 @@ auto decode_utf8_tokens(llvm::StringRef content, const protocol::SemanticTokens&
 
         line += delta_line;
         character = delta_line == 0 ? character + delta_char : delta_char;
-        assert(line < starts.size() && "line index out of range");
 
-        auto begin = starts[line] + character;
-        auto end = begin + length;
-        result.push_back({
-            .range = LocalSourceRange(begin, end),
+        DecodedToken token{
             .line = line,
             .start = character,
             .length = length,
             .type = type,
             .modifiers = modifiers,
-        });
+        };
+
+        // Only map in-bounds positions back to a byte range; out-of-range
+        // tokens keep an invalid range so lookups by annotation fail loudly.
+        if(line < starts.size()) {
+            auto begin = starts[line] + character;
+            auto end = begin + length;
+            if(end <= content.size()) {
+                token.range = LocalSourceRange(static_cast<std::uint32_t>(begin),
+                                               static_cast<std::uint32_t>(end));
+            }
+        }
+
+        result.push_back(token);
     }
 
     return result;
@@ -79,8 +91,8 @@ auto decode_relative_tokens(const protocol::SemanticTokens& tokens) -> std::vect
     std::vector<DecodedToken> result;
     result.reserve(tokens.data.size() / 5);
 
-    std::uint32_t line = 0;
-    std::uint32_t character = 0;
+    std::uint64_t line = 0;
+    std::uint64_t character = 0;
     for(std::size_t i = 0; i < tokens.data.size(); i += 5) {
         auto delta_line = tokens.data[i + 0];
         auto delta_char = tokens.data[i + 1];
@@ -143,6 +155,23 @@ void EXPECT_TOKEN(llvm::StringRef name,
 
 void EXPECT_NO_TOKEN(llvm::StringRef name) {
     ASSERT_TRUE(find_by_range(name) == nullptr);
+}
+
+void EXPECT_TOKENS_WITHIN_LINES() {
+    auto content = unit->interested_content();
+    auto starts = compute_line_starts(content);
+    for(const auto& token: decoded) {
+        ASSERT_TRUE(token.line < starts.size());
+        auto line_end = token.line + 1 < starts.size() ? starts[token.line + 1] : content.size();
+        ASSERT_TRUE(token.start <= line_end - starts[token.line]);
+    }
+}
+
+void EXPECT_TOKEN_AT(llvm::StringRef name, std::uint64_t line, std::uint64_t start) {
+    auto* token = find_by_range(name);
+    ASSERT_TRUE(token != nullptr);
+    ASSERT_EQ(token->line, line);
+    ASSERT_EQ(token->start, start);
 }
 
 TEST_CASE(BasicLexicalKinds) {
@@ -466,6 +495,31 @@ cd*/
     ASSERT_EQ(comments[1].line, comments[0].line + 1);
     ASSERT_EQ(comments[1].start, 0);
     ASSERT_EQ(comments[1].length, 4);
+}
+
+TEST_CASE(CodeAfterRawString) {
+    run_utf8(R"cpp(
+const char* s = R"(line1
+line2
+)"; @k0[int] @x[x] = 1;
+)cpp");
+
+    EXPECT_TOKENS_WITHIN_LINES();
+    EXPECT_TOKEN_AT("k0", 3, 4);
+    EXPECT_TOKEN_AT("x", 3, 8);
+    EXPECT_TOKEN("k0", SymbolKind::Keyword);
+}
+
+TEST_CASE(CodeAfterMultilineComment) {
+    run_utf8(R"cpp(
+    /* first
+second */ @k0[int] @x[x] = 1;
+)cpp");
+
+    EXPECT_TOKENS_WITHIN_LINES();
+    EXPECT_TOKEN_AT("k0", 2, 10);
+    EXPECT_TOKEN_AT("x", 2, 14);
+    EXPECT_TOKEN("k0", SymbolKind::Keyword);
 }
 
 TEST_CASE(ModuleDeclaration) {

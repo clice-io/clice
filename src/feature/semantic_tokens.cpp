@@ -504,62 +504,62 @@ public:
         auto end_char = static_cast<std::uint32_t>(end_position->character);
 
         if(begin_line == end_line) [[likely]] {
-            auto delta_line = begin_line - last_line;
-            auto delta_start = delta_line == 0 ? begin_char - last_start_character : begin_char;
-            auto token_length = end_char - begin_char;
-            emit_relative(delta_line, delta_start, token_length, token.kind, token.modifiers);
-        } else {
-            auto chunk = content.substr(begin, end - begin);
-            bool first_piece = true;
-            std::uint32_t chunk_offset = 0;
-            std::uint32_t piece_size = 0;
-
-            for(char c: chunk) {
-                piece_size += 1;
-                if(c != '\n') {
-                    continue;
-                }
-
-                std::uint32_t delta_line = 1;
-                std::uint32_t delta_start = 0;
-                if(first_piece) {
-                    delta_line = begin_line - last_line;
-                    delta_start = delta_line == 0 ? begin_char - last_start_character : begin_char;
-                    first_piece = false;
-                }
-
-                auto length = lsp::encoded_length(chunk.substr(chunk_offset, piece_size), encoding);
-                emit_relative(delta_line, delta_start, length, token.kind, token.modifiers);
-
-                chunk_offset += piece_size;
-                piece_size = 0;
-            }
-
-            if(piece_size > 0) {
-                auto length = lsp::encoded_length(chunk.substr(chunk_offset), encoding);
-                emit_relative(1, 0, length, token.kind, token.modifiers);
-            }
+            emit(begin_line, begin_char, end_char - begin_char, token.kind, token.modifiers);
+            return;
         }
 
-        last_line = end_line;
-        last_start_character = begin_char;
+        // LSP semantic tokens have no multiline support (unless the client
+        // negotiates the capability), so split the token into per-line pieces.
+        auto chunk = content.substr(begin, end - begin);
+        std::uint32_t line = begin_line;
+        std::uint32_t character = begin_char;
+        std::uint32_t chunk_offset = 0;
+        std::uint32_t piece_size = 0;
+
+        for(char c: chunk) {
+            piece_size += 1;
+            if(c != '\n') {
+                continue;
+            }
+
+            auto length = lsp::encoded_length(chunk.substr(chunk_offset, piece_size), encoding);
+            emit(line, character, length, token.kind, token.modifiers);
+
+            line += 1;
+            character = 0;
+            chunk_offset += piece_size;
+            piece_size = 0;
+        }
+
+        if(piece_size > 0) {
+            auto length = lsp::encoded_length(chunk.substr(chunk_offset), encoding);
+            emit(line, character, length, token.kind, token.modifiers);
+        }
     }
 
 private:
-    void emit_relative(std::uint32_t delta_line,
-                       std::uint32_t delta_start,
-                       std::uint32_t token_length,
-                       SymbolKind kind,
-                       std::uint32_t modifiers) {
+    /// Emits one LSP entry at the absolute (line, character), computing the
+    /// delta against the previously emitted entry. This is the single place
+    /// that reads and updates the previous-position bookkeeping.
+    void emit(std::uint32_t line,
+              std::uint32_t character,
+              std::uint32_t token_length,
+              SymbolKind kind,
+              std::uint32_t modifiers) {
         if(token_length == 0) {
             return;
         }
 
+        auto delta_line = line - last_line;
+        auto delta_start = delta_line == 0 ? character - last_start_character : character;
         output.data.push_back(delta_line);
         output.data.push_back(delta_start);
         output.data.push_back(token_length);
         output.data.push_back(type_index(kind));
         output.data.push_back(encode_modifiers(modifiers));
+
+        last_line = line;
+        last_start_character = character;
     }
 
 private:
