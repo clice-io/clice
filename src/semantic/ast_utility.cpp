@@ -22,6 +22,7 @@
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/CharInfo.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
 
@@ -229,6 +230,10 @@ llvm::StringRef identifier_of(clang::QualType type) {
 std::string name_of(const clang::NamedDecl* decl) {
     llvm::SmallString<128> result;
 
+    /// Use the language options of the declaration's context so that C++ types
+    /// print without their tag keyword, e.g. "~Account" instead of "~struct Account".
+    clang::PrintingPolicy policy(decl->getASTContext().getLangOpts());
+
     auto name = decl->getDeclName();
     switch(name.getNameKind()) {
         case clang::DeclarationName::Identifier: {
@@ -239,25 +244,31 @@ std::string name_of(const clang::NamedDecl* decl) {
         }
 
         case clang::DeclarationName::CXXConstructorName: {
-            result += name.getCXXNameType().getAsString();
+            result += name.getCXXNameType().getAsString(policy);
             break;
         }
 
         case clang::DeclarationName::CXXDestructorName: {
             result += '~';
-            result += name.getCXXNameType().getAsString();
+            result += name.getCXXNameType().getAsString(policy);
             break;
         }
 
         case clang::DeclarationName::CXXConversionFunctionName: {
             result += "operator ";
-            result += name.getCXXNameType().getAsString();
+            result += name.getCXXNameType().getAsString(policy);
             break;
         }
 
         case clang::DeclarationName::CXXOperatorName: {
-            result += "operator ";
-            result += clang::getOperatorSpelling(name.getCXXOverloadedOperator());
+            llvm::StringRef spelling = clang::getOperatorSpelling(name.getCXXOverloadedOperator());
+            result += "operator";
+            /// Mirror DeclarationName::print: separate with a space only for
+            /// word-like operators such as "new", "delete" and "co_await".
+            if(clang::isLowercase(spelling.front())) {
+                result += ' ';
+            }
+            result += spelling;
             break;
         }
 

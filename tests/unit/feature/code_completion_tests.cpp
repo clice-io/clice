@@ -403,6 +403,90 @@ void bar() {
     ASSERT_TRUE(edit.new_text.find("${1:") != std::string::npos);
 }
 
+TEST_CASE(DestructorPlainName) {
+    code_complete(R"cpp(
+struct Account {
+    int balance;
+};
+
+void bar() {
+    Account acc;
+    acc.$(pos)
+}
+)cpp");
+
+    auto it = find_item("~Account");
+    ASSERT_TRUE(it != items.end());
+    auto& edit = std::get<protocol::TextEdit>(*it->text_edit);
+    ASSERT_EQ(edit.new_text, "~Account");
+
+    // No item may leak the tag keyword into its label or insert text.
+    for(auto& item: items) {
+        ASSERT_TRUE(item.label.find("~struct") == std::string::npos);
+        auto& text = std::get<protocol::TextEdit>(*item.text_edit).new_text;
+        ASSERT_TRUE(text.find("~struct") == std::string::npos);
+    }
+}
+
+TEST_CASE(DestructorTemplateClass) {
+    code_complete(R"cpp(
+template <typename T>
+struct Box {
+    T value;
+};
+
+void bar() {
+    Box<int> b;
+    b.$(pos)
+}
+)cpp");
+
+    auto it = find_item("~Box<int>");
+    ASSERT_TRUE(it != items.end());
+    auto& edit = std::get<protocol::TextEdit>(*it->text_edit);
+    ASSERT_EQ(edit.new_text, "~Box<int>");
+}
+
+TEST_CASE(ConversionOperatorPlainName) {
+    code_complete(R"cpp(
+struct Wallet {
+    int cents;
+};
+
+struct Account {
+    operator Wallet();
+};
+
+void bar() {
+    Account acc;
+    acc.$(pos)
+}
+)cpp");
+
+    auto it = find_item("operator Wallet");
+    ASSERT_TRUE(it != items.end());
+    for(auto& item: items) {
+        ASSERT_TRUE(item.label.find("operator struct") == std::string::npos);
+    }
+}
+
+TEST_CASE(OperatorAssignNoSpace) {
+    code_complete(R"cpp(
+struct Account {
+    int balance;
+};
+
+void bar() {
+    Account acc;
+    acc.$(pos)
+}
+)cpp");
+
+    auto it = find_item("operator=");
+    ASSERT_TRUE(it != items.end());
+    ASSERT_TRUE(find_item("operator =") == items.end());
+}
+
 TEST_CASE(Unqualified) {
     code_complete(R"cpp(
 namespace A {
