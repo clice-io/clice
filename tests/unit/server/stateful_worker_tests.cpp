@@ -126,6 +126,63 @@ TEST_CASE(CancelledCompileFreesStrand) {
     ASSERT_TRUE(test_done);
 }
 
+TEST_CASE(CancelNotificationInterruptsCompile) {
+    TempDir tmp;
+    tmp.touch("interrupt.cpp", "");
+    auto src = tmp.path("interrupt.cpp");
+
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        std::string text;
+        text.reserve(1 << 22);
+        for(int i = 0; i < 200'000; ++i) {
+            text += std::format("int v{};\n", i);
+        }
+
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = std::move(text);
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+        cp.pch = {"", 0};
+        cp.pcms = {};
+
+        // The notification chases the request down the pipe and flips the
+        // stop flag mid-parse. Unlike a wire cancel the request runs to a
+        // reply, and an interrupted parse reports no deps and no index —
+        // the reply's content, not the clock, is the assertion.
+        std::optional<worker::CompileResult> reply;
+        kota::task_group<> group(w.loop);
+        auto sender = [&]() -> kota::task<> {
+            kota::ipc::request_options opts;
+            opts.timeout = std::chrono::milliseconds(30'000);
+            auto result = co_await w.peer->send_request(cp, opts);
+            if(result.has_value()) {
+                reply = std::move(result.value());
+            }
+        };
+        group.spawn(sender());
+        co_await kota::sleep(20, w.loop);
+        w.peer->send_notification(worker::CancelCompileParams{src});
+        co_await group.join();
+
+        CO_ASSERT_TRUE(reply.has_value());
+        EXPECT_EQ(reply->version, 1);
+        EXPECT_TRUE(reply->deps.empty());
+        EXPECT_TRUE(reply->tu_index_data.empty());
+
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ASSERT_TRUE(test_done);
+}
+
 TEST_CASE(CancelledQueryFreesStrand) {
     TempDir tmp;
     tmp.touch("query_cancel.cpp", "");

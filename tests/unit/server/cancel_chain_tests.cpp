@@ -84,9 +84,11 @@ TEST_CASE(HandlerCancelChainsThrough) {
     });
 
     ASSERT_TRUE(test_done);
-    // Encode the observation in assertions so the outcome is unambiguous:
-    // handler_resumed distinguishes resume-with-error from frame teardown.
-    EXPECT_TRUE(handler_resumed || !observed_cancelled_reply);
+    // The resumption-boundary claim itself: the send must RESUME with a
+    // cancelled error (emitting the wire cancel on the way), not be torn
+    // down by the handler's cancellation cascade.
+    EXPECT_TRUE(handler_resumed);
+    EXPECT_TRUE(observed_cancelled_reply);
 }
 
 };  // TEST_SUITE(CancelChain)
