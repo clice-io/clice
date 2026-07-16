@@ -1,3 +1,4 @@
+#include <format>
 #include <string>
 #include <vector>
 
@@ -345,6 +346,90 @@ TEST_CASE(StopUnblocksCompileWaiters) {
         EXPECT_TRUE(waiter_done);
         EXPECT_TRUE(session->compiling == nullptr);
 
+        co_await pool.stop();
+        done = true;
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+    EXPECT_TRUE(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(SupersededCompileCancelled) {
+    // An edit mid-compile supersedes the in-flight round entirely: the
+    // waiter breaks out, the stale round's scope cancels its worker send
+    // (wire-cancelling the parse), and the replacement compiles the new
+    // content. Pre-#509 the stale round was left to finish because the
+    // send was not cancellable.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("edited.cpp", "");
+    auto src = tmp.path("edited.cpp");
+
+    kota::event_loop loop;
+    Workspace workspace;
+    ContextResolver contexts(workspace);
+    WorkerPool pool(loop);
+    Compiler compiler(loop, workspace, contexts, pool);
+
+    auto session = std::make_shared<Session>();
+    session->path_id = workspace.path_pool.intern(src);
+    std::string text;
+    text.reserve(1 << 22);
+    for(int i = 0; i < 200'000; ++i) {
+        text += std::format("int v{};\n", i);
+    }
+    session->text = std::move(text);
+
+    bool first_done = false;
+    bool second_ok = false;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(pool.start(opts));
+        co_await kota::sleep(500);
+
+        kota::task_group<> group(loop);
+        auto first = [&]() -> kota::task<> {
+            [[maybe_unused]] bool ok = co_await compiler.ensure_compiled(session);
+            first_done = true;
+        };
+        group.spawn(first());
+
+        for(int i = 0; i < 100 && session->compiling == nullptr; ++i) {
+            co_await kota::sleep(10);
+        }
+        CO_ASSERT_TRUE(session->compiling != nullptr);
+
+        // The edit lands while the slow compile is in flight.
+        session->text = "int fixed;\n";
+        session->generation += 1;
+
+        auto second = [&]() -> kota::task<> {
+            second_ok = co_await compiler.ensure_compiled(session);
+        };
+        group.spawn(second());
+
+        for(int i = 0; i < 600 && !(first_done && second_ok); ++i) {
+            co_await kota::sleep(100);
+        }
+        if(!(first_done && second_ok)) {
+            group.cancel();
+        }
+        co_await group.join();
+
+        EXPECT_TRUE(first_done);
+        EXPECT_TRUE(second_ok);
+        EXPECT_TRUE(session->compiling == nullptr);
+        EXPECT_FALSE(session->ast_dirty);
+
+        co_await compiler.stop();
         co_await pool.stop();
         done = true;
     };
