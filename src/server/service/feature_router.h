@@ -65,6 +65,8 @@ public:
     /// targets, the index, and the worker's AST, with an index/directive
     /// retry after the forward's compile refreshes a dirty session.
     /// @param session may be null (document not open).
+    /// @param token the request's cancellation token, forwarded to the
+    /// worker sends (see Compiler::forward_query).
     RawResult definition(std::shared_ptr<Session> session,
                          llvm::StringRef path,
                          const protocol::Position& pos,
@@ -78,6 +80,8 @@ public:
     /// than one source, and these are the designated hooks for a future
     /// read-only provider strategy (e.g. serving closed files from the index).
     /// They are NOT dead code to be inlined back into the transports.
+    /// Each takes the request's cancellation token and forwards it to the
+    /// worker sends (see Compiler::forward_query).
     RawResult hover(std::shared_ptr<Session> session,
                     const protocol::Position& position,
                     std::optional<kota::cancellation_token> token = {});

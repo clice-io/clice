@@ -87,7 +87,8 @@ public:
                             std::optional<kota::cancellation_token> token = {});
 
     /// Forward a build request (signature help, etc.) to a stateless worker.
-    /// Sends the full buffer content and compile arguments.
+    /// Sends the full buffer content and compile arguments. `token`: see
+    /// forward_query.
     RawResult forward_build(worker::BuildKind kind,
                             const protocol::Position& position,
                             std::shared_ptr<Session> session,
@@ -96,11 +97,13 @@ public:
     /// Forward a document-link query to the stateful worker holding this
     /// file's AST. Covers the main-file region only: the preamble's links
     /// live in the PCH's PreambleState blob (see PCHState::load_state).
+    /// `token`: see forward_query.
     kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         forward_document_links(std::shared_ptr<Session> session,
                                std::optional<kota::cancellation_token> token = {});
 
-    /// Forward a formatting request to a stateless worker.
+    /// Forward a formatting request to a stateless worker. `token`: see
+    /// forward_query.
     RawResult forward_format(std::shared_ptr<Session> session,
                              std::optional<protocol::Range> range = {},
                              std::optional<kota::cancellation_token> token = {});
