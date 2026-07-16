@@ -324,7 +324,8 @@ void LSPClient::register_language_features() {
         if(!session)
             co_return kota::outcome_error(document_not_open());
         co_return co_await srv.features.hover(session,
-                                              params.text_document_position_params.position);
+                                              params.text_document_position_params.position,
+                                              ctx.cancellation);
     });
 
     peer.on_request(
@@ -333,7 +334,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.semantic_tokens(session);
+            co_return co_await srv.features.semantic_tokens(session, ctx.cancellation);
         });
 
     peer.on_request(
@@ -342,7 +343,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.inlay_hints(session, params.range);
+            co_return co_await srv.features.inlay_hints(session, params.range, ctx.cancellation);
         });
 
     peer.on_request(
@@ -351,7 +352,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.folding_range(session);
+            co_return co_await srv.features.folding_range(session, ctx.cancellation);
         });
 
     peer.on_request(
@@ -360,7 +361,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.document_symbol(session);
+            co_return co_await srv.features.document_symbol(session, ctx.cancellation);
         });
 
     peer.on_request(
@@ -368,7 +369,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            auto links = co_await this->server.features.document_links(session);
+            auto links = co_await this->server.features.document_links(session, ctx.cancellation);
             if(!links.has_value())
                 co_return kota::outcome_error(std::move(links.error()));
             co_return to_raw(links.value());
@@ -380,16 +381,16 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.code_action(session);
+            co_return co_await srv.features.code_action(session, ctx.cancellation);
         });
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session] = resolve_uri(uri);
-            co_return co_await this->server.features.definition(session, path, pos);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DefinitionParams& params) -> RawResult {
+        auto& uri = params.text_document_position_params.text_document.uri;
+        auto& pos = params.text_document_position_params.position;
+        auto [path, path_id, session] = resolve_uri(uri);
+        co_return co_await this->server.features.definition(session, path, pos, ctx.cancellation);
+    });
 
     // The navigation handlers below are index-only: closed documents are
     // fully serveable from the index, and an empty result is a real answer,
@@ -437,7 +438,8 @@ void LSPClient::register_language_features() {
         if(!session)
             co_return kota::outcome_error(document_not_open());
         co_return co_await srv.features.completion(session,
-                                                   params.text_document_position_params.position);
+                                                   params.text_document_position_params.position,
+                                                   ctx.cancellation);
     });
 
     peer.on_request(
@@ -449,7 +451,8 @@ void LSPClient::register_language_features() {
                 co_return kota::outcome_error(document_not_open());
             co_return co_await srv.features.signature_help(
                 session,
-                params.text_document_position_params.position);
+                params.text_document_position_params.position,
+                ctx.cancellation);
         });
 
     peer.on_request(
@@ -458,7 +461,7 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
-            co_return co_await srv.features.formatting(session);
+            co_return co_await srv.features.formatting(session, ctx.cancellation);
         });
 
     peer.on_request([this](RequestContext& ctx,
@@ -467,7 +470,7 @@ void LSPClient::register_language_features() {
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
-        co_return co_await srv.features.range_formatting(session, params.range);
+        co_return co_await srv.features.range_formatting(session, params.range, ctx.cancellation);
     });
 
     peer.on_request([this](RequestContext& ctx,

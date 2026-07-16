@@ -82,8 +82,9 @@ std::vector<protocol::Location>
 }
 
 kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
-    FeatureRouter::document_links(std::shared_ptr<Session> session) {
-    auto result = co_await compiler.forward_document_links(session);
+    FeatureRouter::document_links(std::shared_ptr<Session> session,
+                                  std::optional<kota::cancellation_token> token) {
+    auto result = co_await compiler.forward_document_links(session, std::move(token));
     if(!result.has_value())
         co_return kota::outcome_error(std::move(result.error()));
 
@@ -108,7 +109,8 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
 kota::task<kota::codec::RawValue, kota::ipc::Error>
     FeatureRouter::definition(std::shared_ptr<Session> session,
                               llvm::StringRef path,
-                              const protocol::Position& pos) {
+                              const protocol::Position& pos,
+                              std::optional<kota::cancellation_token> token) {
     // Same posture as every AST-backed request: the session's file index
     // is produced by the very compile awaited here, so once this settles
     // the index describes the buffer. A failed or superseded compile
@@ -146,7 +148,11 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
 
     if(!session)
         co_return kota::outcome_error(document_not_open());
-    auto raw = co_await compiler.forward_query(worker::QueryKind::GoToDefinition, session, pos);
+    auto raw = co_await compiler.forward_query(worker::QueryKind::GoToDefinition,
+                                               session,
+                                               pos,
+                                               {},
+                                               std::move(token));
     if(raw.has_value() && raw.value().data != "[]" && raw.value().data != "null") {
         co_return std::move(raw.value());
     }
@@ -169,33 +175,67 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
 }
 
 FeatureRouter::RawResult FeatureRouter::hover(std::shared_ptr<Session> session,
-                                              const protocol::Position& position) {
-    co_return co_await compiler.forward_query(worker::QueryKind::Hover, session, position);
+                                              const protocol::Position& position,
+                                              std::optional<kota::cancellation_token> token) {
+    co_return co_await compiler.forward_query(worker::QueryKind::Hover,
+                                              session,
+                                              position,
+                                              {},
+                                              std::move(token));
 }
 
-FeatureRouter::RawResult FeatureRouter::semantic_tokens(std::shared_ptr<Session> session) {
-    co_return co_await compiler.forward_query(worker::QueryKind::SemanticTokens, session);
+FeatureRouter::RawResult
+    FeatureRouter::semantic_tokens(std::shared_ptr<Session> session,
+                                   std::optional<kota::cancellation_token> token) {
+    co_return co_await compiler.forward_query(worker::QueryKind::SemanticTokens,
+                                              session,
+                                              {},
+                                              {},
+                                              std::move(token));
 }
 
 FeatureRouter::RawResult FeatureRouter::inlay_hints(std::shared_ptr<Session> session,
-                                                    const protocol::Range& range) {
-    co_return co_await compiler.forward_query(worker::QueryKind::InlayHints, session, {}, range);
+                                                    const protocol::Range& range,
+                                                    std::optional<kota::cancellation_token> token) {
+    co_return co_await compiler.forward_query(worker::QueryKind::InlayHints,
+                                              session,
+                                              {},
+                                              range,
+                                              std::move(token));
 }
 
-FeatureRouter::RawResult FeatureRouter::folding_range(std::shared_ptr<Session> session) {
-    co_return co_await compiler.forward_query(worker::QueryKind::FoldingRange, session);
+FeatureRouter::RawResult
+    FeatureRouter::folding_range(std::shared_ptr<Session> session,
+                                 std::optional<kota::cancellation_token> token) {
+    co_return co_await compiler.forward_query(worker::QueryKind::FoldingRange,
+                                              session,
+                                              {},
+                                              {},
+                                              std::move(token));
 }
 
-FeatureRouter::RawResult FeatureRouter::document_symbol(std::shared_ptr<Session> session) {
-    co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol, session);
+FeatureRouter::RawResult
+    FeatureRouter::document_symbol(std::shared_ptr<Session> session,
+                                   std::optional<kota::cancellation_token> token) {
+    co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol,
+                                              session,
+                                              {},
+                                              {},
+                                              std::move(token));
 }
 
-FeatureRouter::RawResult FeatureRouter::code_action(std::shared_ptr<Session> session) {
-    co_return co_await compiler.forward_query(worker::QueryKind::CodeAction, session);
+FeatureRouter::RawResult FeatureRouter::code_action(std::shared_ptr<Session> session,
+                                                    std::optional<kota::cancellation_token> token) {
+    co_return co_await compiler.forward_query(worker::QueryKind::CodeAction,
+                                              session,
+                                              {},
+                                              {},
+                                              std::move(token));
 }
 
 FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> session,
-                                                   const protocol::Position& position) {
+                                                   const protocol::Position& position,
+                                                   std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
 
     auto path_id = session->path_id;
@@ -252,24 +292,33 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
 
     co_return co_await compiler.forward_build(worker::BuildKind::Completion,
                                               position,
-                                              std::move(session));
+                                              std::move(session),
+                                              std::move(token));
 }
 
-FeatureRouter::RawResult FeatureRouter::signature_help(std::shared_ptr<Session> session,
-                                                       const protocol::Position& position) {
+FeatureRouter::RawResult
+    FeatureRouter::signature_help(std::shared_ptr<Session> session,
+                                  const protocol::Position& position,
+                                  std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
-    co_return co_await compiler.forward_build(worker::BuildKind::SignatureHelp, position, session);
+    co_return co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
+                                              position,
+                                              session,
+                                              std::move(token));
 }
 
-FeatureRouter::RawResult FeatureRouter::formatting(std::shared_ptr<Session> session) {
+FeatureRouter::RawResult FeatureRouter::formatting(std::shared_ptr<Session> session,
+                                                   std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
-    co_return co_await compiler.forward_format(session);
+    co_return co_await compiler.forward_format(session, {}, std::move(token));
 }
 
-FeatureRouter::RawResult FeatureRouter::range_formatting(std::shared_ptr<Session> session,
-                                                         const protocol::Range& range) {
+FeatureRouter::RawResult
+    FeatureRouter::range_formatting(std::shared_ptr<Session> session,
+                                    const protocol::Range& range,
+                                    std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
-    co_return co_await compiler.forward_format(session, range);
+    co_return co_await compiler.forward_format(session, range, std::move(token));
 }
 
 FeatureRouter::RawResult FeatureRouter::references(std::shared_ptr<Session> session,

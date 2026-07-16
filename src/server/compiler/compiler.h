@@ -74,26 +74,36 @@ public:
     /// Ensures compilation first.  For position-sensitive queries (hover,
     /// goto-definition), pass a Position.  For range-sensitive queries
     /// (inlay hints), pass a Range.
+    /// `token`, on every forward: the LSP request's cancellation token.
+    /// Passing it into the worker send turns a client $/cancelRequest into
+    /// a wire cancel — the worker stops the parse at the next top-level
+    /// declaration instead of computing a result nobody will read. The
+    /// shared compile a query waits on is deliberately NOT cancelled: it
+    /// serves every waiter, not this request.
     RawResult forward_query(worker::QueryKind kind,
                             std::shared_ptr<Session> session,
                             std::optional<protocol::Position> position = {},
-                            std::optional<protocol::Range> range = {});
+                            std::optional<protocol::Range> range = {},
+                            std::optional<kota::cancellation_token> token = {});
 
     /// Forward a build request (signature help, etc.) to a stateless worker.
     /// Sends the full buffer content and compile arguments.
     RawResult forward_build(worker::BuildKind kind,
                             const protocol::Position& position,
-                            std::shared_ptr<Session> session);
+                            std::shared_ptr<Session> session,
+                            std::optional<kota::cancellation_token> token = {});
 
     /// Forward a document-link query to the stateful worker holding this
     /// file's AST. Covers the main-file region only: the preamble's links
     /// live in the PCH's PreambleState blob (see PCHState::load_state).
     kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
-        forward_document_links(std::shared_ptr<Session> session);
+        forward_document_links(std::shared_ptr<Session> session,
+                               std::optional<kota::cancellation_token> token = {});
 
     /// Forward a formatting request to a stateless worker.
     RawResult forward_format(std::shared_ptr<Session> session,
-                             std::optional<protocol::Range> range = {});
+                             std::optional<protocol::Range> range = {},
+                             std::optional<kota::cancellation_token> token = {});
 
     /// Emitted after a compile round materializes its publishable products
     /// into the session's `output` field (both success and the failure/

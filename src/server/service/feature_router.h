@@ -58,7 +58,8 @@ public:
     /// Full document-link result for a session: the worker's main-file links
     /// merged behind the PCH's cached preamble links.
     kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
-        document_links(std::shared_ptr<Session> session);
+        document_links(std::shared_ptr<Session> session,
+                       std::optional<kota::cancellation_token> token = {});
 
     /// Go-to-definition, assembled across all providers: preamble directive
     /// targets, the index, and the worker's AST, with an index/directive
@@ -66,7 +67,8 @@ public:
     /// @param session may be null (document not open).
     RawResult definition(std::shared_ptr<Session> session,
                          llvm::StringRef path,
-                         const protocol::Position& pos);
+                         const protocol::Position& pos,
+                         std::optional<kota::cancellation_token> token = {});
 
     /// Single-source features routed through the router as a matter of
     /// discipline, not necessity. Each currently forwards to exactly one
@@ -76,26 +78,41 @@ public:
     /// than one source, and these are the designated hooks for a future
     /// read-only provider strategy (e.g. serving closed files from the index).
     /// They are NOT dead code to be inlined back into the transports.
-    RawResult hover(std::shared_ptr<Session> session, const protocol::Position& position);
-    RawResult semantic_tokens(std::shared_ptr<Session> session);
-    RawResult inlay_hints(std::shared_ptr<Session> session, const protocol::Range& range);
-    RawResult folding_range(std::shared_ptr<Session> session);
-    RawResult document_symbol(std::shared_ptr<Session> session);
-    RawResult code_action(std::shared_ptr<Session> session);
+    RawResult hover(std::shared_ptr<Session> session,
+                    const protocol::Position& position,
+                    std::optional<kota::cancellation_token> token = {});
+    RawResult semantic_tokens(std::shared_ptr<Session> session,
+                              std::optional<kota::cancellation_token> token = {});
+    RawResult inlay_hints(std::shared_ptr<Session> session,
+                          const protocol::Range& range,
+                          std::optional<kota::cancellation_token> token = {});
+    RawResult folding_range(std::shared_ptr<Session> session,
+                            std::optional<kota::cancellation_token> token = {});
+    RawResult document_symbol(std::shared_ptr<Session> session,
+                              std::optional<kota::cancellation_token> token = {});
+    RawResult code_action(std::shared_ptr<Session> session,
+                          std::optional<kota::cancellation_token> token = {});
 
     /// Code completion. Serves preamble contexts (include/import) locally from
     /// the include graph and module map; delegates ordinary code completion to
     /// a stateless worker. Pauses background indexing for the request's span.
-    RawResult completion(std::shared_ptr<Session> session, const protocol::Position& position);
+    RawResult completion(std::shared_ptr<Session> session,
+                         const protocol::Position& position,
+                         std::optional<kota::cancellation_token> token = {});
 
     /// Signature help, forwarded to a stateless build. Pauses background
     /// indexing for the request's span.
-    RawResult signature_help(std::shared_ptr<Session> session, const protocol::Position& position);
+    RawResult signature_help(std::shared_ptr<Session> session,
+                             const protocol::Position& position,
+                             std::optional<kota::cancellation_token> token = {});
 
     /// Whole-document and range formatting, forwarded to a stateless worker.
     /// Pause background indexing for the request's span.
-    RawResult formatting(std::shared_ptr<Session> session);
-    RawResult range_formatting(std::shared_ptr<Session> session, const protocol::Range& range);
+    RawResult formatting(std::shared_ptr<Session> session,
+                         std::optional<kota::cancellation_token> token = {});
+    RawResult range_formatting(std::shared_ptr<Session> session,
+                               const protocol::Range& range,
+                               std::optional<kota::cancellation_token> token = {});
 
     /// Index navigation queries. Closed documents are fully serveable from the
     /// index and an empty result is a real answer (returned as []). @param
