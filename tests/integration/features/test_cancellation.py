@@ -108,10 +108,11 @@ async def test_cancelled_signature_help(executable, tmp_path):
 
 
 async def test_cancelled_requests_while_compiling(executable, tmp_path):
-    # Every forwarded feature cancelled while the document's compile is
-    # still churning through the slow body. All of them must reply with
-    # RequestCancelled, and none of them may tear down the shared compile:
-    # the closing hover on the SAME file must land with the AST it built.
+    # Every forwarded feature cancelled while the compile it waits on is
+    # still churning through the slow body. Each AST-backed request is
+    # preceded by an edit, so it launches a FRESH 200k-declaration parse
+    # and the 0.1s cancel window never depends on how much of a previous
+    # parse is left (a fast runner finished the shared parse mid-sweep).
     (tmp_path / "slow.cpp").write_text(SLOW)
     write_cdb(tmp_path, ["slow.cpp"])
 
@@ -124,7 +125,7 @@ async def test_cancelled_requests_while_compiling(executable, tmp_path):
         )
         fmt = FormattingOptions(tab_size=4, insert_spaces=True)
 
-        requests = [
+        pulling = [
             (
                 "textDocument/hover",
                 HoverParams(text_document=doc, position=Position(line=0, character=4)),
@@ -151,19 +152,26 @@ async def test_cancelled_requests_while_compiling(executable, tmp_path):
                 ),
             ),
             ("textDocument/documentLink", DocumentLinkParams(text_document=doc)),
-            (
-                "textDocument/formatting",
-                DocumentFormattingParams(text_document=doc, options=fmt),
-            ),
-            (
-                "textDocument/rangeFormatting",
-                DocumentRangeFormattingParams(
-                    text_document=doc, range=head, options=fmt
-                ),
-            ),
         ]
-        for method, params in requests:
+        version = 0
+        for method, params in pulling:
+            version += 1
+            did_change(client, uri, version, SLOW + f"int extra{version};\n")
             await cancel_and_expect(client, method, params)
+
+        # The format pair never pulls an AST, so no edit: the last pulling
+        # request's compile must survive these cancels too and serve the
+        # closing hover — the shared compile outlives every client cancel.
+        await cancel_and_expect(
+            client,
+            "textDocument/formatting",
+            DocumentFormattingParams(text_document=doc, options=fmt),
+        )
+        await cancel_and_expect(
+            client,
+            "textDocument/rangeFormatting",
+            DocumentRangeFormattingParams(text_document=doc, range=head, options=fmt),
+        )
 
         hover = await client.hover_at(uri, 0, 4, timeout=120)
         assert hover is not None
