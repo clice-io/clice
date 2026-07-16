@@ -71,11 +71,19 @@ public:
     /// Interrupt the in-flight compile if the buffer moved past it
     /// (generation mismatch): the worker abandons the stale parse at the
     /// next declaration, while the request still runs to its reply — crash
-    /// accounting keeps observing the real outcome. Called from the edit
-    /// path (an edit with no follow-up request must not leave the stale
-    /// parse holding up its waiters) and from ensure_compiled's supersede
-    /// point; a no-op when nothing is in flight or the round is current.
+    /// accounting keeps observing the real outcome. Deliberately does NOT
+    /// touch deps_scope: the supersede point orders that cancel after the
+    /// replacement spawn so module interest never dips to zero across the
+    /// swap. A no-op when nothing is in flight or the round is current.
     void interrupt_superseded(Session& session);
+
+    /// The edit path's whole supersede: interrupt the worker's parse AND
+    /// cancel the stale round's dependency waits. With no replacement
+    /// round coming there is no interest hand-off to order against, and a
+    /// round parked in dependency prep (module graph waits) would
+    /// otherwise hold its waiters until the graph settles. A no-op when
+    /// nothing is in flight or the round is current.
+    void abandon_superseded(Session& session);
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 

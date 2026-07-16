@@ -247,6 +247,13 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
         auto pctx = detect_completion_context(session->text, *offset);
         if(pctx.kind == CompletionContext::IncludeQuoted ||
            pctx.kind == CompletionContext::IncludeAngled) {
+            // The include scan is synchronous and this handler is resumed
+            // eagerly, so a $/cancelRequest sitting in the pipe (rapid-fire
+            // completions cancel their predecessors) has not been read yet.
+            // Yield once: the loop drains the pipe, and a fired token tears
+            // this frame down at the suspension instead of paying for a
+            // directory walk nobody wants.
+            co_await kota::yield();
             std::string directory;
             std::vector<std::string> arguments;
             contexts.resolve_command(path, directory, arguments);

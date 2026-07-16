@@ -1260,6 +1260,20 @@ void Compiler::interrupt_superseded(Session& session) {
         worker::CancelCompileParams{std::string(workspace.path_pool.resolve(session.path_id))});
 }
 
+void Compiler::abandon_superseded(Session& session) {
+    if(!session.compiling || session.compiling->generation == session.generation) {
+        return;
+    }
+    interrupt_superseded(session);
+    // The round may still be in dependency prep, where the notification
+    // cannot reach it (nothing dispatched yet): cancel its waits so it
+    // unwinds now instead of after the module graph settles. The cancel
+    // cascade can finish the round synchronously — session.compiling may
+    // be null when this returns. (A round inside its PCH build stays until
+    // the shared build replies: that send is deliberately scope-free.)
+    session.compiling->deps_scope.cancel();
+}
+
 Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
                                             std::shared_ptr<Session> session,
                                             std::optional<protocol::Position> position,

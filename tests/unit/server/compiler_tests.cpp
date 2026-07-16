@@ -357,6 +357,39 @@ TEST_CASE(StopUnblocksCompileWaiters) {
     logging::reset_anomaly_for_testing();
 }
 
+TEST_CASE(AbandonCancelsDepsScope) {
+    // The two supersede entry points differ on deps_scope by design:
+    // abandon_superseded (the edit path, no replacement round) cancels the
+    // stale round's dependency waits; interrupt_superseded (the supersede
+    // point) must not — its deps cancel is ordered after the replacement
+    // spawn so module interest never dips to zero across the swap.
+    TempDir tmp;
+    tmp.touch("scoped.cpp", "");
+
+    kota::event_loop loop;
+    Workspace workspace;
+    ContextResolver contexts(workspace);
+    WorkerPool pool(loop);
+    Compiler compiler(loop, workspace, contexts, pool);
+
+    auto session = std::make_shared<Session>();
+    session->path_id = workspace.path_pool.intern(tmp.path("scoped.cpp"));
+    session->compiling = std::make_shared<Session::PendingCompile>();
+    session->compiling->generation = session->generation;
+
+    // Current round: both are no-ops.
+    compiler.abandon_superseded(*session);
+    EXPECT_FALSE(session->compiling->deps_scope.cancelled());
+
+    session->generation += 1;
+
+    compiler.interrupt_superseded(*session);
+    EXPECT_FALSE(session->compiling->deps_scope.cancelled());
+
+    compiler.abandon_superseded(*session);
+    EXPECT_TRUE(session->compiling->deps_scope.cancelled());
+}
+
 TEST_CASE(EditInterruptsStaleCompile) {
     // The didChange path: an edit with NO follow-up request interrupts the
     // in-flight parse via interrupt_superseded. The superseded round's
