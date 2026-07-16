@@ -68,6 +68,15 @@ public:
     /// file_index, pch_key, ast_deps, and publishes diagnostics.
     kota::task<bool> ensure_compiled(std::shared_ptr<Session> session);
 
+    /// Interrupt the in-flight compile if the buffer moved past it
+    /// (generation mismatch): the worker abandons the stale parse at the
+    /// next declaration, while the request still runs to its reply — crash
+    /// accounting keeps observing the real outcome. Called from the edit
+    /// path (an edit with no follow-up request must not leave the stale
+    /// parse holding up its waiters) and from ensure_compiled's supersede
+    /// point; a no-op when nothing is in flight or the round is current.
+    void interrupt_superseded(Session& session);
+
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
     /// Forward a query to the stateful worker that holds this file's AST.

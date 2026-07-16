@@ -55,7 +55,8 @@ TEST_CASE(HandlerCancelChainsThrough) {
             opts.token = source.token();
             auto result = co_await w.peer->send_request(cp, opts);
             handler_resumed = true;
-            observed_cancelled_reply = !result.has_value();
+            observed_cancelled_reply =
+                !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
 
         kota::task_group<> group(w.loop);

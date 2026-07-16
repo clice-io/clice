@@ -357,6 +357,94 @@ TEST_CASE(StopUnblocksCompileWaiters) {
     logging::reset_anomaly_for_testing();
 }
 
+TEST_CASE(EditInterruptsStaleCompile) {
+    // The didChange path: an edit with NO follow-up request interrupts the
+    // in-flight parse via interrupt_superseded. The superseded round's
+    // waiter resolves false (its result is for a buffer that no longer
+    // exists — the editor re-requests after an edit) instead of sitting
+    // behind a stale 200k-declaration parse, and the next request compiles
+    // the fresh content. Liveness pin; the interruption content is pinned
+    // by StatefulWorker.CancelNotificationInterruptsCompile.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("edited_only.cpp", "");
+    auto src = tmp.path("edited_only.cpp");
+
+    kota::event_loop loop;
+    Workspace workspace;
+    ContextResolver contexts(workspace);
+    WorkerPool pool(loop);
+    Compiler compiler(loop, workspace, contexts, pool);
+
+    auto session = std::make_shared<Session>();
+    session->path_id = workspace.path_pool.intern(src);
+    std::string text;
+    text.reserve(1 << 22);
+    for(int i = 0; i < 200'000; ++i) {
+        text += std::format("int v{};\n", i);
+    }
+    session->text = std::move(text);
+
+    bool waiter_done = false;
+    bool waiter_ok = false;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(pool.start(opts));
+        co_await kota::sleep(500);
+
+        kota::task_group<> group(loop);
+        auto waiter = [&]() -> kota::task<> {
+            waiter_ok = co_await compiler.ensure_compiled(session);
+            waiter_done = true;
+        };
+        group.spawn(waiter());
+
+        for(int i = 0; i < 100 && session->compiling == nullptr; ++i) {
+            co_await kota::sleep(10);
+        }
+        CO_ASSERT_TRUE(session->compiling != nullptr);
+
+        // What the didChange handler does: fold the edit in, then interrupt.
+        session->text = "int fixed;\n";
+        session->generation += 1;
+        session->ast_dirty = true;
+        compiler.interrupt_superseded(*session);
+
+        for(int i = 0; i < 600 && !waiter_done; ++i) {
+            co_await kota::sleep(100);
+        }
+        if(!waiter_done) {
+            group.cancel();
+        }
+        co_await group.join();
+
+        CO_ASSERT_TRUE(waiter_done);
+        EXPECT_FALSE(waiter_ok);
+        EXPECT_TRUE(session->compiling == nullptr);
+
+        // The next request (the editor re-queries after an edit) compiles
+        // the fresh content.
+        bool second_ok = co_await compiler.ensure_compiled(session);
+        EXPECT_TRUE(second_ok);
+        EXPECT_FALSE(session->ast_dirty);
+
+        co_await compiler.stop();
+        co_await pool.stop();
+        done = true;
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+    EXPECT_TRUE(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
 TEST_CASE(SupersededCompileCancelled) {
     // An edit mid-compile supersedes the in-flight round: the waiter breaks
     // out, the supersede point interrupts the worker's parse with a
@@ -490,8 +578,8 @@ TEST_CASE(ClientCancelSparesCompile) {
                                                           {},
                                                           source.token());
             };
-            [[maybe_unused]] auto r = co_await kota::with_token(hover(), source.token());
-            cancelled_returned = true;
+            auto r = co_await kota::with_token(hover(), source.token());
+            cancelled_returned = r.is_cancelled();
         };
         auto other_waiter = [&]() -> kota::task<> {
             auto result = co_await compiler.forward_query(worker::QueryKind::Hover,

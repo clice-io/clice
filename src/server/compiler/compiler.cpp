@@ -1219,22 +1219,17 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
     }
 
     auto superseded = session->compiling;
+
+    // Interrupt the stale parse before the replacement can enter the pipe:
+    // FIFO order guarantees the cancel reaches the worker ahead of the new
+    // Compile request, so it can only ever hit the stale round's stop flag.
+    interrupt_superseded(*session);
+
     auto pending_compile = std::make_shared<Session::PendingCompile>();
     pending_compile->generation = session->generation;
     session->compiling = pending_compile;
 
     LOG_INFO("ensure_compiled: launching compile path_id={} gen={}", path_id, session->generation);
-
-    if(superseded) {
-        // Interrupt the stale parse before the replacement can enter the
-        // pipe: FIFO order guarantees the cancel reaches the worker ahead
-        // of the new Compile request, so it can only ever hit the stale
-        // round's stop flag. The request itself is not wire-cancelled — its
-        // reply (incomplete, or a crash) still reaches run_compile.
-        pool.notify_stateful(
-            path_id,
-            worker::CancelCompileParams{std::string(workspace.path_pool.resolve(path_id))});
-    }
 
     // Spawn the replacement before cancelling the superseded compile: the new
     // round acquires its module-dependency interest synchronously, so shared
@@ -1250,6 +1245,19 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
     co_await pending_compile->done.wait();
 
     co_return !session->ast_dirty;
+}
+
+void Compiler::interrupt_superseded(Session& session) {
+    if(!session.compiling || session.compiling->generation == session.generation) {
+        return;
+    }
+    // Not a wire cancel: the notification flips the compile's stop flag and
+    // the request still completes into run_compile's crash accounting (see
+    // the send site). A stale set is impossible — every emitter runs before
+    // the replacement Compile can enter the pipe.
+    pool.notify_stateful(
+        session.path_id,
+        worker::CancelCompileParams{std::string(workspace.path_pool.resolve(session.path_id))});
 }
 
 Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,

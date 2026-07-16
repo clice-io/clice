@@ -277,6 +277,12 @@ void LSPClient::register_document_sync() {
 
         srv.sessions.apply_change(*session, params.content_changes, params.text_document.version);
 
+        // The edit just made any in-flight compile stale. Interrupt the
+        // worker's parse now instead of waiting for the next AST-backed
+        // request to observe the supersede: with no follow-up request the
+        // stale parse would run to completion and hold up its waiters.
+        srv.compiler.interrupt_superseded(*session);
+
         srv.dispatch(FileEvent::buffer_edited(path_id));
 
         LOG_DEBUG("didChange: path={} version={} gen={}",
