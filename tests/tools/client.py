@@ -47,6 +47,21 @@ from lsprotocol.types import (
 )
 from pygls.lsp.client import BaseLanguageClient
 
+# Sanitizer/crash fingerprints scanned in server stderr. Detection happens
+# incrementally in the pump: a mid-session report (e.g. relayed from a
+# crashed worker) must survive the retention cap's eviction.
+SANITIZER_MARKERS = (
+    "AddressSanitizer",
+    "LeakSanitizer",
+    "MemorySanitizer",
+    "ThreadSanitizer",
+    "UndefinedBehaviorSanitizer",
+    "==ERROR:",
+    "runtime error:",
+)
+
+SANITIZER_MARKER_BYTES = tuple(m.encode() for m in SANITIZER_MARKERS)
+
 
 class CliceClient(BaseLanguageClient):
     """Language client that tracks server-sent notifications and provides
@@ -64,6 +79,8 @@ class CliceClient(BaseLanguageClient):
         self.stderr_chunks: list[bytes] = []
         self.stderr_retained = 0
         self.stderr_pump: asyncio.Task | None = None
+        self.stderr_marker_hit: bytes | None = None
+        self.stderr_scan_carry = b""
 
         @self.feature(TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
         def on_diagnostics(params: PublishDiagnosticsParams) -> None:
@@ -172,6 +189,7 @@ class CliceClient(BaseLanguageClient):
             data = await self._server.stderr.read(65536)
             if not data:
                 return
+            self.scan_for_markers(data)
             self.stderr_chunks.append(data)
             self.stderr_retained += len(data)
             while (
@@ -179,6 +197,19 @@ class CliceClient(BaseLanguageClient):
                 and len(self.stderr_chunks) > 1
             ):
                 self.stderr_retained -= len(self.stderr_chunks.pop(0))
+
+    def scan_for_markers(self, data: bytes) -> None:
+        """Latch the first sanitizer fingerprint with some context; the
+        carry covers markers split across read boundaries."""
+        if self.stderr_marker_hit is not None:
+            return
+        window = self.stderr_scan_carry + data
+        for marker in SANITIZER_MARKER_BYTES:
+            at = window.find(marker)
+            if at >= 0:
+                self.stderr_marker_hit = window[at : at + 4096]
+                return
+        self.stderr_scan_carry = window[-64:]
 
     def drained_stderr(self) -> bytes:
         return b"".join(self.stderr_chunks)

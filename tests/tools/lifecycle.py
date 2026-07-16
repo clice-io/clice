@@ -8,17 +8,7 @@ from pathlib import Path
 import pytest
 
 from tests.tools.checks import assert_no_anomaly
-from tests.tools.client import CliceClient
-
-SANITIZER_MARKERS = (
-    "AddressSanitizer",
-    "LeakSanitizer",
-    "MemorySanitizer",
-    "ThreadSanitizer",
-    "UndefinedBehaviorSanitizer",
-    "==ERROR:",
-    "runtime error:",
-)
+from tests.tools.client import SANITIZER_MARKERS, CliceClient
 
 next_port_offset = 0
 
@@ -128,7 +118,13 @@ async def assert_server_exited_cleanly(
     if server.returncode != 0:
         failures.append(f"server exited with code {server.returncode}")
 
-    if any(marker in stderr_text for marker in SANITIZER_MARKERS):
+    marker_hit = client.stderr_marker_hit if client else None
+    if marker_hit is not None:
+        excerpt = marker_hit.decode("utf-8", errors="replace")
+        failures.append(
+            f"server stderr contains sanitizer/runtime error output:\n{excerpt}"
+        )
+    elif any(marker in stderr_text for marker in SANITIZER_MARKERS):
         failures.append("server stderr contains sanitizer/runtime error output")
 
     if failures:
