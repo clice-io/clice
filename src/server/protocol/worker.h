@@ -220,6 +220,17 @@ struct EvictedParams {
     std::string path;
 };
 
+/// Interrupt the in-flight compile of `path`, if any. Sent at the master's
+/// supersede point instead of wire-cancelling the compile request: the
+/// worker flips the compile's stop flag so clang abandons the stale parse
+/// at the next declaration, while the request still runs to a normal
+/// (incomplete) reply — the master keeps observing the real outcome, so a
+/// worker death during a superseded compile still reaches the document's
+/// quarantine accounting.
+struct CancelCompileParams {
+    std::string path;
+};
+
 }  // namespace clice::worker
 
 namespace kota::ipc::protocol {
@@ -256,6 +267,11 @@ struct NotificationTraits<clice::worker::EvictParams> {
 template <>
 struct NotificationTraits<clice::worker::EvictedParams> {
     constexpr inline static std::string_view method = "clice/worker/evicted";
+};
+
+template <>
+struct NotificationTraits<clice::worker::CancelCompileParams> {
+    constexpr inline static std::string_view method = "clice/worker/cancelCompile";
 };
 
 }  // namespace kota::ipc::protocol

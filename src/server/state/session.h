@@ -120,10 +120,12 @@ struct Session {
         /// Generation snapshot at spawn; a later didChange supersedes this compile.
         std::uint64_t generation = 0;
 
-        /// Cancels this round when it is superseded: the module-dependency
-        /// waits release their interest in the old dependency set, and the
-        /// worker send (which runs under the same scope) is wire-cancelled
-        /// so the worker stops the stale parse at the next declaration.
+        /// Cancels this round's dependency waits when it is superseded,
+        /// releasing their interest in the old dependency set. The worker
+        /// send is deliberately not under this scope — the supersede point
+        /// interrupts the worker's parse with a CancelCompile notification
+        /// instead, so the round still observes its real outcome (crash
+        /// accounting depends on it).
         kota::cancellation_source deps_scope;
     };
 

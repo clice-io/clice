@@ -174,7 +174,7 @@ static kota::ipc::RequestResult<Params> build_for(WorkerPool& pool,
                                                   Session& session,
                                                   std::uint8_t kind,
                                                   Params params,
-                                                  kota::ipc::request_options opts = {}) {
+                                                  kota::ipc::request_options opts) {
     return send_stateless_retrying(
         pool,
         std::move(params),
@@ -969,10 +969,14 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         if(recovery) {
             session->quarantine.spend_probe();
         }
-        // The send runs under the round's supersede scope: an edit that
-        // makes this compile stale wire-cancels it mid-parse.
-        auto result =
-            co_await pool.send_stateful(pid, params, {.token = pc->deps_scope.token()}, suspect);
+        // The send deliberately does NOT run under the supersede scope: the
+        // master must observe the request's real outcome — the crash
+        // accounting below depends on it (a wire cancel racing a worker
+        // death would resume with RequestCancelled and the death would
+        // dodge the document's ledger). A supersede interrupts the worker
+        // with a CancelCompile notification instead, and the stale reply is
+        // discarded at the generation gate below.
+        auto result = co_await pool.send_stateful(pid, params, {}, suspect);
 
         // Crash accounting runs even for superseded compiles: the crash came
         // from content this document dispatched, and skipping it would let a
@@ -1185,11 +1189,11 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
         auto pending = session->compiling;
         if(pending->generation != session->generation) {
             // The in-flight compile is stale (user edited since it started):
-            // supersede it. Its dependency waits and its worker send both
-            // run under deps_scope, so the cancel releases the module-graph
-            // interest AND wire-cancels the dispatched compile — the worker
-            // stops the stale parse at the next declaration instead of
-            // finishing an AST nobody will read.
+            // supersede it. The launch below interrupts the worker's parse
+            // with a CancelCompile notification and cancels deps_scope to
+            // release the module-graph interest; the round itself still runs
+            // to its (incomplete) reply so crash accounting sees the real
+            // outcome.
             break;
         }
         co_await pending->done.wait();
@@ -1220,6 +1224,17 @@ kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
     session->compiling = pending_compile;
 
     LOG_INFO("ensure_compiled: launching compile path_id={} gen={}", path_id, session->generation);
+
+    if(superseded) {
+        // Interrupt the stale parse before the replacement can enter the
+        // pipe: FIFO order guarantees the cancel reaches the worker ahead
+        // of the new Compile request, so it can only ever hit the stale
+        // round's stop flag. The request itself is not wire-cancelled — its
+        // reply (incomplete, or a crash) still reaches run_compile.
+        pool.notify_stateful(
+            path_id,
+            worker::CancelCompileParams{std::string(workspace.path_pool.resolve(path_id))});
+    }
 
     // Spawn the replacement before cancelling the superseded compile: the new
     // round acquires its module-dependency interest synchronously, so shared

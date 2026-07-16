@@ -45,6 +45,14 @@ struct DocumentEntry {
 
     // Per-document serialization mutex
     kota::mutex strand;
+
+    // Stop flag of the most recently arrived Compile request, published
+    // before its strand wait so a CancelCompile aimed at a queued compile
+    // still lands. Loop-thread only (the compile closure reads its own
+    // copy). Never cleared: the master orders CancelCompile ahead of the
+    // replacement Compile on the pipe, so a set can only ever hit the
+    // stale round's flag.
+    std::shared_ptr<std::atomic_bool> compile_stop;
 };
 
 /// RAII ownership of a locked strand. kotatsu cancellation destroys a
@@ -163,6 +171,13 @@ void StatefulWorker::register_handlers() {
         auto doc = get_or_create(params.path);
         touch_lru(params.path);
 
+        // Publish the stop flag before the strand wait: a CancelCompile for
+        // this round must land even while an earlier request still holds
+        // the strand — the preset flag then aborts the parse at its first
+        // declaration.
+        auto stop = std::make_shared<std::atomic_bool>(false);
+        doc->compile_stop = stop;
+
         co_await doc->strand.lock();
 
         // Every exit — including a cancellation that destroys this frame at
@@ -201,14 +216,14 @@ void StatefulWorker::register_handlers() {
         doc->has_ast = false;
         doc->unit = CompilationUnit(nullptr);
 
-        // The parse itself is cancellable: CompilationParams::stop is
-        // polled after every top-level declaration, so the hook reaches
-        // into the middle of the AST build instead of waiting for it to
-        // finish; an interrupted unit reports !completed() and the phases
-        // after it are skipped like any other incomplete compile. The
-        // document stays coherent at every early exit (unit and has_ast
-        // are set together).
-        auto stop = std::make_shared<std::atomic_bool>(false);
+        // The parse itself is interruptible: CompilationParams::stop is
+        // polled after every top-level declaration, so both a CancelCompile
+        // notification and the queue hook (fired when this frame is
+        // cancelled) reach into the middle of the AST build instead of
+        // waiting for it to finish; an interrupted unit reports
+        // !completed() and the phases after it are skipped like any other
+        // incomplete compile. The document stays coherent at every early
+        // exit (unit and has_ast are set together).
         auto compile_result = co_await kota::queue(
             [&]() -> worker::CompileResult {
                 ScopedTimer timer;
@@ -273,6 +288,15 @@ void StatefulWorker::register_handlers() {
             params.path,
             std::vector<feature::DocumentLink>{},
             [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
+    });
+
+    // === CancelCompile ===
+    peer.on_notification([this](const worker::CancelCompileParams& params) {
+        LOG_DEBUG("CancelCompile notification: path={}", params.path);
+        auto it = documents.find(params.path);
+        if(it != documents.end() && it->second->compile_stop) {
+            it->second->compile_stop->store(true, std::memory_order_relaxed);
+        }
     });
 
     // === Evict ===
