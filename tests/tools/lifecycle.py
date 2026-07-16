@@ -48,10 +48,12 @@ def find_free_port() -> int:
     raise RuntimeError(f"no free port in range {base}-{base + 99}")
 
 
-async def make_client(executable: Path, workspace: Path) -> CliceClient:
+async def make_client(
+    executable: Path, workspace: Path, *, drain_stderr: bool = True
+) -> CliceClient:
     """Spawn a fresh clice server and initialize it. For multi-session tests."""
     c = CliceClient()
-    await c.start_io(str(executable), "serve")
+    await c.start_io(str(executable), "serve", drain_stderr=drain_stderr)
     await c.initialize(workspace)
     return c
 
@@ -78,7 +80,9 @@ def server_stderr_excerpt(stderr_text: str) -> str:
     return "\n".join(interesting[-80:])
 
 
-async def assert_server_exited_cleanly(server, timeout: float = 10.0) -> None:
+async def assert_server_exited_cleanly(
+    server, timeout: float = 10.0, client=None
+) -> None:
     failures: list[str] = []
 
     if server is None:
@@ -94,13 +98,27 @@ async def assert_server_exited_cleanly(server, timeout: float = 10.0) -> None:
 
     print(f"[server] exit code: {server.returncode}", flush=True)
 
+    # Collect stderr AFTER the exit wait: exit-time output (sanitizer
+    # reports, late crash text) must reach the scan below. When a pump is
+    # running it owns the stream — wait for it to see EOF instead of
+    # racing it with a second reader.
     stderr_text = ""
-    if server.stderr:
+    pump = getattr(client, "stderr_pump", None) if client else None
+    if pump is not None:
+        try:
+            await asyncio.wait_for(asyncio.shield(pump), timeout=2.0)
+        except Exception:
+            pass
+    elif server.stderr:
         try:
             stderr_data = await asyncio.wait_for(server.stderr.read(), timeout=2.0)
             stderr_text = stderr_data.decode("utf-8", errors="replace")
         except Exception as exc:
             failures.append(f"failed to collect server stderr: {exc!r}")
+    if client is not None:
+        stderr_text = (
+            client.drained_stderr().decode("utf-8", errors="replace") + stderr_text
+        )
 
     for line in server_stderr_excerpt(stderr_text).splitlines():
         print(f"[server] {line}", flush=True)
@@ -136,7 +154,7 @@ async def shutdown_client(c: CliceClient, *, verbose: bool = False) -> None:
             print(f"[logMessage/{level}] {msg.message}", flush=True)
 
     try:
-        await assert_server_exited_cleanly(c.server)
+        await assert_server_exited_cleanly(c.server, client=c)
     finally:
         try:
             await c.stop_io()

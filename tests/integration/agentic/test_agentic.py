@@ -455,7 +455,7 @@ async def test_rpc_shutdown(executable, workspace):
     rpc.sock.close()
 
     try:
-        await assert_server_exited_cleanly(c.server)
+        await assert_server_exited_cleanly(c.server, client=c)
     finally:
         await c.stop_io()
 
@@ -575,7 +575,7 @@ async def test_shutdown_during_indexing(executable, tmp_path):
             await c.initialize(workspace, initialization_options=init_options)
         except Exception:
             if c.server.returncode is not None:
-                await assert_server_exited_cleanly(c.server, timeout=15.0)
+                await assert_server_exited_cleanly(c.server, timeout=15.0, client=c)
             raise
 
         # Give indexing a moment to start, then send shutdown
@@ -593,7 +593,7 @@ async def test_shutdown_during_indexing(executable, tmp_path):
             pass
         rpc.sock.close()
 
-        await assert_server_exited_cleanly(c.server, timeout=15.0)
+        await assert_server_exited_cleanly(c.server, timeout=15.0, client=c)
     finally:
         await c.stop_io()
         await asyncio.sleep(0.1)

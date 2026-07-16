@@ -70,7 +70,11 @@
 ///
 /// ## Process ownership
 /// The master logs to <logging_dir>/<session>/master.log and mirrors to
-/// stderr, which editors show in their output panel. Workers log ONLY to
+/// stderr, which editors show in their output panel. The mirror is
+/// best-effort: clients are expected to drain stderr (editors do), and
+/// one that stops reading costs log lines, never liveness — once the
+/// pipe fills, lines are dropped and the gap is reported when the client
+/// drains again (see support/stderr_sink.h). Workers log ONLY to
 /// their own <session>/<worker>.log (mirror_stderr = false): a worker's
 /// stderr is reserved for unexpected third-party output — assertion
 /// failures, sanitizer reports — which the pool relays line-by-line into the
@@ -83,11 +87,9 @@
 namespace clice::logging {
 
 using Level = spdlog::level::level_enum;
-using ColorMode = spdlog::color_mode;
 
 struct Options {
     Level level = Level::info;
-    ColorMode color = ColorMode::automatic;
     bool replay_console = true;
 };
 

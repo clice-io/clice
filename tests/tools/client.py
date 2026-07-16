@@ -61,6 +61,8 @@ class CliceClient(BaseLanguageClient):
         self.progress_events: list[dict] = []
         self.init_result: InitializeResult | None = None
         self.workspace: Path | None = None
+        self.stderr_chunks: list[bytes] = []
+        self.stderr_pump: asyncio.Task | None = None
 
         @self.feature(TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
         def on_diagnostics(params: PublishDiagnosticsParams) -> None:
@@ -136,6 +138,36 @@ class CliceClient(BaseLanguageClient):
 
     # Single home for the pygls internals these wrap; tests must not poke
     # at _server/_stop_event/_async_tasks directly.
+
+    async def start_io(self, *args, drain_stderr: bool = True, **kwargs) -> None:
+        await super().start_io(*args, **kwargs)
+        # The server treats stderr as best-effort, but a client that never
+        # reads it forfeits the full mirror (lines are dropped once the
+        # pipe fills). Drain it continuously so long tests keep the whole
+        # transcript; backpressure tests opt out to play the hostile client.
+        if drain_stderr and self._server and self._server.stderr:
+            self.spawn_stderr_pump()
+
+    def spawn_stderr_pump(self) -> None:
+        """Start (or restart) the continuous stderr drain. Backpressure
+        tests spawn it late: asyncio pauses an undrained stderr transport at
+        its buffer limit, and Process.wait() cannot observe pipe EOF —
+        hence process exit — until reading resumes."""
+        self.stderr_pump = asyncio.get_running_loop().create_task(
+            self.pump_server_stderr()
+        )
+        self._async_tasks.append(self.stderr_pump)
+
+    async def pump_server_stderr(self) -> None:
+        assert self._server is not None and self._server.stderr is not None
+        while True:
+            data = await self._server.stderr.read(65536)
+            if not data:
+                return
+            self.stderr_chunks.append(data)
+
+    def drained_stderr(self) -> bytes:
+        return b"".join(self.stderr_chunks)
 
     @property
     def server(self) -> asyncio.subprocess.Process | None:

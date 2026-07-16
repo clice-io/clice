@@ -8,9 +8,9 @@
 #include <vector>
 
 #ifdef _WIN32
-// The only direct windows.h include in clice.  The defines keep it from
-// spilling the min/max macros (and other clutter) that break LLVM and
-// standard headers; any future include of windows.h needs the same guards.
+// The defines keep windows.h from spilling the min/max macros (and other
+// clutter) that break LLVM and standard headers; any direct include of
+// windows.h (here and stderr_sink.cpp) needs the same guards.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
