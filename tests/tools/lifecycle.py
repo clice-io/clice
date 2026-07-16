@@ -81,7 +81,7 @@ def server_stderr_excerpt(stderr_text: str) -> str:
 
 
 async def assert_server_exited_cleanly(
-    server, timeout: float = 10.0, client=None
+    server, timeout: float = 10.0, client: CliceClient | None = None
 ) -> None:
     failures: list[str] = []
 
@@ -103,7 +103,7 @@ async def assert_server_exited_cleanly(
     # running it owns the stream — wait for it to see EOF instead of
     # racing it with a second reader.
     stderr_text = ""
-    pump = getattr(client, "stderr_pump", None) if client else None
+    pump = client.stderr_pump if client else None
     if pump is not None:
         try:
             await asyncio.wait_for(asyncio.shield(pump), timeout=2.0)

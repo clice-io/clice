@@ -149,10 +149,12 @@ class CliceClient(BaseLanguageClient):
             self.spawn_stderr_pump()
 
     def spawn_stderr_pump(self) -> None:
-        """Start (or restart) the continuous stderr drain. Backpressure
-        tests spawn it late: asyncio pauses an undrained stderr transport at
-        its buffer limit, and Process.wait() cannot observe pipe EOF —
-        hence process exit — until reading resumes."""
+        """Start the continuous stderr drain if none is running.
+        Backpressure tests spawn it late: asyncio pauses an undrained
+        stderr transport at its buffer limit, and Process.wait() cannot
+        observe pipe EOF — hence process exit — until reading resumes."""
+        if self.stderr_pump is not None and not self.stderr_pump.done():
+            return
         self.stderr_pump = asyncio.get_running_loop().create_task(
             self.pump_server_stderr()
         )

@@ -15,6 +15,9 @@ namespace clice::testing {
 
 namespace {
 
+// POSIX-only: the Windows PIPE_NOWAIT path has no unit harness (_pipe
+// buffers are not fillable without a reader thread); it is exercised
+// end-to-end by the integration flood test on the Windows CI runner.
 #ifndef _WIN32
 
 spdlog::details::log_msg info_msg(std::string_view text) {
@@ -62,6 +65,7 @@ TEST_SUITE(StderrSink) {
 TEST_CASE(FullPipeDropsLines) {
     Pipe pipe;
     logging::StderrSink sink(pipe.fds[1]);
+    EXPECT_TRUE((::fcntl(pipe.fds[1], F_GETFL) & O_NONBLOCK) != 0);
 
     // Nobody reads: the pipe (64KB) fills and every further line must be
     // shed on the spot. A blocking regression hangs right here — a clean,
