@@ -12,6 +12,7 @@
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/extension.h"
+#include "server/protocol/position.h"
 #include "server/protocol/worker.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
@@ -196,21 +197,6 @@ constexpr std::uint8_t evidence_kind(worker::BuildKind kind) {
 }
 
 constexpr inline std::uint8_t document_link_evidence = 0x20;
-
-/// Clamp a client-supplied position to the document, following LSP
-/// semantics: a character beyond the line length defaults to the line end,
-/// a line beyond the document defaults to the end of the content.
-static lsp::LineMap::Offset clamped_offset(const lsp::LineMap& map,
-                                           const protocol::Position& position) {
-    if(auto offset = map.to_offset(position)) {
-        return *offset;
-    }
-    auto starts = map.line_starts();
-    if(position.line >= starts.size()) {
-        return static_cast<lsp::LineMap::Offset>(map.content().size());
-    }
-    return map.line_bounds(starts[position.line]).end;
-}
 
 Compiler::Compiler(kota::event_loop& loop,
                    Workspace& workspace,

@@ -85,14 +85,16 @@ async def test_change_without_open(client, workspace):
     assert get_errors(client.diagnostics[uri]) == []
 
 
-async def test_desync_range_tolerated(client, tmp_path):
+async def test_desync_range_clamped(client, tmp_path):
     write_source(tmp_path, "main.cpp", "int foo() { return 1; }\n")
     write_cdb(tmp_path, ["main.cpp"])
     await client.initialize(tmp_path)
     uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
 
     # An incremental edit whose range lies outside the buffer: the views
-    # have drifted. The edit is dropped with an ERROR log; no refusal.
+    # have drifted. The range is clamped per LSP 3.17, so "oops" lands at
+    # the true end of the document instead of being dropped.
+    event = client.wait_for_diagnostics(uri)
     client.text_document_did_change(
         DidChangeTextDocumentParams(
             text_document=VersionedTextDocumentIdentifier(uri=uri, version=2),
@@ -108,18 +110,23 @@ async def test_desync_range_tolerated(client, tmp_path):
         )
     )
 
-    # Requests keep being served from the retained buffer.
+    # Requests keep being served, now against the clamped buffer.
     hover = await client.hover_at(uri, 0, 4)
     assert hover is not None
+
+    # The appended "oops" makes the TU ill-formed: errors prove the edit
+    # was applied rather than dropped.
+    await asyncio.wait_for(event.wait(), timeout=60.0)
+    assert get_errors(client.diagnostics[uri])
 
     logs_dir = tmp_path / ".clice" / "logs"
     for _ in range(50):
         logs = "".join(f.read_text(errors="replace") for f in logs_dir.rglob("*.log"))
-        if "didChange range" in logs:
+        if any("didChange range" in ln and "clamped" in ln for ln in logs.splitlines()):
             break
         await asyncio.sleep(0.1)
     else:
-        pytest.fail("dropped out-of-sync edit never produced an error log")
+        pytest.fail("clamped out-of-sync edit never produced a clamp log")
 
 
 @pytest.mark.workspace("hello_world")

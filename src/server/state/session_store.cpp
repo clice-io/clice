@@ -4,6 +4,7 @@
 #include <utility>
 #include <variant>
 
+#include "server/protocol/position.h"
 #include "support/logging.h"
 
 #include "kota/ipc/lsp/position.h"
@@ -73,23 +74,31 @@ void SessionStore::apply_change(Session& session,
                     auto map = session.line_map();
                     auto start = map.to_offset(range.start);
                     auto end = map.to_offset(range.end);
-                    if(start && end && *start <= *end) {
-                        if(llvm::StringRef(session.text).substr(*start, *end - *start) != c.text) {
-                            session.text.replace(*start, *end - *start, c.text);
-                            applied = true;
-                        }
-                    } else {
+                    if(!start || !end || *start > *end) {
                         // The client's view has drifted from ours (or the
-                        // client is buggy). Drop the edit but keep serving:
-                        // a full-document change or reopen resynchronizes.
-                        LOG_ERROR(
-                            "didChange range {}:{}-{}:{} does not fit the buffer " "(path_id={} version={}); edit dropped",
+                        // client is buggy). LSP 3.17 requires clamping
+                        // positions past the document instead of dropping
+                        // the edit, which would silently desync every
+                        // subsequent position until a full sync or reopen.
+                        LOG_INFO(
+                            "didChange range {}:{}-{}:{} does not fit the buffer " "(path_id={} version={}); clamped",
                             range.start.line,
                             range.start.character,
                             range.end.line,
                             range.end.character,
                             session.path_id,
                             version);
+                        start = clamped_offset(map, range.start);
+                        end = clamped_offset(map, range.end);
+                        if(*start > *end) {
+                            // Inverted even after clamping: treat it as an
+                            // empty range at the clamped start.
+                            end = start;
+                        }
+                    }
+                    if(llvm::StringRef(session.text).substr(*start, *end - *start) != c.text) {
+                        session.text.replace(*start, *end - *start, c.text);
+                        applied = true;
                     }
                 }
                 session.line_starts = lsp::build_line_starts(session.text);
@@ -98,7 +107,7 @@ void SessionStore::apply_change(Session& session,
     }
 
     // A real content change re-arms a quarantined document with one probe
-    // attempt; dropped or no-op edits grant none (see Quarantine::on_edit).
+    // attempt; no-op edits grant none (see Quarantine::on_edit).
     session.quarantine.on_edit(applied);
 
     session.generation++;

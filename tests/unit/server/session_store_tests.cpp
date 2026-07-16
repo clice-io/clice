@@ -83,20 +83,105 @@ TEST_CASE(WholeDocumentReplace) {
     ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
 }
 
-TEST_CASE(InvalidRangeDropped) {
+TEST_CASE(InvertedRangeCollapsed) {
     SessionStore store;
     auto session = store.open(1);
-    store.apply_open(*session, "short\n", 1);
+    store.apply_open(*session, "ab\ncd\n", 1);
 
-    // A range past the end of the document cannot be mapped to offsets;
-    // the change is silently dropped but version bookkeeping still runs.
-    auto change = partial_change(99, 0, 99, 1, "junk");
+    // A range whose start lies after its end deletes nothing; the text is
+    // inserted at the start position.
+    auto change = partial_change(1, 0, 0, 0, "X");
     store.apply_change(*session, change, 2);
 
-    ASSERT_EQ(session->text, "short\n");
+    ASSERT_EQ(session->text, "ab\nXcd\n");
+    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+}
+
+TEST_CASE(SelectAllDeleteClamped) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "int foo() { return 1; }\n", 1);
+
+    // Several clients emit select-all-delete as an oversized range; per
+    // LSP 3.17 positions past the document clamp to the document end.
+    auto change = partial_change(0, 0, 99999, 0, "");
+    store.apply_change(*session, change, 2);
+
+    ASSERT_EQ(session->text, "");
+    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
     ASSERT_EQ(session->version, 2);
     ASSERT_TRUE(session->ast_dirty);
     ASSERT_EQ(session->generation, 2u);
+}
+
+TEST_CASE(InsertPastLastLine) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "int a;\n", 1);
+
+    // Line 1 (after the trailing newline) is the last line; line 2 clamps
+    // to the true end of the document.
+    auto change = partial_change(2, 0, 2, 0, "int b;\n");
+    store.apply_change(*session, change, 2);
+
+    ASSERT_EQ(session->text, "int a;\nint b;\n");
+    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+}
+
+TEST_CASE(InsertPastLineEnd) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "ab\ncd\n", 1);
+
+    // A character beyond the line length clamps to the line end.
+    auto change = partial_change(0, 9999, 0, 9999, "X");
+    store.apply_change(*session, change, 2);
+
+    ASSERT_EQ(session->text, "abX\ncd\n");
+    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+}
+
+TEST_CASE(ClampedChangeFolds) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "ab\ncd\n", 1);
+
+    // The clamp for the second change must resolve against the buffer as
+    // left by the first one (EOF has moved from 6 to 8).
+    protocol::TextDocumentContentChangeEvent changes[] = {
+        partial_change(0, 1, 0, 2, "xyz"),  // "ab" -> "axyz"
+        partial_change(99, 0, 99, 0, "!"),  // clamps to the new EOF
+    };
+    store.apply_change(*session, changes, 2);
+
+    ASSERT_EQ(session->text, "axyz\ncd\n!");
+    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+}
+
+TEST_CASE(EmptyDocumentClamped) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "", 1);
+
+    auto change = partial_change(5, 3, 8, 0, "int x;");
+    store.apply_change(*session, change, 2);
+
+    ASSERT_EQ(session->text, "int x;");
+    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+}
+
+TEST_CASE(RangeEndPastEof) {
+    SessionStore store;
+    auto session = store.open(1);
+    store.apply_open(*session, "int a;\nint b;\n", 1);
+
+    // The end position sits on the last (empty) line but one character
+    // past its length: it clamps to the end of the document.
+    auto change = partial_change(1, 0, 2, 1, "");
+    store.apply_change(*session, change, 2);
+
+    ASSERT_EQ(session->text, "int a;\n");
+    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
 }
 
 TEST_CASE(ReopenBumpsGeneration) {
@@ -220,7 +305,7 @@ TEST_CASE(QuarantineProbeOnEdit) {
     ASSERT_FALSE(session->quarantine.blocked());
 }
 
-TEST_CASE(DroppedEditNoProbe) {
+TEST_CASE(NoopEditNoProbe) {
     SessionStore store;
     auto session = store.open(1);
     store.apply_open(*session, "int a;\n", 1);
@@ -228,11 +313,11 @@ TEST_CASE(DroppedEditNoProbe) {
     session->quarantine.on_crash();
     ASSERT_TRUE(session->quarantine.blocked());
 
-    // The probe license is one attempt per real content change: an edit
-    // whose range does not fit the buffer is dropped, an empty change list
-    // and a no-op replacement change nothing — none may re-arm a compile
-    // of the unchanged poison bytes.
-    store.apply_change(*session, partial_change(99, 0, 99, 1, "junk"), 2);
+    // The probe license is one attempt per real content change: an
+    // out-of-range deletion clamps to an empty range at the end of the
+    // document, an empty change list and a no-op replacement change
+    // nothing — none may re-arm a compile of the unchanged poison bytes.
+    store.apply_change(*session, partial_change(99, 0, 99, 1, ""), 2);
     ASSERT_TRUE(session->quarantine.blocked());
 
     store.apply_change(*session, {}, 3);
