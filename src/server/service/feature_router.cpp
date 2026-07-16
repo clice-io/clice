@@ -238,6 +238,15 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
                                                    std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
 
+    // This handler is resumed eagerly, so a $/cancelRequest or didChange
+    // sitting in the pipe (rapid-fire completions cancel and re-issue as
+    // the user types) has not been read yet. Yield once BEFORE reading any
+    // buffer state: the loop drains the pipe — a fired token tears this
+    // frame down here, and an edit lands before the offset and completion
+    // context are computed, so the synchronous include scan below never
+    // serves candidates or ranges for a buffer that no longer exists.
+    co_await kota::yield();
+
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
 
@@ -247,13 +256,6 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
         auto pctx = detect_completion_context(session->text, *offset);
         if(pctx.kind == CompletionContext::IncludeQuoted ||
            pctx.kind == CompletionContext::IncludeAngled) {
-            // The include scan is synchronous and this handler is resumed
-            // eagerly, so a $/cancelRequest sitting in the pipe (rapid-fire
-            // completions cancel their predecessors) has not been read yet.
-            // Yield once: the loop drains the pipe, and a fired token tears
-            // this frame down at the suspension instead of paying for a
-            // directory walk nobody wants.
-            co_await kota::yield();
             std::string directory;
             std::vector<std::string> arguments;
             contexts.resolve_command(path, directory, arguments);
