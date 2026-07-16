@@ -21,7 +21,8 @@ SLOW = "\n".join(f"int v{i};" for i in range(200_000)) + "\n"
 
 async def test_cancelled_completion_replies(executable, tmp_path):
     (tmp_path / "slow.cpp").write_text(SLOW)
-    write_cdb(tmp_path, ["slow.cpp"])
+    (tmp_path / "tiny.cpp").write_text("int value = 42;\n")
+    write_cdb(tmp_path, ["slow.cpp", "tiny.cpp"])
 
     client = await make_client(executable, tmp_path)
     try:
@@ -43,12 +44,17 @@ async def test_cancelled_completion_replies(executable, tmp_path):
         await asyncio.sleep(0.1)
         client.protocol.notify("$/cancelRequest", CancelParams(id=msg_id))
 
-        # The cancel must produce a prompt error reply, not a full compile.
-        with pytest.raises(Exception):
+        # The reply must be the LSP RequestCancelled error (-32800), not a
+        # timeout or a transport failure passing for one.
+        with pytest.raises(Exception) as exc:
             await asyncio.wait_for(task, timeout=30)
+        assert getattr(exc.value, "code", None) == -32800
 
-        # The server survives the cancellation and still answers.
-        hover = await client.hover_at(uri, 0, 5)
+        # The server survives the cancellation and still answers. Hover a
+        # small file: the slow one would recompile from scratch here and
+        # can brush the 30s client timeout on a debug CI runner.
+        tiny_uri, _ = client.open(tmp_path / "tiny.cpp")
+        hover = await client.hover_at(tiny_uri, 0, 5)
         assert hover is not None
     finally:
         await shutdown_client(client)
