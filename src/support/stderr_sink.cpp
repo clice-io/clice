@@ -18,29 +18,57 @@
 
 namespace clice::logging {
 
-/// Switch the fd to non-blocking writes when (and only when) it is a pipe:
-/// that is the one shape whose drain an external party controls.
-static void set_pipe_nonblocking(int fd) {
+/// Whether the fd's drain is controlled by an external party. Pipes and
+/// sockets qualify (editors, supervisors); terminals and files do not — a
+/// tty/pty file description is shared with the parent shell, and neither
+/// can exert client-controlled backpressure.
+static bool externally_drained(int fd) {
 #ifdef _WIN32
     HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
-    if(handle == INVALID_HANDLE_VALUE || ::GetFileType(handle) != FILE_TYPE_PIPE) {
-        return;
-    }
-    DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
-    ::SetNamedPipeHandleState(handle, &mode, nullptr, nullptr);
+    return handle != INVALID_HANDLE_VALUE && ::GetFileType(handle) == FILE_TYPE_PIPE;
 #else
     struct stat st = {};
-    if(::fstat(fd, &st) != 0 || !S_ISFIFO(st.st_mode)) {
+    return ::fstat(fd, &st) == 0 && (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode));
+#endif
+}
+
+/// Switch such an fd to non-blocking writes. False means the fd needs the
+/// treatment but could not be switched — writing to it could still wedge
+/// the caller, so the sink must not write at all.
+static bool set_pipe_nonblocking(int fd) {
+#ifdef _WIN32
+    HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
+    DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
+    return ::SetNamedPipeHandleState(handle, &mode, nullptr, nullptr) != 0;
+#else
+    if(int flags = ::fcntl(fd, F_GETFL); flags >= 0) {
+        return ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+    }
+    return false;
+#endif
+}
+
+void restore_pipe_blocking(int fd) {
+    if(!externally_drained(fd)) {
         return;
     }
+#ifdef _WIN32
+    HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
+    DWORD mode = PIPE_READMODE_BYTE | PIPE_WAIT;
+    ::SetNamedPipeHandleState(handle, &mode, nullptr, nullptr);
+#else
     if(int flags = ::fcntl(fd, F_GETFL); flags >= 0) {
-        ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        ::fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
     }
 #endif
 }
 
 StderrSink::StderrSink(int fd) : fd(fd) {
-    set_pipe_nonblocking(fd);
+    // A pipe that cannot be switched must never be written: a blocking
+    // write to it is exactly the wedge this sink exists to prevent.
+    if(externally_drained(fd)) {
+        disabled = !set_pipe_nonblocking(fd);
+    }
 }
 
 bool StderrSink::try_write(const char* data, std::size_t size) {
@@ -70,6 +98,11 @@ bool StderrSink::try_write(const char* data, std::size_t size) {
 }
 
 void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
+    if(disabled) {
+        dropped_total.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+
     spdlog::memory_buf_t formatted;
     formatter_->format(msg, formatted);
 

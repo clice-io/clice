@@ -22,6 +22,13 @@ namespace clice::logging {
 /// Terminals and regular files are left in blocking mode: they cannot
 /// exert client-controlled backpressure, and O_NONBLOCK on a tty is
 /// shared with the parent shell's own file description.
+/// Undo StderrSink's non-blocking switch on a pipe/socket fd. Workers call
+/// this after dropping their startup mirror: their stderr is reserved for
+/// third-party crash output (assertion failures, sanitizer reports) whose
+/// writers expect blocking semantics, and its reader is the master's
+/// always-running drain — a trusted party, unlike a client.
+void restore_pipe_blocking(int fd = 2);
+
 class StderrSink final : public spdlog::sinks::base_sink<std::mutex> {
 public:
     explicit StderrSink(int fd = 2);
@@ -42,6 +49,9 @@ private:
     bool try_write(const char* data, std::size_t size);
 
     int fd;
+    /// The fd needs non-blocking treatment but could not be switched:
+    /// every line is shed without touching the fd.
+    bool disabled = false;
     std::atomic<std::size_t> dropped_total = 0;
     std::size_t dropped_unreported = 0;
 };

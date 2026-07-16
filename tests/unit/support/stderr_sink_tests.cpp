@@ -2,6 +2,7 @@
 
 #ifndef _WIN32
 #include <fcntl.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #endif
 
@@ -94,6 +95,19 @@ TEST_CASE(DrainRecoversAndReports) {
     auto out = pipe.drain();
     EXPECT_TRUE(out.find("client not draining") != std::string::npos);
     EXPECT_TRUE(out.find("after the flood") != std::string::npos);
+}
+
+TEST_CASE(SocketGetsNonblocking) {
+    // Supervisors attach stderr to sockets; their drain is just as
+    // client-controlled as a pipe's.
+    int fds[2] = {-1, -1};
+    ASSERT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+
+    logging::StderrSink sink(fds[1]);
+    EXPECT_TRUE((::fcntl(fds[1], F_GETFL) & O_NONBLOCK) != 0);
+
+    ::close(fds[0]);
+    ::close(fds[1]);
 }
 
 TEST_CASE(RegularFileStaysBlocking) {

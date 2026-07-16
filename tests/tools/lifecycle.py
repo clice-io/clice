@@ -107,8 +107,10 @@ async def assert_server_exited_cleanly(
     if pump is not None:
         try:
             await asyncio.wait_for(asyncio.shield(pump), timeout=2.0)
-        except Exception:
-            pass
+        except Exception as exc:
+            # A pump that never saw EOF means the transcript below may be
+            # partial — the sanitizer scan must not silently pass on it.
+            failures.append(f"stderr pump did not complete: {exc!r}")
     elif server.stderr:
         try:
             stderr_data = await asyncio.wait_for(server.stderr.read(), timeout=2.0)

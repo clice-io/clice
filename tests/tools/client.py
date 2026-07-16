@@ -62,6 +62,7 @@ class CliceClient(BaseLanguageClient):
         self.init_result: InitializeResult | None = None
         self.workspace: Path | None = None
         self.stderr_chunks: list[bytes] = []
+        self.stderr_retained = 0
         self.stderr_pump: asyncio.Task | None = None
 
         @self.feature(TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
@@ -160,6 +161,11 @@ class CliceClient(BaseLanguageClient):
         )
         self._async_tasks.append(self.stderr_pump)
 
+    # Retention cap for drained stderr: long stress runs mirror the whole
+    # server log, and the teardown scans only need the tail (sanitizer
+    # reports and crash text arrive at exit).
+    STDERR_RETAIN_BYTES = 8 * 1024 * 1024
+
     async def pump_server_stderr(self) -> None:
         assert self._server is not None and self._server.stderr is not None
         while True:
@@ -167,6 +173,12 @@ class CliceClient(BaseLanguageClient):
             if not data:
                 return
             self.stderr_chunks.append(data)
+            self.stderr_retained += len(data)
+            while (
+                self.stderr_retained > self.STDERR_RETAIN_BYTES
+                and len(self.stderr_chunks) > 1
+            ):
+                self.stderr_retained -= len(self.stderr_chunks.pop(0))
 
     def drained_stderr(self) -> bytes:
         return b"".join(self.stderr_chunks)

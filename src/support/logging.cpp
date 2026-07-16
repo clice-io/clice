@@ -65,6 +65,13 @@ void file_logger(std::string_view name,
     llvm::SmallVector<spdlog::sink_ptr, 2> sinks = {file_sink};
     if(mirror_stderr) {
         sinks.push_back(std::make_shared<StderrSink>());
+    } else {
+        // The startup logger's sink switched fd 2 to non-blocking; without
+        // a mirror nothing owns the drop handling anymore, and the fd is
+        // reserved for third-party crash output (sanitizer reports) whose
+        // writers expect blocking semantics. Its reader is the master's
+        // always-running drain, so blocking is safe here.
+        restore_pipe_blocking();
     }
     auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
     logger->set_level(options.level);
