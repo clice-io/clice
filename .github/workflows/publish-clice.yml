@@ -113,6 +113,20 @@ jobs:
             "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
           pixi run -e "$ENV" cmake-build
 
+      # The release asset only carries GSYM; the full DWARF (needed for
+      # core-dump debugging) is kept as a per-run artifact instead of
+      # bloating the release page.
+      - name: Upload full debug info artifact
+        if: ${{ !contains(matrix.os, 'windows') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-info-${{ matrix.asset_name }}
+          path: |
+            build/RelWithDebInfo/pack-symbol/clice.debug
+            build/RelWithDebInfo/pack-symbol/clice.dSYM
+          if-no-files-found: error
+          retention-days: 90
+
       # sccache runs a background server that holds file locks; if it is
       # still alive when the pixi post-action tries to clean up the env
       # cache on Windows, the cleanup fails and marks the job as failed.

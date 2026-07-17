@@ -7,7 +7,11 @@ address ("main executable base: 0x..."); this script subtracts it and feeds
 the resulting file offsets to llvm-symbolizer.
 
 Usage:
-    python symbolize.py crash.log --symbols clice.debug
+    python symbolize.py crash.log --symbols clice.gsym
+
+Accepts either the released GSYM symbol file (resolved with llvm-gsymutil) or
+a full DWARF file / unstripped binary (resolved with llvm-symbolizer). GSYM
+output keeps names mangled; pipe through llvm-cxxfilt to demangle.
 """
 
 import argparse
@@ -36,10 +40,12 @@ def main() -> int:
         help="frame module name treated as the main executable (default: clice)",
     )
     parser.add_argument("--symbolizer", default="llvm-symbolizer")
+    parser.add_argument("--gsymutil", default="llvm-gsymutil")
     args = parser.parse_args()
 
-    if shutil.which(args.symbolizer) is None:
-        print(f"error: {args.symbolizer} not found in PATH", file=sys.stderr)
+    tool = args.gsymutil if args.symbols.endswith(".gsym") else args.symbolizer
+    if shutil.which(tool) is None:
+        print(f"error: {tool} not found in PATH", file=sys.stderr)
         return 1
 
     if args.log == "-":
@@ -67,16 +73,20 @@ def main() -> int:
         if offset < 0:
             print(line)
             continue
-        result = subprocess.run(
-            [args.symbolizer, f"--obj={args.symbols}", "-f", "-C", "-p", hex(offset)],
-            capture_output=True,
-            text=True,
-        )
-        symbolized = result.stdout.strip()
-        if result.returncode != 0 or not symbolized:
+        if tool == args.gsymutil:
+            command = [tool, "--address", hex(offset), args.symbols]
+        else:
+            command = [tool, f"--obj={args.symbols}", "-f", "-C", "-p", hex(offset)]
+        result = subprocess.run(command, capture_output=True, text=True)
+        lines = [
+            entry
+            for entry in result.stdout.splitlines()
+            if entry.strip() and "Looking up" not in entry
+        ]
+        if result.returncode != 0 or not lines:
             print(line)
             continue
-        print(f"#{frame.group(1)} {hex(offset)} {symbolized}")
+        print(f"#{frame.group(1)} {hex(offset)} " + "\n    ".join(lines))
     return 0
 
 
