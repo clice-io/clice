@@ -199,16 +199,18 @@ class CliceClient(BaseLanguageClient):
                 self.stderr_retained -= len(self.stderr_chunks.pop(0))
 
     def scan_for_markers(self, data: bytes) -> None:
-        """Latch the first sanitizer fingerprint with some context; the
-        carry covers markers split across read boundaries."""
+        """Latch the earliest sanitizer fingerprint and keep appending
+        context from later reads; the carry covers markers split across
+        read boundaries."""
         if self.stderr_marker_hit is not None:
+            if len(self.stderr_marker_hit) < 4096:
+                self.stderr_marker_hit += data[: 4096 - len(self.stderr_marker_hit)]
             return
         window = self.stderr_scan_carry + data
-        for marker in SANITIZER_MARKER_BYTES:
-            at = window.find(marker)
-            if at >= 0:
-                self.stderr_marker_hit = window[at : at + 4096]
-                return
+        hits = [at for m in SANITIZER_MARKER_BYTES if (at := window.find(m)) >= 0]
+        if hits:
+            self.stderr_marker_hit = window[min(hits) : min(hits) + 4096]
+            return
         self.stderr_scan_carry = window[-64:]
 
     def drained_stderr(self) -> bytes:
