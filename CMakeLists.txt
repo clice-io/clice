@@ -62,6 +62,20 @@ if(CLICE_ENABLE_LTO)
     string(APPEND CMAKE_MODULE_LINKER_FLAGS " -flto=thin")
 endif()
 
+if(CLICE_RELEASE)
+    # Identical code folding is release-only: folded functions share one
+    # address, which hurts debugging and profiling in dev builds. icf=safe
+    # (not =all) so address-taken functions keep C++ pointer identity.
+    if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
+                CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:ICF")
+    elseif(APPLE)
+        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--icf=safe")
+    else()
+        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--icf=safe -Wl,-O2")
+    endif()
+endif()
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-fsanitize=address)
 

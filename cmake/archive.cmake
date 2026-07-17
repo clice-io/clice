@@ -4,6 +4,12 @@ if(OUTPUT MATCHES "\\.tar\\.gz$")
         WORKING_DIRECTORY "${WORK_DIR}"
         COMMAND_ERROR_IS_FATAL ANY
     )
+elseif(OUTPUT MATCHES "\\.tar\\.xz$")
+    execute_process(
+        COMMAND ${CMAKE_COMMAND} -E tar cJf "${OUTPUT}" .
+        WORKING_DIRECTORY "${WORK_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+    )
 elseif(OUTPUT MATCHES "\\.zip$")
     execute_process(
         COMMAND ${CMAKE_COMMAND} -E tar cf "${OUTPUT}" --format=zip .

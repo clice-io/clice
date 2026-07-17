@@ -2,6 +2,18 @@ name: clice
 
 on:
   workflow_call:
+  # Manual runs exercise the full packaging matrix from any branch without
+  # tagging; the upload steps below stay tag-gated.
+  workflow_dispatch:
+
+env:
+  CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+  SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  SCCACHE_BASEDIRS: ${{ github.workspace }}
+  CCACHE_COMPILERCHECK: content
+  CCACHE_MAXSIZE: 2G
+  SCCACHE_CACHE_SIZE: 2G
 
 jobs:
   publish-clice:
@@ -19,14 +31,14 @@ jobs:
           - os: ubuntu-24.04
             artifact_name: clice.tar.gz
             asset_name: clice-x86_64-linux-gnu.tar.gz
-            symbol_artifact_name: clice-symbol.tar.gz
-            symbol_asset_name: clice-x86_64-linux-gnu-symbol.tar.gz
+            symbol_artifact_name: clice-symbol.tar.xz
+            symbol_asset_name: clice-x86_64-linux-gnu-symbol.tar.xz
 
           - os: macos-15
             artifact_name: clice.tar.gz
             asset_name: clice-arm64-macos-darwin.tar.gz
-            symbol_artifact_name: clice-symbol.tar.gz
-            symbol_asset_name: clice-arm64-macos-darwin-symbol.tar.gz
+            symbol_artifact_name: clice-symbol.tar.xz
+            symbol_asset_name: clice-arm64-macos-darwin-symbol.tar.xz
 
           # Cross-compilation builds
           - os: macos-15
@@ -34,16 +46,16 @@ jobs:
             pixi_env: cross-macos-x64
             artifact_name: clice.tar.gz
             asset_name: clice-x86_64-macos-darwin.tar.gz
-            symbol_artifact_name: clice-symbol.tar.gz
-            symbol_asset_name: clice-x86_64-macos-darwin-symbol.tar.gz
+            symbol_artifact_name: clice-symbol.tar.xz
+            symbol_asset_name: clice-x86_64-macos-darwin-symbol.tar.xz
 
           - os: ubuntu-24.04
             target_triple: aarch64-linux-gnu
             pixi_env: cross-linux-aarch64
             artifact_name: clice.tar.gz
             asset_name: clice-aarch64-linux-gnu.tar.gz
-            symbol_artifact_name: clice-symbol.tar.gz
-            symbol_asset_name: clice-aarch64-linux-gnu-symbol.tar.gz
+            symbol_artifact_name: clice-symbol.tar.xz
+            symbol_asset_name: clice-aarch64-linux-gnu-symbol.tar.xz
 
           - os: windows-2025
             target_triple: aarch64-pc-windows-msvc
@@ -69,6 +81,26 @@ jobs:
         with:
           environments: ${{ matrix.pixi_env || 'package' }}
 
+      # LTO builds share nothing with the test builds' caches (different
+      # flags), so the package matrix keeps its own key space.
+      - name: Restore compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
+          key: ${{ runner.os }}-${{ matrix.target_triple || 'native' }}-package-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target_triple || 'native' }}-package-ccache-
+
+      - name: Zero cache stats
+        run: |
+          ENV="${{ matrix.pixi_env || 'package' }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -e "$ENV" -- sccache --stop-server || true
+            pixi run -e "$ENV" -- sccache --zero-stats || true
+          else
+            pixi run -e "$ENV" -- ccache --zero-stats || true
+          fi
+
       - name: Package (native)
         if: ${{ !matrix.target_triple }}
         run: pixi run package
@@ -80,6 +112,20 @@ jobs:
           pixi run -e "$ENV" package-config -- \
             "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
           pixi run -e "$ENV" cmake-build
+
+      # sccache runs a background server that holds file locks; if it is
+      # still alive when the pixi post-action tries to clean up the env
+      # cache on Windows, the cleanup fails and marks the job as failed.
+      - name: Print cache stats and stop server
+        if: always()
+        run: |
+          ENV="${{ matrix.pixi_env || 'package' }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pixi run -e "$ENV" -- sccache --show-stats
+            pixi run -e "$ENV" -- sccache --stop-server || true
+          else
+            pixi run -e "$ENV" -- ccache --show-stats
+          fi
 
       - name: Upload Main Package to Release
         if: startsWith(github.ref, 'refs/tags/v')

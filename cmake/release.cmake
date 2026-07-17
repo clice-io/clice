@@ -5,9 +5,13 @@ set(CLICE_SYMBOL_DIR "${PROJECT_BINARY_DIR}/pack-symbol")
 
 if(WIN32)
     set(CLICE_ARCHIVE_EXT ".zip")
+    set(CLICE_SYMBOL_ARCHIVE_EXT ".zip")
     set(CLICE_SYMBOL_NAME "clice.pdb")
 else()
     set(CLICE_ARCHIVE_EXT ".tar.gz")
+    # xz for the symbol archive: it is ~640MB of DWARF, and xz shaves ~40%
+    # off gzip; the main archive stays .tar.gz for downloader compatibility.
+    set(CLICE_SYMBOL_ARCHIVE_EXT ".tar.xz")
     if(APPLE)
         set(CLICE_SYMBOL_NAME "clice.dSYM")
     else()
@@ -71,7 +75,7 @@ add_custom_target(clice-pack-symbol ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CLICE_SYMBOL_DIR}/pack"
     COMMAND ${CLICE_COPY_SYMBOL_CMD}
     COMMAND ${CMAKE_COMMAND}
-        -DOUTPUT="${PROJECT_BINARY_DIR}/clice-symbol${CLICE_ARCHIVE_EXT}"
+        -DOUTPUT="${PROJECT_BINARY_DIR}/clice-symbol${CLICE_SYMBOL_ARCHIVE_EXT}"
         -DWORK_DIR="${CLICE_SYMBOL_DIR}/pack"
         -P "${PROJECT_SOURCE_DIR}/cmake/archive.cmake"
     COMMENT "Packaging clice debug symbols"
