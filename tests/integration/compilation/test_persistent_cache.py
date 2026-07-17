@@ -23,6 +23,7 @@ from tests.tools.checks import MTIME_GRANULARITY, SETTLE_TIME
 from tests.tools.workspace import (
     cache_root,
     list_pch_files,
+    list_pch_idx_files,
     list_pcm_files,
     list_tmp_files,
     pin_cache_to_workspace,
@@ -30,6 +31,9 @@ from tests.tools.workspace import (
 )
 from tests.tools.checks import assert_no_anomaly
 from tests.tools.checks import assert_clean_compile
+from tests.tools.checks import assert_has_errors
+from tests.tools.checks import get_errors
+from tests.tools.checks import wait_for_recompile
 
 
 async def test_pch_written_to_cache_dir(client, tmp_path):
@@ -536,6 +540,120 @@ async def test_kill9_recovery(executable, tmp_path):
     # Clean shutdown removed session 2's own tmp; session 1's residue was
     # swept at session 2 startup, so nothing may remain.
     assert list_tmp_files(tmp_path) == [], "tmp residue should be swept"
+
+
+def corrupt_preserving_stat(path, *, where="garbage", span=4096):
+    """Corrupt a blob in place, preserving file size and mtime; returns the
+    corrupted bytes. "garbage" replaces the whole file (caught by reader
+    validation), "middle" flips a span reached only during deserialization
+    (can abort the consuming process instead of failing cleanly)."""
+    stat = path.stat()
+    data = bytearray(path.read_bytes())
+    if where == "garbage":
+        data = bytearray(b"\x5a" * len(data))
+    else:
+        offset = len(data) // 2
+        for i in range(offset, min(len(data), offset + span)):
+            data[i] ^= 0xFF
+    path.write_bytes(bytes(data))
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    return bytes(data)
+
+
+@pytest.mark.parametrize(
+    "where",
+    [
+        "garbage",
+        # Mid-file corruption can abort the AST reader and kill the worker
+        # (an expected WorkerCrash anomaly); recovery then lands on the
+        # next request instead of inline.
+        pytest.param("middle", marks=pytest.mark.allow_anomaly),
+    ],
+)
+async def test_corrupt_pch_rebuilt_on_restart(executable, tmp_path, where):
+    """A .pch corrupted offline (size and mtime preserved, so freshness
+    checks pass) must not brick the file: the consumption failure retracts
+    the pair and rebuilds it, and real diagnostics come back."""
+    pin_cache_to_workspace(tmp_path)
+    (tmp_path / "header.h").write_text("#pragma once\nint known_func();\n")
+    # The body has a real error: a bricked file publishes an empty list
+    # instead, so the error is the recovery signal.
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { return undeclared_symbol; }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+
+    c1 = await make_client(executable, tmp_path)
+    uri, _ = await c1.open_and_wait(tmp_path / "main.cpp")
+    assert_has_errors(c1, uri, "Baseline session should report the body error")
+    assert len(list_pch_files(tmp_path)) == 1
+    assert_no_anomaly(c1, tmp_path)
+    await shutdown_client(c1)
+
+    corrupted = corrupt_preserving_stat(list_pch_files(tmp_path)[0], where=where)
+
+    c2 = await make_client(executable, tmp_path)
+    uri2, _ = await c2.open_and_wait(tmp_path / "main.cpp")
+    if not get_errors(c2.diagnostics.get(uri2, [])):
+        # The crash shape ends its round with a versionless empty publish
+        # after retracting the pair; the next request rebuilds it.
+        c2.diagnostics.pop(uri2, None)
+        await wait_for_recompile(c2, uri2)
+    # The specific body error, not just any error: a quarantine notice or
+    # a still-standing corruption fatal must not count as recovery.
+    assert any(
+        "undeclared_symbol" in d.message
+        for d in get_errors(c2.diagnostics.get(uri2, []))
+    ), f"Real diagnostics must recover, got: {c2.diagnostics.get(uri2, [])}"
+    pch_files = list_pch_files(tmp_path)
+    assert len(pch_files) == 1, "The pair must be rebuilt, not abandoned"
+    if where == "middle" and pch_files[0].read_bytes() == corrupted:
+        # The flip landed in semantically dead bytes on this LLVM build
+        # (PCH blobs carry no whole-file checksum): the reader consumed
+        # the blob untouched and there is nothing to heal.
+        pytest.skip("mid-file flip was semantically dead on this build")
+    assert pch_files[0].read_bytes() != corrupted, (
+        "The corrupt .pch must be rebuilt, not trusted forever"
+    )
+    if where == "garbage":
+        assert_no_anomaly(c2, tmp_path)
+    await shutdown_client(c2)
+
+
+async def test_corrupt_pch_idx_retracted(executable, tmp_path):
+    """A corrupt .pch.idx detected at load must retract the on-disk pair
+    (not just the in-memory path): a pair that looks complete would be
+    re-adopted and silently degrade every later session."""
+    pin_cache_to_workspace(tmp_path)
+    (tmp_path / "header.h").write_text("#pragma once\nstruct Idx { int v; };\n")
+    (tmp_path / "main.cpp").write_text(
+        '#include "header.h"\nint main() { Idx i; return i.v; }\n'
+    )
+    write_cdb(tmp_path, ["main.cpp"])
+
+    c1 = await make_client(executable, tmp_path)
+    uri, _ = await c1.open_and_wait(tmp_path / "main.cpp")
+    assert_clean_compile(c1, uri)
+    assert len(list_pch_idx_files(tmp_path)) == 1
+    assert_no_anomaly(c1, tmp_path)
+    await shutdown_client(c1)
+
+    corrupted = corrupt_preserving_stat(list_pch_idx_files(tmp_path)[0])
+
+    # Recovery rides the .pch artifact gate: detecting the corrupt idx
+    # retracts the whole pair from the store mid-round, the compile then
+    # setup-fails on the now-missing .pch, and the gate rebuilds both.
+    c2 = await make_client(executable, tmp_path)
+    uri2, _ = await c2.open_and_wait(tmp_path / "main.cpp")
+    assert_clean_compile(c2, uri2)
+    idx_files = list_pch_idx_files(tmp_path)
+    assert len(idx_files) == 1, "The pair must be rebuilt after idx corruption"
+    assert idx_files[0].read_bytes() != corrupted, (
+        "The corrupt .pch.idx must be retracted and rebuilt, not left posing "
+        "as a complete pair"
+    )
+    assert_no_anomaly(c2, tmp_path)
+    await shutdown_client(c2)
 
 
 async def test_cache_wiped_while_running(client, tmp_path):

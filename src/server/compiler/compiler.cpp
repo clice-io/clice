@@ -414,6 +414,19 @@ static bool may_write_pch_key(const Session& session,
     return session.generation == launch_generation && session.dirty_epoch == launch_epoch;
 }
 
+void Compiler::invalidate_pch(llvm::StringRef pch_key) {
+    if(workspace.store) {
+        workspace.store->invalidate("pch", pch_key);
+    }
+    // An in-flight rebuild owns the entry (BuildingGuard); its commit will
+    // republish fresh blobs over the retracted pair, so only a settled
+    // entry is dropped here.
+    if(auto it = workspace.pch_cache.find(pch_key);
+       it != workspace.pch_cache.end() && !it->second.building) {
+        workspace.pch_cache.erase(it);
+    }
+}
+
 kota::task<bool> Compiler::ensure_pch(Session& session,
                                       std::uint64_t launch_generation,
                                       std::uint64_t launch_epoch,
@@ -868,6 +881,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
     // without a prefix first; if the diagnostics indicate missing includer
     // context, the second round re-compiles with a synthesized prefix.
     // The trial's diagnostics are never published.
+    bool artifact_retried = false;
     for(int attempt = 0; attempt < 2; ++attempt) {
         worker::CompileParams params;
         params.path = file_path;
@@ -936,8 +950,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         std::vector<std::uint32_t> pch_inactive;
         std::shared_ptr<index::PreambleState> preamble_state;
         if(session->pch_key.has_value()) {
-            auto it = workspace.pch_cache.find(*session->pch_key);
-            preamble_state = it != workspace.pch_cache.end() ? it->second.load_state() : nullptr;
+            preamble_state = workspace.preamble_state(*session->pch_key);
         }
         if(preamble_state) {
             auto regions = preamble_state->inactive_regions();
@@ -1000,9 +1013,83 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                             uri_str,
                             result.error().message);
             }
+            // A death while consuming a prebuilt pair may be the pair's
+            // fault: deep corruption aborts the AST reader
+            // (report_fatal_error in the bitstream reader) before any
+            // diagnostic can anchor, so the attributable shapes above
+            // never get a say. Retract the pair — a corrupt artifact then
+            // heals on the next compile, while a genuinely poisonous
+            // document keeps crashing and its own quarantine budget still
+            // contains it (the extra rebuilds stay bounded by that
+            // budget).
+            if(result.error().code == worker::dispatch_errc::worker_crashed &&
+               session->pch_key.has_value() && !params.pch.first.empty()) {
+                LOG_WARN("Compile crashed consuming PCH pair {} for {}; retracting the pair",
+                         *session->pch_key,
+                         uri_str);
+                invalidate_pch(*session->pch_key);
+                session->pch_key.reset();
+            }
             // A quarantined document announces itself instead of hiding
             // behind the empty list; the clear path publishes empty
             // diagnostics without a version and no inactive regions.
+            if(session->quarantine.active()) {
+                publish_quarantined(session, source, suffix_line_limit);
+            } else {
+                session->output = CompileOutput{
+                    .version = std::nullopt,
+                    .source = source,
+                    .diagnostics = kota::codec::RawValue{},
+                    .line_limit = suffix_line_limit,
+                    .inactive_regions = std::nullopt,
+                };
+                on_output.emit(session);
+            }
+            co_return;
+        }
+
+        // The artifact quality gate: a failed parse whose diagnostics name
+        // the consumed PCH (worker-side pch_suspect — setup failure and
+        // fatal error alike). ensure_pch validated the pair fresh via its
+        // deps, yet the frontend could not read it — the bytes on disk
+        // are the suspect. Retract the pair (store + cache) and rerun the
+        // round once; ensure_pch misses and rebuilds both halves. Without
+        // this write-back a corrupt blob is trusted for the life of the
+        // store and the file stays broken on every restart. A setup
+        // failure whose diagnostics do NOT name the blob (bad invocation,
+        // broken module input) deliberately falls through to the non-Done
+        // path below: retracting a healthy shared PCH over someone else's
+        // failure would rebuild it on every request for as long as that
+        // failure persists.
+        if(result.value().pch_suspect && session->pch_key.has_value() &&
+           !params.pch.first.empty() && !artifact_retried) {
+            artifact_retried = true;
+            LOG_WARN("Compile blamed PCH pair {} for {}; retracting the pair and rebuilding",
+                     *session->pch_key,
+                     uri_str);
+            invalidate_pch(*session->pch_key);
+            session->pch_key.reset();
+            // Rerun the same attempt so the trial semantics are untouched
+            // (the loop counter is about probe rounds, not artifact
+            // retries).
+            --attempt;
+            continue;
+        }
+
+        // A non-Done reply past the gate is a non-result: settling it
+        // would freeze the document on a product that never existed —
+        // empty diagnostics, no index, an empty deps snapshot nothing can
+        // invalidate. Superseded rounds were already discarded at the
+        // generation gate above, so this round's inputs are broken in a
+        // way a PCH rebuild cannot fix.
+        if(result.value().status != worker::CompileStatus::Done) {
+            LOG_WARN("Compile produced no result for {} (status={})",
+                     uri_str,
+                     static_cast<int>(result.value().status));
+            // ast_dirty stays set: the next request recompiles instead of
+            // trusting the phantom product. Publish the honest gap like
+            // the dispatch-failure path above — versionless empty
+            // diagnostics rather than a stale list posing as current.
             if(session->quarantine.active()) {
                 publish_quarantined(session, source, suffix_line_limit);
             } else {

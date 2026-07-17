@@ -380,6 +380,27 @@ const std::shared_ptr<index::PreambleState>& PCHState::load_state() {
     return state;
 }
 
+std::shared_ptr<index::PreambleState> Workspace::preamble_state(llvm::StringRef pch_key) {
+    auto it = pch_cache.find(pch_key);
+    if(it == pch_cache.end()) {
+        return nullptr;
+    }
+
+    auto& st = it->second;
+    bool had_blob = !st.index_path.empty();
+    auto state = st.load_state();
+    if(!state && had_blob && store) {
+        // The blob was just found unreadable (load_state cleared the
+        // path): a pair that looks complete on disk but cannot be opened
+        // would be served to every session for the rest of the store's
+        // life. Retract it now; the entry itself stays until ensure_pch
+        // re-checks the store and rebuilds the pair.
+        LOG_WARN("Retracting PCH pair {} with unreadable PreambleState blob", pch_key);
+        store->invalidate("pch", pch_key);
+    }
+    return state;
+}
+
 void Workspace::load_cache(ContextResolver& contexts) {
     if(!store)
         return;

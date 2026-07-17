@@ -49,13 +49,9 @@ std::shared_ptr<index::PreambleState> IndexQuery::overlay_of(const Session& sess
     if(!session.pch_key) {
         return nullptr;
     }
-    auto it = workspace.pch_cache.find(*session.pch_key);
-    if(it == workspace.pch_cache.end()) {
-        return nullptr;
-    }
-    // Return the shared_ptr by value: consumers run synchronously, but a
-    // reference into the map value would not survive a rehash.
-    return it->second.load_state();
+    // Returned by value: consumers run synchronously, but a reference into
+    // the map value would not survive a rehash.
+    return workspace.preamble_state(*session.pch_key);
 }
 
 void IndexQuery::visit_overlays(

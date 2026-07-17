@@ -117,7 +117,34 @@ struct CompileParams {
     std::vector<std::uint8_t> open_conditionals;
 };
 
+/// Outcome of a stateful compile. Anything but `Done` is a non-result: the
+/// master must not settle the session, record dependencies, or publish the
+/// (empty) diagnostics as current — doing so freezes the document on a
+/// product that never existed.
+enum class CompileStatus : uint8_t {
+    /// The parse produced a usable product — a complete AST, or a fatal
+    /// error whose diagnostics describe the user's code.
+    Done,
+    /// The parse was interrupted by CancelCompile (superseded round).
+    Cancelled,
+    /// The frontend failed before parsing began: bad invocation, or a
+    /// prebuilt input (PCH/PCM) clang could not read. Whether the consumed
+    /// PCH is to blame is a separate signal (pch_suspect).
+    SetupFail,
+};
+
 struct CompileResult {
+    CompileStatus status = CompileStatus::Done;
+
+    /// The parse failed and its diagnostics blame the consumed PCH — they
+    /// name the blob's path, or they are AST-deserialization errors naming
+    /// no other prebuilt input. Holds whether the reader rejected the blob
+    /// at setup or hit a fatal error past it (a Done status with real,
+    /// publishable diagnostics). Either way the artifact is the culprit:
+    /// the master should retract the pair and rebuild instead of trusting
+    /// the corrupt bytes until the preamble changes.
+    bool pch_suspect = false;
+
     int version;
     /// Diagnostics serialized as JSON (RawValue) to avoid bincode/serde annotation conflicts.
     kota::codec::RawValue diagnostics;

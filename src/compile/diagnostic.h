@@ -50,6 +50,14 @@ struct DiagnosticID {
 
     /// Whether this diagnostic represents an unused diagnostic.
     bool is_unused() const;
+
+    /// Whether this diagnostic reports a failure to read a prebuilt
+    /// artifact (PCH/PCM) — clang's "AST Deserialization Issue" category.
+    /// Messages in this family do not reliably carry the artifact path
+    /// (e.g. "malformed or corrupted precompiled file: 'Blob ends too
+    /// soon'"), so consumers that must blame a specific artifact combine
+    /// this with a path match over the inputs they passed.
+    bool is_deserialization_error() const;
 };
 
 struct Diagnostic {

@@ -140,6 +140,18 @@ bool DiagnosticID::is_unused() const {
     return source == DiagnosticSource::Clang && unused_diags.contains(value);
 }
 
+bool DiagnosticID::is_deserialization_error() const {
+    // Category membership rather than an ID list: the family is large
+    // (DiagnosticSerializationKinds) and grows across clang versions,
+    // while the category is stable. Resolved through a member of the
+    // family instead of a hard-coded category number.
+    const static unsigned category =
+        clang::DiagnosticIDs::getCategoryNumberForDiag(clang::diag::err_fe_ast_file_malformed);
+    return source == DiagnosticSource::Clang &&
+           (level == DiagnosticLevel::Error || level == DiagnosticLevel::Fatal) &&
+           clang::DiagnosticIDs::getCategoryNumberForDiag(value) == category;
+}
+
 bool is_note(clang::DiagnosticsEngine::Level level) {
     return level == clang::DiagnosticsEngine::Note || level == clang::DiagnosticsEngine::Remark;
 }

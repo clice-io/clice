@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <thread>
 
 #include "test/temp_dir.h"
@@ -62,6 +63,10 @@ int main() { return 0; }
 
     auto built = clice::compile(params);
     ASSERT_FALSE(built.completed());
+    // Pinned distinctly from setup_fail: the worker maps this status to
+    // CompileStatus::Cancelled, which the master discards without blaming
+    // any artifact.
+    ASSERT_TRUE(built.cancelled());
 }
 
 TEST_CASE(PCHBuildPopulatesInfo) {
@@ -118,6 +123,86 @@ int main() { return 0; }
     ASSERT_EQ(info.arguments.size(), params.arguments.size());
 
     // Clean up the temp file.
+    llvm::sys::fs::remove(*pch_path);
+}
+
+TEST_CASE(CorruptPCHAttributable) {
+    add_file("preamble.h", R"(
+#pragma once
+int preamble_func();
+)");
+
+    llvm::StringRef content = R"(
+#include "preamble.h"
+
+int main() { return preamble_func(); }
+)";
+    add_main("main.cpp", content);
+    prepare();
+
+    // Consuming the PCH reads it from real disk; overlay like compile_with_pch.
+    auto overlay =
+        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    overlay->pushOverlay(vfs);
+    params.vfs = overlay;
+
+    auto pch_path = fs::createTemporaryFile("clice-test", "pch");
+    ASSERT_TRUE(pch_path.operator bool());
+
+    auto& source = sources.all_files["main.cpp"];
+    auto bound = compute_preamble_bound(source.content);
+    auto main_vfs_path = TestVFS::path("main.cpp");
+
+    // Corruption the reader detects in-process must stay attributable to
+    // the artifact — a setup failure, or a fatal error naming the blob —
+    // never a completed parse: that contract is what the master's quality
+    // gate (retract the pair and rebuild) keys on. Whole-file garbage is
+    // rejected by validation; truncation is caught reading the block
+    // structure. Mid-file bit flips can instead abort the process inside
+    // the bitstream reader (report_fatal_error), which in production
+    // kills the worker — that shape is exercised end-to-end by the
+    // integration corruption tests, not here.
+    auto corrupt = [](std::string blob, std::size_t shape) -> std::string {
+        return shape == 0 ? std::string(blob.size(), '\x5A')  // whole-file garbage
+                          : blob.substr(0, blob.size() / 2);  // truncation
+    };
+
+    for(std::size_t shape = 0; shape < 2; ++shape) {
+        params.kind = CompilationKind::Preamble;
+        params.output_file = *pch_path;
+        params.pch = {};
+        params.buffers.clear();
+        params.add_remapped_file(main_vfs_path, source.content, bound);
+
+        PCHInfo info;
+        {
+            auto preamble_unit = clice::compile(params, info);
+            ASSERT_TRUE(preamble_unit.completed());
+        }
+
+        auto blob = fs::read(*pch_path);
+        ASSERT_TRUE(blob.operator bool());
+        ASSERT_TRUE(fs::write(*pch_path, corrupt(std::move(*blob), shape)).operator bool());
+
+        params.kind = CompilationKind::Content;
+        params.output_file.clear();
+        params.pch = {*pch_path, static_cast<std::uint32_t>(info.preamble.size())};
+        params.buffers.clear();
+
+        auto content_unit = clice::compile(params);
+        ASSERT_FALSE(content_unit.completed());
+        ASSERT_TRUE(content_unit.setup_fail() || content_unit.fatal_error());
+        // The blame signal the master's retraction keys on (pch_suspect):
+        // a diagnostic naming the blob, or an AST-deserialization error —
+        // that family's messages do not reliably carry the path ("Blob
+        // ends too soon").
+        bool blames_pch = std::ranges::any_of(content_unit.diagnostics(), [&](auto& diag) {
+            return llvm::StringRef(diag.message).contains(*pch_path) ||
+                   diag.id.is_deserialization_error();
+        });
+        ASSERT_TRUE(blames_pch);
+    }
+
     llvm::sys::fs::remove(*pch_path);
 }
 

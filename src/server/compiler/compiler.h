@@ -192,6 +192,12 @@ private:
     bool is_stale(Session& session);
     void record_deps(Session& session, llvm::ArrayRef<DepFile> deps, std::int64_t build_at);
 
+    /// Retract a PCH pair the frontend could not consume: remove both
+    /// blobs from the store and drop the settled cache entry, so the next
+    /// ensure_pch misses and rebuilds instead of trusting corrupt bytes
+    /// for the life of the store.
+    void invalidate_pch(llvm::StringRef pch_key);
+
     kota::event_loop& loop;
     Workspace& workspace;
     ContextResolver& contexts;

@@ -66,6 +66,14 @@ def list_pch_files(workspace: Path) -> list[Path]:
     return sorted(pch_dir.glob("*.pch"))
 
 
+def list_pch_idx_files(workspace: Path) -> list[Path]:
+    """Return all .pch.idx files in the cache directory, sorted."""
+    pch_dir = cache_root(workspace) / "pch"
+    if not pch_dir.exists():
+        return []
+    return sorted(pch_dir.glob("*.pch.idx"))
+
+
 def list_pcm_files(workspace: Path) -> list[Path]:
     """Return all .pcm files in the cache directory, sorted."""
     pcm_dir = cache_root(workspace) / "pcm"

@@ -607,3 +607,34 @@ async def test_orphan_header_default_command(client, tmp_path):
 
     orphan_uri, _ = await client.open_and_wait(tmp_path / "orphan.h")
     assert_clean_compile(client, orphan_uri)
+
+
+async def test_setup_fail_keeps_dirty(client, tmp_path):
+    """A compile that fails before parsing (bad target triple, no PCH to
+    blame) must not settle: the gap is published as empty diagnostics and
+    the next request recompiles instead of trusting the phantom product."""
+    import json
+
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
+    entries = [
+        {
+            "directory": str(tmp_path),
+            "file": str(tmp_path / "main.cpp"),
+            "arguments": [
+                "clang++",
+                "--target=bogus-unknown-none",
+                "-fsyntax-only",
+                str(tmp_path / "main.cpp"),
+            ],
+        }
+    ]
+    (tmp_path / "compile_commands.json").write_text(json.dumps(entries))
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    assert client.diagnostics.get(uri, []) == [], "Honest gap must be empty"
+
+    # A settled phantom would serve the stale AST and never publish again;
+    # a retained dirty flag recompiles and republishes on the next request.
+    client.diagnostics.pop(uri, None)
+    await wait_for_recompile(client, uri, timeout=30.0)

@@ -290,6 +290,14 @@ struct Workspace {
     /// is a module unit so dependents can be re-evaluated on next compile.
     void on_file_closed(std::uint32_t path_id);
 
+    /// Open the PreambleState blob of a cached PCH. The single consumption
+    /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
+    /// on-disk pair is retracted from the store as well — otherwise every
+    /// later session re-adopts the corrupt pair from cache.json and
+    /// silently degrades again. With the pair gone the next ensure_pch is
+    /// a miss and rebuilds both halves.
+    std::shared_ptr<index::PreambleState> preamble_state(llvm::StringRef pch_key);
+
     /// Load PCH/PCM validity metadata plus the context resolver's slices
     /// from cache.json (under the store's versioned root); entries whose
     /// blob is gone from the store are dropped.
