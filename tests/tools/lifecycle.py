@@ -118,6 +118,13 @@ async def assert_server_exited_cleanly(
     if server.returncode != 0:
         failures.append(f"server exited with code {server.returncode}")
 
+    # A client that drained continuously must never see the drop report:
+    # shedding under a live reader would mean ordinary tests silently lose
+    # parts of the stderr transcript they later assert on.
+    if client is not None and client.stderr_drained_from_start:
+        if "client not draining" in stderr_text:
+            failures.append("stderr mirror shed lines despite a draining client")
+
     marker_hit = client.stderr_marker_hit if client else None
     if marker_hit is not None:
         excerpt = marker_hit.decode("utf-8", errors="replace")

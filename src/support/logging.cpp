@@ -63,21 +63,23 @@ void file_logger(std::string_view name,
     auto replay_buffer = ringbuffer_sink;
 
     llvm::SmallVector<spdlog::sink_ptr, 2> sinks = {file_sink};
+    std::shared_ptr<StderrSink> mirror;
     if(mirror_stderr) {
-        sinks.push_back(std::make_shared<StderrSink>());
-    } else {
-        // The startup logger's sink switched fd 2 to non-blocking; without
-        // a mirror nothing owns the drop handling anymore, and the fd is
-        // reserved for third-party crash output (sanitizer reports) whose
-        // writers expect blocking semantics. Its reader is the master's
-        // always-running drain, so blocking is safe here.
-        restore_pipe_blocking();
+        mirror = std::make_shared<StderrSink>();
+        sinks.push_back(mirror);
     }
     auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
     logger->set_level(options.level);
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
+
+    if(mirror && mirror->inoperative()) {
+        // The mirror fails closed (drops everything) rather than risk the
+        // caller blocking on an unswitchable pipe; say so where it can be
+        // seen — the file log.
+        LOG_WARN("stderr mirror disabled: pipe could not be switched to non-blocking");
+    }
 
     // Replay buffered logs after swapping the default logger, so no messages
     // emitted between the snapshot and the swap are lost.

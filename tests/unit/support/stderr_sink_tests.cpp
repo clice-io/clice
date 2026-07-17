@@ -1,3 +1,4 @@
+#include <format>
 #include <string>
 
 #ifndef _WIN32
@@ -65,12 +66,13 @@ TEST_SUITE(StderrSink) {
 
 TEST_CASE(FullPipeDropsLines) {
     Pipe pipe;
-    logging::StderrSink sink(pipe.fds[1]);
+    logging::StderrSink sink(pipe.fds[1], 4096);
     EXPECT_TRUE((::fcntl(pipe.fds[1], F_GETFL) & O_NONBLOCK) != 0);
 
-    // Nobody reads: the pipe (64KB) fills and every further line must be
-    // shed on the spot. A blocking regression hangs right here — a clean,
-    // attributable failure.
+    // Nobody reads: the pipe (64KB) and the buffer budget fill, and every
+    // further line must evict an oldest one instead of blocking. A
+    // blocking regression hangs right here — a clean, attributable
+    // failure.
     auto line = std::string(100, 'x');
     for(int i = 0; i < 5000 && sink.dropped() == 0; ++i) {
         sink.log(info_msg(line));
@@ -78,9 +80,29 @@ TEST_CASE(FullPipeDropsLines) {
     EXPECT_TRUE(sink.dropped() > 0);
 }
 
-TEST_CASE(DrainRecoversAndReports) {
+TEST_CASE(BackpressureBuffersLines) {
     Pipe pipe;
     logging::StderrSink sink(pipe.fds[1]);
+
+    // More than the pipe holds, less than the buffer budget: a reader
+    // that is merely slow loses nothing.
+    for(int i = 0; i < 600; ++i) {
+        sink.log(info_msg(std::format("line number {}", i)));
+    }
+    EXPECT_TRUE(sink.dropped() == 0);
+
+    auto out = pipe.drain();
+    sink.log(info_msg("the flush trigger"));
+    out += pipe.drain();
+    EXPECT_TRUE(out.find("line number 0") != std::string::npos);
+    EXPECT_TRUE(out.find("line number 599") != std::string::npos);
+    EXPECT_TRUE(out.find("the flush trigger") != std::string::npos);
+    EXPECT_TRUE(sink.dropped() == 0);
+}
+
+TEST_CASE(DrainRecoversAndReports) {
+    Pipe pipe;
+    logging::StderrSink sink(pipe.fds[1], 4096);
 
     auto line = std::string(100, 'y');
     for(int i = 0; i < 5000 && sink.dropped() == 0; ++i) {
@@ -88,13 +110,16 @@ TEST_CASE(DrainRecoversAndReports) {
     }
     ASSERT_TRUE(sink.dropped() > 0);
 
-    // The client starts reading again: the next line must be preceded by
-    // the gap report. Everything is synchronous — no waits involved.
+    // The client starts reading again: one call flushes the buffered
+    // survivors, then the gap report, then the fresh line — everything is
+    // synchronous, no waits involved.
     pipe.drain();
     sink.log(info_msg("after the flood"));
     auto out = pipe.drain();
+    EXPECT_TRUE(out.find('y') != std::string::npos);
     EXPECT_TRUE(out.find("client not draining") != std::string::npos);
     EXPECT_TRUE(out.find("after the flood") != std::string::npos);
+    EXPECT_TRUE(out.find("client not draining") < out.find("after the flood"));
 }
 
 TEST_CASE(SocketGetsNonblocking) {

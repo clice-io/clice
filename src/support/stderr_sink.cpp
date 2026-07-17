@@ -63,7 +63,7 @@ void restore_pipe_blocking(int fd) {
 #endif
 }
 
-StderrSink::StderrSink(int fd) : fd(fd) {
+StderrSink::StderrSink(int fd, std::size_t capacity) : fd(fd), capacity(capacity) {
     // A pipe that cannot be switched must never be written: a blocking
     // write to it is exactly the wedge this sink exists to prevent.
     if(externally_drained(fd)) {
@@ -71,14 +71,14 @@ StderrSink::StderrSink(int fd) : fd(fd) {
     }
 }
 
-bool StderrSink::try_write(const char* data, std::size_t size) {
+void StderrSink::write_or_buffer(const char* data, std::size_t size) {
     while(size > 0) {
 #ifdef _WIN32
         // PIPE_NOWAIT: a full pipe reports success with zero (or partial)
         // bytes written instead of blocking.
         int n = ::_write(fd, data, static_cast<unsigned int>(size));
         if(n <= 0) {
-            return false;
+            break;
         }
 #else
         ssize_t n = ::write(fd, data, size);
@@ -86,15 +86,30 @@ bool StderrSink::try_write(const char* data, std::size_t size) {
             if(n < 0 && errno == EINTR) {
                 continue;
             }
-            // EAGAIN: pipe full. EPIPE and friends: reader gone. Either
-            // way the line is shed, never awaited.
-            return false;
+            // EAGAIN: pipe full — keep the rest for a later flush. EPIPE
+            // and friends: reader gone; the buffer then just ages out.
+            break;
         }
 #endif
         data += n;
         size -= static_cast<std::size_t>(n);
     }
-    return true;
+    pending.append(data, size);
+}
+
+void StderrSink::shed_over_capacity() {
+    while(pending.size() > capacity) {
+        auto newline = pending.find('\n');
+        if(newline == std::string::npos) {
+            dropped_total.fetch_add(1, std::memory_order_relaxed);
+            dropped_unreported += 1;
+            pending.clear();
+            return;
+        }
+        pending.erase(0, newline + 1);
+        dropped_total.fetch_add(1, std::memory_order_relaxed);
+        dropped_unreported += 1;
+    }
 }
 
 void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
@@ -103,27 +118,27 @@ void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
         return;
     }
 
-    spdlog::memory_buf_t formatted;
-    formatter_->format(msg, formatted);
+    // Flush what the pipe refused earlier; order is preserved by never
+    // writing fresh content while older bytes are still pending.
+    if(!pending.empty()) {
+        std::string backlog;
+        backlog.swap(pending);
+        write_or_buffer(backlog.data(), backlog.size());
+    }
 
-    // Report earlier drops before the next line that fits, so the gap is
-    // visible where it happened. If the note itself does not fit, the
-    // pipe is still full and this line joins the count.
-    if(dropped_unreported > 0) {
+    // Report earlier evictions once the backlog cleared: the note lands
+    // where writes resumed, right before the next fresh line.
+    if(pending.empty() && dropped_unreported > 0) {
         auto note = std::format("[logging] dropped {} stderr line(s): client not draining\n",
                                 dropped_unreported);
-        if(!try_write(note.data(), note.size())) {
-            dropped_unreported += 1;
-            dropped_total.fetch_add(1, std::memory_order_relaxed);
-            return;
-        }
         dropped_unreported = 0;
+        write_or_buffer(note.data(), note.size());
     }
 
-    if(!try_write(formatted.data(), formatted.size())) {
-        dropped_unreported += 1;
-        dropped_total.fetch_add(1, std::memory_order_relaxed);
-    }
+    spdlog::memory_buf_t formatted;
+    formatter_->format(msg, formatted);
+    write_or_buffer(formatted.data(), formatted.size());
+    shed_over_capacity();
 }
 
 }  // namespace clice::logging

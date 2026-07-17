@@ -96,4 +96,18 @@ struct PollResult {
     std::uint32_t events = 0;
 };
 
+/// Test hook (clice/internal/logFlood): emit `count` info-level log lines
+/// of roughly `size` bytes each, tagged stderr-flood with a running index.
+/// Gives backpressure tests a deterministic volume source — feature log
+/// lines change shape over time and must not be load-bearing for tests.
+/// Absent from capabilities and user docs.
+struct LogFloodParams {
+    std::uint32_t count = 0;
+    std::uint32_t size = 0;
+};
+
+struct LogFloodResult {
+    std::uint32_t emitted = 0;
+};
+
 }  // namespace clice::ext

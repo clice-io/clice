@@ -14,6 +14,7 @@
 #include "server/protocol/worker.h"
 #include "server/worker/worker_common.h"
 #include "support/logging.h"
+#include "support/stderr_sink.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/bincode.h"
@@ -366,6 +367,12 @@ int run_stateful_worker_mode(std::uint64_t memory_limit,
                              const std::string& log_dir,
                              std::size_t max_documents) {
     logging::stderr_logger(worker_name, logging::options);
+    // A worker's stderr reader is the master's always-running drain — a
+    // trusted party — and the fd is reserved for third-party crash output
+    // (assertion failures, sanitizer reports) whose writers expect blocking
+    // semantics. Undo the sink's non-blocking switch unconditionally: with
+    // no log directory the file_logger below never runs.
+    logging::restore_pipe_blocking();
     if(!log_dir.empty()) {
         // File only: worker stderr is reserved for crash/unexpected output,
         // which the master relays into its own log (see logging taxonomy).

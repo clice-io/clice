@@ -79,6 +79,7 @@ class CliceClient(BaseLanguageClient):
         self.stderr_chunks: list[bytes] = []
         self.stderr_retained = 0
         self.stderr_pump: asyncio.Task | None = None
+        self.stderr_drained_from_start = True
         self.stderr_marker_hit: bytes | None = None
         self.stderr_scan_carry = b""
 
@@ -163,6 +164,7 @@ class CliceClient(BaseLanguageClient):
         # reads it forfeits the full mirror (lines are dropped once the
         # pipe fills). Drain it continuously so long tests keep the whole
         # transcript; backpressure tests opt out to play the hostile client.
+        self.stderr_drained_from_start = drain_stderr
         if drain_stderr and self._server and self._server.stderr:
             self.spawn_stderr_pump()
 
