@@ -1,10 +1,15 @@
 import * as assert from "assert";
+import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 
 // E2E smoke tests against a real clice binary. The binary path comes from
 // CLICE_EXECUTABLE; without it (plain `pnpm test`) the suite is skipped.
 // The workspace folder is set by .vscode-test.mjs and selects the scenario.
+//
+// The bundled variant clears CLICE_EXECUTABLE and passes CLICE_E2E_BUNDLED_FROM
+// instead: the server is staged under the extension's clice/ dir so the run
+// exercises the bundled-executable fallback in extension.ts.
 
 // Keep in sync with editors/nvim/tests/e2e.lua.
 interface Scenario {
@@ -37,7 +42,10 @@ const scenarios: Record<string, Scenario> = {
 };
 
 suite("clice E2E", function () {
-    const executable = process.env.CLICE_EXECUTABLE;
+    // The bundled variant runs the server staged under clice/ by .vscode-test.mjs;
+    // its CLICE_EXECUTABLE is empty and CLICE_E2E_BUNDLED_FROM carries the origin.
+    const bundled = !!process.env.CLICE_E2E_BUNDLED_FROM;
+    const executable = process.env.CLICE_E2E_BUNDLED_FROM || process.env.CLICE_EXECUTABLE;
     if (!executable) {
         if (process.env.CI) {
             throw new Error("CLICE_EXECUTABLE must be set in CI");
@@ -57,9 +65,25 @@ suite("clice E2E", function () {
         scenario = scenarios[path.basename(folder.uri.fsPath)];
         assert.ok(scenario, `no scenario for workspace ${folder.uri.fsPath}`);
 
-        await vscode.workspace
-            .getConfiguration("clice")
-            .update("executable", path.resolve(executable), vscode.ConfigurationTarget.Global);
+        // The bundled fallback is only taken when clice.executable is unset,
+        // so leave it alone for that variant (its user-data-dir is isolated).
+        if (!bundled) {
+            await vscode.workspace
+                .getConfiguration("clice")
+                .update("executable", path.resolve(executable), vscode.ConfigurationTarget.Global);
+        }
+    });
+
+    suiteTeardown(function () {
+        if (bundled) {
+            const extension = vscode.extensions.getExtension("ykiko.clice-vscode");
+            if (extension) {
+                fs.rmSync(path.join(extension.extensionPath, "clice"), {
+                    recursive: true,
+                    force: true,
+                });
+            }
+        }
     });
 
     test("server starts and publishes diagnostics", async function () {
