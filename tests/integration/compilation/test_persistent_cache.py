@@ -592,7 +592,14 @@ async def test_corrupt_pch_rebuilt_on_restart(executable, tmp_path, where):
 
     corrupted = corrupt_preserving_stat(list_pch_files(tmp_path)[0], where=where)
 
-    c2 = await make_client(executable, tmp_path)
+    # The middle shape may crash a worker; Debug builds trap anomalies
+    # with abort() unless told otherwise (same as test_crash_recovery.py).
+    if where == "middle":
+        os.environ["CLICE_ANOMALY_NO_TRAP"] = "1"
+    try:
+        c2 = await make_client(executable, tmp_path)
+    finally:
+        os.environ.pop("CLICE_ANOMALY_NO_TRAP", None)
     uri2, _ = await c2.open_and_wait(tmp_path / "main.cpp")
     if not get_errors(c2.diagnostics.get(uri2, [])):
         # The crash shape ends its round with a versionless empty publish
