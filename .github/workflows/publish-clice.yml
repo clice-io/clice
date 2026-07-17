@@ -81,8 +81,8 @@ jobs:
         with:
           environments: ${{ matrix.pixi_env || 'package' }}
 
-      # LTO builds share nothing with the test builds' caches (different
-      # flags), so the package matrix keeps its own key space.
+      # The package matrix keeps a cache key space separate from the test
+      # builds — release flags differ, so their objects never overlap.
       - name: Restore compiler cache
         uses: actions/cache@v6
         with:

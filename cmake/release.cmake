@@ -76,8 +76,10 @@ else()
     else()
         set(CLICE_GSYM_INPUT "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}")
     endif()
+    # --quiet: ICF-folded functions trip thousands of benign line-table
+    # diagnostics that would otherwise drown the CI log.
     set(CLICE_PACK_SYMBOL_CMD ${CLICE_GSYMUTIL} --convert "${CLICE_GSYM_INPUT}"
-        --out-file "${CLICE_SYMBOL_DIR}/pack/clice.gsym")
+        --quiet --out-file "${CLICE_SYMBOL_DIR}/pack/clice.gsym")
 endif()
 
 add_custom_target(clice-pack-symbol ALL

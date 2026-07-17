@@ -20,7 +20,7 @@ option(CLICE_OFFLINE_BUILD "Disable network downloads during configuration" OFF)
 option(CLICE_ENABLE_TEST "Build unit tests" OFF)
 option(CLICE_CI_ENVIRONMENT "Enable CI-specific configuration" OFF)
 option(CLICE_ENABLE_BENCHMARK "Build benchmarks" OFF)
-option(CLICE_RELEASE "Enable release packaging (LTO + strip + pack)" OFF)
+option(CLICE_RELEASE "Enable release packaging (strip + pack + link optimizations)" OFF)
 
 # Global flags that apply to all targets (including FetchContent dependencies).
 if(NOT MSVC)
@@ -50,9 +50,11 @@ if(CLICE_USE_LIBCXX)
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -stdlib=libc++")
 endif()
 
-if(CLICE_RELEASE)
-    set(CLICE_ENABLE_LTO ON)
-endif()
+# Releases deliberately do NOT enable LTO yet: ThinLTO's cross-TU inlining
+# defeats kota's out-of-line workaround for llvm-project#105595 (clang < 21
+# drops coroutine promise policy writes under -O3), which silently breaks
+# cancellation — six cancellation unit tests fail on any ThinLTO build.
+# Re-enable together with the clang 21 toolchain upgrade.
 
 if(CLICE_ENABLE_LTO)
     string(APPEND CMAKE_C_FLAGS " -flto=thin")
