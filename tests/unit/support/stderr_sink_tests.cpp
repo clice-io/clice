@@ -122,6 +122,31 @@ TEST_CASE(DrainRecoversAndReports) {
     EXPECT_TRUE(out.find("client not draining") < out.find("after the flood"));
 }
 
+#ifdef F_SETPIPE_SZ
+TEST_CASE(TinyPipeStillReports) {
+    // Windows/macOS pipes are far smaller than Linux's 64KB, so a flushed
+    // backlog takes many calls to deliver — the gap report must ride the
+    // FIRST accepted quantum, not wait for the backlog to clear (that
+    // ordering bug only surfaced on small-pipe CI runners).
+    Pipe pipe;
+    ::fcntl(pipe.fds[1], F_SETPIPE_SZ, 4096);
+    logging::StderrSink sink(pipe.fds[1], 65536);
+
+    auto line = std::string(100, 'z');
+    for(int i = 0; i < 5000 && sink.dropped() == 0; ++i) {
+        sink.log(info_msg(line));
+    }
+    ASSERT_TRUE(sink.dropped() > 0);
+
+    // Drain only one tiny pipe's worth, log once: the report must already
+    // be in that first quantum even though most of the backlog is not.
+    pipe.drain();
+    sink.log(info_msg("nudge"));
+    auto out = pipe.drain();
+    EXPECT_TRUE(out.find("client not draining") != std::string::npos);
+}
+#endif
+
 TEST_CASE(SocketGetsNonblocking) {
     // Supervisors attach stderr to sockets; their drain is just as
     // client-controlled as a pipe's.

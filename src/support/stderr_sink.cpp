@@ -118,21 +118,25 @@ void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
         return;
     }
 
+    // The gap precedes everything still buffered — evicted lines were
+    // older than the survivors — so the report goes to the FRONT of the
+    // backlog: the first quantum the pipe accepts after the client
+    // resumes carries it, however small the pipe. Under continued
+    // pressure the note ages out with everything else and a fresh count
+    // is staged later.
+    if(dropped_unreported > 0) {
+        auto note = std::format("[logging] dropped {} stderr line(s): client not draining\n",
+                                dropped_unreported);
+        dropped_unreported = 0;
+        pending.insert(0, note);
+    }
+
     // Flush what the pipe refused earlier; order is preserved by never
     // writing fresh content while older bytes are still pending.
     if(!pending.empty()) {
         std::string backlog;
         backlog.swap(pending);
         write_or_buffer(backlog.data(), backlog.size());
-    }
-
-    // Report earlier evictions once the backlog cleared: the note lands
-    // where writes resumed, right before the next fresh line.
-    if(pending.empty() && dropped_unreported > 0) {
-        auto note = std::format("[logging] dropped {} stderr line(s): client not draining\n",
-                                dropped_unreported);
-        dropped_unreported = 0;
-        write_or_buffer(note.data(), note.size());
     }
 
     spdlog::memory_buf_t formatted;
