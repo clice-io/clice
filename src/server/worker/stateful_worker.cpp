@@ -307,6 +307,19 @@ void StatefulWorker::register_handlers() {
                     llvm::raw_string_ostream os(result.tu_index_data);
                     tu_index.serialize(os);
                 }
+
+                // A unit that is neither complete nor a fatal-error result
+                // can never serve a query (with_ast_or refuses it), yet it
+                // pins the consumed artifacts — on Windows a mapped PCH
+                // cannot be replaced on disk, so holding it would block
+                // the master's rebuild of a retracted pair. Drop it last,
+                // after every use of the unit above; queries observe
+                // has_ast == false and return their missing value until a
+                // compile lands.
+                if(!doc->unit.completed() && !doc->unit.fatal_error()) {
+                    doc->unit = CompilationUnit(nullptr);
+                    doc->has_ast = false;
+                }
                 return result;
             },
             [stop] { stop->store(true, std::memory_order_relaxed); });

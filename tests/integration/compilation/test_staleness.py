@@ -638,3 +638,6 @@ async def test_setup_fail_keeps_dirty(client, tmp_path):
     # a retained dirty flag recompiles and republishes on the next request.
     client.diagnostics.pop(uri, None)
     await wait_for_recompile(client, uri, timeout=30.0)
+    assert client.diagnostics.get(uri, []) == [], (
+        "The retried non-result must stay an honest empty gap"
+    )

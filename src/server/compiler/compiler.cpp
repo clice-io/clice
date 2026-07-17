@@ -930,6 +930,13 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             co_return;
         }
 
+        // The pair this round consumes, snapshotted at dispatch: the
+        // reply handling below must retract what it actually used —
+        // pch_key can be rewritten while the send is suspended (a context
+        // switch, a concurrent completion round), and blaming the current
+        // key would delete an unrelated pair.
+        auto dispatched_pch_key = session->pch_key;
+
         // A PCH crash inside ensure_deps may have tipped the document into
         // quarantine — the entry gate ran before the streak grew. Stop
         // before the stateful dispatch instead of feeding the same content
@@ -1023,12 +1030,14 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             // contains it (the extra rebuilds stay bounded by that
             // budget).
             if(result.error().code == worker::dispatch_errc::worker_crashed &&
-               session->pch_key.has_value() && !params.pch.first.empty()) {
+               dispatched_pch_key.has_value() && !params.pch.first.empty()) {
                 LOG_WARN("Compile crashed consuming PCH pair {} for {}; retracting the pair",
-                         *session->pch_key,
+                         *dispatched_pch_key,
                          uri_str);
-                invalidate_pch(*session->pch_key);
-                session->pch_key.reset();
+                invalidate_pch(*dispatched_pch_key);
+                if(session->pch_key == dispatched_pch_key) {
+                    session->pch_key.reset();
+                }
             }
             // A quarantined document announces itself instead of hiding
             // behind the empty list; the clear path publishes empty
@@ -1061,19 +1070,29 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // path below: retracting a healthy shared PCH over someone else's
         // failure would rebuild it on every request for as long as that
         // failure persists.
-        if(result.value().pch_suspect && session->pch_key.has_value() &&
-           !params.pch.first.empty() && !artifact_retried) {
-            artifact_retried = true;
-            LOG_WARN("Compile blamed PCH pair {} for {}; retracting the pair and rebuilding",
-                     *session->pch_key,
+        if(result.value().pch_suspect && dispatched_pch_key.has_value() &&
+           !params.pch.first.empty()) {
+            LOG_WARN("Compile blamed PCH pair {} for {}; retracting the pair",
+                     *dispatched_pch_key,
                      uri_str);
-            invalidate_pch(*session->pch_key);
-            session->pch_key.reset();
-            // Rerun the same attempt so the trial semantics are untouched
-            // (the loop counter is about probe rounds, not artifact
-            // retries).
-            --attempt;
-            continue;
+            // Retract unconditionally — a blamed pair never survives, even
+            // when the retry budget is spent — but rerun only once.
+            invalidate_pch(*dispatched_pch_key);
+            if(session->pch_key == dispatched_pch_key) {
+                session->pch_key.reset();
+            }
+            if(!artifact_retried) {
+                artifact_retried = true;
+                // Rerun the same attempt so the trial semantics are
+                // untouched (the loop counter is about probe rounds, not
+                // artifact retries).
+                --attempt;
+                continue;
+            }
+            // The rebuilt pair is blamed again: the storage itself is
+            // failing, and another rebuild would fare no better. The
+            // round proceeds — a Done reply publishes its real fatal
+            // diagnostics, a non-Done one falls to the honest gap below.
         }
 
         // A non-Done reply past the gate is a non-result: settling it

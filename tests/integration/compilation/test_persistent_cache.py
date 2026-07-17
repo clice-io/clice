@@ -618,6 +618,7 @@ async def test_corrupt_pch_rebuilt_on_restart(executable, tmp_path, where):
         # The flip landed in semantically dead bytes on this LLVM build
         # (PCH blobs carry no whole-file checksum): the reader consumed
         # the blob untouched and there is nothing to heal.
+        await shutdown_client(c2)
         pytest.skip("mid-file flip was semantically dead on this build")
     assert pch_files[0].read_bytes() != corrupted, (
         "The corrupt .pch must be rebuilt, not trusted forever"
