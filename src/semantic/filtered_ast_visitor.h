@@ -76,18 +76,25 @@ public:
         }
     }
 
-    bool TraverseStmt(clang::Stmt* stmt) {
+    using DataRecursionQueue = typename Base::DataRecursionQueue;
+
+    /// Keep the `DataRecursionQueue` parameter so that `RecursiveASTVisitor`
+    /// still dispatches statements through its iterative data recursion.
+    /// Overriding the single-parameter form would silently disable it and
+    /// deep expression chains (e.g. a huge macro-generated `1+1+...+1`
+    /// initializer) would overflow the stack.
+    bool TraverseStmt(clang::Stmt* stmt, DataRecursionQueue* queue = nullptr) {
         CHECK_DERIVED_IMPL(TraverseStmt);
 
         if(!stmt) {
             return true;
         }
 
-        return Base::TraverseStmt(stmt);
+        return Base::TraverseStmt(stmt, queue);
     }
 
     /// FIXME: See https://github.com/llvm/llvm-project/issues/117687.
-    bool TraverseAttributedStmt(clang::AttributedStmt* stmt) {
+    bool TraverseAttributedStmt(clang::AttributedStmt* stmt, DataRecursionQueue* queue = nullptr) {
         CHECK_DERIVED_IMPL(TraverseAttributedStmt);
 
         if(!stmt) {
@@ -98,7 +105,7 @@ public:
             Base::TraverseAttr(const_cast<clang::Attr*>(attr));
         }
 
-        return Base::TraverseAttributedStmt(stmt);
+        return Base::TraverseAttributedStmt(stmt, queue);
     }
 
     /// We don't want to node without location information.

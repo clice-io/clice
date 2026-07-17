@@ -8,6 +8,7 @@
 
 #include "llvm/Support/Error.h"
 #include "llvm/Support/xxhash.h"
+#include "clang/Basic/Stack.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Lex/PreprocessorOptions.h"
@@ -331,6 +332,12 @@ CompilationUnit run_clang(CompilationParams& params,
                           llvm::function_ref<void(clang::CompilerInstance&)> before_execute = {},
                           llvm::function_ref<void(CompilationUnitRef)> after_execute = {}) {
     LOG_DEBUG("Compile command: {}", print_argv(params.arguments));
+
+    // Record the stack bottom so that clang's own recursion guards
+    // (`clang::runWithSufficientStackSpace` in the parser, constant
+    // evaluator, etc.) actually work. They are inert without it and
+    // deeply nested code would overflow the stack during parsing.
+    clang::noteBottomOfStack();
 
     auto self = new CompilationUnitRef::Self();
     self->kind = params.kind;

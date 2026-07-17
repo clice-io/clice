@@ -5,9 +5,12 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
+#include "feature/inactive_regions.h"
 #include "index/tu_index.h"
 
 #include "kota/meta/enum.h"
+#include "llvm/Support/thread.h"
+#include "clang/Basic/Stack.h"
 
 namespace clice::testing {
 
@@ -820,6 +823,51 @@ int x = 1;
     auto include = graph.include_location_id(fid);
     ASSERT_TRUE(include != static_cast<std::uint32_t>(-1));
     ASSERT_TRUE(graph.path(graph.path_id(fid)).ends_with("foo.h"));
+}
+
+TEST_CASE(DeepExpressionChain) {
+    // Doubling macros expand to a ~32k-term binary expression chain.
+    // Regression test: indexing such an AST must not overflow the stack.
+    std::string code = "#define A0 1+1\n";
+    for(int i = 1; i <= 14; i++) {
+        code += std::format("#define A{} A{}+A{}\n", i, i - 1, i - 1);
+    }
+    code += "int bomb = A14;\n";
+    auto bomb_offset = static_cast<std::uint32_t>(code.find("bomb"));
+
+    add_main("main.cpp", code);
+
+    // Compile on a generous fixed-size stack: clang's own Sema checkers
+    // recurse once per term and need more than a default thread stack in
+    // sanitized builds (and Windows main threads only get 1MB). 32MB is
+    // an empirical bound with margin, not a derived number.
+    bool compiled = false;
+    llvm::thread compile_thread(std::optional<unsigned>(4 * clang::DesiredStackSize),
+                                [&] { compiled = compile(); });
+    compile_thread.join();
+    ASSERT_TRUE(compiled);
+
+    // Index on a deliberately tight stack: the traversal must use
+    // constant stack space however deep the expression is, so any
+    // reintroduced per-node recursion crashes here deterministically
+    // instead of only on production workers with deeper files.
+    feature::InactiveScan scan;
+    llvm::thread index_thread(std::optional<unsigned>(clang::DesiredStackSize / 4), [&] {
+        // Mirror the stateful worker's post-compile sequence.
+        scan = feature::inactive_regions(*unit);
+        tu_index = index::TUIndex::build(*unit, true);
+    });
+    index_thread.join();
+
+    ASSERT_TRUE(scan.regions.empty());
+
+    // The traversal must have actually reached the decl behind the chain,
+    // not bailed out early: expect an occurrence exactly at `bomb`.
+    auto& occurrences = tu_index.main_file_index.occurrences;
+    auto bomb = std::ranges::find(occurrences, bomb_offset, [](index::Occurrence& occurrence) {
+        return occurrence.range.begin;
+    });
+    ASSERT_TRUE(bomb != occurrences.end());
 }
 
 };  // TEST_SUITE(tu_index)
