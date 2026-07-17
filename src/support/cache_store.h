@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -194,6 +195,19 @@ public:
     /// committed (renamed away) or cleaned itself up. Memory/leak gauge
     /// for the stats endpoint; scans the directory, so not free.
     std::size_t pending_tmp_files() const;
+
+    /// A blob the LRU budget evicted, reported so owners of derived
+    /// in-memory state (e.g. the PCH cache's entry metadata) can drop it:
+    /// eviction happens inside commit — possibly on a worker thread — so
+    /// the store records instead of calling back, and the owner drains on
+    /// its own loop.
+    struct EvictedBlob {
+        std::string ns;
+        std::string key;
+    };
+
+    /// Drain the evictions recorded since the last call.
+    std::vector<EvictedBlob> take_evictions();
 
     /// The versioned root directory, e.g. `{root}/cache/v1`.  Callers may
     /// place their own metadata files directly under it (the store only

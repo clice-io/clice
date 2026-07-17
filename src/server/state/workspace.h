@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -227,6 +228,15 @@ struct Workspace {
     /// of CacheStore state; blob paths come from the store.
     llvm::StringMap<PCHState> pch_cache;
 
+    /// Keys of pch_cache entries whose PreambleState is currently loaded,
+    /// most recently used first (see enforce_loaded_budget).
+    llvm::SmallVector<std::string, 8> loaded_state_lru;
+
+    /// Open-document count provider, wired by the master. Sizes the
+    /// loaded-state budget; unset (tests, tools) falls back to
+    /// default_open_documents.
+    std::function<std::size_t()> open_documents;
+
     /// Crash budget for shared build artifacts (PCH/PCM), keyed by the
     /// same content-derived cache keys: an artifact that keeps killing
     /// workers is refused until its content — and therefore its key —
@@ -295,8 +305,22 @@ struct Workspace {
     /// on-disk pair is retracted from the store as well — otherwise every
     /// later session re-adopts the corrupt pair from cache.json and
     /// silently degrades again. With the pair gone the next ensure_pch is
-    /// a miss and rebuilds both halves.
+    /// a miss and rebuilds both halves. Loads count against the
+    /// loaded-state budget (see enforce_loaded_budget).
     std::shared_ptr<index::PreambleState> preamble_state(llvm::StringRef pch_key);
+
+    /// Move a pch key to the front of the loaded-state LRU. Called
+    /// whenever an entry's PreambleState is opened or replaced.
+    void touch_loaded_state(llvm::StringRef pch_key);
+
+    /// Unload PreambleState blobs beyond the budget (open documents + 2),
+    /// least recently used first. Without this every preamble key ever
+    /// touched keeps its blob mapped for the server's lifetime — tens of
+    /// MB per key on real projects, released by neither didClose nor
+    /// store eviction. Unloading only drops the entry's reference:
+    /// consumers holding the shared_ptr finish safely, and the next use
+    /// reopens the blob from disk.
+    void enforce_loaded_budget();
 
     /// Load PCH/PCM validity metadata plus the context resolver's slices
     /// from cache.json (under the store's versioned root); entries whose

@@ -43,6 +43,12 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     // lifetime and turns reports into state (notify_log) plus a wake-up
     // signal. Master-side reports only ever fire on the event-loop thread
     // (see support/anomaly.h), so no synchronization is needed here.
+    // The loaded-state budget follows the open-document count; Workspace
+    // cannot see SessionStore, so the master wires the provider.
+    workspace.open_documents = [this] {
+        return sessions.sessions.size();
+    };
+
     logging::set_notify_hook([this](logging::NotifyLevel level, std::string_view message) {
         notify_log.push_back(NotifyMessage{level, std::string(message)});
         if(notify_log.size() > notify_log_limit) {
@@ -392,6 +398,32 @@ kota::task<> MasterServer::cache_checkpoint_task() {
         if(workspace.store) {
             // Offload to the thread pool: checkpoint writes the manifest.
             co_await kota::queue([this] { workspace.store->checkpoint(); });
+            drain_store_evictions();
+        }
+    }
+}
+
+void MasterServer::drain_store_evictions() {
+    // The store's LRU evicted these blobs from disk (inside commit, maybe
+    // on a worker thread); drop the derived pch_cache metadata here on the
+    // event loop, or the content-keyed map grows for the server's
+    // lifetime even for keys never requested again. An entry mid-rebuild
+    // keeps its slot — its commit republishes fresh blobs over the
+    // eviction.
+    for(auto& evicted: workspace.store->take_evictions()) {
+        if(evicted.ns != "pch") {
+            continue;
+        }
+        // A key rebuilt after the eviction was recorded has live blobs
+        // again — the record is stale, not the entry. Erase only when the
+        // store still lacks the blob, and never mid-rebuild (the commit
+        // republishes over the eviction).
+        if(workspace.store->lookup("pch", evicted.key)) {
+            continue;
+        }
+        if(auto it = workspace.pch_cache.find(evicted.key);
+           it != workspace.pch_cache.end() && !it->second.building) {
+            workspace.pch_cache.erase(it);
         }
     }
 }

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <format>
 #include <mutex>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -224,6 +225,9 @@ struct CacheStore::State {
 
     void evict_locked(Namespace& ns, llvm::StringRef keep_key);
     void checkpoint_locked();
+
+    /// Evictions recorded for take_evictions(); guarded by mutex.
+    std::vector<EvictedBlob> evictions;
 };
 
 CacheStore::CacheStore(std::unique_ptr<State> state) : state(std::move(state)) {}
@@ -640,6 +644,11 @@ void CacheStore::invalidate(llvm::StringRef ns, llvm::StringRef key) {
     maybe_checkpoint();
 }
 
+std::vector<CacheStore::EvictedBlob> CacheStore::take_evictions() {
+    std::lock_guard guard(state->mutex);
+    return std::exchange(state->evictions, {});
+}
+
 std::size_t CacheStore::pending_tmp_files() const {
     std::lock_guard guard(state->mutex);
     std::size_t count = 0;
@@ -731,6 +740,9 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
                  candidate.size);
         auto it = ns.entries.find(candidate.key);
         ns.total_size -= it->second.size;
+        // Record before the erase: the candidate's key view borrows the
+        // entry's own storage.
+        evictions.push_back({ns.config.name, candidate.key.str()});
         ns.entries.erase(it);
         dirty = true;
     }

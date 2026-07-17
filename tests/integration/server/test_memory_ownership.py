@@ -10,6 +10,7 @@ import asyncio
 
 from lsprotocol.types import (
     DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams,
     DidSaveTextDocumentParams,
     TextDocumentContentChangeWholeDocument,
     TextDocumentIdentifier,
@@ -23,7 +24,12 @@ from tests.tools.checks import (
     wait_for_recompile,
 )
 from tests.tools.compile_commands import write_cdb
-from tests.tools.workspace import get_field, list_tmp_files, pin_cache_to_workspace
+from tests.tools.workspace import (
+    doc,
+    get_field,
+    list_tmp_files,
+    pin_cache_to_workspace,
+)
 
 
 async def wait_stats(client, predicate, *, timeout=30.0, message=""):
@@ -161,4 +167,70 @@ async def test_cancel_storm_leaves_no_tmp(client, tmp_path):
     stats = await client.stats()
     assert get_field(stats, "pchCacheEntries") >= 1, f"a PCH was built: {stats}"
     assert get_field(stats, "sessions") == 1, f"one open document: {stats}"
+    assert_no_anomaly(client, tmp_path)
+
+
+async def test_preamble_state_released(client, tmp_path):
+    pin_cache_to_workspace(tmp_path)
+    names = []
+    for i in range(3):
+        (tmp_path / f"h{i}.h").write_text(f"#pragma once\nint distinct_{i} = {i};\n")
+        (tmp_path / f"m{i}.cpp").write_text(
+            f'#include "h{i}.h"\nint use_{i}() {{ return distinct_{i}; }}\n'
+        )
+        names.append(f"m{i}.cpp")
+    write_cdb(tmp_path, names)
+    await client.initialize(tmp_path)
+
+    uris = []
+    for i in range(3):
+        uri, _ = await client.open_and_wait(tmp_path / f"m{i}.cpp")
+        uris.append(uri)
+    stats = await client.stats()
+    assert get_field(stats, "pchLoadedStates") == 3, (
+        f"three distinct preambles: {stats}"
+    )
+
+    for uri in uris:
+        client.text_document_did_close(
+            DidCloseTextDocumentParams(text_document=doc(uri))
+        )
+    # Budget follows the open count (open + 2, the slack keeping a
+    # just-closed state warm): with everything closed at least one of the
+    # three states must unload instead of staying mapped forever.
+    await wait_stats(
+        client,
+        lambda s: get_field(s, "pchLoadedStates") <= 2,
+        message="closing documents must release loaded preamble states",
+    )
+
+    # Reload after unload: reopening must reopen the blob from disk and
+    # keep serving queries against the preamble's symbols.
+    uri0, _ = await client.open_and_wait(tmp_path / "m0.cpp")
+    hover = await client.hover_at(uri0, 1, 25)
+    assert hover is not None, "query must survive an unload/reload cycle"
+    stats = await client.stats()
+    assert get_field(stats, "pchLoadedStates") >= 1, f"state reloaded: {stats}"
+    assert_no_anomaly(client, tmp_path)
+
+
+async def test_same_preamble_shared(client, tmp_path):
+    pin_cache_to_workspace(tmp_path)
+    (tmp_path / "shared.h").write_text("#pragma once\nint shared_val = 1;\n")
+    names = []
+    for i in range(4):
+        (tmp_path / f"s{i}.cpp").write_text(
+            f'#include "shared.h"\nint fn_{i}() {{ return shared_val; }}\n'
+        )
+        names.append(f"s{i}.cpp")
+    write_cdb(tmp_path, names)
+    await client.initialize(tmp_path)
+
+    for i in range(4):
+        await client.open_and_wait(tmp_path / f"s{i}.cpp")
+    # Identical preambles share one content key, and sharing means one
+    # blob: opening more consumers must not multiply loaded states.
+    stats = await client.stats()
+    assert get_field(stats, "pchLoadedStates") == 1, f"one shared key: {stats}"
+    assert get_field(stats, "pchCacheEntries") == 1, f"one shared entry: {stats}"
     assert_no_anomaly(client, tmp_path)

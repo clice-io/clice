@@ -207,6 +207,10 @@ private:
     /// times survive crashes (the store itself is passive by design).
     kota::task<> cache_checkpoint_task();
 
+    /// Drop pch_cache metadata for blobs the store's LRU evicted from
+    /// disk (see cache_checkpoint_task).
+    void drain_store_evictions();
+
     /// The file tracker's polling loops: each tick hands the tracker's
     /// event batch to dispatch(). Spawned by initialize() when the
     /// configured interval is non-zero.

@@ -218,6 +218,15 @@ TEST_CASE(LruEviction) {
     ASSERT_TRUE(store.lookup("pch", "a").has_value());
     ASSERT_FALSE(store.lookup("pch", "b").has_value());
     ASSERT_TRUE(store.lookup("pch", "c").has_value());
+
+    // The eviction is reported exactly once: owners of derived in-memory
+    // state drain the record on their own loop, and a second drain must
+    // not replay it.
+    auto evicted = store.take_evictions();
+    ASSERT_EQ(evicted.size(), 1U);
+    ASSERT_EQ(evicted[0].ns, std::string("pch"));
+    ASSERT_EQ(evicted[0].key, std::string("b"));
+    ASSERT_TRUE(store.take_evictions().empty());
 }
 
 TEST_CASE(FreshCommitNotEvicted) {

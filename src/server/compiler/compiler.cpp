@@ -671,6 +671,8 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     // Replace the previous blob's mapping (same key, rebuilt content);
     // in-flight holders of the old shared_ptr stay valid.
     st.state = committed.value().state;
+    workspace.touch_loaded_state(pch_key);
+    workspace.enforce_loaded_budget();
 
     LOG_INFO("PCH built for {}: {}", path, st.path);
 

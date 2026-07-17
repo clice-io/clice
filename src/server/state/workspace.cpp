@@ -176,8 +176,10 @@ void Workspace::on_file_closed(std::uint32_t path_id) {
     if(compile_graph && compile_graph->has_unit(path_id)) {
         compile_graph->update(path_id);
     }
-    // PCH entries are content-keyed and may be shared with other sessions;
-    // blob eviction is the CacheStore's job, so nothing to clean up here.
+    // PCH entries are content-keyed and may be shared with other sessions,
+    // so nothing entry-level to clean up — but the loaded-state budget
+    // shrinks with the open count, and this is the moment it does.
+    enforce_loaded_budget();
 }
 
 std::string discover_compile_commands(const Config& config, llvm::StringRef workspace_root) {
@@ -398,7 +400,52 @@ std::shared_ptr<index::PreambleState> Workspace::preamble_state(llvm::StringRef 
         LOG_WARN("Retracting PCH pair {} with unreadable PreambleState blob", pch_key);
         store->invalidate("pch", pch_key);
     }
+    if(state) {
+        touch_loaded_state(pch_key);
+        enforce_loaded_budget();
+    }
     return state;
+}
+
+void Workspace::touch_loaded_state(llvm::StringRef pch_key) {
+    auto it = std::ranges::find(loaded_state_lru, pch_key);
+    if(it != loaded_state_lru.end()) {
+        loaded_state_lru.erase(it);
+    }
+    loaded_state_lru.insert(loaded_state_lru.begin(), pch_key.str());
+}
+
+void Workspace::enforce_loaded_budget() {
+    // Two extra slots over the open-document count: a closed file's
+    // recently used state survives a quick close/reopen, and a shared key
+    // serving several documents stays warm while its consumers churn.
+    // Open documents' keys always fit the budget, so an unload can only
+    // hit keys past the working set; the reload an unlucky consumer then
+    // pays (mmap + verification, on the event loop) is the accepted cost
+    // of bounding tens of MB per key.
+    // Unwired (tests, tools) assumes a small editor-like working set.
+    constexpr std::size_t default_open_documents = 6;
+    std::size_t budget = 2 + (open_documents ? open_documents() : default_open_documents);
+
+    std::size_t kept = 0;
+    std::size_t i = 0;
+    while(i < loaded_state_lru.size()) {
+        auto it = pch_cache.find(loaded_state_lru[i]);
+        // Erased entries and already-unloaded keys just fall out of the
+        // list (invalidation and store eviction bypass the LRU).
+        if(it == pch_cache.end() || !it->second.state) {
+            loaded_state_lru.erase(loaded_state_lru.begin() + i);
+            continue;
+        }
+        if(kept < budget) {
+            kept += 1;
+            i += 1;
+            continue;
+        }
+        LOG_DEBUG("Unloading PreambleState of {} (budget {})", loaded_state_lru[i], budget);
+        it->second.state.reset();
+        loaded_state_lru.erase(loaded_state_lru.begin() + i);
+    }
 }
 
 void Workspace::load_cache(ContextResolver& contexts) {
