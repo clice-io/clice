@@ -1,0 +1,17 @@
+name: release-check
+
+# Dry run of the release packaging pipeline: builds all six clice packages.
+# Every upload step is tag-gated, so nothing is published. Runs automatically
+# on PRs that touch release plumbing, and on demand from any branch.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/publish-clice.yml"
+      - ".github/workflows/release-check.yml"
+      - "cmake/release.cmake"
+      - "cmake/archive.cmake"
+
+jobs:
+  clice:
+    uses: ./.github/workflows/publish-clice.yml
