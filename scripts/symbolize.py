@@ -10,8 +10,10 @@ Usage:
     python symbolize.py crash.log --symbols clice.gsym
 
 Accepts either the released GSYM symbol file (resolved with llvm-gsymutil) or
-a full DWARF file / unstripped binary (resolved with llvm-symbolizer). GSYM
-output keeps names mangled; pipe through llvm-cxxfilt to demangle.
+a full DWARF file / unstripped binary (resolved with llvm-symbolizer). For a
+macOS dSYM pass the inner DWARF file (clice.dSYM/Contents/Resources/DWARF/clice),
+not the bundle directory. GSYM output keeps names mangled; pipe through
+llvm-cxxfilt to demangle.
 """
 
 import argparse
@@ -32,7 +34,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("log", help="crash log file (or - for stdin)")
     parser.add_argument(
-        "--symbols", required=True, help="symbol file (clice.debug / clice.dSYM)"
+        "--symbols",
+        required=True,
+        help="symbol file (clice.gsym / clice.debug / dSYM inner DWARF)",
     )
     parser.add_argument(
         "--module",

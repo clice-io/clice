@@ -5,9 +5,6 @@
 #include <memory>
 #include <string>
 
-#include "support/filesystem.h"
-#include "support/stderr_sink.h"
-
 #if defined(__linux__)
 #include <link.h>
 #elif defined(__APPLE__)
@@ -18,6 +15,9 @@
 #define NOMINMAX
 #include <windows.h>
 #endif
+
+#include "support/filesystem.h"
+#include "support/stderr_sink.h"
 
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"
