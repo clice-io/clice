@@ -443,8 +443,13 @@ void LSPClient::register_language_features() {
             resolve_uri(params.text_document_position_params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(document_not_open());
+        llvm::StringRef trigger;
+        if(params.context && params.context->trigger_character) {
+            trigger = *params.context->trigger_character;
+        }
         co_return co_await srv.features.completion(session,
                                                    params.text_document_position_params.position,
+                                                   trigger,
                                                    ctx.cancellation);
     });
 

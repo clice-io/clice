@@ -12,7 +12,9 @@ from lsprotocol.types import (
     ClientCapabilities,
     CodeActionContext,
     CodeActionParams,
+    CompletionContext,
     CompletionParams,
+    CompletionTriggerKind,
     DeclarationParams,
     DefinitionParams,
     Diagnostic,
@@ -298,14 +300,27 @@ class CliceClient(BaseLanguageClient):
         )
 
     async def completion_at(
-        self, uri: str, line: int, character: int, *, timeout: float = 30.0
+        self,
+        uri: str,
+        line: int,
+        character: int,
+        *,
+        trigger_character: str | None = None,
+        timeout: float = 30.0,
     ):
         """Send completion request at given position."""
+        context = None
+        if trigger_character is not None:
+            context = CompletionContext(
+                trigger_kind=CompletionTriggerKind.TriggerCharacter,
+                trigger_character=trigger_character,
+            )
         return await asyncio.wait_for(
             self.text_document_completion_async(
                 CompletionParams(
                     text_document=TextDocumentIdentifier(uri=uri),
                     position=Position(line=line, character=character),
+                    context=context,
                 )
             ),
             timeout=timeout,

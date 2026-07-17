@@ -40,6 +40,7 @@ async def test_capabilities(client, workspace):
     caps = client.init_result.capabilities
     assert caps.hover_provider is True
     assert caps.completion_provider is not None
+    assert " " in caps.completion_provider.trigger_characters
     assert capability_enabled(caps.definition_provider)
     assert capability_enabled(caps.document_symbol_provider)
     assert capability_enabled(caps.folding_range_provider)

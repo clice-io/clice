@@ -100,8 +100,10 @@ public:
     /// Code completion. Serves preamble contexts (include/import) locally from
     /// the include graph and module map; delegates ordinary code completion to
     /// a stateless worker. Pauses background indexing for the request's span.
+    /// Space-triggered requests are only answered for import contexts.
     RawResult completion(std::shared_ptr<Session> session,
                          const protocol::Position& position,
+                         llvm::StringRef trigger_character = {},
                          std::optional<kota::cancellation_token> token = {});
 
     /// Signature help, forwarded to a stateless build. Pauses background

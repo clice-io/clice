@@ -235,6 +235,7 @@ FeatureRouter::RawResult FeatureRouter::code_action(std::shared_ptr<Session> ses
 
 FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> session,
                                                    const protocol::Position& position,
+                                                   llvm::StringRef trigger_character,
                                                    std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
 
@@ -297,6 +298,14 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
             auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(items);
             co_return serde_raw{json ? std::move(*json) : "[]"};
         }
+    }
+
+    // Space is advertised as a trigger character only so that `import `
+    // opens module suggestions. Clients without request-side gating
+    // (nvim, zed) forward every space keystroke; answer non-import
+    // contexts with an empty list instead of a full completion build.
+    if(trigger_character == " ") {
+        co_return serde_raw{"[]"};
     }
 
     co_return co_await compiler.forward_build(worker::BuildKind::Completion,

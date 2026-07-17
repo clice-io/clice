@@ -125,6 +125,36 @@ async def test_import_completion_basic(client, workspace):
 
 
 @pytest.mark.workspace("modules/chained_modules")
+async def test_space_trigger_serves_import(client, workspace):
+    """Space-triggered completion on an import line lists modules."""
+    await client.open_and_wait(workspace / "mod_a.cppm")
+
+    uri_b, _ = client.open(workspace / "mod_b.cppm")
+    did_change(client, uri_b, 1, "import ")
+
+    result = await client.completion_at(uri_b, 0, 7, trigger_character=" ")
+
+    assert result is not None
+    items = result.items if hasattr(result, "items") else result
+    labels = [item.label for item in items]
+    assert "A" in labels, f"Expected 'A' in completion labels, got: {labels}"
+
+
+@pytest.mark.workspace("modules/chained_modules")
+async def test_space_trigger_gated_elsewhere(client, workspace):
+    """Space-triggered completion outside import lines returns no items."""
+    uri_b, _ = client.open(workspace / "mod_b.cppm")
+    did_change(client, uri_b, 1, "int main() { return 0; }")
+
+    # Cursor right after "return " — a space trigger here must be answered
+    # with an empty list instead of a full completion build.
+    result = await client.completion_at(uri_b, 0, 20, trigger_character=" ")
+
+    items = result.items if hasattr(result, "items") else result
+    assert not items, f"Expected no items for gated space trigger, got: {items}"
+
+
+@pytest.mark.workspace("modules/chained_modules")
 async def test_import_completion_with_prefix(client, workspace):
     """Import completion with prefix should filter to matching modules."""
     # Open mod_a to register module A.

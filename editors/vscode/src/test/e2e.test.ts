@@ -182,4 +182,29 @@ suite("clice E2E", function () {
         );
         assert.ok(completions.items.length > 0, "completion returned no items");
     });
+
+    test("space trigger gated outside imports", async function () {
+        this.timeout(60 * 1000);
+        assert.ok(document, "main file was not opened (earlier test failed)");
+
+        // The middleware swallows space-triggered requests on non-import
+        // lines; the cursor sits inside ordinary code here. VS Code still
+        // contributes word-based suggestions (kind Text), so assert that
+        // nothing beyond those — i.e. no server-provided item — shows up.
+        const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
+            "vscode.executeCompletionItemProvider",
+            document.uri,
+            position.translate(0, 1),
+            " ",
+        );
+        const serverItems = completions.items.filter(
+            (item) => item.kind !== undefined && item.kind !== vscode.CompletionItemKind.Text,
+        );
+        const labels = serverItems.slice(0, 10).map((item) => item.label);
+        assert.strictEqual(
+            serverItems.length,
+            0,
+            `space trigger outside an import line must yield no server items, got: ${JSON.stringify(labels)}`,
+        );
+    });
 });

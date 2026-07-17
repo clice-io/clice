@@ -114,6 +114,13 @@ TEST_CASE(ImportAfterNewline) {
     EXPECT_EQ(ctx.prefix, "");
 }
 
+TEST_CASE(ImportCursorMidLine) {
+    // The prefix is truncated at the cursor; trailing text is ignored.
+    auto ctx = detect_completion_context("import std.io", 10);
+    EXPECT_EQ(ctx.kind, CompletionContext::Import);
+    EXPECT_EQ(ctx.prefix, "std");
+}
+
 };  // TEST_SUITE(DetectCompletionContext)
 
 TEST_SUITE(CompleteModuleImport) {
@@ -184,7 +191,7 @@ TEST_CASE(PartitionPrefix) {
     }
 }
 
-TEST_CASE(ExactMatch) {
+TEST_CASE(PrefixIsFullName) {
     llvm::DenseMap<std::uint32_t, std::string> modules;
     modules[1] = "std";
     modules[2] = "std.io";
