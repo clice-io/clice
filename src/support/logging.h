@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <source_location>
@@ -113,6 +114,12 @@ void file_logger(std::string_view name,
 /// trace belongs in its own log file only).
 /// Must be called after file_logger so the log file path is known.
 void install_crash_handler(std::string_view log_path, bool stderr_trace = true);
+
+/// Rebase value for crash-frame addresses (0 if unknown): the ELF load bias,
+/// Mach-O slide, or Windows image base. Crash traces record it so subtracting
+/// it from an ASLR-shifted frame address yields the address symbolizers
+/// expect against the released symbol file (scripts/symbolize.py).
+uintptr_t main_executable_base();
 
 template <typename... Args>
 struct logging_rformat {

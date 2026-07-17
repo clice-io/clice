@@ -8,6 +8,17 @@
 #include "support/filesystem.h"
 #include "support/stderr_sink.h"
 
+#if defined(__linux__)
+#include <link.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#elif defined(_WIN32)
+// See cache_store.cpp: windows.h must not spill min/max macros.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "llvm/ADT/SmallVector.h"
@@ -99,15 +110,51 @@ void file_logger(std::string_view name,
 
 static std::unique_ptr<llvm::raw_fd_ostream> crash_log_stream;
 
+// Captured at install time: querying the dynamic loader is not
+// async-signal-safe, so the handler may only print the cached value.
+static uintptr_t executable_base = 0;
+
+uintptr_t main_executable_base() {
+#if defined(__linux__)
+    uintptr_t base = 0;
+    dl_iterate_phdr(
+        [](dl_phdr_info* info, size_t, void* data) {
+            // The first entry is always the main executable.
+            *static_cast<uintptr_t*>(data) = info->dlpi_addr;
+            return 1;
+        },
+        &base);
+    return base;
+#elif defined(__APPLE__)
+    // The slide, not the header address: Mach-O executables have a nonzero
+    // preferred vmaddr, so only pc - slide yields the on-file address
+    // symbolizers expect — the same contract as the ELF load bias above.
+    return static_cast<uintptr_t>(_dyld_get_image_vmaddr_slide(0));
+#elif defined(_WIN32)
+    return reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+#else
+    return 0;
+#endif
+}
+
 static void crash_handler(void*) {
     if(crash_log_stream) {
         *crash_log_stream << "\n=== CRASH STACK TRACE ===\n";
+        if(executable_base) {
+            // Release binaries are PIE and stripped: the frame addresses below
+            // are ASLR-shifted, so offline symbolization against the shipped
+            // symbol file needs this base (see scripts/symbolize.py).
+            *crash_log_stream << "main executable base: 0x";
+            crash_log_stream->write_hex(executable_base);
+            *crash_log_stream << "\n";
+        }
         llvm::sys::PrintStackTrace(*crash_log_stream);
         crash_log_stream->flush();
     }
 }
 
 void install_crash_handler(std::string_view log_path, bool stderr_trace) {
+    executable_base = main_executable_base();
     std::error_code ec;
     crash_log_stream =
         std::make_unique<llvm::raw_fd_ostream>(llvm::StringRef(log_path.data(), log_path.size()),

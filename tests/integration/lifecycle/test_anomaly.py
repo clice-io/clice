@@ -7,6 +7,7 @@ assert_no_anomaly() watches in every other test's teardown.
 
 import asyncio
 import os
+import re
 import signal
 import sys
 from pathlib import Path
@@ -90,6 +91,10 @@ async def test_worker_crash_reported(executable, tmp_path):
     assert any("CRASH STACK TRACE" in text for text in worker_texts), (
         "worker crash backtrace should be written to its log file"
     )
+    assert any(
+        re.search(r"main executable base: 0x[0-9a-fA-F]+", text)
+        for text in worker_texts
+    ), "crash trace should record the executable base for offline symbolization"
     master_texts = [p.read_text(errors="replace") for p in logs_dir.rglob("master.log")]
     assert master_texts and all(
         "CRASH STACK TRACE" not in text and "Stack dump" not in text
