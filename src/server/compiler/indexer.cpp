@@ -207,6 +207,10 @@ static std::optional<CacheStore::PendingEntry>
 }
 
 kota::task<> Indexer::save() {
+    // Reset up front: every early return below means this save committed
+    // nothing, and the gauge must not keep exposing the previous round's
+    // count as current.
+    saved_shards = 0;
     if(!workspace.store)
         co_return;
     auto& store = *workspace.store;
@@ -269,7 +273,6 @@ kota::task<> Indexer::save() {
     // Phase 2: commit each blob (fsync + atomic rename) on the kota thread
     // pool, keeping the heavy IO off the event loop.  The project blob goes
     // first; if it cannot be published, drop the shards of this snapshot.
-    saved_shards = 0;
     auto committed =
         co_await kota::queue([&] { return store.commit(std::move(*project_pending)); });
     if(!committed.has_value() || !committed.value().has_value()) {
