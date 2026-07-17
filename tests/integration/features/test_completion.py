@@ -154,6 +154,20 @@ async def test_space_trigger_gated_elsewhere(client, workspace):
     assert not items, f"Expected no items for gated space trigger, got: {items}"
 
 
+@pytest.mark.workspace("include_completion")
+async def test_space_trigger_gated_include(client, workspace):
+    """Space-triggered completion in an include context returns no items."""
+    uri, _ = await client.open_and_wait(workspace / "main.cpp")
+    did_change(client, uri, 1, "#include <vector> ")
+
+    # The space gate must run before include scanning: no directory
+    # enumeration and no candidates for a trailing-space trigger.
+    result = await client.completion_at(uri, 0, 18, trigger_character=" ")
+
+    items = result.items if hasattr(result, "items") else result
+    assert not items, f"Expected no items for gated space trigger, got: {items}"
+
+
 @pytest.mark.workspace("modules/chained_modules")
 async def test_import_completion_with_prefix(client, workspace):
     """Import completion with prefix should filter to matching modules."""
