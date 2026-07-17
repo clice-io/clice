@@ -154,7 +154,10 @@ jobs:
     permissions:
       contents: write
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: release-clice
     uses: ./.github/workflows/publish-vscode.yml
+    with:
+      bundle: true
     secrets: inherit
 
   checks-passed:

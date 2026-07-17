@@ -2,13 +2,18 @@ name: vscode
 
 on:
   workflow_call:
+    inputs:
+      bundle:
+        description: "Bundle per-platform clice binaries into platform-specific vsix packages"
+        type: boolean
+        default: false
 
 jobs:
-  publish-vscode:
+  # PR validation: a universal vsix without the server binary; the extension
+  # falls back to the clice.executable setting at runtime.
+  build-vscode:
+    if: ${{ !inputs.bundle }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: editors/vscode
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -19,16 +24,81 @@ jobs:
         with:
           environments: node
 
-      - name: Publish and Package to Marketplace
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Build extension
         run: |
           FLAG="${{ contains(github.ref_name, '-') && '--pre-release' || '' }}"
           pixi run build-vscode $FLAG
 
-          if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
-            pixi run publish-vscode -p "$VSCE_PAT" $FLAG
+  # Release path: one platform-specific vsix per packaging target, each
+  # embedding the clice package produced by publish-clice.yml in this run.
+  publish-vscode:
+    if: ${{ inputs.bundle }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - vsce_target: linux-x64
+            package_artifact: package-clice-x86_64-linux-gnu.tar.gz
+          - vsce_target: linux-arm64
+            package_artifact: package-clice-aarch64-linux-gnu.tar.gz
+          - vsce_target: darwin-arm64
+            package_artifact: package-clice-arm64-macos-darwin.tar.gz
+          - vsce_target: darwin-x64
+            package_artifact: package-clice-x86_64-macos-darwin.tar.gz
+          - vsce_target: win32-x64
+            package_artifact: package-clice-x64-windows-msvc.zip
+          - vsce_target: win32-arm64
+            package_artifact: package-clice-aarch64-windows-msvc.zip
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+
+      - name: Download clice package
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ matrix.package_artifact }}
+          path: /tmp/clice-package
+
+      - name: Stage bundled server
+        run: |
+          cd /tmp/clice-package
+          if ls *.zip > /dev/null 2>&1; then
+            unzip -q *.zip
+          else
+            tar xzf *.tar.gz
           fi
+          mv clice "$GITHUB_WORKSPACE/editors/vscode/clice"
+
+      - name: Package platform extension
+        run: |
+          FLAG="${{ contains(github.ref_name, '-') && '--pre-release' || '' }}"
+          pixi run build-vscode $FLAG --target ${{ matrix.vsce_target }}
+
+      - name: Upload vsix artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: vsix-${{ matrix.vsce_target }}
+          path: editors/vscode/*.vsix
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish to Marketplace
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          FLAG="${{ contains(github.ref_name, '-') && '--pre-release' || '' }}"
+          pixi run publish-vscode -p "$VSCE_PAT" $FLAG \
+            --packagePath "$GITHUB_WORKSPACE/$(ls editors/vscode/*.vsix)"
 
       - name: Upload .vsix to Release
         uses: softprops/action-gh-release@v3

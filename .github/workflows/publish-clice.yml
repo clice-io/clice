@@ -113,6 +113,16 @@ jobs:
             "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
           pixi run -e "$ENV" cmake-build
 
+      # Consumed by publish-vscode.yml to bundle the server into the
+      # platform-specific extension packages.
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.asset_name }}
+          path: build/RelWithDebInfo/${{ matrix.artifact_name }}
+          if-no-files-found: error
+          retention-days: 7
+
       # The release asset only carries GSYM; the full DWARF (needed for
       # core-dump debugging) is kept as a per-run artifact instead of
       # bloating the release page.

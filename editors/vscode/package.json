@@ -237,7 +237,6 @@
     "release:minor": "pnpm version minor -m \"release: v%s\" && git push --follow-tags"
   },
   "devDependencies": {
-    "@types/decompress": "^4.2.7",
     "@types/mocha": "^10.0.10",
     "@types/node": "~25.0.3",
     "@types/vscode": "^1.80.0",
@@ -250,7 +249,6 @@
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {
-    "decompress": "^4.2.1",
     "vscode-languageclient": "^9.0.1"
   },
   "overrides": {

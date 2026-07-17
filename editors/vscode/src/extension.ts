@@ -1,4 +1,6 @@
+import * as fs from "fs";
 import * as net from "net";
+import * as path from "path";
 import * as vscode from "vscode";
 import { workspace, window, ExtensionContext } from "vscode";
 import {
@@ -8,11 +10,30 @@ import {
     StreamInfo,
 } from "vscode-languageclient/node";
 import { getSetting } from "./setting";
-import { ensureServerBinary } from "./download";
 import { registerCompilationContext } from "./feature/context";
 import { registerInactiveRegions } from "./feature/inactive";
 
 let client: LanguageClient;
+
+// Platform-specific builds of the extension ship the server under clice/;
+// universal builds (a plain `vsce package` without the binary staged) carry
+// none and require the clice.executable setting instead.
+function bundledExecutable(context: ExtensionContext): string | undefined {
+    const name = process.platform === "win32" ? "clice.exe" : "clice";
+    const bundled = context.asAbsolutePath(path.join("clice", "bin", name));
+    if (!fs.existsSync(bundled)) {
+        return undefined;
+    }
+    if (process.platform !== "win32") {
+        // VSIX extraction may drop the unix executable bit; restore it.
+        try {
+            fs.chmodSync(bundled, 0o755);
+        } catch {
+            // Best effort: if chmod fails, spawn will surface the error.
+        }
+    }
+    return bundled;
+}
 
 export async function registerCommands(client: LanguageClient, context: ExtensionContext) {
     context.subscriptions.push(
@@ -38,11 +59,12 @@ export async function activate(context: ExtensionContext) {
 
     if (setting.mode === "pipe") {
         if (!executable || executable === "") {
-            const downloadedPath = await ensureServerBinary(context, channel);
-            if (downloadedPath) {
-                executable = downloadedPath;
-            } else {
-                window.showErrorMessage("Could not find or download clice executable.");
+            executable = bundledExecutable(context);
+            if (!executable) {
+                window.showErrorMessage(
+                    "This build of the clice extension does not bundle the clice server; " +
+                        "set 'clice.executable' to a locally installed binary.",
+                );
                 return;
             }
         }
