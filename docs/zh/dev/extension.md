@@ -23,8 +23,8 @@ pixi run build-vscode
 pixi run publish-vscode
 ```
 
-> [!TIP]
-> 若已编译 clice，本地调试时可在 VSCode 设置中填写 `clice.executable`，使扩展指向你的自定义构建。
+> [!IMPORTANT]
+> 开发构建与本地打包的扩展不内置 clice 服务端（发布 CI 才会按平台注入），因此必须在 VSCode 设置中填写 `clice.executable`（或设置 `CLICE_EXECUTABLE` 环境变量）指向本地构建的二进制，否则扩展会提示找不到服务端。
 
 开发与调试：
 

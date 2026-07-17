@@ -23,8 +23,8 @@ Publish to the VSCode Marketplace (`VSCE_PAT` env var required):
 pixi run publish-vscode
 ```
 
-> [!TIP]
-> If clice is already built locally, set `clice.executable` in VSCode settings to point the extension to your custom binary.
+> [!IMPORTANT]
+> Development and locally packaged builds do not bundle the clice server (release CI stages it per platform), so set `clice.executable` in VSCode settings — or the `CLICE_EXECUTABLE` environment variable — to your locally built binary. Without it the extension reports a missing server.
 
 Develop and debug:
 

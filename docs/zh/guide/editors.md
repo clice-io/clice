@@ -11,7 +11,7 @@ clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-
 
 ### Visual Studio Code
 
-从市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode)。扩展会自动下载 clice 二进制；如需使用自己构建的版本，设置 `clice.executable`。
+从市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode)。市场上的扩展按平台分发，clice 服务端已内置在扩展中，安装后无需下载、无需访问网络；如需使用自己构建的版本，设置 `clice.executable`。
 
 ### Neovim
 
