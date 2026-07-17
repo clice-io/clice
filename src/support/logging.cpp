@@ -140,14 +140,13 @@ uintptr_t main_executable_base() {
 static void crash_handler(void*) {
     if(crash_log_stream) {
         *crash_log_stream << "\n=== CRASH STACK TRACE ===\n";
-        if(executable_base) {
-            // Release binaries are PIE and stripped: the frame addresses below
-            // are ASLR-shifted, so offline symbolization against the shipped
-            // symbol file needs this base (see scripts/symbolize.py).
-            *crash_log_stream << "main executable base: 0x";
-            crash_log_stream->write_hex(executable_base);
-            *crash_log_stream << "\n";
-        }
+        // Release binaries are PIE and stripped: the frame addresses below are
+        // ASLR-shifted, so offline symbolization against the shipped symbol
+        // file needs this rebase value (see scripts/symbolize.py). Zero is a
+        // legitimate value (a zero macOS slide) and must still be recorded.
+        *crash_log_stream << "main executable base: 0x";
+        crash_log_stream->write_hex(executable_base);
+        *crash_log_stream << "\n";
         llvm::sys::PrintStackTrace(*crash_log_stream);
         crash_log_stream->flush();
     }

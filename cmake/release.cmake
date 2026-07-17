@@ -76,10 +76,12 @@ else()
     else()
         set(CLICE_GSYM_INPUT "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}")
     endif()
-    # --quiet: ICF-folded functions trip thousands of benign line-table
+    # --merged-functions: ICF folds identical functions onto one address
+    # range; without it only one of the folded names survives conversion.
+    # --quiet: the same folding trips thousands of benign line-table
     # diagnostics that would otherwise drown the CI log.
     set(CLICE_PACK_SYMBOL_CMD ${CLICE_GSYMUTIL} --convert "${CLICE_GSYM_INPUT}"
-        --quiet --out-file "${CLICE_SYMBOL_DIR}/pack/clice.gsym")
+        --merged-functions --quiet --out-file "${CLICE_SYMBOL_DIR}/pack/clice.gsym")
 endif()
 
 add_custom_target(clice-pack-symbol ALL

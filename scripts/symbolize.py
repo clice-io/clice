@@ -58,19 +58,29 @@ def main() -> int:
         with open(args.log) as log_file:
             text = log_file.read()
 
-    base_match = BASE.search(text)
-    if base_match is None:
+    if BASE.search(text) is None:
         print(
             "error: no 'main executable base' line in the log; the crash predates "
             "base recording — addresses cannot be rebased",
             file=sys.stderr,
         )
         return 1
-    base = int(base_match.group(1), 16)
 
+    # A log can hold several crash sections appended by respawned processes,
+    # each with its own ASLR base — track the most recent one while scanning.
+    base = None
     for line in text.splitlines():
+        base_match = BASE.search(line)
+        if base_match is not None:
+            base = int(base_match.group(1), 16)
+            print(line)
+            continue
         frame = FRAME.match(line)
-        if frame is None or os.path.basename(frame.group(2)) != args.module:
+        if (
+            frame is None
+            or base is None
+            or os.path.basename(frame.group(2)) != args.module
+        ):
             print(line)
             continue
         offset = int(frame.group(3), 16) - base

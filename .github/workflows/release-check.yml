@@ -9,6 +9,7 @@ on:
     paths:
       - ".github/workflows/publish-clice.yml"
       - ".github/workflows/release-check.yml"
+      - "CMakeLists.txt"
       - "cmake/release.cmake"
       - "cmake/archive.cmake"
 

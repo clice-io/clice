@@ -46,7 +46,13 @@ async def test_stripped_crash_symbolization(executable, tmp_path):
     shutil.copy(executable, stripped)
     run_tool("llvm-objcopy", "--only-keep-debug", stripped, debug_file)
     run_tool(
-        "llvm-gsymutil", "--convert", debug_file, "--quiet", "--out-file", gsym_file
+        "llvm-gsymutil",
+        "--convert",
+        debug_file,
+        "--merged-functions",
+        "--quiet",
+        "--out-file",
+        gsym_file,
     )
     run_tool("llvm-strip", "--strip-debug", "--strip-unneeded", stripped)
 
