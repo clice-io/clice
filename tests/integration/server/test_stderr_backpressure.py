@@ -11,6 +11,23 @@ FLOOD_LINES = 3000
 FLOOD_SIZE = 256
 
 
+async def test_log_flood_gated(executable, tmp_path):
+    # The load-generating hook must not exist for ordinary clients.
+    (tmp_path / "probe.cpp").write_text("int value = 42;\n")
+    write_cdb(tmp_path, ["probe.cpp"])
+    client = await make_client(executable, tmp_path)
+    try:
+        with pytest.raises(Exception):
+            await asyncio.wait_for(
+                client.protocol.send_request_async(
+                    "clice/internal/logFlood", {"count": 1, "size": 16}
+                ),
+                timeout=10,
+            )
+    finally:
+        await shutdown_client(client)
+
+
 def flood_lines_in(text: str) -> int:
     return text.count("[stderr-flood ")
 
@@ -26,7 +43,12 @@ async def test_stderr_flood_never_wedges(executable, tmp_path):
     (tmp_path / "probe.cpp").write_text("int value = 42;\n")
     write_cdb(tmp_path, ["probe.cpp"])
 
-    client = await make_client(executable, tmp_path, drain_stderr=False)
+    client = await make_client(
+        executable,
+        tmp_path,
+        drain_stderr=False,
+        initialization_options={"project": {"test_hooks": True}},
+    )
     try:
         uri, _ = client.open(tmp_path / "probe.cpp")
         # ~1MB in ten batches, far past the pipe (~196KB with asyncio's

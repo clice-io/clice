@@ -144,6 +144,36 @@ TEST_CASE(TinyPipeStillReports) {
     sink.log(info_msg("nudge"));
     auto out = pipe.drain();
     EXPECT_TRUE(out.find("client not draining") != std::string::npos);
+    // Eviction must never cut the tail off a partially written line: a
+    // torn line shows as payload immediately followed by the next line's
+    // timestamp bracket, with no newline between.
+    EXPECT_TRUE(out.find("z[") == std::string::npos);
+}
+
+TEST_CASE(NoteSurvivesPressure) {
+    // The gap report lives outside the backlog: pressure that keeps
+    // evicting buffered lines must never evict the count itself.
+    Pipe pipe;
+    ::fcntl(pipe.fds[1], F_SETPIPE_SZ, 4096);
+    logging::StderrSink sink(pipe.fds[1], 8192);
+
+    auto line = std::string(100, 'w');
+    for(int i = 0; i < 5000 && sink.dropped() == 0; ++i) {
+        sink.log(info_msg(line));
+    }
+    ASSERT_TRUE(sink.dropped() > 0);
+    auto seen = sink.dropped();
+
+    // Keep the flood going well past several full buffer turnovers.
+    for(int i = 0; i < 500; ++i) {
+        sink.log(info_msg(line));
+    }
+    EXPECT_TRUE(sink.dropped() > seen);
+
+    pipe.drain();
+    sink.log(info_msg("nudge"));
+    auto out = pipe.drain();
+    EXPECT_TRUE(out.find("client not draining") != std::string::npos);
 }
 #endif
 

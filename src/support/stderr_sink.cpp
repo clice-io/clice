@@ -71,45 +71,92 @@ StderrSink::StderrSink(int fd, std::size_t capacity) : fd(fd), capacity(capacity
     }
 }
 
-void StderrSink::write_or_buffer(const char* data, std::size_t size) {
-    while(size > 0) {
+std::size_t StderrSink::write_some(const char* data, std::size_t size) {
+    std::size_t written = 0;
+    while(written < size) {
 #ifdef _WIN32
         // PIPE_NOWAIT: a full pipe reports success with zero (or partial)
         // bytes written instead of blocking.
-        int n = ::_write(fd, data, static_cast<unsigned int>(size));
+        int n = ::_write(fd, data + written, static_cast<unsigned int>(size - written));
         if(n <= 0) {
             break;
         }
 #else
-        ssize_t n = ::write(fd, data, size);
+        ssize_t n = ::write(fd, data + written, size - written);
         if(n <= 0) {
             if(n < 0 && errno == EINTR) {
                 continue;
             }
-            // EAGAIN: pipe full — keep the rest for a later flush. EPIPE
-            // and friends: reader gone; the buffer then just ages out.
+            // EAGAIN: pipe full — the rest waits for a later delivery.
+            // EPIPE and friends: reader gone; the backlog just ages out.
             break;
         }
 #endif
-        data += n;
-        size -= static_cast<std::size_t>(n);
+        written += static_cast<std::size_t>(n);
     }
-    pending.append(data, size);
+    return written;
+}
+
+void StderrSink::stage_note_if_due() {
+    // The gap is older than any survivor, so the report is delivered
+    // ahead of everything and lives outside the backlog: continued
+    // pressure can evict buffered lines but never the count itself.
+    if(dropped_unreported > 0 && active_note.empty()) {
+        active_note = std::format("[logging] dropped {} stderr line(s): client not draining\n",
+                                  dropped_unreported);
+        note_sent = 0;
+        dropped_unreported = 0;
+    }
+}
+
+bool StderrSink::pump() {
+    if(!active_note.empty()) {
+        note_sent += write_some(active_note.data() + note_sent, active_note.size() - note_sent);
+        if(note_sent < active_note.size()) {
+            return false;
+        }
+        active_note.clear();
+        note_sent = 0;
+    }
+    if(!pending.empty()) {
+        auto n = write_some(pending.data(), pending.size());
+        if(n > 0) {
+            front_partial = pending[n - 1] != '\n';
+            pending.erase(0, n);
+        }
+        if(pending.empty()) {
+            front_partial = false;
+        }
+        return pending.empty();
+    }
+    return true;
 }
 
 void StderrSink::shed_over_capacity() {
-    while(pending.size() > capacity) {
+    if(pending.size() <= capacity) {
+        return;
+    }
+    // Never cut the tail of a line whose head already reached the pipe;
+    // the budget is soft by at most that one line.
+    std::size_t start = 0;
+    if(front_partial) {
         auto newline = pending.find('\n');
         if(newline == std::string::npos) {
-            dropped_total.fetch_add(1, std::memory_order_relaxed);
-            dropped_unreported += 1;
-            pending.clear();
             return;
         }
-        pending.erase(0, newline + 1);
+        start = newline + 1;
+    }
+    std::size_t cut = start;
+    while(pending.size() - (cut - start) > capacity) {
+        auto newline = pending.find('\n', cut);
+        if(newline == std::string::npos) {
+            break;
+        }
+        cut = newline + 1;
         dropped_total.fetch_add(1, std::memory_order_relaxed);
         dropped_unreported += 1;
     }
+    pending.erase(start, cut - start);
 }
 
 void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
@@ -118,31 +165,30 @@ void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
         return;
     }
 
-    // The gap precedes everything still buffered — evicted lines were
-    // older than the survivors — so the report goes to the FRONT of the
-    // backlog: the first quantum the pipe accepts after the client
-    // resumes carries it, however small the pipe. Under continued
-    // pressure the note ages out with everything else and a fresh count
-    // is staged later.
-    if(dropped_unreported > 0) {
-        auto note = std::format("[logging] dropped {} stderr line(s): client not draining\n",
-                                dropped_unreported);
-        dropped_unreported = 0;
-        pending.insert(0, note);
-    }
-
-    // Flush what the pipe refused earlier; order is preserved by never
-    // writing fresh content while older bytes are still pending.
-    if(!pending.empty()) {
-        std::string backlog;
-        backlog.swap(pending);
-        write_or_buffer(backlog.data(), backlog.size());
-    }
+    stage_note_if_due();
+    pump();
 
     spdlog::memory_buf_t formatted;
     formatter_->format(msg, formatted);
-    write_or_buffer(formatted.data(), formatted.size());
+    if(active_note.empty() && pending.empty()) {
+        auto n = write_some(formatted.data(), formatted.size());
+        if(n < formatted.size()) {
+            pending.assign(formatted.data() + n, formatted.size() - n);
+            front_partial = n > 0;
+        }
+    } else {
+        // Older bytes go first: fresh content queues behind the backlog.
+        pending.append(formatted.data(), formatted.size());
+    }
     shed_over_capacity();
+}
+
+void StderrSink::flush_() {
+    if(disabled) {
+        return;
+    }
+    stage_note_if_due();
+    pump();
 }
 
 }  // namespace clice::logging

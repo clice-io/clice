@@ -35,6 +35,10 @@ struct ProjectConfig {
     std::optional<bool> enable_indexing;
     std::optional<int> idle_timeout_ms;
 
+    /// Enables the clice/internal test hooks that can generate load on
+    /// demand (log floods). Off unless the harness asks for them.
+    std::optional<bool> test_hooks;
+
     defaulted<std::uint32_t> stateful_worker_count = {};
     defaulted<std::uint32_t> stateless_worker_count = {};
     defaulted<std::uint32_t> min_stateless_worker_count = {};

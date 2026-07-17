@@ -39,12 +39,16 @@ def find_free_port() -> int:
 
 
 async def make_client(
-    executable: Path, workspace: Path, *, drain_stderr: bool = True
+    executable: Path,
+    workspace: Path,
+    *,
+    drain_stderr: bool = True,
+    initialization_options: dict | None = None,
 ) -> CliceClient:
     """Spawn a fresh clice server and initialize it. For multi-session tests."""
     c = CliceClient()
     await c.start_io(str(executable), "serve", drain_stderr=drain_stderr)
-    await c.initialize(workspace)
+    await c.initialize(workspace, initialization_options=initialization_options)
     return c
 
 

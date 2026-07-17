@@ -47,14 +47,22 @@ public:
 protected:
     void sink_it_(const spdlog::details::log_msg& msg) override;
 
-    void flush_() override {}
+    /// A flush is a delivery opportunity: push the note and backlog as far
+    /// as the pipe allows, still without ever blocking.
+    void flush_() override;
 
 private:
-    /// Write as much as the pipe accepts; what it refuses is appended to
-    /// `pending` for later flushes.
-    void write_or_buffer(const char* data, std::size_t size);
+    /// Write until the pipe refuses; returns how much it took.
+    std::size_t write_some(const char* data, std::size_t size);
 
-    /// Evict whole oldest lines until the buffer fits its budget.
+    /// Materialize the gap report when drops are unreported and no report
+    /// is already in flight.
+    void stage_note_if_due();
+
+    /// Deliver note remainder, then backlog, in place; true when drained.
+    bool pump();
+
+    /// Evict whole oldest lines until the backlog fits its budget.
     void shed_over_capacity();
 
     int fd;
@@ -62,8 +70,17 @@ private:
     /// every line is shed without touching the fd.
     bool disabled = false;
     std::size_t capacity;
-    /// Bytes the pipe refused, flushed ahead of every later write.
+    /// Gap report in flight, held OUTSIDE the backlog: eviction can never
+    /// lose the count, and it is delivered ahead of everything — the gap
+    /// is older than any survivor. note_sent tracks partial delivery.
+    std::string active_note;
+    std::size_t note_sent = 0;
+    /// Bytes the pipe refused, flushed ahead of fresh content.
     std::string pending;
+    /// The backlog's front continues a line whose head already reached
+    /// the pipe: eviction must not cut it, or the torn line the buffer
+    /// exists to prevent reappears.
+    bool front_partial = false;
     std::atomic<std::size_t> dropped_total = 0;
     std::size_t dropped_unreported = 0;
 };
