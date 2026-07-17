@@ -236,7 +236,24 @@ kota::task<> Indexer::save() {
     }
     LOG_INFO("Saved ProjectIndex ({} symbols)", workspace.project_index.symbols.size());
 
-    llvm::SmallVector<CacheStore::PendingEntry> shards;
+    // Each write remembers which shard it snapshotted and at what
+    // revision, so the post-commit flip below can prove the shard is
+    // byte-identical to the blob it just published.
+    struct ShardWrite {
+        CacheStore::PendingEntry pending;
+        std::uint32_t path_id;
+        std::uint64_t revision;
+    };
+
+    // A commit's result pairs the published path with the blob reopened in
+    // the same job: the mmap plus the flatbuffer verification walk the
+    // whole file, and neither belongs on the event loop.
+    struct CommitOutcome {
+        std::expected<std::string, std::error_code> path;
+        index::MergedIndex reloaded;
+    };
+
+    llvm::SmallVector<ShardWrite> shards;
     std::size_t total = workspace.merged_indices.size();
     for(auto& [path_id, shard]: workspace.merged_indices) {
         if(!shard.need_rewrite())
@@ -244,14 +261,15 @@ kota::task<> Indexer::save() {
         if(auto pending = serialize_blob(store,
                                          shard_key(workspace.path_pool.resolve(path_id)),
                                          [&](llvm::raw_ostream& os) { shard.serialize(os); })) {
-            shards.push_back(std::move(*pending));
+            shards.push_back({std::move(*pending), path_id, shard.revision()});
         }
     }
-    LOG_INFO("Saved {} MergedIndex shards (of {} total)", shards.size(), total);
+    LOG_INFO("Serialized {} MergedIndex shards (of {} total)", shards.size(), total);
 
     // Phase 2: commit each blob (fsync + atomic rename) on the kota thread
     // pool, keeping the heavy IO off the event loop.  The project blob goes
     // first; if it cannot be published, drop the shards of this snapshot.
+    saved_shards = 0;
     auto committed =
         co_await kota::queue([&] { return store.commit(std::move(*project_pending)); });
     if(!committed.has_value() || !committed.value().has_value()) {
@@ -263,12 +281,39 @@ kota::task<> Indexer::save() {
     // FIXME: shard commits are strictly sequential (one co_await per shard).
     // For large projects this adds ~N×2ms of round-trip overhead.  Consider
     // batching commits or dispatching them in parallel on the thread pool.
-    for(auto& pending: shards) {
-        auto key = pending.key;
-        auto result = co_await kota::queue([&] { return store.commit(std::move(pending)); });
-        if(!result.has_value() || !result.value().has_value()) {
+    for(auto& write: shards) {
+        auto key = write.pending.key;
+
+        auto outcome = co_await kota::queue([&]() -> CommitOutcome {
+            CommitOutcome out{store.commit(std::move(write.pending)), {}};
+            if(out.path) {
+                out.reloaded = index::MergedIndex::load(*out.path);
+            }
+            return out;
+        });
+        if(!outcome.has_value() || !outcome.value().path.has_value()) {
             LOG_WARN("Failed to commit index blob {}", key);
+            continue;
         }
+        saved_shards += 1;
+
+        // Flip the shard back to its committed, buffer-backed blob: the
+        // heap Impl a merge materialized would otherwise live until
+        // shutdown (F21), and need_rewrite() would keep claiming the
+        // shard dirty forever, turning every later save into a full
+        // rewrite. Only a shard untouched across the commit await may
+        // flip — a merge that landed meanwhile made the blob stale, and
+        // the shard simply stays dirty for the next save. An unreadable
+        // reload keeps the live Impl for the same reason.
+        auto it = workspace.merged_indices.find(write.path_id);
+        if(it == workspace.merged_indices.end() || it->second.revision() != write.revision) {
+            continue;
+        }
+        if(!outcome.value().reloaded.loaded()) {
+            LOG_WARN("Committed index blob {} did not read back; keeping the in-memory shard", key);
+            continue;
+        }
+        it->second = std::move(outcome.value().reloaded);
     }
 
     LOG_PERF("index",

@@ -1,5 +1,6 @@
 #include "index/merged_index.h"
 
+#include <atomic>
 #include <ranges>
 #include <tuple>
 
@@ -277,6 +278,16 @@ struct MergedIndex::Impl {
 
 MergedIndex::MergedIndex(std::unique_ptr<llvm::MemoryBuffer> buffer, std::unique_ptr<Impl> impl) :
     buffer(std::move(buffer)), impl(std::move(impl)) {}
+
+/// Revision values come from one process-wide monotonic source, so a value
+/// never repeats across shard objects: an entry erased and re-created at
+/// the same key while a save's commit is in flight cannot alias the
+/// revision that save snapshotted (a per-object counter restarting at the
+/// same small numbers could).
+static std::uint64_t next_revision() {
+    static std::atomic<std::uint64_t> counter{0};
+    return counter.fetch_add(1, std::memory_order_relaxed) + 1;
+}
 
 MergedIndex::MergedIndex() = default;
 
@@ -836,6 +847,7 @@ bool MergedIndex::has_contribution(this const Self& self, llvm::StringRef contex
 }
 
 void MergedIndex::remove(this Self& self, llvm::StringRef context_path) {
+    self.rev = next_revision();
     self.load_in_memory();
     auto& index = *self.impl;
 
@@ -895,6 +907,7 @@ bool MergedIndex::find_symbol(this const Self& self,
 }
 
 void MergedIndex::merge_symbols(this Self& self, const SymbolTable& symbols) {
+    self.rev = next_revision();
     self.load_in_memory();
     for(auto& [hash, symbol]: symbols) {
         auto [it, inserted] = self.impl->symbols.try_emplace(hash);
@@ -912,6 +925,7 @@ void MergedIndex::merge(this Self& self,
                         llvm::ArrayRef<DepLocation> deps,
                         FileIndex& index,
                         llvm::StringRef content) {
+    self.rev = next_revision();
     self.load_in_memory();
     self.impl->content = content.str();
     self.impl->line_starts = kota::ipc::lsp::build_line_starts(self.impl->content);
@@ -979,6 +993,7 @@ void MergedIndex::merge(this Self& self,
                         std::uint32_t include_id,
                         FileIndex& index,
                         llvm::StringRef content) {
+    self.rev = next_revision();
     self.load_in_memory();
     auto path_id = self.impl->paths.path_id(tu_path);
     // The stored content is the position-mapping truth for this file; a

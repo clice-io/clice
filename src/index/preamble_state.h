@@ -108,6 +108,11 @@ public:
     /// mapped blob.
     llvm::ArrayRef<std::uint8_t> open_conditionals() const;
 
+    /// Size of the mapped blob in bytes (memory accounting gauge).
+    std::size_t size() const {
+        return buffer ? buffer->getBufferSize() : 0;
+    }
+
 private:
     explicit PreambleState(std::unique_ptr<llvm::MemoryBuffer> buffer);
 

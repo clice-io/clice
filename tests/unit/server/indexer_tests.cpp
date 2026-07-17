@@ -130,6 +130,97 @@ TEST_CASE(MergeSkipsMovedDisk) {
     ASSERT_EQ(it->second.content(), "int renamed() { return 2; }\n");
 }
 
+void open_store(TempDir& tmp, Workspace& workspace) {
+    auto store = CacheStore::open(tmp.path("cache"), 1);
+    ASSERT_TRUE(store.has_value());
+    store->register_namespace(
+        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
+    workspace.store.emplace(std::move(*store));
+}
+
+TEST_CASE(SaveFlipsShards) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int flip_value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    open_store(tmp, workspace);
+
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+    indexer.merge(indexed.data.data(), indexed.data.size());
+
+    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+    ASSERT_TRUE(workspace.merged_indices.find(path_id)->second.need_rewrite());
+
+    // Named body: a temporary lambda's captures die with the statement
+    // while the coroutine frame still references them.
+    auto save_body = [&]() -> kota::task<> {
+        co_await indexer.save();
+    };
+    auto task = save_body();
+    loop.schedule(task);
+    loop.run();
+
+    // Committed and flipped back to the buffer-backed blob; the shard
+    // still answers identically.
+    auto it = workspace.merged_indices.find(path_id);
+    ASSERT_TRUE(it != workspace.merged_indices.end());
+    ASSERT_FALSE(it->second.need_rewrite());
+    ASSERT_EQ(it->second.content(), "int flip_value() { return 1; }\n");
+    ASSERT_TRUE(it->second.has_contribution(indexed.tu_path));
+}
+
+TEST_CASE(MidSaveMergeKept) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int first_value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    open_store(tmp, workspace);
+
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+    indexer.merge(indexed.data.data(), indexed.data.size());
+    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+
+    // Prepared before save() starts so the interleaved merge is purely an
+    // in-memory event.
+    tmp.touch("main.cpp", "int second_value() { return 2; }\n");
+    auto fresh = index_file(tmp, src);
+    ASSERT_FALSE(fresh.data.empty());
+
+    // The merge task runs when save() suspends at its first commit await:
+    // it lands between the serialize snapshot and the flip check, exactly
+    // the window the revision guard exists for.
+    auto save_body = [&]() -> kota::task<> {
+        co_await indexer.save();
+    };
+    auto merge_body = [&]() -> kota::task<> {
+        indexer.merge(fresh.data.data(), fresh.data.size());
+        co_return;
+    };
+    auto save_task = save_body();
+    auto merge_task = merge_body();
+    loop.schedule(save_task);
+    loop.schedule(merge_task);
+    loop.run();
+
+    // The stale committed blob must not overwrite the newer merge: the
+    // shard keeps the new content and stays dirty for the next save.
+    auto it = workspace.merged_indices.find(path_id);
+    ASSERT_TRUE(it != workspace.merged_indices.end());
+    ASSERT_TRUE(it->second.need_rewrite());
+    ASSERT_EQ(it->second.content(), "int second_value() { return 2; }\n");
+
+    auto again_body = [&]() -> kota::task<> {
+        co_await indexer.save();
+    };
+    auto task = again_body();
+    loop.schedule(task);
+    loop.run();
+
+    it = workspace.merged_indices.find(path_id);
+    ASSERT_FALSE(it->second.need_rewrite());
+    ASSERT_EQ(it->second.content(), "int second_value() { return 2; }\n");
+}
+
 };  // TEST_SUITE(IndexerMerge)
 
 TEST_SUITE(IndexerRequeue) {

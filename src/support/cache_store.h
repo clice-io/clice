@@ -189,6 +189,12 @@ public:
     /// Iterates over a snapshot, so fn may call back into the store.
     void for_each_key(llvm::StringRef ns, llvm::function_ref<void(llvm::StringRef)> fn);
 
+    /// Number of in-flight tmp blobs of this instance (files under
+    /// `tmp/{pid}`). A settled server has zero: every PendingEntry either
+    /// committed (renamed away) or cleaned itself up. Memory/leak gauge
+    /// for the stats endpoint; scans the directory, so not free.
+    std::size_t pending_tmp_files() const;
+
     /// The versioned root directory, e.g. `{root}/cache/v1`.  Callers may
     /// place their own metadata files directly under it (the store only
     /// manages namespace subdirectories); they die with the version.

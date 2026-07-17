@@ -110,4 +110,38 @@ struct LogFloodResult {
     std::uint32_t emitted = 0;
 };
 
+/// clice/internal/stats — TEST-ONLY, not a stable API. Ownership gauges
+/// for memory-lifecycle regression tests: instead of brittle RSS
+/// assertions, each leak class is pinned by a deterministic counter
+/// (consumed by tests/integration/server/test_memory_ownership.py).
+/// Absent from capabilities and user docs.
+struct StatsParams {};
+
+struct StatsResult {
+    /// pch_cache entries whose PreambleState blob is currently open, and
+    /// their mapped bytes. Steady state after closing documents: bounded
+    /// by the loaded-state budget, not by every key ever touched.
+    std::uint32_t pch_loaded_states = 0;
+    std::uint64_t pch_state_bytes = 0;
+
+    /// Index shards holding a heap Impl (need_rewrite() true), and their
+    /// stored-content bytes. Zero after a settled save: committed shards
+    /// flip back to their buffer-backed blobs.
+    std::uint32_t index_inmemory_shards = 0;
+    std::uint64_t index_shard_content_bytes = 0;
+
+    /// Shards the last index save actually wrote (the true dirty set).
+    std::uint32_t last_save_shards = 0;
+
+    /// In-flight tmp blobs of this instance's cache store. Zero once
+    /// builds settle — every pending write either committed or cleaned
+    /// itself up.
+    std::uint32_t pending_tmp_files = 0;
+
+    /// Trend gauges.
+    std::uint32_t pch_cache_entries = 0;
+    std::uint32_t header_contexts = 0;
+    std::uint32_t sessions = 0;
+};
+
 }  // namespace clice::ext

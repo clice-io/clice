@@ -75,6 +75,39 @@ TEST_CASE(Serialization) {
     }
 }
 
+TEST_CASE(RevisionAndFlipBack) {
+    build_index(R"(
+            int flip_func() { return 1; }
+        )");
+
+    index::MergedIndex merged;
+    ASSERT_EQ(merged.revision(), 0u);
+
+    auto fid = unit->interested_file();
+    merged.merge("tu0", tu_index.graph.include_location_id(fid), tu_index.main_file_index, {});
+    auto merged_rev = merged.revision();
+    ASSERT_TRUE(merged_rev != 0u);
+    ASSERT_TRUE(merged.need_rewrite());
+
+    // The flip save() performs after a commit: the serialized twin is
+    // buffer-backed (no heap Impl, not dirty) and answers identically.
+    llvm::SmallString<1024> s;
+    llvm::raw_svector_ostream os(s);
+    merged.serialize(os);
+    auto reloaded = index::MergedIndex(s);
+    ASSERT_FALSE(reloaded.need_rewrite());
+    ASSERT_EQ(reloaded.revision(), 0u);
+
+    // Every mutation bumps the revision, so a save can prove no merge
+    // landed across its commit await. (Ordering is load-bearing: operator==
+    // materializes both sides' Impl, and serialize() compacts removed rows
+    // and caches — the comparison is only valid before remove()/lookup()
+    // touch either side.)
+    ASSERT_TRUE(merged == reloaded);
+    merged.remove("tu0");
+    ASSERT_TRUE(merged.revision() != merged_rev && merged.revision() != 0u);
+}
+
 TEST_CASE(LookupByOffset) {
     build_index(R"(
             int @func[$(func)foo]() { return 42; }

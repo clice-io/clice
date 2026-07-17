@@ -640,6 +640,18 @@ void CacheStore::invalidate(llvm::StringRef ns, llvm::StringRef key) {
     maybe_checkpoint();
 }
 
+std::size_t CacheStore::pending_tmp_files() const {
+    std::lock_guard guard(state->mutex);
+    std::size_t count = 0;
+    std::error_code ec;
+    for(auto it = llvm::sys::fs::directory_iterator(state->tmp_dir, ec);
+        !ec && it != llvm::sys::fs::directory_iterator();
+        it.increment(ec)) {
+        count += 1;
+    }
+    return count;
+}
+
 void CacheStore::for_each_key(llvm::StringRef ns, llvm::function_ref<void(llvm::StringRef)> fn) {
     llvm::SmallVector<std::string> keys;
     {

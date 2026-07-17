@@ -560,3 +560,11 @@ class CliceClient(BaseLanguageClient):
             self.protocol.send_request_async("clice/internal/poll", {"loop": loop}),
             timeout=timeout,
         )
+
+    async def stats(self, *, timeout: float = 60.0):
+        """Send clice/internal/stats (test hook): ownership gauges for
+        memory-lifecycle assertions. Returns the raw result object."""
+        return await asyncio.wait_for(
+            self.protocol.send_request_async("clice/internal/stats", {}),
+            timeout=timeout,
+        )

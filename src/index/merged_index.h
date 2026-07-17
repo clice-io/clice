@@ -74,6 +74,17 @@ public:
         return impl != nullptr;
     }
 
+    /// Mutation stamp, reassigned by every merge/remove from a process-wide
+    /// monotonic source (values never repeat across objects, so an erase +
+    /// re-create at the same key cannot alias an older snapshot). 0 = not
+    /// mutated since construction. save() snapshots it before serializing
+    /// and flips the shard back to its committed blob only if no mutation
+    /// landed across the commit await — otherwise the flip would silently
+    /// drop the newer contribution.
+    std::uint64_t revision() const {
+        return rev;
+    }
+
     /// Whether this index holds any data (a rejected or missing blob loads
     /// as an empty index).
     bool loaded() const {
@@ -130,6 +141,9 @@ private:
 
     /// The in memory data of the index.
     std::unique_ptr<Impl> impl;
+
+    /// See revision().
+    std::uint64_t rev = 0;
 };
 
 }  // namespace clice::index

@@ -621,6 +621,47 @@ void LSPClient::register_extensions() {
                         }
                         co_return to_raw(ext::LogFloodResult{count});
                     });
+
+    // Ownership gauges for memory-lifecycle tests (see ext::StatsParams).
+    // Read-only and synchronous: every counter is computed from live
+    // master state on the event loop, so an assertion made after a settled
+    // operation observes exactly the state that operation left behind.
+    peer.on_request(
+        "clice/internal/stats",
+        [this](RequestContext& ctx, const ext::StatsParams&) -> RawResult {
+            auto& srv = this->server;
+            ext::StatsResult stats;
+
+            for(auto& entry: srv.workspace.pch_cache) {
+                auto& st = entry.second;
+                if(st.state) {
+                    stats.pch_loaded_states += 1;
+                    stats.pch_state_bytes += st.state->size();
+                }
+            }
+            stats.pch_cache_entries = static_cast<std::uint32_t>(srv.workspace.pch_cache.size());
+
+            for(auto& [path_id, shard]: srv.workspace.merged_indices) {
+                if(shard.need_rewrite()) {
+                    stats.index_inmemory_shards += 1;
+                    stats.index_shard_content_bytes += shard.content().size();
+                }
+            }
+            stats.last_save_shards = static_cast<std::uint32_t>(srv.indexer.last_save_shards());
+
+            if(srv.workspace.store) {
+                stats.pending_tmp_files =
+                    static_cast<std::uint32_t>(srv.workspace.store->pending_tmp_files());
+            }
+
+            stats.header_contexts = static_cast<std::uint32_t>(srv.contexts.header_contexts.size());
+            srv.sessions.for_each([&](std::uint32_t, const Session&) -> bool {
+                stats.sessions += 1;
+                return true;
+            });
+
+            co_return to_raw(stats);
+        });
 }
 
 /// Publish clice.toml load problems as diagnostics, each on its own file's

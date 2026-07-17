@@ -169,6 +169,14 @@ public:
         return index_queue.size();
     }
 
+    /// How many shard blobs the last save() durably committed. With the
+    /// post-commit flip-back this is the true dirty set — a steady-state
+    /// save commits 0 — so the stats endpoint can pin full-rewrite
+    /// regressions.
+    std::size_t last_save_shards() const {
+        return saved_shards;
+    }
+
     /// Progress of the current (or last) indexing round. The reporter reads
     /// this on each on_progress_changed emission — the signal only wakes it,
     /// the numbers live here.
@@ -283,6 +291,7 @@ private:
     std::uint64_t reindex_ticket = 0;
     bool indexing_active = false;
     bool indexing_scheduled = false;
+    std::size_t saved_shards = 0;
     std::shared_ptr<kota::timer> index_idle_timer;
 
     /// Pause/resume: when paused, new index tasks wait on this event.
