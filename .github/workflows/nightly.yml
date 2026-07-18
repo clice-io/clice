@@ -108,6 +108,8 @@ jobs:
           } > /tmp/notes.md
           gh release create "$TAG" --prerelease --title "$TAG" \
             --notes-file /tmp/notes.md
+          # Mirror the release notes into the run summary page.
+          cat /tmp/notes.md >> "$GITHUB_STEP_SUMMARY"
 
   clice:
     needs: prepare
