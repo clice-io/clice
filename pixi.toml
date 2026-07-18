@@ -224,6 +224,20 @@ platforms = ["linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 [feature.editor.dependencies]
 python = ">=3.13"
 
+# Same mitigation as feature.test: editor-prepare configures fixtures with
+# toolchain.cmake's -fuse-ld=lld, which Apple system clang rejects.
+[feature.editor.target.osx-arm64.dependencies]
+clang = "==20.1.8"
+clangxx = "==20.1.8"
+lld = "==20.1.8"
+compiler-rt = "==20.1.8"
+
+[feature.editor.target.osx-64.dependencies]
+clang = "==20.1.8"
+clangxx = "==20.1.8"
+lld = "==20.1.8"
+compiler-rt = "==20.1.8"
+
 # Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]
 cmd = "python tests/tools/prepare.py hello_world modules/hover_on_imported_symbol header_context"
