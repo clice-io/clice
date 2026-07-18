@@ -21,7 +21,6 @@ env:
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
   SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
   CCACHE_BASEDIR: ${{ github.workspace }}
-  SCCACHE_BASEDIRS: ${{ github.workspace }}
   CCACHE_COMPILERCHECK: content
   CCACHE_MAXSIZE: 2G
   SCCACHE_CACHE_SIZE: 2G

@@ -2,6 +2,13 @@ name: clice
 
 on:
   workflow_call:
+    inputs:
+      # Publish the packages to this release tag even when the run is not on
+      # a tag ref (the nightly pipeline creates the tag itself and then calls
+      # this workflow). Empty means dry run unless the ref is a v* tag.
+      release_tag:
+        type: string
+        default: ""
   # Manual runs exercise the full packaging matrix from any branch without
   # tagging; the upload steps below stay tag-gated.
   workflow_dispatch:
@@ -10,7 +17,6 @@ env:
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
   SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
   CCACHE_BASEDIR: ${{ github.workspace }}
-  SCCACHE_BASEDIRS: ${{ github.workspace }}
   CCACHE_COMPILERCHECK: content
   CCACHE_MAXSIZE: 2G
   SCCACHE_CACHE_SIZE: 2G
@@ -152,21 +158,21 @@ jobs:
           fi
 
       - name: Upload Main Package to Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '' }}
         uses: svenstaro/upload-release-action@2.11.5
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/RelWithDebInfo/${{ matrix.artifact_name }}
           asset_name: ${{ matrix.asset_name }}
-          tag: ${{ github.ref }}
+          tag: ${{ inputs.release_tag || github.ref }}
           overwrite: true
 
       - name: Upload Symbol Package to Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '' }}
         uses: svenstaro/upload-release-action@2.11.5
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/RelWithDebInfo/${{ matrix.symbol_artifact_name }}
           asset_name: ${{ matrix.symbol_asset_name }}
-          tag: ${{ github.ref }}
+          tag: ${{ inputs.release_tag || github.ref }}
           overwrite: true

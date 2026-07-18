@@ -1,18 +1,34 @@
 name: vscode
 
+# Single parameterized pipeline for every extension build the project ships:
+#   source: none     — universal vsix without the server binary (PR check);
+#                      the extension falls back to the clice.executable setting.
+#   source: package  — six platform vsix embedding the release packages from
+#                      publish-clice.yml (release, nightly, and dry runs).
+#   source: build    — six platform vsix embedding the test-suite binaries
+#                      (no LTO, no strip) already built by native/cross-test,
+#                      so a fix is installable the moment its CI run is green.
 on:
   workflow_call:
     inputs:
-      bundle:
-        description: "Bundle per-platform clice binaries into platform-specific vsix packages"
+      source:
+        description: "Server binaries to bundle: none, package, or build"
+        type: string
+        default: "none"
+      # Publish against this release tag even off a tag ref (nightly creates
+      # the tag itself and calls this workflow). Empty means dry run unless
+      # the ref is a v* tag. The extension version is injected from the tag,
+      # so the placeholder version in package.json is never released.
+      release_tag:
+        type: string
+        default: ""
+      prerelease:
         type: boolean
         default: false
 
 jobs:
-  # PR validation: a universal vsix without the server binary; the extension
-  # falls back to the clice.executable setting at runtime.
   build-vscode:
-    if: ${{ !inputs.bundle }}
+    if: ${{ inputs.source == 'none' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -29,26 +45,30 @@ jobs:
           FLAG="${{ contains(github.ref_name, '-') && '--pre-release' || '' }}"
           pixi run build-vscode $FLAG
 
-  # Release path: one platform-specific vsix per packaging target, each
-  # embedding the clice package produced by publish-clice.yml in this run.
   publish-vscode:
-    if: ${{ inputs.bundle }}
+    if: ${{ inputs.source != 'none' }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - vsce_target: linux-x64
             package_artifact: package-clice-x86_64-linux-gnu.tar.gz
+            build_artifact: native-build-ubuntu-24.04-RelWithDebInfo
           - vsce_target: linux-arm64
             package_artifact: package-clice-aarch64-linux-gnu.tar.gz
+            build_artifact: cross-build-aarch64-linux-gnu
           - vsce_target: darwin-arm64
             package_artifact: package-clice-arm64-macos-darwin.tar.gz
+            build_artifact: native-build-macos-15-RelWithDebInfo
           - vsce_target: darwin-x64
             package_artifact: package-clice-x86_64-macos-darwin.tar.gz
+            build_artifact: cross-build-x86_64-apple-darwin
           - vsce_target: win32-x64
             package_artifact: package-clice-x64-windows-msvc.zip
+            build_artifact: native-build-windows-2025-RelWithDebInfo
           - vsce_target: win32-arm64
             package_artifact: package-clice-aarch64-windows-msvc.zip
+            build_artifact: cross-build-aarch64-pc-windows-msvc
 
     runs-on: ubuntu-latest
 
@@ -62,49 +82,74 @@ jobs:
         with:
           environments: node
 
-      - name: Download clice package
+      - name: Download server binaries
         uses: actions/download-artifact@v7
         with:
-          name: ${{ matrix.package_artifact }}
-          path: /tmp/clice-package
+          name: ${{ inputs.source == 'package' && matrix.package_artifact || matrix.build_artifact }}
+          path: /tmp/server
 
+      # Both sources end up as editors/vscode/clice/{bin,lib/clang,...}, the
+      # layout bundledExecutable() resolves inside the installed extension.
       - name: Stage bundled server
         run: |
-          cd /tmp/clice-package
-          if ls *.zip > /dev/null 2>&1; then
-            unzip -q *.zip
+          DEST=editors/vscode/clice
+          if [ "${{ inputs.source }}" = "package" ]; then
+            cd /tmp/server
+            if ls *.zip > /dev/null 2>&1; then unzip -q *.zip; else tar xzf *.tar.gz; fi
+            cd -
+            mv /tmp/server/clice "$DEST"
           else
-            tar xzf *.tar.gz
+            mkdir -p "$DEST/bin" "$DEST/lib"
+            cp /tmp/server/bin/clice* "$DEST/bin/"
+            cp -r /tmp/server/lib/clang "$DEST/lib/"
+            cp docs/clice.toml "$DEST/"
           fi
-          mv clice "$GITHUB_WORKSPACE/editors/vscode/clice"
+          cp LICENSE "$DEST/" editors/vscode/
+
+      # The repo carries a fixed placeholder version; every published build
+      # gets its real version from the release tag, injected here without
+      # being committed back.
+      - name: Inject release version
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || '') }}
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            python3 - <<'EOF'
+          import json, os
+          path = "editors/vscode/package.json"
+          data = json.load(open(path))
+          data["version"] = os.environ["RELEASE_TAG"].lstrip("v")
+          json.dump(data, open(path, "w"), indent=2)
+          EOF
+          fi
 
       - name: Package platform extension
         run: |
-          FLAG="${{ contains(github.ref_name, '-') && '--pre-release' || '' }}"
+          FLAG="${{ (inputs.prerelease || contains(github.ref_name, '-')) && '--pre-release' || '' }}"
           pixi run build-vscode $FLAG --target ${{ matrix.vsce_target }}
 
       - name: Upload vsix artifact
         uses: actions/upload-artifact@v7
         with:
-          name: vsix-${{ matrix.vsce_target }}
+          name: vsix-${{ inputs.source }}-${{ matrix.vsce_target }}
           path: editors/vscode/*.vsix
           if-no-files-found: error
           retention-days: 7
 
       - name: Publish to Marketplace
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '' }}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
-          FLAG="${{ contains(github.ref_name, '-') && '--pre-release' || '' }}"
+          FLAG="${{ (inputs.prerelease || contains(github.ref_name, '-')) && '--pre-release' || '' }}"
           pixi run publish-vscode -p "$VSCE_PAT" $FLAG \
             --packagePath "$GITHUB_WORKSPACE/$(ls editors/vscode/*.vsix)"
 
       - name: Upload .vsix to Release
         uses: softprops/action-gh-release@v3
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '' }}
         with:
           files: "editors/vscode/*.vsix"
-          tag_name: ${{ github.ref }}
+          tag_name: ${{ inputs.release_tag || github.ref }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

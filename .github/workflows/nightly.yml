@@ -1,0 +1,135 @@
+name: nightly
+
+# Nightly pre-release channel (odd-minor versions): if main gained commits
+# since the last nightly, tag HEAD as v0.1.YYMMDDHH, build the full release
+# matrix against that tag, and publish it as a GitHub pre-release plus a
+# Marketplace pre-release. Old nightlies are pruned after 30 days; stable
+# (even-minor) releases are never touched.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Compute nightly version
+        id: version
+        run: |
+          TAG="v0.1.$(date -u +%y%m%d%H)"
+          LAST=$(git tag -l 'v0.1.*' --sort=-v:refname | head -1)
+          if [ -n "$LAST" ] && [ "$(git rev-parse "$LAST^{commit}")" = "$(git rev-parse HEAD)" ]; then
+            echo "No new commits since $LAST; skipping."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git rev-parse "$TAG" > /dev/null 2>&1; then
+            echo "$TAG already exists; skipping."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      # Tags pushed with GITHUB_TOKEN do not trigger workflows, which is
+      # exactly right here: the publish workflows are invoked directly below
+      # instead of through the tag-push release path.
+      - name: Create tag and pre-release
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git tag "$TAG"
+          git push origin "$TAG"
+
+          LAST=$(git tag -l 'v0.1.*' --sort=-v:refname | sed -n 2p)
+          {
+            echo "Nightly build from \`$(git rev-parse --short HEAD)\`."
+            echo
+            if [ -n "$LAST" ]; then
+              echo "## Changes since $LAST"
+              git log --format='- %s' "$LAST"..HEAD
+              echo
+            fi
+            echo "## Downloads"
+            echo
+            echo "| Platform | Server | VS Code extension |"
+            echo "| --- | --- | --- |"
+            echo "| Linux x64 | clice-x86_64-linux-gnu.tar.gz | clice-vscode-linux-x64-*.vsix |"
+            echo "| Linux arm64 | clice-aarch64-linux-gnu.tar.gz | clice-vscode-linux-arm64-*.vsix |"
+            echo "| macOS arm64 | clice-arm64-macos-darwin.tar.gz | clice-vscode-darwin-arm64-*.vsix |"
+            echo "| macOS x64 | clice-x86_64-macos-darwin.tar.gz | clice-vscode-darwin-x64-*.vsix |"
+            echo "| Windows x64 | clice-x64-windows-msvc.zip | clice-vscode-win32-x64-*.vsix |"
+            echo "| Windows arm64 | clice-aarch64-windows-msvc.zip | clice-vscode-win32-arm64-*.vsix |"
+            echo
+            echo "The \`*-symbol\` assets hold GSYM symbols for crash log"
+            echo "symbolization via \`scripts/symbolize.py\`. VS Code users on"
+            echo "the Marketplace pre-release channel update automatically."
+          } > /tmp/notes.md
+          gh release create "$TAG" --prerelease --title "$TAG" \
+            --notes-file /tmp/notes.md
+
+  clice:
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-clice.yml
+    with:
+      release_tag: ${{ needs.prepare.outputs.tag }}
+    secrets: inherit
+
+  vscode:
+    needs: [prepare, clice]
+    if: needs.prepare.outputs.publish == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-vscode.yml
+    with:
+      source: package
+      release_tag: ${{ needs.prepare.outputs.tag }}
+      prerelease: true
+    secrets: inherit
+
+  # Nightlies expire after 30 days. Only odd-minor pre-releases are pruned;
+  # stable releases and their tags are never deleted.
+  cleanup:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete expired nightlies
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUTOFF=$(date -u -d '30 days ago' +%s)
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
+            --json tagName,isPrerelease,createdAt \
+            -q '.[] | select(.isPrerelease) | .tagName + " " + .createdAt' |
+          while read -r TAG CREATED; do
+            case "$TAG" in
+              v0.1.*|v0.3.*|v0.5.*|v0.7.*|v0.9.*) ;;
+              *) continue ;;
+            esac
+            if [ "$(date -u -d "$CREATED" +%s)" -lt "$CUTOFF" ]; then
+              echo "Pruning $TAG (created $CREATED)"
+              gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" \
+                --cleanup-tag --yes
+            fi
+          done
