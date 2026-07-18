@@ -4,7 +4,7 @@ Operate the three-tier release process: instant builds, nightlies, and stable re
 
 One version number everywhere: git tag `vX.Y.Z` == extension version == release
 page. Odd minor = pre-release channel, even minor = stable (the VS Code
-Marketplace convention). Nightlies compute `X.<odd>.YYMMDDHH` (UTC hour) on the
+Marketplace convention). Nightlies compute `X.<odd>.YYYYMMDDHH` (UTC hour) on the
 odd minor above the newest release — `0.1.*` today, `0.3.*` after stable
 `v0.2.0` — so nobody edits version numbers by hand. The versions in `CMakeLists.txt`, `pixi.toml`,
 and `editors/vscode/package.json` are permanent placeholders (`0.1.0`); the

@@ -29,13 +29,13 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 
 **Release channels:**
 
-| Channel        | Version                         | Where to get it                                                                                               |
-| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| **Stable**     | even minor, e.g. `v0.2.0`       | [releases page](https://github.com/clice-io/clice/releases) + VS Code Marketplace                             |
-| **Nightly**    | odd minor, e.g. `v0.1.26071802` | GitHub pre-releases + Marketplace pre-release channel (`Switch to Pre-Release Version` on the extension page) |
-| **Per-commit** | untagged                        | artifacts on every green `main` CI run                                                                        |
+| Channel        | Version                           | Where to get it                                                                                                                                             |
+| -------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stable**     | even minor, e.g. `v0.2.0`         | [releases page](https://github.com/clice-io/clice/releases) + [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=clice-io.clice)     |
+| **Nightly**    | odd minor, e.g. `v0.1.2026071902` | [GitHub pre-releases](https://github.com/clice-io/clice/releases) + Marketplace pre-release channel (`Switch to Pre-Release Version` on the extension page) |
+| **Per-commit** | untagged                          | artifacts on the [latest green `main` CI runs](https://github.com/clice-io/clice/actions/workflows/main.yml?query=branch%3Amain+is%3Asuccess)               |
 
-The versioning rule is the VS Code Marketplace convention: **even minor = stable, odd minor = pre-release**. Nightly patch numbers encode the UTC build hour (`YYMMDDHH`), so newer is always higher; a nightly is published only when `main` gained commits, and nightlies older than 30 days are removed. Every published binary is the exact one that passed the full test suites — releases promote CI builds rather than rebuilding.
+The versioning rule is the VS Code Marketplace convention: **even minor = stable, odd minor = pre-release**. Nightly patch numbers encode the UTC build time as `YYYYMMDDHH` (year, month, day, hour — e.g. `2026071902` is 2026-07-19 02:00 UTC), so newer is always higher; a nightly is published only when `main` gained commits, and nightlies older than 30 days are removed. Every published binary is the exact one that passed the full test suites — releases promote CI builds rather than rebuilding.
 
 For the freshest bits, every green [`main` CI run](https://github.com/clice-io/clice/actions/workflows/main.yml?query=branch%3Amain+is%3Asuccess) attaches installable artifacts (binaries and platform vsix) to its run page, so a fix can be tried the moment it merges (GitHub login required for artifact downloads).
 

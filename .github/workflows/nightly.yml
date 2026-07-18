@@ -2,7 +2,7 @@ name: nightly
 
 # Nightly pre-release channel (odd-minor versions): if main gained tested
 # builds since the last nightly, tag the newest packaged commit as
-# vX.<odd>.YYMMDDHH on the odd minor above the newest release, promote its
+# vX.<odd>.YYYYMMDDHH on the odd minor above the newest release, promote its
 # CI packages, and publish it as a GitHub pre-release plus a Marketplace
 # pre-release.
 # Old nightlies are pruned after 30 days; stable (even-minor) releases are
@@ -79,7 +79,7 @@ jobs:
             MINOR=${REST%%.*}
             if [ $((MINOR % 2)) -eq 0 ]; then MINOR=$((MINOR + 1)); fi
           fi
-          TAG="v$MAJOR.$MINOR.$(date -u +%y%m%d%H)"
+          TAG="v$MAJOR.$MINOR.$(date -u +%Y%m%d%H)"
           LAST=$(git tag -l "v$MAJOR.$MINOR.*" --sort=-v:refname | head -1)
           # Manual dispatch skips only the same-hour duplicate below, so a
           # failed nightly can be retried on the same commit.
