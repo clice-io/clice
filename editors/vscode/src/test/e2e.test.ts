@@ -2,6 +2,8 @@ import * as assert from "assert";
 import * as path from "path";
 import * as vscode from "vscode";
 
+import { resyncDocument } from "../feature/context";
+
 // E2E smoke tests against a real clice binary. The binary path comes from
 // CLICE_EXECUTABLE; without it (plain `pnpm test`) the suite is skipped.
 // The workspace folder is set by .vscode-test.mjs and selects the scenario.
@@ -168,6 +170,37 @@ suite("clice E2E", function () {
         assert.ok(
             current.context && current.context.uri.includes("main.cpp"),
             "currentContext should report the switched host",
+        );
+
+        // The client contract: after a successful switch the extension
+        // re-syncs the document (didClose + didOpen) so every feature
+        // refreshes. A fresh diagnostics publish is the proof the
+        // round-trip reached the server — currentContext alone would pass
+        // without any reopen (it reads the persisted choice directly).
+        const diagnosticsChanged = new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                subscription.dispose();
+                reject(new Error("no diagnostics publish after resync"));
+            }, 30 * 1000);
+            const subscription = vscode.languages.onDidChangeDiagnostics((event) => {
+                if (event.uris.some((changed) => changed.toString() === uri)) {
+                    clearTimeout(timer);
+                    subscription.dispose();
+                    resolve();
+                }
+            });
+        });
+        await resyncDocument(uri);
+        await diagnosticsChanged;
+        assert.strictEqual(
+            document.languageId,
+            "cpp",
+            "language id restored after the resync round-trip",
+        );
+        const resynced = await client.sendRequest("clice/currentContext", { uri });
+        assert.ok(
+            resynced.context && resynced.context.uri.includes("main.cpp"),
+            "switched context should survive the resync",
         );
     });
 

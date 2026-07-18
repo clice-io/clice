@@ -148,6 +148,31 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
     }
 }
 
+/** Re-sync an open document with the server (didClose + didOpen) so the
+ * editor re-requests every language feature — tokens, links, hints — and
+ * the recompile publishes fresh diagnostics. Used after a context switch:
+ * the pull-based server only re-targets the session. The language-id
+ * round-trip is the only stable way to force a full re-sync; buffer
+ * content and unsaved edits survive it. (For fragment files opened as C++
+ * by detectCxxFragment, the plaintext hop may race that detector's own
+ * language restore — a harmless redundant set.) */
+export async function resyncDocument(uri: string) {
+    const doc = vscode.workspace.textDocuments.find(
+        (candidate) => candidate.uri.toString() === uri,
+    );
+    if (!doc) {
+        return;
+    }
+    const language = doc.languageId;
+    try {
+        await vscode.languages.setTextDocumentLanguage(doc, "plaintext");
+        await vscode.languages.setTextDocumentLanguage(doc, language);
+    } catch {
+        // The document was closed mid-round-trip; nothing left to resync,
+        // and the caller's UI refresh must still run.
+    }
+}
+
 export function registerCompilationContext(client: LanguageClient, ext: vscode.ExtensionContext) {
     const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     status.command = "clice.switchContext";
@@ -204,13 +229,9 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
         } else if (!switched?.success) {
             vscode.window.showWarningMessage("clice: failed to switch compilation context");
         } else {
-            // The switch only marks the session dirty (pull-based server);
-            // fire a cheap feature request so diagnostics and inactive
-            // regions refresh without waiting for user interaction.
-            void vscode.commands.executeCommand(
-                "vscode.executeDocumentSymbolProvider",
-                vscode.Uri.parse(uri),
-            );
+            // The server is pull-based: the switch only re-targets the
+            // session, and the refresh is the client's job.
+            await resyncDocument(uri);
         }
         await refresh(vscode.window.activeTextEditor);
     }

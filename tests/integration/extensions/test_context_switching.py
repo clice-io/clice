@@ -9,8 +9,8 @@ import asyncio
 
 from tests.tools.compile_commands import write_cdb, write_entries
 from tests.tools.workspace import get_field
-from tests.tools.checks import assert_clean_compile, assert_has_errors
-from tests.tools.checks import MTIME_GRANULARITY, wait_for_recompile
+from tests.tools.checks import assert_clean_compile, assert_has_errors, get_errors
+from tests.tools.checks import MTIME_GRANULARITY, SETTLE_TIME, wait_for_recompile
 
 
 async def test_source_command_switch(client, tmp_path):
@@ -400,3 +400,53 @@ async def test_chain_change_resynthesizes(client, tmp_path):
 
     after = {p.name: p.stat().st_mtime_ns for p in artifact_dir.iterdir()}
     assert after != snapshot, "stale preamble must be re-synthesized"
+
+
+async def test_switched_context_survives_reopen(client, tmp_path):
+    """The client resync contract: after a successful switch the client
+    closes and reopens the document (the pull-based server only re-targets
+    the session); the reopened compile runs under the persisted choice."""
+    (tmp_path / "main.cpp").write_text(
+        "#ifdef USE_B\nint broken() { return undefined_b_symbol; }\n#endif\n"
+        "int main() { return 0; }\n"
+    )
+    write_entries(tmp_path, [("main.cpp", ["-DUSE_A"]), ("main.cpp", ["-DUSE_B"])])
+    await client.initialize(tmp_path)
+
+    uri, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    assert_clean_compile(client, uri)
+
+    query = await client.query_context(uri)
+    contexts = get_field(query, "contexts", [])
+    assert get_field(query, "total") == 2, f"expected both entries: {contexts}"
+    target_hash = next(
+        get_field(c, "commandHash")
+        for c in contexts
+        if "USE_B" in (get_field(c, "label") or "")
+    )
+
+    switch = await client.switch_context(
+        uri, uri, command_hash=target_hash, epoch=get_field(query, "epoch")
+    )
+    assert get_field(switch, "success") is True, f"switch failed: {switch}"
+
+    client.close(uri)
+    await asyncio.sleep(SETTLE_TIME)
+    client.diagnostics.pop(uri, None)
+
+    # The close publishes an empty retract that can race the reopen's
+    # first publish; poll past it for the real compile's errors.
+    uri2, _ = await client.open_and_wait(tmp_path / "main.cpp")
+    for _ in range(50):
+        if get_errors(client.diagnostics.get(uri2, [])):
+            break
+        await asyncio.sleep(0.2)
+    assert any(
+        "undefined_b_symbol" in d.message
+        for d in client.diagnostics.get(uri2, [])
+    ), f"expected the USE_B error after reopen: {client.diagnostics.get(uri2, [])}"
+
+    current = await client.current_context(uri2)
+    assert get_field(get_field(current, "context"), "commandHash") == target_hash, (
+        f"persisted choice must survive the reopen: {current}"
+    )
