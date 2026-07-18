@@ -277,6 +277,11 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 nodejs = ">=20"
 pnpm = ">=10,<11"
 
+# The instant-build packaging strips test binaries before bundling them
+# into the vsix (an unstripped ELF carries ~700MB of DWARF).
+[feature.node.target.linux-64.dependencies]
+llvm-tools = "==20.1.8"
+
 [feature.node.tasks]
 build-vscode = { cwd = "editors/vscode", cmd = "pnpm run package", depends-on = ["install-vscode"] }
 publish-vscode = { cwd = "editors/vscode", cmd = "pnpm run publish", depends-on = ["install-vscode"] }
