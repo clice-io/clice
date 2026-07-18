@@ -26,11 +26,13 @@ have them set `clice.executable` to the extracted binary.
 skips when main has no new commits, otherwise tags the nightly version and
 **promotes** — nothing is rebuilt. Every main CI run already packages the
 binaries its test suites validated (strip + GSYM happen in the build jobs);
-nightly downloads those packages from the green run of the tagged commit,
-attaches them to a GitHub pre-release plus the Marketplace `--pre-release`
-channel, and prunes odd-minor pre-releases older than 30 days. Promotion
-fails loudly if the tagged commit has no green main run. A failed nightly
-just means no nightly that day — fix main and rerun via dispatch.
+nightly picks the newest main commit whose green run still has live
+package artifacts (path-filtered runs such as docs-only commits build
+nothing), tags exactly that commit, downloads its packages, attaches them
+to a GitHub pre-release plus the Marketplace `--pre-release` channel, and
+prunes odd-minor pre-releases older than 30 days. Promotion fails loudly
+if no packaged green run exists. A failed nightly just means no nightly
+that day — fix main and rerun via dispatch.
 
 The binary embeds its build identity (`git describe`: nearest tag + commit
 hash), not the release tag — the tag is applied after the build. Match crash
@@ -42,7 +44,10 @@ logs to releases by the commit hash; the release notes state the hash.
 2. When a nightly is judged good, tag its commit: `git tag v0.2.0 <commit> && git push origin v0.2.0`.
    The tag push runs the release path of `main.yml`, which promotes the
    already-tested packages from that commit's green CI run and publishes the
-   extensions (Marketplace without `--pre-release`).
+   extensions (Marketplace without `--pre-release`). Package artifacts
+   expire 7 days after the CI run, so the tagged commit's run must be less
+   than a week old — for an older commit, rerun its main workflow first to
+   regenerate the packages.
 3. Write the release notes on the GitHub release page (the download table
    format from the nightly notes is a good template).
 4. Verify: assets present (6 packages + 4 symbol archives + 2 PDB zips +

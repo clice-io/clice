@@ -1,9 +1,10 @@
 name: nightly
 
-# Nightly pre-release channel (odd-minor versions): if main gained commits
-# since the last nightly, tag HEAD as vX.<odd>.YYMMDDHH on the odd minor
-# above the newest release, build the full release matrix against that tag,
-# and publish it as a GitHub pre-release plus a Marketplace pre-release.
+# Nightly pre-release channel (odd-minor versions): if main gained tested
+# builds since the last nightly, tag the newest packaged commit as
+# vX.<odd>.YYMMDDHH on the odd minor above the newest release, promote its
+# CI packages, and publish it as a GitHub pre-release plus a Marketplace
+# pre-release.
 # Old nightlies are pruned after 30 days; stable (even-minor) releases are
 # never touched.
 on:
@@ -17,6 +18,9 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       publish: ${{ steps.version.outputs.publish }}
@@ -28,8 +32,39 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Pick the commit to promote
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The tag must point at the exact commit the promoted binaries
+          # were built from, so pick the newest main commit whose green run
+          # still has live package artifacts: path-filtered runs (e.g.
+          # docs-only commits) build nothing, and packages expire after
+          # 7 days.
+          COMMIT=""
+          for RUN in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow main \
+              --branch main --event push --status success --limit 20 \
+              --json databaseId -q '.[].databaseId'); do
+            LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN/artifacts?name=package-clice-x64-linux-gnu.tar.gz" \
+              --jq '[.artifacts[] | select(.expired | not)] | length')
+            if [ "$LIVE" -gt 0 ]; then
+              COMMIT=$(gh run view "$RUN" --repo "$GITHUB_REPOSITORY" \
+                --json headSha -q .headSha)
+              break
+            fi
+          done
+          if [ -z "$COMMIT" ]; then
+            echo "::error::no recent green main run has live package artifacts"
+            exit 1
+          fi
+          echo "Promoting $COMMIT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+
       - name: Compute nightly version
         id: version
+        env:
+          COMMIT: ${{ steps.pick.outputs.commit }}
         run: |
           # Nightlies live on the odd minor above the newest release: after
           # stable v0.2.0 ships they become v0.3.*, keeping the Marketplace
@@ -47,10 +82,10 @@ jobs:
           TAG="v$MAJOR.$MINOR.$(date -u +%y%m%d%H)"
           LAST=$(git tag -l "v$MAJOR.$MINOR.*" --sort=-v:refname | head -1)
           # Manual dispatch skips only the same-hour duplicate below, so a
-          # failed nightly can be retried on the same HEAD.
-          if [ -n "$LAST" ] && [ "$(git rev-parse "$LAST^{commit}")" = "$(git rev-parse HEAD)" ] \
+          # failed nightly can be retried on the same commit.
+          if [ -n "$LAST" ] && [ "$(git rev-parse "$LAST^{commit}")" = "$COMMIT" ] \
             && [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
-            echo "No new commits since $LAST; skipping."
+            echo "No new packaged commits since $LAST; skipping."
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -70,17 +105,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.tag }}
+          COMMIT: ${{ steps.pick.outputs.commit }}
         run: |
-          git tag "$TAG"
+          # The picked commit may postdate the checkout if a run went green
+          # in between; fetch it before tagging.
+          git rev-parse -q --verify "$COMMIT^{commit}" > /dev/null \
+            || git fetch origin "$COMMIT"
+          git tag "$TAG" "$COMMIT"
           git push origin "$TAG"
 
           LAST=$(git tag -l "${TAG%.*}.*" --sort=-v:refname | sed -n 2p)
           {
-            echo "Nightly build from \`$(git rev-parse --short HEAD)\`."
+            echo "Nightly build from \`$(git rev-parse --short "$COMMIT")\`."
             echo
             if [ -n "$LAST" ]; then
               echo "## Changes since $LAST"
-              git log --format='- %s' "$LAST"..HEAD
+              git log --format='- %s' "$LAST".."$COMMIT"
               echo
             fi
             URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
