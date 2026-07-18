@@ -216,7 +216,6 @@ jobs:
     # push only: a workflow_dispatch aimed at a tag ref must stay a dry run.
     if: ${{ startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push' }}
     uses: ./.github/workflows/publish-clice.yml
-    secrets: inherit
 
   release-vscode:
     permissions:

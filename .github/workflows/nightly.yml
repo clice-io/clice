@@ -109,7 +109,6 @@ jobs:
     uses: ./.github/workflows/publish-clice.yml
     with:
       release_tag: ${{ needs.prepare.outputs.tag }}
-    secrets: inherit
 
   vscode:
     needs: [prepare, clice]

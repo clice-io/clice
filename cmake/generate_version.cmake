@@ -34,6 +34,16 @@ if(CLICE_TOPLEVEL_RESULT EQUAL 0 AND NOT CLICE_GIT_TOPLEVEL STREQUAL "")
         )
         if(NOT CLICE_HEAD_TAGS STREQUAL "")
             string(REGEX REPLACE "\n.*" "" CLICE_GIT_DESCRIBE "${CLICE_HEAD_TAGS}")
+            # Keep parity with describe --dirty: a modified tree must not
+            # claim to be the pristine tagged artifact.
+            execute_process(
+                COMMAND git -C "${SOURCE_DIR}" diff-index --quiet HEAD --
+                RESULT_VARIABLE CLICE_DIRTY_RESULT
+                ERROR_QUIET
+            )
+            if(NOT CLICE_DIRTY_RESULT EQUAL 0)
+                string(APPEND CLICE_GIT_DESCRIBE "-dirty")
+            endif()
             set(CLICE_GIT_RESULT 0)
         else()
             execute_process(
