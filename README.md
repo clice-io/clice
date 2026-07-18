@@ -37,7 +37,7 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 
 The versioning rule is the VS Code Marketplace convention: **even minor = stable, odd minor = pre-release**. Nightly patch numbers encode the UTC build hour (`YYMMDDHH`), so newer is always higher; a nightly is published only when `main` gained commits, and nightlies older than 30 days are removed. Every published binary is the exact one that passed the full test suites — releases promote CI builds rather than rebuilding.
 
-For the freshest bits, every green CI run on `main` attaches installable artifacts (binaries and platform vsix) to its run page, so a fix can be tried the moment it merges (GitHub login required for artifact downloads).
+For the freshest bits, every green [`main` CI run](https://github.com/clice-io/clice/actions/workflows/main.yml?query=branch%3Amain+is%3Asuccess) attaches installable artifacts (binaries and platform vsix) to its run page, so a fix can be tried the moment it merges (GitHub login required for artifact downloads).
 
 Each release also ships `*.symbols` packages: if clice crashes, attach the newest log from your workspace's `.clice/logs/` to an issue and the matching symbols let us reconstruct the exact stack.
 
@@ -61,7 +61,7 @@ cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 By default clice searches the workspace root and its immediate subdirectories (e.g. `build/`) for `compile_commands.json`. See [configuration](https://docs.clice.io/clice/guide/configuration) for custom paths and other build systems.
 
 > [!NOTE]
-> clice is approaching its first stable release. Most features work well, but some edge cases remain. Bug reports via [issues](https://github.com/clice-io/clice/issues) are welcome.
+> clice is in beta on the road to its first stable release: nightlies are ready to try today. Bug reports via [issues](https://github.com/clice-io/clice/issues) are welcome.
 
 ## Documentation
 

@@ -20,9 +20,10 @@ See the [documentation](https://docs.clice.io/clice/) for configuration via
 
 ## Release channels
 
-Stable versions use even minor numbers (`0.2.x`); daily pre-releases from
-`main` use odd ones (`0.1.x`). Use `Switch to Pre-Release Version` on the
-extension page to follow the pre-release channel.
+Stable versions use even minor numbers; daily pre-releases built from `main`
+use odd ones. Use `Switch to Pre-Release Version` on the extension page to
+follow the pre-release channel. Per-commit builds and standalone server
+downloads live on the [GitHub releases and CI pages](https://github.com/clice-io/clice#install).
 
 ## Settings
 
