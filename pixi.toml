@@ -97,6 +97,11 @@ gxx = "==14.2.0"
 # (linux-only, like the crash tests it builds on).
 llvm-tools = "==20.1.8"
 
+# The linux-aarch64 cross-test job runs the integration suite on a native
+# arm64 runner, so the symbolization test needs the same tools there.
+[feature.test.target.linux-aarch64.dependencies]
+llvm-tools = "==20.1.8"
+
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
 # LLVM cannot parse.  Providing upstream clang + lld in PATH prevents
 # fallback to /usr/bin/clang++ and satisfies toolchain.cmake's -fuse-ld=lld.
