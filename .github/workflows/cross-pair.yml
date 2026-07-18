@@ -12,10 +12,21 @@ on:
       target_triple:
         required: true
         type: string
+      # Unified arch-os-abi name (e.g. arm64-linux-gnu) used for artifact
+      # naming; the triple above keeps the compiler's spelling.
+      target_name:
+        required: true
+        type: string
       pixi_env:
         required: false
         type: string
         default: "default"
+      asset_name:
+        required: true
+        type: string
+      symbol_asset_name:
+        required: true
+        type: string
 
 env:
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
@@ -63,10 +74,41 @@ jobs:
             "-DCLICE_TARGET_TRIPLE=${{ inputs.target_triple }}"
           pixi run -e "${{ inputs.pixi_env }}" cmake-build RelWithDebInfo
 
+      # Package here, where the object files live (dsymutil needs them);
+      # promotion to a release is still gated on the whole run being green.
+      - name: Package release artifacts
+        shell: bash
+        run: |
+          pixi run -e "${{ inputs.pixi_env }}" -- cmake --build build/RelWithDebInfo \
+            --target clice-pack clice-pack-symbol
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ inputs.asset_name }}
+          path: |
+            build/RelWithDebInfo/clice.tar.gz
+            build/RelWithDebInfo/clice.zip
+            build/RelWithDebInfo/clice-symbol.tar.xz
+            build/RelWithDebInfo/clice-symbol.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload full debug info
+        if: ${{ !contains(inputs.target_triple, 'windows') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-info-${{ inputs.asset_name }}
+          path: |
+            build/RelWithDebInfo/pack-symbol/clice.debug
+            build/RelWithDebInfo/pack-symbol/clice.dSYM
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Upload binaries
         uses: actions/upload-artifact@v7
         with:
-          name: cross-build-${{ inputs.target_triple }}
+          name: cross-build-${{ inputs.target_name }}
           path: |
             build/RelWithDebInfo/bin/
             build/RelWithDebInfo/lib/
@@ -100,7 +142,7 @@ jobs:
       - name: Download binaries
         uses: actions/download-artifact@v8
         with:
-          name: cross-build-${{ inputs.target_triple }}
+          name: cross-build-${{ inputs.target_name }}
           path: build/RelWithDebInfo/
 
       - name: Make binaries executable

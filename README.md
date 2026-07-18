@@ -30,7 +30,8 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 **Release channels:**
 
 - **Stable** (even minor, e.g. `v0.2.0`) — regular releases on the releases page and the VS Code Marketplace.
-- **Nightly** (odd minor, e.g. `v0.1.26071802`) — built daily from `main`, published as GitHub pre-releases and on the Marketplace pre-release channel (`Switch to Pre-Release Version` on the extension page). Nightlies older than 30 days are removed.
+- **Nightly** (odd minor, e.g. `v0.1.26071802`) — published daily from `main` as GitHub pre-releases and on the Marketplace pre-release channel (`Switch to Pre-Release Version` on the extension page). Nightlies older than 30 days are removed.
+- **Per-commit builds** — every green CI run on `main` produces installable artifacts (binaries and platform vsix) on its run page, so a fix can be tried the moment it merges, without waiting for the nightly.
 
 Each release also ships `*.symbols` packages: if clice crashes, attach the log from your workspace's `.clice/logs/` to an issue and the matching symbols let us reconstruct the stack.
 

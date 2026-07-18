@@ -17,16 +17,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # asset_name marks the RelWithDebInfo builds that get packaged into
+          # release artifacts once their test suites pass.
           - os: windows-2025
             build_type: RelWithDebInfo
+            asset_name: clice-x64-windows-msvc.zip
+            symbol_asset_name: clice-x64-windows-msvc.symbols.zip
           - os: ubuntu-24.04
             build_type: Debug
           - os: ubuntu-24.04
             build_type: RelWithDebInfo
+            asset_name: clice-x64-linux-gnu.tar.gz
+            symbol_asset_name: clice-x64-linux-gnu.symbols.tar.xz
           - os: macos-15
             build_type: Debug
           - os: macos-15
             build_type: RelWithDebInfo
+            asset_name: clice-arm64-macos-darwin.tar.gz
+            symbol_asset_name: clice-arm64-macos-darwin.symbols.tar.xz
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -88,6 +96,38 @@ jobs:
       - name: Smoke tests
         timeout-minutes: 5
         run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
+
+      # Package the exact binary the suites above just validated. These
+      # artifacts are what releases promote — there is no separate release
+      # build.
+      - name: Package release artifacts
+        if: ${{ matrix.asset_name }}
+        shell: bash
+        run: pixi run -- cmake --build build/${{ matrix.build_type }} --target clice-pack clice-pack-symbol
+
+      - name: Upload package artifacts
+        if: ${{ matrix.asset_name }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.asset_name }}
+          path: |
+            build/${{ matrix.build_type }}/clice.tar.gz
+            build/${{ matrix.build_type }}/clice.zip
+            build/${{ matrix.build_type }}/clice-symbol.tar.xz
+            build/${{ matrix.build_type }}/clice-symbol.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload full debug info
+        if: ${{ matrix.asset_name && !contains(matrix.os, 'windows') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-info-${{ matrix.asset_name }}
+          path: |
+            build/${{ matrix.build_type }}/pack-symbol/clice.debug
+            build/${{ matrix.build_type }}/pack-symbol/clice.dSYM
+          if-no-files-found: error
+          retention-days: 90
 
       # sccache runs a background server that holds file locks; if it is
       # still alive when the pixi post-action tries to clean up the env

@@ -20,7 +20,7 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64", "win-
 default = ["build", "test"]
 package = ["build", "test", "package"]
 cross-macos-x64 = ["build", "package", "cross-macos-x64"]
-cross-linux-aarch64 = ["build", "package", "cross-linux-aarch64"]
+cross-linux-arm64 = ["build", "package", "cross-linux-arm64"]
 cross-windows-arm64 = ["build", "package", "cross-windows-arm64"]
 node = ["node"]
 format = ["format"]
@@ -69,13 +69,13 @@ scripts = ["scripts/activate_asan.bat"]
 [feature.cross-macos-x64.target.osx-arm64.activation]
 scripts = ["scripts/activate_cross_macos.sh"]
 
-# Linux aarch64 (from x64): needs aarch64 sysroot and cross gcc for libstdc++.
-[feature.cross-linux-aarch64.target.linux-64.dependencies]
+# Linux arm64 (from x64): needs the aarch64 sysroot and cross gcc for libstdc++.
+[feature.cross-linux-arm64.target.linux-64.dependencies]
 sysroot_linux-aarch64 = "==2.17"
 gcc_linux-aarch64 = "==14.2.0"
 gxx_linux-aarch64 = "==14.2.0"
 
-[feature.cross-linux-aarch64.target.linux-64.activation]
+[feature.cross-linux-arm64.target.linux-64.activation]
 scripts = ["scripts/activate_cross_linux.sh"]
 
 # Windows arm64 (from x64): Windows SDK on CI already includes ARM64 libs.
@@ -138,21 +138,11 @@ lsprotocol = ">=2024.0.0"
 [feature.package.dependencies]
 xz = ">=5.8.1,<6"
 
-[feature.package.tasks.package-config]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = """
-cmake -B build/{{ type }} -G Ninja \
-    -DCMAKE_BUILD_TYPE={{ type }} \
-    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-    -DCLICE_RELEASE=ON
-"""
-
+# Packaging reuses the standard build: the shipped binary is the tested one.
 [feature.package.tasks.package]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-depends-on = [
-    { task = "package-config", args = ["{{ type }}"] },
-    { task = "cmake-build", args = ["{{ type }}"] },
-]
+cmd = "cmake --build build/{{ type }} --target clice-pack clice-pack-symbol"
+depends-on = [{ task = "build", args = ["{{ type }}"] }]
 
 # ============================================================================== #
 #                                   CMAKE                                        #

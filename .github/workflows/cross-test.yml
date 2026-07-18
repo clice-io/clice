@@ -10,14 +10,20 @@ jobs:
       build_os: macos-15
       test_os: macos-15-intel
       target_triple: x86_64-apple-darwin
+      target_name: x64-macos-darwin
+      asset_name: clice-x64-macos-darwin.tar.gz
+      symbol_asset_name: clice-x64-macos-darwin.symbols.tar.xz
 
-  linux-aarch64:
+  linux-arm64:
     uses: ./.github/workflows/cross-pair.yml
     with:
       build_os: ubuntu-24.04
       test_os: ubuntu-24.04-arm
       target_triple: aarch64-linux-gnu
-      pixi_env: cross-linux-aarch64
+      target_name: arm64-linux-gnu
+      pixi_env: cross-linux-arm64
+      asset_name: clice-arm64-linux-gnu.tar.gz
+      symbol_asset_name: clice-arm64-linux-gnu.symbols.tar.xz
 
   windows-arm64:
     uses: ./.github/workflows/cross-pair.yml
@@ -25,4 +31,7 @@ jobs:
       build_os: windows-2025
       test_os: windows-11-arm
       target_triple: aarch64-pc-windows-msvc
+      target_name: arm64-windows-msvc
+      asset_name: clice-arm64-windows-msvc.zip
+      symbol_asset_name: clice-arm64-windows-msvc.symbols.zip
       pixi_env: cross-windows-arm64

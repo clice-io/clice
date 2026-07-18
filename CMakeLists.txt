@@ -20,7 +20,6 @@ option(CLICE_OFFLINE_BUILD "Disable network downloads during configuration" OFF)
 option(CLICE_ENABLE_TEST "Build unit tests" OFF)
 option(CLICE_CI_ENVIRONMENT "Enable CI-specific configuration" OFF)
 option(CLICE_ENABLE_BENCHMARK "Build benchmarks" OFF)
-option(CLICE_RELEASE "Enable release packaging (strip + pack + link optimizations)" OFF)
 
 # Global flags that apply to all targets (including FetchContent dependencies).
 if(NOT MSVC)
@@ -66,10 +65,11 @@ if(CLICE_ENABLE_LTO)
     string(APPEND CMAKE_MODULE_LINKER_FLAGS " -flto=thin")
 endif()
 
-if(CLICE_RELEASE)
-    # Identical code folding is release-only: folded functions share one
-    # address, which hurts debugging and profiling in dev builds. icf=safe
-    # (not =all) so address-taken functions keep C++ pointer identity.
+# Link optimizations are the default for optimized builds: what the test
+# suites run is byte-for-byte what releases ship. Debug keeps the ASan
+# friendly flags below instead. icf=safe (not =all) so address-taken
+# functions keep C++ pointer identity.
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     if(WIN32)
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:ICF")
     elseif(APPLE)
@@ -272,6 +272,4 @@ if(CLICE_ENABLE_BENCHMARK)
     target_link_libraries(scan_benchmark PRIVATE clice::core kota::deco)
 endif()
 
-if(CLICE_RELEASE)
-    include("${PROJECT_SOURCE_DIR}/cmake/release.cmake")
-endif()
+include("${PROJECT_SOURCE_DIR}/cmake/release.cmake")

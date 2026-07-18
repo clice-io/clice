@@ -6,8 +6,6 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
-  # Manual full release dry run (packages + bundled extensions) from any ref.
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,18 +13,16 @@ concurrency:
 
 jobs:
   changes:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && github.event_name != 'workflow_dispatch' }}
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
     outputs:
       format: ${{ steps.filter.outputs.format }}
       docs: ${{ steps.filter.outputs.docs }}
-      clice: ${{ steps.filter.outputs.clice }}
       vscode: ${{ steps.filter.outputs.vscode }}
       zed: ${{ steps.filter.outputs.zed }}
       cmake: ${{ steps.filter.outputs.cmake }}
-      release: ${{ steps.filter.outputs.release }}
 
     steps:
       - uses: actions/checkout@v7
@@ -40,25 +36,12 @@ jobs:
               - '**/*.{h,c,cpp,hpp,ts,js,lua,md,yml,yaml}'
             docs:
               - 'docs/**'
-            clice:
-              - 'src/**'
-              - 'include/**'
-              - 'CMakeLists.txt'
-              - '.github/workflows/publish-clice.yml'
             vscode:
               - 'editors/vscode/**'
               - '.github/workflows/publish-vscode.yml'
             zed:
               - 'editors/zed/**'
               - '.github/workflows/main.yml'
-            release:
-              - '.github/workflows/publish-clice.yml'
-              - '.github/workflows/publish-vscode.yml'
-              - '.github/workflows/main.yml'
-              - '.github/workflows/nightly.yml'
-              - 'CMakeLists.txt'
-              - 'cmake/release.cmake'
-              - 'cmake/archive.cmake'
             cmake:
               - 'CMakeLists.txt'
               - 'src/**'
@@ -76,7 +59,7 @@ jobs:
               - '.github/workflows/editor-test.yml'
 
   conventional-commit:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && github.event_name != 'workflow_dispatch' }}
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check conventional commit format
@@ -148,23 +131,6 @@ jobs:
           project: clice
           token: ${{ secrets.PUBLISH_DOCS }}
 
-  # Release-pipeline dry run: exercises all six packages and all six bundled
-  # extension builds without publishing (upload steps are tag-gated). Runs on
-  # PRs that touch release plumbing, and on workflow_dispatch from any ref.
-  release-check-clice:
-    needs: changes
-    if: >-
-      ${{ !cancelled() && (github.event_name == 'workflow_dispatch' ||
-          needs.changes.outputs.release == 'true') }}
-    uses: ./.github/workflows/publish-clice.yml
-
-  release-check-vscode:
-    needs: release-check-clice
-    if: ${{ !cancelled() && needs.release-check-clice.result == 'success' }}
-    uses: ./.github/workflows/publish-vscode.yml
-    with:
-      source: package
-
   vscode:
     needs: changes
     if: ${{ needs.changes.outputs.vscode == 'true' }}
@@ -213,9 +179,11 @@ jobs:
   release-clice:
     permissions:
       contents: write
-    # push only: a workflow_dispatch aimed at a tag ref must stay a dry run.
+      actions: read
     if: ${{ startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push' }}
     uses: ./.github/workflows/publish-clice.yml
+    with:
+      release_tag: ${{ github.ref_name }}
 
   release-vscode:
     permissions:
@@ -239,8 +207,6 @@ jobs:
       - cross-test
       - editor-test
       - instant-vscode
-      - release-check-clice
-      - release-check-vscode
 
     runs-on: ubuntu-latest
     steps:
@@ -249,6 +215,5 @@ jobs:
         with:
           allowed-skips: >-
             conventional-commit,format,deploy,vscode,zed,
-            native-test,cross-test,editor-test,instant-vscode,
-            release-check-clice,release-check-vscode
+            native-test,cross-test,editor-test,instant-vscode
           jobs: ${{ toJSON(needs) }}

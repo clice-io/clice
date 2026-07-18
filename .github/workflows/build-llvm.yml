@@ -60,12 +60,12 @@ jobs:
             llvm_mode: RelWithDebInfo
             lto: OFF
             target_triple: aarch64-linux-gnu
-            pixi_env: cross-linux-aarch64
+            pixi_env: cross-linux-arm64
           - os: ubuntu-24.04
             llvm_mode: RelWithDebInfo
             lto: ON
             target_triple: aarch64-linux-gnu
-            pixi_env: cross-linux-aarch64
+            pixi_env: cross-linux-arm64
 
           # Windows arm64 (from x64 windows-2025)
           - os: windows-2025

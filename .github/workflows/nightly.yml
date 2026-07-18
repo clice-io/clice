@@ -116,6 +116,7 @@ jobs:
     if: needs.prepare.outputs.publish == 'true'
     permissions:
       contents: write
+      actions: read
     uses: ./.github/workflows/publish-clice.yml
     with:
       release_tag: ${{ needs.prepare.outputs.tag }}

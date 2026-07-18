@@ -1,182 +1,98 @@
 name: clice
 
+# Promotes already-built, already-tested packages to a release. There is no
+# release build: every CI run on main packages the binaries its test suites
+# just validated (see native-test.yml / cross-pair.yml), and this workflow
+# only downloads those artifacts from the green run of the tagged commit,
+# renames them to their asset names, and attaches them to the release. It
+# also re-uploads the packages into the current run so publish-vscode.yml
+# can bundle them.
 on:
   workflow_call:
     inputs:
-      # Publish the packages to this release tag even when the run is not on
-      # a tag ref (the nightly pipeline creates the tag itself and then calls
-      # this workflow). Empty means dry run unless the ref is a v* tag.
       release_tag:
         type: string
-        default: ""
-  # Manual runs exercise the full packaging matrix from any branch without
-  # tagging; the upload steps below stay tag-gated.
-  workflow_dispatch:
-
-env:
-  CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
-  SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-  CCACHE_BASEDIR: ${{ github.workspace }}
-  CCACHE_COMPILERCHECK: content
-  CCACHE_MAXSIZE: 2G
-  SCCACHE_CACHE_SIZE: 2G
+        required: true
 
 jobs:
-  publish-clice:
+  locate:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      run_id: ${{ steps.find.outputs.run_id }}
+    steps:
+      - name: Locate the green build run
+        id: find
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" \
+            --workflow main --status success --json databaseId -q '.[0].databaseId')
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::no green main run found for $GITHUB_SHA — releases only promote tested builds"
+            exit 1
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+  promote:
+    needs: locate
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Native builds
-          - os: windows-2025
-            artifact_name: clice.zip
-            asset_name: clice-x64-windows-msvc.zip
-            symbol_artifact_name: clice.symbols.zip
-            symbol_asset_name: clice-x64-windows-msvc.symbols.zip
-
-          - os: ubuntu-24.04
-            artifact_name: clice.tar.gz
-            asset_name: clice-x64-linux-gnu.tar.gz
-            symbol_artifact_name: clice.symbols.tar.xz
+          - asset_name: clice-x64-linux-gnu.tar.gz
             symbol_asset_name: clice-x64-linux-gnu.symbols.tar.xz
-
-          - os: macos-15
-            artifact_name: clice.tar.gz
-            asset_name: clice-arm64-macos-darwin.tar.gz
-            symbol_artifact_name: clice.symbols.tar.xz
-            symbol_asset_name: clice-arm64-macos-darwin.symbols.tar.xz
-
-          # Cross-compilation builds
-          - os: macos-15
-            target_triple: x86_64-apple-darwin
-            pixi_env: cross-macos-x64
-            artifact_name: clice.tar.gz
-            asset_name: clice-x64-macos-darwin.tar.gz
-            symbol_artifact_name: clice.symbols.tar.xz
-            symbol_asset_name: clice-x64-macos-darwin.symbols.tar.xz
-
-          - os: ubuntu-24.04
-            target_triple: aarch64-linux-gnu
-            pixi_env: cross-linux-aarch64
-            artifact_name: clice.tar.gz
-            asset_name: clice-arm64-linux-gnu.tar.gz
-            symbol_artifact_name: clice.symbols.tar.xz
+          - asset_name: clice-arm64-linux-gnu.tar.gz
             symbol_asset_name: clice-arm64-linux-gnu.symbols.tar.xz
-
-          - os: windows-2025
-            target_triple: aarch64-pc-windows-msvc
-            pixi_env: cross-windows-arm64
-            artifact_name: clice.zip
-            asset_name: clice-arm64-windows-msvc.zip
-            symbol_artifact_name: clice.symbols.zip
+          - asset_name: clice-arm64-macos-darwin.tar.gz
+            symbol_asset_name: clice-arm64-macos-darwin.symbols.tar.xz
+          - asset_name: clice-x64-macos-darwin.tar.gz
+            symbol_asset_name: clice-x64-macos-darwin.symbols.tar.xz
+          - asset_name: clice-x64-windows-msvc.zip
+            symbol_asset_name: clice-x64-windows-msvc.symbols.zip
+          - asset_name: clice-arm64-windows-msvc.zip
             symbol_asset_name: clice-arm64-windows-msvc.symbols.zip
-
-    runs-on: ${{ matrix.os }}
-
-    defaults:
-      run:
-        shell: bash
-
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     steps:
-      # For nightly calls the tag was pushed moments ago by nightly.yml:
-      # check out the tagged commit so git describe stamps the binary with
-      # exactly the released version.
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.release_tag || github.ref }}
-          persist-credentials: false
-
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: ${{ matrix.pixi_env || 'package' }}
-
-      # The package matrix keeps a cache key space separate from the test
-      # builds — release flags differ, so their objects never overlap.
-      - name: Restore compiler cache
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.os == 'Windows' && '.cache/sccache' || '.cache/ccache' }}
-          key: ${{ runner.os }}-${{ matrix.target_triple || 'native' }}-package-ccache-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.target_triple || 'native' }}-package-ccache-
-
-      - name: Zero cache stats
+      - name: Download package from the build run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ENV="${{ matrix.pixi_env || 'package' }}"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -e "$ENV" -- sccache --stop-server || true
-            pixi run -e "$ENV" -- sccache --zero-stats || true
-          else
-            pixi run -e "$ENV" -- ccache --zero-stats || true
-          fi
+          gh run download "${{ needs.locate.outputs.run_id }}" \
+            --repo "$GITHUB_REPOSITORY" -n "package-${{ matrix.asset_name }}" -D pkg
 
-      - name: Package (native)
-        if: ${{ !matrix.target_triple }}
-        run: pixi run package
-
-      - name: Package (cross-compile)
-        if: ${{ matrix.target_triple }}
+      - name: Upload assets to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ENV="${{ matrix.pixi_env }}"
-          pixi run -e "$ENV" package-config -- \
-            "-DCLICE_TARGET_TRIPLE=${{ matrix.target_triple }}"
-          pixi run -e "$ENV" cmake-build
+          cd pkg
+          mv clice.tar.gz "${{ matrix.asset_name }}" 2>/dev/null || mv clice.zip "${{ matrix.asset_name }}"
+          mv clice-symbol.tar.xz "${{ matrix.symbol_asset_name }}" 2>/dev/null \
+            || mv clice-symbol.zip "${{ matrix.symbol_asset_name }}"
+          gh release upload "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" \
+            --clobber "${{ matrix.asset_name }}" "${{ matrix.symbol_asset_name }}"
 
-      # Consumed by publish-vscode.yml to bundle the server into the
-      # platform-specific extension packages.
-      - name: Upload package artifact
+      # Bridge for publish-vscode.yml: make the package available as an
+      # artifact of the current run, with the original inner file names the
+      # staging step expects.
+      - name: Restore inner file names
+        run: |
+          cd pkg
+          case "${{ matrix.asset_name }}" in
+            *.zip) mv "${{ matrix.asset_name }}" clice.zip ;;
+            *) mv "${{ matrix.asset_name }}" clice.tar.gz ;;
+          esac
+
+      - name: Re-upload package artifact
         uses: actions/upload-artifact@v7
         with:
           name: package-${{ matrix.asset_name }}
-          path: build/RelWithDebInfo/${{ matrix.artifact_name }}
+          path: |
+            pkg/clice.tar.gz
+            pkg/clice.zip
           if-no-files-found: error
           retention-days: 7
-
-      # The release asset only carries GSYM; the full DWARF (needed for
-      # core-dump debugging) is kept as a per-run artifact instead of
-      # bloating the release page.
-      - name: Upload full debug info artifact
-        if: ${{ !contains(matrix.os, 'windows') }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: debug-info-${{ matrix.asset_name }}
-          path: |
-            build/RelWithDebInfo/pack-symbol/clice.debug
-            build/RelWithDebInfo/pack-symbol/clice.dSYM
-          if-no-files-found: error
-          retention-days: 90
-
-      # sccache runs a background server that holds file locks; if it is
-      # still alive when the pixi post-action tries to clean up the env
-      # cache on Windows, the cleanup fails and marks the job as failed.
-      - name: Print cache stats and stop server
-        if: always()
-        run: |
-          ENV="${{ matrix.pixi_env || 'package' }}"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pixi run -e "$ENV" -- sccache --show-stats
-            pixi run -e "$ENV" -- sccache --stop-server || true
-          else
-            pixi run -e "$ENV" -- ccache --show-stats
-          fi
-
-      - name: Upload Main Package to Release
-        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '' }}
-        uses: svenstaro/upload-release-action@2.11.5
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/RelWithDebInfo/${{ matrix.artifact_name }}
-          asset_name: ${{ matrix.asset_name }}
-          tag: ${{ inputs.release_tag || github.ref }}
-          overwrite: true
-
-      - name: Upload Symbol Package to Release
-        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '' }}
-        uses: svenstaro/upload-release-action@2.11.5
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/RelWithDebInfo/${{ matrix.symbol_artifact_name }}
-          asset_name: ${{ matrix.symbol_asset_name }}
-          tag: ${{ inputs.release_tag || github.ref }}
-          overwrite: true

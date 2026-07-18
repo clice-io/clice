@@ -63,7 +63,6 @@ cmake --build build/RelWithDebInfo
 | CLICE_USE_LIBCXX       | OFF     | Use libc++ (adds `-stdlib=libc++`); LLVM libs must also use libc++ |
 | CLICE_CI_ENVIRONMENT   | OFF     | Enable `CLICE_CI_ENVIRONMENT` macro; some tests only run in CI     |
 | CLICE_OFFLINE_BUILD    | OFF     | Disable network downloads during configuration                     |
-| CLICE_RELEASE          | OFF     | Enable release packaging (LTO + strip + pack)                      |
 
 ## About LLVM
 

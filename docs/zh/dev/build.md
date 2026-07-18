@@ -63,7 +63,6 @@ cmake --build build/RelWithDebInfo
 | CLICE_USE_LIBCXX       | OFF    | 使用 libc++（添加 `-stdlib=libc++`），LLVM 库也必须使用 libc++ 编译 |
 | CLICE_CI_ENVIRONMENT   | OFF    | 启用 `CLICE_CI_ENVIRONMENT` 宏，部分测试仅在 CI 环境运行            |
 | CLICE_OFFLINE_BUILD    | OFF    | 禁用配置阶段的网络下载                                              |
-| CLICE_RELEASE          | OFF    | 启用发布打包（LTO + strip + pack）                                  |
 
 ## About LLVM
 
