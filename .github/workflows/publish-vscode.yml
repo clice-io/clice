@@ -146,15 +146,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Publish to Marketplace
-        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '' }}
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          FLAG="${{ (inputs.prerelease || contains(github.ref_name, '-')) && '--pre-release' || '' }}"
-          pixi run publish-vscode -p "$VSCE_PAT" $FLAG \
-            --packagePath "$GITHUB_WORKSPACE/$(ls editors/vscode/*.vsix)"
-
       - name: Upload .vsix to Release
         uses: softprops/action-gh-release@v3
         if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '' }}
@@ -163,3 +154,12 @@ jobs:
           tag_name: ${{ inputs.release_tag || github.ref }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to Marketplace
+        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '' }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          FLAG="${{ (inputs.prerelease || contains(github.ref_name, '-')) && '--pre-release' || '' }}"
+          pixi run publish-vscode -p "$VSCE_PAT" $FLAG \
+            --packagePath "$GITHUB_WORKSPACE/$(ls editors/vscode/*.vsix)"
