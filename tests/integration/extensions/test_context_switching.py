@@ -442,8 +442,7 @@ async def test_switched_context_survives_reopen(client, tmp_path):
             break
         await asyncio.sleep(0.2)
     assert any(
-        "undefined_b_symbol" in d.message
-        for d in client.diagnostics.get(uri2, [])
+        "undefined_b_symbol" in d.message for d in client.diagnostics.get(uri2, [])
     ), f"expected the USE_B error after reopen: {client.diagnostics.get(uri2, [])}"
 
     current = await client.current_context(uri2)
