@@ -47,4 +47,6 @@ else()
     set(CLICE_VERSION_STRING "${CLICE_GIT_DESCRIBE}")
 endif()
 
+set(CLICE_TARGET_STRING "${TARGET_STRING}")
+
 configure_file("${TEMPLATE}" "${OUTPUT_FILE}" @ONLY)

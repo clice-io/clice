@@ -16,6 +16,7 @@
 #include <windows.h>
 #endif
 
+#include "version.h"
 #include "support/filesystem.h"
 #include "support/stderr_sink.h"
 
@@ -140,6 +141,9 @@ uintptr_t main_executable_base() {
 static void crash_handler(void*) {
     if(crash_log_stream) {
         *crash_log_stream << "\n=== CRASH STACK TRACE ===\n";
+        // Identifies the exact artifact so symbolization uses the matching
+        // symbol file (all constexpr string_views: async-signal-safe).
+        *crash_log_stream << "clice " << version << " " << target << "\n";
         // Release binaries are PIE and stripped: the frame addresses below are
         // ASLR-shifted, so offline symbolization against the shipped symbol
         // file needs this rebase value (see scripts/symbolize.py). Zero is a

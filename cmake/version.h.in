@@ -11,4 +11,8 @@ namespace clice {
 /// Generated from cmake/version.h.in — do not edit.
 inline constexpr std::string_view version = "@CLICE_VERSION_STRING@";
 
+/// Target platform this binary was built for, e.g. "x86_64-linux". Logged
+/// with the version so crash reports identify the exact artifact.
+inline constexpr std::string_view target = "@CLICE_TARGET_STRING@";
+
 }  // namespace clice

@@ -167,10 +167,16 @@ add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 # Version header, regenerated on every build so the embedded git describe
 # tracks the checked-out commit (content-unchanged writes are elided).
 set(CLICE_VERSION_HEADER "${PROJECT_BINARY_DIR}/generated/version.h")
+if(DEFINED CLICE_TARGET_TRIPLE)
+    set(CLICE_TARGET_STRING "${CLICE_TARGET_TRIPLE}")
+else()
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}-${CMAKE_SYSTEM_NAME}" CLICE_TARGET_STRING)
+endif()
 add_custom_target(generate_version_header
     COMMAND ${CMAKE_COMMAND}
         -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
         -DFALLBACK_VERSION=${PROJECT_VERSION}
+        -DTARGET_STRING=${CLICE_TARGET_STRING}
         -DTEMPLATE=${PROJECT_SOURCE_DIR}/cmake/version.h.in
         -DOUTPUT_FILE=${CLICE_VERSION_HEADER}
         -P "${PROJECT_SOURCE_DIR}/cmake/generate_version.cmake"
