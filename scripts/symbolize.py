@@ -52,6 +52,11 @@ def main() -> int:
         print(f"error: {tool} not found in PATH", file=sys.stderr)
         return 1
 
+    # Fail up front rather than silently printing every frame unresolved.
+    if not os.path.isfile(args.symbols):
+        print(f"error: symbol file not found: {args.symbols}", file=sys.stderr)
+        return 1
+
     if args.log == "-":
         text = sys.stdin.read()
     else:

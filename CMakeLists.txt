@@ -72,7 +72,9 @@ if(CLICE_RELEASE)
                 CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:ICF")
     elseif(APPLE)
-        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--icf=safe")
+        # --keep-icf-stabs: without it dsymutil cannot see ICF-folded symbols,
+        # so they would be missing from the dSYM (and thus from GSYM).
+        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--icf=safe -Wl,--keep-icf-stabs")
     else()
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--icf=safe -Wl,-O2")
     endif()
