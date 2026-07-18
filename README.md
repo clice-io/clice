@@ -27,6 +27,13 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 
 **Platforms:** Linux (x64, ARM64), macOS (x64, ARM64), Windows (x64, ARM64)
 
+**Release channels:**
+
+- **Stable** (even minor, e.g. `v0.2.0`) — regular releases on the releases page and the VS Code Marketplace.
+- **Nightly** (odd minor, e.g. `v0.1.26071802`) — built daily from `main`, published as GitHub pre-releases and on the Marketplace pre-release channel (`Switch to Pre-Release Version` on the extension page). Nightlies older than 30 days are removed.
+
+Each release also ships `*-symbol` packages: if clice crashes, attach the log from your workspace's `.clice/logs/` to an issue and the matching symbols let us reconstruct the stack.
+
 ### Editor Setup
 
 | Editor      | Setup                                                                                                                      |
