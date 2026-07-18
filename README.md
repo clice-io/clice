@@ -29,11 +29,17 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 
 **Release channels:**
 
-- **Stable** (even minor, e.g. `v0.2.0`) — regular releases on the releases page and the VS Code Marketplace.
-- **Nightly** (odd minor, e.g. `v0.1.26071802`) — published daily from `main` as GitHub pre-releases and on the Marketplace pre-release channel (`Switch to Pre-Release Version` on the extension page). Nightlies older than 30 days are removed.
-- **Per-commit builds** — every green CI run on `main` produces installable artifacts (binaries and platform vsix) on its run page, so a fix can be tried the moment it merges, without waiting for the nightly.
+| Channel        | Version                         | Where to get it                                                                                               |
+| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Stable**     | even minor, e.g. `v0.2.0`       | [releases page](https://github.com/clice-io/clice/releases) + VS Code Marketplace                             |
+| **Nightly**    | odd minor, e.g. `v0.1.26071802` | GitHub pre-releases + Marketplace pre-release channel (`Switch to Pre-Release Version` on the extension page) |
+| **Per-commit** | untagged                        | artifacts on every green `main` CI run                                                                        |
 
-Each release also ships `*.symbols` packages: if clice crashes, attach the log from your workspace's `.clice/logs/` to an issue and the matching symbols let us reconstruct the stack.
+The versioning rule is the VS Code Marketplace convention: **even minor = stable, odd minor = pre-release**. Nightly patch numbers encode the UTC build hour (`YYMMDDHH`), so newer is always higher; a nightly is published only when `main` gained commits, and nightlies older than 30 days are removed. Every published binary is the exact one that passed the full test suites — releases promote CI builds rather than rebuilding.
+
+For the freshest bits, every green CI run on `main` attaches installable artifacts (binaries and platform vsix) to its run page, so a fix can be tried the moment it merges (GitHub login required for artifact downloads).
+
+Each release also ships `*.symbols` packages: if clice crashes, attach the newest log from your workspace's `.clice/logs/` to an issue and the matching symbols let us reconstruct the exact stack.
 
 ### Editor Setup
 
