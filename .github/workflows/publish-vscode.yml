@@ -100,11 +100,16 @@ jobs:
             mv /tmp/server/clice "$DEST"
           else
             mkdir -p "$DEST/bin" "$DEST/lib"
-            cp /tmp/server/bin/clice* "$DEST/bin/"
+            # Only the executable: test builds keep unit_tests and (on
+            # Windows) a huge PDB next to it.
+            for f in clice clice.exe; do
+              if [ -f "/tmp/server/bin/$f" ]; then cp "/tmp/server/bin/$f" "$DEST/bin/"; fi
+            done
             cp -r /tmp/server/lib/clang "$DEST/lib/"
             cp docs/clice.toml "$DEST/"
           fi
-          cp LICENSE "$DEST/" editors/vscode/
+          cp LICENSE "$DEST/"
+          cp LICENSE editors/vscode/
 
       # The repo carries a fixed placeholder version; every published build
       # gets its real version from the release tag, injected here without

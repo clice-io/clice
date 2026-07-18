@@ -620,7 +620,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     auto record = opts.record.value_or("");
     auto ws = opts.workspace.value_or("");
 
-    LOG_INFO("clice master starting: version={} target={} pid={}, mode={}, workspace={}",
+    LOG_INFO("clice master starting: version={}, target={}, pid={}, mode={}, workspace={}",
              clice::version,
              clice::target,
              llvm::sys::Process::getProcessId(),

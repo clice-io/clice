@@ -1,3 +1,4 @@
+#include "version.h"
 #include "test/test.h"
 #include "support/logging.h"
 
@@ -5,6 +6,13 @@ namespace clice::testing {
 namespace {
 
 TEST_SUITE(Logging) {
+
+TEST_CASE(VersionStamps) {
+    // Guards the cmake target-stamping plumbing: an unset CLICE_TARGET_STRING
+    // would otherwise only surface in crash logs.
+    EXPECT_FALSE(clice::version.empty());
+    EXPECT_FALSE(clice::target.empty());
+}
 
 TEST_CASE(MainExecutableBase) {
     // Linux relies on the binary being PIE — a non-PIE image has bias 0,

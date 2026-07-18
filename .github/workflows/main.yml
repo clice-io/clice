@@ -103,7 +103,7 @@ jobs:
     if: ${{ needs.changes.outputs.format == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v7
         with:
           persist-credentials: false

@@ -95,6 +95,9 @@ async def test_worker_crash_reported(executable, tmp_path):
         re.search(r"main executable base: 0x[0-9a-fA-F]+", text)
         for text in worker_texts
     ), "crash trace should record the executable base for offline symbolization"
+    assert any(re.search(r"^clice \S+ \S+$", text, re.M) for text in worker_texts), (
+        "crash trace should stamp the version/target line"
+    )
     master_texts = [p.read_text(errors="replace") for p in logs_dir.rglob("master.log")]
     assert master_texts and all(
         "CRASH STACK TRACE" not in text and "Stack dump" not in text
