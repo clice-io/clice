@@ -22,19 +22,19 @@ jobs:
           - os: windows-2025
             build_type: RelWithDebInfo
             asset_name: clice-x64-windows-msvc.zip
-            symbol_asset_name: clice-x64-windows-msvc.symbols.zip
+            target_name: x64-windows-msvc
           - os: ubuntu-24.04
             build_type: Debug
           - os: ubuntu-24.04
             build_type: RelWithDebInfo
             asset_name: clice-x64-linux-gnu.tar.gz
-            symbol_asset_name: clice-x64-linux-gnu.symbols.tar.xz
+            target_name: x64-linux-gnu
           - os: macos-15
             build_type: Debug
           - os: macos-15
             build_type: RelWithDebInfo
             asset_name: clice-arm64-macos-darwin.tar.gz
-            symbol_asset_name: clice-arm64-macos-darwin.symbols.tar.xz
+            target_name: arm64-macos-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -122,7 +122,7 @@ jobs:
         if: ${{ matrix.asset_name && !contains(matrix.os, 'windows') }}
         uses: actions/upload-artifact@v7
         with:
-          name: debug-info-${{ matrix.asset_name }}
+          name: debug-info-${{ matrix.target_name }}
           path: |
             build/${{ matrix.build_type }}/pack-symbol/clice.debug
             build/${{ matrix.build_type }}/pack-symbol/clice.dSYM

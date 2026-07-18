@@ -12,7 +12,6 @@ jobs:
       target_triple: x86_64-apple-darwin
       target_name: x64-macos-darwin
       asset_name: clice-x64-macos-darwin.tar.gz
-      symbol_asset_name: clice-x64-macos-darwin.symbols.tar.xz
 
   linux-arm64:
     uses: ./.github/workflows/cross-pair.yml
@@ -23,7 +22,6 @@ jobs:
       target_name: arm64-linux-gnu
       pixi_env: cross-linux-arm64
       asset_name: clice-arm64-linux-gnu.tar.gz
-      symbol_asset_name: clice-arm64-linux-gnu.symbols.tar.xz
 
   windows-arm64:
     uses: ./.github/workflows/cross-pair.yml
@@ -33,5 +31,4 @@ jobs:
       target_triple: aarch64-pc-windows-msvc
       target_name: arm64-windows-msvc
       asset_name: clice-arm64-windows-msvc.zip
-      symbol_asset_name: clice-arm64-windows-msvc.symbols.zip
       pixi_env: cross-windows-arm64

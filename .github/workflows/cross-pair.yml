@@ -24,9 +24,6 @@ on:
       asset_name:
         required: true
         type: string
-      symbol_asset_name:
-        required: true
-        type: string
 
 env:
   CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
@@ -98,7 +95,7 @@ jobs:
         if: ${{ !contains(inputs.target_triple, 'windows') }}
         uses: actions/upload-artifact@v7
         with:
-          name: debug-info-${{ inputs.asset_name }}
+          name: debug-info-${{ inputs.target_name }}
           path: |
             build/RelWithDebInfo/pack-symbol/clice.debug
             build/RelWithDebInfo/pack-symbol/clice.dSYM

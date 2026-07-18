@@ -44,6 +44,8 @@ llvm-tools = "==20.1.8"
 clang-tools = "==20.1.8"
 compiler-rt = "==20.1.8"
 flatbuffers = "==25.9.23"
+# cmake/archive.cmake pipes tar through xz for the symbol archives.
+xz = ">=5.8.1,<6"
 
 [feature.build.target.win-64.dependencies]
 sccache = "*"
@@ -134,9 +136,6 @@ pytest-timeout = "*"
 pytest-xdist = "*"
 pygls = ">=2.0.0"
 lsprotocol = ">=2024.0.0"
-
-[feature.package.dependencies]
-xz = ">=5.8.1,<6"
 
 # Packaging reuses the standard build: the shipped binary is the tested one.
 [feature.package.tasks.package]

@@ -71,7 +71,8 @@ endif()
 # functions keep C++ pointer identity.
 if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     if(WIN32)
-        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:ICF")
+        # SAFEICF, not ICF: plain /OPT:ICF folds address-taken functions.
+        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:SAFEICF")
     elseif(APPLE)
         # --keep-icf-stabs: without it dsymutil cannot see ICF-folded symbols,
         # so they would be missing from the dSYM (and thus from GSYM).
