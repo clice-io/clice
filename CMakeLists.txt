@@ -72,13 +72,24 @@ endif()
 if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     if(WIN32)
         # SAFEICF, not ICF: plain /OPT:ICF folds address-taken functions.
-        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:SAFEICF")
+        set(CLICE_LINK_OPT_FLAGS "-Wl,/OPT:SAFEICF")
     elseif(APPLE)
         # --keep-icf-stabs: without it dsymutil cannot see ICF-folded symbols,
         # so they would be missing from the dSYM (and thus from GSYM).
-        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--icf=safe -Wl,--keep-icf-stabs")
+        set(CLICE_LINK_OPT_FLAGS "-Wl,--icf=safe" "-Wl,--keep-icf-stabs")
     else()
-        string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--icf=safe -Wl,-O2")
+        set(CLICE_LINK_OPT_FLAGS "-Wl,--icf=safe" "-Wl,-O2")
+    endif()
+
+    # Only lld understands these; manual builds on the system linker
+    # (ld.bfd, Apple ld64) build fine without them.
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "${CLICE_LINK_OPT_FLAGS}" CLICE_LINKER_OPT_SUPPORTED)
+    if(CLICE_LINKER_OPT_SUPPORTED)
+        string(JOIN " " CLICE_LINK_OPT_FLAGS ${CLICE_LINK_OPT_FLAGS})
+        string(APPEND CMAKE_EXE_LINKER_FLAGS " ${CLICE_LINK_OPT_FLAGS}")
+    else()
+        message(STATUS "Linker rejects ${CLICE_LINK_OPT_FLAGS}; skipping link optimizations")
     endif()
 endif()
 

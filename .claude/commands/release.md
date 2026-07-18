@@ -44,10 +44,11 @@ logs to releases by the commit hash; the release notes state the hash.
 2. When a nightly is judged good, tag its commit: `git tag v0.2.0 <commit> && git push origin v0.2.0`.
    The tag push runs the release path of `main.yml`, which promotes the
    already-tested packages from that commit's green CI run and publishes the
-   extensions (Marketplace without `--pre-release`). Package artifacts
-   expire 7 days after the CI run, so the tagged commit's run must be less
-   than a week old — for an older commit, rerun its main workflow first to
-   regenerate the packages.
+   extensions (Marketplace without `--pre-release`). The promote path
+   creates the GitHub release if the tag push did not. Package artifacts
+   expire 30 days after the CI run, so the tagged commit's run must be
+   less than a month old — for an older commit, rerun its main workflow
+   first to regenerate the packages.
 3. Write the release notes on the GitHub release page (the download table
    format from the nightly notes is a good template).
 4. Verify: assets present (6 packages + 4 symbol archives + 2 PDB zips +

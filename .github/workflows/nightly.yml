@@ -41,10 +41,10 @@ jobs:
           # were built from, so pick the newest main commit whose green run
           # still has live package artifacts: path-filtered runs (e.g.
           # docs-only commits) build nothing, and packages expire after
-          # 7 days.
+          # 30 days.
           COMMIT=""
           for RUN in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow main \
-              --branch main --event push --status success --limit 20 \
+              --branch main --event push --status success --limit 100 \
               --json databaseId -q '.[].databaseId'); do
             LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN/artifacts?name=package-clice-x64-linux-gnu.tar.gz" \
               --jq '[.artifacts[] | select(.expired | not)] | length')

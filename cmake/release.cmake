@@ -23,7 +23,9 @@ else()
     else()
         set(CLICE_SYMBOL_NAME "clice.debug")
     endif()
-    find_program(CLICE_GSYMUTIL llvm-gsymutil REQUIRED)
+    # Not REQUIRED: manual builds outside the pixi env may lack llvm-tools;
+    # they only lose the clice-pack-symbol target below.
+    find_program(CLICE_GSYMUTIL llvm-gsymutil)
 endif()
 
 if(WIN32)
@@ -77,6 +79,11 @@ add_custom_target(clice-pack
 # crash symbolization needs (functions, lines, inline chains) at ~1/10 the
 # size. The full DWARF stays in ${CLICE_SYMBOL_DIR} for CI to publish as a
 # workflow artifact. Windows has no GSYM path and ships the PDB directly.
+if(NOT WIN32 AND NOT CLICE_GSYMUTIL)
+    message(STATUS "llvm-gsymutil not found: clice-pack-symbol target disabled")
+    return()
+endif()
+
 if(WIN32)
     set(CLICE_PACK_SYMBOL_CMD ${CMAKE_COMMAND} -E copy
         "${CLICE_SYMBOL_DIR}/${CLICE_SYMBOL_NAME}" "${CLICE_SYMBOL_DIR}/pack/")

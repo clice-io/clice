@@ -116,7 +116,8 @@ jobs:
             build/${{ matrix.build_type }}/clice-symbol.tar.xz
             build/${{ matrix.build_type }}/clice-symbol.zip
           if-no-files-found: error
-          retention-days: 7
+          # 30 days bounds how old a commit a stable tag can still promote.
+          retention-days: 30
 
       - name: Upload full debug info
         if: ${{ matrix.asset_name && !contains(matrix.os, 'windows') }}

@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: read
+      contents: write
     outputs:
       run_id: ${{ steps.find.outputs.run_id }}
     steps:
@@ -41,15 +42,27 @@ jobs:
           fi
           # A green run may still have nothing to promote: path-filtered
           # runs (e.g. docs-only commits) skip the build jobs, and package
-          # artifacts expire after 7 days. Fail here with one clear message
+          # artifacts expire after 30 days. Fail here with one clear message
           # instead of in six download jobs.
           LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?name=package-clice-x64-linux-gnu.tar.gz" \
             --jq '[.artifacts[] | select(.expired | not)] | length')
           if [ "$LIVE" -eq 0 ]; then
-            echo "::error::run $RUN_ID for $TAG has no live package artifacts (path-filtered build, or expired after 7 days) — tag a commit with a fresh full build"
+            echo "::error::run $RUN_ID for $TAG has no live package artifacts (path-filtered build, or expired after 30 days) — rerun that commit's main workflow first"
             exit 1
           fi
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      # Stable tag pushes arrive without a release object (nightly creates
+      # its own before dispatching); create it so `gh release upload` in the
+      # promote matrix has a target.
+      - name: Ensure the release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" --generate-notes
 
   promote:
     needs: locate
