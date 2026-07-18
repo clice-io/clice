@@ -36,9 +36,9 @@ jobs:
 
           - os: ubuntu-24.04
             artifact_name: clice.tar.gz
-            asset_name: clice-x86_64-linux-gnu.tar.gz
+            asset_name: clice-x64-linux-gnu.tar.gz
             symbol_artifact_name: clice-symbol.tar.xz
-            symbol_asset_name: clice-x86_64-linux-gnu-symbol.tar.xz
+            symbol_asset_name: clice-x64-linux-gnu-symbol.tar.xz
 
           - os: macos-15
             artifact_name: clice.tar.gz
@@ -51,25 +51,25 @@ jobs:
             target_triple: x86_64-apple-darwin
             pixi_env: cross-macos-x64
             artifact_name: clice.tar.gz
-            asset_name: clice-x86_64-macos-darwin.tar.gz
+            asset_name: clice-x64-macos-darwin.tar.gz
             symbol_artifact_name: clice-symbol.tar.xz
-            symbol_asset_name: clice-x86_64-macos-darwin-symbol.tar.xz
+            symbol_asset_name: clice-x64-macos-darwin-symbol.tar.xz
 
           - os: ubuntu-24.04
             target_triple: aarch64-linux-gnu
             pixi_env: cross-linux-aarch64
             artifact_name: clice.tar.gz
-            asset_name: clice-aarch64-linux-gnu.tar.gz
+            asset_name: clice-arm64-linux-gnu.tar.gz
             symbol_artifact_name: clice-symbol.tar.xz
-            symbol_asset_name: clice-aarch64-linux-gnu-symbol.tar.xz
+            symbol_asset_name: clice-arm64-linux-gnu-symbol.tar.xz
 
           - os: windows-2025
             target_triple: aarch64-pc-windows-msvc
             pixi_env: cross-windows-arm64
             artifact_name: clice.zip
-            asset_name: clice-aarch64-windows-msvc.zip
+            asset_name: clice-arm64-windows-msvc.zip
             symbol_artifact_name: clice-symbol.zip
-            symbol_asset_name: clice-aarch64-windows-msvc-symbol.zip
+            symbol_asset_name: clice-arm64-windows-msvc-symbol.zip
 
     runs-on: ${{ matrix.os }}
 

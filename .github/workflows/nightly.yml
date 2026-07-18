@@ -83,20 +83,28 @@ jobs:
               git log --format='- %s' "$LAST"..HEAD
               echo
             fi
+            URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+            V=${TAG#v}
             echo "## Downloads"
             echo
-            echo "| Platform | Server | VS Code extension |"
-            echo "| --- | --- | --- |"
-            echo "| Linux x64 | clice-x86_64-linux-gnu.tar.gz | clice-vscode-linux-x64-*.vsix |"
-            echo "| Linux arm64 | clice-aarch64-linux-gnu.tar.gz | clice-vscode-linux-arm64-*.vsix |"
-            echo "| macOS arm64 | clice-arm64-macos-darwin.tar.gz | clice-vscode-darwin-arm64-*.vsix |"
-            echo "| macOS x64 | clice-x86_64-macos-darwin.tar.gz | clice-vscode-darwin-x64-*.vsix |"
-            echo "| Windows x64 | clice-x64-windows-msvc.zip | clice-vscode-win32-x64-*.vsix |"
-            echo "| Windows arm64 | clice-aarch64-windows-msvc.zip | clice-vscode-win32-arm64-*.vsix |"
+            echo "| Platform | Server | VS Code extension | Symbols |"
+            echo "| --- | --- | --- | --- |"
+            row() {
+              PKG="clice-$2.$3"
+              SYM="clice-$2-symbol.$4"
+              VSIX="clice-vscode-$5-$V.vsix"
+              echo "| $1 | [$PKG]($URL/$PKG) | [$VSIX]($URL/$VSIX) | [$SYM]($URL/$SYM) |"
+            }
+            row "Linux x64" x64-linux-gnu tar.gz tar.xz linux-x64
+            row "Linux arm64" arm64-linux-gnu tar.gz tar.xz linux-arm64
+            row "macOS arm64" arm64-macos-darwin tar.gz tar.xz darwin-arm64
+            row "macOS x64" x64-macos-darwin tar.gz tar.xz darwin-x64
+            row "Windows x64" x64-windows-msvc zip zip win32-x64
+            row "Windows arm64" arm64-windows-msvc zip zip win32-arm64
             echo
-            echo "The \`*-symbol\` assets hold GSYM symbols for crash log"
-            echo "symbolization via \`scripts/symbolize.py\`. VS Code users on"
-            echo "the Marketplace pre-release channel update automatically."
+            echo "Symbol packages hold GSYM data for crash log symbolization"
+            echo "via \`scripts/symbolize.py\`. VS Code users on the Marketplace"
+            echo "pre-release channel update automatically."
           } > /tmp/notes.md
           gh release create "$TAG" --prerelease --title "$TAG" \
             --notes-file /tmp/notes.md

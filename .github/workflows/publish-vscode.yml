@@ -52,22 +52,22 @@ jobs:
       matrix:
         include:
           - vsce_target: linux-x64
-            package_artifact: package-clice-x86_64-linux-gnu.tar.gz
+            package_artifact: package-clice-x64-linux-gnu.tar.gz
             build_artifact: native-build-ubuntu-24.04-RelWithDebInfo
           - vsce_target: linux-arm64
-            package_artifact: package-clice-aarch64-linux-gnu.tar.gz
+            package_artifact: package-clice-arm64-linux-gnu.tar.gz
             build_artifact: cross-build-aarch64-linux-gnu
           - vsce_target: darwin-arm64
             package_artifact: package-clice-arm64-macos-darwin.tar.gz
             build_artifact: native-build-macos-15-RelWithDebInfo
           - vsce_target: darwin-x64
-            package_artifact: package-clice-x86_64-macos-darwin.tar.gz
+            package_artifact: package-clice-x64-macos-darwin.tar.gz
             build_artifact: cross-build-x86_64-apple-darwin
           - vsce_target: win32-x64
             package_artifact: package-clice-x64-windows-msvc.zip
             build_artifact: native-build-windows-2025-RelWithDebInfo
           - vsce_target: win32-arm64
-            package_artifact: package-clice-aarch64-windows-msvc.zip
+            package_artifact: package-clice-arm64-windows-msvc.zip
             build_artifact: cross-build-aarch64-pc-windows-msvc
 
     runs-on: ubuntu-latest
