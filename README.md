@@ -32,16 +32,16 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 - **Stable** (even minor, e.g. `v0.2.0`) — regular releases on the releases page and the VS Code Marketplace.
 - **Nightly** (odd minor, e.g. `v0.1.26071802`) — built daily from `main`, published as GitHub pre-releases and on the Marketplace pre-release channel (`Switch to Pre-Release Version` on the extension page). Nightlies older than 30 days are removed.
 
-Each release also ships `*-symbol` packages: if clice crashes, attach the log from your workspace's `.clice/logs/` to an issue and the matching symbols let us reconstruct the stack.
+Each release also ships `*.symbols` packages: if clice crashes, attach the log from your workspace's `.clice/logs/` to an issue and the matching symbols let us reconstruct the stack.
 
 ### Editor Setup
 
-| Editor      | Setup                                                                                                                      |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------- |
-| **VS Code** | Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode) from the Marketplace |
-| **Neovim**  | Add `editors/nvim` to your runtime path: `vim.opt.rtp:append("/path/to/clice/editors/nvim")`                               |
-| **Zed**     | Load `editors/zed` as a local extension                                                                                    |
-| **Other**   | Any LSP client works — point it at `clice serve`                                                                           |
+| Editor      | Setup                                                                                                                  |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **VS Code** | Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) from the Marketplace |
+| **Neovim**  | Add `editors/nvim` to your runtime path: `vim.opt.rtp:append("/path/to/clice/editors/nvim")`                           |
+| **Zed**     | Load `editors/zed` as a local extension                                                                                |
+| **Other**   | Any LSP client works — point it at `clice serve`                                                                       |
 
 ### Project Setup
 

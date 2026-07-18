@@ -78,7 +78,7 @@ suite("clice E2E", function () {
 
     suiteTeardown(function () {
         if (bundled) {
-            const extension = vscode.extensions.getExtension("ykiko.clice-vscode");
+            const extension = vscode.extensions.getExtension("clice-io.clice");
             if (extension) {
                 fs.rmSync(path.join(extension.extensionPath, "clice"), {
                     recursive: true,
@@ -174,7 +174,7 @@ suite("clice E2E", function () {
         }
         assert.ok(document, "main file was not opened (earlier test failed)");
 
-        const extension = vscode.extensions.getExtension("ykiko.clice-vscode");
+        const extension = vscode.extensions.getExtension("clice-io.clice");
         assert.ok(extension?.isActive, "extension not active");
         const client = extension.exports.client;
         const uri = document.uri.toString();

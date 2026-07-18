@@ -1,13 +1,13 @@
 {
-  "name": "clice-vscode",
+  "name": "clice",
   "displayName": "clice",
   "description": "VSCode extension for clice",
   "repository": {
     "type": "git",
     "url": "https://github.com/clice-io/clice"
   },
-  "version": "0.1.4",
-  "publisher": "ykiko",
+  "version": "0.1.0",
+  "publisher": "clice-io",
   "icon": "clice.png",
   "engines": {
     "vscode": "^1.80.0"

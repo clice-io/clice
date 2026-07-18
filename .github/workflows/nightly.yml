@@ -91,8 +91,8 @@ jobs:
             echo "| --- | --- | --- | --- |"
             row() {
               PKG="clice-$2.$3"
-              SYM="clice-$2-symbol.$4"
-              VSIX="clice-vscode-$5-$V.vsix"
+              SYM="clice-$2.symbols.$4"
+              VSIX="clice-$5-$V.vsix"
               echo "| $1 | [$PKG]($URL/$PKG) | [$VSIX]($URL/$VSIX) | [$SYM]($URL/$SYM) |"
             }
             row "Linux x64" x64-linux-gnu tar.gz tar.xz linux-x64

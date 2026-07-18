@@ -91,7 +91,7 @@ pixi 环境之外的依赖：
 
 配置 clice 插件连接到正在运行的实例：
 
-1. 安装 [clice](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode) 插件。
+1. 安装 [clice](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) 插件。
 
 2. 配置 `.vscode/settings.json`：
 

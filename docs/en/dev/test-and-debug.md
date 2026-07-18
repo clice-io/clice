@@ -91,7 +91,7 @@ After the server starts, you can connect a client in two ways:
 
 Configure the clice extension to connect to your running instance:
 
-1. Install the [clice](https://marketplace.visualstudio.com/items?itemName=ykiko.clice-vscode) extension.
+1. Install the [clice](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) extension.
 
 2. Configure `.vscode/settings.json`:
 

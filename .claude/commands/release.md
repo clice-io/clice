@@ -51,7 +51,7 @@ does the same on demand. Uploads stay tag-gated, so nothing publishes.
 
 Ask the user for the log (worker `.log` from the workspace `.clice/logs/` or
 the cache dir). The crash section starts with `clice <version> <target>` —
-download that release's `*-symbol.tar.xz` (GSYM) and run:
+download that release's `*.symbols.tar.xz` (GSYM) and run:
 
 ```bash
 python scripts/symbolize.py crash.log --symbols clice.gsym
