@@ -356,15 +356,16 @@ TEST_CASE(DiskChangeOpenMarksDirty) {
     Invalidator invalidator(workspace, store, resolver);
     auto dirty = invalidator.apply(FileEvent::disk_changed(open_file));
 
-    // The buffer is the truth for an open file: recompile so the next
-    // compile's deps validation judges the disk change, but no rescan and
-    // no cascade. The file's shard describes the old disk, so its reindex
-    // queues alongside (skipped while open-file indexing is off).
+    // The buffer stays the truth for the open file's own compile (its
+    // recompile lets deps validation judge the disk change), but the
+    // change cascades like a save: dependents read the disk, and the
+    // file's own trial state re-earns. The shard describes the old disk,
+    // so its reindex queues alongside.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_file});
     ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{open_file});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
-    ASSERT_TRUE(dirty.reset_trial.empty());
-    ASSERT_FALSE(dirty.recheck_contexts);
+    ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<std::uint32_t>{open_file});
+    ASSERT_EQ(dirty.reset_header_mode, llvm::SmallVector<std::uint32_t>{open_file});
 }
 
 TEST_CASE(DiskChangeClosedCascades) {

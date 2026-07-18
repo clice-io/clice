@@ -113,8 +113,16 @@ async def test_save_writes_only_dirty_shards(client, tmp_path):
     )
 
     # A round with nothing to write commits zero shards: saving the open
-    # file schedules a round, but its shard is served by the session and
-    # background indexing skips open files.
+    # file (with a real change — an unchanged save is dropped outright)
+    # schedules a round, but background indexing skips open files.
+    changed = "int func_0_changed() { return 0; }\n"
+    (tmp_path / "file0.cpp").write_text(changed)
+    client.text_document_did_change(
+        DidChangeTextDocumentParams(
+            text_document=VersionedTextDocumentIdentifier(uri=uri, version=2),
+            content_changes=[TextDocumentContentChangeWholeDocument(text=changed)],
+        )
+    )
     client.text_document_did_save(
         DidSaveTextDocumentParams(text_document=TextDocumentIdentifier(uri=uri))
     )
