@@ -32,8 +32,10 @@ if(APPLE)
     add_compile_definitions(_LIBCPP_DISABLE_AVAILABILITY=1)
 endif()
 
-if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
-            CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+# Keyed on the target OS, not the compiler frontend: CI links Windows with
+# GNU-driver clang++ + lld-link, where the frontend variant is "GNU" but the
+# linker still speaks MSVC-style /OPT flags (see the Debug /OPT:NOICF below).
+if(WIN32)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:REF")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,/OPT:REF")
 elseif(APPLE)
@@ -68,8 +70,7 @@ if(CLICE_RELEASE)
     # Identical code folding is release-only: folded functions share one
     # address, which hurts debugging and profiling in dev builds. icf=safe
     # (not =all) so address-taken functions keep C++ pointer identity.
-    if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
-                CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+    if(WIN32)
         string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,/OPT:ICF")
     elseif(APPLE)
         # --keep-icf-stabs: without it dsymutil cannot see ICF-folded symbols,
