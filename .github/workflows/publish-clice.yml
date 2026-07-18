@@ -78,9 +78,13 @@ jobs:
         shell: bash
 
     steps:
+      # For nightly calls the tag was pushed moments ago by nightly.yml:
+      # check out the tagged commit so git describe stamps the binary with
+      # exactly the released version.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.release_tag || github.ref }}
           persist-credentials: false
 
       - uses: ./.github/actions/setup-pixi

@@ -30,8 +30,21 @@ jobs:
       - name: Compute nightly version
         id: version
         run: |
-          TAG="v0.1.$(date -u +%y%m%d%H)"
-          LAST=$(git tag -l 'v0.1.*' --sort=-v:refname | head -1)
+          # Nightlies live on the odd minor above the newest release: after
+          # stable v0.2.0 ships they become v0.3.*, keeping the Marketplace
+          # pre-release channel ahead of stable.
+          LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          MAJOR=0
+          MINOR=1
+          if [ -n "$LATEST" ]; then
+            BASE=${LATEST#v}
+            MAJOR=${BASE%%.*}
+            REST=${BASE#*.}
+            MINOR=${REST%%.*}
+            if [ $((MINOR % 2)) -eq 0 ]; then MINOR=$((MINOR + 1)); fi
+          fi
+          TAG="v$MAJOR.$MINOR.$(date -u +%y%m%d%H)"
+          LAST=$(git tag -l "v$MAJOR.$MINOR.*" --sort=-v:refname | head -1)
           if [ -n "$LAST" ] && [ "$(git rev-parse "$LAST^{commit}")" = "$(git rev-parse HEAD)" ]; then
             echo "No new commits since $LAST; skipping."
             echo "publish=false" >> "$GITHUB_OUTPUT"
@@ -57,7 +70,7 @@ jobs:
           git tag "$TAG"
           git push origin "$TAG"
 
-          LAST=$(git tag -l 'v0.1.*' --sort=-v:refname | sed -n 2p)
+          LAST=$(git tag -l "${TAG%.*}.*" --sort=-v:refname | sed -n 2p)
           {
             echo "Nightly build from \`$(git rev-parse --short HEAD)\`."
             echo
@@ -123,10 +136,9 @@ jobs:
             --json tagName,isPrerelease,createdAt \
             -q '.[] | select(.isPrerelease) | .tagName + " " + .createdAt' |
           while read -r TAG CREATED; do
-            case "$TAG" in
-              v0.1.*|v0.3.*|v0.5.*|v0.7.*|v0.9.*) ;;
-              *) continue ;;
-            esac
+            MINOR=$(echo "$TAG" | cut -d. -f2)
+            case "$MINOR" in *[!0-9]* | "") continue ;; esac
+            if [ $((MINOR % 2)) -eq 0 ]; then continue; fi
             if [ "$(date -u -d "$CREATED" +%s)" -lt "$CUTOFF" ]; then
               echo "Pruning $TAG (created $CREATED)"
               gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" \

@@ -4,8 +4,9 @@ Operate the three-tier release process: instant builds, nightlies, and stable re
 
 One version number everywhere: git tag `vX.Y.Z` == extension version == release
 page. Odd minor = pre-release channel, even minor = stable (the VS Code
-Marketplace convention). Nightlies compute `0.1.YYMMDDHH` (UTC hour) — nobody
-edits version numbers by hand. The versions in `CMakeLists.txt`, `pixi.toml`,
+Marketplace convention). Nightlies compute `X.<odd>.YYMMDDHH` (UTC hour) on the
+odd minor above the newest release — `0.1.*` today, `0.3.*` after stable
+`v0.2.0` — so nobody edits version numbers by hand. The versions in `CMakeLists.txt`, `pixi.toml`,
 and `editors/vscode/package.json` are permanent placeholders (`0.1.0`); the
 real version is injected from the tag at build time (binary via git describe,
 vsix via CI). A local `vsce publish` with the placeholder is rejected by the
@@ -22,7 +23,7 @@ have them set `clice.executable` to the extracted binary.
 ## Tier 2 — Nightly (pre-release channel)
 
 `nightly.yml` runs daily (cron) or via `gh workflow run nightly.yml`:
-skips when main has no new commits, otherwise tags `v0.1.YYMMDDHH`, builds the
+skips when main has no new commits, otherwise tags the nightly version, builds the
 full release matrix (ICF + strip + GSYM symbols), publishes a GitHub
 pre-release and Marketplace `--pre-release`, and prunes odd-minor pre-releases
 older than 30 days. A failed nightly just means no nightly that day — fix main
