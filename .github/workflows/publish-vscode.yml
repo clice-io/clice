@@ -107,8 +107,9 @@ jobs:
               if [ -f "/tmp/server/bin/$f" ]; then cp "/tmp/server/bin/$f" "$DEST/bin/"; fi
             done
             # Test builds embed full debug info (~700MB on ELF); the vsix
-            # only needs the runnable binary.
-            pixi run -e node -- llvm-strip --strip-debug --strip-unneeded "$DEST"/bin/clice*
+            # only needs the runnable binary. --strip-debug only: further
+            # options are not supported for Mach-O.
+            pixi run -e node -- llvm-strip --strip-debug "$DEST"/bin/clice*
             cp -r /tmp/server/lib/clang "$DEST/lib/"
             cp docs/clice.toml "$DEST/"
           fi
