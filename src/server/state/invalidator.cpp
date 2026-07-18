@@ -182,13 +182,13 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // read settles it; an unreadable file counts as changed.
                 auto disk = read_file(workspace.path_pool.resolve(event.path_id));
                 if(!disk) {
-                    // Deleted while it was open: the tracker skips open
-                    // files, so this close is the first observation of the
-                    // missing file. Keep any shard serving (same deliberate
-                    // choice as DiskRemoved) instead of recording a
-                    // ContentChanged that would suppress it forever; the
-                    // tracker's next sweep observes the removal and delivers
-                    // the full DiskRemoved cascade.
+                    // Deleted while it was open: the sweep may already
+                    // have delivered DiskRemoved, but a close landing
+                    // before the next sweep is the first observation. Keep
+                    // any shard serving (same deliberate choice as
+                    // DiskRemoved) instead of recording a ContentChanged
+                    // that would suppress it forever; the sweep delivers
+                    // (or already delivered) the full removal cascade.
                     dirty.add_clear_reindex(event.path_id);
                     break;
                 }

@@ -366,6 +366,7 @@ TEST_CASE(DiskChangeOpenMarksDirty) {
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<std::uint32_t>{open_file});
     ASSERT_EQ(dirty.reset_header_mode, llvm::SmallVector<std::uint32_t>{open_file});
+    ASSERT_TRUE(dirty.recheck_contexts);
 }
 
 TEST_CASE(DiskChangeClosedCascades) {

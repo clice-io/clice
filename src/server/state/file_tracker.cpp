@@ -55,7 +55,9 @@ bool FileTracker::reseed(std::uint32_t path_id) {
     auto path = workspace.path_pool.resolve(path_id);
     llvm::sys::fs::file_status status;
     if(llvm::sys::fs::status(path, status)) {
-        baseline.erase(path_id);
+        // Saved-then-vanished: keep the baseline so the next sweep can
+        // observe the removal and deliver DiskRemoved; the save itself
+        // still cascades conservatively.
         return true;
     }
     auto hash = hash_file(path);

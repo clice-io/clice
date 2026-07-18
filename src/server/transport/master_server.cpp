@@ -293,8 +293,12 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // also keeps the next sweep from re-reporting a real save as an
     // external change. Without a tracker (no workspace) every save is
     // conservatively treated as a change.
+    // Single pass on purpose: reseed is a read-modify-write of the
+    // baseline, so it must run exactly once per save — a probing pre-pass
+    // would absorb a real change and then drop its event.
     llvm::SmallVector<FileEvent> filtered;
     if(tracker) {
+        filtered.reserve(events.size());
         for(auto& event: events) {
             if(event.kind == FileEvent::Kind::BufferSaved && !tracker->reseed(event.path_id)) {
                 LOG_DEBUG("didSave without a content change, skipping cascade: {}",
