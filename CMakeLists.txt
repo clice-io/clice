@@ -171,7 +171,11 @@ set(CLICE_VERSION_HEADER "${PROJECT_BINARY_DIR}/generated/version.h")
 # cross builds (see cmake/toolchain.cmake); native builds compose the same
 # arch-os-abi form the release asset names use, so a crash log names the
 # exact downloadable artifact.
-if(DEFINED CLICE_TARGET_TRIPLE)
+if(CLICE_TARGET_TRIPLE STREQUAL "x86_64-apple-darwin")
+    set(CLICE_TARGET_STRING "x86_64-macos-darwin")
+elseif(CLICE_TARGET_TRIPLE STREQUAL "aarch64-pc-windows-msvc")
+    set(CLICE_TARGET_STRING "aarch64-windows-msvc")
+elseif(DEFINED CLICE_TARGET_TRIPLE)
     set(CLICE_TARGET_STRING "${CLICE_TARGET_TRIPLE}")
 else()
     string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" CLICE_TARGET_ARCH)

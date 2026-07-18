@@ -1,10 +1,11 @@
 name: nightly
 
 # Nightly pre-release channel (odd-minor versions): if main gained commits
-# since the last nightly, tag HEAD as v0.1.YYMMDDHH, build the full release
-# matrix against that tag, and publish it as a GitHub pre-release plus a
-# Marketplace pre-release. Old nightlies are pruned after 30 days; stable
-# (even-minor) releases are never touched.
+# since the last nightly, tag HEAD as vX.<odd>.YYMMDDHH on the odd minor
+# above the newest release, build the full release matrix against that tag,
+# and publish it as a GitHub pre-release plus a Marketplace pre-release.
+# Old nightlies are pruned after 30 days; stable (even-minor) releases are
+# never touched.
 on:
   schedule:
     - cron: "17 2 * * *"
@@ -45,7 +46,10 @@ jobs:
           fi
           TAG="v$MAJOR.$MINOR.$(date -u +%y%m%d%H)"
           LAST=$(git tag -l "v$MAJOR.$MINOR.*" --sort=-v:refname | head -1)
-          if [ -n "$LAST" ] && [ "$(git rev-parse "$LAST^{commit}")" = "$(git rev-parse HEAD)" ]; then
+          # Manual dispatch skips only the same-hour duplicate below, so a
+          # failed nightly can be retried on the same HEAD.
+          if [ -n "$LAST" ] && [ "$(git rev-parse "$LAST^{commit}")" = "$(git rev-parse HEAD)" ] \
+            && [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
             echo "No new commits since $LAST; skipping."
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
