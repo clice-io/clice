@@ -194,10 +194,14 @@ def render_item(fx: Fixture) -> str:
         out.append("")
         out.extend(indent(fx.description))
     if fx.example:
+        # A fence longer than any backtick run in the example, so example
+        # code can never close the fence early.
+        runs = re.findall(r"`+", fx.example)
+        fence = "`" * max(3, max((len(r) for r in runs), default=0) + 1)
         out.append("")
-        out.append("  ```cpp")
+        out.append(f"  {fence}cpp")
         out.extend(indent(fx.example))
-        out.append("  ```")
+        out.append(f"  {fence}")
     return "\n".join(out)
 
 

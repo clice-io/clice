@@ -1,3 +1,4 @@
+#include <cctype>
 #include <cstdint>
 #include <vector>
 
@@ -469,10 +470,13 @@ TEST_CASE(snapshot) {
                 if(in_description) {
                     continue;
                 }
-                if(!line.starts_with("@")) {
-                    // Blank separator or prose: everything after is
-                    // description, so later Doxygen-style `@` tags do not
-                    // count as spec keys — same as parse_fixture.
+                // A key line is `@` immediately followed by a word char,
+                // mirroring parse_fixture's `@(\w+)` grammar. Anything
+                // else (blank separator, prose, `@ note`) switches to
+                // description mode, where later Doxygen-style tags do not
+                // count as spec keys.
+                if(line.size() < 2 || line[0] != '@' ||
+                   !(std::isalnum(static_cast<unsigned char>(line[1])) || line[1] == '_')) {
                     in_description = true;
                     continue;
                 }
