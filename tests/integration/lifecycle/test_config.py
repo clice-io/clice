@@ -130,3 +130,22 @@ async def test_config_diagnostic_clears_after_fix(executable, tmp_path):
         assert_no_anomaly(client, tmp_path)
     finally:
         await shutdown_client(client)
+
+
+async def test_config_dump_logged(executable, tmp_path):
+    # The startup log is the discoverable record of the resolved paths.
+    client = await make_client(executable, tmp_path)
+    try:
+        assert_no_anomaly(client, tmp_path)
+    finally:
+        await shutdown_client(client)
+
+    logs = [
+        p.read_text(errors="replace")
+        for p in (tmp_path / ".clice" / "logs").rglob("master.log")
+    ]
+    assert logs, "expected a master.log"
+    text = "".join(logs)
+    assert "Session log directory:" in text
+    assert "Effective configuration:" in text
+    assert '"cache_dir"' in text

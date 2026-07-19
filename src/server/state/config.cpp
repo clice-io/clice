@@ -46,7 +46,7 @@ static std::string resolve_xdg_cache_dir(llvm::StringRef workspace_root) {
     // "<basename>-<hash>": the basename lets users map cache directories
     // back to their workspaces, the hash keeps same-named workspaces apart.
     auto hash = llvm::xxh3_64bits(workspace_root);
-    std::string_view name = path::filename(workspace_root.rtrim("/\\"));
+    llvm::StringRef name = path::filename(workspace_root.rtrim("/\\"));
     if(name.empty() || name == "." || name == "..")
         name = "workspace";
     auto dir =

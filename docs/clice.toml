@@ -16,7 +16,7 @@ clang_tidy = false
 max_active_file = 8
 # Directory for storing on-disk caches (PCH, PCM and index files) and logs.
 # When unset, clice defaults to a per-workspace directory under the XDG
-# cache: ~/.cache/clice/<workspace-name>-<hash>, with logs in its logs/
+# cache: ~/.cache/clice/<workspace>-<hash>, with logs in its logs/
 # subdirectory. The values below relocate both into the workspace instead.
 cache_dir = "${workspace}/.clice/cache"
 logging_dir = "${workspace}/.clice/logs"

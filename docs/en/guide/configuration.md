@@ -32,9 +32,9 @@ Maximum number of active files to keep in memory. **Not yet wired** — the opti
 
 ### `project.cache_dir`
 
-| Type     | Default                                                        |
-| -------- | -------------------------------------------------------------- |
-| `string` | `$XDG_CACHE_HOME/clice/<name>-<hash>` or `${workspace}/.clice` |
+| Type     | Default                                                             |
+| -------- | ------------------------------------------------------------------- |
+| `string` | `$XDG_CACHE_HOME/clice/<workspace>-<hash>` or `${workspace}/.clice` |
 
 Directory for the unified on-disk cache (PCH, PCM, and index artifacts all live here). The default uses XDG_CACHE_HOME (or `~/.cache`) with a per-workspace subdirectory named after the workspace directory plus a short hash, e.g. `~/.cache/clice/myproject-1a2b3c4d`. Falls back to `${workspace}/.clice` if the XDG directory cannot be created. The resolved paths are printed at startup in the effective configuration dump (visible in your editor's clice output panel).
 

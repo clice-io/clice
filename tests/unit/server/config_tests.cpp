@@ -296,6 +296,62 @@ TEST_CASE(XdgHashUnique) {
     EXPECT_EQ(std::string_view(a.project.cache_dir), std::string_view(c.project.cache_dir));
 }
 
+TEST_CASE(XdgNameHashFormat) {
+    // The cache leaf is "<basename>-<8 hex digits>" so users can map
+    // directories back to their workspaces.
+    TempDir tmp;
+    auto cache_base = tmp.path("xdg");
+    set_env("XDG_CACHE_HOME", cache_base.c_str());
+    Config config;
+    config.apply_defaults("/some/ws/myproject");
+    unset_env("XDG_CACHE_HOME");
+
+    llvm::StringRef leaf = path::filename(std::string_view(config.project.cache_dir));
+    EXPECT_TRUE(leaf.starts_with("myproject-"));
+    llvm::StringRef hex = leaf.drop_front(std::string_view("myproject-").size());
+    EXPECT_EQ(hex.size(), 8u);
+    EXPECT_EQ(hex.find_first_not_of("0123456789abcdef"), llvm::StringRef::npos);
+}
+
+TEST_CASE(XdgSameNameDiffer) {
+    // Same basename under different parents: the hash must keep them apart.
+    TempDir tmp;
+    auto cache_base = tmp.path("xdg");
+    set_env("XDG_CACHE_HOME", cache_base.c_str());
+    Config a, b;
+    a.apply_defaults("/first/proj");
+    b.apply_defaults("/second/proj");
+    unset_env("XDG_CACHE_HOME");
+
+    EXPECT_TRUE(path::filename(std::string_view(a.project.cache_dir)).starts_with("proj-"));
+    EXPECT_TRUE(path::filename(std::string_view(b.project.cache_dir)).starts_with("proj-"));
+    EXPECT_NE(std::string_view(a.project.cache_dir), std::string_view(b.project.cache_dir));
+}
+
+TEST_CASE(XdgRootWorkspace) {
+    // A root workspace has no basename; the leaf must not degenerate to "-<hash>".
+    TempDir tmp;
+    auto cache_base = tmp.path("xdg");
+    set_env("XDG_CACHE_HOME", cache_base.c_str());
+    Config config;
+    config.apply_defaults("/");
+    unset_env("XDG_CACHE_HOME");
+
+    EXPECT_TRUE(
+        path::filename(std::string_view(config.project.cache_dir)).starts_with("workspace-"));
+}
+
+TEST_CASE(XdgTrailingSlash) {
+    TempDir tmp;
+    auto cache_base = tmp.path("xdg");
+    set_env("XDG_CACHE_HOME", cache_base.c_str());
+    Config config;
+    config.apply_defaults("/some/ws/");
+    unset_env("XDG_CACHE_HOME");
+
+    EXPECT_TRUE(path::filename(std::string_view(config.project.cache_dir)).starts_with("ws-"));
+}
+
 TEST_CASE(HomeFallback) {
     // With XDG_CACHE_HOME unset but HOME set, cache dir should be under $HOME/.cache/clice.
     TempDir tmp;
