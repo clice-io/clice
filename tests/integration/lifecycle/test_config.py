@@ -147,5 +147,8 @@ async def test_config_dump_logged(executable, tmp_path):
     assert logs, "expected a master.log"
     text = "".join(logs)
     assert "Session log directory:" in text
+    # All three config layers are dumped: file, overlay, merged result.
+    assert "Configuration file" in text
+    assert "initializationOptions" in text
     assert "Effective configuration:" in text
     assert '"cache_dir"' in text
