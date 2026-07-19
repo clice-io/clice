@@ -1536,35 +1536,38 @@ TEST_CASE(Dependent, skip = true) {
 }
 
 TEST_CASE(snapshot) {
-    ASSERT_SNAPSHOT_GLOB(corpus_dir, "**/*.cpp", [&](std::string_view path) -> std::string {
-        if(!compile_file(path))
-            return "COMPILE_ERROR";
-        auto content = unit->interested_content();
-        LocalSourceRange range(0, content.size());
-        auto hints = feature::inlay_hints(*unit, range);
-        auto line_starts = unit->line_starts();
-        lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
-        std::string result;
-        for(auto& hint: hints) {
-            auto pos = map.to_position(hint.offset);
-            if(!pos)
-                continue;
-            auto kind = kota::meta::enum_name(hint.kind, "Unknown");
-            result += std::format("- {{ pos: \"{}:{}\", kind: {}, label: {}",
-                                  pos->line,
-                                  pos->character,
-                                  kind,
-                                  yaml_str(hint.label));
-            if(hint.padding_left) {
-                result += ", padding_left: true";
+    ASSERT_SNAPSHOT_GLOB(
+        test_dir + "/inlay_hint",
+        "**/*.cpp",
+        [&](std::string_view path) -> std::string {
+            if(!compile_file(path))
+                return "COMPILE_ERROR";
+            auto content = unit->interested_content();
+            LocalSourceRange range(0, content.size());
+            auto hints = feature::inlay_hints(*unit, range);
+            auto line_starts = unit->line_starts();
+            lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+            std::string result;
+            for(auto& hint: hints) {
+                auto pos = map.to_position(hint.offset);
+                if(!pos)
+                    continue;
+                auto kind = kota::meta::enum_name(hint.kind, "Unknown");
+                result += std::format("- {{ pos: \"{}:{}\", kind: {}, label: {}",
+                                      pos->line,
+                                      pos->character,
+                                      kind,
+                                      yaml_str(hint.label));
+                if(hint.padding_left) {
+                    result += ", padding_left: true";
+                }
+                if(hint.padding_right) {
+                    result += ", padding_right: true";
+                }
+                result += " }\n";
             }
-            if(hint.padding_right) {
-                result += ", padding_right: true";
-            }
-            result += " }\n";
-        }
-        return result;
-    });
+            return result;
+        });
 }
 
 };  // TEST_SUITE(inlay_hint)

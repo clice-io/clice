@@ -1,0 +1,4 @@
+# Snapshot fixture layout is part of the tested input (line breaks and
+# indentation affect feature output), so formatting is disabled here.
+DisableFormat: true
+SortIncludes: false

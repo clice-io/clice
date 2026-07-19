@@ -1,0 +1,51 @@
+---
+source: semantic_tokens_tests.cpp
+created_at: 2026-07-19
+input_file: basic.cpp
+---
+- { loc: "0:0", text: "// Seed case for the per-feature snapshot corpus: basic token kinds.", kind: Comment }
+- { loc: "1:0", text: "#define", kind: Directive }
+- { loc: "1:8", text: "SQUARE", kind: Conflict }
+- { loc: "3:0", text: "namespace", kind: Keyword }
+- { loc: "3:10", text: "demo", kind: Namespace, modifiers: [Definition] }
+- { loc: "5:0", text: "enum", kind: Keyword }
+- { loc: "5:5", text: "class", kind: Keyword }
+- { loc: "5:11", text: "Color", kind: Enum, modifiers: [Definition] }
+- { loc: "5:19", text: "Red", kind: EnumMember, modifiers: [Definition, Readonly] }
+- { loc: "5:24", text: "Green", kind: EnumMember, modifiers: [Definition, Readonly] }
+- { loc: "7:0", text: "struct", kind: Keyword }
+- { loc: "7:7", text: "Shape", kind: Struct, modifiers: [Definition] }
+- { loc: "8:4", text: "int", kind: Keyword }
+- { loc: "8:8", text: "sides", kind: Field, modifiers: [Definition] }
+- { loc: "11:0", text: "int", kind: Keyword }
+- { loc: "11:4", text: "area", kind: Function, modifiers: [Definition] }
+- { loc: "11:9", text: "int", kind: Keyword }
+- { loc: "11:13", text: "width", kind: Parameter, modifiers: [Definition] }
+- { loc: "11:20", text: "int", kind: Keyword }
+- { loc: "11:24", text: "height", kind: Parameter, modifiers: [Definition] }
+- { loc: "12:4", text: "return", kind: Keyword }
+- { loc: "12:11", text: "width", kind: Parameter }
+- { loc: "12:19", text: "height", kind: Parameter }
+- { loc: "15:0", text: "void", kind: Keyword }
+- { loc: "15:5", text: "test", kind: Function, modifiers: [Definition] }
+- { loc: "16:4", text: "Shape", kind: Struct }
+- { loc: "16:10", text: "square", kind: Variable, modifiers: [Definition] }
+- { loc: "16:17", text: "4", kind: Number }
+- { loc: "17:4", text: "Color", kind: Enum }
+- { loc: "17:10", text: "c", kind: Variable, modifiers: [Definition] }
+- { loc: "17:14", text: "Color", kind: Enum }
+- { loc: "17:21", text: "Red", kind: EnumMember, modifiers: [Readonly] }
+- { loc: "18:21", text: "int", kind: Keyword }
+- { loc: "18:25", text: "a", kind: Variable, modifiers: [Definition] }
+- { loc: "18:29", text: "area", kind: Function }
+- { loc: "18:34", text: "SQUARE", kind: Macro }
+- { loc: "18:41", text: "2", kind: Number }
+- { loc: "18:45", text: "square", kind: Variable }
+- { loc: "18:52", text: "sides", kind: Field }
+- { loc: "19:21", text: "bool", kind: Keyword }
+- { loc: "19:26", text: "red", kind: Variable, modifiers: [Definition] }
+- { loc: "19:32", text: "c", kind: Variable }
+- { loc: "19:37", text: "Color", kind: Enum }
+- { loc: "19:44", text: "Red", kind: EnumMember, modifiers: [Readonly] }
+- { loc: "22:3", text: "// namespace demo", kind: Comment }
+

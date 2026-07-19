@@ -21,11 +21,6 @@ struct TestOptions {
     DecoKVStyled(KVStyle::JoinedOrSeparate, meta_var = "<DIR>"; help = "test data directory";
                  required = false)
     <std::string> test_dir;
-
-    DecoKVStyled(KVStyle::JoinedOrSeparate, meta_var = "<DIR>";
-                 help = "corpus directory for snapshot glob tests";
-                 required = false)
-    <std::string> corpus_dir;
 };
 
 }  // namespace
@@ -42,9 +37,6 @@ int main(int argc, const char** argv) {
 
     if(opts.test_dir.has_value())
         clice::testing::test_dir = *opts.test_dir;
-
-    if(opts.corpus_dir.has_value())
-        clice::testing::corpus_dir = *opts.corpus_dir;
 
     if(opts.log_level.has_value()) {
         auto level = *opts.log_level;

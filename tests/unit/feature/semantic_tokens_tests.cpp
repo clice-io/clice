@@ -639,50 +639,54 @@ void f() {
 }
 
 TEST_CASE(snapshot) {
-    ASSERT_SNAPSHOT_GLOB(corpus_dir, "**/*.cpp", [&](std::string_view path) -> std::string {
-        if(!compile_file(path))
-            return "COMPILE_ERROR";
-        auto content = unit->interested_content();
-        auto tokens = feature::semantic_tokens(*unit);
-        auto line_starts = unit->line_starts();
-        lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
-        std::string result;
-        for(auto& token: tokens) {
-            if(!token.range.valid() || token.range.end <= token.range.begin ||
-               token.range.end > content.size())
-                continue;
+    ASSERT_SNAPSHOT_GLOB(
+        test_dir + "/semantic_tokens",
+        "**/*.cpp",
+        [&](std::string_view path) -> std::string {
+            if(!compile_file(path))
+                return "COMPILE_ERROR";
+            auto content = unit->interested_content();
+            auto tokens = feature::semantic_tokens(*unit);
+            auto line_starts = unit->line_starts();
+            lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+            std::string result;
+            for(auto& token: tokens) {
+                if(!token.range.valid() || token.range.end <= token.range.begin ||
+                   token.range.end > content.size())
+                    continue;
 
-            auto pos = map.to_position(token.range.begin);
-            if(!pos)
-                continue;
+                auto pos = map.to_position(token.range.begin);
+                if(!pos)
+                    continue;
 
-            auto text = content.substr(token.range.begin, token.range.length());
-            auto kind = kota::meta::enum_name(static_cast<SymbolKind::Kind>(token.kind), "Unknown");
+                auto text = content.substr(token.range.begin, token.range.length());
+                auto kind =
+                    kota::meta::enum_name(static_cast<SymbolKind::Kind>(token.kind), "Unknown");
 
-            result += std::format("- {{ loc: \"{}:{}\", text: {}, kind: {}",
-                                  pos->line,
-                                  pos->character,
-                                  yaml_str(text),
-                                  kind);
+                result += std::format("- {{ loc: \"{}:{}\", text: {}, kind: {}",
+                                      pos->line,
+                                      pos->character,
+                                      yaml_str(text),
+                                      kind);
 
-            std::string mods;
-            for(std::uint32_t i = 0; i < 32; ++i) {
-                if(token.modifiers & (1u << i)) {
-                    auto name = kota::meta::enum_name(static_cast<SymbolModifiers::Kind>(i));
-                    if(!name.empty()) {
-                        if(!mods.empty())
-                            mods += ", ";
-                        mods += name;
+                std::string mods;
+                for(std::uint32_t i = 0; i < 32; ++i) {
+                    if(token.modifiers & (1u << i)) {
+                        auto name = kota::meta::enum_name(static_cast<SymbolModifiers::Kind>(i));
+                        if(!name.empty()) {
+                            if(!mods.empty())
+                                mods += ", ";
+                            mods += name;
+                        }
                     }
                 }
+                if(!mods.empty()) {
+                    result += std::format(", modifiers: [{}]", mods);
+                }
+                result += " }\n";
             }
-            if(!mods.empty()) {
-                result += std::format(", modifiers: [{}]", mods);
-            }
-            result += " }\n";
-        }
-        return result;
-    });
+            return result;
+        });
 }
 
 };  // TEST_SUITE(semantic_tokens)

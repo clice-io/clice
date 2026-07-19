@@ -1,0 +1,17 @@
+---
+source: document_symbol_tests.cpp
+created_at: 2026-07-19
+input_file: basic.cpp
+---
+- { name: "demo", kind: Namespace, range: "1:0-20:1", selection_range: "1:10-1:14" }
+-   { name: "Point", kind: Struct, range: "3:0-10:1", selection_range: "3:7-3:12", detail: "struct" }
+-     { name: "x", kind: Field, range: "4:4-4:9", selection_range: "4:8-4:9", detail: "int" }
+-     { name: "y", kind: Field, range: "5:4-5:9", selection_range: "5:8-5:9", detail: "int" }
+-     { name: "manhattan", kind: Method, range: "7:4-9:5", selection_range: "7:8-7:17", detail: "int () const" }
+-   { name: "Axis", kind: Enum, range: "12:0-12:24", selection_range: "12:11-12:15", detail: "enum" }
+-     { name: "X", kind: EnumMember, range: "12:18-12:19", selection_range: "12:18-12:19", detail: "Axis" }
+-     { name: "Y", kind: EnumMember, range: "12:21-12:22", selection_range: "12:21-12:22", detail: "Axis" }
+-   { name: "origin_distance", kind: Function, range: "14:0-14:35", selection_range: "14:4-14:19", detail: "int (const Point &)" }
+-   { name: "inner", kind: Namespace, range: "16:0-18:1", selection_range: "16:10-16:15" }
+-     { name: "level", kind: Variable, range: "17:0-17:23", selection_range: "17:14-17:19", detail: "const int" }
+

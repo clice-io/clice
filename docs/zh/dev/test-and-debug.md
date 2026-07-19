@@ -19,7 +19,6 @@ pixi run unit-test Debug    # debug 构建
 ./build/RelWithDebInfo/bin/unit_tests \
     --test-dir="./tests/data" \
     --snapshot-dir="./tests/snapshots" \
-    --corpus-dir="./tests/corpus" \
     --verbose
 ```
 

@@ -512,61 +512,65 @@ TEST_CASE(SymbolKinds) {
 }
 
 TEST_CASE(snapshot) {
-    ASSERT_SNAPSHOT_GLOB(corpus_dir, "**/*.cpp", [&](std::string_view path) -> std::string {
-        if(!compile_file(path))
-            return "COMPILE_ERROR";
-        auto idx = index::TUIndex::build(*unit);
-        auto content = unit->interested_content();
-        auto line_starts = unit->line_starts();
-        std::string result;
+    ASSERT_SNAPSHOT_GLOB(
+        test_dir + "/tu_index",
+        "**/*.cpp",
+        [&](std::string_view path) -> std::string {
+            if(!compile_file(path))
+                return "COMPILE_ERROR";
+            auto idx = index::TUIndex::build(*unit);
+            auto content = unit->interested_content();
+            auto line_starts = unit->line_starts();
+            std::string result;
 
-        auto sorted = idx.main_file_index.occurrences;
-        std::ranges::sort(sorted, [](auto& lhs, auto& rhs) {
-            return std::tuple(lhs.range.begin, lhs.range.end, lhs.target) <
-                   std::tuple(rhs.range.begin, rhs.range.end, rhs.target);
+            auto sorted = idx.main_file_index.occurrences;
+            std::ranges::sort(sorted, [](auto& lhs, auto& rhs) {
+                return std::tuple(lhs.range.begin, lhs.range.end, lhs.target) <
+                       std::tuple(rhs.range.begin, rhs.range.end, rhs.target);
+            });
+
+            lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+            for(auto& occ: sorted) {
+                auto text = content.substr(occ.range.begin, occ.range.end - occ.range.begin);
+                auto pos = map.to_position(occ.range.begin);
+                if(!pos)
+                    continue;
+
+                auto sym_it = idx.symbols.find(occ.target);
+                std::string_view kind_name = "?";
+                if(sym_it != idx.symbols.end()) {
+                    kind_name =
+                        kota::meta::enum_name(static_cast<SymbolKind::Kind>(sym_it->second.kind),
+                                              "Unknown");
+                }
+
+                result += std::format("- {{ loc: \"{}:{}\", kind: {}, text: {}",
+                                      pos->line,
+                                      pos->character,
+                                      kind_name,
+                                      yaml_str(text));
+
+                auto rel_it = idx.main_file_index.relations.find(occ.target);
+                if(rel_it != idx.main_file_index.relations.end()) {
+                    std::string rels;
+                    for(auto& rel: rel_it->second) {
+                        if(rel.range != occ.range)
+                            continue;
+                        if(!rels.empty())
+                            rels += ", ";
+                        rels +=
+                            kota::meta::enum_name(static_cast<RelationKind::Kind>(rel.kind), "?");
+                    }
+                    if(!rels.empty()) {
+                        result += std::format(", relations: [{}]", rels);
+                    }
+                }
+
+                result += " }\n";
+            }
+
+            return result;
         });
-
-        lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
-        for(auto& occ: sorted) {
-            auto text = content.substr(occ.range.begin, occ.range.end - occ.range.begin);
-            auto pos = map.to_position(occ.range.begin);
-            if(!pos)
-                continue;
-
-            auto sym_it = idx.symbols.find(occ.target);
-            std::string_view kind_name = "?";
-            if(sym_it != idx.symbols.end()) {
-                kind_name =
-                    kota::meta::enum_name(static_cast<SymbolKind::Kind>(sym_it->second.kind),
-                                          "Unknown");
-            }
-
-            result += std::format("- {{ loc: \"{}:{}\", kind: {}, text: {}",
-                                  pos->line,
-                                  pos->character,
-                                  kind_name,
-                                  yaml_str(text));
-
-            auto rel_it = idx.main_file_index.relations.find(occ.target);
-            if(rel_it != idx.main_file_index.relations.end()) {
-                std::string rels;
-                for(auto& rel: rel_it->second) {
-                    if(rel.range != occ.range)
-                        continue;
-                    if(!rels.empty())
-                        rels += ", ";
-                    rels += kota::meta::enum_name(static_cast<RelationKind::Kind>(rel.kind), "?");
-                }
-                if(!rels.empty()) {
-                    result += std::format(", relations: [{}]", rels);
-                }
-            }
-
-            result += " }\n";
-        }
-
-        return result;
-    });
 }
 
 TEST_CASE(LookupOccurrence) {

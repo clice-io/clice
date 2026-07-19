@@ -1,0 +1,19 @@
+---
+source: tu_index_tests.cpp
+created_at: 2026-07-19
+input_file: basic.cpp
+---
+- { loc: "1:10", kind: Namespace, text: "demo", relations: [Definition] }
+- { loc: "3:7", kind: Struct, text: "Base", relations: [Definition] }
+- { loc: "4:12", kind: Method, text: "~", relations: [Definition] }
+- { loc: "4:13", kind: Struct, text: "Base", relations: [Reference] }
+- { loc: "5:16", kind: Method, text: "value", relations: [Declaration] }
+- { loc: "8:7", kind: Struct, text: "Derived", relations: [Definition] }
+- { loc: "8:17", kind: Struct, text: "Base", relations: [Reference] }
+- { loc: "9:8", kind: Method, text: "value", relations: [Declaration] }
+- { loc: "12:4", kind: Function, text: "use", relations: [Definition] }
+- { loc: "12:14", kind: Struct, text: "Base", relations: [Reference] }
+- { loc: "12:20", kind: Parameter, text: "b", relations: [Definition] }
+- { loc: "13:11", kind: Parameter, text: "b", relations: [Reference] }
+- { loc: "13:13", kind: Method, text: "value", relations: [Reference] }
+

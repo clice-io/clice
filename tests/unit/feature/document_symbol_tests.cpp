@@ -229,20 +229,22 @@ void format_document_symbols(std::string& out,
 }
 
 TEST_CASE(snapshot) {
-    ASSERT_SNAPSHOT_GLOB(corpus_dir, "**/*.cpp", [&](std::string_view path) -> std::string {
-        if(!compile_file(path))
-            return "COMPILE_ERROR";
-        auto content = unit->interested_content();
-        auto line_starts = unit->line_starts();
-        std::string result;
-        format_document_symbols(result,
-                                content,
-                                line_starts,
-                                feature::PositionEncoding::UTF8,
-                                feature::document_symbols(*unit),
-                                0);
-        return result;
-    });
+    ASSERT_SNAPSHOT_GLOB(test_dir + "/document_symbol",
+                         "**/*.cpp",
+                         [&](std::string_view path) -> std::string {
+                             if(!compile_file(path))
+                                 return "COMPILE_ERROR";
+                             auto content = unit->interested_content();
+                             auto line_starts = unit->line_starts();
+                             std::string result;
+                             format_document_symbols(result,
+                                                     content,
+                                                     line_starts,
+                                                     feature::PositionEncoding::UTF8,
+                                                     feature::document_symbols(*unit),
+                                                     0);
+                             return result;
+                         });
 }
 
 };  // TEST_SUITE(document_symbol)
