@@ -437,6 +437,28 @@ TEST_CASE(snapshot) {
         test_dir + "/folding_range",
         "**/*.cpp",
         [&](std::string_view path) -> std::string {
+            // Fixtures whose spec header marks the capability `@status
+            // unsupported` are pinned to an explicit UNSUPPORTED marker
+            // instead of being compiled: zest's glob has no per-file skip.
+            // Only `///` header lines are inspected, with whitespace
+            // normalized, so this stays in sync with the tolerant parser
+            // in tests/tools/feature_docs.py.
+            if(auto buffer = llvm::MemoryBuffer::getFile(path)) {
+                llvm::StringRef rest = (*buffer)->getBuffer();
+                while(!rest.empty()) {
+                    auto parts = rest.split('\n');
+                    rest = parts.second;
+                    auto line = parts.first.trim();
+                    if(!line.starts_with("///")) {
+                        break;
+                    }
+                    line = line.drop_front(3).trim();
+                    if(line.consume_front("@status") && line.trim() == "unsupported") {
+                        return "UNSUPPORTED";
+                    }
+                }
+            }
+
             if(!compile_file(path))
                 return "COMPILE_ERROR";
             auto ranges = feature::folding_ranges(*unit);
