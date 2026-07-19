@@ -454,13 +454,22 @@ TEST_CASE(snapshot) {
             llvm::StringRef source = (*buffer)->getBuffer();
             llvm::StringRef rest = source;
             bool spec_header = false;
+            bool in_description = false;
             while(rest.ltrim().starts_with("///")) {
                 auto parts = rest.split('\n');
                 rest = parts.second;
                 auto line = parts.first.trim().drop_front(3).trim();
-                if(line.starts_with("@")) {
-                    spec_header = true;
+                if(in_description) {
+                    continue;
                 }
+                if(!line.starts_with("@")) {
+                    // Blank separator or prose: everything after is
+                    // description, so later Doxygen-style `@` tags do not
+                    // count as spec keys — same as parse_fixture.
+                    in_description = true;
+                    continue;
+                }
+                spec_header = true;
                 if(line.consume_front("@status") && line.trim() == "unsupported") {
                     return "UNSUPPORTED";
                 }

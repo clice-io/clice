@@ -127,7 +127,7 @@ def parse_fixture(path: Path, problems: list[str]) -> Fixture | None:
         if key not in KNOWN_KEYS:
             problems.append(f"{path}: unknown key @{key}")
     status = keys.get("status", "")
-    if status and status not in VALID_STATUS:
+    if "status" in keys and status not in VALID_STATUS:
         problems.append(
             f"{path}: invalid @status '{status}' (expected one of {', '.join(VALID_STATUS)})"
         )
