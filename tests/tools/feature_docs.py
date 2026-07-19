@@ -54,7 +54,10 @@ REQUIRED_KEYS = ("section", "title", "status")
 KNOWN_KEYS = ("section", "title", "status", "issues", "order")
 VALID_STATUS = ("supported", "partial", "unsupported")
 
-BEGIN_RE = re.compile(r"<!-- BEGIN GENERATED ITEMS: (.+?) -->")
+# Markers must occupy their own unindented line, so marker text embedded in
+# generated item content (titles, descriptions, example code) can never
+# open or terminate a region.
+BEGIN_RE = re.compile(r"^<!-- BEGIN GENERATED ITEMS: (.+?) -->$")
 END_MARKER = "<!-- END GENERATED ITEMS -->"
 ISSUE_RE = re.compile(r"^([a-z]+)#(\d+)$")
 
@@ -253,7 +256,7 @@ def rewrite_doc(
         section = match.group(1).strip()
         doc_sections.add(section)
         end = idx + 1
-        while end < len(lines) and END_MARKER not in lines[end]:
+        while end < len(lines) and lines[end] != END_MARKER:
             end += 1
         if end >= len(lines):
             problems.append(f"{doc_path}: region '{section}' has no closing marker")
