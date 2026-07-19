@@ -39,6 +39,8 @@ def xdg_cache_dir(workspace: Path) -> Path | None:
         raw = raw[:64]
         while raw and (raw[-1] & 0xC0) == 0x80:
             raw = raw[:-1]
+        if raw and raw[-1] >= 0xC0:
+            raw = raw[:-1]
         name = raw.decode()
     # xxh3_64bits is not available in stdlib; use xxhash if present,
     # otherwise fall back to a brute-force glob.

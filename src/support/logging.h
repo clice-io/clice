@@ -102,7 +102,9 @@ void stderr_logger(std::string_view name, const Options& options);
 /// With mirror_stderr, every line is also written to stderr — the master
 /// uses this so editors can show its log; workers must pass false (their
 /// stderr is reserved for crash output, relayed by the pool).
-void file_logger(std::string_view name,
+/// Returns false when the log directory or file cannot be set up — logging
+/// then stays on the previously installed sinks.
+bool file_logger(std::string_view name,
                  std::string_view dir,
                  const Options& options,
                  bool mirror_stderr = true);

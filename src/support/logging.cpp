@@ -51,13 +51,13 @@ void stderr_logger(std::string_view name, const Options& options) {
     spdlog::set_default_logger(std::move(logger));
 }
 
-void file_logger(std::string_view name,
+bool file_logger(std::string_view name,
                  std::string_view dir,
                  const Options& options,
                  bool mirror_stderr) {
     if(auto ec = llvm::sys::fs::create_directories(dir)) {
         spdlog::error("Failed to create log directory {}: {}", std::string(dir), ec.message());
-        return;
+        return false;
     }
     auto filepath = path::join(dir, std::format("{}.log", name));
     // Verify we can write to the file before constructing the sink.
@@ -67,7 +67,7 @@ void file_logger(std::string_view name,
         llvm::raw_fd_ostream test(filepath, ec, llvm::sys::fs::OF_Append);
         if(ec) {
             spdlog::error("Failed to open log file {}: {}", filepath, ec.message());
-            return;
+            return false;
         }
     }
     auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filepath);
@@ -107,6 +107,7 @@ void file_logger(std::string_view name,
     }
 
     install_crash_handler(filepath, /*stderr_trace=*/mirror_stderr);
+    return true;
 }
 
 static std::unique_ptr<llvm::raw_fd_ostream> crash_log_stream;

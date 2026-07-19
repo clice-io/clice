@@ -101,8 +101,9 @@ void MasterServer::initialize() {
         auto pid = llvm::sys::Process::getProcessId();
         session_log_dir =
             path::join(cfg.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
-        logging::file_logger("master", session_log_dir, logging::options);
-        LOG_INFO("Session log directory: {}", session_log_dir);
+        if(logging::file_logger("master", session_log_dir, logging::options)) {
+            LOG_INFO("Session log directory: {}", session_log_dir);
+        }
     }
 
     // Dump every configuration layer — the config file verbatim, the
