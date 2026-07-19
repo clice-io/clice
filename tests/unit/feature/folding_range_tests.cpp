@@ -455,10 +455,17 @@ TEST_CASE(snapshot) {
             llvm::StringRef rest = source;
             bool spec_header = false;
             bool in_description = false;
-            while(rest.ltrim().starts_with("///")) {
+            while(true) {
                 auto parts = rest.split('\n');
+                auto line = parts.first.trim();
+                // The header ends at the first line that is not a `///`
+                // comment — including a blank line, so `///` doc comments
+                // in the body after the separator stay compiled input.
+                if(!line.starts_with("///")) {
+                    break;
+                }
                 rest = parts.second;
-                auto line = parts.first.trim().drop_front(3).trim();
+                line = line.drop_front(3).trim();
                 if(in_description) {
                     continue;
                 }

@@ -111,7 +111,10 @@ def parse_fixture(path: Path, problems: list[str]) -> Fixture | None:
                 continue
             match = re.match(r"@(\w+)\s*(.*)", content)
             if match:
-                keys[match.group(1)] = match.group(2).strip()
+                key = match.group(1)
+                if key in keys:
+                    problems.append(f"{path}: duplicate @{key}")
+                keys[key] = match.group(2).strip()
                 continue
             in_desc = True
         desc.append(content)
@@ -123,6 +126,8 @@ def parse_fixture(path: Path, problems: list[str]) -> Fixture | None:
     for key in REQUIRED_KEYS:
         if key not in keys:
             problems.append(f"{path}: missing required @{key}")
+        elif not keys[key]:
+            problems.append(f"{path}: empty @{key}")
     for key in keys:
         if key not in KNOWN_KEYS:
             problems.append(f"{path}: unknown key @{key}")
