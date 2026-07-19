@@ -12,5 +12,14 @@
 /// > the signature line ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)
 /// > — still open). Other clients may differ.
 
-// folded: void processData(const Config& cfg) {...}
-// not:    {... (signature hidden above fold)}
+struct Config {
+    int width;
+    int height;
+};
+
+// desired when folded: int process_data(const Config& cfg) {...}
+// not:                 {... (signature hidden above fold)}
+int process_data(const Config& cfg) {
+    int area = cfg.width * cfg.height;
+    return area;
+}
