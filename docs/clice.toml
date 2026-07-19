@@ -14,7 +14,10 @@ clang_tidy = false
 # exceeds this limit, the least recently used files will be removed.
 # The default value is 8.
 max_active_file = 8
-# Directory for storing on-disk caches (PCH, PCM and index files).
+# Directory for storing on-disk caches (PCH, PCM and index files) and logs.
+# When unset, clice defaults to a per-workspace directory under the XDG
+# cache: ~/.cache/clice/<workspace-name>-<hash>, with logs in its logs/
+# subdirectory. The values below relocate both into the workspace instead.
 cache_dir = "${workspace}/.clice/cache"
 logging_dir = "${workspace}/.clice/logs"
 # Compile commands files or directories to search for compile_commands.json files.

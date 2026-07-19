@@ -36,8 +36,10 @@ downloads live on the [GitHub releases and CI pages](https://github.com/clice-io
 
 ## Troubleshooting
 
-Server logs live in the `clice` output channel and in your workspace's
-`.clice/logs/`. If the server crashes, please attach the newest log there to a
+Server logs live in the `clice` output channel, which also prints the
+on-disk log directory at startup (`Session log directory:` — by default
+under `~/.cache/clice/<workspace>-<hash>/logs/`). If the server crashes,
+please attach the newest log from there to a
 [GitHub issue](https://github.com/clice-io/clice/issues) — releases ship
 symbol packages that let us reconstruct the exact stack.
 

@@ -32,11 +32,11 @@ clice 从工作区根目录的 `clice.toml` 中读取配置；若该文件不存
 
 ### `project.cache_dir`
 
-| 类型     | 默认值                                                  |
-| -------- | ------------------------------------------------------- |
-| `string` | `$XDG_CACHE_HOME/clice/<hash>` 或 `${workspace}/.clice` |
+| 类型     | 默认值                                                         |
+| -------- | -------------------------------------------------------------- |
+| `string` | `$XDG_CACHE_HOME/clice/<name>-<hash>` 或 `${workspace}/.clice` |
 
-统一磁盘缓存的存储目录（PCH、PCM 与索引产物都在这里）。默认使用 XDG_CACHE_HOME（或 `~/.cache`）下的工作区专用哈希子目录。如果 XDG 目录无法创建，则回退到 `${workspace}/.clice`。
+统一磁盘缓存的存储目录（PCH、PCM 与索引产物都在这里）。默认使用 XDG_CACHE_HOME（或 `~/.cache`）下以工作区目录名加短哈希命名的子目录，例如 `~/.cache/clice/myproject-1a2b3c4d`。如果 XDG 目录无法创建，则回退到 `${workspace}/.clice`。实际解析出的路径会在启动时的有效配置日志中打印（可在编辑器的 clice 输出面板查看）。
 
 ### `project.logging_dir`
 
@@ -44,7 +44,7 @@ clice 从工作区根目录的 `clice.toml` 中读取配置；若该文件不存
 | -------- | ------------------- |
 | `string` | `${cache_dir}/logs` |
 
-日志文件目录。
+日志文件目录。每个服务器会话在其中创建独立的时间戳子目录；启动日志中的 `Session log directory:` 一行给出确切路径。
 
 ### `project.compile_commands_paths`
 

@@ -9,6 +9,7 @@ Stale .clice caches are removed so every run starts fresh.
 """
 
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -22,9 +23,9 @@ from tests.tools.compile_commands import generate_cdb, generate_test_data_cdbs  
 def xdg_cache_dir(workspace: Path) -> Path | None:
     """Return the XDG cache directory clice would use for *workspace*.
 
-    Mirrors resolvexdg_cache_dir() in src/server/state/config.cpp:
-    $XDG_CACHE_HOME/clice/<xxh3_64 hash>  or  ~/.cache/clice/<hash>.
-    We approximate xxh3_64 with the same 16-hex-digit format.
+    Mirrors resolve_xdg_cache_dir() in src/server/state/config.cpp:
+    $XDG_CACHE_HOME/clice/<basename>-<hash8>  or  ~/.cache/clice/<basename>-<hash8>,
+    where <hash8> is the low 32 bits of xxh3_64 of the workspace path.
     """
     base = os.environ.get("XDG_CACHE_HOME") or ""
     if not base:
@@ -32,13 +33,14 @@ def xdg_cache_dir(workspace: Path) -> Path | None:
         if not home:
             return None
         base = os.path.join(home, ".cache")
+    name = workspace.name or "workspace"
     # xxh3_64bits is not available in stdlib; use xxhash if present,
     # otherwise fall back to a brute-force glob.
     try:
         import xxhash
 
         h = xxhash.xxh3_64(str(workspace).encode()).intdigest()
-        return Path(base) / "clice" / f"{h:016x}"
+        return Path(base) / "clice" / f"{name}-{h & 0xFFFFFFFF:08x}"
     except ImportError:
         return Path(base) / "clice"
 
@@ -53,10 +55,10 @@ def clean_cache(workspace: Path) -> None:
     if xdg is None:
         return
     if xdg.name == "clice":
-        # No xxhash — glob all hash subdirectories.
+        # No xxhash — glob all <basename>-<hash8> subdirectories.
         if xdg.is_dir():
             for child in xdg.iterdir():
-                if child.is_dir() and len(child.name) == 16:
+                if child.is_dir() and re.fullmatch(r".+-[0-9a-f]{8}", child.name):
                     shutil.rmtree(child)
     elif xdg.is_dir():
         shutil.rmtree(xdg)

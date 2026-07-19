@@ -32,11 +32,11 @@ Maximum number of active files to keep in memory. **Not yet wired** — the opti
 
 ### `project.cache_dir`
 
-| Type     | Default                                                 |
-| -------- | ------------------------------------------------------- |
-| `string` | `$XDG_CACHE_HOME/clice/<hash>` or `${workspace}/.clice` |
+| Type     | Default                                                        |
+| -------- | -------------------------------------------------------------- |
+| `string` | `$XDG_CACHE_HOME/clice/<name>-<hash>` or `${workspace}/.clice` |
 
-Directory for the unified on-disk cache (PCH, PCM, and index artifacts all live here). The default uses XDG_CACHE_HOME (or `~/.cache`) with a workspace-specific hash subdirectory. Falls back to `${workspace}/.clice` if the XDG directory cannot be created.
+Directory for the unified on-disk cache (PCH, PCM, and index artifacts all live here). The default uses XDG_CACHE_HOME (or `~/.cache`) with a per-workspace subdirectory named after the workspace directory plus a short hash, e.g. `~/.cache/clice/myproject-1a2b3c4d`. Falls back to `${workspace}/.clice` if the XDG directory cannot be created. The resolved paths are printed at startup in the effective configuration dump (visible in your editor's clice output panel).
 
 ### `project.logging_dir`
 
@@ -44,7 +44,7 @@ Directory for the unified on-disk cache (PCH, PCM, and index artifacts all live 
 | -------- | ------------------- |
 | `string` | `${cache_dir}/logs` |
 
-Directory for log files.
+Directory for log files. Each server session logs into its own timestamped subdirectory; the startup log line `Session log directory:` shows the exact path.
 
 ### `project.compile_commands_paths`
 

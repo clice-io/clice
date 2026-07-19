@@ -95,6 +95,14 @@ void MasterServer::initialize() {
         LOG_INFO("Session log directory: {}", session_log_dir);
     }
 
+    // Dump the effective post-default configuration. The stderr mirror puts
+    // it in the editor's output panel — the one place users can discover the
+    // hashed cache/log location, and the first thing to ask for in reports.
+    if(auto json = kota::codec::json::to_string(workspace.config)) {
+        auto pretty = kota::codec::json::prettify(*json);
+        LOG_INFO("Effective configuration:\n{}", pretty ? *pretty : *json);
+    }
+
     LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
              cfg.stateful_worker_count.value,
              cfg.stateless_worker_count.value,

@@ -64,8 +64,10 @@ nightly orchestration) is release-time-only.
 
 ## Crash log support
 
-Ask the user for the log (worker `.log` from the workspace `.clice/logs/` or
-the cache dir). The crash section starts with `clice <version> <target>` —
+Ask the user for the log (worker `.log` from the session log directory —
+printed at startup in the editor's clice output panel, by default
+`~/.cache/clice/<workspace>-<hash>/logs/<session>/`, falling back to the
+workspace `.clice/logs/` when no home directory is available). The crash section starts with `clice <version> <target>` —
 download that release's `*.symbols.tar.xz` (GSYM) and run:
 
 ```bash

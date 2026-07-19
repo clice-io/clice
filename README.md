@@ -39,7 +39,7 @@ The versioning rule is the VS Code Marketplace convention: **even minor = stable
 
 For the freshest bits, every green [`main` CI run](https://github.com/clice-io/clice/actions/workflows/main.yml?query=branch%3Amain+is%3Asuccess) attaches installable artifacts (binaries and platform vsix) to its run page, so a fix can be tried the moment it merges (GitHub login required for artifact downloads).
 
-Each release also ships `*.symbols` packages: if clice crashes, attach the newest log from your workspace's `.clice/logs/` to an issue and the matching symbols let us reconstruct the exact stack.
+Each release also ships `*.symbols` packages: if clice crashes, attach the newest server log to an issue and the matching symbols let us reconstruct the exact stack. The log location is printed at startup in your editor's clice output panel (`Session log directory:` — by default under `~/.cache/clice/<workspace>-<hash>/logs/`).
 
 ### Editor Setup
 
