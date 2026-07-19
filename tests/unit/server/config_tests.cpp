@@ -341,6 +341,21 @@ TEST_CASE(XdgRootWorkspace) {
         path::filename(std::string_view(config.project.cache_dir)).starts_with("workspace-"));
 }
 
+TEST_CASE(XdgLongBasename) {
+    // A basename near the filesystem's 255-byte component limit must be
+    // truncated so the leaf (name + "-" + 8 hex) still fits.
+    TempDir tmp;
+    auto cache_base = tmp.path("xdg");
+    set_env("XDG_CACHE_HOME", cache_base.c_str());
+    Config config;
+    config.apply_defaults("/ws/" + std::string(200, 'x'));
+    unset_env("XDG_CACHE_HOME");
+
+    llvm::StringRef leaf = path::filename(std::string_view(config.project.cache_dir));
+    EXPECT_TRUE(leaf.starts_with(std::string(64, 'x')));
+    EXPECT_EQ(leaf.size(), 64u + 9u);
+}
+
 TEST_CASE(XdgTrailingSlash) {
     TempDir tmp;
     auto cache_base = tmp.path("xdg");

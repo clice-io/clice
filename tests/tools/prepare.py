@@ -34,6 +34,12 @@ def xdg_cache_dir(workspace: Path) -> Path | None:
             return None
         base = os.path.join(home, ".cache")
     name = workspace.name or "workspace"
+    raw = name.encode()
+    if len(raw) > 64:
+        raw = raw[:64]
+        while raw and (raw[-1] & 0xC0) == 0x80:
+            raw = raw[:-1]
+        name = raw.decode()
     # xxh3_64bits is not available in stdlib; use xxhash if present,
     # otherwise fall back to a brute-force glob.
     try:

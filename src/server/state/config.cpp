@@ -49,6 +49,13 @@ static std::string resolve_xdg_cache_dir(llvm::StringRef workspace_root) {
     llvm::StringRef name = path::filename(workspace_root.rtrim("/\\"));
     if(name.empty() || name == "." || name == "..")
         name = "workspace";
+    // Keep the leaf well under filesystem name limits (255 bytes on common
+    // filesystems) without splitting a UTF-8 sequence mid-codepoint.
+    if(name.size() > 64) {
+        name = name.take_front(64);
+        while(!name.empty() && (static_cast<unsigned char>(name.back()) & 0xC0) == 0x80)
+            name = name.drop_back();
+    }
     auto dir =
         path::join(base, "clice", std::format("{}-{:08x}", name, static_cast<std::uint32_t>(hash)));
 
