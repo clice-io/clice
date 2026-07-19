@@ -437,29 +437,37 @@ TEST_CASE(snapshot) {
         test_dir + "/folding_range",
         "**/*.cpp",
         [&](std::string_view path) -> std::string {
-            // The leading `///` spec header is metadata for the doc
-            // generator, not folding input: strip it before compiling so
-            // header comments can never contribute ranges once comment
-            // folding exists, and so snapshot positions line up with the
-            // example code shown in the generated doc. Whitespace is
-            // normalized to stay in sync with the tolerant parser in
-            // tests/tools/feature_docs.py. `@status unsupported` fixtures
-            // are pinned to an explicit UNSUPPORTED marker instead of
-            // being compiled: zest's glob has no per-file skip.
+            // The leading `///` spec header is doc-generator metadata, not
+            // folding input: strip it before compiling so header comments
+            // never contribute ranges and snapshot positions line up with
+            // the example code in the generated doc. A `///` block only
+            // counts as a spec header when it carries at least one `@key`
+            // line — same rule as parse_fixture in feature_docs.py — so a
+            // plain doc comment atop a supplementary fixture stays in the
+            // compiled input. `@status unsupported` fixtures are pinned to
+            // an explicit UNSUPPORTED marker instead of being compiled:
+            // zest's glob has no per-file skip.
             auto buffer = llvm::MemoryBuffer::getFile(path);
             if(!buffer)
                 return "COMPILE_ERROR";
 
             llvm::StringRef source = (*buffer)->getBuffer();
-            while(source.ltrim().starts_with("///")) {
-                auto parts = source.split('\n');
-                source = parts.second;
+            llvm::StringRef rest = source;
+            bool spec_header = false;
+            while(rest.ltrim().starts_with("///")) {
+                auto parts = rest.split('\n');
+                rest = parts.second;
                 auto line = parts.first.trim().drop_front(3).trim();
+                if(line.starts_with("@")) {
+                    spec_header = true;
+                }
                 if(line.consume_front("@status") && line.trim() == "unsupported") {
                     return "UNSUPPORTED";
                 }
             }
-            source = source.ltrim("\r\n");
+            if(spec_header) {
+                source = rest.ltrim("\r\n");
+            }
 
             add_main(llvm::sys::path::filename(path), source);
             if(!compile())
