@@ -1,7 +1,7 @@
-/// @section Refinements
-/// @title Inactive preprocessor branch indication — visually distinguish or auto-fold inactive `#if`/`#else` branches
-/// @status partial
-/// @order 3
+/// section: Refinements
+/// title: Inactive preprocessor branch indication — visually distinguish or auto-fold inactive `#if`/`#else` branches
+/// status: partial
+/// order: 3
 ///
 /// The server emits a fold range for the region between the condition and
 /// `#else`, so the first branch can be folded manually; the post-`#else`

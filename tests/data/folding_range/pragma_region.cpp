@@ -1,8 +1,8 @@
-/// @section Fold Kinds
-/// @title Custom region folding (`#pragma region` / `#pragma endregion`)
-/// @status supported
-/// @issues clangd#1623
-/// @order 6
+/// section: Fold Kinds
+/// title: Custom region folding (`#pragma region` / `#pragma endregion`)
+/// status: supported
+/// issues: clangd#1623
+/// order: 6
 
 #pragma region Configuration
 

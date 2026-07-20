@@ -1,7 +1,7 @@
-/// @section Fold Kinds
-/// @title Comment folding — multi-line `/* */` and consecutive `//` line comments
-/// @status unsupported
-/// @order 7
+/// section: Fold Kinds
+/// title: Comment folding — multi-line `/* */` and consecutive `//` line comments
+/// status: unsupported
+/// order: 7
 
 // This is a long
 // multi-line comment

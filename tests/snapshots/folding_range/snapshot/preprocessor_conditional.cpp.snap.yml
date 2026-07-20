@@ -3,5 +3,5 @@ source: folding_range_tests.cpp
 created_at: 2026-07-19
 input_file: preprocessor_conditional.cpp
 ---
-- { range: "4:7-6:5", kind: conditionDirective }
+- { range: "14:7-16:5", kind: conditionDirective }
 

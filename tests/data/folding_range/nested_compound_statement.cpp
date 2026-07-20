@@ -1,7 +1,7 @@
-/// @section Fold Kinds
-/// @title Nested compound-statement folding — `if`/`for`/`while` bodies inside functions
-/// @status unsupported
-/// @order 2
+/// section: Fold Kinds
+/// title: Nested compound-statement folding — `if`/`for`/`while` bodies inside functions
+/// status: unsupported
+/// order: 2
 
 void process(int count) {
     if (count > 0) {                       // ┐

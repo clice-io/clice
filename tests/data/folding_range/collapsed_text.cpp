@@ -1,8 +1,8 @@
-/// @section Refinements
-/// @title `collapsedText` placeholder (LSP 3.17) — show a summary when folded
-/// @status supported
-/// @issues clangd#2667
-/// @order 1
+/// section: Refinements
+/// title: `collapsedText` placeholder (LSP 3.17) — show a summary when folded
+/// status: supported
+/// issues: clangd#2667
+/// order: 1
 ///
 /// > **Client support**: VS Code does **not** support `collapsedText` yet
 /// > ([vscode#70794](https://github.com/microsoft/vscode/issues/70794) — still

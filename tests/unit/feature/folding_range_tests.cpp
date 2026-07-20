@@ -1,7 +1,7 @@
-#include <cctype>
 #include <cstdint>
 #include <vector>
 
+#include "test/fixture.h"
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
@@ -438,59 +438,17 @@ TEST_CASE(snapshot) {
         test_dir + "/folding_range",
         "**/*.cpp",
         [&](std::string_view path) -> std::string {
-            // The leading `///` spec header is doc-generator metadata, not
-            // folding input: strip it before compiling so header comments
-            // never contribute ranges and snapshot positions line up with
-            // the example code in the generated doc. A `///` block only
-            // counts as a spec header when it carries at least one `@key`
-            // line — same rule as parse_fixture in feature_docs.py — so a
-            // plain doc comment atop a supplementary fixture stays in the
-            // compiled input. `@status unsupported` fixtures are pinned to
-            // an explicit UNSUPPORTED marker instead of being compiled:
-            // zest's glob has no per-file skip.
+            // `status: unsupported` fixtures are pinned to an explicit
+            // UNSUPPORTED marker instead of being compiled: zest's glob
+            // has no per-file skip. Everything else compiles verbatim —
+            // the frontmatter is an ordinary comment to the compiler.
             auto buffer = llvm::MemoryBuffer::getFile(path);
             if(!buffer)
                 return "COMPILE_ERROR";
+            if(fixture_frontmatter((*buffer)->getBuffer(), "status") == "unsupported")
+                return "UNSUPPORTED";
 
-            llvm::StringRef source = (*buffer)->getBuffer();
-            llvm::StringRef rest = source;
-            bool spec_header = false;
-            bool in_description = false;
-            while(true) {
-                auto parts = rest.split('\n');
-                auto line = parts.first.trim();
-                // The header ends at the first line that is not a `///`
-                // comment — including a blank line, so `///` doc comments
-                // in the body after the separator stay compiled input.
-                if(!line.starts_with("///")) {
-                    break;
-                }
-                rest = parts.second;
-                line = line.drop_front(3).trim();
-                if(in_description) {
-                    continue;
-                }
-                // A key line is `@` immediately followed by a word char,
-                // mirroring parse_fixture's `@(\w+)` grammar. Anything
-                // else (blank separator, prose, `@ note`) switches to
-                // description mode, where later Doxygen-style tags do not
-                // count as spec keys.
-                if(line.size() < 2 || line[0] != '@' ||
-                   !(std::isalnum(static_cast<unsigned char>(line[1])) || line[1] == '_')) {
-                    in_description = true;
-                    continue;
-                }
-                spec_header = true;
-                if(line.consume_front("@status") && line.trim() == "unsupported") {
-                    return "UNSUPPORTED";
-                }
-            }
-            if(spec_header) {
-                source = rest.ltrim("\r\n");
-            }
-
-            add_main(llvm::sys::path::filename(path), source);
-            if(!compile())
+            if(!compile_file(path))
                 return "COMPILE_ERROR";
             auto ranges = feature::folding_ranges(*unit);
             auto content = unit->interested_content();

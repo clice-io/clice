@@ -1,7 +1,7 @@
-/// @section Fold Kinds
-/// @title Template parameter list folding
-/// @status unsupported
-/// @order 11
+/// section: Fold Kinds
+/// title: Template parameter list folding
+/// status: unsupported
+/// order: 11
 
 template<typename T>
 struct Less;

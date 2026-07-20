@@ -1,29 +1,35 @@
 """Generate feature-doc checklist sections from snapshot fixtures.
 
-Each fixture .cpp under tests/data/<feature>/ may carry a spec header: a
-block of `///` lines at the very top whose keys describe one checklist
-capability. This tool renders those headers into the GENERATED regions of
-docs/en/features/*.md, so the fixtures are the single source of truth and
-the doc checklist is derived from them.
+Each fixture .cpp under tests/data/<feature>/ may begin with a frontmatter
+block whose keys describe one checklist capability. This tool renders those
+blocks into the GENERATED regions of docs/en/features/*.md, so the fixtures
+are the single source of truth and the doc checklist is derived from them.
 
-Fixture spec header:
+Fixture frontmatter:
 
-    /// @section Fold Kinds
-    /// @title Block folding — functions, classes, ...
-    /// @status supported
-    /// @issues clangd#1455, vscode#70794
-    /// @order 1
+    /// section: Fold Kinds
+    /// title: Block folding — functions, classes, ...
+    /// status: supported
+    /// issues: clangd#1455, vscode#70794
+    /// order: 1
     ///
     /// Optional markdown description after a bare `///` separator.
 
-@section, @title and @status are required; @status is `supported`,
-`partial` or `unsupported`. `partial` items render unchecked with a
-*(partial)* marker but are still compiled and snapshotted, so the snapshot
-records the current partial behavior; only `unsupported` fixtures are
-skipped by the snapshot glob. Everything after the header (trimmed of
-blank lines) is the example code, rendered verbatim into the doc. Fixtures
-without any `@` key are supplementary edge-case tests and are excluded
-from docs.
+A file is a doc item iff its first line is a `/// <known-key>: ...` line;
+anything else is a supplementary edge-case test, excluded from docs. The
+key block ends at the first bare `///` (or non-comment) line; every line
+inside it must be a known key. section, title and status are required;
+status is `supported`, `partial` or `unsupported`. `partial` items render
+unchecked with a _(partial)_ marker but are still compiled and
+snapshotted, so the snapshot records the current partial behavior; only
+`unsupported` fixtures are skipped by the snapshot glob (via
+test/fixture.h, which reads the same key block). Everything after the
+frontmatter and description (trimmed of blank lines) is the example code,
+rendered verbatim into the doc.
+
+Doc-item fixtures compile verbatim, frontmatter included. The test
+framework's annotation parser swallows `$` as a point marker, so `$` must
+not appear in a doc-item fixture; bare `@` (e.g. Doxygen tags) is fine.
 
 Usage:
     python tests/tools/feature_docs.py update   # rewrite generated regions
@@ -91,53 +97,77 @@ def trim_blank(lines: list[str]) -> list[str]:
 
 
 def parse_fixture(path: Path, problems: list[str]) -> Fixture | None:
-    """Parse a fixture's spec header. Returns None for supplementary files."""
-    lines = path.read_text(encoding="utf-8").splitlines()
+    """Parse a fixture's frontmatter. Returns None for supplementary files."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
 
-    header: list[str] = []
-    body_start = len(lines)
-    for i, line in enumerate(lines):
-        if line.lstrip().startswith("///"):
-            header.append(line)
-        else:
-            body_start = i
-            break
+    def key_line(line: str) -> re.Match | None:
+        if not line.lstrip().startswith("///"):
+            return None
+        return re.match(r"(\w+):\s*(.*)", strip_comment(line).strip())
+
+    first = key_line(lines[0]) if lines else None
+    if not first:
+        # First line is not a key line: supplementary fixture, not a doc item.
+        return None
+    if first.group(1) not in KNOWN_KEYS:
+        # A typo in the first key would otherwise silently demote the file
+        # to a supplementary fixture and drop it from the docs.
+        problems.append(
+            f"{path}: first line looks like a frontmatter key but "
+            f"'{first.group(1)}' is unknown; doc items must start with a "
+            "known key and supplementary fixtures must not start with a "
+            "'word:' comment line"
+        )
+        return None
 
     keys: dict[str, str] = {}
-    desc: list[str] = []
-    in_desc = False
-    for raw in header:
-        content = strip_comment(raw)
-        if not in_desc:
-            if content.strip() == "":
-                in_desc = True
-                continue
-            match = re.match(r"@(\w+)\s*(.*)", content)
-            if match:
-                key = match.group(1)
-                if key in keys:
-                    problems.append(f"{path}: duplicate @{key}")
-                keys[key] = match.group(2).strip()
-                continue
-            in_desc = True
-        desc.append(content)
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not line.lstrip().startswith("///") or strip_comment(line).strip() == "":
+            break
+        match = key_line(line)
+        if not match:
+            problems.append(
+                f"{path}: malformed frontmatter line '{strip_comment(line).strip()}' "
+                "(separate the description with a bare ///)"
+            )
+            break
+        key = match.group(1)
+        if key in keys:
+            problems.append(f"{path}: duplicate {key}")
+        keys[key] = match.group(2).strip()
+        i += 1
 
-    if not keys:
-        # No spec keys at all: supplementary edge-case fixture, not a doc item.
-        return None
+    desc: list[str] = []
+    while i < len(lines) and lines[i].lstrip().startswith("///"):
+        desc.append(strip_comment(lines[i]))
+        i += 1
+    body_start = i
+
+    # Doc-item fixtures compile verbatim and the annotation parser swallows
+    # `$` as a nameless point marker, so the doc example would silently
+    # diverge from the compiled input. Bare `@` is fine (Doxygen tags);
+    # only the `@key[...]` shape is an annotation.
+    if "$" in text:
+        problems.append(
+            f"{path}: doc-item fixtures must not contain '$' "
+            "(reserved by the test annotation parser)"
+        )
 
     for key in REQUIRED_KEYS:
         if key not in keys:
-            problems.append(f"{path}: missing required @{key}")
+            problems.append(f"{path}: missing required key '{key}'")
         elif not keys[key]:
-            problems.append(f"{path}: empty @{key}")
+            problems.append(f"{path}: empty key '{key}'")
     for key in keys:
         if key not in KNOWN_KEYS:
-            problems.append(f"{path}: unknown key @{key}")
+            problems.append(f"{path}: unknown key '{key}'")
     status = keys.get("status", "")
     if "status" in keys and status not in VALID_STATUS:
         problems.append(
-            f"{path}: invalid @status '{status}' (expected one of {', '.join(VALID_STATUS)})"
+            f"{path}: invalid status '{status}' (expected one of {', '.join(VALID_STATUS)})"
         )
 
     issues: list[str] = []
@@ -155,7 +185,7 @@ def parse_fixture(path: Path, problems: list[str]) -> Fixture | None:
         try:
             order = int(keys["order"])
         except ValueError:
-            problems.append(f"{path}: @order must be an integer, got '{keys['order']}'")
+            problems.append(f"{path}: order must be an integer, got '{keys['order']}'")
 
     example = "\n".join(trim_blank(lines[body_start:]))
     if not example.strip():
@@ -218,7 +248,7 @@ def collect_fixtures(feature: str, problems: list[str]) -> list[Fixture]:
             continue
         if fx.title in titles:
             problems.append(
-                f"{path}: duplicate @title '{fx.title}' (also in {titles[fx.title]})"
+                f"{path}: duplicate title '{fx.title}' (also in {titles[fx.title]})"
             )
         else:
             titles[fx.title] = path
@@ -279,7 +309,7 @@ def rewrite_doc(
     for section in sections:
         if section not in doc_sections:
             problems.append(
-                f"{doc_path}: @section '{section}' has no matching marker region"
+                f"{doc_path}: section '{section}' has no matching marker region"
             )
 
     return "\n".join(out)
