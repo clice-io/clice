@@ -116,6 +116,32 @@ TEST_CASE(doxygen_passthrough) {
     EXPECT_TRUE(src.nameless_offsets.empty());
 }
 
+TEST_CASE(digit_names) {
+    // The migration leans on numeric names heavily (§(0), §(1)⟦...⟧).
+    auto src = AnnotatedSource::from("f(§(0)42);\n§(1)⟦int⟧ x;");
+    EXPECT_EQ(src.content, "f(42);\nint x;");
+    EXPECT_EQ(src.offsets.lookup("0"), 2u);
+    auto r = src.ranges.lookup("1");
+    EXPECT_EQ(r.begin, 7u);
+    EXPECT_EQ(r.end, 10u);
+}
+
+TEST_CASE(point_at_eof) {
+    auto src = AnnotatedSource::from("x§");
+    EXPECT_EQ(src.content, "x");
+    EXPECT_EQ(src.nameless_offsets, (std::vector<std::uint32_t>{1}));
+}
+
+TEST_CASE(empty_range_body) {
+    // `§⟦⟧` is a zero-width nameless range, distinct from the `§` point.
+    auto src = AnnotatedSource::from("a§⟦⟧b");
+    EXPECT_EQ(src.content, "ab");
+    auto r = src.ranges.lookup("");
+    EXPECT_EQ(r.begin, 1u);
+    EXPECT_EQ(r.end, 1u);
+    EXPECT_TRUE(src.nameless_offsets.empty());
+}
+
 TEST_CASE(empty_input) {
     auto src = AnnotatedSource::from("");
     EXPECT_TRUE(src.content.empty());
@@ -188,6 +214,22 @@ TEST_CASE(mid_line_ignored) {
     auto regions =
         extract_snap_regions("int x; // /// <snap:begin>\n// see /// <snap:begin> docs\nint y;\n");
     EXPECT_TRUE(regions.empty());
+}
+
+TEST_CASE(eof_marker_no_newline) {
+    // The end marker as the final line without a trailing newline exercises
+    // the last-line offset branch.
+    auto regions = extract_snap_regions("/// <snap:begin>\nxy\n/// <snap:end>");
+    ASSERT_EQ(regions.size(), 1u);
+    EXPECT_EQ(regions[0].begin, 17u);
+    EXPECT_EQ(regions[0].end, 20u);
+}
+
+TEST_CASE(empty_region_body) {
+    auto regions = extract_snap_regions("/// <snap:begin>\n/// <snap:end>\n");
+    ASSERT_EQ(regions.size(), 1u);
+    EXPECT_EQ(regions[0].begin, 17u);
+    EXPECT_EQ(regions[0].end, 17u);
 }
 
 TEST_CASE(filter_containment) {

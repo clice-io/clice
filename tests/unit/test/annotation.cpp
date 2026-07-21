@@ -2,6 +2,8 @@
 
 #include <cctype>
 
+#include "support/logging.h"
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -51,17 +53,23 @@ AnnotatedSource AnnotatedSource::from(llvm::StringRef content) {
             llvm::StringRef key;
             if(i < content.size() && content[i] == '(') {
                 std::size_t key_end = content.find(')', i + 1);
-                assert(key_end != llvm::StringRef::npos && "Unterminated §(name).");
+                // Malformed annotations abort in every build mode: an
+                // assert-only guard would let NDEBUG wrap `i` past npos
+                // and loop forever.
+                if(key_end == llvm::StringRef::npos) {
+                    LOG_FATAL("Unterminated §(name) in annotated source.");
+                }
                 key = content.slice(i + 1, key_end);
                 // A name must be a plain identifier (or empty): `§` directly
                 // before a real parenthesized expression is ambiguous — write
                 // the explicit nameless form `§()` in front of it instead.
-                assert(llvm::all_of(key,
-                                    [](char c) {
-                                        return std::isalnum(static_cast<unsigned char>(c)) ||
-                                               c == '_';
-                                    }) &&
-                       "§(name) requires an identifier name; use §() for a nameless point.");
+                if(!llvm::all_of(key, [](char c) {
+                       return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+                   })) {
+                    LOG_FATAL(
+                        "§({}) is not an identifier name; use §() for a nameless " "point before real parentheses.",
+                        key);
+                }
                 i = static_cast<std::uint32_t>(key_end) + 1;
             }
 
@@ -77,21 +85,27 @@ AnnotatedSource AnnotatedSource::from(llvm::StringRef content) {
         }
 
         if(rest.starts_with(close_mark)) {
-            assert(!stack.empty() && "`⟧` without a matching `§⟦`.");
+            if(stack.empty()) {
+                LOG_FATAL("`⟧` without a matching `§⟦` in annotated source.");
+            }
             OpenSpan span = stack.pop_back_val();
             ranges.try_emplace(span.key, LocalSourceRange{span.begin, offset});
             i += close_mark.size();
             continue;
         }
 
-        assert(!rest.starts_with(open_mark) && "`⟦` must follow `§` or `§(name)`.");
+        if(rest.starts_with(open_mark)) {
+            LOG_FATAL("`⟦` must follow `§` or `§(name)`.");
+        }
 
         source += content[i];
         offset += 1;
         i += 1;
     }
 
-    assert(stack.empty() && "Unclosed `§⟦` annotation at end of input.");
+    if(!stack.empty()) {
+        LOG_FATAL("Unclosed `§⟦` annotation at end of input.");
+    }
 
     return AnnotatedSource{
         std::move(source),
