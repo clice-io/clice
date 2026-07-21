@@ -18,7 +18,8 @@ namespace clice::testing {
 ///
 /// A feature's snapshot transform keeps only result entries fully contained
 /// in one of the marked regions; a file without markers snapshots
-/// everything. Regions may not nest, and a named end must match its begin.
+/// everything. Regions may not nest, and an end marker name (including
+/// its absence) must match its begin exactly.
 /// Malformed markers abort in every build mode so that typos fail loudly
 /// instead of silently producing misleading snapshots.
 inline std::vector<LocalSourceRange> extract_snap_regions(llvm::StringRef content) {
@@ -67,7 +68,7 @@ inline std::vector<LocalSourceRange> extract_snap_regions(llvm::StringRef conten
                 if(!open) {
                     LOG_FATAL("<snap:end> without a matching <snap:begin>.");
                 }
-                if(!name.empty() && name != open_name) {
+                if(name != open_name) {
                     LOG_FATAL("<snap:end {}> does not match <snap:begin {}>.", name, open_name);
                 }
                 regions.emplace_back(region_begin, line_start);
