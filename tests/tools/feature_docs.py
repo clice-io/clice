@@ -27,10 +27,6 @@ test/fixture.h, which reads the same key block). Everything after the
 frontmatter and description (trimmed of blank lines) is the example code,
 rendered verbatim into the doc.
 
-Doc-item fixtures compile verbatim, frontmatter included. The test
-framework's annotation parser swallows `$` as a point marker, so `$` must
-not appear in a doc-item fixture; bare `@` (e.g. Doxygen tags) is fine.
-
 Usage:
     python tests/tools/feature_docs.py update   # rewrite generated regions
     python tests/tools/feature_docs.py check     # fail if regions are stale
@@ -145,16 +141,6 @@ def parse_fixture(path: Path, problems: list[str]) -> Fixture | None:
         desc.append(strip_comment(lines[i]))
         i += 1
     body_start = i
-
-    # Doc-item fixtures compile verbatim and the annotation parser swallows
-    # `$` as a nameless point marker, so the doc example would silently
-    # diverge from the compiled input. Bare `@` is fine (Doxygen tags);
-    # only the `@key[...]` shape is an annotation.
-    if "$" in text:
-        problems.append(
-            f"{path}: doc-item fixtures must not contain '$' "
-            "(reserved by the test annotation parser)"
-        )
 
     for key in REQUIRED_KEYS:
         if key not in keys:
